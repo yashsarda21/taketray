@@ -1,0 +1,9 @@
+You shoot a trip’s worth of clips with 3 different reels in mind.
+
+Then editing starts with an hour of scrolling: “Where’s that one shot?”
+
+I’m building TakeTray, an Android app idea: film with your normal camera, then tag clips into the reels they belong to. One clip can go in several reels.
+
+The goal: open a reel and find its clips together, ready for your editor.
+
+How do you keep track of which clips are for which reel today?

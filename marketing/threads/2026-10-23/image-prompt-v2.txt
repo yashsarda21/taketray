@@ -1,0 +1,7 @@
+Use case: ads-marketing
+Asset type: A portrait 4:5 social image for a Threads post introducing the Android app concept TakeTray.
+Primary request: Create an editorial concept poster illustrating travel video clips being manually tagged into reel projects.
+Scene/backdrop: Near-black graphite #121316, warm off-white typography, marigold #FAA800 accents, subtle grain. Photographic colour only inside clip thumbnails.
+Composition: Generous margins, large readable typography. Top small wordmark "TakeTray" and small label "APP CONCEPT". Main headline exactly "Great clips." then "Where did they go?". Middle: a tactile collage of five vertical travel-video thumbnail cards from an Indian coastal trip: street food, ocean sunset, palm-lined street, cafe coffee, walking shoes. Small play triangle on each card. Below a simple arrow labelled "Tag into reels" leading to three organised tray-shaped cards labelled "Food reel", "Travel reel", "Day 1 vlog", each holding miniatures of the same clips. Repeat food in Food reel and Day 1 vlog to show one clip may belong to several reels. Bottom line "Shoot normally. Tag later. Edit when ready."
+Style: Restrained, sophisticated editorial design, rich realistic travel photos within cards, precise sans-serif typography, ample breathing room, subtle shadows.
+Constraints: Spell TakeTray accurately. No other text, no claims of launch or availability, no platform logos, no testimonials or metrics, no AI or automatic sorting imagery, no watermark. This is an illustration of the idea, not an app screenshot. Opaque background.

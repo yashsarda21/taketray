@@ -1,0 +1,10 @@
+Every trip I shoot 100+ clips for 4–5 different reels.
+
+Then I spend a whole evening scrolling my gallery, trying to remember which clip was for which reel.
+
+So I'm building an app for it: TakeTray.
+Turn on Shooting mode, film like normal. Later, play the new clips and tap the reel each one belongs to. Then send them straight to CapCut, Edits or VN.
+
+The design is done. Building it now.
+
+Would you use this? How do you sort your clips today?

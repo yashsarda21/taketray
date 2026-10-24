@@ -1,0 +1,9 @@
+You come back from a trip with a gallery full of clips and ideas for 3 different reels. Then comes the scrolling: “Where’s that one shot?”
+
+I’m building TakeTray for this.
+
+Turn on Shooting mode, film with your normal camera, then tag clips into the reels they belong to when you have a free moment. One clip can belong to several reels.
+
+When it’s time to edit, your clips are already grouped.
+
+How do you keep track of which clips belong to which reel today?

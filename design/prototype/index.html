@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en" class="style-tt">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TakeTray Design</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..700,0..1,0&display=block">
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/proto.css">
+<link rel="stylesheet" href="assets/tt-style.css">
+</head>
+<body>
+<div class="hub">
+  <aside class="side" aria-label="Sections">
+    <div class="side-brand"><span id="side-icon"></span><div><b>TakeTray</b><small>Android · version 1 design</small></div></div>
+    <div class="palbox"><span class="pal-label">Brand colour · <span class="palname">Graphite &amp; marigold</span></span><div class="palpick" role="radiogroup" aria-label="Brand colour"></div></div>
+    <nav id="side-nav"></nav>
+  </aside>
+  <div class="scrim-side"></div>
+  <div class="main-col" style="min-width:0">
+    <div class="topbar"><button id="menu-btn" aria-label="Open sections"><span class="ms">menu</span></button><b>TakeTray Design</b></div>
+    <main class="main">
+
+      <!-- ============================================================ OVERVIEW -->
+      <section class="view" id="v-overview" hidden>
+        <p class="eyebrow">TakeTray · Android · version 1</p>
+        <h1>Every clip you shoot, sorted into the right reel</h1>
+        <p class="lede">The complete version 1 interface for TakeTray: all 37 screens with every state from the brief and add-on 1, in light and dark at 360 dp, a clickable prototype of the key flows, and Material 3 design tokens that map straight onto a Jetpack Compose theme.</p>
+        <div class="pair" id="ov-phones" style="margin:28px 0 8px"></div>
+        <div class="cards">
+          <a class="card link" href="#prototype"><span class="ms" style="color:var(--page-accent)">touch_app</span><span class="big">Try the prototype</span><span class="muted">Tag a day's clips, send a reel to VN, or run first launch. It all works, Undo included.</span></a>
+          <a class="card link" href="#screen-01"><span class="ms" style="color:var(--page-accent)">smartphone</span><span class="big">37 screens, every state</span><span class="muted">Each screen page shows its states side by side in light and dark, with notes and interactions.</span></a>
+          <a class="card link" href="#system"><span class="ms" style="color:var(--page-accent)">palette</span><span class="big">Design system</span><span class="muted">Colour roles with contrast ratios, type scale, shapes, elevation and the component library.</span></a>
+          <a class="card link" href="#handoff"><span class="ms" style="color:var(--page-accent)">code</span><span class="big">Developer handoff</span><span class="muted">Specs in dp and sp, Compose mapping, assets, notification channels, TalkBack labels.</span></a>
+        </div>
+        <h2>New in add-on 1</h2>
+        <div class="cards">
+          <a class="card link" href="#colours"><span class="ms" style="color:var(--page-accent)">palette</span><span class="big">Graphite &amp; marigold</span><span class="muted">The chosen brand colour. The other four options stay on the Colour options page for reference.</span></a>
+          <a class="card link" href="#screen-02"><span class="ms" style="color:var(--page-accent)">view_carousel</span><span class="big">Choose a welcome</span><span class="muted">Three directions: A · Slate, B · Tray, C · Your day. Pick one and it becomes the welcome everywhere.</span></a>
+          <a class="card link" href="#screen-35"><span class="ms" style="color:var(--page-accent)">add_link</span><span class="big">Reference reels</span><span class="muted">Share a reel from Instagram to TakeTray, keep it in your reel, and re-watch it while shooting.</span></a>
+          <a class="card link" href="#brand"><span class="ms" style="color:var(--page-accent)">deployed_code</span><span class="big">TakeTray name and icon</span><span class="muted">Three icon concepts with adaptive, themed and notification versions, plus tagline options.</span></a>
+        </div>
+        <h2>Design direction</h2>
+        <p><b>Videos lead, chrome recedes.</b> Clip tiles are 3:4 in a three-column grid. Reel cards lead with their cover. The tag player and clip viewer are always dark on black, whatever the theme, so footage reads well in bright sunlight.</p>
+        <p><b>Graphite with marigold.</b> An almost colourless brand, like a camera app: the videos bring the colour. Graphite blue-grey is the brand and every primary action. Marigold has one job: it marks clips that are waiting (the To tag badge, the banner, the strip on the Shooting mode card), so it is the only accent on screen. Red stays for REC and real errors.</p>
+        <p><b>One tap per clip.</b> In the tag player, tapping a reel tags the clip and moves on. Tagging into several reels is a visible "Pick several" mode, so the one-tap path never gets slower.</p>
+        <p><b>References are links, not videos.</b> TakeTray never downloads a reference or fetches its preview, so a reference is a designed card: a striped 9:16 tile, the source app's icon from the phone, the label and an Open button.</p>
+        <p><b>Nothing scary about videos.</b> Every remove or delete repeats, in a green box, that the originals stay in the gallery.</p>
+        <p><b>Material 3, with a brand on top.</b> Plus Jakarta Sans with tabular numbers for durations, rounded Material Symbols, standard M3 components and motion tokens.</p>
+        <h2>What's in the repo</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Path</th><th>What it is</th></tr></thead><tbody>
+          <tr><td><code>design/tokens/taketray.tokens.json</code></td><td>Design tokens: colour roles (light, dark), tonal palettes, type, shape, spacing, elevation, motion, sizes, plus a contrast report.</td></tr>
+          <tr><td><code>design/handoff/compose/*.kt</code></td><td>Generated Compose theme: <code>Color.kt</code>, <code>Type.kt</code>, <code>Shape.kt</code>, <code>Motion.kt</code>, <code>Theme.kt</code>.</td></tr>
+          <tr><td><code>design/prototype/index.html</code></td><td>This hub: screens, prototype, design system and handoff. Open it in any browser.</td></tr>
+          <tr><td><code>design/handoff/icons/&lt;concept&gt;/</code></td><td>App icon sets (adaptive background and foreground, monochrome themed icon, notification icon) as Android VectorDrawable XML and SVG.</td></tr>
+          <tr><td><code>design/tools/build_tokens.py</code></td><td>Regenerates tokens, CSS and Kotlin from the brand seeds and fails if a colour pair drops below WCAG AA.</td></tr>
+          <tr><td><code>design/tools/build_icons.py</code></td><td>Regenerates every icon file (and the prototype's icons) from one geometry source.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- ============================================================ PROTOTYPE -->
+      <section class="view" id="v-prototype" hidden>
+        <div class="view-head"><div><p class="eyebrow">Interactive prototype</p><h1 id="pf-title">Tag a day's clips</h1></div></div>
+        <div class="proto">
+          <div class="phone"><div class="ph rh-light" id="proto-phone"></div></div>
+          <div class="panel">
+            <section aria-labelledby="pf-h1">
+              <h3 id="pf-h1">Flow</h3>
+              <label class="fld" for="pf-flow">Start from
+                <select id="pf-flow">
+                  <option value="tagging">Tag a day's clips</option>
+                  <option value="vn">Send a reel to VN</option>
+                  <option value="onboarding">First launch (onboarding)</option>
+                  <option value="reference">Save a reference from Instagram</option>
+                  <option value="reference-first">Save a reference on first launch</option>
+                  <option value="explore">Free explore</option>
+                </select>
+              </label>
+              <ol class="steps" id="pf-steps" style="margin-top:12px"></ol>
+            </section>
+            <section aria-labelledby="pf-h2">
+              <h3 id="pf-h2">Simulate</h3>
+              <div class="row">
+                <button class="pbtn" data-sim="shoot"><span class="ms">videocam</span>Shoot 3 clips</button>
+                <button class="pbtn" data-sim="shade"><span class="ms">notifications</span>Notification shade</button>
+                <button class="pbtn" data-sim="evening"><span class="ms">bedtime</span>It's 9 pm</button>
+                <button class="pbtn" data-sim="vn3"><span class="ms">event</span>3 days later</button>
+                <button class="pbtn" data-sim="still14"><span class="ms">timer</span>14 days later</button>
+                <button class="pbtn" data-sim="back"><span class="ms">arrow_back</span>Android back</button>
+                <button class="pbtn" data-sim="reset"><span class="ms">restart_alt</span>Reset</button>
+              </div>
+              <p class="log" id="pf-log" aria-live="polite" style="margin:12px 0 0"></p>
+            </section>
+            <section aria-labelledby="pf-h3">
+              <h3 id="pf-h3">Phone</h3>
+              <div style="display:grid;gap:12px">
+                <div class="seg-ctl" role="group" aria-label="App theme"><button data-ptheme="light" aria-pressed="true">Light</button><button data-ptheme="dark" aria-pressed="false">Dark</button></div>
+                <div class="fld" style="display:flex;flex-direction:column;gap:6px;font-size:12.5px;color:var(--page-muted);font-weight:600">Brand colour · <span class="palname" style="color:var(--page-fg)"></span><div class="palpick" role="radiogroup" aria-label="Brand colour" style="padding:0"></div></div>
+                <label class="fld" for="pf-android">Android version
+                  <select id="pf-android"><option value="11">11–12</option><option value="13">13</option><option value="14">14 and later</option></select>
+                </label>
+                <label class="fld" for="pf-access">Video access
+                  <select id="pf-access"><option value="full">All videos</option><option value="limited">Some videos (Manual mode)</option><option value="removed">Removed by Android</option></select>
+                </label>
+                <label class="fld" for="pf-welcome">Welcome design
+                  <select id="pf-welcome"><option value="slate">A · Slate</option><option value="tray">B · Tray</option><option value="day">C · Your day</option><option value="v1">Previous (v1)</option></select>
+                </label>
+                <label class="fld" for="pf-share">Shared from Instagram
+                  <select id="pf-share"><option value="reel">An Instagram reel</option><option value="dup">A reel already in London Food</option><option value="post">An Instagram post</option><option value="yt">A YouTube Short</option><option value="text">Caption text (not a link)</option></select>
+                </label>
+                <label style="display:flex;gap:8px;align-items:center;font-size:14px"><input type="checkbox" id="pf-rm"> Reduced motion</label>
+              </div>
+            </section>
+            <p class="muted" style="font-size:13px;margin:0">Long-press = press and hold, or right-click. Swiping between clips works on touch screens; the arrows do the same.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ SCREEN (generated) -->
+      <section class="view" id="v-screen" hidden></section>
+
+      <!-- ============================================================ SYSTEM -->
+      <section class="view" id="v-system" hidden>
+        <p class="eyebrow">Foundations</p>
+        <h1>Design system</h1>
+        <p class="lede">Material 3 colour roles generated from the brand seeds (graphite, marigold, REC red, green). Every value below comes from <code>taketray.tokens.json</code>, and dark mode comes from the same tokens. The ratio on each swatch is its text colour against the swatch.</p>
+        <h2>TakeTray style</h2>
+        <p>The app's own design language, built on the Material 3 tokens below but not using stock Material components.</p>
+        <div class="spec">
+          <div><h4>1 · Dark-first, OLED</h4><p>Designed dark first. Dark surfaces drop one step to near-black so video glows; light theme is fully supported.</p></div>
+          <div><h4>2 · Media is the surface</h4><p>Reel covers run full-bleed with the name on the image. When Shooting mode is on, its card shows your latest clip behind a brand tint.</p></div>
+          <div><h4>3 · Floating chrome</h4><p>Navigation is a floating glass pill; sheets, dialogs, menus and toasts float with blur and hairline borders.</p></div>
+          <div><h4>4 · Pills, not boxes</h4><p>Tabs, buttons and badges are fully rounded. Containers use 20–32 dp corners; settings use inset grouped rows.</p></div>
+          <div><h4>5 · Bold, few words</h4><p>34 sp extra-bold titles with tight tracking; secondary text recedes. Every action is still labelled.</p></div>
+        </div>
+        <h2>Colour roles</h2>
+        <div id="sys-colors"></div>
+        <h2>Tonal palettes</h2>
+        <p class="muted">Tone = CIE L*. 40 is the light-theme primary, 80 the dark-theme primary, 90/30 the containers.</p>
+        <div id="sys-palettes"></div>
+        <h2>Typography</h2>
+        <p class="muted">Plus Jakarta Sans (Google Fonts, downloadable on Android, Roboto fallback). Tabular numbers everywhere digits line up: durations, counts, times. Nothing below 12 sp.</p>
+        <div id="sys-type"></div>
+        <h2>Spacing, shape and elevation</h2>
+        <div class="cards"><div class="card"><h3 style="margin-top:0">Spacing (4 dp grid)</h3><div id="sys-space"></div></div><div class="card"><h3 style="margin-top:0">Corner radius</h3><div id="sys-shape"></div><h3>Elevation</h3><div id="sys-elev"></div></div></div>
+        <h2>Iconography</h2>
+        <p>Material Symbols Rounded, 24 dp, weight 400. Outlined by default, filled for the selected or active state (navigation, status pills). Icons beside a visible label are hidden from TalkBack; icon-only buttons always have a label.</p>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Meaning</th><th>Symbol</th><th>Where</th></tr></thead><tbody>
+          <tr><td>Reels</td><td><code>video_library</code></td><td>Navigation, "In" chips</td></tr>
+          <tr><td>Tag, To tag</td><td><code>sell</code></td><td>Navigation, Tag scene, notifications (tag shape matches the app icon)</td></tr>
+          <tr><td>Shooting mode, open camera</td><td><code>videocam</code></td><td>Shooting card, To tag strip</td></tr>
+          <tr><td>Recording / Ready to edit / Published</td><td><code>radio_button_checked</code> · <code>content_cut</code> · <code>check_circle</code></td><td>Status pills</td></tr>
+          <tr><td>Edit video</td><td><code>movie_edit</code></td><td>Reel detail button</td></tr>
+          <tr><td>Add videos / add to reel</td><td><code>library_add</code></td><td>App bars, viewer</td></tr>
+          <tr><td>Move / remove from reel</td><td><code>drive_file_move</code> · <code>playlist_remove</code></td><td>Selection bar, viewer</td></tr>
+          <tr><td>In several reels</td><td><code>layers</code></td><td>Clip tile badge</td></tr>
+          <tr><td>VN copies</td><td><code>folder_copy</code></td><td>VN banner, badge, storage</td></tr>
+          <tr><td>Missing clip</td><td><code>videocam_off</code></td><td>Missing tile</td></tr>
+          <tr><td>Skip / Same as previous / Pick several</td><td><code>redo</code> · <code>repeat</code> · <code>library_add_check</code></td><td>Tag player</td></tr>
+        </tbody></table></div>
+        <h2>Components</h2>
+        <p class="muted">Each component in light and dark, rendered by the same code as the screens.</p>
+        <div class="cards" id="sys-comps" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,760px),1fr))"></div>
+      </section>
+
+      <!-- ============================================================ COLOURS -->
+      <section class="view" id="v-colours" hidden>
+        <p class="eyebrow">Foundations</p>
+        <h1>Colour options</h1>
+        <p class="lede">Five brand directions for TakeTray. Each one is a complete Material 3 colour system in light and dark, generated from two seeds and checked against WCAG AA. REC red, success green and error red stay the same in all of them. Switch anytime with the swatches in the sidebar or the prototype panel: every screen, the icon and this site recolour.</p>
+        <div id="colour-opts" style="display:flex;flex-direction:column;gap:20px;margin-top:20px"></div>
+        <p class="muted" style="margin-top:20px">Each option's colour roles are also in <code>design/tokens/colour-options/</code>. When you pick one, I'll make it the shipped palette and regenerate the tokens file, Compose theme and icon files from it.</p>
+      </section>
+
+      <!-- ============================================================ NAV MAP -->
+      <section class="view" id="v-navmap" hidden>
+        <p class="eyebrow">Structure</p>
+        <h1>Navigation map</h1>
+        <p class="lede">Bottom navigation with three tabs: <b>Reels</b>, <b>To tag</b> (with a marigold count badge) and <b>Settings</b>. Click any box to open that screen.</p>
+        <div class="navmap-wrap" id="navmap-svg"></div>
+        <h2>Why bottom navigation</h2>
+        <p>Reels and To tag are the two places people go all day, and both are one thumb-tap away from anywhere. Settings is rarely used, but with only two other destinations it costs nothing as a third tab, and it is where VN storage and the notification fix live. A top-bar gear would hide those.</p>
+        <h2>Rules</h2>
+        <ul class="notes">
+          <li>Switching tabs clears that tab's back stack; Android back from a tab root leaves the app.</li>
+          <li>Back closes overlays first (menu, sheet, dialog, selection mode), then goes up one screen.</li>
+          <li>Deep links: "new clips" and "evening reminder" notifications → To tag. "VN copies" reminder → reel detail with the Done editing dialog. "Still shooting?" → Turn off works from the shade.</li>
+          <li>Share target: Instagram › Share › TakeTray opens the Save reference sheet over Instagram. Done returns to Instagram; Open reel opens reel detail at its References (after onboarding, on a first launch).</li>
+          <li>The References sheet opens from "References · 4" on the Shooting mode card; the link badge on a reel card jumps to that reel's References.</li>
+          <li>The tag player and clip viewer are full-screen (no navigation bar) and always dark.</li>
+          <li>VN flow: Pick clips → Choose editor → Space check → Copying → Ready. "Done" returns to the reel (the steps in between are replaced, so back doesn't replay copying).</li>
+        </ul>
+      </section>
+
+      <!-- ============================================================ BRAND -->
+      <section class="view" id="v-brand" hidden>
+        <p class="eyebrow">Foundations</p>
+        <h1>TakeTray</h1>
+        <p class="lede">"Takes" is the film word for clips; the app is a tray where your takes collect, sorted by reel. One word, capital T twice. Inside the app, people still create <b>reels</b>.</p>
+        <h2>Tagline</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Option</th><th>Why</th></tr></thead><tbody>
+          <tr><td><b>Shoot now. Sort later.</b> (recommended)</td><td>Four words that describe the whole workflow. Fits a Play Store short description and the welcome screen.</td></tr>
+          <tr><td><b>Every take, in the right reel.</b></td><td>Uses the new name's own word, "take". Slightly softer.</td></tr>
+          <tr><td><b>Every clip you shoot, sorted into the right reel.</b> (current draft)</td><td>The clearest, but long; better as a subtitle than a tagline.</td></tr>
+        </tbody></table></div>
+        <h2>App icon concepts</h2>
+        <p class="muted">Each concept is an adaptive icon (108 dp canvas, artwork inside the 66 dp safe zone), a monochrome layer for Android 13+ themed icons, and a 24 dp notification icon. All three are shown at 192, 96, 48 and 24 dp. Colours come from the chosen palette: graphite for the background, marigold for the tray, where waiting clips live.</p>
+        <div class="cards" id="brand-icons" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,520px),1fr))"></div>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>File (per concept)</th><th>Where it goes</th></tr></thead><tbody>
+          <tr><td><code>ic_launcher_background.xml</code>, <code>ic_launcher_foreground.xml</code></td><td><code>res/drawable/</code>: the two adaptive icon layers</td></tr>
+          <tr><td><code>ic_launcher_monochrome.xml</code></td><td><code>res/drawable/</code>: Android 13+ themed icon</td></tr>
+          <tr><td><code>ic_launcher.xml</code></td><td><code>res/mipmap-anydpi-v26/</code> (also as <code>ic_launcher_round.xml</code>)</td></tr>
+          <tr><td><code>ic_stat_taketray.xml</code></td><td><code>res/drawable/</code>: notification small icon (white, 24 dp)</td></tr>
+          <tr><td><code>*.svg</code>, <code>preview.svg</code></td><td>Play Store listing artwork and design reviews; export the 512 px store icon from <code>preview.svg</code>.</td></tr>
+        </tbody></table></div>
+        <p class="muted">The prototype uses no Instagram, CapCut, VN or Meta branding. Third-party app icons come from the phone at runtime and appear here as lettered placeholders.</p>
+      </section>
+
+      <!-- ============================================================ MOTION -->
+      <section class="view" id="v-motion" hidden>
+        <p class="eyebrow">Foundations</p>
+        <h1>Motion</h1>
+        <p class="lede">Material 3 motion tokens. Motion explains what happened (the clip went into the reel, the next one arrived). It never decorates. With reduced motion on, slides become 150 ms fades and loops stop on their last frame.</p>
+        <h2>Tag and advance</h2>
+        <p>The most repeated moment in the app, up to 40 times a day. It must feel instant and certain.</p>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>What happens</th><th>Token</th></tr></thead><tbody>
+          <tr><td class="num">0 ms</td><td>Finger down: chip state layer (14%) appears with no delay.</td><td>—</td></tr>
+          <tr><td class="num">0–150 ms</td><td>On tap: chip fills with the brand colour, its cover turns into a tick, chip scales to 97%. Haptic <code>CONFIRM</code>.</td><td>short3, standard</td></tr>
+          <tr><td class="num">150–400 ms</td><td>Hold, so the user sees which reel they hit.</td><td>medium1</td></tr>
+          <tr><td class="num">400–600 ms</td><td>Current clip slides out to the left and fades.</td><td>short4, emphasizedAccelerate</td></tr>
+          <tr><td class="num">400–700 ms</td><td>Next clip slides in from the right (70% → 0, scale .9 → 1); progress segment turns marigold; snackbar "Added to London Food · Undo" rises in the video area.</td><td>medium2, emphasizedDecelerate</td></tr>
+          <tr><td class="num">+6 s</td><td>Snackbar leaves unless Undo was tapped. Undo slides the previous clip back in from the left.</td><td>—</td></tr>
+        </tbody></table></div>
+        <p class="muted">Taps during the 400 ms hold are ignored on the chips, so a double tap can't tag two clips. Skip uses the same exit and enter with haptic <code>REJECT</code>.</p>
+        <h2>Scene tagging</h2>
+        <ul class="notes"><li>Tag scene opens the reel picker (sheet up, 400 ms emphasizedDecelerate).</li><li>On confirm the sheet leaves (200 ms), the scene's tiles fade and collapse upwards with a 30 ms stagger (250 ms each), and the next scene header slides up into place. Snackbar "6 clips added to London Food · Undo".</li><li>Reduced motion: tiles disappear with a 150 ms fade, no stagger.</li></ul>
+        <h2>Shooting mode switch</h2>
+        <ul class="notes"><li>Off → on: the switch thumb travels (200 ms); the card cross-fades from grey to the media hero (300 ms standard); the REC dot pops in (scale 0 → 1, 250 ms) and then pulses every 1.6 s.</li><li>On → off: the reverse, faster (200 ms). The pulse stops at once.</li><li>Reduced motion: no pulse; the dot is static with a ring.</li></ul>
+        <h2>Everything else</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Moment</th><th>Motion</th></tr></thead><tbody>
+          <tr><td>Screen to screen</td><td>Shared axis X (forward/back), 300 ms emphasized. Tabs: fade through, 250 ms.</td></tr>
+          <tr><td>Reel card → reel detail</td><td>Container transform from the card, 400 ms.</td></tr>
+          <tr><td>Clip tile → viewer or player</td><td>Shared element on the thumbnail, 350 ms; the black background fades in.</td></tr>
+          <tr><td>Bottom sheets</td><td>Up 400 ms emphasizedDecelerate, down 250 ms emphasizedAccelerate (exit faster than enter).</td></tr>
+          <tr><td>Dialogs</td><td>Fade + scale .92 → 1, 300 ms.</td></tr>
+          <tr><td>Selection</td><td>Tile image shrinks to 86% with rounded corners and the tick pops in, 200 ms. No layout shift.</td></tr>
+          <tr><td>Welcome</td><td>One moment per option: A · the slate's clapper stick claps shut (380 ms, emphasized accelerate, after 450 ms); B · three takes drop into the tray (520 ms each, 100 ms stagger); C · the three day rows rise in (420 ms, 140 ms stagger). With reduced motion, the final frame only.</td></tr>
+          <tr><td>Reference jump</td><td>From the Home badge or the References sheet, reel detail scrolls to References and rings the section in marigold for 1 s, then fades.</td></tr>
+          <tr><td>VN copying</td><td>Determinate bar, linear, updated per clip.</td></tr>
+        </tbody></table></div>
+      </section>
+
+      <!-- ============================================================ A11Y -->
+      <section class="view" id="v-a11y" hidden>
+        <p class="eyebrow">Foundations</p>
+        <h1>Accessibility</h1>
+        <p class="lede">Built for one-handed use in sunlight, in a moving vehicle, often with the sound off. These rules hold on every screen.</p>
+        <h2>Touch targets: at least 48 dp</h2>
+        <ul class="notes"><li>Buttons are 40 dp tall with the touch area extended to 48 dp. Filter chips are 32 dp with a 48 dp touch area.</li><li>Reel chips in the tag player are 56 dp tall and half the screen wide: the most-tapped target in the app is the largest.</li><li>Clip tiles are about 109 × 145 dp at 360 dp width. Icon buttons are 48 × 48 dp. Adjacent targets keep at least 8 dp between them, except grid tiles (4 dp gap, but each tile is far larger than 48 dp).</li></ul>
+        <h2>Contrast: AA in both themes</h2>
+        <ul class="notes"><li>The token build fails if any text pair drops below 4.5:1 or any meaningful icon or border below 3:1. The lowest text pair is inversePrimary on inverseSurface in dark (5.0:1).</li><li>Text over video always sits on a scrim (55–70% black) or a solid pill.</li><li>Light-theme on-container text uses tone 10 rather than 30, for sunlight.</li></ul>
+        <h2>Never colour alone</h2>
+        <ul class="notes"><li>Status: icon + word in every pill.</li><li>Shooting mode: the word "on", the switch position and the REC dot, not just the card colour.</li><li>Missing clip: dashed border, icon and text.</li><li>Selected tile: tick and shrink, not just a tint.</li><li>VN space shortfall: hatched pattern plus numbers in words.</li></ul>
+        <h2>TalkBack labels for icon-only controls</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Control</th><th>Label</th><th>State announced</th></tr></thead><tbody>
+          <tr><td>Tag player close</td><td>"Close tagging"</td><td>—</td></tr>
+          <tr><td>Mute</td><td>"Unmute" / "Mute"</td><td>pressed</td></tr>
+          <tr><td>Previous / next clip</td><td>"Previous clip" / "Next clip"</td><td>disabled at the ends</td></tr>
+          <tr><td>Video area</td><td>"Pause clip, 1:07 pm, 0:12"</td><td>playing / paused</td></tr>
+          <tr><td>Reel chip</td><td>"Add to London Food, 14 clips"</td><td>checked (in Pick several)</td></tr>
+          <tr><td>Clip tile</td><td>"Clip, 1:07 pm, 0:12, horizontal, in 2 reels"</td><td>selected (in selection mode)</td></tr>
+          <tr><td>Reel card</td><td>"London Food. Recording. 14 clips, 2 missing. Editing in VN"</td><td>—</td></tr>
+          <tr><td>Status pill</td><td>"Status: Recording. Change status"</td><td>has popup</td></tr>
+          <tr><td>To tag tab</td><td>"To tag, 23 clips waiting"</td><td>selected</td></tr>
+          <tr><td>Shooting mode switch</td><td>"Shooting mode"</td><td>on / off</td></tr>
+          <tr><td>Add videos / More</td><td>"Add videos" / "More options"</td><td>—</td></tr>
+          <tr><td>Reference card</td><td>"Open reference: Fast cuts, food close-ups, Instagram reel"</td><td>—</td></tr>
+          <tr><td>Reference menu</td><td>"More options for Fast cuts, food close-ups"</td><td>has popup</td></tr>
+          <tr><td>Reel card reference badge</td><td>"2 references in London Food"</td><td>—</td></tr>
+        </tbody></table></div>
+        <h2>Font scaling to 200%</h2>
+        <ul class="notes"><li>No fixed heights on anything that holds text; rows grow.</li><li>At font scale 1.5 and above: reel grid goes to one column; tag player chips go to one column; clip tiles keep only the duration (the time moves to the scene header); bottom bars stack their summary above the button.</li><li>Navigation labels never truncate; at 2.0 they wrap to two lines.</li><li>Numbers use tabular figures, so counters don't jitter as they change.</li></ul>
+        <h2>Gestures always have a button</h2>
+        <ul class="notes"><li>Swipe between clips → arrow buttons. Long-press to select → "Select clips" in the menu. Long-press a reel chip → "Pick several" button.</li><li>No swipe-to-delete anywhere.</li><li>Horizontal swipes in the player exclude the system back-gesture edges.</li></ul>
+        <h2>Announcements and focus</h2>
+        <ul class="notes"><li>Snackbars are polite live regions and stay until TalkBack finishes reading them (at least 6 s with Undo).</li><li>"4 of 23" is announced as the clip changes.</li><li>Sheets and dialogs move focus to their title and return it to the control that opened them.</li><li>Form errors appear under the field, and focus returns to the field.</li></ul>
+      </section>
+
+      <!-- ============================================================ HANDOFF -->
+      <section class="view" id="v-handoff" hidden>
+        <p class="eyebrow">Developer handoff</p>
+        <h1>Build notes</h1>
+        <p class="lede">Everything a developer needs to rebuild these screens in Jetpack Compose. Sizes are dp, type is sp, durations are ms. The generated theme in <code>design/handoff/compose/</code> is ready to drop in.</p>
+        <h2>Flutter (the chosen stack)</h2>
+        <ul class="notes">
+          <li>The app is in <code>reel-helper/app</code>. <code>lib/theme/tokens.g.dart</code> is generated from these tokens (all five colour options as Material 3 <code>ColorScheme</code>s, type, radii, spacing, motion); <code>lib/theme/app_theme.dart</code> builds the <code>ThemeData</code>.</li>
+          <li>TakeTray-style widgets replace stock ones: a floating pill navigation bar (<code>Scaffold.extendBody</code>), pill tabs instead of <code>FilterChip</code>, full-bleed reel cards, the media Shooting card, floating bottom sheets (transparent sheet with a rounded, inset panel), pill dialogs and toasts.</li>
+          <li>Dark surfaces use <code>surfaceContainerLowest</code> as the page background (OLED step).</li>
+          <li>The Compose theme files remain in <code>design/handoff/compose/</code> in case a native module is ever needed.</li>
+        </ul>
+        <h2>Theme</h2>
+        <ul class="notes"><li><code>TakeTrayTheme</code> wraps the app; <code>VideoTheme</code> forces the dark scheme for the tag player and clip viewer, which sit on <code>VideoBackground</code> (#000).</li><li>Dynamic colour is off on purpose: brand colours carry meaning (marigold = waiting).</li><li>REC red and success green are in <code>LocalExtendedColors</code>.</li><li>Font: Plus Jakarta Sans via downloadable fonts; set <code>fontFeatureSettings = "tnum"</code> on durations, counts and times.</li></ul>
+        <h2>Layout</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Element</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Screen gutter</td><td class="num">16 dp (24 in sheets and onboarding)</td></tr>
+          <tr><td>Clip grid</td><td>3 columns, 4 dp gap, tile 3:4, corner 8. <code>LazyVerticalGrid(GridCells.Fixed(3))</code> with <code>key = clip.id</code>; scene and day headers as full-span items.</td></tr>
+          <tr><td>Reel grid</td><td>2 columns, 12 dp column gap, 16 dp row gap; cover 3:4, corner 16; 1 column at font scale ≥ 1.5.</td></tr>
+          <tr><td>Top app bar</td><td class="num">64 dp; large title 72 dp (headlineMedium)</td></tr>
+          <tr><td>Navigation bar</td><td class="num">80 dp; indicator 64 × 32, corner 16</td></tr>
+          <tr><td>Extended FAB</td><td class="num">56 dp, corner 16, 16 dp from the right and from the nav bar</td></tr>
+          <tr><td>Bottom sheet</td><td class="num">Top corners 28; handle 32 × 4; max 92% of height</td></tr>
+          <tr><td>Dialog</td><td class="num">Width 312, corner 28, padding 24</td></tr>
+          <tr><td>Snackbar</td><td class="num">Min 48 tall, 12 from the edges, corner 12; above the nav bar (bottom 92)</td></tr>
+          <tr><td>Tag player</td><td>Top bar 56 · video fills the remaining height at 9:16 (16:9 letterboxed for horizontal) · scrubber · quick row 56 (Skip, Same as previous) · reel panel max 340, corner 24 top, chips 2 columns, 56 tall, 8 gap.</td></tr>
+        </tbody></table></div>
+        <h2>Components</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Component</th><th>Compose</th><th>Spec</th></tr></thead><tbody>
+          <tr><td>Shooting mode card</td><td>Custom <code>Card</code> + <code>Switch</code></td><td>Corner 24, padding 16. Off: surfaceContainerHigh, icon tile 48 on primaryContainer. On: primary / onPrimary, REC dot 10 dp (record.color) with a pulse; "Open camera" button inverted (onPrimary fill, primary text). Waiting strip: 52 tall, tertiaryContainer.</td></tr>
+          <tr><td>Reel card</td><td><code>Card(onClick)</code></td><td>Cover 3:4 corner 16; status pill overlay 8 dp in; VN pill bottom-left; name titleSmall (2 lines); meta bodySmall onSurfaceVariant.</td></tr>
+          <tr><td>Clip tile</td><td>Custom</td><td>Thumbnail from a video frame (Coil video decoder, 1 frame at 1 s, ~360 px). Bottom scrim 44% to 66% black; time bottom-left and duration bottom-right, 12 sp bold white. Badges 22 dp: layers + count, landscape. Selection: image scales to 0.86, corner 10, tick 24 dp.</td></tr>
+          <tr><td>Status pill</td><td><code>AssistChip</code>-like</td><td>24 tall (32 on reel detail), corner 8, icon 16 filled. Recording: record container; Ready: primaryContainer; Published: success container.</td></tr>
+          <tr><td>Reel chip</td><td>Custom <code>Surface(onClick)</code></td><td>56 tall, corner 16, surfaceContainerHighest; cover 34 × 44 corner 8; labelLarge name, bodySmall count. Tagged: primary fill + tick. Picked: primaryContainer + 1 dp primary border + checkbox.</td></tr>
+          <tr><td>Scene header</td><td>Row</td><td>titleSmall range, bodySmall "6 clips · 1:42", tonal "Tag scene" 36 tall.</td></tr>
+          <tr><td>Filter chips</td><td><code>FilterChip</code></td><td>32 tall, corner 8, count in medium weight.</td></tr>
+          <tr><td>Reel picker</td><td><code>ModalBottomSheet</code></td><td>Rows 56: cover 40 × 52, name, count, checkbox or radio. Sections "Recording" then "Other reels". Confirm button text states the outcome.</td></tr>
+          <tr><td>Snackbar</td><td><code>SnackbarHost</code></td><td>inverseSurface / inverseOnSurface; action inversePrimary. 4 s, or 6 s with Undo; Undo restores a snapshot.</td></tr>
+        </tbody></table></div>
+        <h2>Assets</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asset</th><th>Format</th><th>Notes</th></tr></thead><tbody>
+          <tr><td>App icon</td><td>Adaptive icon (foreground, background, monochrome) vector</td><td><code>design/handoff/icons/tray/</code> (recommended concept); background #7332DF, tray #FFB954.</td></tr>
+          <tr><td>Splash icon</td><td>Vector</td><td>The same foreground; window background = primary.</td></tr>
+          <tr><td>Notification small icon</td><td>24 dp white vector</td><td><code>ic_stat_taketray.xml</code>: the tray with one take.</td></tr>
+          <tr><td>Empty-state illustrations</td><td>Vector drawables (7)</td><td>caught up, Shooting mode off, no reels, empty reel, empty folder, permission, skipped. Colours from theme attributes so they follow dark mode.</td></tr>
+          <tr><td>Welcome</td><td>Compose layout + one animation</td><td>Depends on the option chosen: the slate claps shut (380 ms), takes drop into the tray (520 ms, staggered), or the day rows appear (420 ms, staggered). Static final frame with reduced motion.</td></tr>
+          <tr><td>Source app icons (references)</td><td>From <code>PackageManager</code></td><td>Instagram's or YouTube's own launcher icon, as installed. Never redrawn; a link icon when there is no app.</td></tr>
+          <tr><td>Editor icons</td><td>From <code>PackageManager</code></td><td>Never bundled.</td></tr>
+          <tr><td>Icons</td><td>Material Symbols Rounded</td><td>See Design system › Iconography.</td></tr>
+        </tbody></table></div>
+        <h2>Notification channels</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Channel</th><th>Importance</th><th>Behaviour</th></tr></thead><tbody>
+          <tr><td>New clips</td><td>LOW</td><td>One notification, same ID, updated in place, <code>setOnlyAlertOnce(true)</code>, silent. BigPicture or custom view with up to 4 thumbnails. Actions: Open camera.</td></tr>
+          <tr><td>Reminders</td><td>DEFAULT</td><td>Evening (9 pm, only if clips are waiting), VN copies (3 days), Shooting mode still on (14 days, once).</td></tr>
+          <tr><td>Copying</td><td>LOW</td><td>Only while copying for VN (foreground service, progress).</td></tr>
+        </tbody></table></div>
+        <h2>Reference reels</h2>
+        <ul class="notes">
+          <li><b>Share target.</b> A translucent activity with an <code>ACTION_SEND</code> / <code>text/plain</code> intent filter (<code>excludeFromRecents</code>, own task affinity) shows the Save reference sheet over Instagram. Done calls <code>finish()</code>, so the user is back in Instagram.</li>
+          <li><b>Parsing.</b> Take the first URL in <code>EXTRA_TEXT</code> (<code>Patterns.WEB_URL</code>). Store the full link; compare without protocol, <code>www.</code>, query (Instagram's <code>igsh</code> tracking) and trailing slash to detect "Already saved".</li>
+          <li><b>Sources.</b> instagram.com (reel, post, video or profile), youtube.com / youtu.be, tiktok.com; anything else is "Link" with its host name.</li>
+          <li><b>No network.</b> Never fetch the page, title or thumbnail. Video permission is not needed, so sharing works before onboarding.</li>
+          <li><b>Opening.</b> <code>Intent(ACTION_VIEW, uri)</code>; Android's app links open Instagram or YouTube when installed, otherwise the browser. On <code>ActivityNotFoundException</code>, open a Custom Tab. No error is shown.</li>
+          <li><b>Clipboard offer.</b> Show "Paste link from clipboard?" only when <code>primaryClipDescription</code> says text (API 31+: <code>getConfidenceScore(TextClassifier.TYPE_URL)</code>); read the clip only when the user taps Paste, so the system "pasted" toast is expected.</li>
+          <li><b>Data.</b> <code>Reference(id, reelId, url, label ≤ 60, source, addedAt)</code>. Included in export/import. Deleting a reel deletes its references.</li>
+          <li><b>First launch.</b> A reel created from a share is marked as created before onboarding; it is listed (ticked) in "Create your reels", and Open reel deep-links to it after onboarding.</li>
+        </ul>
+        <h2>Notes on the skill's data</h2>
+        <p class="muted">The UI/UX Pro Max searches returned Compose guidance on lazy lists (use keys), content descriptions and semantics, and AnimatedVisibility. Searches for Compose theming, touch targets and image loading returned no database match, so those notes above follow general Material 3 guidance.</p>
+      </section>
+
+      <!-- ============================================================ DECISIONS -->
+      <section class="view" id="v-decisions" hidden>
+        <p class="eyebrow">Handoff</p>
+        <h1>Decisions and questions</h1>
+        <h2>Decisions I made</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Decision</th><th>Why</th></tr></thead><tbody>
+          <tr><td><b>Several reels per clip = "Pick several" mode</b>, with long-press on a chip as a shortcut. It goes back to one-tap after each clip.</td><td>Single-reel tagging stays one tap. A visible button is discoverable; long-press alone is not. "Same as previous" covers repeating a multi-reel choice.</td></tr>
+          <tr><td><b>Tag player shows Recording reels first</b>; other reels are folded under "Other reels (4)".</td><td>Keeps the video big with 2–20+ reels. You rarely tag new clips into a published reel.</td></tr>
+          <tr><td><b>"Start tagging" button</b> on To tag plays every clip from the first.</td><td>The fastest path: open To tag, one tap, then one tap per clip.</td></tr>
+          <tr><td><b>Tag player and viewer always dark</b>, on black.</td><td>Video is the hero; it reads in sunlight and in the dark.</td></tr>
+          <tr><td><b>"Edit video"</b> is the primary action; renaming lives in <b>"Reel details"</b>.</td><td>The brief had both "Edit" and "Edit reel". Two different "edits" next to each other would confuse.</td></tr>
+          <tr><td><b>Shooting card absorbs the To tag banner</b> when on (marigold strip); a standalone banner when off.</td><td>One block instead of two saying related things.</td></tr>
+          <tr><td><b>Marigold badge, not red</b>, on the To tag tab.</td><td>Waiting clips aren't an error. Quiet by default.</td></tr>
+          <tr><td><b>Skip is never red</b>; Skip all asks first and offers Undo for 6 s.</td><td>Skipping is reversible (Skipped list), so it isn't destructive.</td></tr>
+          <tr><td><b>Reassurance in a green box</b> on every remove or delete dialog.</td><td>Principle 3: never scare the user about their videos.</td></tr>
+          <tr><td><b>Welcome is one screen</b>, not slides. The notification step is skipped on Android 11–12.</td><td>Faster; Android 11–12 has no notification permission.</td></tr>
+          <tr><td><b>Create reels: type + Enter</b> rows, plus idea chips.</td><td>Faster than parsing a multi-line field, and each reel is visible as it's added.</td></tr>
+          <tr><td><b>Reel picker is one component</b> for Tag scene, Tag (multi-select), Add to and Move to.</td><td>Learn it once. Move uses radio buttons (one reel only).</td></tr>
+          <tr><td><b>Done editing asks "Have you exported your video?"</b></td><td>That's the real risk: the VN project can't be edited once the copies are gone.</td></tr>
+          <tr><td><b>Time zone label only in the viewer</b> ("London time") when it differs from the phone's zone.</td><td>Grids stay clean; local shooting time is always what's shown.</td></tr>
+          <tr><td><b>Fixed brand colours</b> (no Material You dynamic colour).</td><td>Marigold carries meaning; dynamic colour would remove it.</td></tr>
+          <tr><td><b>Clip tiles 3:4</b>, not square.</td><td>Most clips are vertical; 3:4 shows more of each frame while fitting 3 across.</td></tr>
+        </tbody></table></div>
+        <h2>Chosen by you</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Choice</th><th>Effect</th></tr></thead><tbody>
+          <tr><td><b>Brand colour: Graphite &amp; marigold</b></td><td>Shipped in <code>taketray.tokens.json</code>, the Compose and Flutter themes, and the app icon files. The other options stay in <code>tokens/colour-options/</code>.</td></tr>
+          <tr><td><b>Welcome: B · Tray</b></td><td>Used in onboarding; A · Slate and C · Your day are kept on Screen 2 for reference.</td></tr>
+          <tr><td><b>Stack: Flutter, Android first</b></td><td>The app is in <code>reel-helper/app</code>; iPhone later from the same code.</td></tr>
+          <tr><td><b>Style: custom TakeTray look</b></td><td>Dark-first, full-bleed media, floating glass chrome (see Design system).</td></tr>
+        </tbody></table></div>
+        <h2>Design style (Flutter)</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Decision</th><th>Why</th></tr></thead><tbody>
+          <tr><td><b>Custom TakeTray style</b> instead of stock Material 3 components: dark-first OLED surfaces, full-bleed media cards, floating glass navigation, pill tabs and buttons, floating sheets.</td><td>Feedback that the stock look felt dated and "default Android". Flutter draws its own UI, so a custom look costs little and works the same on iPhone later. The tokens (colours, type, spacing) are unchanged, so every screen and flow carries over.</td></tr>
+          <tr><td><b>Labels stay on the navigation pill.</b></td><td>Icon-only tabs look sleeker but slow people down; minimal reading still needs words.</td></tr>
+          <tr><td><b>Glass only on chrome</b> (navigation, sheets, toasts, badges on media), never behind body text.</td><td>Blur can hurt contrast; text sits on solid or heavily tinted layers so AA still holds.</td></tr>
+        </tbody></table></div>
+        <h2>Decisions in add-on 1</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Decision</th><th>Why</th></tr></thead><tbody>
+          <tr><td><b>TakeTray everywhere; colours and font unchanged.</b></td><td>The tray icon uses the brand colour and marigold, and marigold already means "clips waiting", which is what a tray holds.</td></tr>
+          <tr><td><b>Icon: "Tray of takes" recommended.</b></td><td>It draws the name, and its one silhouette (a take in a tray) still reads at 24 dp and as a themed icon.</td></tr>
+          <tr><td><b>A reference is a designed card</b>: striped 9:16 tile, the source app's icon, label (or the link), Open, ⋮.</td><td>TakeTray can't show a thumbnail, so the card looks deliberate rather than broken. It is visibly different from a clip tile.</td></tr>
+          <tr><td><b>References sit under Shot ideas</b>, above the clips. When there are none: one compact "Add reference" row.</td><td>Shots and references are the plan; clips are the result. No big empty block for an optional feature.</td></tr>
+          <tr><td><b>Save reference: label first, then "Save to".</b> Existing reel is the default with nothing preselected; Recording reels first.</td><td>Saving is one decision (where), and a reference can't land in the wrong reel by accident.</td></tr>
+          <tr><td><b>Shooting card gets a "References · 4" row</b> (with "From 3 Recording reels"), opening a sheet grouped by reel with shot ideas open by default.</td><td>Quick access while filming, without a "current reel" concept. Shot ideas sit next to the references they came from.</td></tr>
+          <tr><td><b>Home card badge</b>: link icon + count, top-right of the cover, with its own 48 dp tap area.</td><td>Subtle, matches the clip-tile badges, and jumps straight to References.</td></tr>
+          <tr><td><b>The shot-ideas prompt is neutral</b>, not marigold.</td><td>Marigold keeps one meaning: clips waiting.</td></tr>
+          <tr><td><b>Remove reference = Undo snackbar</b>, no dialog.</td><td>As the brief says: it's only a link, and Undo covers mistakes.</td></tr>
+          <tr><td><b>First launch</b>: the shared reel is listed and ticked in "Create your reels"; the button says "Continue" if nothing new is added.</td><td>The user sees what they already made and doesn't create it twice.</td></tr>
+          <tr><td><b>Instagram is never drawn.</b> The share flow starts in a plain video app labelled "Instagram, shown as a plain video app".</td><td>Respects the branding rule while keeping the flow clear.</td></tr>
+        </tbody></table></div>
+        <h2>Questions for you</h2>
+        <div class="q"><b>1. Which app icon?</b>Tray of takes (recommended), Clapper take or Sorted takes (Name and icon).</div>
+        <div class="q"><b>2. Tagline</b>"Shoot now. Sort later." (recommended), "Every take, in the right reel." or the current draft?</div>
+        <div class="q"><b>3. References while shooting</b>The sheet shows Recording reels only, as the brief says. Should Ready to edit reels appear too, for a last reshoot?</div>
+        <div class="q"><b>4. Reference label length</b>60 characters fits two lines on a card. Is that enough?</div>
+        <div class="q"><b>5. "Recording" status vs "Shooting mode"</b>Both words are about filming and could blur. Would "Shooting" (status) or "Collecting" read better? The design keeps "Recording" as written in the brief.</div>
+        <div class="q"><b>6. Should "Pick several" stay on between clips?</b>Today it resets after each clip. Sticky would help if you often tag whole runs into two reels.</div>
+        <div class="q"><b>7. Do you ever tag new clips into Published reels?</b>If yes, "Other reels" could stay unfolded by default.</div>
+        <div class="q"><b>8. Evening reminder threshold</b>Fire at 9 pm whenever at least one clip waits, or only at 5+ clips?</div>
+        <div class="q"><b>9. CapCut in India</b>Show it whenever it's installed (sideloaded or outside India), or hide it entirely for Indian users?</div>
+        <div class="q"><b>10. VN folder name clashes</b>If two reels end up with the same name (for example, after a rename), should the second folder get "(2)"?</div>
+        <div class="q"><b>11. Thumbnails in the "new clips" notification</b>Custom notification layouts look different on Samsung, Xiaomi and others. Is a single big picture acceptable as the fallback?</div>
+      </section>
+
+    </main>
+  </div>
+</div>
+<script src="assets/tokens.js"></script>
+<script src="assets/icons.js"></script>
+<script src="assets/thumbs.js"></script>
+<script src="assets/data.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/screens.js"></script>
+<script src="assets/welcome.js"></script>
+<script src="assets/states.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/refs.js"></script>
+<script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
+</body>
+</html>
