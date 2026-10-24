@@ -142,3 +142,10 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Date: 2026-10-24 · Phase: build brainstorming
 - Decision: local git now; GitHub and CI after phase 2. `tool/check` runs the same checks locally until then.
 - Why: the owner's choice.
+
+### D-23 · Pub workspace with `app` and `tool` members
+- Date: 2026-10-24 · Phase: 0
+- Decision: the repo root is a Dart pub workspace (`taketray_workspace`) whose members are `app` (the Flutter app) and `tool` (`taketray_tool`, pure-Dart tooling such as `check_styles`). Further members (e.g. `packages/taketray_ui`) join the same list.
+- Why: one lockfile and one dependency resolution for everything; shared lint and tool configuration; the tooling stays a separate package, so app code never depends on it and the boundaries stay clean.
+- Alternatives: independent projects each with their own lockfile (versions drift, repeated setup); melos (an extra tool for what pub workspaces now do natively).
+- Consequences: `pub get` runs once at the root and writes the single `pubspec.lock` there (members have none). Every member needs `resolution: workspace` and an SDK constraint compatible with the root's.
