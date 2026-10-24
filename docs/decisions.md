@@ -156,3 +156,18 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Why: zero-warning quality bar (D-20) without forcing doc comments on every app widget.
 - Alternatives: keep `flutter_lints` (weaker); disable more rules (erodes the bar).
 - Consequences: `flutter_lints` is removed from `app`. Individual rule opt-outs need their own justification here or an inline `// ignore` with a reason.
+
+### D-25 · Style rule enforced by a line-based regex check, not an analyzer plugin
+- Date: 2026-10-24 · Phase: 0
+- Decision: `tool/check_styles` (`tool/lib/src/style_rules.dart`, CLI `tool/bin/check_styles.dart`) scans `app/lib/features/**/*.dart` (skipping `*.g.dart`, `*.freezed.dart`; a missing directory is clean) with one regex per rule: `raw-color`, `raw-text-style`, `raw-insets`, `raw-size`, `raw-radius`, `raw-duration`. Trailing `//` comments are stripped before matching. A line is exempt when it or the line above contains `// style-check: allow <reason>`; the reason is mandatory by convention and reviewed like any other code.
+- Why: the rule only needs to catch raw literals in feature code (D-19), which a pattern on a line does reliably; it runs in milliseconds, is plain Dart in the existing `tool` package, and is trivially unit-tested.
+- Alternatives: `custom_lint` or an analyzer plugin (precise AST rules, but heavy, tied to analyzer internals that break across SDK upgrades, and slower in `tool/check`); grep in a shell script (untested, awkward allow-list).
+- Consequences: calls split across lines are not seen (for example `EdgeInsets.all(` with the argument on the next line), and a literal inside a longer expression can be flagged; both are accepted trade-offs of a line-based check. If misses prove common, move the rules to an analyzer plugin; the rule ids and the allow comment stay the same.
+
+### D-26 · `tool/check` skips steps whose paths do not exist yet
+- Date: 2026-10-24 · Phase: 0
+- Decision: `tool/check` format-checks only those of `app/lib`, `app/test`, `tool` that exist, and runs `app` tests only when `app/test` holds a `*_test.dart` (otherwise prints `app: no tests yet (skipped)`). It still stops at the first failure and ends with `ALL CHECKS PASSED`.
+- Why: the Flutter test runner and the formatter fail on missing paths, which would break the check before the first app test exists.
+- Alternatives: create empty placeholder test files (noise, fake coverage).
+- Consequences: once tests exist the step runs unconditionally in practice; no later change is needed.
+
