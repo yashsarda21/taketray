@@ -146,6 +146,13 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 ### D-23 · Pub workspace with `app` and `tool` members
 - Date: 2026-10-24 · Phase: 0
 - Decision: the repo root is a Dart pub workspace (`taketray_workspace`) whose members are `app` (the Flutter app) and `tool` (`taketray_tool`, pure-Dart tooling such as `check_styles`). Further members (e.g. `packages/taketray_ui`) join the same list.
-- Why: one lockfile and one dependency resolution for everything; shared lint and tool configuration; the tooling stays a separate package, so app code never depends on it and the boundaries stay clean.
+- Why: one lockfile and one dependency resolution for everything; one SDK constraint set; the tooling stays a separate package, so app code never depends on it and the boundaries stay clean.
 - Alternatives: independent projects each with their own lockfile (versions drift, repeated setup); melos (an extra tool for what pub workspaces now do natively).
-- Consequences: `pub get` runs once at the root and writes the single `pubspec.lock` there (members have none). Every member needs `resolution: workspace` and an SDK constraint compatible with the root's.
+- Consequences: `pub get` runs once at the root and writes the single `pubspec.lock` there (members have none). Workspaces share dependency resolution and the lockfile, not lint configuration: each member has its own `analysis_options.yaml` including `very_good_analysis`. Every member needs `resolution: workspace` and an SDK constraint compatible with the root's.
+
+### D-24 · very_good_analysis 11.0.0, `public_member_api_docs` off in `app` only
+- Date: 2026-10-24 · Phase: 0
+- Decision: `app` and `tool` each include `package:very_good_analysis/analysis_options.yaml` (dev dependency `^11.0.0`, the version pub resolved for the pinned Dart 3.13 SDK). Generated code (`*.g.dart`, `*.freezed.dart`, `lib/l10n/gen/**`) and `build/**` are excluded. `public_member_api_docs` is disabled in `app` only, since it is application code rather than a library; it stays on in `tool`.
+- Why: zero-warning quality bar (D-20) without forcing doc comments on every app widget.
+- Alternatives: keep `flutter_lints` (weaker); disable more rules (erodes the bar).
+- Consequences: `flutter_lints` is removed from `app`. Individual rule opt-outs need their own justification here or an inline `// ignore` with a reason.
