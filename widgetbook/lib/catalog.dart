@@ -1,3 +1,7 @@
+import 'package:taketray_widgetbook/components/badges.dart';
+import 'package:taketray_widgetbook/components/buttons.dart';
+import 'package:taketray_widgetbook/components/glass.dart';
+import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
 import 'package:widgetbook/widgetbook.dart';
 
@@ -8,4 +12,18 @@ export 'package:taketray_widgetbook/fixtures.dart';
 /// the top (the coverage test checks both, D-42).
 final List<WidgetbookNode> ttCatalog = [
   WidgetbookFolder(name: 'Foundations', children: [themeComponent]),
+  WidgetbookFolder(
+    name: 'Controls',
+    children: [
+      ttButtonComponent,
+      ttIconButtonComponent,
+      ttFabComponent,
+      ttCountBadgeComponent,
+      ttRecDotComponent,
+    ],
+  ),
+  WidgetbookFolder(
+    name: 'Overlays',
+    children: [ttGlassComponent, ttGlassPillComponent],
+  ),
 ];
