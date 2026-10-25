@@ -185,6 +185,81 @@ void main() {
     expect(content, contains('boom'));
   });
 
+  group('debug console echo', () {
+    late List<String> printed;
+    late DebugPrintCallback originalDebugPrint;
+
+    setUp(() {
+      printed = [];
+      originalDebugPrint = debugPrint;
+      debugPrint = (message, {wrapWidth}) {
+        if (message != null) printed.add(message);
+      };
+    });
+
+    tearDown(() => debugPrint = originalDebugPrint);
+
+    test('an uncaught zone error is printed with its stack', () async {
+      final crashLogged = Completer<void>();
+      await runAppWithLogging(() {
+        late StreamSubscription<LogRecord> sub;
+        sub = listen((r) {
+          if (r.loggerName != 'crash') return;
+          unawaited(sub.cancel());
+          crashLogged.complete();
+        });
+        unawaited(Future<void>(() => throw StateError('zone boom')));
+      }, logDir: () async => dir);
+      await crashLogged.future;
+
+      final line = printed.singleWhere((p) => p.contains('zone boom'));
+      expect(line, contains('SEVERE crash: Uncaught zone error'));
+      expect(line, contains('  stack: '));
+    });
+
+    test('a platform error is printed even when the log is disabled', () async {
+      await runAppWithLogging(
+        () {},
+        logDir: () async => throw const FileSystemException('no dir'),
+      );
+
+      PlatformDispatcher.instance.onError!(
+        StateError('platform boom'),
+        StackTrace.fromString('frame-a'),
+      );
+
+      final line = printed.singleWhere((p) => p.contains('platform boom'));
+      expect(line, contains('SEVERE crash: Uncaught platform error'));
+      expect(line, contains('frame-a'));
+    });
+
+    test('a framework error is not printed twice', () async {
+      await runAppWithLogging(() {}, logDir: () async => dir);
+      final presented = <FlutterErrorDetails>[];
+      final originalPresent = FlutterError.presentError;
+      FlutterError.presentError = presented.add;
+      addTearDown(() => FlutterError.presentError = originalPresent);
+
+      FlutterError.onError!(
+        FlutterErrorDetails(exception: StateError('framework boom')),
+      );
+
+      expect(presented, hasLength(1));
+      expect(printed.where((p) => p.contains('framework boom')), isEmpty);
+    });
+
+    test('ordinary records are printed too', () async {
+      await runAppWithLogging(() {}, logDir: () async => dir);
+
+      Logger('router').warning('Unknown location; showing Reels');
+
+      expect(
+        printed,
+        contains(endsWith('WARNING router: Unknown location; showing Reels')),
+      );
+    });
+  });
+
   test('FlutterError and platform errors are logged as crash', () async {
     final seen = <String>[];
     final sinkReady = Completer<LogFileSink>();

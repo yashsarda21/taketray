@@ -79,6 +79,17 @@ String formatRecord(LogRecord r) {
   return _truncate(buffer.toString());
 }
 
+/// Message object of framework error records; its `toString` is the logged
+/// message, its identity tells the console echo to skip the record.
+const _FrameworkErrorTag _frameworkErrorTag = _FrameworkErrorTag();
+
+class _FrameworkErrorTag {
+  const new();
+
+  @override
+  String toString() => 'Flutter framework error';
+}
+
 /// Where records go: a buffer until the sink exists, then the sink, or
 /// nowhere once logging has been disabled.
 class _LogState {
@@ -108,6 +119,10 @@ int get bufferedRecordCount => _state.early.length;
 /// logging is disabled: the buffer is dropped, nothing more is buffered and the
 /// app carries on. Nothing leaves the device.
 ///
+/// In debug builds every formatted record is also printed with `debugPrint`
+/// (framework errors once, through `FlutterError.presentError`); release
+/// builds print nothing.
+///
 /// The returned future completes once the sink is ready or logging has been
 /// disabled; do not wait for it before starting the app.
 ///
@@ -125,18 +140,26 @@ Future<void> runAppWithLogging(
   final state = _state = _LogState();
   unawaited(_subscription?.cancel());
   _subscription = Logger.root.onRecord.listen((record) {
+    final line = formatRecord(record);
+    // Debug builds also show every record on the console (uncaught async
+    // errors would otherwise only reach the device file). Framework errors
+    // are skipped: `presentError` below already printed them. Release builds
+    // print nothing.
+    if (kDebugMode && !identical(record.object, _frameworkErrorTag)) {
+      debugPrint(line);
+    }
     final live = state.sink;
     if (live != null) {
-      unawaited(_safeWrite(live, formatRecord(record)));
+      unawaited(_safeWrite(live, line));
     } else if (!state.disabled && state.early.length < _maxEarlyRecords) {
-      state.early.add(formatRecord(record));
+      state.early.add(line);
     }
   });
 
   final crash = Logger('crash');
   FlutterError.onError = (details) {
     if (kDebugMode) FlutterError.presentError(details);
-    crash.severe('Flutter framework error', details.exception, details.stack);
+    crash.severe(_frameworkErrorTag, details.exception, details.stack);
   };
   PlatformDispatcher.instance.onError = (error, stack) {
     crash.severe('Uncaught platform error', error, stack);
