@@ -45,6 +45,17 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 8. `tool/check` › `tool/flutter test` in `app/`, only if `app/test` contains a `*_test.dart`; otherwise prints `app: no tests yet (skipped)`.
 9. `tool/check` › prints `ALL CHECKS PASSED`.
 
+### Release permission check (`tool/check_release_permissions`)
+
+Run manually (slow: full release build), at the end of every phase. Not part of `tool/check`. See D-31.
+
+1. `android/app/src/main/AndroidManifest.xml`: `<uses-permission INTERNET tools:node="remove"/>` makes the manifest merger drop INTERNET from the merged release manifest; `src/debug` and `src/profile` manifests still declare it.
+2. `tool/check_release_permissions` › start: `cd`s to the repo root, resolves the SDK (`$ANDROID_HOME` or `~/Library/Android/sdk`), picks the newest stable `build-tools/x.y.z` (version sort) that has an executable `aapt2`; if none, prints `No Android build-tools with aapt2 found in <dir>` and exits 1.
+3. `tool/check_release_permissions` › `(cd app && ../tool/flutter build apk --release)`; exits on failure (`set -e`), then fails if `app/build/app/outputs/flutter-apk/app-release.apk` is missing.
+4. `tool/check_release_permissions` › `aapt2 dump permissions` on the APK.
+5. If the output contains `android.permission.INTERNET`: prints the list and `INTERNET permission found in release build` to stderr, exit 1.
+6. Otherwise prints the permission list and `RELEASE PERMISSIONS OK`, exit 0.
+
 ### Error logging
 
 Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.
