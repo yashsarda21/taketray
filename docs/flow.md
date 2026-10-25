@@ -34,7 +34,7 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 
 1. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
 2. `tool/check` › `tool/flutter pub get` at the root (resolves the whole workspace into the single `pubspec.lock`).
-3. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over those of `app/lib`, `app/test`, `tool` that exist.
+3. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over those of `app/lib`, `app/test`, `app/patrol_test`, `tool` that exist.
 4. `tool/check` › `tool/flutter analyze` in `app/` (rules from `app/analysis_options.yaml`).
 5. `tool/check` › `tool/dart analyze --fatal-infos` in `tool/` (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar) (rules from `tool/analysis_options.yaml`).
 6. `tool/check` › `tool/dart run taketray_tool:check_styles app/lib/features`:
@@ -79,3 +79,14 @@ An uncaught error:
 2. Each calls `Logger('crash').severe(...)`, which continues at "A log record" step 1.
 
 Reading the log: `LogFileSink.readAll` returns `taketray-1.log` then `taketray-0.log` (oldest first); `LogFileSink.exportFile` writes that text to `taketray-log.txt` for the Settings share action (phase 10, using the sink from `onSinkReady`).
+
+### On-device test (Patrol)
+
+Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`.
+
+1. `tool/patrol test -t patrol_test/app_shell_test.dart -d <device>`: puts the pinned Flutter (`~/development/flutter/bin`) and the Android SDK `platform-tools` first on `PATH`, turns off Patrol analytics, `cd`s to `app/` and runs `patrol_cli` (`~/.pub-cache/bin/patrol`) with `--flutter-command` set to the pinned `flutter`. The generated `patrol_test/test_bundle.dart` (git-ignored) is deleted when the command exits, so `tool/check` never sees it.
+2. `patrol_cli`: reads the `patrol:` block of `pubspec.yaml` (`app_name: TakeTray`, `android.package_name: app.taketray`), generates `test_bundle.dart` from the requested test file and has Gradle build the debug app APK plus the `androidTest` APK.
+3. `android/app/build.gradle.kts` › `defaultConfig.testInstrumentationRunner`: the test APK uses `pl.leancode.patrol.PatrolJUnitRunner`; `testOptions.execution = ANDROIDX_TEST_ORCHESTRATOR` runs each test in a fresh process through the `androidTestUtil` orchestrator (`clearPackageData` wipes app data between tests).
+4. **[bridge]** `android/app/src/androidTest/java/app/taketray/MainActivityTest.java › testCases`: starts `MainActivity` through the runner, waits for the Patrol app service in the app process and lists the Dart tests; `runDartTest` then runs one named test.
+5. `patrol_test/app_shell_test.dart › main`: `patrolTest` pumps `ProviderScope(child: TakeTrayApp())`, asserts the Reels screen shows "Reels", taps "To tag" then "Settings" inside the `NavigationBar` and asserts each placeholder screen shows its title (finders on the English labels, no sleeps; taps settle the UI).
+6. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`.

@@ -23,7 +23,7 @@ tool/flutter pub get
 
 step "format"
 format_paths=()
-for p in app/lib app/test tool; do
+for p in app/lib app/test app/patrol_test tool; do
   [ -e "$p" ] && format_paths+=("$p")
 done
 tool/dart format --output=none --set-exit-if-changed "${format_paths[@]}"
