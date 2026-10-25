@@ -42,7 +42,7 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
    2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above.
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
 7. `tool/check` › `tool/dart test` in `tool/` (includes `tool/test/style_rules_test.dart`).
-8. `tool/check` › `tool/flutter test` in `app/`, only if `app/test` contains a `*_test.dart`; otherwise prints `app: no tests yet (skipped)`.
+8. `tool/check` › `tool/flutter test` in `app/` (always; a missing or empty `app/test` fails the check).
 9. `tool/check` › prints `ALL CHECKS PASSED`.
 
 ### Release permission check (`tool/check_release_permissions`)

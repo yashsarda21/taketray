@@ -41,10 +41,6 @@ step "test tool"
 (cd tool && ../tool/dart test)
 
 step "test app"
-if [ -d app/test ] && [ -n "$(find app/test -name '*_test.dart' -print -quit)" ]; then
-  (cd app && ../tool/flutter test)
-else
-  echo "app: no tests yet (skipped)"
-fi
+(cd app && ../tool/flutter test)
 
 printf '\nALL CHECKS PASSED\n'

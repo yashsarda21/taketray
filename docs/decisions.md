@@ -164,12 +164,12 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Alternatives: `custom_lint` or an analyzer plugin (precise AST rules, but heavy, tied to analyzer internals that break across SDK upgrades, and slower in `tool/check`); grep in a shell script (untested, awkward allow-list).
 - Consequences: argument matching tolerates one level of nested parentheses, so deeply nested expressions and literals produced by a conditional (`x ? 8 : 4`) are not seen. If misses prove common, move the rules to an analyzer plugin; the rule ids and the allow comment stay the same.
 
-### D-26 · `tool/check` skips steps whose paths do not exist yet
-- Date: 2026-10-24 · Phase: 0
-- Decision: `tool/check` format-checks only those of `app/lib`, `app/test`, `tool` that exist, and runs `app` tests only when `app/test` holds a `*_test.dart` (otherwise prints `app: no tests yet (skipped)`). It still stops at the first failure and ends with `ALL CHECKS PASSED`.
-- Why: the Flutter test runner and the formatter fail on missing paths, which would break the check before the first app test exists.
-- Alternatives: create empty placeholder test files (noise, fake coverage).
-- Consequences: once tests exist the step runs unconditionally in practice; no later change is needed.
+### D-26 · `tool/check` format-checks only paths that exist; app tests always run
+- Date: 2026-10-24 · Phase: 0 · Revised: 2026-10-25
+- Decision: `tool/check` format-checks only those of `app/lib`, `app/test`, `app/patrol_test`, `tool` that exist. `app` tests run unconditionally (`tool/flutter test` in `app/`). It still stops at the first failure and ends with `ALL CHECKS PASSED`. The on-device tests in `app/patrol_test` are format-checked and analyzed here but run only through `tool/patrol` (D-32).
+- Why: the formatter fails on missing paths, which broke the check before every directory existed. Early in phase 0 the app-test step was also skipped while `app/test` held no `*_test.dart` (printing `app: no tests yet (skipped)`); now that app tests exist, a skip would only hide a deleted or emptied test directory, so it was removed.
+- Alternatives: create empty placeholder test files (noise, fake coverage); keep the conditional test step (silently passes if tests disappear).
+- Consequences: deleting or emptying `app/test` now fails `tool/check`.
 
 ### D-27 · gen-l10n output is generated, not committed
 - Date: 2026-10-25 · Phase: 0
