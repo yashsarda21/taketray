@@ -5,9 +5,74 @@ set -euo pipefail
 
 EXPECTED_FLUTTER="3.47.7"
 
+# Every member of the pub workspace must be listed in exactly one of these.
+# Members whose folder does not exist yet are skipped with a note.
+FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)
+DART_MEMBERS=(tool)
+
+# Folders that the style rules (docs/flow.md, D-19) apply to.
+STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
+
 cd "$(dirname "$0")/.."
 
 step() { printf '\n==> %s\n' "$*"; }
+
+in_list() {
+  local needle="$1"
+  shift
+  local item
+  for item in "$@"; do
+    [ "$item" = "$needle" ] && return 0
+  done
+  return 1
+}
+
+step "workspace members"
+# The `workspace:` list in the root pubspec.yaml: the `  - x` lines after
+# `workspace:`, up to the first line that is not a list item.
+members=()
+while IFS= read -r line; do
+  members+=("$line")
+done < <(awk '
+  /^workspace:/ { in_list = 1; next }
+  in_list && /^  - / {
+    sub(/^  - /, "")
+    sub(/[ \t]*(#.*)?$/, "")
+    gsub(/["'\'']/, "")
+    print
+    next
+  }
+  in_list { exit }
+' pubspec.yaml)
+if [ "${#members[@]}" -eq 0 ]; then
+  echo "no workspace members found in pubspec.yaml" >&2
+  exit 1
+fi
+for m in "${members[@]}"; do
+  if ! in_list "$m" "${FLUTTER_MEMBERS[@]}" "${DART_MEMBERS[@]}"; then
+    echo "workspace member $m is not covered by tool/check" >&2
+    exit 1
+  fi
+done
+echo "Workspace members: ${members[*]}"
+
+# Members of each kind whose folder exists, in declaration order.
+flutter_present=()
+for m in "${FLUTTER_MEMBERS[@]}"; do
+  if [ -f "$m/pubspec.yaml" ]; then
+    flutter_present+=("$m")
+  else
+    echo "note: Flutter member $m is not present yet, skipping"
+  fi
+done
+dart_present=()
+for m in "${DART_MEMBERS[@]}"; do
+  if [ -f "$m/pubspec.yaml" ]; then
+    dart_present+=("$m")
+  else
+    echo "note: Dart member $m is not present yet, skipping"
+  fi
+done
 
 step "SDK version"
 version_output="$(tool/flutter --version 2>&1)"
@@ -23,24 +88,45 @@ tool/flutter pub get
 
 step "format"
 format_paths=()
-for p in app/lib app/test app/patrol_test tool; do
-  [ -e "$p" ] && format_paths+=("$p")
+for m in "${flutter_present[@]}"; do
+  for d in lib test patrol_test; do
+    [ -e "$m/$d" ] && format_paths+=("$m/$d")
+  done
+done
+for m in "${dart_present[@]}"; do
+  format_paths+=("$m")
 done
 tool/dart format --output=none --set-exit-if-changed "${format_paths[@]}"
 
-step "analyze app"
-(cd app && ../tool/flutter analyze)
+for m in "${flutter_present[@]}"; do
+  step "analyze $m"
+  (cd "$m" && "$OLDPWD/tool/flutter" analyze)
+done
+for m in "${dart_present[@]}"; do
+  step "analyze $m"
+  (cd "$m" && "$OLDPWD/tool/dart" analyze --fatal-infos)
+done
 
-step "analyze tool"
-(cd tool && ../tool/dart analyze --fatal-infos)
+for d in "${STYLE_DIRS[@]}"; do
+  step "style rules ($d)"
+  tool/dart run taketray_tool:check_styles "$d"
+done
 
-step "style rules (app/lib/features)"
-tool/dart run taketray_tool:check_styles app/lib/features
-
-step "test tool"
-(cd tool && ../tool/dart test)
-
-step "test app"
-(cd app && ../tool/flutter test)
+for m in "${dart_present[@]}"; do
+  step "test $m"
+  if [ ! -d "$m/test" ]; then
+    echo "$m has no test/ folder" >&2
+    exit 1
+  fi
+  (cd "$m" && "$OLDPWD/tool/dart" test)
+done
+for m in "${flutter_present[@]}"; do
+  step "test $m"
+  if [ ! -d "$m/test" ]; then
+    echo "$m has no test/ folder" >&2
+    exit 1
+  fi
+  (cd "$m" && "$OLDPWD/tool/flutter" test)
+done
 
 printf '\nALL CHECKS PASSED\n'

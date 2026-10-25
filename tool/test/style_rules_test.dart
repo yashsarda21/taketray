@@ -63,6 +63,28 @@ void main() {
       expect(check('Duration(seconds: 1)').single.rule, 'raw-duration');
     });
 
+    test('flags raw directional radii', () {
+      expect(
+        check('BorderRadiusDirectional.circular(12)').single.rule,
+        'raw-radius',
+      );
+    });
+
+    test('flags a raw SizedBox.square dimension', () {
+      expect(check('SizedBox.square(dimension: 24)').single.rule, 'raw-size');
+    });
+
+    test('flags raw durations in minutes, hours, microseconds', () {
+      expect(check('Duration(minutes: 1)').single.rule, 'raw-duration');
+      expect(check('Duration(hours: 2)').single.rule, 'raw-duration');
+      expect(check('Duration(microseconds: 5)').single.rule, 'raw-duration');
+    });
+
+    test('token-based directional radii and square sizes are clean', () {
+      expect(check('BorderRadiusDirectional.circular(radii.m)'), isEmpty);
+      expect(check('SizedBox.square(dimension: sizes.icon)'), isEmpty);
+    });
+
     test('reports the right line number and snippet', () {
       final v = check('final a = 1;\n\n  final c = Colors.red;\n');
       expect(v.single.line, 3);
