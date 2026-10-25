@@ -171,10 +171,16 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Alternatives: create empty placeholder test files (noise, fake coverage).
 - Consequences: once tests exist the step runs unconditionally in practice; no later change is needed.
 
-
 ### D-27 · gen-l10n output is generated, not committed
 - Date: 2026-10-25 · Phase: 0
 - Decision: copy lives in `app/lib/l10n/app_en.arb` (English only, template ARB) and `app/l10n.yaml` points gen-l10n at `lib/l10n/gen`; `flutter: generate: true` is set in `app/pubspec.yaml`. `app/lib/l10n/gen/` is git-ignored. `flutter pub get` (which `tool/check` runs first, and which every fresh checkout needs anyway) regenerates it, so `flutter analyze` and `flutter test` work straight after `pub get`; `tool/flutter gen-l10n` regenerates on demand. Plurals use ICU syntax in the ARB (`toTagBadgeSemantics`). `intl` is constrained `^0.20.2`, the range `flutter_localizations` pins.
 - Why: generated code in the diff is noise and can drift from the ARB; the only extra requirement is `pub get`, which is already mandatory.
 - Alternatives: commit the generated files (works with no step at all, but invites stale or hand-edited output and merge noise).
 - Consequences: after editing the ARB, run `pub get` or `gen-l10n` before analyzing; the analyzer excludes `lib/l10n/gen/**` (D-24) so generated code is not linted.
+
+### D-28 · Local error log: size-rotated file, early records buffered in memory
+- Date: 2026-10-25 · Phase: 0
+- Decision: `LogFileSink` (`app/lib/core/logging/log_file_sink.dart`) writes to `taketray-0.log` and rotates to `taketray-1.log` when a write would pass `maxBytes` (512 KiB), so the log is capped at about 1 MiB; writes are serialized on one future chain. `runAppWithLogging` (`logging_setup.dart`) subscribes to `Logger.root.onRecord` and installs `FlutterError.onError`, `PlatformDispatcher.onError` and a `runZonedGuarded` zone synchronously, before the log directory (async, `path_provider`) is known. Records logged in that window are formatted and held in memory (at most 200 lines) and flushed in order once the sink exists. If the directory cannot be resolved, the buffer is dropped and the app keeps running. Log level is INFO. Nothing is sent anywhere; the file is only readable by the user through the Settings share action (phase 10, `exportFile`).
+- Why: crashes during start-up are exactly the ones worth keeping, and the path is only available asynchronously. A small fixed cap keeps storage bounded without a cleanup job.
+- Alternatives: resolve the directory before installing hooks (loses early errors); a third-party crash reporter (violates fully offline); one unbounded file (grows forever).
+- Consequences: sink failures are swallowed (reported via `debugPrint` with the error type only) so logging can never crash the app. Exception text and stack traces are logged as they come; callers must not put video names or file paths in log messages (D-10), and platform exceptions that embed a path in their message would still be recorded as-is.
