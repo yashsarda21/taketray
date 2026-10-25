@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
@@ -35,6 +36,41 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
+  });
+
+  for (final location in ['/reels/unknown', '/to-tag/a/b', '/settings/x']) {
+    testWidgets(
+      'unknown location below a tab root ($location) lands on Reels',
+      (tester) async {
+        final (_, router) = await _pumpApp(tester);
+        router.go(Routes.toTag);
+        await tester.pumpAndSettle();
+
+        final logged = <LogRecord>[];
+        final sub = Logger.root.onRecord.listen(logged.add);
+        addTearDown(sub.cancel);
+
+        router.go(location);
+        await tester.pumpAndSettle();
+
+        expect(logged.map((r) => r.loggerName), contains('router'));
+        expect(logged.map((r) => r.message).join(), isNot(contains(location)));
+
+        expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
+        expect(find.textContaining('Page Not Found'), findsNothing);
+        final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
+        expect(bar.selectedIndex, 0);
+      },
+    );
+  }
+
+  testWidgets('system back on Reels is not intercepted', (tester) async {
+    await _pumpApp(tester);
+
+    final handled = await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(handled, isFalse);
   });
 
   testWidgets('system back on To tag selects Reels and keeps the app open', (
