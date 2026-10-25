@@ -700,6 +700,14 @@ abstract final class TtMetrics {
   // proto.css: .rcard .cover .pill { left: 8px; top: 8px }
   static const double reelCardPillInset = 8;
 
+  /// Largest text scale a reel card follows.
+  // Not in the prototype (it has no text scaling): the 4:5 tile has a fixed
+  // size. At 1.6 the 158 dp tile with a two-line name, an Editing in VN pill,
+  // a missing mark and a two-digit badge still has the name below both pills
+  // and the badge clear of the meta; at 1.7 the name starts 5 dp under the
+  // second pill. See D-46.
+  static const double reelCardMaxTextScale = 1.6;
+
   /// Distance of the name and meta from the cover's bottom edge.
   // tt-style.css: .style-tt .rcard .cap { bottom: 11px }
   static const double reelCardCaptionBottom = 11;

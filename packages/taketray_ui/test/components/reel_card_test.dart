@@ -193,6 +193,45 @@ void main() {
       });
     }
 
+    for (final brightness in Brightness.values) {
+      testWidgets(
+        'at 2x text the pills stay clear of the name and the badge of the '
+        'meta (${brightness.name})',
+        (tester) async {
+          await tester.pumpWidget(
+            ttTestApp(
+              _card(
+                name: _longName,
+                meta: '1234 clips · 12:34:56',
+                missingText: '12 missing',
+                vnLabel: 'Editing in VN',
+                referenceCount: 12,
+              ),
+              brightness: brightness,
+              textScale: 2,
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+
+          final lowestPill = [
+            tester.getRect(find.byType(TtStatusPill)),
+            tester.getRect(find.byType(TtGlassPill)),
+          ].map((r) => r.bottom).reduce((a, b) => a > b ? a : b);
+          final name = tester.getRect(find.text(_longName));
+          expect(name.top, greaterThanOrEqualTo(lowestPill));
+
+          // The visible badge: its icon and count, padded to the pill.
+          final badge = tester
+              .getRect(find.byIcon(Symbols.link_rounded))
+              .expandToInclude(tester.getRect(find.text('12')))
+              .inflate(6);
+          final meta = tester.getRect(find.textContaining('1234 clips'));
+          expect(badge.overlaps(meta), isFalse);
+        },
+      );
+    }
+
     testWidgets('a tap on the card calls onTap', (tester) async {
       var taps = 0;
       var refs = 0;

@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -144,6 +145,22 @@ class _TtReelCardState extends State<TtReelCard> {
     final vn = widget.vnLabel;
     final missing = widget.missingText;
 
+    // The caption stops short of the badge: 50 dp at 1x, more when the
+    // count (which scales with the text) makes the badge wider.
+    final scaler = MediaQuery.textScalerOf(context)
+        .clamp(maxScaleFactor: TtMetrics.reelCardMaxTextScale);
+    final badgeInset = badge
+        ? math.max(
+            TtMetrics.reelCardCaptionInsetEndWithBadge,
+            TtMetrics.refBadgeInset +
+                _ReferencesBadge.pillWidth(
+                  context,
+                  widget.referenceCount,
+                  scaler,
+                ),
+          )
+        : 0.0;
+
     final nameStyle = tt.text.cardTitle.copyWith(
       color: onPicture ? tt.colors.onMedia : scheme.onSurface,
     );
@@ -193,9 +210,7 @@ class _TtReelCardState extends State<TtReelCard> {
                       Padding(
                         padding: EdgeInsetsDirectional.only(
                           start: tt.spacing.s,
-                          end: badge
-                              ? TtMetrics.reelCardCaptionInsetEndWithBadge
-                              : tt.spacing.s,
+                          end: badge ? badgeInset : tt.spacing.s,
                           bottom: TtMetrics.reelCardCaptionBottom,
                         ),
                         child: SizedBox(
@@ -275,22 +290,30 @@ class _TtReelCardState extends State<TtReelCard> {
       ),
     );
 
-    if (!badge) return card;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        card,
-        PositionedDirectional(
-          end: TtMetrics.refBadgeInset - TtMetrics.refBadgeHitInset,
-          bottom: 0,
-          child: _ReferencesBadge(
-            count: widget.referenceCount,
-            semanticLabel:
-                widget.referencesSemanticLabel ?? '${widget.referenceCount}',
-            onTap: widget.onReferencesTap,
-          ),
-        ),
-      ],
+    final Widget content = !badge
+        ? card
+        : Stack(
+            clipBehavior: Clip.none,
+            children: [
+              card,
+              PositionedDirectional(
+                end: TtMetrics.refBadgeInset - TtMetrics.refBadgeHitInset,
+                bottom: 0,
+                child: _ReferencesBadge(
+                  count: widget.referenceCount,
+                  semanticLabel:
+                      widget.referencesSemanticLabel ??
+                      '${widget.referenceCount}',
+                  onTap: widget.onReferencesTap,
+                ),
+              ),
+            ],
+          );
+    // The tile is a fixed 4:5 shape, so its text stops growing at a limit
+    // (D-46); everything on it, the badge included, scales together.
+    return MediaQuery.withClampedTextScaling(
+      maxScaleFactor: TtMetrics.reelCardMaxTextScale,
+      child: content,
     );
   }
 }
@@ -423,6 +446,34 @@ class _ReferencesBadge extends StatelessWidget {
   final String semanticLabel;
   final VoidCallback? onTap;
 
+  static TextStyle _style(BuildContext context) {
+    final tt = context.tt;
+    return tt.text.material.labelMedium!.copyWith(
+      color: tt.colors.onMedia,
+      fontWeight: FontWeight.w700,
+      fontVariations: const [FontVariation('wght', TtMetrics.refBadgeWeight)],
+      letterSpacing: 0,
+      height: 1,
+    );
+  }
+
+  /// The width of the pill for [count] when the text is scaled by [scaler].
+  static double pillWidth(BuildContext context, int count, TextScaler scaler) {
+    final painter = TextPainter(
+      text: TextSpan(text: '$count', style: _style(context)),
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final width = painter.width;
+    painter.dispose();
+    return TtMetrics.refBadgePaddingStart +
+        TtMetrics.refBadgeIconSize +
+        TtMetrics.refBadgeGap +
+        width +
+        TtMetrics.refBadgePaddingEnd;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
@@ -457,19 +508,7 @@ class _ReferencesBadge extends StatelessWidget {
                         size: TtMetrics.refBadgeIconSize,
                         color: tt.colors.onMedia,
                       ),
-                      Text(
-                        '$count',
-                        maxLines: 1,
-                        style: tt.text.material.labelMedium!.copyWith(
-                          color: tt.colors.onMedia,
-                          fontWeight: FontWeight.w700,
-                          fontVariations: const [
-                            FontVariation('wght', TtMetrics.refBadgeWeight),
-                          ],
-                          letterSpacing: 0,
-                          height: 1,
-                        ),
-                      ),
+                      Text('$count', maxLines: 1, style: _style(context)),
                     ],
                   ),
                 ),
