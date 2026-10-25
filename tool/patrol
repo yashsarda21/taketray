@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Runs patrol_cli with the pinned Flutter (never the old `flutter` on PATH).
 # Usage: tool/patrol <patrol args>, from any directory; test commands run in app/.
+# `test` and `develop` get --no-uninstall unless --uninstall/--no-uninstall is
+# given: patrol_cli's default uninstalls app.taketray (and its data) from the
+# owner's phone after every run.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -20,4 +23,15 @@ cd "$root/app"
 # patrol_cli writes a generated patrol_test/test_bundle.dart (git-ignored); remove it
 # afterwards so tool/check's format and analyze steps never see it.
 trap 'rm -f patrol_test/test_bundle.dart' EXIT
-"$patrol_bin" --flutter-command "$flutter_bin/flutter" "$@"
+
+args=("$@")
+if [ "${#args[@]}" -gt 0 ] && { [ "${args[0]}" = test ] || [ "${args[0]}" = develop ]; }; then
+  keep=true
+  for a in "${args[@]}"; do
+    case "$a" in --uninstall | --no-uninstall) keep=false ;; esac
+  done
+  if $keep; then
+    args=("${args[0]}" --no-uninstall "${args[@]:1}")
+  fi
+fi
+"$patrol_bin" --flutter-command "$flutter_bin/flutter" ${args[@]+"${args[@]}"}
