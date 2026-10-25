@@ -944,4 +944,219 @@ abstract final class TtMetrics {
   /// Padding after the stat strip's action.
   // proto.css: .stat-strip { padding: 0 8px 0 16px }
   static const double statStripPaddingEnd = 8;
+
+  // ---- Video surface ----
+
+  /// Height of the gradient scrim under the top controls on video.
+  // proto.css: .viewer .vtop { padding: 32px 4px 24px } around a 56 px row
+  static const double videoScrimTopHeight = 112;
+
+  /// Height of the gradient scrim under the bottom controls on video.
+  // proto.css: .viewer .vbot { padding: 40px 0 28px } around its content
+  static const double videoScrimBottomHeight = 168;
+
+  // ---- Segment progress bar ----
+
+  /// Height of the segment progress bar.
+  // proto.css: .player .pbar { height: 3px }
+  static const double segmentBarHeight = 3;
+
+  /// Gap between two segments.
+  // proto.css: .player .pbar { gap: 2px }
+  static const double segmentBarGap = 2;
+
+  /// Corner radius of a segment.
+  // proto.css: .player .pbar i { border-radius: 2px }
+  static const double segmentBarRadius = 2;
+
+  /// Opacity of white in a segment that is not yet reached.
+  // proto.css: .player .pbar i { background: rgba(255,255,255,.25) }
+  static const double segmentBarTrackOpacity = 0.25;
+
+  /// The most clips that get one segment each; above this the bar collapses
+  /// to three segments.
+  // screens.js: routes.player `total <= 40`
+  static const int segmentBarMaxClips = 40;
+
+  // ---- Player header ----
+
+  /// Minimum height of the tag player header.
+  // proto.css: .player .ptop { height: 56px }
+  static const double playerHeaderHeight = 56;
+
+  // ---- Stage arrows ----
+
+  /// Opacity of black in the stage arrow's disc.
+  // proto.css: .stage .arrow { background: rgba(0,0,0,.35) }
+  static const double stageArrowFillOpacity = 0.35;
+
+  /// Opacity of a disabled stage arrow, disc and chevron together.
+  // proto.css: .stage .arrow[disabled] { opacity: .3 }
+  static const double stageArrowDisabledOpacity = 0.3;
+
+  // ---- Scrub bar ----
+
+  /// Height of the track.
+  // proto.css: .scrub .trk { height: 4px }
+  static const double scrubTrackHeight = 4;
+
+  /// Height of the track when the clip is long.
+  // proto.css: .scrub.big .trk { height: 6px }
+  static const double scrubTrackHeightLarge = 6;
+
+  /// Corner radius of the track.
+  // proto.css: .scrub .trk { border-radius: 2px }
+  static const double scrubTrackRadius = 2;
+
+  /// Diameter of the thumb.
+  // proto.css: .scrub .trk b { width: 14px; height: 14px }
+  static const double scrubThumbSize = 14;
+
+  /// Diameter of the thumb when the clip is long.
+  // proto.css: .scrub.big .trk b { width: 20px; height: 20px }
+  static const double scrubThumbSizeLarge = 20;
+
+  /// Width of the halo around the large thumb.
+  // proto.css: .scrub.big .trk b { box-shadow: 0 0 0 6px rgba(255,255,255,.2) }
+  static const double scrubThumbHalo = 6;
+
+  /// Opacity of white in the large thumb's halo.
+  // proto.css: .scrub.big .trk b { box-shadow: 0 0 0 6px rgba(255,255,255,.2) }
+  static const double scrubThumbHaloOpacity = 0.2;
+
+  /// Opacity of white in the part of the track not yet played.
+  // proto.css: .scrub .trk { background: rgba(255,255,255,.25) }
+  static const double scrubTrackOpacity = 0.25;
+
+  /// Opacity of white in the time texts.
+  // proto.css: .scrub { color: rgba(255,255,255,.85) }
+  static const double scrubTextOpacity = 0.85;
+
+  /// Gap between the times and the track.
+  // proto.css: .scrub { gap: 10px }
+  static const double scrubGap = 10;
+
+  /// Weight of the time texts and the hint.
+  // proto.css: .scrub { font: 600 12px/1 var(--font) }
+  static const double scrubTextWeight = 600;
+
+  /// How far the hint's bottom edge sits above the middle of the track.
+  // proto.css: .scrub .hint { bottom: 18px } on a 22 px bar whose track is
+  // centred 6 px above its bottom
+  static const double scrubHintLift = 12;
+
+  /// Opacity of black behind the hint.
+  // proto.css: .scrub .hint { background: rgba(0,0,0,.6) }
+  static const double scrubHintOpacity = 0.6;
+
+  /// Corner radius of the hint.
+  // proto.css: .scrub .hint { border-radius: 6px }
+  static const double scrubHintRadius = 6;
+
+  /// How far a screen reader's increase or decrease moves the scrub bar, as
+  /// a fraction of the clip.
+  // No CSS source: the prototype has no adjustable slider semantics.
+  static const double scrubSemanticStep = 0.05;
+
+  // ---- Same as previous ----
+
+  /// Corner radius of the "Same as previous" button.
+  // tt-style.css: .style-tt .qrow .btn.same { border-radius: 24px }
+  static const double sameButtonRadius = 24;
+
+  /// Opacity of white in the button's fill.
+  // proto.css: .qrow .btn.same { background: rgba(255,255,255,.14) }
+  static const double sameButtonFillOpacity = 0.14;
+
+  /// Opacity of the detail line.
+  // proto.css: .qrow .btn.same .two small { opacity: .8 }
+  static const double sameButtonDetailOpacity = 0.8;
+
+  /// Line height of the label, as a multiple of its size.
+  // proto.css: .qrow .btn.same .two { line-height: 1.2 }
+  static const double sameButtonLabelHeight = 1.2;
+
+  // ---- Tag panel ----
+
+  /// Width of the highlight along the panel's top edge.
+  // tt-style.css: .style-tt .tagpanel { box-shadow: inset 0 1px 0 var(--hair) }
+  static const double tagPanelHairline = 1;
+
+  /// Opacity of the panel's surface container fill.
+  // tt-style.css: .style-tt .tagpanel { background: color-mix(…92%…) }
+  static const double tagPanelOpacity = 0.92;
+
+  /// Background blur behind the panel.
+  // tt-style.css: .style-tt .tagpanel { backdrop-filter: blur(20px) }
+  static const double tagPanelBlur = 20;
+
+  /// Padding under the panel's content.
+  // proto.css: .tagpanel { padding: 12px 12px 26px }
+  static const double tagPanelPaddingBottom = 26;
+
+  /// Tallest the panel gets before its chips scroll.
+  // proto.css: .tagpanel { max-height: 340px }
+  static const double tagPanelMaxHeight = 340;
+
+  /// Minimum height of the panel's header row.
+  // proto.css: .tagpanel .ph-h { min-height: 40px }
+  static const double tagPanelHeaderHeight = 40;
+
+  // ---- Reel chip ----
+
+  /// Corner radius of a chip.
+  // tt-style.css: .style-tt .rchip { border-radius: 18px }
+  static const double reelChipRadius = 18;
+
+  /// Width of the cover.
+  // proto.css: .rchip .cv { width: 34px }
+  static const double reelChipCoverWidth = 34;
+
+  /// Height of the cover.
+  // proto.css: .rchip .cv { height: 44px }
+  static const double reelChipCoverHeight = 44;
+
+  /// Corner radius of the cover.
+  // tt-style.css: .style-tt .rchip .cv { border-radius: 10px }
+  static const double reelChipCoverRadius = 10;
+
+  /// Padding before the cover and above and below the content.
+  // proto.css: .rchip { padding: 6px 10px 6px 6px }
+  static const double reelChipPaddingStart = 6;
+
+  /// Padding after the content.
+  // proto.css: .rchip { padding: 6px 10px 6px 6px }
+  static const double reelChipPaddingEnd = 10;
+
+  /// Gap between the cover, the texts and the check mark.
+  // proto.css: .rchip { gap: 10px }
+  static const double reelChipGap = 10;
+
+  /// Width of the border (transparent unless picked).
+  // proto.css: .rchip { border: 1px solid transparent }
+  static const double reelChipBorder = 1;
+
+  /// Scale of a chip that has just been tagged.
+  // proto.css: .rchip.done { transform: scale(.97) }
+  static const double reelChipDoneScale = 0.97;
+
+  /// Opacity of the count under the name on a picked chip.
+  // proto.css: .rchip.pick .t span { opacity: .8 }
+  static const double reelChipPickedCountOpacity = 0.8;
+
+  /// Opacity of the count under the name on a tagged chip.
+  // proto.css: .rchip.done .t span { opacity: .85 }
+  static const double reelChipDoneCountOpacity = 0.85;
+
+  /// Size of the film icon that stands in for a missing cover.
+  // proto.css: .rchip .cv .ms { font-size: 20px }
+  static const double reelChipCoverIconSize = 20;
+
+  /// Size of the check that replaces the cover on a tagged chip.
+  // proto.css: .rchip.done .cv .ms { font-size: 24px }
+  static const double reelChipDoneIconSize = 24;
+
+  /// Weight of that check.
+  // proto.css: .rchip.done .cv .ms { 'wght' 700 }
+  static const double reelChipDoneIconWeight = 700;
 }

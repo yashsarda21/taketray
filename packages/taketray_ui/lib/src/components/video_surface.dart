@@ -1,0 +1,94 @@
+import 'package:flutter/material.dart';
+import 'package:taketray_ui/src/theme/take_tray_theme.dart';
+import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_theme_data.dart';
+
+/// The black ground of the tag player and the clip viewer.
+///
+/// Applies [TakeTrayTheme.video] to everything under it, whatever the app
+/// theme is, so the controls on video are always the dark ones ("The tag
+/// player and clip viewer are always dark, on black"). It fills the space it
+/// is given, or its [child] when that is unconstrained.
+///
+/// With [scrims], a dark gradient fades in behind the top and the bottom
+/// edge so white controls stay readable over bright footage. The scrims do
+/// not take touches and are not announced.
+class TtVideoSurface extends StatelessWidget {
+  /// A black surface around [child].
+  const new({required this.child, this.scrims = false, super.key});
+
+  /// What is drawn on the black: the video and its controls.
+  final Widget child;
+
+  /// Whether the top and bottom gradient scrims are drawn over [child].
+  final bool scrims;
+
+  @override
+  Widget build(BuildContext context) {
+    return Theme(
+      data: TakeTrayTheme.video(),
+      child: Builder(
+        builder: (context) {
+          final colors = context.tt.colors;
+          return Material(
+            color: colors.videoBackground,
+            child: Stack(
+              fit: StackFit.passthrough,
+              children: [
+                child,
+                if (scrims) ...[
+                  _Scrim(
+                    top: true,
+                    height: TtMetrics.videoScrimTopHeight,
+                    color: colors.videoScrimTop,
+                  ),
+                  _Scrim(
+                    top: false,
+                    height: TtMetrics.videoScrimBottomHeight,
+                    color: colors.videoScrimBottom,
+                  ),
+                ],
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// One gradient scrim along an edge, from [color] at the edge to clear.
+class _Scrim extends StatelessWidget {
+  const new({required this.top, required this.height, required this.color});
+
+  final bool top;
+  final double height;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    // proto.css: .viewer .vtop / .vbot gradients
+    final edge = top ? Alignment.topCenter : Alignment.bottomCenter;
+    final inner = top ? Alignment.bottomCenter : Alignment.topCenter;
+    return Positioned(
+      left: 0,
+      right: 0,
+      top: top ? 0 : null,
+      bottom: top ? null : 0,
+      height: height,
+      child: ExcludeSemantics(
+        child: IgnorePointer(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: edge,
+                end: inner,
+                colors: [color, color.withValues(alpha: 0)],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

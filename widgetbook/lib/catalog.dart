@@ -4,16 +4,20 @@ import 'package:taketray_widgetbook/components/clip_tile.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
+import 'package:taketray_widgetbook/components/player_chrome.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/reel_card.dart';
+import 'package:taketray_widgetbook/components/reel_chip.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
 import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
 import 'package:taketray_widgetbook/components/stat_strip.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
+import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
+import 'package:taketray_widgetbook/components/video_surface.dart';
 import 'package:widgetbook/widgetbook.dart';
 
 export 'package:taketray_widgetbook/fixtures.dart';
@@ -60,6 +64,19 @@ final List<WidgetbookNode> ttCatalog = [
       ttAddReferenceTileComponent,
       ttShootingModeCardComponent,
       ttCardRowComponent,
+    ],
+  ),
+  WidgetbookFolder(
+    name: 'Player',
+    children: [
+      ttVideoSurfaceComponent,
+      ttSegmentBarComponent,
+      ttPlayerHeaderComponent,
+      ttStageArrowComponent,
+      ttScrubBarComponent,
+      ttReelChipComponent,
+      ttTagPanelComponent,
+      ttSameAsPreviousButtonComponent,
     ],
   ),
   WidgetbookFolder(name: 'Inputs', children: [ttTextFieldComponent]),
