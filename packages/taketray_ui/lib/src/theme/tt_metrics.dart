@@ -230,4 +230,151 @@ abstract final class TtMetrics {
   /// Corner radius of a dialog.
   // tt-style.css: .style-tt .dlg { border-radius: 32px }
   static const double dialogRadius = 32;
+
+  // ---- Switch ----
+
+  /// Width of the switch track.
+  // proto.css: .sw { width: 52px; height: 32px; border-radius: 16px }
+  static const double switchTrackWidth = 52;
+
+  /// Height of the switch track (half of it is its corner radius).
+  // proto.css: .sw { width: 52px; height: 32px; border-radius: 16px }
+  static const double switchTrackHeight = 32;
+
+  /// Width of the switch track's border.
+  // proto.css: .sw { border: 2px solid var(--md-outline) }
+  static const double switchTrackBorder = 2;
+
+  /// Diameter of the thumb when the switch is off.
+  // proto.css: .sw::after { width: 16px; height: 16px }
+  static const double switchThumbSizeOff = 16;
+
+  /// Diameter of the thumb when the switch is on.
+  // proto.css: .sw.on::after { width: 24px; height: 24px }
+  static const double switchThumbSizeOn = 24;
+
+  /// Gap between the track's inside edge and the off thumb (left and top).
+  // proto.css: .sw::after { left: 6px; top: 6px }
+  static const double switchThumbInsetOff = 6;
+
+  /// Gap between the track's inside left edge and the on thumb.
+  // proto.css: .sw.on::after { left: 22px; top: 2px }
+  static const double switchThumbInsetOnStart = 22;
+
+  /// Gap between the track's inside top edge and the on thumb.
+  // proto.css: .sw.on::after { left: 22px; top: 2px }
+  static const double switchThumbInsetOnTop = 2;
+
+  /// Size of the check icon in the on thumb.
+  // proto.css: .sw.on .ms { font-size: 16px }
+  static const double switchCheckSize = 16;
+
+  /// Opacity of the foreground colour in the inverted switch's off track.
+  // proto.css: .sw.inv { background: color-mix(… --c-shoot-fg 20% …) }
+  static const double switchInvertedTrackOpacity = 0.2;
+
+  // ---- Check and radio marks ----
+
+  /// Side of the check mark box.
+  // proto.css: .cbox { width: 18px; height: 18px }
+  static const double checkMarkSize = 18;
+
+  /// Corner radius of the check mark box.
+  // proto.css: .cbox { border-radius: 3px }
+  static const double checkMarkRadius = 3;
+
+  /// Width of the check mark box's border.
+  // proto.css: .cbox { border: 2px solid … }
+  static const double checkMarkBorder = 2;
+
+  /// Size of the tick inside the check mark box.
+  // proto.css: .cbox .ms { font-size: 16px }
+  static const double checkMarkTickSize = 16;
+
+  /// Weight of the tick inside the check mark box.
+  // proto.css: .cbox .ms { font-variation-settings: … 'wght' 700 … }
+  static const double checkMarkTickWeight = 700;
+
+  /// Diameter of the radio mark.
+  // proto.css: .radio { width: 20px; height: 20px }
+  static const double radioMarkSize = 20;
+
+  /// Width of the radio mark's ring.
+  // proto.css: .radio { border: 2px solid … }
+  static const double radioMarkBorder = 2;
+
+  /// Gap between the radio ring's inside edge and its dot.
+  // proto.css: .radio.on::after { inset: 3px }
+  static const double radioMarkDotInset = 3;
+
+  // ---- Pill tabs and suggestion chip ----
+
+  /// Visual height of a pill tab or suggestion chip (the tap target stays
+  /// 48 dp).
+  // tt-style.css: .style-tt .fchip { height: 36px }
+  static const double pillTabHeight = 36;
+
+  /// Horizontal padding inside a pill tab or suggestion chip.
+  // tt-style.css: .style-tt .fchip { padding: 0 15px }
+  static const double pillTabPaddingHorizontal = 15;
+
+  /// Gap between a chip's icon and its label.
+  // proto.css: .fchip { gap: 6px }
+  static const double pillTabIconGap = 6;
+
+  /// Width of the suggestion chip's dashed outline.
+  // tt-style.css: .style-tt .sugg .fchip { border: 1.5px dashed … }
+  static const double suggestionBorderWidth = 1.5;
+
+  /// Length of one dash of the suggestion chip's outline (the browser's
+  /// dashed border for a 1.5 px line, 3 x the width).
+  // tt-style.css: .style-tt .sugg .fchip { border: 1.5px dashed … }
+  static const double suggestionDashLength = 4.5;
+
+  /// Gap between the dashes of the suggestion chip's outline.
+  // tt-style.css: .style-tt .sugg .fchip { border: 1.5px dashed … }
+  static const double suggestionDashGap = 3;
+
+  // ---- Text field ----
+
+  /// Corner radius of the text field box.
+  // proto.css: .tf .box { border-radius: 12px }
+  static const double textFieldRadius = 12;
+
+  /// Padding inside the text field box (on every side; the 2 dp focus border
+  /// is drawn outside it).
+  // proto.css: .tf .box { padding: 16px 16px; min-height: 56px }
+  static const double textFieldPadding = 16;
+
+  /// Width of the text field border at rest.
+  // proto.css: .tf .box { border: 1px solid var(--md-outline) }
+  static const double textFieldBorder = 1;
+
+  /// Width of the text field border when focused or in error.
+  // proto.css: .tf.focus .box { border: 2px solid var(--md-primary) }
+  static const double textFieldBorderActive = 2;
+
+  /// Lines a multiline field shows at least (72 dp of 24 dp lines).
+  // proto.css: .tf textarea { min-height: 72px; line-height: 24px }
+  static const double textFieldMultilineLines = 3;
+
+  /// Lines a multiline field grows to before it scrolls.
+  // (not in the prototype: a limit so the field cannot take the screen)
+  static const double textFieldMultilineMaxLines = 6;
+
+  /// Size of the error icon in the help row.
+  // proto.css: .tf .help .ms { font-size: 16px }
+  static const double textFieldHelpIconSize = 16;
+
+  /// Gap between the error icon and the error text.
+  // proto.css: .tf .help .ms { margin-right: 2px }
+  static const double textFieldHelpIconGap = 2;
+
+  /// Gap between the box and the help row.
+  // proto.css: .tf .help { padding: 4px 16px 0 }
+  static const double textFieldHelpGap = 4;
+
+  /// Horizontal padding of the help row (aligns it with the text).
+  // proto.css: .tf .help { padding: 4px 16px 0 }
+  static const double textFieldHelpPaddingHorizontal = 16;
 }
