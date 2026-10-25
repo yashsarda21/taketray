@@ -12,7 +12,21 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 
 ## Flows
 
-*(Phase 0 adds "App start" and "Tab navigation".)*
+### App start
+
+1. `main.dart › main`: calls `runAppWithLogging(body, logDir: getApplicationSupportDirectory)` and nothing else; `ensureInitialized` happens inside the guarded zone (see "Error logging").
+2. `core/logging/logging_setup.dart › runAppWithLogging`: runs `body` in that zone, which calls `runApp(const ProviderScope(child: TakeTrayApp()))`.
+3. `app.dart › TakeTrayApp.build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `AppLocalizations` delegates, locales and `onGenerateTitle` (placeholder theme, phase 1 replaces it).
+4. `router/app_router.dart › appRouter` (`appRouterProvider`, kept alive): creates the `GoRouter` with `initialLocation: Routes.reels`, the `redirect` and the `StatefulShellRoute.indexedStack` with branches reels, toTag, settings; disposes the router with the provider.
+5. `router/app_router.dart › redirect`: any path that is not a tab root (`/reels`, `/to-tag`, `/settings`) or below one is sent to `Routes.reels`.
+6. `features/shell/views/app_shell.dart › AppShell.build`: shows the active branch (`navigationShell`) above the placeholder `NavigationBar`; the branch shows its placeholder screen (`features/{reels,tagging,settings}/views/*_placeholder_screen.dart`), which only prints its localized tab title.
+
+### Tab navigation
+
+1. `features/shell/views/app_shell.dart › NavigationBar.onDestinationSelected`: calls `navigationShell.goBranch(target, initialLocation: target == currentIndex)`. Each branch keeps its own navigator, so a tab returns to where it was; tapping the active tab again resets it to its root.
+2. Android back on a tab other than Reels: `GoRouterDelegate.popRoute` first offers the pop to the branch navigator (a pushed route in that tab closes first); if that has nothing to pop, the root navigator reaches `AppShell`'s `PopScope` (`canPop: currentIndex == 0`).
+3. `AppShell › PopScope.onPopInvokedWithResult`: when `didPop` is false (index is not 0) it calls `navigationShell.goBranch(0)`, so the app stays open on Reels. On Reels, `canPop` is true and the system closes the app as usual.
+4. Code that calls `router.go('/to-tag')` etc. lands on the same branch switch; an unknown path goes through the redirect in "App start" step 5.
 
 ### Local checks (`tool/check`)
 

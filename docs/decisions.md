@@ -185,3 +185,17 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Why: crashes during start-up are exactly the ones worth keeping, but the log directory is only available asynchronously and a hung lookup must not stop the app starting. A small fixed cap keeps storage bounded without a cleanup job. Video names and locations must never be written to the log.
 - Alternatives: resolve the directory before running `body` (loses early errors, can hang start); a third-party crash reporter (violates fully offline); one unbounded file (grows forever).
 - Consequences: the redaction is a conservative pattern scrub, not a guarantee: a bare relative file name or a path with spaces that is not quoted may still show (callers must not log them either). Sink failures are swallowed so logging can never crash the app.
+
+### D-29 · Placeholder stock `NavigationBar` for the tab shell until phase 1
+- Date: 2026-10-25 · Phase: 0
+- Decision: `AppShell` (`app/lib/features/shell/views/app_shell.dart`) uses Material's stock `NavigationBar` with `Icons.*` and `AppLocalizations` labels, and a default `ThemeData(useMaterial3: true)` light/dark theme in `TakeTrayApp`. Phase 1 replaces both with the TakeTray floating nav pill and design tokens.
+- Why: the router, back handling and per-tab stacks need a real shell to test now; the design system does not exist yet, and the style rule (D-19) forbids hand-picked colours, sizes and styles in feature code, which the stock widget avoids by using none.
+- Alternatives considered: build the floating pill now (needs tokens that phase 1 defines); no visible navigation (cannot demo or test tab switching).
+- Consequences: `AppShell`'s public shape (`navigationShell`) and the `PopScope` back behaviour stay; only the bar widget and theme change in phase 1.
+
+### D-30 · Riverpod 3 with code generation, keep-alive router provider
+- Date: 2026-10-25 · Phase: 0
+- Decision: state management is `flutter_riverpod` with `riverpod_annotation` and `riverpod_generator` (`@riverpod` functions), run through `build_runner`; generated `*.g.dart` files are committed (the analyzer already excludes them, D-24). `appRouterProvider` is `@Riverpod(keepAlive: true)` and disposes its `GoRouter` with the provider. Navigation uses `go_router` with `StatefulShellRoute.indexedStack`; unknown paths redirect to `/reels`. `riverpod_lint` is not used.
+- Why: generated providers give typed, uniform declarations as features grow; keeping the router alive stops an auto-disposed provider from rebuilding the router (and losing every tab's stack) if it briefly has no listener. Committing `*.g.dart` means a fresh checkout analyzes and runs without a build step.
+- Alternatives considered: hand-written providers (no codegen step, but inconsistent as the app grows); auto-dispose router (risk of lost navigation state); `riverpod_lint` (extra analyzer plugin weight).
+- Consequences: after changing an `@riverpod` declaration run `tool/dart run build_runner build --delete-conflicting-outputs` in `app/` and commit the output.
