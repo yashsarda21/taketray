@@ -183,6 +183,18 @@ abstract final class TtMetrics {
   // proto.css: .recdot { width: 10px; height: 10px }
   static const double recDotSize = 10;
 
+  /// Diameter of the compact record dot.
+  // proto.css: .stat-strip .recdot { width: 8px; height: 8px }
+  static const double recDotCompactSize = 8;
+
+  /// Width of the outline ring around a record dot that has one.
+  // proto.css: .shoot .ico .recdot { box-shadow: 0 0 0 2px … }
+  static const double recDotOutlineWidth = 2;
+
+  /// Opacity of `record` in the pulse ring of an outlined dot when it starts.
+  // proto.css: @keyframes pulseOn { 0% { … 0 0 0 2px … record 70% } }
+  static const double recDotOutlinePulseOpacity = 0.7;
+
   /// Width of the static ring around the record dot.
   // proto.css: .recdot { box-shadow: 0 0 0 3px … record 30% }
   static const double recDotRingWidth = 3;
@@ -668,4 +680,260 @@ abstract final class TtMetrics {
   /// Length of one shimmer sweep, in milliseconds.
   // proto.css: .tile.skel::before { animation: shimmer 1.4s linear infinite }
   static const double skeletonShimmerMillis = 1400;
+
+  // ---- Reel card ----
+
+  /// Width over height of a reel card's cover.
+  // tt-style.css: .style-tt .rcard .cover { aspect-ratio: 4 / 5 }
+  static const double reelCardAspect = 0.8;
+
+  /// Corner radius of a reel card.
+  // tt-style.css: .style-tt .rcard { border-radius: 22px }
+  static const double reelCardRadius = 22;
+
+  /// Where the bottom gradient starts, as a fraction of the cover's height.
+  // tt-style.css: .style-tt .rcard .cover::after { inset: 40% 0 0 }
+  static const double reelCardScrimStart = 0.4;
+
+  /// Distance of the status pill from the cover's top and start edges (the
+  /// "Editing in VN" pill sits under it, 8 dp down).
+  // proto.css: .rcard .cover .pill { left: 8px; top: 8px }
+  static const double reelCardPillInset = 8;
+
+  /// Distance of the name and meta from the cover's bottom edge.
+  // tt-style.css: .style-tt .rcard .cap { bottom: 11px }
+  static const double reelCardCaptionBottom = 11;
+
+  /// Distance of the name and meta from the cover's end edge when the
+  /// references badge is shown (otherwise 12 dp).
+  // tt-style.css: .style-tt .rcard-wrap:has(.refbadge) .cap { right: 50px }
+  static const double reelCardCaptionInsetEndWithBadge = 50;
+
+  /// Gap between the name and the meta, between meta lines, and between the
+  /// missing-clips icon and its text.
+  // tt-style.css: .style-tt .rcard .cap { gap: 2px }, proto.css:
+  // .rcard .mt { gap: 2px 8px }, .rcard .mt .miss { gap: 2px }
+  static const double reelCardCaptionGap = 2;
+
+  /// Size of the error icon before the missing-clips text.
+  // proto.css: .rcard .mt .miss .ms { font-size: 14px }
+  static const double reelCardMissingIconSize = 14;
+
+  /// Weight of the missing-clips text.
+  // proto.css: .rcard .mt .miss { font-weight: 600 }
+  static const double reelCardMissingWeight = 600;
+
+  /// Gap between the empty art's icon and its label.
+  // proto.css: .rcard .ph-empty { gap: 6px }
+  static const double reelCardEmptyGap = 6;
+
+  /// Opacity of the empty art's icon.
+  // proto.css: .rcard .ph-empty .ms { opacity: .8 }
+  static const double reelCardEmptyIconOpacity = 0.8;
+
+  // ---- References badge (on a reel card) ----
+
+  /// Height of the references badge.
+  // proto.css: .refbadge { height: 26px }
+  static const double refBadgeHeight = 26;
+
+  /// Distance of the badge from the cover's bottom and end edges.
+  // tt-style.css: .style-tt .refbadge { bottom: 10px; right: 10px }
+  static const double refBadgeInset = 10;
+
+  /// How far the badge's tap target reaches past it, sideways.
+  // proto.css: .refbadge::before { inset: -11px -8px }
+  static const double refBadgeHitInset = 8;
+
+  /// Padding before the badge's icon.
+  // proto.css: .refbadge { padding: 0 8px 0 6px }
+  static const double refBadgePaddingStart = 6;
+
+  /// Padding after the badge's count.
+  // proto.css: .refbadge { padding: 0 8px 0 6px }
+  static const double refBadgePaddingEnd = 8;
+
+  /// Gap between the badge's icon and its count.
+  // proto.css: .refbadge { gap: 3px }
+  static const double refBadgeGap = 3;
+
+  /// Size of the badge's icon.
+  // proto.css: .refbadge .ms { font-size: 16px }
+  static const double refBadgeIconSize = 16;
+
+  /// Weight of the badge's count.
+  // proto.css: .refbadge { font: 700 12px/1 var(--font) }
+  static const double refBadgeWeight = 700;
+
+  // ---- Reference card ----
+
+  /// Least height of the tappable part of a reference card.
+  // proto.css: .ref-main { min-height: 66px }
+  static const double referenceCardMinHeight = 66;
+
+  /// Padding before the art of a reference card.
+  // proto.css: .ref-main { padding: 8px 4px 8px 10px }
+  static const double referenceCardPaddingStart = 10;
+
+  /// Padding after the "Open" mark of a reference card.
+  // proto.css: .ref-main { padding: 8px 4px 8px 10px }
+  static const double referenceCardPaddingEnd = 4;
+
+  /// Width of a reference's art.
+  // proto.css: .ref-art { width: 36px; height: 48px }
+  static const double referenceArtWidth = 36;
+
+  /// Height of a reference's art.
+  // proto.css: .ref-art { width: 36px; height: 48px }
+  static const double referenceArtHeight = 48;
+
+  /// Size of the play icon on a reference's art.
+  // proto.css: .ref-art > .ms { font-size: 22px }
+  static const double referenceArtIconSize = 22;
+
+  /// Width of one stripe of a reference's art.
+  // proto.css: .ref-art { repeating-linear-gradient(135deg, … 5px, … 10px) }
+  static const double referenceArtStripe = 5;
+
+  /// Direction of the art's stripes, in degrees (CSS: 135deg).
+  // proto.css: .ref-art { repeating-linear-gradient(135deg, …) }
+  static const double referenceArtStripeAngle = 135;
+
+  /// Share of `secondaryContainer` in the art's darker stripe.
+  // proto.css: .ref-art { … color-mix(in srgb, secondary-container 60%, … ) }
+  static const double referenceArtStripeMix = 0.6;
+
+  /// How far the source icon hangs past the art's bottom and end corner.
+  // proto.css: .ref-src { right: -6px; bottom: -6px }
+  static const double referenceSourceOffset = 6;
+
+  /// Gap between the title and the subtitle.
+  // proto.css: .ref-t > span { margin-top: 2px }
+  static const double referenceSubtitleGap = 2;
+
+  /// Widest the "Open" mark may grow (not in the prototype, which never
+  /// wraps it; this keeps a long label from squeezing the title away).
+  static const double referenceOpenMaxWidth = 120;
+
+  // ---- Add-reference tile ----
+
+  /// Least height of the add-reference tile.
+  // proto.css: .ref-add { min-height: 56px }
+  static const double addReferenceMinHeight = 56;
+
+  /// Padding after the add-reference tile's plus.
+  // proto.css: .ref-add { padding: 8px 12px 8px 16px }
+  static const double addReferencePaddingEnd = 12;
+
+  /// Width of the add-reference tile's dashed outline.
+  // proto.css: .ref-add { border: 1.5px dashed … }
+  static const double addReferenceBorder = 1.5;
+
+  /// Length of a dash in the add-reference tile's outline (3 x the width, as
+  /// in the missing-clip tile).
+  // proto.css: .ref-add { border: 1.5px dashed … }
+  static const double addReferenceDash = 4.5;
+
+  /// Gap between dashes in the add-reference tile's outline.
+  // proto.css: .ref-add { border: 1.5px dashed … }
+  static const double addReferenceDashGap = 3;
+
+  // ---- Shooting mode card ----
+
+  /// Side of the Shooting mode card's icon tile.
+  // proto.css: .shoot .ico { width: 48px; height: 48px }
+  static const double shootingIconSize = 48;
+
+  /// Corner radius of the Shooting mode card's icon tile.
+  // proto.css: .shoot .ico { border-radius: 14px }
+  static const double shootingIconRadius = 14;
+
+  /// Gap between the icon tile, the texts and the switch.
+  // proto.css: .shoot .top { gap: 14px }
+  static const double shootingTopGap = 14;
+
+  /// Gap between the title and the subtitle.
+  // proto.css: .shoot .txt span { margin-top: 2px }
+  static const double shootingSubtitleGap = 2;
+
+  /// Distance of the record dot from the icon tile's top and end edges.
+  // proto.css: .shoot .ico .recdot { right: 5px; top: 5px }
+  static const double shootingRecDotInset = 5;
+
+  /// Opacity of the backdrop picture on the "on" card.
+  // tt-style.css: .style-tt .shoot.on .shoot-media img { opacity: .62 }
+  static const double shootingBackdropOpacity = 0.62;
+
+  /// Opacity of white in the icon tile on the "on" card.
+  // tt-style.css: .shoot.on .ico { background: rgba(255,255,255,.16) } and
+  // proto.css: .shoot.on .ico { … fg 16 % }
+  static const double shootingIconFillOpacity = 0.16;
+
+  /// Blur behind the icon tile on the "on" card.
+  // tt-style.css: .style-tt .shoot.on .ico { backdrop-filter: blur(8px) }
+  static const double shootingIconBlur = 8;
+
+  /// Opacity of white in the subtitle on the "on" card.
+  // tt-style.css: .shoot.on .txt span { color: rgba(255,255,255,.85) }
+  static const double shootingSubtitleOpacity = 0.85;
+
+  /// Angle of the brand tint over the backdrop, in degrees.
+  // tt-style.css: .style-tt .shoot.on::before { linear-gradient(160deg, … }
+  static const double shootingTintAngle = 160;
+
+  /// Opacity of the brand colour at the start of the tint.
+  // tt-style.css: .style-tt .shoot.on::before { … bg 78% 0% … }
+  static const double shootingTintStartOpacity = 0.78;
+
+  /// Opacity of the brand colour in the middle of the tint.
+  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
+  static const double shootingTintMiddleOpacity = 0.35;
+
+  /// Where the middle of the tint is.
+  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
+  static const double shootingTintMiddleStop = 0.55;
+
+  /// Opacity of black at the end of the tint.
+  // tt-style.css: .style-tt .shoot.on::before { … rgba(0,0,0,.55) 100% }
+  static const double shootingTintEndOpacity = 0.55;
+
+  // ---- Card rows (references row, to-tag strip) ----
+
+  /// Least height of a references row.
+  // proto.css: .refrow { min-height: 56px }
+  static const double cardRowMinHeight = 56;
+
+  /// Least height of a to-tag strip.
+  // proto.css: .shoot .strip { min-height: 52px }
+  static const double cardStripMinHeight = 52;
+
+  /// Gap between the parts of a references row.
+  // proto.css: .refrow { gap: 12px }
+  static const double cardRowGap = 12;
+
+  /// Gap between the parts of a to-tag strip.
+  // proto.css: .shoot .strip { gap: 10px }
+  static const double cardStripGap = 10;
+
+  /// Opacity of white in the top border of a references row.
+  // tt-style.css: .shoot.on .refrow { border-top-color: rgba(255,255,255,.18) }
+  static const double cardRowBorderOpacity = 0.18;
+
+  /// Opacity of black behind a references row.
+  // tt-style.css: .style-tt .shoot.on .refrow { background: rgba(0,0,0,.25) }
+  static const double cardRowFillOpacity = 0.25;
+
+  /// Blur behind a references row.
+  // tt-style.css: .style-tt .shoot.on .refrow { backdrop-filter: blur(6px) }
+  static const double cardRowBlur = 6;
+
+  /// Opacity of the subtitle in a references row.
+  // proto.css: .refrow .grow > span { opacity: .85 }
+  static const double cardRowSubtitleOpacity = 0.85;
+
+  // ---- Stat strip ----
+
+  /// Padding after the stat strip's action.
+  // proto.css: .stat-strip { padding: 0 8px 0 16px }
+  static const double statStripPaddingEnd = 8;
 }

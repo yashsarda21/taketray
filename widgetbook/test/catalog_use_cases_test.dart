@@ -27,8 +27,9 @@ void main() {
   testWidgets('every use case in the catalogue opens without an error', (
     tester,
   ) async {
-    // A desktop-sized window, so the navigation panel is shown.
-    tester.view.physicalSize = const Size(1600, 1000);
+    // A tall desktop-sized window: the navigation panel is shown and every
+    // entry of the tree is on screen to tap.
+    tester.view.physicalSize = const Size(1600, 2400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const TakeTrayCatalogue());

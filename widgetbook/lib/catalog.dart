@@ -5,8 +5,12 @@ import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
+import 'package:taketray_widgetbook/components/reel_card.dart';
+import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
+import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
+import 'package:taketray_widgetbook/components/stat_strip.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
@@ -44,7 +48,20 @@ final List<WidgetbookNode> ttCatalog = [
       ttDayHeaderComponent,
     ],
   ),
-  WidgetbookFolder(name: 'Status', children: [ttStatusPillComponent]),
+  WidgetbookFolder(
+    name: 'Status',
+    children: [ttStatusPillComponent, ttStatStripComponent],
+  ),
+  WidgetbookFolder(
+    name: 'Cards',
+    children: [
+      ttReelCardComponent,
+      ttReferenceCardComponent,
+      ttAddReferenceTileComponent,
+      ttShootingModeCardComponent,
+      ttCardRowComponent,
+    ],
+  ),
   WidgetbookFolder(name: 'Inputs', children: [ttTextFieldComponent]),
   WidgetbookFolder(
     name: 'Overlays',

@@ -126,6 +126,14 @@ class _Scaled extends StatelessWidget {
 /// widget's error builder handles it, which is what a broken-image golden
 /// shows.
 Future<void> _decodeImagesAndSettle(WidgetTester tester) async {
+  await ttDecodeImages(tester);
+  await tester.pumpAndSettle();
+}
+
+/// Decodes every [Image] (and image decoration) in the tree for real, without
+/// settling, for a golden whose widget never settles (an endless animation):
+/// call it from `pumpBeforeTest`, then pump a fixed duration.
+Future<void> ttDecodeImages(WidgetTester tester) async {
   final pending = <(ImageProvider, Element)>[
     for (final element in find.byType(Image).evaluate())
       ((element.widget as Image).image, element),
@@ -141,5 +149,4 @@ Future<void> _decodeImagesAndSettle(WidgetTester tester) async {
         precacheImage(image, element, onError: (_, _) {}),
     ]),
   );
-  await tester.pumpAndSettle();
 }

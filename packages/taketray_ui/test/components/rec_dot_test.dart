@@ -11,6 +11,43 @@ void main() {
       expect(tester.getSize(find.byType(TtRecDot)), const Size(10, 10));
     });
 
+    testWidgets('is 8 x 8 when compact', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(const Center(child: TtRecDot(compact: true))),
+      );
+      expect(tester.getSize(find.byType(TtRecDot)), const Size(8, 8));
+    });
+
+    testWidgets('an outline is drawn last, 2 dp wide, in its colour', (
+      tester,
+    ) async {
+      const ring = Color(0xFF123456);
+      for (final live in [true, false]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            Center(
+              child: TtRecDot(live: live, outline: ring),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 300));
+        final decoration =
+            tester
+                    .widget<DecoratedBox>(
+                      find.descendant(
+                        of: find.byType(TtRecDot),
+                        matching: find.byType(DecoratedBox),
+                      ),
+                    )
+                    .decoration
+                as BoxDecoration;
+        expect(decoration.boxShadow!.last.color, ring);
+        expect(decoration.boxShadow!.last.spreadRadius, 2);
+        // The dot is still 10 x 10; the ring is paint only.
+        expect(tester.getSize(find.byType(TtRecDot)), const Size(10, 10));
+      }
+    });
+
     testWidgets('pulses while live', (tester) async {
       await tester.pumpWidget(ttTestApp(const Center(child: TtRecDot())));
       expect(tester.hasRunningAnimations, isTrue);
