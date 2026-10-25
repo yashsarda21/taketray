@@ -50,6 +50,12 @@ void main() {
         _overPhoto(TtTagPanel(title: 'Add to reel', chips: _chips(long: true))),
       ),
       TtScenario(
+        'panel, names that share a first word',
+        _overPhoto(
+          TtTagPanel(title: 'Add to reel', chips: _chips(shared: true)),
+        ),
+      ),
+      TtScenario(
         'same as previous, 3 reels',
         _padded(
           TtSameAsPreviousButton(
@@ -122,7 +128,7 @@ Widget _padded(Widget child) => TtVideoSurface(
 /// The panel at the bottom of a frame of footage, as in the player.
 Widget _overPhoto(Widget panel) => TtVideoSurface(
   child: SizedBox(
-    height: 440,
+    height: 560,
     child: Stack(
       fit: StackFit.expand,
       children: [
@@ -133,8 +139,20 @@ Widget _overPhoto(Widget panel) => TtVideoSurface(
   ),
 );
 
-List<Widget> _chips({bool multi = false, bool long = false}) {
-  final names = long
+List<Widget> _chips({
+  bool multi = false,
+  bool long = false,
+  bool shared = false,
+}) {
+  final names = shared
+      ? [
+          'Lisbon trip',
+          'Lisbon food market',
+          'Lisbon nights',
+          'Lisbon food',
+          'Lisbon',
+        ]
+      : long
       ? [
           'Saturday morning market walk with the whole family',
           'Autumn recipes from the farm kitchen',

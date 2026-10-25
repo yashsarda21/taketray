@@ -52,6 +52,16 @@ void main() {
           state: TtReelChipState.picked,
         ),
       ),
+      // The row a chip gets at large text: the whole panel width, 336 dp.
+      TtScenario(
+        'full-width row (large-text layout)',
+        _chipOnPanel(
+          cover: fixtureThumb(2),
+          name: 'Lisbon food market with the whole family',
+          multi: true,
+        ),
+        width: 336 + 16,
+      ),
       TtScenario('image fails to load', _chipOnPanel(cover: brokenImage)),
     ],
   );

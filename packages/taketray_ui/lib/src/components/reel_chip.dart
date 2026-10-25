@@ -23,7 +23,9 @@ enum TtReelChipState {
 /// [multiSelect] mode a check mark at the end. At least 56 dp high (58 with
 /// the border), and a 164 dp wide cell in the panel's two columns. The name
 /// and count are one line each with an ellipsis; at large text sizes the chip
-/// grows taller and the cover stays centred, so nothing overlaps.
+/// grows taller and the cover stays centred, so nothing overlaps. From a text
+/// scale of `TtMetrics.tagPanelSingleColumnTextScale` the panel gives a chip
+/// the whole row, and the name may take two lines.
 ///
 /// Without a [cover], or when it fails to load, the cover shows a film icon.
 /// [TtReelChipState.done] shows a check in place of the cover.
@@ -103,6 +105,11 @@ class TtReelChip extends StatelessWidget {
     };
 
     final text = tt.text.material;
+    // At large text sizes the panel shows one chip per row, so there is room
+    // for a second line of the name (D-47).
+    final large =
+        MediaQuery.textScalerOf(context).scale(1) >=
+        TtMetrics.tagPanelSingleColumnTextScale;
     const inset = TtMetrics.reelChipPaddingStart + TtMetrics.reelChipBorder;
     final shape = RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(TtMetrics.reelChipRadius),
@@ -152,7 +159,7 @@ class TtReelChip extends StatelessWidget {
                         children: [
                           Text(
                             name,
-                            maxLines: 1,
+                            maxLines: large ? 2 : 1,
                             overflow: TextOverflow.ellipsis,
                             style: text.labelLarge!.copyWith(color: content),
                           ),

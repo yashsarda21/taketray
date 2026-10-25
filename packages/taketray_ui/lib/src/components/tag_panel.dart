@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -11,9 +12,11 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// A glass panel (surface container at 92 %, blurred) with a 28 dp radius at
 /// the top, a highlight along its top edge, and 12 dp of padding (26 at the
 /// bottom). It is at most 340 dp high; with more chips than fit, the grid
-/// scrolls and the header and footer stay put. The title is announced as a
-/// heading. The panel takes the width it is given; each chip gets half of it
-/// less the padding and the 8 dp gap (164 dp at 360 dp).
+/// scrolls and the header and footer stay put. From a text scale of 1.5 the
+/// chips are one per row and the cap grows with the scale, to 520 dp. The
+/// title is announced as a heading. The panel takes the width it is given;
+/// each chip gets half of it less the padding and the 8 dp gap (164 dp at
+/// 360 dp), or all of it at large text.
 ///
 /// [headerAction] sits at the end of the header, such as a "Pick several"
 /// button, and [footer] under the grid, such as the multi-select "Add to 2
@@ -80,28 +83,37 @@ class TtTagPanel extends StatelessWidget {
       ),
     );
 
+    // At large text sizes a 164 dp cell shows too little of a name, so the
+    // chips take a row each (D-47), and the panel may grow taller.
+    final scale = MediaQuery.textScalerOf(context).scale(1);
+    final large = scale >= TtMetrics.tagPanelSingleColumnTextScale;
+    final maxHeight = math.min(
+      TtMetrics.tagPanelMaxHeight * math.max(1, scale),
+      TtMetrics.tagPanelMaxHeightLarge,
+    );
     final rows = <Widget>[
-      for (var i = 0; i < chips.length; i += 2)
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: tt.spacing.xs,
-          children: [
-            Expanded(child: chips[i]),
-            Expanded(
-              child: i + 1 < chips.length
-                  ? chips[i + 1]
-                  : const SizedBox.shrink(),
-            ),
-          ],
-        ),
+      if (large)
+        ...chips
+      else
+        for (var i = 0; i < chips.length; i += 2)
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: tt.spacing.xs,
+            children: [
+              Expanded(child: chips[i]),
+              Expanded(
+                child: i + 1 < chips.length
+                    ? chips[i + 1]
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
     ];
 
     return SizedBox(
       width: double.infinity,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(
-          maxHeight: TtMetrics.tagPanelMaxHeight,
-        ),
+        constraints: BoxConstraints(maxHeight: maxHeight),
         child: ClipRRect(
           borderRadius: radius,
           child: BackdropFilter(

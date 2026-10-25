@@ -1,7 +1,7 @@
 import 'dart:ui' show CheckedState;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -361,6 +361,43 @@ void main() {
         });
       }
     }
+
+    for (final multi in [false, true]) {
+      testWidgets('at 2x a name takes two lines, so "Lisbon food" is readable '
+          '(multi $multi)', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            _chip(name: 'Lisbon food market', multi: multi, width: 336),
+            textScale: 2,
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final name = tester.widget<Text>(find.text('Lisbon food market'));
+        expect(name.maxLines, 2);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text('Lisbon food market'),
+        );
+        // The first 11 letters, "Lisbon food", are laid out on one line.
+        final boxes = paragraph.getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: 11),
+        );
+        expect(boxes, isNotEmpty);
+        expect({for (final box in boxes) box.top}, hasLength(1));
+        expect(paragraph.didExceedMaxLines, isFalse);
+      });
+    }
+
+    testWidgets('below 1.5x the name stays on one line', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(_chip(name: _longName), textScale: 1.49),
+      );
+      expect(tester.widget<Text>(find.text(_longName)).maxLines, 1);
+      await tester.pumpWidget(
+        ttTestApp(_chip(name: _longName), textScale: 1.5),
+      );
+      expect(tester.widget<Text>(find.text(_longName)).maxLines, 2);
+    });
 
     testWidgets('keeps its 48 dp target at every text size', (tester) async {
       for (final scale in [1.0, 2.0]) {

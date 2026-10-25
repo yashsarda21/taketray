@@ -1094,9 +1094,25 @@ abstract final class TtMetrics {
   // proto.css: .tagpanel { padding: 12px 12px 26px }
   static const double tagPanelPaddingBottom = 26;
 
-  /// Tallest the panel gets before its chips scroll.
+  /// Tallest the panel gets before its chips scroll, at normal text size.
   // proto.css: .tagpanel { max-height: 340px }
   static const double tagPanelMaxHeight = 340;
+
+  /// The text scale from which the panel lays its chips out one per row and
+  /// a chip's name may take two lines. Below it: two columns, one line.
+  // Not in the prototype: large-text layout (D-47). At 2x a 164 dp cell shows
+  // about 5 letters of a name, so reel names that share a first word cannot
+  // be told apart; one full-width chip shows about 12.
+  static const double tagPanelSingleColumnTextScale = 1.5;
+
+  /// Tallest the panel gets at large text: the cap grows with the text scale
+  /// (340 dp at 1x, times the scale) up to this.
+  // Not in the prototype: large-text layout (D-47). At 2x, three one-column
+  // chips with two-line names are 3 x 126 dp, plus 12 padding, 48 header,
+  // 2 x 8 gaps, 4 and 26 under the grid = 484 dp, so 520 shows three whole
+  // chips under the header and leaves 260 dp of a 780 dp screen for the
+  // video and controls.
+  static const double tagPanelMaxHeightLarge = 520;
 
   /// Minimum height of the panel's header row.
   // proto.css: .tagpanel .ph-h { min-height: 40px }

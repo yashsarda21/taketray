@@ -31,6 +31,7 @@ Widget _panel({
   bool action = true,
   bool footer = true,
   double? height,
+  bool longNames = false,
   void Function(int)? onChip,
 }) => Align(
   alignment: Alignment.bottomLeft,
@@ -45,7 +46,11 @@ Widget _panel({
           chips: [
             for (var i = 0; i < chips; i++)
               _chipFor(
-                i < _names.length ? _names[i] : 'Reel number $i',
+                longNames
+                    ? 'Lisbon food market number $i'
+                    : i < _names.length
+                    ? _names[i]
+                    : 'Reel number $i',
                 onTap: () => onChip?.call(i),
               ),
           ],
@@ -251,8 +256,80 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(
         tester.getSize(find.byType(TtTagPanel)).height,
-        lessThanOrEqualTo(340),
+        lessThanOrEqualTo(520),
       );
+    });
+
+    testWidgets('at 2x text the chips are one per row, as wide as the '
+        'panel inside its padding', (tester) async {
+      await tester.pumpWidget(ttTestApp(_panel(), textScale: 2));
+      await tester.pumpAndSettle();
+      final panel = tester.getRect(find.byType(TtTagPanel));
+      final chips = [
+        for (final e in find.byType(TtReelChip).evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ];
+      expect(chips, isNotEmpty);
+      for (final r in chips) {
+        expect(r.width, panel.width - 24);
+        expect(r.left, panel.left + 12);
+      }
+      // No two chips share a row.
+      for (var i = 1; i < chips.length; i++) {
+        expect(chips[i].top, greaterThanOrEqualTo(chips[i - 1].bottom));
+      }
+    });
+
+    testWidgets('the layout switches to one column at 1.5x and not below', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_panel(), textScale: 1.49));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byType(TtReelChip).at(1)).left,
+        greaterThan(tester.getRect(find.byType(TtReelChip).at(0)).right),
+      );
+      await tester.pumpWidget(ttTestApp(_panel(), textScale: 1.5));
+      await tester.pumpAndSettle();
+      expect(
+        tester.getRect(find.byType(TtReelChip).at(1)).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byType(TtReelChip).at(0)).bottom,
+        ),
+      );
+    });
+
+    testWidgets('at 1x the panel keeps two columns and a 340 dp cap', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_panel(chips: 30)));
+      final first = tester.getRect(find.byType(TtReelChip).at(0));
+      final second = tester.getRect(find.byType(TtReelChip).at(1));
+      expect(first.width, 164);
+      expect(second.top, first.top);
+      expect(tester.getSize(find.byType(TtTagPanel)).height, 340);
+    });
+
+    testWidgets('at 2x the cap grows so three chips with two-line names '
+        'show under the header on a 780 dp screen', (tester) async {
+      tester.view.physicalSize = const Size(360, 780) * 3;
+      tester.view.devicePixelRatio = 3;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(_panel(chips: 12, longNames: true), textScale: 2),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final panel = tester.getRect(find.byType(TtTagPanel));
+      expect(panel.height, greaterThan(340));
+      expect(panel.height, lessThanOrEqualTo(520));
+      final header = tester.getRect(find.text('Add to reel'));
+      var whole = 0;
+      for (final e in find.byType(TtReelChip).evaluate()) {
+        final r = tester.getRect(find.byWidget(e.widget));
+        if (r.top >= header.bottom && r.bottom <= panel.bottom - 26) whole++;
+      }
+      expect(whole, greaterThanOrEqualTo(3));
     });
 
     for (final brightness in Brightness.values) {
