@@ -1,9 +1,13 @@
 import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
+import 'package:taketray_widgetbook/components/clip_tile.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
+import 'package:taketray_widgetbook/components/headers.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
+import 'package:taketray_widgetbook/components/skeleton.dart';
+import 'package:taketray_widgetbook/components/status_pill.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
 import 'package:widgetbook/widgetbook.dart';
@@ -29,6 +33,18 @@ final List<WidgetbookNode> ttCatalog = [
     ],
   ),
   WidgetbookFolder(name: 'Navigation', children: [ttPillTabsComponent]),
+  WidgetbookFolder(
+    name: 'Clips',
+    children: [
+      ttClipTileComponent,
+      ttMissingClipTileComponent,
+      ttClipTileSkeletonComponent,
+      ttSkeletonLineComponent,
+      ttSceneHeaderComponent,
+      ttDayHeaderComponent,
+    ],
+  ),
+  WidgetbookFolder(name: 'Status', children: [ttStatusPillComponent]),
   WidgetbookFolder(name: 'Inputs', children: [ttTextFieldComponent]),
   WidgetbookFolder(
     name: 'Overlays',

@@ -377,4 +377,290 @@ abstract final class TtMetrics {
   /// Horizontal padding of the help row (aligns it with the text).
   // proto.css: .tf .help { padding: 4px 16px 0 }
   static const double textFieldHelpPaddingHorizontal = 16;
+
+  // ---- Status pill ----
+
+  /// Height of a status pill.
+  // proto.css: .pill { height: 24px }
+  static const double statusPillHeight = 24;
+
+  /// Height of a large status pill.
+  // proto.css: .pill.big { height: 32px }
+  static const double statusPillHeightLarge = 32;
+
+  /// Padding before the icon of a status pill.
+  // proto.css: .pill { padding: 0 8px 0 6px }
+  static const double statusPillPaddingStart = 6;
+
+  /// Padding after the label of a status pill.
+  // proto.css: .pill { padding: 0 8px 0 6px }
+  static const double statusPillPaddingEnd = 8;
+
+  /// Padding before the icon of a large status pill.
+  // proto.css: .pill.big { padding: 0 10px 0 8px }
+  static const double statusPillPaddingStartLarge = 8;
+
+  /// Padding after the label of a large status pill.
+  // proto.css: .pill.big { padding: 0 10px 0 8px }
+  static const double statusPillPaddingEndLarge = 10;
+
+  /// Icon size in a status pill.
+  // proto.css: .pill .ms { font-size: 16px }
+  static const double statusPillIconSize = 16;
+
+  /// Icon size in a large status pill.
+  // proto.css: .pill.big .ms { font-size: 18px }
+  static const double statusPillIconSizeLarge = 18;
+
+  /// Size of the caret that marks a pressable status pill.
+  // proto.css: .pill .caret { font-size: 18px }
+  static const double statusPillCaretSize = 18;
+
+  /// Gap between the label and the caret.
+  // proto.css: .pill .caret { margin-left: 2px }
+  static const double statusPillCaretGap = 2;
+
+  /// How far the caret sits inside the pill's end padding.
+  // proto.css: .pill .caret { margin-right: -4px }
+  static const double statusPillCaretInset = 4;
+
+  // ---- Clip tile ----
+
+  /// Height of the dark scrim behind the time and duration, as a fraction of
+  /// the tile.
+  // proto.css: .tile .scr-b { height: 44% }
+  static const double clipTileScrimHeightFactor = 0.44;
+
+  /// Opacity of black at the bottom of the scrim.
+  // proto.css: .tile .scr-b { … linear-gradient(transparent, rgba(0,0,0,.66)) }
+  static const double clipTileScrimOpacity = 0.66;
+
+  /// Gap between the tile's bottom edge and the time and duration.
+  // proto.css: .tile .tm, .tile .du { bottom: 5px }
+  static const double clipTileTextBottom = 5;
+
+  /// Gap between the tile's side edges and the time and duration.
+  // proto.css: .tile .tm { left: 7px }  .tile .du { right: 7px }
+  static const double clipTileTextInset = 7;
+
+  /// Weight of the time and duration.
+  // proto.css: .tile .tm, .tile .du { font: 700 12px/16px … }
+  static const double clipTileTextWeight = 700;
+
+  /// Blur of the shadow under the time and duration.
+  // proto.css: .tile .tm, .tile .du { text-shadow: 0 1px 2px rgba(0,0,0,.5) }
+  static const double clipTileTextShadowBlur = 2;
+
+  /// Vertical offset of the shadow under the time and duration.
+  // proto.css: .tile .tm, .tile .du { text-shadow: 0 1px 2px rgba(0,0,0,.5) }
+  static const double clipTileTextShadowOffsetY = 1;
+
+  /// Opacity of black in the shadow under the time and duration.
+  // proto.css: .tile .tm, .tile .du { text-shadow: 0 1px 2px rgba(0,0,0,.5) }
+  static const double clipTileTextShadowOpacity = 0.5;
+
+  /// Gap between the tile's edge and the corner badges (reel count,
+  /// horizontal, VN folder).
+  // proto.css: .tile .multi { left: 5px; top: 5px }  .tile .hz { right: 5px }
+  static const double clipTileBadgeInset = 5;
+
+  /// Height of the reel count badge and side of the horizontal badge.
+  // proto.css: .tile .multi { height: 22px }  .tile .hz { width: 22px }
+  static const double clipTileBadgeSize = 22;
+
+  /// Corner radius of the reel count and horizontal badges.
+  // proto.css: .tile .multi { border-radius: 6px }
+  static const double clipTileBadgeRadius = 6;
+
+  /// Opacity of the badge fill (dark, over the picture).
+  // proto.css: .tile .multi { background: rgba(16,14,22,.72) }
+  static const double clipTileBadgeOpacity = 0.72;
+
+  /// Padding before the layers icon in the reel count badge.
+  // proto.css: .tile .multi { padding: 0 6px 0 4px }
+  static const double clipTileMultiPaddingStart = 4;
+
+  /// Padding after the count in the reel count badge.
+  // proto.css: .tile .multi { padding: 0 6px 0 4px }
+  static const double clipTileMultiPaddingEnd = 6;
+
+  /// Gap between the layers icon and the count.
+  // proto.css: .tile .multi { gap: 2px }
+  static const double clipTileMultiGap = 2;
+
+  /// Size of the layers icon in the reel count badge.
+  // proto.css: .tile .multi .ms { font-size: 14px }
+  static const double clipTileMultiIconSize = 14;
+
+  /// Size of the crop icon in the horizontal badge.
+  // proto.css: .tile .hz .ms { font-size: 15px }
+  static const double clipTileHorizontalIconSize = 15;
+
+  /// Weight of the count in the reel count badge and the text of the mark.
+  // proto.css: .tile .multi { font: 700 11.5px/1 … }
+  static const double clipTileBadgeTextWeight = 700;
+
+  /// Diameter of the selection circle.
+  // proto.css: .tile .selc { width: 24px; height: 24px }
+  static const double clipTileSelectSize = 24;
+
+  /// Gap between the tile's edge and the selection circle.
+  // proto.css: .tile .selc { right: 6px; top: 6px }
+  static const double clipTileSelectInset = 6;
+
+  /// Width of the selection circle's ring.
+  // proto.css: .tile .selc { border: 2px solid #fff }
+  static const double clipTileSelectBorder = 2;
+
+  /// Opacity of black in the empty selection circle.
+  // proto.css: .tile .selc { background: rgba(0,0,0,.25) }
+  static const double clipTileSelectFillOpacity = 0.25;
+
+  /// Size of the tick in the selected circle.
+  // proto.css: .tile .selc .ms { font-size: 18px }
+  static const double clipTileSelectTickSize = 18;
+
+  /// Weight of the tick in the selected circle.
+  // proto.css: .tile .selc .ms { font-variation-settings: … 'wght' 700 … }
+  static const double clipTileSelectTickWeight = 700;
+
+  /// How much the picture shrinks in a selected tile.
+  // proto.css: .tile.sel .img { transform: scale(.86) }
+  static const double clipTileSelectedScale = 0.86;
+
+  /// Opacity of the surface colour over a marked tile.
+  // proto.css: .tile .mark { background: color-mix(… surface 55% …) }
+  static const double clipTileMarkScrimOpacity = 0.55;
+
+  /// Padding around the mark label inside a marked tile.
+  // proto.css: .tile .mark { padding: 8px }
+  static const double clipTileMarkInset = 8;
+
+  /// Corner radius of the mark label.
+  // proto.css: .tile .mark > span { border-radius: 6px }
+  static const double clipTileMarkRadius = 6;
+
+  /// Horizontal padding inside the mark label.
+  // proto.css: .tile .mark > span { padding: 3px 6px }
+  static const double clipTileMarkPaddingHorizontal = 6;
+
+  /// Vertical padding inside the mark label.
+  // proto.css: .tile .mark > span { padding: 3px 6px }
+  static const double clipTileMarkPaddingVertical = 3;
+
+  /// Gap between the mark's icon and its text.
+  // proto.css: .tile .mark > span { gap: 3px }
+  static const double clipTileMarkGap = 3;
+
+  /// Size of the mark's icon.
+  // proto.css: .tile .mark .ms { font-size: 14px }
+  static const double clipTileMarkIconSize = 14;
+
+  /// Gap between the tile's left edge and the VN folder mark.
+  // proto.css: .tile .vnmark { left: 5px; bottom: 24px }
+  static const double clipTileVnInsetStart = 5;
+
+  /// Gap between the VN folder mark and the time and length below it
+  /// (24 from the bottom, less the 5 + 16 of the text line).
+  // proto.css: .tile .vnmark { bottom: 24px }, .tile .tm { bottom: 5px }
+  static const double clipTileVnGap = 3;
+
+  /// Height of the time and length line (kept free for the VN mark when
+  /// they are hidden).
+  // proto.css: .tile .tm { font: 700 12px/16px … }
+  static const double clipTileTextHeight = 16;
+
+  /// Height of the VN folder mark.
+  // screens/ui.js: the vnmark pill, style="height:20px"
+  static const double clipTileVnHeight = 20;
+
+  /// Padding before the icon of the VN folder mark.
+  // ui.js: the vnmark pill, style="padding:0 6px 0 4px"
+  static const double clipTileVnPaddingStart = 4;
+
+  /// Padding after the text of the VN folder mark.
+  // ui.js: the vnmark pill, style="padding:0 6px 0 4px"
+  static const double clipTileVnPaddingEnd = 6;
+
+  /// Size of the VN folder mark's icon.
+  // ui.js: icon('folder_copy', 's16')
+  static const double clipTileVnIconSize = 16;
+
+  // ---- Missing clip tile ----
+
+  /// Width of the dashed border.
+  // proto.css: .tile.miss { border: 1px dashed var(--md-outline) }
+  static const double clipTileMissingBorder = 1;
+
+  /// Length of one dash of the border (the browser's dashed border, 3 x the
+  /// width).
+  // proto.css: .tile.miss { border: 1px dashed var(--md-outline) }
+  static const double clipTileMissingDashLength = 3;
+
+  /// Gap between the dashes of the border.
+  // proto.css: .tile.miss { border: 1px dashed var(--md-outline) }
+  static const double clipTileMissingDashGap = 2;
+
+  /// Horizontal padding inside the missing tile.
+  // proto.css: .tile.miss { padding: 8px 6px }
+  static const double clipTileMissingPaddingHorizontal = 6;
+
+  /// Size of the missing tile's icon.
+  // proto.css: .tile.miss .ms { font-size: 26px }
+  static const double clipTileMissingIconSize = 26;
+
+  /// Extra gap above the Remove button.
+  // proto.css: .tile.miss .btn { margin-top: 2px }
+  static const double clipTileMissingButtonGap = 2;
+
+  /// Lines of the missing tile's label before it ends in an ellipsis.
+  // (not in the prototype: a limit so the label cannot take the tile)
+  static const double clipTileMissingLabelLines = 2;
+
+  /// The text scale above which the missing tile's label gets one line only.
+  // (not in the prototype: two lines no longer fit the 3:4 tile above this)
+  static const double clipTileMissingLabelScaleLimit = 1.15;
+
+  // ---- Skeleton ----
+
+  /// Height of a skeleton line.
+  // proto.css: .skel-line { height: 12px }
+  static const double skeletonLineHeight = 12;
+
+  /// Corner radius of a skeleton line.
+  // proto.css: .skel-line { border-radius: 6px }
+  static const double skeletonLineRadius = 6;
+
+  /// Angle of the shimmer's gradient, in degrees (CSS: 0 is up, 90 right).
+  // proto.css: .tile.skel::before { background: linear-gradient(100deg, … }
+  static const double skeletonShimmerAngle = 100;
+
+  /// Where the shimmer's bright band starts to fade in.
+  // proto.css: .tile.skel::before { … transparent 20%, … 50%, transparent 80% }
+  static const double skeletonShimmerStart = 0.2;
+
+  /// Where the shimmer's bright band is brightest.
+  // proto.css: .tile.skel::before { … transparent 20%, … 50%, transparent 80% }
+  static const double skeletonShimmerMiddle = 0.5;
+
+  /// Where the shimmer's bright band has faded out.
+  // proto.css: .tile.skel::before { … transparent 20%, … 50%, transparent 80% }
+  static const double skeletonShimmerEnd = 0.8;
+
+  /// Opacity of `onSurface` at the brightest point of the shimmer.
+  // proto.css: .tile.skel::before { … on-surface 7% … }
+  static const double skeletonShimmerOpacity = 0.07;
+
+  /// Width of the shimmer's gradient layer, as a multiple of the tile.
+  // proto.css: .tile.skel::before { background-size: 220% 100% }
+  static const double skeletonShimmerLayerWidth = 2.2;
+
+  /// Where the layer starts (as a CSS background position, 1.2 = 120 %); it
+  /// ends at the negative of this.
+  // proto.css: @keyframes shimmer { from { background-position: 120% 0 } … }
+  static const double skeletonShimmerTravel = 1.2;
+
+  /// Length of one shimmer sweep, in milliseconds.
+  // proto.css: .tile.skel::before { animation: shimmer 1.4s linear infinite }
+  static const double skeletonShimmerMillis = 1400;
 }

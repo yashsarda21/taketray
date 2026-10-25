@@ -8,10 +8,14 @@ export 'package:material_symbols_icons/symbols.dart';
 
 export 'src/components/badges.dart';
 export 'src/components/buttons.dart';
+export 'src/components/clip_tile.dart';
 export 'src/components/glass.dart';
+export 'src/components/headers.dart';
 export 'src/components/pill_tabs.dart';
 export 'src/components/rec_dot.dart';
 export 'src/components/selection.dart';
+export 'src/components/skeleton.dart';
+export 'src/components/status_pill.dart';
 export 'src/components/text_field.dart';
 export 'src/theme/take_tray_theme.dart';
 export 'src/theme/tt_colors.dart';
