@@ -416,9 +416,10 @@ abstract final class TtMetrics {
   // proto.css: .pill .caret { font-size: 18px }
   static const double statusPillCaretSize = 18;
 
-  /// Gap between the label and the caret.
-  // proto.css: .pill .caret { margin-left: 2px }
-  static const double statusPillCaretGap = 2;
+  /// Gap between the label and the caret: the pill's 4 dp gap plus the
+  /// caret's 2 dp margin.
+  // proto.css: .pill { gap: 4px }  .pill .caret { margin-left: 2px }
+  static const double statusPillCaretGap = 6;
 
   /// How far the caret sits inside the pill's end padding.
   // proto.css: .pill .caret { margin-right: -4px }
@@ -581,6 +582,10 @@ abstract final class TtMetrics {
   /// Padding after the text of the VN folder mark.
   // ui.js: the vnmark pill, style="padding:0 6px 0 4px"
   static const double clipTileVnPaddingEnd = 6;
+
+  /// Font size of the VN folder mark's label (`label-medium` at 11 px).
+  // ui.js: h.tile's vnmark pill, style="height:20px;font-size:11px;…"
+  static const double clipTileVnFontSize = 11;
 
   /// Size of the VN folder mark's icon.
   // ui.js: icon('folder_copy', 's16')

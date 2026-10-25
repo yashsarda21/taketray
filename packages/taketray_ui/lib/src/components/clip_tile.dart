@@ -167,8 +167,10 @@ class TtClipTile extends StatelessWidget {
                       children: [
                         if (vn != null)
                           Padding(
-                            padding: const EdgeInsetsDirectional.symmetric(
-                              horizontal: TtMetrics.clipTileVnInsetStart,
+                            // proto.css: .tile .vnmark { left: 5px } (no right
+                            // limit: the label may run to the tile's edge).
+                            padding: const EdgeInsetsDirectional.only(
+                              start: TtMetrics.clipTileVnInsetStart,
                             ),
                             child: Align(
                               alignment: AlignmentDirectional.centerStart,
@@ -455,7 +457,8 @@ class _VnMark extends StatelessWidget {
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: tt.text.material.labelSmall!.copyWith(
+                      style: tt.text.material.labelMedium!.copyWith(
+                        fontSize: TtMetrics.clipTileVnFontSize,
                         color: scheme.onInverseSurface,
                       ),
                     ),

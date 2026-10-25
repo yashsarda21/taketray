@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -108,6 +108,42 @@ void main() {
       expect(_icon(Symbols.folder_copy_rounded), findsOneWidget);
       await tester.pumpWidget(ttTestApp(_tile()));
       expect(find.text('In VN folder'), findsNothing);
+    });
+
+    testWidgets('the VN label fits in full in a 107 dp tile at 1x', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 107,
+              child: TtClipTile(
+                thumbnail: fixtureThumb(1),
+                semanticLabel: 'Clip',
+                timeText: '9:41 AM',
+                durationText: '0:32',
+                vnLabel: 'In VN folder',
+                onTap: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      final text = find.text('In VN folder');
+      expect(text, findsOneWidget);
+      final paragraph = tester.renderObject<RenderParagraph>(text);
+      // The paragraph is laid out in the room it got; nothing is cut off.
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(
+        paragraph.size.width,
+        greaterThanOrEqualTo(
+          paragraph.getMaxIntrinsicWidth(double.infinity) - 0.5,
+        ),
+      );
+      // 11 dp, weight 600 (label-medium at the prototype's 11 px).
+      expect(paragraph.text.style!.fontSize, 11);
+      expect(paragraph.text.style!.fontWeight, FontWeight.w600);
     });
 
     testWidgets('selecting mode shows the check circle; selected ticks it '
