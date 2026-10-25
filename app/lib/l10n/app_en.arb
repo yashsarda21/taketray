@@ -1,0 +1,28 @@
+{
+  "@@locale": "en",
+  "appTitle": "TakeTray",
+  "@appTitle": {
+    "description": "The app name, shown in the task switcher and as the app bar title."
+  },
+  "navReels": "Reels",
+  "@navReels": {
+    "description": "Bottom navigation label for the reels list."
+  },
+  "navToTag": "To tag",
+  "@navToTag": {
+    "description": "Bottom navigation label for the clips waiting to be tagged."
+  },
+  "navSettings": "Settings",
+  "@navSettings": {
+    "description": "Bottom navigation label for settings."
+  },
+  "toTagBadgeSemantics": "{count, plural, =0{No clips to tag} =1{1 clip to tag} other{{count} clips to tag}}",
+  "@toTagBadgeSemantics": {
+    "description": "Screen-reader label for the badge on the To tag tab.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  }
+}

@@ -171,3 +171,10 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Alternatives: create empty placeholder test files (noise, fake coverage).
 - Consequences: once tests exist the step runs unconditionally in practice; no later change is needed.
 
+
+### D-27 · gen-l10n output is generated, not committed
+- Date: 2026-10-25 · Phase: 0
+- Decision: copy lives in `app/lib/l10n/app_en.arb` (English only, template ARB) and `app/l10n.yaml` points gen-l10n at `lib/l10n/gen`; `flutter: generate: true` is set in `app/pubspec.yaml`. `app/lib/l10n/gen/` is git-ignored. `flutter pub get` (which `tool/check` runs first, and which every fresh checkout needs anyway) regenerates it, so `flutter analyze` and `flutter test` work straight after `pub get`; `tool/flutter gen-l10n` regenerates on demand. Plurals use ICU syntax in the ARB (`toTagBadgeSemantics`). `intl` is constrained `^0.20.2`, the range `flutter_localizations` pins.
+- Why: generated code in the diff is noise and can drift from the ARB; the only extra requirement is `pub get`, which is already mandatory.
+- Alternatives: commit the generated files (works with no step at all, but invites stale or hand-edited output and merge noise).
+- Consequences: after editing the ARB, run `pub get` or `gen-l10n` before analyzing; the analyzer excludes `lib/l10n/gen/**` (D-24) so generated code is not linted.
