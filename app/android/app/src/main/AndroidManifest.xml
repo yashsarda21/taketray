@@ -1,4 +1,11 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- TakeTray is fully offline: release builds must never request INTERNET,
+         even if a plugin tries to merge it in. debug/ and profile/ manifests
+         declare it for hot reload and the debugger. Checked by
+         tool/check_release_permissions. -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
+
     <application
         android:label="TakeTray"
         android:name="${applicationName}"

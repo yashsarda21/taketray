@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# One-command local check. Stops at the first failure.
+# Steps are documented in docs/flow.md ("Local checks").
+set -euo pipefail
+
+EXPECTED_FLUTTER="3.47.7"
+
+cd "$(dirname "$0")/.."
+
+step() { printf '\n==> %s\n' "$*"; }
+
+step "SDK version"
+version_output="$(tool/flutter --version 2>&1)"
+if ! grep -qF "Flutter ${EXPECTED_FLUTTER} " <<<"$version_output"; then
+  echo "Expected Flutter ${EXPECTED_FLUTTER}, got:" >&2
+  echo "$version_output" >&2
+  exit 1
+fi
+echo "Flutter ${EXPECTED_FLUTTER}"
+
+step "pub get"
+tool/flutter pub get
+
+step "format"
+format_paths=()
+for p in app/lib app/test app/patrol_test tool; do
+  [ -e "$p" ] && format_paths+=("$p")
+done
+tool/dart format --output=none --set-exit-if-changed "${format_paths[@]}"
+
+step "analyze app"
+(cd app && ../tool/flutter analyze)
+
+step "analyze tool"
+(cd tool && ../tool/dart analyze --fatal-infos)
+
+step "style rules (app/lib/features)"
+tool/dart run taketray_tool:check_styles app/lib/features
+
+step "test tool"
+(cd tool && ../tool/dart test)
+
+step "test app"
+(cd app && ../tool/flutter test)
+
+printf '\nALL CHECKS PASSED\n'

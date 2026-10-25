@@ -1,0 +1,12 @@
+# Repo-root analyzer options. They only apply to Dart files outside the `app`
+# and `tool` packages, which keep their own analysis_options.yaml (D-24).
+# Excludes the prototype kept for reference and the design tooling, so an IDE
+# opened at the repo root shows no errors from code that is never compiled.
+analyzer:
+  exclude:
+    - "reference/**"
+    - "design/**"
+    - "build/**"
+    - "**/build/**"
+    - ".dart_tool/**"
+    - "**/.dart_tool/**"

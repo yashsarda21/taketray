@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+# Builds the release APK and fails if it requests android.permission.INTERNET.
+# Slow (full release build), so it is not part of tool/check; run it at the end
+# of every phase. Steps are documented in docs/flow.md ("Release permission check").
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+SDK="${ANDROID_HOME:-$HOME/Library/Android/sdk}"
+BUILD_TOOLS="$SDK/build-tools"
+
+# Newest stable build-tools (x.y.z) that ships aapt2.
+latest=""
+if [ -d "$BUILD_TOOLS" ]; then
+  while IFS= read -r v; do
+    [ -x "$BUILD_TOOLS/$v/aapt2" ] && latest="$v"
+  done < <(ls "$BUILD_TOOLS" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V)
+fi
+if [ -z "$latest" ]; then
+  echo "No Android build-tools with aapt2 found in $BUILD_TOOLS" >&2
+  exit 1
+fi
+AAPT2="$BUILD_TOOLS/$latest/aapt2"
+echo "Using aapt2 from build-tools $latest"
+
+(cd app && ../tool/flutter build apk --release)
+
+APK="app/build/app/outputs/flutter-apk/app-release.apk"
+if [ ! -f "$APK" ]; then
+  echo "Release APK not found: $APK" >&2
+  exit 1
+fi
+
+permissions="$("$AAPT2" dump permissions "$APK")"
+
+if grep -qF 'android.permission.INTERNET' <<<"$permissions"; then
+  echo "$permissions" >&2
+  echo "INTERNET permission found in release build" >&2
+  exit 1
+fi
+
+echo "$permissions"
+echo "RELEASE PERMISSIONS OK"

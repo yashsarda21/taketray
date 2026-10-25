@@ -1,0 +1,10 @@
+name: taketray_workspace
+description: Pub workspace root for the TakeTray app and its tooling.
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+
+workspace:
+  - app
+  - tool

@@ -12,4 +12,82 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 
 ## Flows
 
-*(No flows yet. Phase 0 adds "App start" and "Tab navigation".)*
+### App start
+
+1. `main.dart › main`: calls `runAppWithLogging(body, logDir: getApplicationSupportDirectory)` and nothing else; `ensureInitialized` happens inside the guarded zone (see "Error logging").
+2. `core/logging/logging_setup.dart › runAppWithLogging`: runs `body` in that zone, which calls `runApp(const ProviderScope(child: TakeTrayApp()))`.
+3. `app.dart › TakeTrayApp.build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `AppLocalizations` delegates, locales and `onGenerateTitle` (placeholder theme, phase 1 replaces it).
+4. `router/app_router.dart › appRouter` (`appRouterProvider`, kept alive): creates the `GoRouter` with `initialLocation: Routes.reels`, the `onException` handler and the `StatefulShellRoute.indexedStack` with branches reels, toTag, settings; disposes the router with the provider.
+5. `router/app_router.dart › onException`: called by go_router for any location no route matches (unknown top-level paths such as `/nope` and unknown paths below a tab root such as `/reels/stale` or `/to-tag/a/b`); logs `Logger('router').warning` without the location and calls `router.go(Routes.reels)`, so go_router's error page never shows.
+6. `features/shell/views/app_shell.dart › AppShell.build`: shows the active branch (`navigationShell`) above the placeholder `NavigationBar`; the branch shows its placeholder screen (`features/{reels,tagging,settings}/views/*_placeholder_screen.dart`), which only prints its localized tab title.
+
+### Tab navigation
+
+1. `features/shell/views/app_shell.dart › NavigationBar.onDestinationSelected`: calls `navigationShell.goBranch(target, initialLocation: target == currentIndex)`. Each branch keeps its own navigator, so a tab returns to where it was; tapping the active tab again resets it to its root.
+2. Android back on a tab other than Reels: `GoRouterDelegate.popRoute` first offers the pop to the branch navigator (a pushed route in that tab closes first); if that has nothing to pop, the root navigator reaches `AppShell`'s `PopScope` (`canPop: currentIndex == 0`).
+3. `AppShell › PopScope.onPopInvokedWithResult`: when `didPop` is false (index is not 0) it calls `navigationShell.goBranch(0)`, so the app stays open on Reels. On Reels, `canPop` is true and the system closes the app as usual.
+4. Code that calls `router.go('/to-tag')` etc. lands on the same branch switch; a location no route matches goes through `onException` in "App start" step 5.
+
+### Local checks (`tool/check`)
+
+Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
+
+1. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
+2. `tool/check` › `tool/flutter pub get` at the root (resolves the whole workspace into the single `pubspec.lock`).
+3. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over those of `app/lib`, `app/test`, `app/patrol_test`, `tool` that exist.
+4. `tool/check` › `tool/flutter analyze` in `app/` (rules from `app/analysis_options.yaml`).
+5. `tool/check` › `tool/dart analyze --fatal-infos` in `tool/` (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar) (rules from `tool/analysis_options.yaml`).
+6. `tool/check` › `tool/dart run taketray_tool:check_styles app/lib/features`:
+   1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory is clean).
+   2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above.
+   3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
+7. `tool/check` › `tool/dart test` in `tool/` (includes `tool/test/style_rules_test.dart`).
+8. `tool/check` › `tool/flutter test` in `app/` (always; a missing or empty `app/test` fails the check).
+9. `tool/check` › prints `ALL CHECKS PASSED`.
+
+### Release permission check (`tool/check_release_permissions`)
+
+Run manually (slow: full release build), at the end of every phase. Not part of `tool/check`. See D-31.
+
+1. `android/app/src/main/AndroidManifest.xml`: `<uses-permission INTERNET tools:node="remove"/>` makes the manifest merger drop INTERNET from the merged release manifest; `src/debug` and `src/profile` manifests still declare it.
+2. `tool/check_release_permissions` › start: `cd`s to the repo root, resolves the SDK (`$ANDROID_HOME` or `~/Library/Android/sdk`), picks the newest stable `build-tools/x.y.z` (version sort) that has an executable `aapt2`; if none, prints `No Android build-tools with aapt2 found in <dir>` and exits 1.
+3. `tool/check_release_permissions` › `(cd app && ../tool/flutter build apk --release)`; exits on failure (`set -e`), then fails if `app/build/app/outputs/flutter-apk/app-release.apk` is missing.
+4. `tool/check_release_permissions` › `aapt2 dump permissions` on the APK.
+5. If the output contains `android.permission.INTERNET`: prints the list and `INTERNET permission found in release build` to stderr, exit 1.
+6. Otherwise prints the permission list and `RELEASE PERMISSIONS OK`, exit 0.
+
+### Error logging
+
+Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.
+
+Setup:
+1. `core/logging/logging_setup.dart › runAppWithLogging`: sets `Logger.root.level = INFO` and subscribes to `Logger.root.onRecord`. Until the sink exists, each record is formatted and held in an in-memory list (max 200); once logging is disabled (step 5) nothing is buffered.
+2. Same function: sets `FlutterError.onError` (also `presentError` in debug mode; its record's message is the private `_frameworkErrorTag`, "Flutter framework error") and `PlatformDispatcher.instance.onError` to call `Logger('crash').severe(message, error, stack)`.
+3. Same function: enters `runZonedGuarded` (its error handler also calls `Logger('crash').severe`), calls `WidgetsFlutterBinding.ensureInitialized()` inside it, and starts `_attachSink` without awaiting it.
+4. Same function: runs `body` immediately, so start-up errors thrown by `body` land in the buffer through step 2/3.
+5. `_attachSink` (concurrently): awaits `logDir()` (`path_provider` application support directory, passed in by `main`) with a 5 s timeout. On success it creates the `LogFileSink`, writes the buffered lines in order, switches the subscription to write directly and calls `onSinkReady(sink)` (a throwing callback is ignored). If `logDir()` throws or times out it drops the buffer, disables buffering and prints one `debugPrint` line.
+
+A log record (any `Logger('x').info/warning/severe`):
+1. `package:logging › Logger.root.onRecord` delivers the `LogRecord` to the subscription from step 1 above.
+2. `core/logging/logging_setup.dart › formatRecord`: `2026-10-24T09:12:03.120Z LEVEL logger: message`, plus indented `error:` and `stack:` lines when present. Message and error text go through `_redact` (paths, URIs become `<path>`; a `FileSystemException` is rendered without its path), stack traces are kept as they are, and a record over 8 KiB is cut with `…[truncated]`.
+3. Same listener, debug builds only (`kDebugMode`): `debugPrint`s the formatted line to the console, unless the record is a framework error (its message object is `_frameworkErrorTag`; `presentError` already printed it). Release builds skip this step. The line then goes to the sink if it exists, otherwise to the buffer (or nowhere once logging is disabled).
+4. `core/logging/log_file_sink.dart › LogFileSink.write`: chains onto the previous write (writes never interleave), reads the current file size once, then:
+   1. if the line would push `taketray-0.log` past `maxBytes` (512 KiB), `_rotate` deletes `taketray-1.log` and renames `taketray-0.log` to `taketray-1.log`;
+   2. appends the line to `taketray-0.log` and flushes.
+
+An uncaught error:
+1. Flutter framework error → `FlutterError.onError` (prints it to the console with `presentError` in debug); async error outside the framework → `PlatformDispatcher.onError` (returns `true`, handled); error escaping `body`'s zone → the `runZonedGuarded` handler.
+2. Each calls `Logger('crash').severe(...)`, which continues at "A log record" step 1; in debug builds the zone and platform errors reach the console at "A log record" step 3.
+
+Reading the log: `LogFileSink.readAll` returns `taketray-1.log` then `taketray-0.log` (oldest first); `LogFileSink.exportFile` writes that text to `taketray-log.txt` for the Settings share action (phase 10, using the sink from `onSinkReady`).
+
+### On-device test (Patrol)
+
+Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`.
+
+1. `tool/patrol test -t patrol_test/app_shell_test.dart -d <device>`: puts the pinned Flutter (`~/development/flutter/bin`) and the Android SDK `platform-tools` first on `PATH`, sets `PATROL_ANALYTICS_ENABLED=false` (analytics off for this run; see `docs/dev-setup.md` for the config file), `cd`s to `app/`, inserts `--no-uninstall` after `test`/`develop` unless the caller passed `--uninstall` or `--no-uninstall`, and runs `patrol_cli` (`~/.pub-cache/bin/patrol`) with `--flutter-command` set to the pinned `flutter`. The generated `patrol_test/test_bundle.dart` (git-ignored) is deleted when the command exits, so `tool/check` never sees it.
+2. `patrol_cli`: reads the `patrol:` block of `pubspec.yaml` (`app_name: TakeTray`, `android.package_name: app.taketray`), generates `test_bundle.dart` from the requested test file and has Gradle build the debug app APK plus the `androidTest` APK.
+3. `android/app/build.gradle.kts` › `defaultConfig.testInstrumentationRunner`: the test APK uses `pl.leancode.patrol.PatrolJUnitRunner`; `testOptions.execution = ANDROIDX_TEST_ORCHESTRATOR` runs each test in a fresh process through the `androidTestUtil` orchestrator (`clearPackageData` wipes app data between tests).
+4. **[bridge]** `android/app/src/androidTest/java/app/taketray/MainActivityTest.java › testCases`: starts `MainActivity` through the runner, waits for the Patrol app service in the app process and lists the Dart tests; `runDartTest` then runs one named test.
+5. `patrol_test/app_shell_test.dart › main`: `patrolTest` pumps `ProviderScope(child: TakeTrayApp())`, asserts the Reels screen shows "Reels", taps "To tag" then "Settings" inside the `NavigationBar` and asserts each placeholder screen shows its title (finders on the English labels, no sleeps; taps settle the UI).
+6. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`. Because of `--no-uninstall` it neither uninstalls before installing nor after the run: `app.taketray` and `app.taketray.test` stay on the device (app data is still cleared by the orchestrator, step 3).
