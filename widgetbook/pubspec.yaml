@@ -1,0 +1,27 @@
+name: taketray_widgetbook
+description: "Widgetbook catalogue of the TakeTray design system components."
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: 3.47.7
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  taketray_ui:
+    path: ../packages/taketray_ui
+  widgetbook: ^3.25.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  very_good_analysis: ^11.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/thumbs/

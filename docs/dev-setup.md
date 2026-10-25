@@ -12,6 +12,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 
 - `tool/check`: format, analysis, style rules and all tests; must end with `ALL CHECKS PASSED`.
 - `tool/check_release_permissions`: builds the release APK and fails if it contains `android.permission.INTERNET`; must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
+- Run the catalogue on the phone: `cd widgetbook && ../tool/flutter run -d <device>` (list device ids with `tool/adb devices`). It installs as "TakeTray UI" (`app.taketray.widgetbook`) next to the app.
 - `tool/patrol doctor`: shows the CLI version and the Flutter it uses (must say 3.47.7).
 - `tool/patrol test -t patrol_test/app_shell_test.dart -d <device id>`: the on-device smoke test (flow: "On-device test (Patrol)" in `docs/flow.md`). List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so `app.taketray` stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
 

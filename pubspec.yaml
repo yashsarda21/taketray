@@ -9,3 +9,4 @@ workspace:
   - app
   - packages/taketray_ui
   - tool
+  - widgetbook

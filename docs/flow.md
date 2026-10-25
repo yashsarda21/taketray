@@ -104,3 +104,13 @@ Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`
 4. **[bridge]** `android/app/src/androidTest/java/app/taketray/MainActivityTest.java › testCases`: starts `MainActivity` through the runner, waits for the Patrol app service in the app process and lists the Dart tests; `runDartTest` then runs one named test.
 5. `patrol_test/app_shell_test.dart › main`: `patrolTest` pumps `ProviderScope(child: TakeTrayApp())`, asserts the Reels screen shows "Reels", taps "To tag" then "Settings" inside the `NavigationBar` and asserts each placeholder screen shows its title (finders on the English labels, no sleeps; taps settle the UI).
 6. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`. Because of `--no-uninstall` it neither uninstalls before installing nor after the run: `app.taketray` and `app.taketray.test` stay on the device (app data is still cleared by the orchestrator, step 3).
+
+### Catalogue coverage (`widgetbook/test/catalog_coverage_test.dart`)
+
+Runs inside `tool/check` (step "test widgetbook") and with `(cd widgetbook && ../tool/flutter test)`. It keeps the Widgetbook catalogue complete (D-42).
+
+1. `widgetbook/test/catalog_coverage_test.dart › main`: lists the `*.dart` files directly in `packages/taketray_ui/lib/src/components/` (none if the folder does not exist yet).
+2. Same test: for each name, checks that `widgetbook/lib/components/<name>.dart` exists.
+3. `widgetbook/test/catalog_coverage_test.dart › _imports`: checks that `widgetbook/lib/catalog.dart` has an import of `components/<name>.dart` (`package:taketray_widgetbook/components/...`).
+4. Same test: `expect(problems, isEmpty)` fails listing every missing file and every missing import; a component without a catalogue file therefore fails `tool/check`.
+5. `widgetbook/lib/catalog.dart › ttCatalog`: the registered components, read by `widgetbook/lib/main.dart › TakeTrayCatalogue` (`Widgetbook.material`) when the catalogue runs.
