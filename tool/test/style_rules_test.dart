@@ -98,5 +98,83 @@ void main() {
       expect(check('// Color(0xFF000000)'), isEmpty);
       expect(check('final a = 1; // Colors.red'), isEmpty);
     });
+
+    test('flags calls split across lines', () {
+      for (final src in [
+        'EdgeInsets.symmetric(\n  horizontal: 16,\n)',
+        'EdgeInsets.all(\n  8,\n)',
+        'SizedBox(\n  height: 8,\n)',
+        'SizedBox(\n  child: Foo(),\n  width: 8,\n)',
+        'BorderRadius.circular(\n  12,\n)',
+        'Duration(\n  milliseconds: 300,\n)',
+      ]) {
+        expect(check(src), hasLength(1), reason: src);
+        expect(check(src).single.line, 1, reason: src);
+      }
+    });
+
+    test('token arithmetic with a literal is clean', () {
+      for (final src in [
+        'EdgeInsets.all(spacing.m * 2)',
+        'EdgeInsets.all(context.tt.spacing.m * 2)',
+        'EdgeInsets.symmetric(horizontal: tokens.x2, vertical: 2 * tokens.y)',
+        'SizedBox(height: spacing.m * 2)',
+        'BorderRadius.circular(radii.m * 2)',
+        'Duration(milliseconds: motion.base * 2)',
+        'SizedBox(child: Foo(height: 8), width: tokens.w)',
+      ]) {
+        expect(check(src), isEmpty, reason: src);
+      }
+    });
+
+    test('plain literals are still flagged', () {
+      for (final src in [
+        'EdgeInsets.only(left: tokens.a, top: 4)',
+        'EdgeInsets.all(-8)',
+        'SizedBox(width: 8.0)',
+        'Duration(seconds: 2)',
+      ]) {
+        expect(check(src), hasLength(1), reason: src);
+      }
+    });
+
+    test('an allow marker without a reason does not exempt', () {
+      expect(
+        check('// style-check: allow\nfinal c = Colors.red;'),
+        hasLength(1),
+      );
+      expect(
+        check('final c = Colors.red; // style-check: allow'),
+        hasLength(1),
+      );
+    });
+
+    test('a marker on a line with code exempts only that line', () {
+      const src =
+          'final a = Colors.red; // style-check: allow reason\n'
+          'final b = Colors.red;';
+      expect(check(src).single.line, 2);
+    });
+
+    test('a // inside a string is not a comment', () {
+      final v = check("final u = 'https://x'; final j = Colors.red;");
+      expect(v.single.rule, 'raw-color');
+    });
+
+    test('an allow comment above a multi-line violation exempts it', () {
+      const src =
+          '// style-check: allow legacy layout\n'
+          'EdgeInsets.symmetric(\n'
+          '  horizontal: 16,\n'
+          ');';
+      expect(check(src), isEmpty);
+    });
+
+    test('block comments are ignored', () {
+      expect(
+        check('/* Colors.red\n EdgeInsets.all(8) */ final a = 1;'),
+        isEmpty,
+      );
+    });
   });
 }

@@ -11,7 +11,7 @@ step() { printf '\n==> %s\n' "$*"; }
 
 step "SDK version"
 version_output="$(tool/flutter --version 2>&1)"
-if ! grep -q "Flutter ${EXPECTED_FLUTTER}" <<<"$version_output"; then
+if ! grep -qF "Flutter ${EXPECTED_FLUTTER} " <<<"$version_output"; then
   echo "Expected Flutter ${EXPECTED_FLUTTER}, got:" >&2
   echo "$version_output" >&2
   exit 1

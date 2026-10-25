@@ -25,7 +25,7 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 5. `tool/check` › `tool/dart analyze --fatal-infos` in `tool/` (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar) (rules from `tool/analysis_options.yaml`).
 6. `tool/check` › `tool/dart run taketray_tool:check_styles app/lib/features`:
    1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory is clean).
-   2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, per line, strips `//` comments, honours `// style-check: allow <reason>` on the line or the line above, and applies the rule regexes.
+   2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above.
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
 7. `tool/check` › `tool/dart test` in `tool/` (includes `tool/test/style_rules_test.dart`).
 8. `tool/check` › `tool/flutter test` in `app/`, only if `app/test` contains a `*_test.dart`; otherwise prints `app: no tests yet (skipped)`.
