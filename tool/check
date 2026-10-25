@@ -88,6 +88,11 @@ echo "Flutter ${EXPECTED_FLUTTER}"
 step "pub get"
 tool/flutter pub get
 
+step "design tokens fresh"
+# Fails when a generated token file (Dart, CSS, JSON, Kotlin) differs from
+# what design/tools/build_tokens.py would write (D-35).
+python3 design/tools/build_tokens.py --check
+
 step "format"
 format_paths=()
 for m in "${flutter_present[@]}"; do
