@@ -29,7 +29,8 @@ in_list() {
 
 step "workspace members"
 # The `workspace:` list in the root pubspec.yaml: the `  - x` lines after
-# `workspace:`, up to the first line that is not a list item.
+# `workspace:`. Blank and comment lines inside the list are skipped; the list
+# ends at the next top-level key (a non-indented, non-comment line).
 members=()
 while IFS= read -r line; do
   members+=("$line")
@@ -42,7 +43,8 @@ done < <(awk '
     print
     next
   }
-  in_list { exit }
+  in_list && /^[ \t]*(#.*)?$/ { next }
+  in_list && /^[^ \t#]/ { exit }
 ' pubspec.yaml)
 if [ "${#members[@]}" -eq 0 ]; then
   echo "no workspace members found in pubspec.yaml" >&2
