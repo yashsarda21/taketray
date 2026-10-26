@@ -14,7 +14,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 - `tool/check_release_permissions`: builds the release APK and fails if it contains `android.permission.INTERNET`; must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
 - Run the catalogue on the phone: `cd widgetbook && ../tool/flutter run -d <device>` (list device ids with `tool/adb devices`). It installs as "TakeTray UI" (`app.taketray.widgetbook`) next to the app.
 - `tool/patrol doctor`: shows the CLI version and the Flutter it uses (must say 3.47.7).
-- `tool/patrol test -t patrol_test/app_shell_test.dart -d <device id>`: the on-device smoke test (flow: "On-device test (Patrol)" in `docs/flow.md`). List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so the dev app (`app.taketray.dev`) stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
+- `tool/patrol test -d <device id>`: runs every on-device test in `app/patrol_test` (`app_shell_test.dart`, the tab smoke test, and `database_test.dart`, the real database on Android; flow: "On-device test (Patrol)" in `docs/flow.md`). Add `-t patrol_test/<file>.dart` to run one. List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so the dev app (`app.taketray.dev`) stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
 
 ## Automatic checks on GitHub (D-60)
 
@@ -83,8 +83,8 @@ Phase 1 is the design system: the shared look of the app and a catalogue that li
 
 ## Phase 2 check
 
-Phase 2 is the data layer: the database that stores reels, clips and settings. It has no screens yet, so there is almost nothing to see. The controller has already run the on-device test (`app/patrol_test/database_test.dart`) on the phone: it opened the real database inside TakeTray Dev, saved a reel, read it back and exported it. It then installed the TakeTray release app again. Check these on the phone:
+Phase 2 is the data layer: the database that stores reels, clips and settings. It has no screens yet, so there is almost nothing to see. The controller has already run the on-device test (`app/patrol_test/database_test.dart`) on the phone: it opened the real database inside TakeTray Dev, saved a reel, closed and reopened the database, read the reel back and exported it. It then installed the TakeTray release app again. Check these on the phone:
 
-1. The phone shows two apps: **TakeTray** and **TakeTray Dev** (the test copy that Patrol installs).
+1. The phone shows **TakeTray** and **TakeTray Dev** (the test copy that Patrol installs). The Phase 1 catalogue, **TakeTray UI**, may be there too.
 2. TakeTray opens as before, on Reels, with the floating pill of tabs.
 3. Nothing else is visible this phase: the data layer has no screens yet. If TakeTray opens and does not crash, the check passes.

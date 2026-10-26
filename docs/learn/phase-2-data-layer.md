@@ -1029,7 +1029,7 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 
 ## 11. Proving it works on the phone
 
-**What we built:** one Patrol test, `app/patrol_test/database_test.dart`, that runs on your Samsung S24 inside **TakeTray Dev**. It opens the real database, saves a reel, reads it back and exports it. Alongside it, three checks on the release app: it still has no `INTERNET` permission, it contains the SQLite library, and it starts without crashing.
+**What we built:** one Patrol test, `app/patrol_test/database_test.dart`, that runs on your Samsung S24 inside **TakeTray Dev**. It opens the real database, saves a reel, closes the database, opens it again, reads the reel back and exports it. Alongside it, three checks on the release app: it still has no `INTERNET` permission, it contains the SQLite library, and it starts without crashing.
 
 **Why TakeTray needs it:** every database test so far ran on the Mac. A Mac test proves the rules are right, but it cannot prove the database works on the phone, for two reasons:
 
@@ -1052,25 +1052,28 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 - **The test uses the app's real providers.** It does not start the app's screens; it makes a `ProviderContainer` (the Riverpod object that holds providers) and asks it for the same repository and backup service the app will use:
 
   ```dart
-  final container = ProviderContainer();
-  addTearDown(container.dispose);
-
-  final reels = container.read(reelsRepositoryProvider);
-  final created = await reels.create('Goa trip 🌴');
+  final first = ProviderContainer();
+  addTearDown(first.dispose);
+  final created = await first.read(reelsRepositoryProvider).create(name);
   ```
 
-  Reading `reelsRepositoryProvider` makes `appDatabaseProvider` open `taketray` in the app's storage, so this one line is the first time SQLite really runs on Android.
+  Reading `reelsRepositoryProvider` builds `appDatabaseProvider`, and from that moment drift_flutter starts getting ready: it looks up the app's storage folder and starts a background worker (we checked the package source, `drift_flutter-0.3.1/lib/src/native.dart`, which wraps the setup in `DatabaseConnection.delayed`). The SQLite file itself is opened by the first real query, and the first real query here is `create`. So `create` is the line where SQLite, and its native library, first run on Android.
 
-- **Save, read back, export.** The test then proves the data went to the file and came back:
+- **Close, reopen, read back.** Reading a row straight back on the same open connection would prove little: the connection could answer from its own state whatever happened to the file. So the test closes the database first, and then opens it again through a brand-new container:
 
   ```dart
-  final readBack = await reels.getById(created.id);
-  expect(readBack!.name, 'Goa trip 🌴');
+  await first.read(appDatabaseProvider).close();
+  first.dispose();
 
-  final json = await container.read(backupServiceProvider).exportJson();
+  // Second open: a new container opens the same file from scratch.
+  final second = ProviderContainer();
+  final readBack = await second
+      .read(reelsRepositoryProvider)
+      .getById(created.id);
+  expect(readBack!.name, name);
   ```
 
-  It decodes the exported JSON and checks that the reel's name is in the `reels` list. The emoji is on purpose: it shows text outside plain ASCII survives the round trip through the phone's SQLite.
+  The second container knows nothing about the first, so the only way it can find the reel is if the row was written to `taketray.sqlite` in the app's storage. The test ends by exporting from the second container and checking that the reel's name is in the `reels` list of the JSON (`await second.read(backupServiceProvider).exportJson()`). The name has an emoji on purpose: it shows text outside plain ASCII survives the trip through the phone's SQLite and back.
 
 - **TakeTray Dev keeps your real app safe.** Debug builds and Patrol install as `app.taketray.dev`, a separate app with its own storage (D-52). Patrol clears an app's data between tests, which is fine for TakeTray Dev and would be a disaster for TakeTray. Because of the different package name, the test reel lands in TakeTray Dev's database and the real TakeTray's data is never read, written or cleared. `tool/patrol` also adds `--no-uninstall`, so nothing is removed afterwards. You can see both apps side by side:
 
@@ -1080,18 +1083,22 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
   package:app.taketray
   ```
 
-  (The list also shows the Patrol test APK `app.taketray.dev.test`, and older entries from earlier phases.)
+  (The real list is longer: it also has the Patrol test APK `app.taketray.dev.test`, the Phase 1 catalogue `app.taketray.widgetbook` and an older `app.taketray.test`. The filter `app.taketray` matches them all.)
 
-- **Last, run the real release app.** The release build is installed over the old one with `install -r` (keeps its data) and launched. The check is that it has a process id and logs no crash:
+- **Last, run the real release app.** The release build goes over the old one with `install -r` (keeps its data) and is launched. The check is that it has a process id and logs no crash, using a log read filtered to TakeTray's own process:
 
   ```
-  tool/adb shell monkey -p app.taketray -c android.intent.category.LAUNCHER 1
-  tool/adb shell pidof app.taketray
+  cd app && ../tool/flutter build apk --release
+  ../tool/adb install -r build/app/outputs/flutter-apk/app-release.apk
+  ../tool/adb shell monkey -p app.taketray -c android.intent.category.LAUNCHER 1
+  ../tool/adb shell pidof app.taketray
   ```
+
+  A process id and a quiet log are only a proxy for "it opens on Reels". The "Phase 2 check" in `docs/dev-setup.md` has you look at the phone for the rest.
 
 **Where it lives:** `app/patrol_test/database_test.dart` (the test) and the "Phase 2 check" section of `docs/dev-setup.md` (what you check by eye).
 
-**Try it yourself:** with the phone connected and unlocked, from the repo root run `tool/patrol test -d RZCY80PHWCZ`. It takes about a minute. You should see both tests (`app_shell_test` and `database_test`) listed with a green tick, and `Total: 2`, `Successful: 2`.
+**Try it yourself:** with the phone connected and unlocked, from the repo root run `tool/patrol test -d RZCY80PHWCZ`. It takes under a minute once the build is warm. You should see both tests (`app_shell_test` and `database_test`) listed with a green tick, and `Total: 2`, `Successful: 2`.
 
 **Decisions:** D-52 (TakeTray Dev), D-31 (no `INTERNET` permission), D-32 (Patrol on the S24).
 
