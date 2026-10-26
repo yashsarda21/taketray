@@ -40,6 +40,26 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 3. `components/internal/system_ui.dart › ttSystemUiStyle`: `ThemeData.estimateBrightnessForColor(background)`; a light background gives `SystemUiOverlayStyle.dark` (dark icons), a dark one `.light`. It sets `systemNavigationBarIconBrightness` the same way, because the constants assume a black navigation bar, and makes the status bar, navigation bar and divider transparent with `background.withValues(alpha: 0)`.
 4. Each frame, Flutter's `RenderView._updateSystemChrome` reads the style at the middle of the status bar (and, on Android, of the navigation bar); a lone region at the top supplies both. The first region found under a screen's `TtAppBar` or `TtVideoSurface` therefore sets the icon colours for that screen (D-51).
 
+### Database open and migrations
+
+Nothing opens the database yet: repositories (Tasks 6 to 8) read `appDatabaseProvider`, and the first screen that uses one opens it. See D-54.
+
+1. `data/database/connection.dart › appDatabase` (`appDatabaseProvider`, kept alive): `AppDatabase(driftDatabase(name: 'taketray'))`, which is `taketray.sqlite` in the app's private documents folder (drift_flutter, SQLite from the `sqlite3` package's build hooks); `ref.onDispose(db.close)`. Tests call `test/support/test_database.dart › testDatabase` instead, which passes `NativeDatabase.memory()`.
+2. Drift opens the file lazily, on the first query, and reads `PRAGMA user_version` (0 for a new file).
+3. `data/database/app_database.dart › AppDatabase.migration`:
+   1. `user_version` 0 (new file): `onCreate` runs `m.createAll()`, which creates the nine tables of `data/database/tables.dart` and the indexes `clips_date_taken_utc` and `clip_reels_reel_id`.
+   2. `user_version` equal to `schemaVersion` (1): nothing to migrate.
+   3. Any other version: `onUpgrade` throws `UnsupportedError` (only a database from a newer TakeTray gets here at version 1). Drift writes the new `user_version` only after `onUpgrade` succeeds, so the file is left as it was and the query fails.
+   4. `beforeOpen`: `PRAGMA foreign_keys = ON`, on every open, so `ON DELETE CASCADE` works.
+4. Drift sets `user_version` to `schemaVersion` and runs the waiting query. Instants are read and written through `data/database/converters.dart › UtcMillisConverter` (UTC milliseconds in int columns), enums through `textEnum` (by name).
+
+Changing the schema (by hand, `cd app`):
+1. Edit `data/database/tables.dart` and bump `AppDatabase.schemaVersion`.
+2. `../tool/dart run build_runner build`, then `../tool/dart run drift_dev make-migrations`: it dumps the new version to `drift_schemas/taketray/drift_schema_v<N>.json`, writes `lib/data/database/app_database.steps.dart` (the `stepByStep` helper), the schema helpers in `test/drift/taketray/generated/` and, once, `test/drift/taketray/migration_test.dart`.
+3. Replace the throwing `onUpgrade` with `stepByStep(from1To2: …)` and write each step; fill in the generated data-integrity test.
+4. `../tool/flutter test test/drift`: `migration_test.dart` migrates every older dump to every newer one and checks the schema; `schema_test.dart` opens every dump with today's `AppDatabase` and compares the result with the tables in code.
+5. Commit the code, the dump and the generated files together; `tool/check_generated` (step 4 of "Local checks") fails while any of them is stale. Editing a table without bumping the version fails there too: `make-migrations` exits with "A schema for version 1 of the taketray database already exists and differs from the current schema", and `schema_test.dart` reports the differing column.
+
 ### Local checks (`tool/check`)
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
