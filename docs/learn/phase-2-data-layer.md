@@ -1027,7 +1027,73 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 
 **Decisions:** D-60 (CI runs `tool/check`, CI goldens only, Patrol and the release check stay local), D-39 (the two sets of goldens).
 
-## 11. Proving it works on the phone *(coming in Task 12)*
+## 11. Proving it works on the phone
+
+**What we built:** one Patrol test, `app/patrol_test/database_test.dart`, that runs on your Samsung S24 inside **TakeTray Dev**. It opens the real database, saves a reel, reads it back and exports it. Alongside it, three checks on the release app: it still has no `INTERNET` permission, it contains the SQLite library, and it starts without crashing.
+
+**Why TakeTray needs it:** every database test so far ran on the Mac. A Mac test proves the rules are right, but it cannot prove the database works on the phone, for two reasons:
+
+- **SQLite is native code.** Drift talks to SQLite through the `sqlite3` package, which needs a compiled SQLite library for each kind of processor. On the Mac the tests load one built for the Mac. On Android the build has to put a different one (for the phone's ARM processor) inside the app. If it were missing, every host test would still be green and the real app would crash the first time it touched the database.
+- **The file lives in phone storage.** `driftDatabase(name: 'taketray')` creates the database file in the app's private folder. A host test uses memory or a temp folder, so it never exercises that.
+
+**Key ideas:**
+
+- **Check the library is in the APK.** An APK is a zip file, so you can list it. The release app contains the library for each processor type:
+
+  ```
+  $ unzip -l app/build/app/outputs/flutter-apk/app-release.apk | grep -i sqlite
+    1749200  01-01-1981 01:01   lib/arm64-v8a/libsqlite3.so
+    1733984  01-01-1981 01:01   lib/armeabi-v7a/libsqlite3.so
+    1725992  01-01-1981 01:01   lib/x86_64/libsqlite3.so
+  ```
+
+  The S24 is `arm64-v8a`, the first line. (The `sqlite3` package adds this file at build time through a "build hook", so there is nothing for us to copy by hand.)
+
+- **The test uses the app's real providers.** It does not start the app's screens; it makes a `ProviderContainer` (the Riverpod object that holds providers) and asks it for the same repository and backup service the app will use:
+
+  ```dart
+  final container = ProviderContainer();
+  addTearDown(container.dispose);
+
+  final reels = container.read(reelsRepositoryProvider);
+  final created = await reels.create('Goa trip 🌴');
+  ```
+
+  Reading `reelsRepositoryProvider` makes `appDatabaseProvider` open `taketray` in the app's storage, so this one line is the first time SQLite really runs on Android.
+
+- **Save, read back, export.** The test then proves the data went to the file and came back:
+
+  ```dart
+  final readBack = await reels.getById(created.id);
+  expect(readBack!.name, 'Goa trip 🌴');
+
+  final json = await container.read(backupServiceProvider).exportJson();
+  ```
+
+  It decodes the exported JSON and checks that the reel's name is in the `reels` list. The emoji is on purpose: it shows text outside plain ASCII survives the round trip through the phone's SQLite.
+
+- **TakeTray Dev keeps your real app safe.** Debug builds and Patrol install as `app.taketray.dev`, a separate app with its own storage (D-52). Patrol clears an app's data between tests, which is fine for TakeTray Dev and would be a disaster for TakeTray. Because of the different package name, the test reel lands in TakeTray Dev's database and the real TakeTray's data is never read, written or cleared. `tool/patrol` also adds `--no-uninstall`, so nothing is removed afterwards. You can see both apps side by side:
+
+  ```
+  $ tool/adb shell pm list packages app.taketray
+  package:app.taketray.dev
+  package:app.taketray
+  ```
+
+  (The list also shows the Patrol test APK `app.taketray.dev.test`, and older entries from earlier phases.)
+
+- **Last, run the real release app.** The release build is installed over the old one with `install -r` (keeps its data) and launched. The check is that it has a process id and logs no crash:
+
+  ```
+  tool/adb shell monkey -p app.taketray -c android.intent.category.LAUNCHER 1
+  tool/adb shell pidof app.taketray
+  ```
+
+**Where it lives:** `app/patrol_test/database_test.dart` (the test) and the "Phase 2 check" section of `docs/dev-setup.md` (what you check by eye).
+
+**Try it yourself:** with the phone connected and unlocked, from the repo root run `tool/patrol test -d RZCY80PHWCZ`. It takes about a minute. You should see both tests (`app_shell_test` and `database_test`) listed with a green tick, and `Total: 2`, `Successful: 2`.
+
+**Decisions:** D-52 (TakeTray Dev), D-31 (no `INTERNET` permission), D-32 (Patrol on the S24).
 
 ---
 

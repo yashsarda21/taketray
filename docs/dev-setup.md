@@ -80,3 +80,11 @@ Phase 1 is the design system: the shared look of the app and a catalogue that li
 4. Open "TakeTray UI". Every component should be listed in the catalogue.
 5. In the catalogue, switch between light, dark and video, and set the text size to 2.0. No layout should break: no text cut off or overlapping, and nothing sticking out of its box.
 6. Look at the buttons, cards, the shooting card and the tag player controls. They should look like the prototype (`design/prototype/index.html`).
+
+## Phase 2 check
+
+Phase 2 is the data layer: the database that stores reels, clips and settings. It has no screens yet, so there is almost nothing to see. The controller has already run the on-device test (`app/patrol_test/database_test.dart`) on the phone: it opened the real database inside TakeTray Dev, saved a reel, read it back and exported it. It then installed the TakeTray release app again. Check these on the phone:
+
+1. The phone shows two apps: **TakeTray** and **TakeTray Dev** (the test copy that Patrol installs).
+2. TakeTray opens as before, on Reels, with the floating pill of tabs.
+3. Nothing else is visible this phase: the data layer has no screens yet. If TakeTray opens and does not crash, the check passes.
