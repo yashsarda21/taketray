@@ -13,3 +13,8 @@ targets:
           # Times are int columns with UtcMillisConverter, never drift's
           # DateTime columns; this keeps any DateTime column numeric too.
           store_date_time_values_as_text: false
+      json_serializable:
+        options:
+          # Nested models (Clip.fingerprint) are written as plain maps, so
+          # toJson() output can go straight back into fromJson().
+          explicit_to_json: true

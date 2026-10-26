@@ -237,7 +237,115 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Decisions:** D-15 (Drift), D-53 (generated files and schema dumps are committed and checked), D-54 (this schema).
 
-## 4. Models and rules *(coming in Task 5)*
+## 4. Models and rules
+
+**What we built:** the app's own words for its data, and the small rules about them. Nine immutable model classes (`Reel`, `Clip`, `NewClip`, `ClipFingerprint`, `ReelReference`, `VnSession`, `VnCopy`, `ZoneEntry`, `AppSettings`) and five pure rules: how long a name may be, how a pasted link is cleaned, which site a link is from, which time zone the phone was in at a moment, and what to call a second VN folder with the same name. None of it touches the database yet; the repositories in Tasks 6 to 8 will use it.
+
+**Why TakeTray needs it:** the screens should be able to say `reel.status` and `clip.fingerprint.durationMs` without knowing there are tables underneath, and the rules ("40 characters", "the same Instagram reel is one reference") must be written once, so the reel form, the importer and the share handler all agree.
+
+**Key ideas:**
+
+- **A model is not a row.** Section 3 made `ReelRow`, which is exactly one line of the `reels` table: its field types are chosen to fit SQLite. `Reel` is the same information as the app thinks of it. Today they look alike; they will drift apart (a `Clip` will hold a `ClipFingerprint` object, while its row holds four flat columns). Keeping both means a change in how we store things does not ripple into every screen, and the `domain/` folder imports neither Flutter nor Drift, so it can be tested with nothing but Dart. A repository's job is to turn one into the other.
+
+- **What `freezed` writes for you.** This is the whole source of a model:
+
+  ```dart
+  @freezed
+  abstract class ZoneEntry with _$ZoneEntry {
+    const factory ZoneEntry({
+      required DateTime at,
+      required String zoneId,
+    }) = _ZoneEntry;
+
+    factory ZoneEntry.fromJson(Map<String, dynamic> json) =>
+        _$ZoneEntryFromJson(json);
+  }
+  ```
+
+  From those few lines the generators (`zone_entry.freezed.dart` and `zone_entry.g.dart`, never edited by hand) write the real class: `==` and `hashCode` that compare every field, `toString`, `copyWith`, and `toJson`/`fromJson`. If you know TypeScript, think of a `readonly` interface plus a spread-copy helper (`{...entry, zoneId: 'UTC'}`), but checked by the compiler.
+
+- **Why immutable helps.** Once built, a model can never change. If the To tag screen holds a `Clip`, no other code can quietly alter it while the screen is drawing. To "change" something you make a changed copy, and the old one is untouched:
+
+  ```dart
+  final c = a.copyWith(zoneId: 'Asia/Kolkata');
+  expect(c.zoneId, 'Asia/Kolkata');
+  expect(a.zoneId, 'UTC');
+  ```
+
+  Two models with the same fields are equal (`expect(a, b)`), which is what lets the UI skip redrawing something that did not change, and lets tests compare whole objects in one line. Even the list inside `AppSettings` is locked: adding to `settings.watchedFolders` throws.
+
+- **`Clip` and `NewClip`.** A clip that is about to be saved has no `id` yet (the database hands it out), no `firstSeenAt` and so on. So there are two types: `Clip` is one that is stored, `NewClip` is one that is not yet. `NewClip` has two ways to build it, one per source, each asking for exactly the identity that source has:
+
+  ```dart
+  NewClip.mediaStore(mediaStoreId: 1, volumeName: 'external_primary', fingerprint: ...)
+  NewClip.picker(pickerUri: 'content://...', fingerprint: ...)
+  ```
+
+  Section 3's database `CHECK` rules refuse a clip without its identity; `NewClip` refuses it one step earlier, in Dart, with a clear message (`a picker clip needs pickerUri`).
+
+- **Counting characters, not code.** Rule: a reel name is 1 to 40 characters after trimming spaces. In code, "length" is not what a person sees. This is real output from the tests:
+
+  ```dart
+  // 👨‍👩‍👧 is 5 code points and 8 UTF-16 units; 🇮🇳 is 2 code points.
+  expect(checkReelName('👨‍👩‍👧' * 40), isNull);
+  expect('e\u0301' * 40, hasLength(80));   // 40 "é" typed as e + an accent
+  expect(checkReelName('e\u0301' * 40), isNull);
+  ```
+
+  Dart's `String.length` counts 16-bit units, so a family emoji is 8 and an `é` typed as two pieces is 2. The rule uses the `characters` package, which counts what you see:
+
+  ```dart
+  final length = normalizeName(raw).characters.length;
+  if (length == 0) return ReelNameProblem.empty;
+  if (length > reelNameMaxLength) return ReelNameProblem.tooLong;
+  ```
+
+  So 40 emoji pass and 41 fail, `'  Goa  '` is saved as `Goa`, and a name of only spaces is "empty". The label on a saved link works the same way with 60 as the limit, and empty or `null` simply means "no label".
+
+  A rule returns a *problem* (an enum value) or `null` for "fine". The screen turns the problem into a message in the user's language; the rule never contains text meant for the user. When a repository has to refuse, it throws `InvalidInputException(problem)` carrying that same enum.
+
+- **Cleaning a pasted link.** When you share an Instagram reel into TakeTray, the link carries tracking. Two shares of the same reel look different:
+
+  ```
+  https://www.instagram.com/reel/ABC/?igsh=one
+  https://www.instagram.com/reel/ABC/?igsh=two&utm_source=ig
+  ```
+
+  `normalizeReferenceUrl` turns both into `https://www.instagram.com/reel/ABC/`, so the second save is reported as "already saved" instead of adding a duplicate. Only the Instagram hosts lose their query; a YouTube link would break without `?v=`:
+
+  ```dart
+  if (!_instagramHosts.contains(parsed.host)) return withoutFragment;
+  ```
+
+  Edge cases the tests pin down: text with a space in it is not a link (`'not a url'`, or a pasted sentence), `ftp://x` and `mailto:` are refused (only `http` and `https`), `instagram.com/reel/ABC` with no `https://` is refused (it has no scheme), the path is kept as typed except that an Instagram link always ends in exactly one `/` (so `.../ABC`, `.../ABC/` and `.../ABC//` match), and `l.instagram.com/?u=...` is left alone because its query *is* the link. The function returns `null` for anything unusable, so the caller can't forget to check.
+
+  `referenceSourceOf` then picks the label (Instagram, YouTube, TikTok, or plain link) from the host. It matches the domain or a subdomain of it (`m.youtube.com`, `vm.tiktok.com`), and never a look-alike: `notinstagram.com` is a plain link.
+
+- **Which time zone was the phone in?** The phone records a *timeline* of "from this moment, in this zone" (`ZoneEntry`), oldest first. `zoneAt` finds the zone for a clip by taking the last entry that is not after the clip's time:
+
+  ```dart
+  expect(zoneAt(timeline, DateTime.utc(2026, 2, 28, 23, 59)), isNull);        // before the first entry
+  expect(zoneAt(timeline, DateTime.utc(2026, 3, 10, 12)), 'Europe/London');   // exactly at an entry
+  expect(zoneAt(timeline, DateTime.utc(2026, 3, 15)), 'Europe/London');       // between entries
+  ```
+
+  Before the first entry we do not know, so the answer is `null`, not a guess. It finds the entry by repeatedly halving the list (binary search) rather than walking all of it, so it stays quick when the timeline has years of travel in it.
+
+- **"Goa (2)".** VN gets a folder per reel, named after the reel. If a second session for a reel called "Goa" needs a folder, `uniqueFolderName` tries `Goa`, then `Goa (2)`, `Goa (3)` and so on:
+
+  ```dart
+  expect(uniqueFolderName('Goa', {'Goa', 'Goa (2)'}), 'Goa (3)');
+  expect(uniqueFolderName('Goa', {'Goa', 'Goa (3)'}), 'Goa (2)');   // a gap is filled
+  expect(uniqueFolderName('Goa', {'goa'}), 'Goa (2)');              // case does not matter
+  ```
+
+  Case is ignored because Android's shared storage treats `Goa` and `goa` as the same folder.
+
+**Where it lives:** `app/lib/domain/models/` (one file per model, plus `enums.dart` from Section 3) and `app/lib/domain/rules/` (`text_limits.dart`, `reference_url.dart`, `zone_lookup.dart`, `folder_names.dart`). Tests are in `app/test/domain/`, one file per rule and one for all the models.
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/domain)`. You should see `+71: All tests passed!`. Then break a rule on purpose: in `app/lib/domain/rules/text_limits.dart` change `const reelNameMaxLength = 40;` to `39`, run the same command, and watch `40 emoji pass and 41 fail` and the other limit tests fail. Change it back.
+
+**Decisions:** D-55.
 
 ## 5. Saving reels *(coming in Task 6)*
 

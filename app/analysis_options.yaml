@@ -12,3 +12,6 @@ linter:
   rules:
     # App code, not a library: no public API docs needed.
     public_member_api_docs: false
+    # freezed 4 still generates from `const factory Name(...)`; it rejects the
+    # new `factory new(...)` form this lint asks for. Revisit when it can.
+    unnecessary_type_name_in_constructor: false
