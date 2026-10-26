@@ -79,16 +79,18 @@ class ReelsRepository {
   ///
   /// The caller deletes this reel's VN copy files first (phase 8): once the
   /// reel is gone, nothing in the database says which files were copied.
-  /// Deleting an unknown id deletes no reel.
+  ///
+  /// An unknown [id] deletes no reel, but the orphan sweep still runs, so any
+  /// clip that is in no reel and no list is removed anyway.
   Future<void> delete(int id) async {
-    final removed = await _db.transaction(() async {
-      final before = await _countClips();
+    final (reels, orphans) = await _db.transaction(() async {
       // The links, references and VN rows go with the reel: ON DELETE CASCADE.
-      await (_db.delete(_db.reels)..where((r) => r.id.equals(id))).go();
-      await _db.deleteOrphanClips();
-      return before - await _countClips();
+      final reels = await (_db.delete(
+        _db.reels,
+      )..where((r) => r.id.equals(id))).go();
+      return (reels, await _db.deleteOrphanClips());
     });
-    _log.info('Deleted reel $id and $removed orphaned clips');
+    _log.info('Delete reel $id: removed $reels reel, swept $orphans clips');
   }
 
   /// Reel [id], or null when there is none.
@@ -130,12 +132,6 @@ class ReelsRepository {
     final updated = await (_db.update(_db.reels)..where((r) => r.id.equals(id)))
         .write(changes.copyWith(updatedAt: Value(_clock.now())));
     if (updated == 0) throw StateError('No reel with id $id');
-  }
-
-  Future<int> _countClips() async {
-    final count = _db.clips.id.count();
-    final query = _db.selectOnly(_db.clips)..addColumns([count]);
-    return (await query.map((row) => row.read(count)).getSingle()) ?? 0;
   }
 
   Reel _toReel(ReelRow row) => Reel(

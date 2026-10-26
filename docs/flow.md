@@ -65,11 +65,29 @@ Changing the schema (by hand, `cd app`):
 Nothing calls this yet; the reel screens (phase 4 onwards) will. See D-56.
 
 1. Phase 8 only, before step 2: the caller deletes the reel's VN copy files from `Movies/TakeTray/` (the `vn_copies` rows say which). Once the reel is deleted, nothing records them.
-2. `data/repositories/reels_repository.dart › ReelsRepository.delete(id)`: opens `_db.transaction`, so steps 3 to 5 all happen or none do.
-3. Counts the clips (`_countClips`), for the log line only.
-4. Deletes the `reels` row. SQLite's `ON DELETE CASCADE` (foreign keys are on, D-54) removes its `clip_reels`, `reel_references` and `vn_sessions` rows, and the `vn_copies` rows of those sessions.
-5. `data/database/housekeeping.dart › AppDatabase.deleteOrphanClips`: deletes every clip that has no `clip_reels` row and no `inbox` row. A clip still in another reel, in To tag or in Skipped stays. `vn_copies` rows are not touched (no foreign key to `clips`, D-54).
-6. The transaction commits; the repository logs the reel id and how many clips were removed (never the name, D-10). Any `watchAll` / `watchById` stream re-queries and emits again.
+2. `data/repositories/reels_repository.dart › ReelsRepository.delete(id)`: opens `_db.transaction`, so steps 3 and 4 both happen or neither does.
+3. Deletes the `reels` row (the call returns how many reels it deleted: 0 for an unknown id). SQLite's `ON DELETE CASCADE` (foreign keys are on, D-54) removes its `clip_reels`, `reel_references` and `vn_sessions` rows, and the `vn_copies` rows of those sessions.
+4. `data/database/housekeeping.dart › AppDatabase.deleteOrphanClips`: deletes every clip that has no `clip_reels` row and no `inbox` row, and returns how many. A clip still in another reel, in To tag or in Skipped stays. `vn_copies` rows are not touched (no foreign key to `clips`, D-54). This runs even when the id was unknown, so it also removes any orphan that was already there.
+5. The transaction commits; the repository logs the reel id, how many reels and how many clips were removed (never the name, D-10). Any `watchAll` / `watchById` stream re-queries and emits again.
+
+### Tagging data changes
+
+Nothing calls this yet; detection (phase 3), the tag player (phase 5) and the reel screens (phase 4 onwards) will. All in `data/repositories/clips_repository.dart › ClipsRepository`; every method that writes is one transaction, and every stream re-queries after any of the tables it reads change. See D-57. A clip's identity is `volumeName` + `mediaStoreId` (or `pickerUri`); "find" below means looking a clip up by that.
+
+| Method | Writes |
+|---|---|
+| `addDetectedClips(clips)` | For each clip: if found, nothing (its id is returned). If new: one `clips` row (`firstSeenAt` = now) and one `inbox` row `pending`. Never touches `clip_reels`, `reels`. |
+| `addNewClipsToReel(reelId, clips)` | For each clip: find, or insert a `clips` row. Then a `clip_reels` row (`addedAt` = now) for each clip the reel did not have, and `reels.updatedAt` = now if any was added. No `inbox` row; an existing one stays. |
+| `tagClip(clipId, reelIds)` | Deletes the `clip_reels` rows of reels not in `reelIds`; inserts rows (`addedAt` = now) for reels the clip was not in; rows that stay are not touched (`addedAt` kept). Deletes the clip's `inbox` row. `reels.updatedAt` = now for every reel that gained or lost the clip. `ArgumentError` if `reelIds` is empty. |
+| `untagToInbox(clipId)` | Deletes all the clip's `clip_reels` rows; writes its `inbox` row as `pending` (`addedAt` = now); `reels.updatedAt` = now for the reels that lost it. |
+| `skip(ids)` / `restore(ids)` | `inbox.state` = `skipped` / `pending` for the ids that have an `inbox` row. Nothing else. |
+| `addClipsToReel(reelId, ids)` | A `clip_reels` row for each clip the reel did not have; `reels.updatedAt` = now if any was added. `inbox` untouched. |
+| `removeClipsFromReel(reelId, ids)` | Deletes those `clip_reels` rows; `reels.updatedAt` = now if any was removed; then `deleteOrphanClips()` (a clip in no reel and no list is deleted; its `vn_copies` row stays). |
+| `recordVerification(found:, missing:)` | `clips.missing` and `clips.lastVerifiedAt` = now for the listed clips. |
+
+Streams (`watchInbox(state)`, `watchPendingCount()`, `watchReelClips(reelId)`, `watchReelIdsOf(clipId)`) write nothing. The first and third sort by `clips.dateTakenUtc`, ties by `clips.id`.
+
+An unknown clip or reel id throws `StateError` (rolling the transaction back) in every method that takes one, except `skip`/`restore`, which ignore ids that have no `inbox` row.
 
 ### Local checks (`tool/check`)
 

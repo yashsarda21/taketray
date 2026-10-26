@@ -365,12 +365,16 @@ void main() {
       expect(await db.select(db.vnCopies).get(), hasLength(1));
     });
 
-    test('an unknown id changes nothing', () async {
+    test('an unknown id deletes no reel but still sweeps orphans', () async {
       final reel = await repo.create('Goa');
+      final inReel = await insertClip(1);
+      await link(inReel, reel.id);
+      await insertClip(2); // an orphan: in no reel, not in To tag
 
       await repo.delete(99);
 
       expect(await repo.getById(reel.id), reel);
+      expect(await clipIds(), [inReel]);
     });
   });
 
@@ -391,9 +395,11 @@ void main() {
             ),
           );
 
-      await db.deleteOrphanClips();
+      final deleted = await db.deleteOrphanClips();
 
+      expect(deleted, 1);
       expect(await clipIds(), [inReel, inInbox]);
+      expect(await db.deleteOrphanClips(), 0);
     });
   });
 }

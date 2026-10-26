@@ -15,12 +15,18 @@ extension Housekeeping on AppDatabase {
   /// purpose (D-54), because a VN copy file must still be found and deleted
   /// after its clip row is gone.
   ///
+  /// Returns how many clips it deleted.
+  ///
+  /// The sweep is global, so a caller that inserts a clip must give it a
+  /// `clip_reels` or `inbox` row in the same transaction, or a concurrent
+  /// sweep could delete it first.
+  ///
   /// This is one statement, so it is atomic by itself; callers that need it
   /// together with other changes run it inside their own `transaction`.
-  Future<void> deleteOrphanClips() async {
+  Future<int> deleteOrphanClips() {
     final inAReel = selectOnly(clipReels)..addColumns([clipReels.clipId]);
     final inInbox = selectOnly(inbox)..addColumns([inbox.clipId]);
-    await (delete(clips)..where(
+    return (delete(clips)..where(
           (c) => c.id.isNotInQuery(inAReel) & c.id.isNotInQuery(inInbox),
         ))
         .go();

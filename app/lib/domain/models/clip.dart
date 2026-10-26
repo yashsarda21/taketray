@@ -38,9 +38,16 @@ abstract class Clip with _$Clip {
 /// `lastVerifiedAt`).
 ///
 /// Build one with [NewClip.mediaStore] or [NewClip.picker], which take the
-/// identity their source needs. The main constructor asserts that the
-/// identity fields match [source] (the same rule the database enforces with
-/// `CHECK`s, D-54), so a half-empty identity fails in tests, not in SQL.
+/// identity their source needs.
+///
+/// [width], [height] and the fingerprint's `dateTakenUtc` are required, and
+/// the repository stores them as given (D-57). Phase 3's bridge supplies the
+/// date from DATE_ADDED, then DATE_MODIFIED, when MediaStore has no date
+/// taken, and `0` for a width or height MediaStore does not know.
+///
+/// The main constructor asserts that the identity fields match [source] (the
+/// same rule the database enforces with `CHECK`s, D-54), so a half-empty
+/// identity fails in tests, not in SQL.
 @freezed
 abstract class NewClip with _$NewClip {
   @Assert(

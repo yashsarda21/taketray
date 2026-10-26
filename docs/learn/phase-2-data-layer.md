@@ -40,13 +40,15 @@ How a video moves through TakeTray's data. Phase 3 does the detecting; this phas
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ToTag: detected while Shooting mode is on
-    ToTag --> InReels: tagged into one or more reels
-    ToTag --> Skipped: Skip
-    Skipped --> ToTag: Restore
-    InReels --> ToTag: Undo
-    InReels --> InReels: added to / removed from more reels
-    InReels --> [*]: removed from its last reel (the clip's record is deleted, the video is not)
+    [*] --> ToTag: addDetectedClips (detected while Shooting mode is on)
+    [*] --> InReels: addNewClipsToReel (picked by hand, phase 7)
+    ToTag --> InReels: tagClip
+    ToTag --> Skipped: skip
+    Skipped --> ToTag: restore
+    Skipped --> InReels: tagClip
+    InReels --> ToTag: untagToInbox (Undo)
+    InReels --> InReels: tagClip / addClipsToReel / removeClipsFromReel
+    InReels --> [*]: removeClipsFromReel from its last reel (the clip's record is deleted, the video is not)
 ```
 
 ---
@@ -390,16 +392,16 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 - **A transaction: all of it, or none of it.** Deleting a reel is several changes: the reel, its links to clips, its saved references, its VN rows, and then any clip left with no home. If the app were killed after the first and before the last, the database would be half-cleaned. A transaction groups the changes so that SQLite either keeps all of them or none (like `BEGIN` / `COMMIT` in MySQL). This is the real delete:
 
   ```dart
-  final removed = await _db.transaction(() async {
-    final before = await _countClips();
+  final (reels, orphans) = await _db.transaction(() async {
     // The links, references and VN rows go with the reel: ON DELETE CASCADE.
-    await (_db.delete(_db.reels)..where((r) => r.id.equals(id))).go();
-    await _db.deleteOrphanClips();
-    return before - await _countClips();
+    final reels = await (_db.delete(
+      _db.reels,
+    )..where((r) => r.id.equals(id))).go();
+    return (reels, await _db.deleteOrphanClips());
   });
   ```
 
-  Only one `delete` is written by hand. The reel's links, references and VN session rows disappear by themselves because the tables were declared with `ON DELETE CASCADE` (Section 3). The counting is only there so the log can say "removed 2 clips" (ids and counts, never the reel's name).
+  Only one `delete` is written by hand. The reel's links, references and VN session rows disappear by themselves because the tables were declared with `ON DELETE CASCADE` (Section 3). Both `delete` calls report how many rows they removed, and that is what the log line prints ("removed 1 reel, swept 2 clips": ids and counts, never the reel's name). An unknown id removes no reel but the orphan sweep still runs, and the test `an unknown id deletes no reel but still sweeps orphans` proves it.
 
 - **A Stream: a query that keeps answering.** A normal query returns the rows once. A Drift `watch()` query returns a `Stream`: it sends the current rows straight away and sends them again every time the table changes. Home listens once and its list updates by itself when a reel is renamed or deleted, without any "refresh" code:
 
@@ -425,13 +427,13 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   ]);
   ```
 
-- **The orphan rule.** A clip record is only useful while something points at it: a reel (a `clip_reels` row) or a list (an `inbox` row, for To tag or Skipped). A clip with neither is an *orphan*: no screen can reach it. The rule, written once so Task 7 can reuse it when a clip leaves its last reel:
+- **The orphan rule.** A clip record is only useful while something points at it: a reel (a `clip_reels` row) or a list (an `inbox` row, for To tag or Skipped). A clip with neither is an *orphan*: no screen can reach it. The rule, written once so Section 6 can reuse it when a clip leaves its last reel (it returns how many clips it deleted):
 
   ```dart
-  Future<void> deleteOrphanClips() async {
+  Future<int> deleteOrphanClips() {
     final inAReel = selectOnly(clipReels)..addColumns([clipReels.clipId]);
     final inInbox = selectOnly(inbox)..addColumns([inbox.clipId]);
-    await (delete(clips)..where(
+    return (delete(clips)..where(
           (c) => c.id.isNotInQuery(inAReel) & c.id.isNotInQuery(inInbox),
         ))
         .go();
@@ -450,11 +452,146 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/data/repositories/reels_repository.dart` (with its generated `reelsRepositoryProvider`, which hands out one repository built from the database and clock providers), `app/lib/data/database/housekeeping.dart`, and the tests in `app/test/data/repositories/reels_repository_test.dart`.
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories)`. You should see `+20: All tests passed!`. Then break the orphan rule on purpose: in `app/lib/data/database/housekeeping.dart` remove the `& c.id.isNotInQuery(inInbox)` part, run the same command, and watch `delete keeps a clip that is in To tag or Skipped` and `deleteOrphanClips deletes only clips with no reel and no inbox row` fail. Put the line back afterwards.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/reels_repository_test.dart)`. You should see `+20: All tests passed!`. Then break the orphan rule on purpose: in `app/lib/data/database/housekeeping.dart` remove the `& c.id.isNotInQuery(inInbox)` part, run the same command, and watch `delete keeps a clip that is in To tag or Skipped` and `deleteOrphanClips deletes only clips with no reel and no inbox row` fail. Put the line back afterwards.
 
 **Decisions:** D-56 (names are not unique, the shared orphan rule, delete as one transaction), D-54 (the cascades and the VN copy rows that outlive their clip), D-10 (no names in logs).
 
-## 6. Clips and the To tag list *(coming in Task 7)*
+## 6. Clips and the To tag list
+
+**What we built:** `ClipsRepository`, the one class that saves clips the detector finds, files them into reels, undoes that, skips and restores them, adds and removes clips by hand, records whether the video files are still there, and offers the lists the screens will show. Nothing in the app calls it yet; detection (phase 3), the reel screens and the tag player (phases 4 and 5) will.
+
+**Why TakeTray needs it:** while Shooting mode is on, the phone will report every new video. The creator later sorts them: "this one is for the Goa reel, that one for Paris, skip the blurry one". The data layer must never save the same video twice, never lose a clip halfway through a change, and never keep a clip record that nothing refers to.
+
+**Key ideas:**
+
+- **The life of a clip, with the real method names.** The diagram at the top of this guide is the whole story; each arrow is one method of `ClipsRepository`. Walking one clip through it:
+
+  | Step | Method | What is written |
+  |---|---|---|
+  | The detector finds it | `addDetectedClips` | a `clips` row and an `inbox` row `pending`: it is in To tag |
+  | You tag it into Goa and Paris | `tagClip(id, {goa, paris})` | two `clip_reels` rows; the `inbox` row is deleted |
+  | You tap Undo | `untagToInbox(id)` | both `clip_reels` rows deleted; `inbox` row `pending` again |
+  | You skip it | `skip([id])` | `inbox.state` becomes `skipped` |
+  | You change your mind | `restore([id])` | `inbox.state` is `pending` again |
+  | You tag it into Goa, then remove it | `tagClip`, then `removeClipsFromReel(goa, [id])` | the link goes, then the orphan rule deletes the clip record (the video file stays) |
+
+  A clip is always in at least one of three places: To tag or Skipped (an `inbox` row), or one or more reels (`clip_reels` rows). The moment it is in none of them it is an *orphan* (Section 5) and is deleted. That is why every method below that adds a clip also gives it a place **in the same transaction**: a clip with no place, even for a moment, could be swept away by any other delete (the sweep looks at the whole table).
+
+- **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addDetectedClips` first asks "do I already know this clip?", using its identity: the MediaStore id plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
+
+  ```dart
+  Future<int?> _findId(NewClip clip) {
+    final query = _db.selectOnly(_db.clips)..addColumns([_db.clips.id]);
+    switch (clip.source) {
+      case ClipSource.mediaStore:
+        query.where(
+          _db.clips.volumeName.equals(clip.volumeName!) &
+              _db.clips.mediaStoreId.equals(clip.mediaStoreId!),
+        );
+      case ClipSource.picker:
+        query.where(_db.clips.pickerUri.equals(clip.pickerUri!));
+    }
+    return query.map((row) => row.read(_db.clips.id)).getSingleOrNull();
+  }
+  ```
+
+  and only a clip that is new gets inserted, together with its To tag entry:
+
+  ```dart
+  for (final clip in clips) {
+    final known = await _findId(clip);
+    if (known != null) {
+      ids.add(known);
+      continue;
+    }
+    final id = await _insertClip(clip, now);
+    await _db
+        .into(_db.inbox)
+        .insert(
+          InboxCompanion.insert(
+            clipId: Value(id),
+            state: InboxState.pending,
+            addedAt: now,
+          ),
+        );
+    ids.add(id);
+    added++;
+  }
+  ```
+
+  A known clip is simply skipped: its id is returned, and *nothing else happens*. That has a second effect that matters: a clip you already tagged into a reel, if it is reported again, does **not** come back to To tag, because "known" means no new `inbox` row. (The database's unique keys from Section 3 are the safety net behind this check, but the check is what makes the answer "same id" instead of an error.) The tests are named after the situations: `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`.
+
+- **Adding to a reel by hand, in one step.** Phase 7 lets you pick videos for a reel directly, which skips To tag. The method finds-or-inserts each clip and links it to the reel in one transaction, so there is no moment when the clip exists with no place:
+
+  ```dart
+  final ids = await _db.transaction(() async {
+    await _requireReel(reelId);
+    final now = _clock.now();
+    final ids = <int>[];
+    for (final clip in clips) {
+      ids.add(await _findId(clip) ?? await _insertClip(clip, now));
+    }
+    await _link(reelId, ids.toSet(), now);
+    return ids;
+  });
+  ```
+
+  The test `a clip added this way survives the orphan sweep` calls `deleteOrphanClips()` right afterwards and checks the clip is still there.
+
+- **Tagging replaces the links but keeps `addedAt`.** `tagClip(id, {goa, paris})` does not mean "add these"; it means "the clip is in *exactly* these reels". So the method compares the reels it is in now with the ones you asked for, removes the difference one way, adds it the other way, and leaves the reels that are in both alone:
+
+  ```dart
+  final current = await _reelIdsOf(clipId);
+  final gained = reelIds.difference(current);
+  final lost = current.difference(reelIds);
+  ```
+
+  Each link has an `addedAt`, the moment the clip joined *that reel*. Deleting all the links and inserting them again would reset that time for reels that never changed, so only the `lost` links are deleted and only the `gained` ones are inserted: a clip tagged into Paris on Monday and re-tagged on Friday as "Paris and Goa" still says Monday for Paris. The reels that gained or lost the clip also get a new `updatedAt`, so Home puts them on top; the reel it merely stayed in does not move. The clip's `inbox` row is deleted in the same transaction, which is what takes it out of To tag, and an empty set of reels is refused with an `ArgumentError` (a clip in no reel is Undo's job, not tagging's).
+
+- **Undo is the reverse, in one transaction.** `untagToInbox` deletes every link and writes the `inbox` row back as `pending`:
+
+  ```dart
+  await _db
+      .into(_db.inbox)
+      .insertOnConflictUpdate(
+        InboxCompanion.insert(
+          clipId: Value(clipId),
+          state: InboxState.pending,
+          addedAt: now,
+        ),
+      );
+  ```
+
+  Because the `inbox` row is written *as* the links go, the clip is never an orphan in between.
+
+- **Removing a clip, and the orphan rule.** `removeClipsFromReel` deletes the links and then runs the sweep from Section 5, so a clip that was in no other reel and no list is deleted, while one still in another reel, To tag or Skipped stays:
+
+  ```dart
+  final removed = await (_db.delete(
+    _db.clipReels,
+  )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(ids))).go();
+  if (removed > 0) await _touchReels({reelId}, _clock.now());
+  return (removed, await _db.deleteOrphanClips());
+  ```
+
+  Only the clip's *record* goes, never the video. Its row in `vn_copies` (a copy made for the VN editor) stays on purpose (D-54), and a test checks it.
+
+- **Lists that update themselves.** As in Section 5, `watch…` methods return Streams that send the current rows and again after each change: `watchInbox(InboxState.pending)` is To tag, `watchInbox(InboxState.skipped)` is Skipped, `watchPendingCount()` is the badge on the To tag tab, `watchReelClips(reelId)` is a reel's clips and `watchReelIdsOf(clipId)` tells the tag panel which reels are ticked. Both clip lists are sorted by the time the video was shot, oldest first, and clips with the same time are ordered by id so the list never shuffles:
+
+  ```dart
+  ..orderBy([
+    OrderingTerm.asc(_db.clips.dateTakenUtc),
+    OrderingTerm.asc(_db.clips.id),
+  ]);
+  ```
+
+- **Unknown times and sizes are the caller's job.** `dateTakenUtc`, `width` and `height` can never be empty in the database. The repository stores what it is given; the phase 3 code that talks to Android fills a missing date from the date the video was added (then modified), and a missing width or height with `0` (D-57).
+
+**Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`.
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+43: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards.
+
+**Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 
 ## 7. References, VN folders, settings and time zones *(coming in Task 8)*
 
