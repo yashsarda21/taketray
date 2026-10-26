@@ -79,9 +79,10 @@ class ClipsRepository {
   /// videos by hand). Returns their ids, in input order.
   ///
   /// The same identity rule as [addDetectedClips], but a new clip gets a link
-  /// to the reel instead of an `inbox` row. A known clip is found and linked;
-  /// if it is also in To tag it stays there. A clip the reel already has keeps
-  /// its `addedAt`. The reel's `updatedAt` moves only when a link was added.
+  /// to the reel instead of an `inbox` row. A known clip is found and linked,
+  /// and leaves To tag or Skipped (its `inbox` row is deleted), as when it is
+  /// tagged. A clip the reel already has keeps its `addedAt`. The reel's
+  /// `updatedAt` moves only when a link was added.
   ///
   /// Inserting and linking are one transaction, because the orphan sweep is
   /// global: a clip with neither a link nor an `inbox` row could be deleted by
@@ -130,15 +131,7 @@ class ClipsRepository {
         )..where((l) => l.clipId.equals(clipId) & l.reelId.isIn(lost))).go();
       }
       for (final reelId in gained) {
-        await _db
-            .into(_db.clipReels)
-            .insert(
-              ClipReelsCompanion.insert(
-                clipId: clipId,
-                reelId: reelId,
-                addedAt: now,
-              ),
-            );
+        await _insertLink(clipId, reelId, now);
       }
       await (_db.delete(_db.inbox)..where((i) => i.clipId.equals(clipId))).go();
       await _touchReels({...gained, ...lost}, now);
@@ -154,7 +147,10 @@ class ClipsRepository {
   /// clip back in To tag as `pending`. The `updatedAt` of the reels that lost
   /// it is set to now. Throws [StateError] when there is no such clip.
   ///
-  /// The clip stays in the database: it has an `inbox` row again.
+  /// This is bigger than "undo the last tag": it removes *every* link, also
+  /// ones that existed before the last [tagClip], and it rewrites the `inbox`
+  /// row of a clip that is already pending (its `addedAt` becomes now). The
+  /// clip stays in the database: it has an `inbox` row again.
   Future<void> untagToInbox(int clipId) async {
     await _db.transaction(() async {
       await _requireClip(clipId);
@@ -189,7 +185,9 @@ class ClipsRepository {
 
   /// Adds existing clips to reel [reelId]. A clip the reel already has keeps
   /// its `addedAt`. The reel's `updatedAt` is set to now when a link was
-  /// added. The clips' `inbox` rows are not touched.
+  /// added. The clips leave To tag and Skipped (their `inbox` rows are
+  /// deleted, whatever their state), as when they are tagged: adding a clip to
+  /// a reel by hand is a stronger choice than leaving it for later.
   ///
   /// Throws [StateError], changing nothing, when the reel or a clip does not
   /// exist.
@@ -332,9 +330,9 @@ class ClipsRepository {
         ),
       );
 
-  /// Links [clipIds] to [reelId], skipping links that exist, and sets the
-  /// reel's `updatedAt` when at least one link was added. Run inside a
-  /// transaction.
+  /// Links [clipIds] to [reelId], skipping links that exist, deletes their
+  /// `inbox` rows, and sets the reel's `updatedAt` when at least one link was
+  /// added. Run inside a transaction.
   Future<void> _link(int reelId, Set<int> clipIds, DateTime now) async {
     if (clipIds.isEmpty) return;
     final existing = await (_db.select(
@@ -342,18 +340,17 @@ class ClipsRepository {
     )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(clipIds))).get();
     final missing = clipIds.difference({for (final l in existing) l.clipId});
     for (final clipId in missing) {
-      await _db
-          .into(_db.clipReels)
-          .insert(
-            ClipReelsCompanion.insert(
-              clipId: clipId,
-              reelId: reelId,
-              addedAt: now,
-            ),
-          );
+      await _insertLink(clipId, reelId, now);
     }
+    await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(clipIds))).go();
     if (missing.isNotEmpty) await _touchReels({reelId}, now);
   }
+
+  Future<void> _insertLink(int clipId, int reelId, DateTime now) => _db
+      .into(_db.clipReels)
+      .insert(
+        ClipReelsCompanion.insert(clipId: clipId, reelId: reelId, addedAt: now),
+      );
 
   Future<void> _setInboxState(Iterable<int> clipIds, InboxState state) async {
     final ids = clipIds.toSet();

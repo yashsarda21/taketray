@@ -77,17 +77,17 @@ Nothing calls this yet; detection (phase 3), the tag player (phase 5) and the re
 | Method | Writes |
 |---|---|
 | `addDetectedClips(clips)` | For each clip: if found, nothing (its id is returned). If new: one `clips` row (`firstSeenAt` = now) and one `inbox` row `pending`. Never touches `clip_reels`, `reels`. |
-| `addNewClipsToReel(reelId, clips)` | For each clip: find, or insert a `clips` row. Then a `clip_reels` row (`addedAt` = now) for each clip the reel did not have, and `reels.updatedAt` = now if any was added. No `inbox` row; an existing one stays. |
+| `addNewClipsToReel(reelId, clips)` | For each clip: find, or insert a `clips` row. Then a `clip_reels` row (`addedAt` = now) for each clip the reel did not have, and `reels.updatedAt` = now if any was added. No `inbox` row is created; the clips' existing `inbox` rows (pending or skipped) are deleted. |
 | `tagClip(clipId, reelIds)` | Deletes the `clip_reels` rows of reels not in `reelIds`; inserts rows (`addedAt` = now) for reels the clip was not in; rows that stay are not touched (`addedAt` kept). Deletes the clip's `inbox` row. `reels.updatedAt` = now for every reel that gained or lost the clip. `ArgumentError` if `reelIds` is empty. |
 | `untagToInbox(clipId)` | Deletes all the clip's `clip_reels` rows; writes its `inbox` row as `pending` (`addedAt` = now); `reels.updatedAt` = now for the reels that lost it. |
 | `skip(ids)` / `restore(ids)` | `inbox.state` = `skipped` / `pending` for the ids that have an `inbox` row. Nothing else. |
-| `addClipsToReel(reelId, ids)` | A `clip_reels` row for each clip the reel did not have; `reels.updatedAt` = now if any was added. `inbox` untouched. |
+| `addClipsToReel(reelId, ids)` | A `clip_reels` row for each clip the reel did not have; `reels.updatedAt` = now if any was added. The clips' `inbox` rows (pending or skipped) are deleted. |
 | `removeClipsFromReel(reelId, ids)` | Deletes those `clip_reels` rows; `reels.updatedAt` = now if any was removed; then `deleteOrphanClips()` (a clip in no reel and no list is deleted; its `vn_copies` row stays). |
 | `recordVerification(found:, missing:)` | `clips.missing` and `clips.lastVerifiedAt` = now for the listed clips. |
 
 Streams (`watchInbox(state)`, `watchPendingCount()`, `watchReelClips(reelId)`, `watchReelIdsOf(clipId)`) write nothing. The first and third sort by `clips.dateTakenUtc`, ties by `clips.id`.
 
-An unknown clip or reel id throws `StateError` (rolling the transaction back) in every method that takes one, except `skip`/`restore`, which ignore ids that have no `inbox` row.
+Unknown ids: an unknown reel throws `StateError` in `addNewClipsToReel`, `tagClip`, `addClipsToReel` and `removeClipsFromReel`; an unknown clip throws `StateError` in `tagClip`, `untagToInbox` and `addClipsToReel`. Each check runs before the first write, so nothing is changed. `skip`, `restore`, `removeClipsFromReel` and `recordVerification` ignore clip ids that do not exist (`skip`/`restore` also ignore clips with no `inbox` row).
 
 ### Local checks (`tool/check`)
 

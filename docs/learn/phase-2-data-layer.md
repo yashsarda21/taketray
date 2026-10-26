@@ -42,10 +42,10 @@ How a video moves through TakeTray's data. Phase 3 does the detecting; this phas
 stateDiagram-v2
     [*] --> ToTag: addDetectedClips (detected while Shooting mode is on)
     [*] --> InReels: addNewClipsToReel (picked by hand, phase 7)
-    ToTag --> InReels: tagClip
+    ToTag --> InReels: tagClip / addClipsToReel
     ToTag --> Skipped: skip
     Skipped --> ToTag: restore
-    Skipped --> InReels: tagClip
+    Skipped --> InReels: tagClip / addClipsToReel
     InReels --> ToTag: untagToInbox (Undo)
     InReels --> InReels: tagClip / addClipsToReel / removeClipsFromReel
     InReels --> [*]: removeClipsFromReel from its last reel (the clip's record is deleted, the video is not)
@@ -475,7 +475,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | You change your mind | `restore([id])` | `inbox.state` is `pending` again |
   | You tag it into Goa, then remove it | `tagClip`, then `removeClipsFromReel(goa, [id])` | the link goes, then the orphan rule deletes the clip record (the video file stays) |
 
-  A clip is always in at least one of three places: To tag or Skipped (an `inbox` row), or one or more reels (`clip_reels` rows). The moment it is in none of them it is an *orphan* (Section 5) and is deleted. That is why every method below that adds a clip also gives it a place **in the same transaction**: a clip with no place, even for a moment, could be swept away by any other delete (the sweep looks at the whole table).
+  A clip is always in at least one of two kinds of place: a list (an `inbox` row: To tag or Skipped) or one or more reels (`clip_reels` rows), and this repository never puts it in both kinds at once. The moment it is in none of them it is an *orphan* (Section 5) and is deleted. That is why each method that inserts a clip also gives it a place in the same database transaction (a group of changes that is saved all together): a clip with no place, even for a moment, could be swept away by another delete, because the sweep looks at the whole table.
 
 - **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addDetectedClips` first asks "do I already know this clip?", using its identity: the MediaStore id plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
 
@@ -521,7 +521,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   A known clip is simply skipped: its id is returned, and *nothing else happens*. That has a second effect that matters: a clip you already tagged into a reel, if it is reported again, does **not** come back to To tag, because "known" means no new `inbox` row. (The database's unique keys from Section 3 are the safety net behind this check, but the check is what makes the answer "same id" instead of an error.) The tests are named after the situations: `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`.
 
-- **Adding to a reel by hand, in one step.** Phase 7 lets you pick videos for a reel directly, which skips To tag. The method finds-or-inserts each clip and links it to the reel in one transaction, so there is no moment when the clip exists with no place:
+- **Adding to a reel by hand, in one step.** Phase 7 lets you pick videos for a reel directly, which skips To tag. The method finds-or-inserts each clip and links it to the reel in one transaction, so there is no moment when the clip exists with no place. If the picked video was already waiting in To tag or Skipped, adding it to a reel takes it out of there, the same as tagging does (`_link` deletes its `inbox` row), so a clip is never in a reel and in a list at once:
 
   ```dart
   final ids = await _db.transaction(() async {
@@ -534,6 +534,16 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
     await _link(reelId, ids.toSet(), now);
     return ids;
   });
+  ```
+
+  The helper `_link` that finishes the job adds only the missing links and clears the clips' To tag / Skipped entries:
+
+  ```dart
+  for (final clipId in missing) {
+    await _insertLink(clipId, reelId, now);
+  }
+  await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(clipIds))).go();
+  if (missing.isNotEmpty) await _touchReels({reelId}, now);
   ```
 
   The test `a clip added this way survives the orphan sweep` calls `deleteOrphanClips()` right afterwards and checks the clip is still there.
@@ -562,7 +572,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
       );
   ```
 
-  Because the `inbox` row is written *as* the links go, the clip is never an orphan in between.
+  The links are deleted first and the `inbox` row written second, but both happen in one transaction, so no other query can see the clip in between and the clip is never swept as an orphan. Note that Undo is bigger than "undo the last tag": it removes *every* link of the clip, also ones it had before.
 
 - **Removing a clip, and the orphan rule.** `removeClipsFromReel` deletes the links and then runs the sweep from Section 5, so a clip that was in no other reel and no list is deleted, while one still in another reel, To tag or Skipped stays:
 
@@ -589,7 +599,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`.
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+43: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+45: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards.
 
 **Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 

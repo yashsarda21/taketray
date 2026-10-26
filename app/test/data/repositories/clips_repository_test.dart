@@ -210,7 +210,6 @@ void main() {
     });
 
     test('finds a clip that is already known and links it', () async {
-      final other = await reels.create('Other');
       final goa = await reels.create('Goa');
       final known = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
 
@@ -222,9 +221,27 @@ void main() {
       expect(ids.first, known);
       expect(await clipIds(), hasLength(2));
       expect(await reelIdsOf(known), {goa.id});
-      expect(await reelIdsOf(known), isNot(contains(other.id)));
-      // It was in To tag before and is still there: this only adds a link.
-      expect(await inboxRows(), hasLength(1));
+      // It was in To tag before; adding it to a reel takes it out.
+      expect(await inboxRows(), isEmpty);
+    });
+
+    test('a pending or skipped clip added to a reel leaves To tag', () async {
+      final reel = await reels.create('Goa');
+      final ids = await repo.addDetectedClips([
+        mediaStoreClip(10),
+        mediaStoreClip(11),
+        mediaStoreClip(12),
+      ]);
+      await repo.skip([ids[1]]);
+
+      await repo.addNewClipsToReel(reel.id, [
+        mediaStoreClip(10),
+        mediaStoreClip(11),
+      ]);
+
+      expect((await inboxRows()).map((r) => r.clipId), [ids[2]]);
+      expect(await reelIdsOf(ids[0]), {reel.id});
+      expect(await reelIdsOf(ids[1]), {reel.id});
     });
 
     test('a clip added this way survives the orphan sweep', () async {
@@ -432,6 +449,22 @@ void main() {
       expect(await updatedAt(reel.id), _t0.add(_minute));
     });
 
+    test('add takes pending and skipped clips out of To tag', () async {
+      final reel = await reels.create('Goa');
+      final ids = await repo.addDetectedClips([
+        mediaStoreClip(10),
+        mediaStoreClip(11),
+        mediaStoreClip(12),
+      ]);
+      await repo.skip([ids[1]]);
+
+      await repo.addClipsToReel(reel.id, [ids[0], ids[1]]);
+
+      expect((await inboxRows()).map((r) => r.clipId), [ids[2]]);
+      expect(await repo.watchPendingCount().first, 1);
+      expect(await repo.watchInbox(InboxState.skipped).first, isEmpty);
+    });
+
     test(
       'add throws for an unknown reel or clip and changes nothing',
       () async {
@@ -445,6 +478,7 @@ void main() {
         );
 
         expect(await db.select(db.clipReels).get(), isEmpty);
+        expect(await inboxRows(), hasLength(1));
       },
     );
 
@@ -481,12 +515,30 @@ void main() {
 
     test('a clip that is in To tag or Skipped stays', () async {
       final reel = await reels.create('Goa');
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.addNewClipsToReel(reel.id, [
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
-      await repo.addClipsToReel(reel.id, ids);
-      await repo.skip([ids[1]]);
+      // The repository never leaves a clip in a reel and in a list at once,
+      // so put the inbox rows in by hand to test the sweep on its own.
+      await db
+          .into(db.inbox)
+          .insert(
+            InboxCompanion.insert(
+              clipId: Value(ids[0]),
+              state: InboxState.pending,
+              addedAt: _t0,
+            ),
+          );
+      await db
+          .into(db.inbox)
+          .insert(
+            InboxCompanion.insert(
+              clipId: Value(ids[1]),
+              state: InboxState.skipped,
+              addedAt: _t0,
+            ),
+          );
 
       await repo.removeClipsFromReel(reel.id, ids);
 
