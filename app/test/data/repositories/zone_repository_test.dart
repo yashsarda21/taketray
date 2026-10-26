@@ -53,12 +53,17 @@ void main() {
     ]);
   });
 
-  test('a record before the first entry is compared with nothing', () async {
-    await repo.record(_at(10), 'Europe/London');
-    await repo.record(_at(5), 'Europe/London');
+  test(
+    'a record before the first entry, in the same zone, moves it back',
+    () async {
+      await repo.record(_at(10), 'Europe/London');
+      await repo.record(_at(5), 'Europe/London');
 
-    expect((await repo.all()).map((e) => e.at), [_at(5), _at(10)]);
-  });
+      expect(await repo.all(), [
+        ZoneEntry(at: _at(5), zoneId: 'Europe/London'),
+      ]);
+    },
+  );
 
   test('a second record at the same instant replaces the first', () async {
     await repo.record(_at(5), 'Asia/Kolkata');
@@ -66,6 +71,55 @@ void main() {
 
     expect(await repo.all(), [ZoneEntry(at: _at(5), zoneId: 'Europe/London')]);
   });
+
+  test('recording between two entries inserts in order and drops a later '
+      'entry that no longer marks a change', () async {
+    await repo.record(_at(5), 'Asia/Kolkata');
+    await repo.record(_at(12), 'Europe/London');
+
+    await repo.record(_at(8), 'Europe/Paris');
+    expect((await repo.all()).map((e) => (e.at, e.zoneId)), [
+      (_at(5), 'Asia/Kolkata'),
+      (_at(8), 'Europe/Paris'),
+      (_at(12), 'Europe/London'),
+    ]);
+
+    await repo.record(_at(10), 'Europe/London');
+    expect((await repo.all()).map((e) => (e.at, e.zoneId)), [
+      (_at(5), 'Asia/Kolkata'),
+      (_at(8), 'Europe/Paris'),
+      (_at(10), 'Europe/London'),
+    ]);
+    expect(await repo.zoneAt(_at(15)), 'Europe/London');
+  });
+
+  test('recording the neighbours zone at an entry instant removes the '
+      'entry and the redundant ones around it', () async {
+    await repo.record(_at(5), 'Asia/Kolkata');
+    await repo.record(_at(12), 'Europe/London');
+    await repo.record(_at(19), 'Asia/Kolkata');
+
+    await repo.record(_at(12), 'Asia/Kolkata');
+
+    expect(await repo.all(), [ZoneEntry(at: _at(5), zoneId: 'Asia/Kolkata')]);
+  });
+
+  test(
+    "recording at an entry's instant with another zone replaces it",
+    () async {
+      await repo.record(_at(5), 'Asia/Kolkata');
+      await repo.record(_at(12), 'Europe/London');
+      await repo.record(_at(19), 'Asia/Kolkata');
+
+      await repo.record(_at(12), 'Europe/Paris');
+
+      expect((await repo.all()).map((e) => (e.at, e.zoneId)), [
+        (_at(5), 'Asia/Kolkata'),
+        (_at(12), 'Europe/Paris'),
+        (_at(19), 'Asia/Kolkata'),
+      ]);
+    },
+  );
 
   test('zoneAt finds the entry in effect at an instant', () async {
     await repo.record(_at(5), 'Asia/Kolkata');

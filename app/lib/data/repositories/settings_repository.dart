@@ -20,14 +20,10 @@ final Logger _log = Logger('settings');
 /// [AppSettings]); a row that cannot be read as the right kind of value is
 /// treated as missing, and its key name is logged (D-58).
 class SettingsRepository {
-  new(this._db, this._clock);
+  // Takes a Clock like every repository, but settings carry no times.
+  new(this._db, Clock _);
 
   final AppDatabase _db;
-
-  // Kept so every repository takes (AppDatabase, Clock) and Task 9's backup can
-  // build them the same way; settings carry no times.
-  // ignore: unused_field
-  final Clock _clock;
 
   static const watchedFoldersKey = 'watchedFolders';
   static const eveningReminderEnabledKey = 'eveningReminderEnabled';
@@ -113,7 +109,7 @@ class SettingsRepository {
 
   List<String>? _asStrings(Object? value) =>
       value is List && value.every((e) => e is String)
-      ? value.cast<String>()
+      ? List<String>.from(value)
       : null;
 
   bool? _asBool(Object? value) => value is bool ? value : null;

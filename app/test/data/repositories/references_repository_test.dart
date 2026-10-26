@@ -223,6 +223,86 @@ void main() {
     });
   });
 
+  group('moving the reel on Home (updatedAt)', () {
+    final later = _t0.add(const Duration(hours: 1));
+
+    Future<DateTime> updatedAt(int reelId) async =>
+        (await ReelsRepository(db, clock).getById(reelId))!.updatedAt;
+
+    test('a new reference sets the reel updatedAt, only that reel', () async {
+      clock.advance(const Duration(hours: 1));
+
+      await added(goa, 'https://example.com/a');
+
+      expect(await updatedAt(goa), later);
+      expect(await updatedAt(paris), _t0);
+    });
+
+    test('an already saved link does not move the reel', () async {
+      await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(hours: 1));
+
+      await repo.add(goa, 'https://example.com/a');
+
+      expect(await updatedAt(goa), _t0);
+    });
+
+    test('a rejected link or label does not move the reel', () async {
+      clock.advance(const Duration(hours: 1));
+
+      await expectLater(
+        repo.add(goa, 'nope'),
+        throwsA(isA<InvalidInputException>()),
+      );
+      await expectLater(
+        repo.add(goa, 'https://example.com/a', label: 'x' * 61),
+        throwsA(isA<InvalidInputException>()),
+      );
+
+      expect(await updatedAt(goa), _t0);
+    });
+
+    test("setLabel sets the reel's updatedAt", () async {
+      final ref = await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(hours: 1));
+
+      await repo.setLabel(ref.id, 'Hook');
+
+      expect(await updatedAt(goa), later);
+    });
+
+    test('a setLabel that throws does not move the reel', () async {
+      final ref = await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(hours: 1));
+
+      await expectLater(
+        repo.setLabel(ref.id, 'x' * 61),
+        throwsA(isA<InvalidInputException>()),
+      );
+
+      expect(await updatedAt(goa), _t0);
+    });
+
+    test("delete that removed a row sets the reel's updatedAt", () async {
+      final ref = await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(hours: 1));
+
+      await repo.delete(ref.id);
+
+      expect(await updatedAt(goa), later);
+    });
+
+    test('delete of an unknown id does not move any reel', () async {
+      await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(hours: 1));
+
+      await repo.delete(999);
+
+      expect(await updatedAt(goa), _t0);
+      expect(await updatedAt(paris), _t0);
+    });
+  });
+
   group('watchForReel', () {
     test('lists newest first, ties by newest id, and only that reel', () async {
       final a = await added(goa, 'https://example.com/a');

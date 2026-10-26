@@ -651,7 +651,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   }
   ```
 
-  The look-up and the insert are in one transaction, and the database's unique key on (reel, url) from Section 3 is the safety net behind them. The same link in *two different* reels is fine: each reel has its own list. The test `the same Instagram reel shared with different tracking, host or path is already saved` shares one reel five different ways and checks that all five report `ReferenceAlreadySaved`, pointing at the first one.
+  The look-up and the insert are in one transaction, and the database's unique key on (reel, url) from Section 3 is the safety net behind them. The same link in *two different* reels is fine: each reel has its own list. Adding, relabelling or deleting a reference also sets the reel's `updatedAt` to now (in the same transaction), so the reel moves to the top of Home as it does when a clip changes; a link that is "already saved" changes nothing, so it does not. The test `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` shares one reel five different ways and checks that all five report `ReferenceAlreadySaved`, pointing at the first one.
 
 - **A folder name must be unique on the phone: "Goa", then "Goa (2)".** Reel names do not have to be unique (Section 5), but the VN folder in `Movies/TakeTray/` does, because two folders cannot share a name, and Android treats `Goa` and `goa` as the same folder. `startSession` collects the folder name of *every* session, so a second reel called "Goa" gets the next free name:
 
@@ -713,7 +713,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | 12 Oct | `Europe/London` |
   | 19 Oct | `Asia/Kolkata` |
 
-  A clip shot on the 15th is looked up by finding the last row at or before that moment: `Europe/London`. The clip viewer can then say "London time", but only because that differs from the zone the phone is in now. `record` is what keeps the table short: the phone will report its zone on every app start and background run, and only a *change* is stored.
+  A clip shot on the 15th is looked up by finding the last row at or before that moment: `Europe/London`. The clip viewer can then say "London time", but only when that differs from the zone the phone is in now. `record` is what keeps the table short: the phone will report its zone on every app start and background run, and only a *change* is stored. It also keeps the table free of rows that mark no change: if you record London on the 8th, between Kolkata (5th) and London (12th), the 12th row is deleted, leaving Kolkata (5th), London (8th).
 
   ```dart
   final inEffect =
@@ -731,7 +731,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/data/repositories/references_repository.dart`, `vn_repository.dart`, `settings_repository.dart` and `zone_repository.dart` (each with its generated provider, e.g. `settingsRepositoryProvider`), and the tests next to them in `app/test/data/repositories/`.
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/references_repository_test.dart)`. You should see `+19: All tests passed!`. Then break the duplicate check on purpose: in `references_repository.dart`, in `add`, replace the line `final url = normalizeReferenceUrl(rawUrl);` with `final url = Uri.tryParse(rawUrl.trim());` (pretend links are not cleaned), run the same command, and two tests fail: `the same Instagram reel shared with different tracking, host or path is already saved` (the stored link is still `.../reel/ABC123/?igsh=…`) and `a link that is not an http(s) link throws and saves nothing`. Put the line back afterwards. The other three repositories have their own test files in the same folder (`+17`, `+12` and `+8` tests).
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/references_repository_test.dart)`. You should see `+26: All tests passed!`. Then break the duplicate check on purpose: in `references_repository.dart`, in `add`, replace the line `final url = normalizeReferenceUrl(rawUrl);` with `final url = Uri.tryParse(rawUrl.trim());` (pretend links are not cleaned), run the same command, and two tests fail: `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` (the stored link is still `.../reel/ABC123/?igsh=…`) and, as a side effect, `a link that is not an http(s) link throws and saves nothing` (the unclean parser accepts a link the real one rejects). Put the line back afterwards with `git checkout -- app/lib/data/repositories/references_repository.dart` (run it from the repo root; it undoes any uncommitted edit to that file). The other three repositories have their own test files in the same folder (`+17`, `+12` and `+11` tests).
 
 **Decisions:** D-58 (this task), D-55 (the cleaning rule and `uniqueFolderName`), D-54 (the tables and the cascades), D-56 (reel names are not unique), D-10 (no URLs, labels or folder names in logs).
 

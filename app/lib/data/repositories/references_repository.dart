@@ -54,7 +54,8 @@ class ReferencesRepository {
   /// characters (`ReferenceLabelProblem.tooLong` otherwise) and an empty one
   /// means no label. Nothing is saved when it throws.
   ///
-  /// An already-saved link keeps its label and time; [label] is ignored.
+  /// A new reference sets the reel's `updatedAt` to now. An already-saved link
+  /// keeps its label and time, [label] is ignored, and the reel is not touched.
   /// Throws [StateError], saving nothing, when there is no reel [reelId].
   Future<AddReferenceResult> add(
     int reelId,
@@ -92,6 +93,7 @@ class ReferencesRepository {
               createdAt: _clock.now(),
             ),
           );
+      await _touchReel(reelId);
       return ReferenceAdded(_toReference(row));
     });
     _log.info(
@@ -103,27 +105,42 @@ class ReferencesRepository {
   }
 
   /// Sets or clears (null, empty or blank) the label of reference [id]. The
-  /// label is checked as in [add], and nothing changes when it throws.
-  /// Throws [StateError] when there is no such reference.
+  /// label is checked as in [add], and nothing changes when it throws. Sets the
+  /// reel's `updatedAt` to now. Throws [StateError] when there is no such
+  /// reference.
   Future<void> setLabel(int id, String? label) async {
     final problem = checkReferenceLabel(label);
     if (problem != null) {
       throw InvalidInputException(problem);
     }
 
-    final changed =
-        await (_db.update(_db.reelReferences)..where((r) => r.id.equals(id)))
-            .write(ReelReferencesCompanion(label: Value(_cleanLabel(label))));
-    if (changed == 0) throw StateError('No reference with id $id');
+    await _db.transaction(() async {
+      final row = await (_db.select(
+        _db.reelReferences,
+      )..where((r) => r.id.equals(id))).getSingleOrNull();
+      if (row == null) throw StateError('No reference with id $id');
+      await (_db.update(_db.reelReferences)..where((r) => r.id.equals(id)))
+          .write(ReelReferencesCompanion(label: Value(_cleanLabel(label))));
+      await _touchReel(row.reelId);
+    });
     _log.info('Set the label of reference $id');
   }
 
-  /// Deletes reference [id]; an unknown id deletes nothing. The same link can
-  /// be saved again afterwards.
+  /// Deletes reference [id] and sets its reel's `updatedAt` to now; an unknown
+  /// id deletes nothing and changes nothing. The same link can be saved again
+  /// afterwards.
   Future<void> delete(int id) async {
-    final removed = await (_db.delete(
-      _db.reelReferences,
-    )..where((r) => r.id.equals(id))).go();
+    final removed = await _db.transaction(() async {
+      final row = await (_db.select(
+        _db.reelReferences,
+      )..where((r) => r.id.equals(id))).getSingleOrNull();
+      if (row == null) return 0;
+      await (_db.delete(
+        _db.reelReferences,
+      )..where((r) => r.id.equals(id))).go();
+      await _touchReel(row.reelId);
+      return 1;
+    });
     _log.info('Deleted $removed references (id $id)');
   }
 
@@ -160,6 +177,13 @@ class ReferencesRepository {
     final trimmed = normalizeName(label);
     return trimmed.isEmpty ? null : trimmed;
   }
+
+  /// Sets the reel's `updatedAt` to now, so a reference change moves the reel
+  /// to the top of Home (D-58). Run inside a transaction.
+  Future<void> _touchReel(int reelId) =>
+      (_db.update(_db.reels)..where((r) => r.id.equals(reelId))).write(
+        ReelsCompanion(updatedAt: Value(_clock.now())),
+      );
 
   Future<void> _requireReel(int reelId) async {
     final row = await (_db.select(

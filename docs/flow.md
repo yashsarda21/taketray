@@ -99,9 +99,9 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy fl
 2. `checkReferenceLabel(label)`; a label over 60 characters throws `InvalidInputException(ReferenceLabelProblem.tooLong)`. Both throws happen before the database is touched.
 3. `_db.transaction`: an unknown reel throws `StateError`. Then it looks for a `reel_references` row with the same `reelId` and cleaned `url`.
 4. Found: returns `ReferenceAlreadySaved(existing)`; nothing is written and the new label is ignored.
-5. Not found: inserts the row (`source` from `referenceSourceOf`, `label` trimmed and null when blank, `createdAt` = now) and returns `ReferenceAdded(reference)`.
+5. Not found: inserts the row (`source` from `referenceSourceOf`, `label` trimmed and null when blank, `createdAt` = now), sets `reels.updatedAt` = now in the same transaction, and returns `ReferenceAdded(reference)`. `ReferenceAlreadySaved` does not touch the reel.
 
-`setLabel(id, label)` checks the label and updates the row (unknown id: `StateError`). `delete(id)` deletes one row (unknown id: nothing). `watchForReel` is newest first; `watchCounts` is reel id to count, without the reels that have none.
+`setLabel(id, label)` checks the label, then in a transaction updates the row and sets its reel's `updatedAt` = now (unknown id: `StateError`, nothing changes). `delete(id)` deletes one row and sets its reel's `updatedAt` = now in the same transaction (unknown id: nothing changes). `watchForReel` is newest first; `watchCounts` is reel id to count, without the reels that have none.
 
 **VN session** (`vn_repository.dart › VnRepository`):
 
@@ -115,7 +115,7 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy fl
 
 **Settings** (`settings_repository.dart › SettingsRepository`): `load()` reads the rows whose key is in `exportedKeys` and decodes each value from JSON; a missing key, bad JSON, a wrong type or minutes outside 0 to 1439 gives that setting's default, and a corrupt one logs the key name. `save(settings)` upserts the three rows in one transaction and leaves other keys alone. `watch()` re-queries when the `settings` table changes and emits only when the result differs from the last one. Only `exportedKeys` (the three keys) is ever exported by a backup.
 
-**Zone timeline** (`zone_repository.dart › ZoneRepository.record(at, zoneId)`): in a transaction, reads the last `zone_timeline` row at or before `at`; if its `zoneId` equals the new one nothing is written, otherwise a row `(at, zoneId)` is inserted (replacing a row at exactly `at`). `zoneAt(instant)` reads the whole timeline, oldest first, and runs the domain `zoneAt` on it.
+**Zone timeline** (`zone_repository.dart › ZoneRepository.record(at, zoneId)`): in a transaction, reads the last `zone_timeline` row at or before `at`; if its `zoneId` equals the new one nothing is written. Otherwise: if the last row strictly before `at` already has the new zone, the row at exactly `at` is deleted (it was the only way to get here); else a row `(at, zoneId)` is inserted (replacing a row at exactly `at`). Then the first row after `at` is deleted when it has the new zone, so the timeline never has two neighbours with the same zone. `zoneAt(instant)` reads the whole timeline, oldest first, and runs the domain `zoneAt` on it.
 
 ### Local checks (`tool/check`)
 
