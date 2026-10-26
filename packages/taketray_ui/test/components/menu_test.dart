@@ -84,6 +84,50 @@ void main() {
       expect(find.text('Reel details'), findsNothing);
     });
 
+    testWidgets('Android back closes the open menu and the page stays', (
+      tester,
+    ) async {
+      final navigator = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          theme: TakeTrayTheme.light(),
+          home: const Scaffold(body: Text('Home page')),
+        ),
+      );
+      navigator.currentState!.push(
+        MaterialPageRoute<void>(builder: (_) => Scaffold(body: _menu())),
+      );
+      await tester.pumpAndSettle();
+      await _open(tester);
+      expect(find.text('Reel details'), findsOneWidget);
+
+      // First back: the menu closes, the page underneath stays.
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Reel details'), findsNothing);
+      expect(find.byIcon(Symbols.more_vert_rounded), findsOneWidget);
+      expect(find.text('Home page'), findsNothing);
+
+      // Second back: the page itself pops.
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await tester.pumpAndSettle();
+      expect(find.text('Home page'), findsOneWidget);
+    });
+
+    testWidgets('back closes the menu again after it was reopened', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_menu()));
+      for (var i = 0; i < 2; i++) {
+        await _open(tester);
+        expect(find.text('Reel details'), findsOneWidget);
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.text('Reel details'), findsNothing);
+      }
+    });
+
     testWidgets('items are at least 48 dp high and 200 to 300 dp wide', (
       tester,
     ) async {

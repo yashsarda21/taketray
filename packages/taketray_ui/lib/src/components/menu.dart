@@ -32,7 +32,11 @@ class TtMenuItem<T> {
 /// and screen-reader navigation come with it. The panel is 200 to 300 dp
 /// wide with 20 dp corners, and its 48 dp items have 14 dp corners; a long
 /// label wraps.
-class TtMenuButton<T> extends StatelessWidget {
+///
+/// While the menu is open, Android back closes it instead of leaving the
+/// screen (a `PopScope` with `canPop: false`, so it works under any
+/// `Navigator` or `Router`).
+class TtMenuButton<T> extends StatefulWidget {
   /// A menu button showing [items].
   const new({
     required this.items,
@@ -49,6 +53,18 @@ class TtMenuButton<T> extends StatelessWidget {
 
   /// Builds the anchor; call `open` to open (or close) the menu.
   final Widget Function(BuildContext context, VoidCallback open) builder;
+
+  @override
+  State<TtMenuButton<T>> createState() => _TtMenuButtonState<T>();
+}
+
+class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
+  final MenuController _controller = MenuController();
+  bool _open = false;
+
+  void _setOpen({required bool open}) {
+    if (mounted && _open != open) setState(() => _open = open);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,12 +86,24 @@ class TtMenuButton<T> extends StatelessWidget {
       ),
     );
 
-    return MenuAnchor(
-      style: menuStyle,
-      menuChildren: [TtMenuPanel<T>(items: items, onSelected: onSelected)],
-      builder: (context, controller, _) => builder(
-        context,
-        () => controller.isOpen ? controller.close() : controller.open(),
+    return PopScope(
+      // Back closes an open menu first; the page underneath stays.
+      canPop: !_open,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _controller.close();
+      },
+      child: MenuAnchor(
+        controller: _controller,
+        style: menuStyle,
+        onOpen: () => _setOpen(open: true),
+        onClose: () => _setOpen(open: false),
+        menuChildren: [
+          TtMenuPanel<T>(items: widget.items, onSelected: widget.onSelected),
+        ],
+        builder: (context, controller, _) => widget.builder(
+          context,
+          () => controller.isOpen ? controller.close() : controller.open(),
+        ),
       ),
     );
   }
