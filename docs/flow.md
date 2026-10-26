@@ -46,18 +46,31 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 
 `tool/check` declares `FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)` and `DART_MEMBERS=(tool)`. Every listed member must have a `pubspec.yaml`: a missing one fails the check, so a rename or deletion cannot pass silently (D-34).
 
-1. `tool/check` › workspace guard: reads the `workspace:` list in the root `pubspec.yaml` (the `  - x` lines after `workspace:`, up to the first non-list line). Any entry that is in neither `FLUTTER_MEMBERS` nor `DART_MEMBERS` fails with `workspace member <x> is not covered by tool/check`, so a new member cannot silently escape the checks. Then fails with `FAIL: <kind> member <x> is listed in tool/check but <x>/pubspec.yaml is missing` for any listed member without a `pubspec.yaml`, and with `FAIL: style directory <d> is listed in tool/check but does not exist` for a missing `STYLE_DIRS` entry.
+1. `tool/check` › workspace guard: reads the `workspace:` list in the root `pubspec.yaml` (the `  - x` lines after `workspace:`, up to the first non-list line). Before that, a member listed in both `FLUTTER_MEMBERS` and `DART_MEMBERS` fails with `FAIL: member <x> is listed in both FLUTTER_MEMBERS and DART_MEMBERS in tool/check; it must be in exactly one`. Any entry that is in neither `FLUTTER_MEMBERS` nor `DART_MEMBERS` fails with `workspace member <x> is not covered by tool/check`, so a new member cannot silently escape the checks. Then fails with `FAIL: <kind> member <x> is listed in tool/check but <x>/pubspec.yaml is missing` for any listed member without a `pubspec.yaml`, and with `FAIL: style directory <d> is listed in tool/check but does not exist` for a missing `STYLE_DIRS` entry.
 2. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
 3. `tool/check` › `tool/flutter pub get` at the root (resolves the whole workspace into the single `pubspec.lock`).
-4. `tool/check` › `python3 design/tools/build_tokens.py --check`: regenerates every token output in memory and compares it with disk (see "Token build"); prints `stale: <path>` for each difference and fails, or fails on a contrast failure. Writes nothing (D-35).
-5. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over `lib`, `test`, `patrol_test` of each Flutter member that has them, plus the whole of each Dart member (`tool`).
-6. `tool/check` › analyze each member (rules from its own `analysis_options.yaml`): `tool/flutter analyze` in each Flutter member, `tool/dart analyze --fatal-infos` in each Dart member (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar).
-7. `tool/check` › `tool/dart run taketray_tool:check_styles <dir>` for each of `app/lib/features` and `packages/taketray_ui/lib/src/components` (`STYLE_DIRS`):
+4. `tool/check` › `tool/check_generated` (see "Generated-file freshness" below): prints `stale: <path>` and fails when a committed generated file differs from what the generators write now (D-53).
+5. `tool/check` › `python3 design/tools/build_tokens.py --check`: regenerates every token output in memory and compares it with disk (see "Token build"); prints `stale: <path>` for each difference and fails, or fails on a contrast failure. Writes nothing (D-35).
+6. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over `lib`, `test`, `patrol_test` of each Flutter member that has them, plus the whole of each Dart member (`tool`).
+7. `tool/check` › analyze each member (rules from its own `analysis_options.yaml`): `tool/flutter analyze` in each Flutter member, `tool/dart analyze --fatal-infos` in each Dart member (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar).
+8. `tool/check` › `tool/dart run taketray_tool:check_styles <dir>` for each of `app/lib/features` and `packages/taketray_ui/lib/src/components` (`STYLE_DIRS`):
    1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory prints `check_styles: directory <dir> not found` and exits 1).
    2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above. Covered forms: `Color*`/`Colors.`, `TextStyle(`, `EdgeInsets[Directional].*`, `SizedBox(width|height:)` and `SizedBox.square(dimension:)`, `BorderRadius[Directional].circular` and `Radius.circular`, and `Duration(` in any unit from microseconds to days.
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
-8. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`), then in each Flutter member (`tool/flutter test`). A member without a `test/` folder fails with `<member> has no test/ folder`.
-9. `tool/check` › prints `ALL CHECKS PASSED`.
+9. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`, `check_generated_test.dart` and `check_script_test.dart`), then in each Flutter member (`tool/flutter test`). A member without a `test/` folder fails with `<member> has no test/ folder`.
+10. `tool/check` › prints `ALL CHECKS PASSED`.
+
+### Generated-file freshness (`tool/check_generated`)
+
+Run by `tool/check` (step 4), or by hand: `tool/check_generated` (all members) or `tool/check_generated app`. Run `tool/flutter pub get` first. See D-53.
+
+1. `tool/check_generated` › start: `cd`s to the repo root and sets `root`. Without arguments it finds every `pubspec.yaml` up to three levels deep (outside `.dart_tool` and `build`) that has a `  build_runner:` line; none found prints `no member with build_runner in dev_dependencies found` and exits 1.
+2. Per member, `hash_generated`: lists `*.g.dart` and `*.freezed.dart` under `lib/` and `test/`, everything under `drift_schemas/` and everything under `test/drift/` (folders that do not exist are skipped), sorted, and runs `shasum` on each. The result is `path<TAB>sha1` lines, saved as "before".
+3. `(cd <member> && tool/dart run build_runner build)` regenerates the files. If `<member>/build.yaml` exists and contains `databases:`, `tool/dart run drift_dev make-migrations` runs as well. A failing generator fails the script.
+4. `hash_generated` again, saved as "after". An `awk` join of the two lists collects every path whose hash changed, that is only in "before" (disappeared) or only in "after" (appeared).
+5. If any path was collected, prints `stale: <path>` for each and `generated files were out of date and have been regenerated; review and commit them` to stderr, exit 1; the regenerated files stay on disk. Otherwise prints `generated files fresh`, exit 0.
+
+`app/lib/l10n/gen/` is not checked: it is git-ignored and rebuilt by `pub get` (D-27).
 
 ### Token build (`design/tools/build_tokens.py`)
 

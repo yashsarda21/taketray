@@ -74,10 +74,11 @@ void main() {
       expect(check('SizedBox.square(dimension: 24)').single.rule, 'raw-size');
     });
 
-    test('flags raw durations in minutes, hours, microseconds', () {
+    test('flags raw durations in minutes, hours, microseconds, days', () {
       expect(check('Duration(minutes: 1)').single.rule, 'raw-duration');
       expect(check('Duration(hours: 2)').single.rule, 'raw-duration');
       expect(check('Duration(microseconds: 5)').single.rule, 'raw-duration');
+      expect(check('Duration(days: 1)').single.rule, 'raw-duration');
     });
 
     test('token-based directional radii and square sizes are clean', () {

@@ -4,14 +4,8 @@ Items that reviews found and parked for a later phase. When a phase is planned, 
 
 Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26).
 
-## Before phase 2
-
-- A freshness check for committed `*.g.dart` files.
-
 ## Phase 2 (with GitHub and CI)
 
-- `tool/check`: stop using `$OLDPWD` to find the repo root. A member listed in both arrays runs twice.
-- Add a test for the style check's `Duration(days:)` rule.
 - `build_tokens.py --check` ignores unknown flags and can't detect orphaned outputs.
 - `fixtureThumb` paths are relative to the working directory, so they break if CI runs from another folder.
 - `expectTtAccessible` has negative tests only for the tap target.
