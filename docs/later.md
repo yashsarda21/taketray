@@ -17,6 +17,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 4
 
+- Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/`, `lib/domain/` (or the phase 4 `view_models/`) that no test imports is not counted. When `view_models/` is added to the prefixes, also make the gate compare the lcov files with the `.dart` files on disk and fail on a missing one (files with no executable lines, like enum-only files, are legitimately absent).
+
 - Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
 
 - Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.

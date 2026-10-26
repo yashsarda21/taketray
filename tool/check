@@ -11,6 +11,9 @@ EXPECTED_FLUTTER="3.47.7"
 FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)
 DART_MEMBERS=(tool)
 
+# The Flutter member whose tests run with --coverage (see the coverage step).
+COVERAGE_MEMBER=app
+
 # Folders that the style rules (docs/flow.md, D-19) apply to.
 STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
 
@@ -156,7 +159,19 @@ for m in "${flutter_present[@]}"; do
     echo "$m has no test/ folder" >&2
     exit 1
   fi
-  (cd "$m" && "$root/tool/flutter" test)
+  if [ "$m" = "$COVERAGE_MEMBER" ]; then
+    # Also writes $m/coverage/lcov.info for the coverage step below.
+    (cd "$m" && "$root/tool/flutter" test --coverage)
+  else
+    (cd "$m" && "$root/tool/flutter" test)
+  fi
 done
+
+step "coverage (domain and data)"
+# At least 80 % of the lines in lib/domain/ and lib/data/ must run in a test
+# (generated files are not counted). Phase 4 adds lib/features/*/view_models/
+# here once it exists (spec section 10).
+tool/dart run taketray_tool:check_coverage "$COVERAGE_MEMBER/coverage/lcov.info" 80 \
+  lib/domain/ lib/data/
 
 printf '\nALL CHECKS PASSED\n'
