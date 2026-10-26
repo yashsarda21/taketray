@@ -60,6 +60,17 @@ Changing the schema (by hand, `cd app`):
 4. `../tool/flutter test test/drift`: `migration_test.dart` migrates every older dump to every newer one and checks the schema; `schema_test.dart` opens every dump with today's `AppDatabase` and compares the result with the tables in code.
 5. Commit the code, the dump and the generated files together; `tool/check_generated` (step 4 of "Local checks") fails while any of them is stale. Editing a table without bumping the version fails there too: `make-migrations` exits with "A schema for version 1 of the taketray database already exists and differs from the current schema", and `schema_test.dart` reports the differing column.
 
+### Deleting a reel
+
+Nothing calls this yet; the reel screens (phase 4 onwards) will. See D-56.
+
+1. Phase 8 only, before step 2: the caller deletes the reel's VN copy files from `Movies/TakeTray/` (the `vn_copies` rows say which). Once the reel is deleted, nothing records them.
+2. `data/repositories/reels_repository.dart › ReelsRepository.delete(id)`: opens `_db.transaction`, so steps 3 to 5 all happen or none do.
+3. Counts the clips (`_countClips`), for the log line only.
+4. Deletes the `reels` row. SQLite's `ON DELETE CASCADE` (foreign keys are on, D-54) removes its `clip_reels`, `reel_references` and `vn_sessions` rows, and the `vn_copies` rows of those sessions.
+5. `data/database/housekeeping.dart › AppDatabase.deleteOrphanClips`: deletes every clip that has no `clip_reels` row and no `inbox` row. A clip still in another reel, in To tag or in Skipped stays. `vn_copies` rows are not touched (no foreign key to `clips`, D-54).
+6. The transaction commits; the repository logs the reel id and how many clips were removed (never the name, D-10). Any `watchAll` / `watchById` stream re-queries and emits again.
+
 ### Local checks (`tool/check`)
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.

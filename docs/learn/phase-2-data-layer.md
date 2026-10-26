@@ -348,7 +348,111 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Decisions:** D-55.
 
-## 5. Saving reels *(coming in Task 6)*
+## 5. Saving reels
+
+**What we built:** `ReelsRepository`, the one class that creates, renames, describes, re-statuses, lists and deletes reels, and `deleteOrphanClips`, a small clean-up that removes clips nothing refers to any more. Nothing in the app calls them yet; the reel screens in phase 4 will.
+
+**Why TakeTray needs it:** the Home screen has to show your reels, newest activity first, and keep showing the right list as you edit them. And deleting a reel must not leave junk behind, such as a clip record that no reel and no list can reach.
+
+**Key ideas:**
+
+- **A repository: the only door to the data.** A screen that wants to rename a reel should not write SQL or remember the 40-character rule. It asks the repository, which checks the rule, writes the row, sets the "last updated" time and hands back a `Reel` (the plain model from Section 4, never a database row). If you have used a service or DAO class in a web backend, this is the same job. It gets the database and the clock when it is built, so a test can give it an in-memory database and a clock that stands still:
+
+  ```dart
+  class ReelsRepository {
+    new(this._db, this._clock);
+
+    final AppDatabase _db;
+    final Clock _clock;
+  ```
+
+  and creating a reel is where the rules are applied:
+
+  ```dart
+  Future<Reel> create(String name, {String? description}) async {
+    _checkName(name);
+    final now = _clock.now();
+    final row = await _db
+        .into(_db.reels)
+        .insertReturning(
+          ReelsCompanion.insert(
+            name: normalizeName(name),
+            description: Value(_cleanDescription(description)),
+            status: ReelStatus.collecting,
+            createdAt: now,
+            updatedAt: now,
+          ),
+        );
+  ```
+
+  A bad name throws `InvalidInputException(ReelNameProblem.tooLong)` before anything is saved, and the form can show the matching message. Two reels may have the same name (D-56); the id tells them apart.
+
+- **A transaction: all of it, or none of it.** Deleting a reel is several changes: the reel, its links to clips, its saved references, its VN rows, and then any clip left with no home. If the app were killed after the first and before the last, the database would be half-cleaned. A transaction groups the changes so that SQLite either keeps all of them or none (like `BEGIN` / `COMMIT` in MySQL). This is the real delete:
+
+  ```dart
+  final removed = await _db.transaction(() async {
+    final before = await _countClips();
+    // The links, references and VN rows go with the reel: ON DELETE CASCADE.
+    await (_db.delete(_db.reels)..where((r) => r.id.equals(id))).go();
+    await _db.deleteOrphanClips();
+    return before - await _countClips();
+  });
+  ```
+
+  Only one `delete` is written by hand. The reel's links, references and VN session rows disappear by themselves because the tables were declared with `ON DELETE CASCADE` (Section 3). The counting is only there so the log can say "removed 2 clips" (ids and counts, never the reel's name).
+
+- **A Stream: a query that keeps answering.** A normal query returns the rows once. A Drift `watch()` query returns a `Stream`: it sends the current rows straight away and sends them again every time the table changes. Home listens once and its list updates by itself when a reel is renamed or deleted, without any "refresh" code:
+
+  ```dart
+  Stream<List<Reel>> watchAll() =>
+      (_db.select(_db.reels)..orderBy([
+            (r) => OrderingTerm.desc(r.updatedAt),
+            (r) => OrderingTerm.desc(r.id),
+          ]))
+          .watch()
+          .map((rows) => [for (final row in rows) _toReel(row)]);
+  ```
+
+  The order is "most recently updated first"; reels updated in the same millisecond are ordered by id, highest first, so the list never flips between two equal rows. Every edit sets `updatedAt`, so an edited reel jumps to the top. The tests prove it by listening and renaming:
+
+  ```dart
+  await repo.rename(a.id, 'A2');
+  await pumpEventQueue();
+
+  expect(orders, [
+    [b.id, a.id],
+    [a.id, b.id],
+  ]);
+  ```
+
+- **The orphan rule.** A clip record is only useful while something points at it: a reel (a `clip_reels` row) or a list (an `inbox` row, for To tag or Skipped). A clip with neither is an *orphan*: no screen can reach it. The rule, written once so Task 7 can reuse it when a clip leaves its last reel:
+
+  ```dart
+  Future<void> deleteOrphanClips() async {
+    final inAReel = selectOnly(clipReels)..addColumns([clipReels.clipId]);
+    final inInbox = selectOnly(inbox)..addColumns([inbox.clipId]);
+    await (delete(clips)..where(
+          (c) => c.id.isNotInQuery(inAReel) & c.id.isNotInQuery(inInbox),
+        ))
+        .go();
+  }
+  ```
+
+  A small worked example. Clip 1 is in reels Goa and Paris. Clip 2 is only in Goa. Clip 3 is only in Goa and also waiting in To tag. You delete Goa:
+
+  | Clip | Still in a reel? | In To tag / Skipped? | After deleting Goa |
+  |---|---|---|---|
+  | 1 | yes, Paris | no | kept |
+  | 2 | no | no | **deleted** |
+  | 3 | no | yes | kept |
+
+  Only the clip record is deleted, never the video file. And the `vn_copies` rows of a deleted clip are left alone on purpose (D-54): they are the app's only record of a file it created in `Movies/TakeTray/`, so the VN code (phase 8) can still find and delete that file. For the same reason the caller must delete a reel's VN copy files *before* calling `delete`.
+
+**Where it lives:** `app/lib/data/repositories/reels_repository.dart` (with its generated `reelsRepositoryProvider`, which hands out one repository built from the database and clock providers), `app/lib/data/database/housekeeping.dart`, and the tests in `app/test/data/repositories/reels_repository_test.dart`.
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories)`. You should see `+20: All tests passed!`. Then break the orphan rule on purpose: in `app/lib/data/database/housekeeping.dart` remove the `& c.id.isNotInQuery(inInbox)` part, run the same command, and watch `delete keeps a clip that is in To tag or Skipped` and `deleteOrphanClips deletes only clips with no reel and no inbox row` fail. Put the line back afterwards.
+
+**Decisions:** D-56 (names are not unique, the shared orphan rule, delete as one transaction), D-54 (the cascades and the VN copy rows that outlive their clip), D-10 (no names in logs).
 
 ## 6. Clips and the To tag list *(coming in Task 7)*
 
