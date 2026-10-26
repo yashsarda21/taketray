@@ -1377,4 +1377,129 @@ abstract final class TtMetrics {
   /// Weight of that check.
   // proto.css: .rchip.done .cv .ms { 'wght' 700 }
   static const double reelChipDoneIconWeight = 700;
+
+  // ---- Grouped rows and list rows ----
+
+  /// Corner radius of the outer corners of a group of rows.
+  // tt-style.css: .style-tt .scroll > .li { border-radius: 6px }, and the
+  // first/last row's outer corners { 22px }
+  static const double groupedRowsOuterRadius = 22;
+
+  /// Corner radius of the inner corners of a group of rows.
+  // tt-style.css: .style-tt .scroll > .li { border-radius: 6px }
+  static const double groupedRowsInnerRadius = 6;
+
+  /// Gap between the rows of a group.
+  // tt-style.css: .style-tt .scroll > .li + .li { margin-top: 2px }
+  static const double groupedRowsGap = 2;
+
+  /// Space above a group label.
+  // tt-style.css: .style-tt .li-h { padding: 22px 28px 8px }
+  static const double groupLabelPaddingTop = 22;
+
+  /// Space before and after a group label.
+  // tt-style.css: .style-tt .li-h { padding: 22px 28px 8px }
+  static const double groupLabelPaddingHorizontal = 28;
+
+  /// Minimum height of a list row.
+  // proto.css: .li { min-height: 56px }
+  static const double listRowMinHeight = 56;
+
+  /// Weight of a list row's title.
+  // proto.css: .li .txt b { font-weight: 500 }
+  static const double listRowTitleWeight = 500;
+
+  /// Text scale from which a list row's trailing value or button moves
+  /// under the text, because beside it the title would break inside words.
+  /// Not in the prototype (it has no text scaling); the same threshold as
+  /// [tagPanelSingleColumnTextScale].
+  static const double listRowStackTrailingTextScale = 1.5;
+
+  /// Side of the box behind a boxed row icon.
+  // proto.css: .li .lead.box { width: 40px; height: 40px }
+  static const double rowIconBoxSize = 40;
+
+  /// Corner radius of the box behind a boxed row icon.
+  // tt-style.css: .style-tt .li .lead.box { border-radius: 14px }
+  static const double rowIconBoxRadius = 14;
+
+  // ---- Banners, callouts and the info bar ----
+
+  /// Minimum height of a banner.
+  // proto.css: .banner { min-height: 56px }
+  static const double bannerMinHeight = 56;
+
+  /// Space above a banner.
+  // proto.css: .banner { margin: 4px 16px 8px }
+  static const double bannerMarginTop = 4;
+
+  /// Space between the title and the body of a banner.
+  // proto.css: .banner .grow span { margin-top: 1px }
+  static const double bannerBodyGap = 1;
+
+  /// Space above and below the content of a VN banner.
+  // proto.css: .banner.vn { padding: 14px 16px }
+  static const double bannerVnPaddingVertical = 14;
+
+  /// Text scale from which a banner's action moves under its text, because
+  /// beside it the action would squeeze the text to a few letters per line.
+  /// Not in the prototype (it has no text scaling); the same threshold as
+  /// [tagPanelSingleColumnTextScale].
+  static const double bannerActionBelowTextScale = 1.5;
+
+  /// Space before and after the content of a callout.
+  // proto.css: .callout { padding: 12px 14px }
+  static const double calloutPaddingHorizontal = 14;
+
+  /// Space under the title of a callout.
+  // proto.css: .callout > div > b:first-child { margin-bottom: 2px }
+  static const double calloutTitleGap = 2;
+
+  /// Gap between the icon and the text of an info bar.
+  // proto.css: .infobar { gap: 10px }
+  static const double infoBarGap = 10;
+
+  /// Space above and below the text of an info bar.
+  // proto.css: .infobar { padding: 10px 16px }
+  static const double infoBarPaddingVertical = 10;
+
+  // ---- Progress bar ----
+
+  /// Height of the progress bar.
+  // proto.css: .prog { height: 4px }
+  static const double progressHeight = 4;
+
+  /// Corner radius of the progress bar.
+  // proto.css: .prog { border-radius: 2px }
+  static const double progressRadius = 2;
+
+  /// Share of the track the moving bar of an indeterminate progress bar
+  /// covers. Not in the prototype (`.prog` has no indeterminate look).
+  static const double progressIndeterminateFraction = 0.4;
+
+  /// Time the moving bar of an indeterminate progress bar takes to cross the
+  /// track. Not in the prototype; the same pace as the skeleton shimmer.
+  static const double progressIndeterminateMillis = 1400;
+
+  // ---- Illustrations and empty states ----
+
+  /// Width of an illustration.
+  // proto.css: .empty .ill { width: 168px } (viewBox 0 0 168 140)
+  static const double illustrationWidth = 168;
+
+  /// Height of an illustration.
+  // proto.css: .empty .ill { height: 140px } (viewBox 0 0 168 140)
+  static const double illustrationHeight = 140;
+
+  /// Space under the illustration of an empty state, on top of the gap.
+  // proto.css: .empty .ill { margin-bottom: 12px }
+  static const double emptyIllustrationMargin = 12;
+
+  /// Space under the body text of an empty state, on top of the gap.
+  // proto.css: .empty p { margin: 0 0 12px }
+  static const double emptyBodyMargin = 12;
+
+  /// Widest the body text of an empty state grows.
+  // proto.css: .empty p { max-width: 280px }
+  static const double emptyBodyMaxWidth = 280;
 }
