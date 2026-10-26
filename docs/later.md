@@ -6,6 +6,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 3
 
+- **Owner decision: Android Auto Backup.** The manifest sets no `allowBackup`, so Android may back up `taketray.sqlite` to the owner's Google account and restore it on a new phone, where MediaStore ids point at other videos. Options: exclude the database with `dataExtractionRules` (export/import stays the only backup), or keep it and rely on the version-change fingerprint resync. Explain both plainly and let the owner choose.
+
 - `TtBanner`: assert that `onTap` and an action are not both set, since the action would nest a button.
 - Banner and callout icons are always filled. Match each banner's prototype icon.
 
@@ -53,6 +55,14 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The nav badge's spoken label drops the tab name ("7 clips to tag" instead of "To tag, 7 clips").
 - The snack has no drop shadow. Add one or record why in D-48.
 - Add `expectTtAccessible` to `video_surface_test`. Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
+
+## Before the first schema change (v2)
+
+- `tool/check_generated` must also hash `app/lib/data/database/app_database.steps.dart`, which `make-migrations` writes from v2. At v1 it also never regenerates `app/test/drift/.../generated/`.
+
+## Phase 8 (editor handoff)
+
+- Removing a clip from a reel during a VN session (or deleting it as an orphan) must delete its VN copy file first. The `vn_copies` row survives the clip (D-54), so the storage screen can still find the file, but the normal flow should not rely on that.
 
 ## Phase 9 (references)
 
