@@ -68,6 +68,19 @@ Every task section below uses the same shape:
 
 Task 1 is a build setting, not data. In short: debug builds and the automatic phone tests install as **TakeTray Dev** (`app.taketray.dev`), a separate app with its own storage, so tests can never wipe your real TakeTray data. See D-52.
 
+The change is a few lines in `app/android/app/build.gradle.kts`:
+
+```kotlin
+debug {
+    applicationIdSuffix = ".dev"
+    manifestPlaceholders["appLabel"] = "TakeTray Dev"
+}
+```
+
+Release and profile builds keep `app.taketray` and the name "TakeTray". The manifest reads the name from the placeholder (`android:label="${appLabel}"`).
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter build apk --debug)`, then `$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2 dump badging app/build/app/outputs/flutter-apk/app-debug.apk | grep -E "^package:|application-label:"`. You should see `package: name='app.taketray.dev'` and `application-label:'TakeTray Dev'`.
+
 ## 2. Keeping generated code honest *(coming in Task 2)*
 
 ## 3. The database *(coming in Task 4)*

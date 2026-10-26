@@ -26,6 +26,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // Launcher name for release and profile; the debug build type overrides it.
+        // (Set here, not on release: Flutter's profile type does not inherit it.)
+        manifestPlaceholders["appLabel"] = "TakeTray"
         // Patrol on-device tests (docs/dev-setup.md).
         testInstrumentationRunner = "pl.leancode.patrol.PatrolJUnitRunner"
         testInstrumentationRunnerArguments["clearPackageData"] = "true"
@@ -36,6 +39,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Debug builds (flutter run, Patrol) are a second app, so Patrol's
+            // clearPackageData can never wipe the real app.taketray data (D-52).
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "TakeTray Dev"
+        }
         release {
             // Note: signed with the debug keys for now, so `flutter run --release`
             // and tool/check_release_permissions work. Real release signing is

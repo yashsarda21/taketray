@@ -2,8 +2,8 @@
 # Runs patrol_cli with the pinned Flutter (never the old `flutter` on PATH).
 # Usage: tool/patrol <patrol args>, from any directory; test commands run in app/.
 # `test` and `develop` get --no-uninstall unless --uninstall/--no-uninstall is
-# given: patrol_cli's default uninstalls app.taketray (and its data) from the
-# owner's phone after every run.
+# given: patrol_cli's default uninstalls the app under test (app.taketray.dev, the
+# debug build) after every run.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"

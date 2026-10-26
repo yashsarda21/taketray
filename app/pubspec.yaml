@@ -95,4 +95,4 @@ flutter:
 patrol:
   app_name: TakeTray
   android:
-    package_name: app.taketray
+    package_name: app.taketray.dev

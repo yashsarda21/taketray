@@ -6,7 +6,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Before phase 2
 
-- Patrol tests use a separate applicationId. Patrol's `clearPackageData` wipes the S24's TakeTray data.
 - A freshness check for committed `*.g.dart` files.
 
 ## Phase 2 (with GitHub and CI)

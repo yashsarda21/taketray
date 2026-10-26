@@ -14,7 +14,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 - `tool/check_release_permissions`: builds the release APK and fails if it contains `android.permission.INTERNET`; must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
 - Run the catalogue on the phone: `cd widgetbook && ../tool/flutter run -d <device>` (list device ids with `tool/adb devices`). It installs as "TakeTray UI" (`app.taketray.widgetbook`) next to the app.
 - `tool/patrol doctor`: shows the CLI version and the Flutter it uses (must say 3.47.7).
-- `tool/patrol test -t patrol_test/app_shell_test.dart -d <device id>`: the on-device smoke test (flow: "On-device test (Patrol)" in `docs/flow.md`). List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so `app.taketray` stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
+- `tool/patrol test -t patrol_test/app_shell_test.dart -d <device id>`: the on-device smoke test (flow: "On-device test (Patrol)" in `docs/flow.md`). List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so the dev app (`app.taketray.dev`) stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
 
 ## Goldens
 
@@ -51,9 +51,9 @@ The component tests in `packages/taketray_ui/test/` compare screenshots with PNG
 4. Connect by USB, unlock the phone and accept the **Allow USB debugging?** prompt (tick "Always allow from this computer").
 5. `tool/adb devices` must list `RZCY80PHWCZ   device` (not `unauthorized` or `offline`).
 
-If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (an older build signed with a different key), uninstall with `tool/adb -s RZCY80PHWCZ uninstall app.taketray` and run again; this removes the app's data.
+If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (an older build signed with a different key), uninstall the app that failed (for a debug or Patrol run that is `app.taketray.dev`, with `tool/adb -s RZCY80PHWCZ uninstall app.taketray.dev`) and run again; this removes that app's data.
 
-The Patrol run installs the debug app and a test APK (`app.taketray.test`) and leaves both installed (`--no-uninstall`, added by `tool/patrol`). Patrol's orchestrator clears the app's data between tests (`clearPackageData`), so a Patrol run on the phone wipes TakeTray's data there even though the app stays. Because patrol_cli no longer uninstalls first, a build signed with a different key fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; uninstall as described above.
+Debug builds (`flutter run`, Patrol) are a separate app, **TakeTray Dev** (`app.taketray.dev`), and show up as a second icon next to the real **TakeTray** (`app.taketray`, release and profile builds); each has its own data (D-52). The Patrol run installs the debug app and a test APK (`app.taketray.dev.test`) and leaves both installed (`--no-uninstall`, added by `tool/patrol`). Patrol's orchestrator clears the app's data between tests (`clearPackageData`), so a Patrol run wipes the data of TakeTray Dev only; the real TakeTray is never touched. Because patrol_cli no longer uninstalls first, a build signed with a different key fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; uninstall as described above.
 
 ## Emulators
 
