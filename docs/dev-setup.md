@@ -10,11 +10,22 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 
 ## Commands
 
-- `tool/check`: format, analysis, style rules and all tests; must end with `ALL CHECKS PASSED`.
+- `tool/check`: generated-file and token freshness, format, analysis, style rules, all tests and the coverage gate; must end with `ALL CHECKS PASSED`. GitHub runs the same script (below).
 - `tool/check_release_permissions`: builds the release APK and fails if it contains `android.permission.INTERNET`; must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
 - Run the catalogue on the phone: `cd widgetbook && ../tool/flutter run -d <device>` (list device ids with `tool/adb devices`). It installs as "TakeTray UI" (`app.taketray.widgetbook`) next to the app.
 - `tool/patrol doctor`: shows the CLI version and the Flutter it uses (must say 3.47.7).
 - `tool/patrol test -t patrol_test/app_shell_test.dart -d <device id>`: the on-device smoke test (flow: "On-device test (Patrol)" in `docs/flow.md`). List device ids with `tool/adb devices`. `tool/patrol` adds `--no-uninstall` to `test` and `develop` (unless you pass `--uninstall` or `--no-uninstall` yourself), so the dev app (`app.taketray.dev`) stays installed on the phone afterwards; patrol_cli's default uninstalls it before and after every run.
+
+## Automatic checks on GitHub (D-60)
+
+`.github/workflows/check.yml` runs on every push and pull request (Ubuntu, 30-minute limit, read-only token, no secrets). It installs Flutter 3.47.7 into `~/development/flutter`, the folder the wrappers use, and runs `tool/check` with `CI=true`: the same script as on your Mac, so a green local run should be green there.
+
+- **Runs on CI:** everything in `tool/check` (generated-file and token freshness, format, analysis, style rules, all tests with only the `goldens/ci/` images, the coverage gate). The drift tests download a prebuilt SQLite when they are built, so the runner needs the network; the app itself stays offline.
+- **Does not run on CI:** the Patrol smoke test and anything that needs the phone (they stay local, on the S24, D-32), the macOS goldens (switched off by `CI`, D-39) and `tool/check_release_permissions` (it needs the Android SDK; run it by hand at the end of each phase).
+- **Same run on your Mac:** `CI=true tool/check` (it skips the macOS goldens, as CI does).
+- **When it fails on golden images:** the run uploads the `failures/` folders as an artifact named `golden-failures` (on the run's summary page).
+- **Changing the Flutter version:** edit `FLUTTER_VERSION` in the workflow and `EXPECTED_FLUTTER` in `tool/check` together. Packages are cached by `pubspec.lock`, Flutter by its version.
+- **The repository has no remote yet,** so the workflow has been checked locally only. After pushing, the first run is slow (nothing is cached) and is the real test of it.
 
 ## Goldens
 

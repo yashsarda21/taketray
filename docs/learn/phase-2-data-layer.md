@@ -950,7 +950,82 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Decisions:** none of its own. The generated-file rule is D-53; the 80 % threshold and the folders come from the phase 2 plan and spec section 10.
 
-## 10. Automatic checks on GitHub *(coming in Task 11)*
+## 10. Automatic checks on GitHub
+
+**What we built:** one file, `.github/workflows/check.yml`. It tells GitHub to run `tool/check` on a fresh Ubuntu computer every time code is pushed, and to show a green tick or a red cross. Nothing has run yet: the repository has no home on GitHub, so the file is written and checked on this laptop only. It starts working the first time the repository is pushed.
+
+**Why TakeTray needs it:** `tool/check` only protects the code if somebody remembers to run it. A check that runs on every push cannot be forgotten, and it runs on a clean computer, so it also catches "works on my Mac" problems: a file that exists only on your disk, a tool that happens to be installed only on your machine.
+
+**Key ideas:**
+
+- **CI means "continuous integration".** In plain terms: a robot that, on every push, downloads the code, builds it from scratch and runs the tests, then reports. GitHub calls its robot *Actions* and a robot's instructions a *workflow*. The workflow starts like this:
+
+  ```yaml
+  on:
+    push:
+    pull_request:
+
+  permissions:
+    contents: read
+  ```
+
+  `on` is when to run: on every push, and on every pull request (a proposal to merge a branch). `permissions: contents: read` means the robot may read the code and nothing else, so even a mistake in the workflow cannot change your repository. There are no passwords or other secrets in the file, and nothing is published anywhere.
+
+- **The robot does what you do, in the same order.** The steps are: download the code, install Flutter 3.47.7, run `tool/check`. The install step is the one line that makes the wrappers work unchanged:
+
+  ```yaml
+  - name: Install Flutter ${{ env.FLUTTER_VERSION }}
+    if: steps.flutter-cache.outputs.cache-hit != 'true'
+    run: |
+      mkdir -p "$HOME/development"
+      git clone --depth 1 --branch "$FLUTTER_VERSION" \
+        https://github.com/flutter/flutter.git "$HOME/development/flutter"
+  ```
+
+  `tool/flutter` is just `exec "$HOME/development/flutter/bin/flutter" "$@"` (Section 1 explains why the wrappers exist). Putting Flutter in the same folder on the robot's computer means `tool/check` runs there without changing a single line. `--depth 1` downloads only the latest snapshot instead of Flutter's whole history, which is much faster. The `if:` skips the download when a saved copy already exists (next point).
+
+- **Caches make the second run quicker.** The first run downloads Flutter (about 1 GB once its helper files are included) and every package. GitHub can save a folder between runs, under a name you choose (a *key*). Flutter is saved under its version; the packages under the fingerprint of `pubspec.lock`, so they are downloaded again only when a package changes:
+
+  ```yaml
+  key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+  restore-keys: |
+    pub-${{ runner.os }}-
+  ```
+
+  `restore-keys` is the fallback: if no copy matches exactly, start from the newest older one, so only the changed packages are fetched.
+
+- **One script, two places.** The robot does not list the checks itself. It runs `tool/check`, the same file you run by hand. If the workflow listed the format check, the analysis and the tests as separate steps, then the day someone added a step to `tool/check` (the coverage gate in Section 9 was one) they would also have to remember to edit the workflow, and the two would slowly disagree: green on GitHub, red on your Mac, or the other way round. With one script there is one definition of "healthy". The workflow only prepares the computer (Flutter, caches) and calls it.
+
+- **Why goldens differ by platform.** A golden test (Phase 1, D-39) draws a component and compares the picture with a saved PNG. The same text is drawn slightly differently by macOS, Linux and Windows, and even by different macOS versions, so a PNG made on a Mac with real text would fail on Ubuntu by a few pixels. That is why the tests keep two sets of pictures: `goldens/ci/` draws text as plain blocks, so it looks the same on any computer, and `goldens/macos/` has real text, for a human to compare with the prototype. The test setup picks the sets from one environment variable, `CI`:
+
+  ```dart
+  final onCi = Platform.environment.containsKey('CI');
+  ...
+  platformGoldensConfig: PlatformGoldensConfig(
+    enabled: !onCi,
+    platforms: {HostPlatform.macOS},
+  ),
+  ```
+
+  (`packages/taketray_ui/test/flutter_test_config.dart`.) The block pictures always run. The real-text pictures run only on macOS, and only when `CI` is not set. On Ubuntu they would not run anyway, because only macOS pictures exist; setting `CI` as well means they stay off even if someone later runs the workflow on a Mac runner. GitHub sets `CI=true` itself, and the workflow states it too so the check does not rely on a default. On your Mac without `CI`, both sets run. If a golden fails on GitHub, the workflow uploads the `failures/` folder (the new picture, the saved one and the difference) so you can download it from the run's page.
+
+- **Why the phone tests stay local.** The Patrol test (Phase 1, D-32) installs the app on the Samsung S24 and taps through it. GitHub's computers have no phone attached, and a pretend phone (an emulator) is slow and unreliable there, so those tests run on your desk. `tool/check_release_permissions` is local for another reason: it builds the real release app, which needs the Android SDK, a large install that the other checks do not need (no step in `tool/check` builds an APK). So a green tick on GitHub means "the code checks pass", and it does not replace running Patrol on the S24 or the permission check at the end of a phase. D-60 records the split.
+
+- **The robot needs the internet; the app does not.** The database tests load SQLite through a package that downloads a ready-made SQLite library when the tests are built. That works on GitHub, which is online. The app on your phone has no `INTERNET` permission at all (D-31) and does none of this.
+
+**Where it lives:** `.github/workflows/check.yml`. The steps are in `docs/flow.md` ("Automatic checks on GitHub") and what runs where is in `docs/dev-setup.md`.
+
+**Try it yourself:** you cannot push yet, but you can run what the robot runs. From the repo root:
+
+```
+CI=true tool/check
+```
+
+With `CI` set, `tool/check` skips the macOS-only pictures, exactly like the robot. It takes about three minutes on a warm laptop and should end with the coverage lines and `ALL CHECKS PASSED` (this section's run: `lib/domain/  96.9%  62/64 lines`, `lib/data/  89.6%  857/957 lines`). That includes a run from a fresh, empty home folder with a fresh Flutter clone, which is what the robot starts from.
+
+To see the difference that `CI` makes, run the golden test without it (`cd packages/taketray_ui && ../../tool/flutter test test/components`): on a Mac it also compares the `goldens/macos/` pictures, so it runs more tests than with `CI=true` in front.
+
+**Decisions:** D-60 (CI runs `tool/check`, CI goldens only, Patrol and the release check stay local), D-39 (the two sets of goldens).
 
 ## 11. Proving it works on the phone *(coming in Task 12)*
 

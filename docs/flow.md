@@ -164,6 +164,21 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
     4. Only files that a test loads appear in lcov, so a new file under `lib/data/` that no test (and nothing a test loads) imports is not counted at all. Phase 4 adds `lib/features/*/view_models/` to the prefixes (spec section 10).
 11. `tool/check` › prints `ALL CHECKS PASSED`.
 
+### Automatic checks on GitHub (`.github/workflows/check.yml`)
+
+Runs on every `push` and `pull_request`; nothing is deployed and there are no secrets. See D-60.
+
+1. Workflow header: `permissions: contents: read`; `concurrency` group `check-<workflow>-<ref>` with `cancel-in-progress`, so a newer run on the same ref cancels the older one; `env.CI: "true"` (turns the macOS goldens off, D-39) and `env.FLUTTER_VERSION: "3.47.7"` (must equal `EXPECTED_FLUTTER` in `tool/check`).
+2. Job `check` on `ubuntu-latest`, `timeout-minutes: 30`: `actions/checkout`.
+3. `actions/cache` on `~/development/flutter`, key `flutter-<os>-<version>`. On a miss, `git clone --depth 1 --branch 3.47.7` into that folder (the path `tool/flutter` and `tool/dart` use).
+4. `Prepare Flutter`: `tool/flutter config --disable-analytics`, `tool/flutter precache --universal` (Dart SDK, the test engine `flutter_tester`; no Android SDK because `tool/check` builds no APK), `tool/flutter --version`.
+5. `actions/cache` on `~/.pub-cache`, key `pub-<os>-<hash of pubspec.lock>`, falling back to the newest `pub-<os>-` entry.
+6. `Check required programs`: fails with `missing on the runner: <name>` unless `git`, `python3`, `shasum`, `awk`, `find` and `sort` exist.
+7. `tool/check` (the "Local checks" flow above), unchanged.
+8. On failure, `actions/upload-artifact` stores every `failures/` folder under a `test/` folder as `golden-failures`.
+
+Not on CI: Patrol and device tests, and `tool/check_release_permissions`.
+
 ### Generated-file freshness (`tool/check_generated`)
 
 Run by `tool/check` (step 4), or by hand: `tool/check_generated` (all members) or `tool/check_generated app`. Run `tool/flutter pub get` first. See D-53.
