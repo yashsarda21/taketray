@@ -6,7 +6,8 @@ set -euo pipefail
 EXPECTED_FLUTTER="3.47.7"
 
 # Every member of the pub workspace must be listed in exactly one of these.
-# Members whose folder does not exist yet are skipped with a note.
+# A listed member whose pubspec.yaml is missing fails the check (a rename or
+# deletion must not pass silently).
 FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)
 DART_MEMBERS=(tool)
 
@@ -58,21 +59,28 @@ for m in "${members[@]}"; do
 done
 echo "Workspace members: ${members[*]}"
 
-# Members of each kind whose folder exists, in declaration order.
+# Every listed member must exist: a missing one fails the check.
 flutter_present=()
 for m in "${FLUTTER_MEMBERS[@]}"; do
-  if [ -f "$m/pubspec.yaml" ]; then
-    flutter_present+=("$m")
-  else
-    echo "note: Flutter member $m is not present yet, skipping"
+  if [ ! -f "$m/pubspec.yaml" ]; then
+    echo "FAIL: Flutter member $m is listed in tool/check but $m/pubspec.yaml is missing" >&2
+    exit 1
   fi
+  flutter_present+=("$m")
 done
 dart_present=()
 for m in "${DART_MEMBERS[@]}"; do
-  if [ -f "$m/pubspec.yaml" ]; then
-    dart_present+=("$m")
-  else
-    echo "note: Dart member $m is not present yet, skipping"
+  if [ ! -f "$m/pubspec.yaml" ]; then
+    echo "FAIL: Dart member $m is listed in tool/check but $m/pubspec.yaml is missing" >&2
+    exit 1
+  fi
+  dart_present+=("$m")
+done
+
+for d in "${STYLE_DIRS[@]}"; do
+  if [ ! -d "$d" ]; then
+    echo "FAIL: style directory $d is listed in tool/check but does not exist" >&2
+    exit 1
   fi
 done
 
