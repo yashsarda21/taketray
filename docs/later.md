@@ -6,6 +6,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 3
 
+- After a backup import, Shooting mode is off and its MediaStore baselines are gone (D-59). The scan must treat a missing baseline as "start from now", never as "everything is new".
+
 - Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
 
 - **Owner decision: Android Auto Backup.** The manifest sets no `allowBackup`, so Android may back up `taketray.sqlite` to the owner's Google account and restore it on a new phone, where MediaStore ids point at other videos. Options: exclude the database with `dataExtractionRules` (export/import stays the only backup), or keep it and rely on the version-change fingerprint resync. Explain both plainly and let the owner choose.
@@ -76,6 +78,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The banner margin is not configurable (`refs.js` overrides it).
 
 ## Phase 10 (onboarding and settings)
+
+- The Export/Import buttons: decode and validate the backup JSON off the UI isolate (`compute`/`Isolate.run`) so a large file doesn't freeze the screen; show "X of Y clips found" after the media check.
 
 - `.ib.tonal` icon button.
 - `TtListRow` tall and disabled variants.
