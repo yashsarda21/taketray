@@ -401,6 +401,15 @@ abstract final class TtMetrics {
   // (not in the prototype: proto.css: .snack .btn.text uses inverse-primary)
   static const double snackActionContrastMix = 0.15;
 
+  /// How long a snack stays, in milliseconds.
+  // proto: app.js snack(): opts.undo ? 6000 : 4000
+  static const double snackDurationMillis = 4000;
+
+  /// How long a snack with an action (Undo) stays, in milliseconds: time to
+  /// undo a bulk action.
+  // proto: app.js snack(): opts.undo ? 6000 : 4000
+  static const double snackDurationWithActionMillis = 6000;
+
   /// Size of the leading icon of a snack.
   // proto.css: .snack .ms.lead { font-size: 20px }
   static const double snackIconSize = 20;

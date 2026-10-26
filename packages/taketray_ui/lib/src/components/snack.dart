@@ -125,9 +125,10 @@ class TtSnack extends StatelessWidget {
 /// Any snack bar that is showing is hidden first, so a new message replaces
 /// the old one instead of queueing behind it. Tapping the action closes the
 /// snack (reason [SnackBarClosedReason.action]) and then calls [onAction],
-/// once however often it is tapped. [duration] defaults to the snack bar's
-/// own (4 s). While a screen reader is on, a snack with an action stays
-/// until it is used or replaced, so there is time to reach the action.
+/// once however often it is tapped. [duration] defaults to 4 s, or 6 s with
+/// an action, as in the prototype (time to undo a bulk action). While a
+/// screen reader is on, a snack with an action stays until it is used or
+/// replaced, so there is time to reach the action.
 ScaffoldFeatureController<SnackBar, SnackBarClosedReason> showTtSnack(
   BuildContext context, {
   required String message,
@@ -163,7 +164,15 @@ ScaffoldFeatureController<SnackBar, SnackBarClosedReason> showTtSnack(
       backgroundColor: transparent,
       elevation: 0,
       padding: EdgeInsets.zero,
-      duration: duration ?? const SnackBar(content: SizedBox.shrink()).duration,
+      duration:
+          duration ??
+          Duration(
+            milliseconds:
+                (onAction == null
+                        ? TtMetrics.snackDurationMillis
+                        : TtMetrics.snackDurationWithActionMillis)
+                    .round(),
+          ),
     ),
   );
 }

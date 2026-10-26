@@ -310,6 +310,35 @@ void main() {
       expect(find.byType(TtSnack), findsNothing);
     });
 
+    testWidgets('lasts 4 s, or 6 s with Undo (proto app.js snack())', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_Opener(onAction: () {})));
+      // A snack without an action: gone after 4 s.
+      await tester.tap(find.text('two'));
+      await tester.pumpAndSettle();
+      // Settle after each wait: a timer that fired has started the exit
+      // animation, which a single pump would still show. The timer starts
+      // when the entry animation ends, about 0.4 s before the first settle
+      // returns, so the waits below leave that much margin.
+      await tester.pump(const Duration(seconds: 3));
+      await tester.pumpAndSettle();
+      expect(find.text('Second message'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSnack), findsNothing);
+
+      // A snack with Undo: still there at 5 s, gone after 6 s.
+      await tester.tap(find.text('one'));
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(find.text('First message'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1100));
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSnack), findsNothing);
+    });
+
     testWidgets('goes away by itself after the duration', (tester) async {
       await tester.pumpWidget(
         ttTestApp(const _Opener(duration: Duration(seconds: 2))),
