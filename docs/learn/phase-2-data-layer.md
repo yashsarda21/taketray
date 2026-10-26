@@ -782,7 +782,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   The other direction is handled by ignoring keys the reader doesn't know: a later version can *add* a field (a reel colour, say) without raising the version, and this version simply skips it.
 
-  Why write the format by hand instead of reusing the models' `toJson` from Section 4? Because `toJson` follows the code: rename a field in `Clip` and the JSON changes with it. A backup file written today must still read the same in two years, so its shape is spelled out key by key in `encodeBackup` and `_readV1`, and a committed sample file (the "golden fixture") must import and export back to exactly the same text. If someone changes the format by accident, that test fails.
+  Why write the format by hand instead of reusing the models' `toJson` from Section 4? Because `toJson` follows the code: rename a field in `Clip` and the JSON changes with it. A backup file written today must still read the same in two years, so its shape is spelled out key by key in `encodeBackup` and `_readV1`, and a committed sample file (the "golden fixture") must import and export back to exactly the same text. The sample uses every value of every stored choice (all three reel statuses, all four link sources, both clip sources, pending and skipped), because enums are written by name: renaming `ready` in the code would silently change what old files mean, and a round trip can't notice (it writes and reads the new name). If someone changes the format by accident, the fixture test fails.
 
 - **Check everything, then replace.** An import has two halves, and the first never touches the database. `decodeBackup` reads the *whole* file into memory and checks it: every key is present with the right kind of value, the enums are known, every link in `clipReels` points at a clip and a reel that are in the file, reel names are 1 to 40 characters, labels at most 60, links are web links, no id appears twice, no clip identity appears twice, and every time has a `Z` or an offset (`2026-10-20T13:30:00.000+05:30` is stored as 08:00 UTC; a time with neither could be anyone's local time, so it is refused rather than guessed to be UTC, D-55). The checks are done by a small helper that knows where it is in the file, so a failure can be logged as `clips[3].source` without logging the value:
 
@@ -796,6 +796,25 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   ```
 
   Why check in Dart when the database has foreign keys and `CHECK`s of its own? Some rules SQL can't check (40 *characters*, counting an emoji as one, Section 4), and a database error halfway through says "FOREIGN KEY constraint failed" where the user should see "this backup is damaged". The four outcomes are a plain enum the Settings screen can turn into messages: `notJson`, `notTakeTray`, `newerVersion`, `invalidData`.
+
+  The checks compare values the way the database will store them. Times are cut to whole milliseconds as they are read, because that is all the database keeps. Two zone entries at `…00.000Z` and `…00.000400Z` look different in the file, but they would be the same row in the database, so they are a duplicate.
+
+- **Fixing what the app would never write, instead of refusing it.** Two states pass every database rule but break TakeTray's own rules (Sections 5 and 6): a clip that is in a reel *and* in To tag, and a clip in no reel and no list (an orphan). Refusing the whole backup over one of them would leave the user with nothing to restore. Importing them as they are would cause trouble later: an orphan is invisible, and because its video is already "known", the detector would never put it in To tag again. So the reader repairs them the way the repositories would, before anything is counted or stored:
+
+  ```dart
+  final linked = {for (final l in clipReels) l.clipId};
+  final keptInbox = [
+    for (final i in inbox)
+      if (!linked.contains(i.clipId)) i,
+  ];
+  final placed = {...linked, for (final i in keptInbox) i.clipId};
+  final keptClips = [
+    for (final c in clips)
+      if (placed.contains(c.id)) c,
+  ];
+  ```
+
+  The link wins over the To tag row, as in `tagClip`, and then a clip with no place is left out, as `deleteOrphanClips` would do. `ImportSummary` counts what was actually stored.
 
 - **One transaction means all or nothing.** Only a file that passed every check gets to the second half: delete every row of every table, then insert the backup's rows, keeping their ids:
 
@@ -827,7 +846,9 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   A transaction (Section 5) is SQLite's promise that a group of changes happens completely or not at all. If the phone died between the deletes and the inserts, or an insert failed, SQLite rolls back to exactly the old data: there is never a moment where the reels are deleted and the backup isn't in yet. The checks in the first half make that failure very unlikely; the transaction makes it harmless anyway. Two locks on one door.
 
-  Keeping ids means every link in the file (`"clipId": 10, "reelId": 3`) still points at the right row without any renumbering. SQLite's `AUTOINCREMENT` counter only ever goes up: inserting id 14 moves it to 14, and deleting rows never lowers it. So the next clip added after an import gets an id above every imported one *and* above every id used before the import. That matters because a VN copy record may hold the id of a clip that no longer exists (Section 3), and that id must never come back as a different clip. The tests `new rows after an import never reuse an imported id` and `an import never lowers the id counters` check both.
+  Keeping ids means every link in the file (`"clipId": 10, "reelId": 3`) still points at the right row without any renumbering. SQLite's `AUTOINCREMENT` counter only ever goes up: inserting id 14 moves it to 14, and deleting rows never lowers it. So the next clip added after an import gets an id above every imported one and above every id handed out before. The tests `new rows after an import never reuse an imported id` and `an import never lowers the id counters` check both.
+
+  The imported ids themselves, though, *can* be ids this database used before: clip 10 may have been one video before the import and is another after it. Section 3 promised that a clip id is never reused, because a VN copy record can hold the id of a clip that no longer exists. The import keeps that promise only because the same transaction deletes every VN copy record, the one place an old clip id could still be held. Anything added later that keeps clip ids outside these tables has to be wiped by the import too (D-59).
 
 - **The round trip is the proof.** How do you know export and import agree on every field? Fill a database with every kind of row (two reels in different states, a clip in two reels, a pending, a skipped and a picked clip, a missing clip, references with and without a label, a VN session, a time-zone timeline, non-default settings), export it, import that into a brand-new database, and export again. The two files must be identical, apart from `exportedAt`:
 
@@ -845,7 +866,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   A field that export forgot, import dropped, or a time that lost its milliseconds would make the second file differ. For that to be a fair comparison the export has to be *stable*: rows are always sorted (by id; links by clip then reel; the timeline by time) and keys are always written in the same order.
 
-  The other half of Review Focus 2 is the failure tests. Each one seeds a database, tries a broken file, and checks that the right problem is reported *and* that every row of every table is exactly as before: `nope` is `notJson`, `{"app":"Other"}` is `notTakeTray`, `schemaVersion: 2` is `newerVersion`, and 44 different breakages (a link to clip 999, a 41-character name, a time without `Z`, 30 February, two clips with the same MediaStore id…) are each `invalidData`.
+  The other half of Review Focus 2 is the failure tests. Each one seeds a database, tries a broken file, and checks that the right problem is reported *and* that every row of every table is exactly as before: `nope` is `notJson`, `{"app":"Other"}` is `notTakeTray`, `schemaVersion: 2` is `newerVersion`, and 50 different breakages (a link to clip 999, a 41-character name, a time without `Z`, 30 February, two clips with the same MediaStore id, two zone entries in the same millisecond…) are each `invalidData`. One more test plants a database trigger that refuses the backup's reels halfway through the replace. It stands in for any rule the checks might miss, and it proves that even then the import reports `invalidData` and every old row is still there.
 
 - **What is deliberately left out.** A backup holds what is *yours*: reels, clips, links, To tag and Skipped, settings, the zone timeline. It leaves out what belongs to *this phone*:
   - **VN sessions and their copy records.** They describe files sitting in this phone's `Movies/TakeTray/` folder. On another phone (or after a reset) those files aren't there, and records pointing at them would be lies. After an import, any copies still on the phone are no longer owned by the app; the storage screen (phase 8) lists them so you can delete them.
@@ -855,7 +876,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/data/backup/backup_format.dart` (the format: `backupSchemaVersion`, `encodeBackup`, `decodeBackup`, `BackupProblem`, `BackupException`), `app/lib/data/backup/backup_service.dart` (`BackupService`, `ImportSummary`, `backupServiceProvider`), and the tests in `app/test/data/backup/` with the golden file `fixtures/backup_v1.json`. The steps are in `docs/flow.md` ("Backup export and import").
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/backup)`. You should see `+75: All tests passed!`. Then see why the Dart checks matter even though the database has its own rules: in `app/lib/data/backup/backup_format.dart`, in `_readV1`, delete the line `if (checkReelName(name) != null) throw r.invalid('name');` and run the same command. Three tests fail: `a 41-character reel name: invalidData` and `a reel name of only spaces: invalidData` (SQLite happily stores both, so the import goes through and replaces the seeded reels) and `logs counts only: no names, links, labels or file names` (its broken file is no longer refused). Put the line back with `git checkout -- app/lib/data/backup/backup_format.dart` (run it from the repo root).
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/backup)`. You should see `+86: All tests passed!`. Then see why the Dart checks matter even though the database has its own rules: in `app/lib/data/backup/backup_format.dart`, in `_readV1`, delete the line `if (checkReelName(name) != null) throw r.invalid('name');` and run the same command. Three tests fail: `a 41-character reel name: invalidData` and `a reel name of only spaces: invalidData` (SQLite happily stores both, so the import goes through and replaces the seeded reels) and `logs counts only: no names, links, labels or file names` (its broken file is no longer refused). Put the line back with `git checkout -- app/lib/data/backup/backup_format.dart` (run it from the repo root).
 
 **Decisions:** D-59 (this task), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs).
 

@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
@@ -149,6 +150,13 @@ class _Seeded {
   }
 }
 
+/// Every number, text and flag in a decoded JSON value, at any depth.
+List<Object?> _leafValues(Object? json) => switch (json) {
+  Map() => [for (final v in json.values) ..._leafValues(v)],
+  List() => [for (final v in json) ..._leafValues(v)],
+  _ => [json],
+};
+
 /// Every row of every table, VN and phone-state rows included, as text.
 Future<String> _everyRow(AppDatabase db) async => [
   for (final table in db.allTables)
@@ -240,11 +248,16 @@ void main() {
     test('leaves out VN sessions and phone-state settings', () async {
       await _Seeded(db, clock).fill();
 
-      final json = await backup.exportJson();
+      final file = jsonDecode(await backup.exportJson()) as Map;
 
-      expect(json, isNot(contains('shootingMode')));
-      expect(json, isNot(contains('9001')));
-      expect(json, isNot(contains('20261026_0700_VID_1.mp4')));
+      expect((file['settings'] as Map).keys, SettingsRepository.exportedKeys);
+      // No value anywhere in the file comes from the VN session or its copy:
+      // its folder ("Goa"), the copy's MediaStore id or its file name.
+      final values = _leafValues(file);
+      expect(values, isNot(contains(9001)));
+      expect(values, isNot(contains('20261026_0700_VID_1.mp4')));
+      expect(values, isNot(contains('Goa')));
+      expect(values, contains('Goa 🌴'), reason: 'the reel itself is there');
     });
   });
 
@@ -305,15 +318,35 @@ void main() {
   });
 
   group('golden fixture (format v1)', () {
+    test('uses every value of every stored enum, so each name is pinned', () {
+      final file = _fixtureMap();
+      Set<Object?> used(String section, String key) => {
+        for (final row in _section(file, section)) row[key],
+      };
+
+      expect(used('reels', 'status'), {
+        for (final v in ReelStatus.values) v.name,
+      });
+      expect(used('references', 'source'), {
+        for (final v in ReferenceSource.values) v.name,
+      });
+      expect(used('clips', 'source'), {
+        for (final v in ClipSource.values) v.name,
+      });
+      expect(used('inbox', 'state'), {
+        for (final v in InboxState.values) v.name,
+      });
+    });
+
     test('imports with the expected summary', () async {
       final summary = await backup.importJson(_fixture());
 
       expect(
         summary,
         const ImportSummary(
-          reels: 2,
+          reels: 3,
           clips: 4,
-          references: 2,
+          references: 4,
           inboxPending: 1,
           inboxSkipped: 1,
         ),
@@ -338,6 +371,7 @@ void main() {
         [
           (3, 'Goa 🌴', ReelStatus.collecting),
           (7, 'London', ReelStatus.published),
+          (9, 'Lisbon', ReelStatus.ready),
         ],
       );
       expect(reels.first.updatedAt, DateTime.utc(2026, 10, 25, 17, 30, 0, 123));
@@ -508,6 +542,17 @@ void main() {
             'at': '2026-09-01T01:00:00.000+01:00',
             'zoneId': 'Asia/Kolkata',
           }),
+      'two zone entries in the same millisecond': (f) =>
+          (f['zoneTimeline'] as List).add({
+            'at': '2026-09-01T00:00:00.000400Z',
+            'zoneId': 'Asia/Kolkata',
+          }),
+      'a negative size': (f) => _section(f, 'clips').first['sizeBytes'] = -1,
+      'a negative duration': (f) =>
+          _section(f, 'clips').first['durationMs'] = -1,
+      'a negative width': (f) => _section(f, 'clips').first['width'] = -1,
+      'a negative height': (f) => _section(f, 'clips').first['height'] = -1,
+      'a negative reel id': (f) => _section(f, 'reels').first['id'] = -3,
       'a zone id that is not text': (f) =>
           _section(f, 'zoneTimeline').first['zoneId'] = null,
     };
@@ -522,7 +567,7 @@ void main() {
     test('the fixture itself is accepted (so each case above breaks one '
         'rule)', () async {
       await backup.importJson(_fixture());
-      expect(await _reelNames(db), ['Goa 🌴', 'London']);
+      expect(await _reelNames(db), ['Goa 🌴', 'London', 'Lisbon']);
     });
   });
 
@@ -533,9 +578,9 @@ void main() {
 
       await backup.importJson(_fixture());
 
-      expect(await _reelNames(db), ['Goa 🌴', 'London']);
+      expect(await _reelNames(db), ['Goa 🌴', 'London', 'Lisbon']);
       final reels = await db.select(db.reels).get();
-      expect([for (final r in reels) r.id], unorderedEquals([3, 7]));
+      expect([for (final r in reels) r.id], unorderedEquals([3, 7, 9]));
       expect(await db.select(db.clips).get(), hasLength(4));
       expect(await db.select(db.vnSessions).get(), isEmpty);
       expect(await db.select(db.vnCopies).get(), isEmpty);
@@ -588,14 +633,15 @@ void main() {
         clock,
       ).add(reel.id, 'https://example.com/a');
 
-      expect(reel.id, greaterThan(7));
+      expect(reel.id, greaterThan(9));
       expect(clip, greaterThan(14));
-      expect((added as ReferenceAdded).reference.id, greaterThan(5));
+      expect((added as ReferenceAdded).reference.id, greaterThan(8));
     });
 
     test('an import never lowers the id counters', () async {
-      // This database once had a clip 500 (its VN copy row may still name
-      // it, D-54), so 500 must never be handed out again.
+      // This database has handed out clip ids up to 500. The import itself
+      // may reuse lower ids (it deletes every row that could name an old
+      // clip, D-54), but rows added afterwards must not go below the counter.
       await db.customStatement(
         "INSERT INTO sqlite_sequence (name, seq) VALUES ('clips', 500)",
       );
@@ -634,7 +680,7 @@ void main() {
 
         final summary = await backup.importJson(jsonEncode(file));
 
-        expect(summary.reels, 2);
+        expect(summary.reels, 3);
         expect(
           await db.select(db.settings).get(),
           hasLength(SettingsRepository.exportedKeys.length),
@@ -671,6 +717,79 @@ void main() {
       expect((await ReelsRepository(db, clock).getById(3))!.name, '🌴' * 40);
     });
   });
+
+  group('states the app never makes are brought back to its rules', () {
+    test('a clip in a reel and in To tag keeps only its link', () async {
+      final file = _fixtureMap();
+      // Clip 10 is in reels 3 and 7; the file also lists it as pending.
+      (file['inbox'] as List).add({
+        'clipId': 10,
+        'state': 'pending',
+        'addedAt': '2026-10-22T06:12:00.000Z',
+      });
+
+      final summary = await backup.importJson(jsonEncode(file));
+
+      expect(summary.inboxPending, 1);
+      final inbox = await db.select(db.inbox).get();
+      expect([for (final i in inbox) i.clipId], unorderedEquals([11, 12]));
+      expect(await ClipsRepository(db, clock).watchReelIdsOf(10).first, {3, 7});
+    });
+
+    test('a clip in no reel and no list is left out', () async {
+      final file = _fixtureMap();
+      final orphan = Map<String, dynamic>.of(_section(file, 'clips')[1])
+        ..['id'] = 20
+        ..['mediaStoreId'] = 2020;
+      (file['clips'] as List).add(orphan);
+
+      final summary = await backup.importJson(jsonEncode(file));
+
+      expect(summary.clips, 4);
+      final clips = await db.select(db.clips).get();
+      expect([for (final c in clips) c.id], unorderedEquals([10, 11, 12, 14]));
+      expect(await db.deleteOrphanClips(), 0, reason: 'same rule as D-56');
+    });
+
+    test('a pending clip that is also in a reel stays, in the reel', () async {
+      final file = _fixtureMap();
+      // Clip 11 (pending) is also linked to reel 9: the link wins, and the
+      // clip is kept.
+      (file['clipReels'] as List).add({
+        'clipId': 11,
+        'reelId': 9,
+        'addedAt': '2026-10-22T07:00:00.000Z',
+      });
+
+      final summary = await backup.importJson(jsonEncode(file));
+
+      expect(summary.clips, 4);
+      expect(summary.inboxPending, 0);
+      expect(summary.inboxSkipped, 1);
+    });
+  });
+
+  test(
+    'a constraint the checks missed is invalidData and changes nothing',
+    () async {
+      await _Seeded(db, clock).fill();
+      // Stands in for any rule the Dart checks might miss: the database
+      // refuses the backup's reels partway through the replace.
+      await db.customStatement(
+        'CREATE TRIGGER refuse_reels BEFORE INSERT ON reels '
+        "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+      );
+      final rowsBefore = await _everyRow(db);
+
+      await expectLater(
+        backup.importJson(_fixture()),
+        _throwsProblem(BackupProblem.invalidData),
+      );
+
+      expect(await _everyRow(db), rowsBefore);
+      expect(await _reelNames(db), ['London', 'Goa 🌴']);
+    },
+  );
 
   test('logs counts only: no names, links, labels or file names', () async {
     final records = <LogRecord>[];

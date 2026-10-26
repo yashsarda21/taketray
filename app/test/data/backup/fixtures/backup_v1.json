@@ -18,6 +18,14 @@
       "status": "published",
       "createdAt": "2026-09-01T10:00:00.000Z",
       "updatedAt": "2026-09-14T12:00:00.000Z"
+    },
+    {
+      "id": 9,
+      "name": "Lisbon",
+      "description": "Trams at golden hour",
+      "status": "ready",
+      "createdAt": "2026-08-01T07:00:00.000Z",
+      "updatedAt": "2026-08-20T19:45:00.000Z"
     }
   ],
   "references": [
@@ -36,6 +44,22 @@
       "source": "youtube",
       "label": null,
       "createdAt": "2026-09-02T11:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "reelId": 9,
+      "url": "https://www.tiktok.com/@someone/video/7300000000000000000",
+      "source": "tiktok",
+      "label": "Tram shot",
+      "createdAt": "2026-08-02T08:00:00.000Z"
+    },
+    {
+      "id": 8,
+      "reelId": 3,
+      "url": "https://example.com/lighting-guide?part=2",
+      "source": "link",
+      "label": null,
+      "createdAt": "2026-10-23T10:00:00.000Z"
     }
   ],
   "clips": [

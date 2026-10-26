@@ -1,8 +1,10 @@
 import 'dart:convert';
 
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show immutable;
+import 'package:drift/isolate.dart' show DriftRemoteException;
+import 'package:drift/native.dart' show SqliteException;
 import 'package:logging/logging.dart';
+import 'package:meta/meta.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/backup/backup_format.dart';
@@ -16,7 +18,11 @@ part 'backup_service.g.dart';
 // Counts only: never a reel name, link, label or file name (D-10).
 final Logger _log = Logger('backup');
 
-/// What an import brought in.
+/// SQLite's primary result code for a broken constraint (`SQLITE_CONSTRAINT`):
+/// a unique key, foreign key, `CHECK` or trigger `RAISE`.
+const _sqliteConstraint = 19;
+
+/// What an import stored.
 @immutable
 final class ImportSummary {
   const new({
@@ -113,12 +119,15 @@ class BackupService {
   /// transaction, every row of every table is deleted (VN sessions and
   /// phone-state settings too) and the backup's rows are inserted with their
   /// ids. If anything fails in there, the transaction rolls back and the old
-  /// data stays.
+  /// data stays; a constraint the checks missed is still reported as
+  /// [BackupProblem.invalidData], never as a raw database error.
   ///
-  /// SQLite's `AUTOINCREMENT` counters only ever go up: inserting an id moves
-  /// the counter to it when it is higher, and deleting rows does not lower
-  /// it. So a row added after the import never gets an imported id, or an id
-  /// used before the import (D-54).
+  /// Imported ids may be ids the database used before the import, for other
+  /// rows: that is safe only because this same transaction deletes every row
+  /// that could still hold an old clip id (`vn_copies`, D-54). SQLite's
+  /// `AUTOINCREMENT` counters only ever go up (inserting a higher id moves
+  /// the counter to it, deleting rows never lowers it), so rows added after
+  /// the import get ids above every imported one.
   Future<ImportSummary> importJson(String json) async {
     final BackupData data;
     try {
@@ -128,6 +137,41 @@ class BackupService {
       rethrow;
     }
 
+    try {
+      await _replaceAll(data);
+    } on Object catch (e) {
+      final cause = e is DriftRemoteException ? e.remoteCause : e;
+      if (cause is! SqliteException || cause.resultCode != _sqliteConstraint) {
+        rethrow;
+      }
+      // The exception's text holds the statement's values: log only the code.
+      _log.warning(
+        'Import refused by the database (code ${cause.extendedResultCode}); '
+        'nothing changed',
+      );
+      throw const BackupException(BackupProblem.invalidData);
+    }
+
+    final summary = ImportSummary(
+      reels: data.reels.length,
+      clips: data.clips.length,
+      references: data.references.length,
+      inboxPending: data.inbox
+          .where((i) => i.state == InboxState.pending)
+          .length,
+      inboxSkipped: data.inbox
+          .where((i) => i.state == InboxState.skipped)
+          .length,
+    );
+    _log.info(
+      'Imported ${_counts(data)}; left out ${data.inboxRowsDropped} inbox '
+      'rows of clips in a reel and ${data.orphanClipsDropped} orphan clips',
+    );
+    return summary;
+  }
+
+  /// Deletes every row of every table and inserts [data], in one transaction.
+  Future<void> _replaceAll(BackupData data) async {
     await _db.transaction(() async {
       // Children before parents, so no foreign key is ever left dangling.
       await _db.delete(_db.vnCopies).go();
@@ -151,20 +195,6 @@ class BackupService {
           ..insertAll(_db.zoneTimeline, data.zoneTimeline);
       });
     });
-
-    final summary = ImportSummary(
-      reels: data.reels.length,
-      clips: data.clips.length,
-      references: data.references.length,
-      inboxPending: data.inbox
-          .where((i) => i.state == InboxState.pending)
-          .length,
-      inboxSkipped: data.inbox
-          .where((i) => i.state == InboxState.skipped)
-          .length,
-    );
-    _log.info('Imported ${_counts(data)}');
-    return summary;
   }
 
   /// The three settings rows, each value JSON as `SettingsRepository.save`

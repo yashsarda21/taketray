@@ -67,6 +67,8 @@ class BackupData {
     required this.inbox,
     required this.settings,
     required this.zoneTimeline,
+    this.inboxRowsDropped = 0,
+    this.orphanClipsDropped = 0,
   });
 
   final List<ReelRow> reels;
@@ -76,6 +78,14 @@ class BackupData {
   final List<InboxRow> inbox;
   final AppSettings settings;
   final List<ZoneTimelineRow> zoneTimeline;
+
+  /// `inbox` rows in the file that [decodeBackup] left out because their clip
+  /// is in a reel.
+  final int inboxRowsDropped;
+
+  /// Clips in the file that [decodeBackup] left out because they were in no
+  /// reel and no list.
+  final int orphanClipsDropped;
 }
 
 /// Writes [data] as a version-1 backup file: JSON with a 2-space indent and
@@ -169,7 +179,13 @@ String encodeBackup(
 /// ignored, so a later version can add fields. Text is stored the way the
 /// repositories store it: reel names, descriptions and labels trimmed (a
 /// blank description or label is none), links cleaned with
-/// `normalizeReferenceUrl`.
+/// `normalizeReferenceUrl`, times cut to whole milliseconds (as the database
+/// stores them).
+///
+/// Two states the app never makes are brought back to its rules instead of
+/// refusing the file: a clip that is in a reel loses its `inbox` row, and a
+/// clip in no reel and no list is left out (the orphan rule, D-56). The
+/// returned rows are exactly what is stored.
 BackupData decodeBackup(String text) {
   final Object? root;
   try {
@@ -277,12 +293,12 @@ BackupData _readV1(_Fields file) {
         mediaStoreId: mediaStoreId,
         volumeName: volumeName,
         pickerUri: pickerUri,
-        sizeBytes: c.integer('sizeBytes'),
-        durationMs: c.integer('durationMs'),
+        sizeBytes: c.count('sizeBytes'),
+        durationMs: c.count('durationMs'),
         dateTakenUtc: c.time('dateTakenUtc'),
         displayName: c.string('displayName'),
-        width: c.integer('width'),
-        height: c.integer('height'),
+        width: c.count('width'),
+        height: c.count('height'),
         mimeType: c.string('mimeType'),
         timeZoneId: c.nullableString('timeZoneId'),
         generationAdded: c.nullableInteger('generationAdded'),
@@ -330,14 +346,38 @@ BackupData _readV1(_Fields file) {
     zoneTimeline.add(ZoneTimelineRow(at: at, zoneId: z.string('zoneId')));
   }
 
+  final settings = _readSettings(file.object('settings'));
+
+  // A valid file can still describe a state the app never makes (edited by
+  // hand, or a slip in some version). Refusing it would leave the user with
+  // no restorable backup, and importing it as it is misbehaves later (D-59),
+  // so it is brought back to the app's rules:
+  // - a clip in a reel is not also in To tag or Skipped: the link wins, as
+  //   in `tagClip` and `addClipsToReel` (D-57);
+  // - a clip in no reel and no list is left out, the rule of
+  //   `deleteOrphanClips` (D-56). Only `clip_reels` and `inbox` name clips,
+  //   so nothing else points at it.
+  final linked = {for (final l in clipReels) l.clipId};
+  final keptInbox = [
+    for (final i in inbox)
+      if (!linked.contains(i.clipId)) i,
+  ];
+  final placed = {...linked, for (final i in keptInbox) i.clipId};
+  final keptClips = [
+    for (final c in clips)
+      if (placed.contains(c.id)) c,
+  ];
+
   return BackupData(
     reels: reels,
     references: references,
-    clips: clips,
+    clips: keptClips,
     clipReels: clipReels,
-    inbox: inbox,
-    settings: _readSettings(file.object('settings')),
+    inbox: keptInbox,
+    settings: settings,
     zoneTimeline: zoneTimeline,
+    inboxRowsDropped: inbox.length - keptInbox.length,
+    orphanClipsDropped: clips.length - keptClips.length,
   );
 }
 
@@ -383,9 +423,10 @@ final _instant = RegExp(
   r'(?:Z|[+-](\d{2}):?(\d{2}))$',
 );
 
-/// [text] as a UTC instant, or null when it is not an [_instant] or names a
-/// date or time that does not exist (`DateTime.parse` would roll
-/// 30 February over into March).
+/// [text] as a UTC instant cut to whole milliseconds (what the database
+/// stores, so two times that would be stored the same compare equal), or null
+/// when it is not an [_instant] or names a date or time that does not exist
+/// (`DateTime.parse` would roll 30 February over into March).
 DateTime? _parseInstant(String text) {
   final match = _instant.firstMatch(text);
   if (match == null) return null;
@@ -404,7 +445,10 @@ DateTime? _parseInstant(String text) {
       offsetMinutes > 59) {
     return null;
   }
-  return DateTime.parse(text).toUtc();
+  return DateTime.fromMillisecondsSinceEpoch(
+    DateTime.parse(text).millisecondsSinceEpoch,
+    isUtc: true,
+  );
 }
 
 /// A problem in the file at [where]; turned into [BackupException].
@@ -437,6 +481,13 @@ class _Fields {
   int integer(String key) => value<int>(key);
 
   int? nullableInteger(String key) => value<int?>(key);
+
+  /// A size, length or count: a whole number of at least 0.
+  int count(String key) {
+    final v = integer(key);
+    if (v < 0) throw invalid(key);
+    return v;
+  }
 
   /// A database id: a whole number of at least 1.
   int id(String key) {
