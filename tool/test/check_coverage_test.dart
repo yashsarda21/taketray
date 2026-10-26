@@ -112,4 +112,38 @@ void main() {
     expect(result.exitCode, 64);
     expect(result.stderr, contains('usage'));
   });
+
+  test('fewer than three arguments print usage', () {
+    final result = _run(_record('lib/data/a.dart', [1]), ['80']);
+    expect(result.exitCode, 64);
+    expect(result.stderr, contains('usage'));
+  });
+
+  test('a minimum that is not a number from 0 to 100 prints usage', () {
+    for (final min in ['NaN', '-1', '101', 'abc']) {
+      final result = _run(_record('lib/data/a.dart', [1]), [min, 'lib/data/']);
+      expect(result.exitCode, 64, reason: 'min $min');
+      expect(result.stderr, contains('usage'), reason: 'min $min');
+    }
+  });
+
+  test('a prefix without a trailing slash prints usage', () {
+    final result = _run(_record('lib/database_x/a.dart', [1]), [
+      '80',
+      'lib/data',
+    ]);
+    expect(result.exitCode, 64);
+    expect(result.stderr, contains('usage'));
+  });
+
+  test('a prefix only matches whole folders', () {
+    // lib/data/ must not pick up lib/database_x/, which would pass at 100 %.
+    final result = _run(
+      _record('lib/data/a.dart', [1, 0]) +
+          _record('lib/database_x/b.dart', [1, 1, 1, 1, 1, 1, 1, 1]),
+      ['80', 'lib/data/'],
+    );
+    expect(result.exitCode, 1);
+    expect(result.stdout, contains('1/2'));
+  });
 }

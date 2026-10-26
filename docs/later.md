@@ -6,6 +6,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 3
 
+- Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/` or `lib/domain/` that no test imports is not counted (new `lib/data` code lands in this phase). Preferred fix: at check time, generate a temporary test that imports every non-generated `lib/domain/**` and `lib/data/**` file, so unloaded files show up with 0 hits (enum-only files have no executable lines and stay absent by themselves). Fallback: compare the lcov file list with the `.dart` files on disk and fail on a missing one, with a one-entry allowlist for `domain/models/enums.dart`. Do the same for `view_models/` when phase 4 adds it to the prefixes.
+
 - After a backup import, Shooting mode is off and its MediaStore baselines are gone (D-59). The scan must treat a missing baseline as "start from now", never as "everything is new".
 
 - Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
@@ -16,8 +18,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - Banner and callout icons are always filled. Match each banner's prototype icon.
 
 ## Phase 4
-
-- Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/`, `lib/domain/` (or the phase 4 `view_models/`) that no test imports is not counted. When `view_models/` is added to the prefixes, also make the gate compare the lcov files with the `.dart` files on disk and fail on a missing one (files with no executable lines, like enum-only files, are legitimately absent).
 
 - Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
 

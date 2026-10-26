@@ -892,13 +892,17 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   ```
   SF:lib/domain/rules/text_limits.dart
+  DA:19,2
   DA:23,0
   DA:24,0
-  DA:35,2
+  DA:29,18
+  DA:35,18
+  LF:11
+  LH:9
   end_of_record
   ```
 
-  `SF:` is the file, and `DA:<line>,<count>` says line 35 ran twice and lines 23 and 24 never ran. Lines that can't run (comments, blank lines, `import`s) are not listed. The coverage of a folder is the lines that ran divided by the lines that could run. `check_coverage` adds this up per folder prefix:
+  (Trimmed: the real record has eleven `DA:` lines.) `SF:` is the file, and `DA:<line>,<count>` says line 35 ran 18 times and lines 23 and 24 never ran (`LF` and `LH` are the file's totals: 11 lines found, 9 hit; `check_coverage` adds up the `DA:` lines itself). Lines that can't run (comments, blank lines, `import`s) are not listed. The coverage of a folder is the lines that ran divided by the lines that could run. `check_coverage` adds this up per folder prefix:
 
   ```dart
   final percent = hit * 100 / found;
@@ -916,9 +920,9 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | `lib/domain/` | 62 of 64 | 96.9 % |
   | `lib/data/` | 857 of 957 | 89.6 % |
 
-- **Why 80 % and not 100 %.** The last stretch costs the most and protects the least. Look at what is *not* covered here. In `domain`, lines 23 and 24 of `text_limits.dart` are `InvalidInputException.toString()`, used only when an error is printed. In `data`, the missing lines are things like `ImportSummary.hashCode` and `toString()`, the one-line Riverpod `settingsRepository` wiring, and `connection.dart` (three lines that open the real database file on the phone, which a laptop test must not do: tests use an in-memory database instead). Chasing those to 100 % means writing tests whose only job is to turn the number green. 80 % is a floor that leaves room for those lines but not for a whole untested feature. The rule in `tool/check` is the same for every prefix, and the real percentages are well above it, so the floor only trips when something real is missing.
+- **Why 80 % and not 100 %.** The last stretch costs the most and protects the least. Look at what is *not* covered here. In `domain`, lines 23 and 24 of `text_limits.dart` are `InvalidInputException.toString()`, used only when an error is printed. In `data`, 100 hand-written lines did not run, and by far the biggest part (73 of them) is `database/tables.dart`: the Drift table declarations (`IntColumn get id => integer()...`). Only 2 of its 75 lines ran, because the real columns are built by the generated `app_database.g.dart`, and these declarations are read by the code generator, not run by the tests. Nothing is untested there; the lines just never execute. The rest are small: `ImportSummary.hashCode` and `toString()`, the one-line Riverpod `settingsRepository` wiring, and `connection.dart` (three lines that open the real database file on the phone, which a laptop test must not do: tests use an in-memory database instead). Chasing those to 100 % means writing tests whose only job is to turn the number green. 80 % is a floor that leaves room for those lines but not for a whole untested feature. The rule in `tool/check` is the same for every prefix, and the real percentages are well above it, so the floor only trips when something real is missing.
 
-- **Why generated files are excluded.** `*.g.dart` and `*.freezed.dart` (Section 2) are written by tools, not by us. They are large (`app_database.g.dart` alone has 2,666 lines, of which tests run 913) and mostly code we never call directly. Counting them would drag the percentage down for lines nobody can sensibly test, and a drop there would say nothing about our own code. The tools are tested by their authors, and the freshness check (Section 2) already makes sure the generated files match the source. The filter is two lines in `_parseLcov`:
+- **Why generated files are excluded.** `*.g.dart` and `*.freezed.dart` (Section 2) are written by tools, not by us. They are large (`app_database.g.dart` alone is 6,311 lines, 2,666 of them executable, and the tests run 913 of those) and mostly code we never call directly. Counting them would drag the percentage down for lines nobody can sensibly test, and a drop there would say nothing about our own code. The tools are tested by their authors, and the freshness check (Section 2) already makes sure the generated files match the source. The filter is two lines in `_parseLcov`:
 
   ```dart
   if (!file.endsWith('.g.dart') && !file.endsWith('.freezed.dart')) {
@@ -928,7 +932,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   Only generated files are excluded. A hand-written file that is poorly covered counts in full, and the answer is to write the tests, never to add an exclusion or lower the 80.
 
-- **A typo can't pass.** `check_coverage` is told *which* folders to check. If you misspell one (`lib/dat/`), no file matches, and 0 lines of 0 would be "0 %" or, worse, a division by nothing that looks fine. So a prefix that matches no file fails with `no coverage data for lib/dat/`.
+- **A typo can't pass.** `check_coverage` is told *which* folders to check. If you misspell one (`lib/dat/`), no file matches, and 0 lines of 0 would be "0 %" or, worse, a division by nothing that looks fine. So a prefix that matches no file fails with `no coverage data for lib/dat/`. The arguments are checked the same way: a prefix must end in `/` (otherwise `lib/data` would also count `lib/database_x/`), and the minimum must be a number from 0 to 100 (`NaN` or a negative number would make every comparison pass). Otherwise it prints the usage and exits 64.
 
 - **What coverage can't tell you.** A covered line is a line that *ran*, not a line whose result was *checked*. This test covers every line of the function it calls, and checks nothing:
 
@@ -936,11 +940,11 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   test('runs', () => normalizeName('  Goa  '));
   ```
 
-  The percentage would be exactly the same as for a test that said `expect(normalizeName('  Goa  '), 'Goa')`. So 90 % coverage does not mean 90 % of the behaviour is protected. The check for that is the one every "Try it yourself" in this guide has done: break the code on purpose (change `40` to `39`, delete the line that cleans a link, remove the orphan rule) and see whether a test fails. If nothing fails, the line was covered but not checked. The builders did this to their own tests during the phase; Section 8's example (removing the reel-name check from the importer makes three tests fail) is the pattern. Coverage finds the code no test touches; breaking the code on purpose finds the code no test *checks*. You need both.
+  The percentage would be exactly the same as for a test that said `expect(normalizeName('  Goa  '), 'Goa')`. So 90 % coverage does not mean 90 % of the behaviour is protected. The check for that is the one every "Try it yourself" in this guide has done: break the code on purpose (change `40` to `39`, delete the line that cleans a link, remove the orphan rule) and see whether a test fails. If nothing fails, the line was covered but not checked. Section 8's example (removing the reel-name check from the importer makes three tests fail) is the pattern. Coverage finds the code no test touches; breaking the code on purpose finds the code no test *checks*. You need both.
 
-- **One more blind spot.** The report only lists files that a test loads. A new file under `lib/data/` that no test and no loaded code imports would not appear at all, so it could not lower the percentage. This is parked in `docs/later.md` for when the gate grows (phase 4 adds `lib/features/*/view_models/`).
+- **One more blind spot.** The report only lists files that a test loads. A new file under `lib/data/` that no test and no loaded code imports would not appear at all, so it could not lower the percentage. This is parked in `docs/later.md` for phase 3, where the first new files land under the gated folders.
 
-**Where it lives:** `tool/bin/check_coverage.dart` (the command), `tool/test/check_coverage_test.dart` (its tests: on the bar passes, below fails, files add up across a prefix, generated files excluded, unknown prefix fails, missing report fails, wrong arguments print usage), and the `coverage (domain and data)` step in `tool/check`. The steps are in `docs/flow.md` ("Local checks", step 10). The report goes to `app/coverage/`, which Git ignores.
+**Where it lives:** `tool/bin/check_coverage.dart` (the command), `tool/test/check_coverage_test.dart` (its tests: on the bar passes, below fails, files add up across a prefix, generated files excluded, unknown prefix fails, missing report fails, wrong arguments print usage, a prefix only matches whole folders), and the `coverage (domain and data)` step in `tool/check`. The steps are in `docs/flow.md` ("Local checks", step 10). The report goes to `app/coverage/`, which Git ignores.
 
 **Try it yourself:** from the repo root run `(cd app && ../tool/flutter test --coverage) && tool/dart run taketray_tool:check_coverage app/coverage/lcov.info 80 lib/domain/ lib/data/`. After the tests pass you should see two lines, `lib/domain/  96.9%  62/64 lines` and `lib/data/  89.6%  857/957 lines`, and the exit code is 0. Then raise the bar: run `tool/dart run taketray_tool:check_coverage app/coverage/lcov.info 95 lib/domain/ lib/data/; echo "exit $?"`. `lib/data/` now prints `check_coverage: lib/data/ is below 95.0%` and the exit code is 1 (your numbers will move a little as the code changes). To see which lines did not run, use `awk '/^SF:/{f=substr($0,4)} /^DA:.*,0$/{print f ":" substr($0,4,index($0,",")-4)}' app/coverage/lcov.info | grep text_limits.dart`; it prints `lib/domain/rules/text_limits.dart:23` and `:24`, the `toString()` mentioned above.
 
