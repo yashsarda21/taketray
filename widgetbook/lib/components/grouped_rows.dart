@@ -43,6 +43,9 @@ final WidgetbookComponent ttGroupedRowsComponent = WidgetbookComponent(
           initialValue: true,
         );
         final tappable = context.knobs.boolean(label: 'tappable');
+        final stack = context.knobs.boolean(
+          label: 'stack trailing at large text',
+        );
         final title = context.knobs.string(
           label: 'title',
           initialValue: 'Evening reminder',
@@ -81,6 +84,7 @@ final WidgetbookComponent ttGroupedRowsComponent = WidgetbookComponent(
                           semanticLabel: '$title ${i + 1}',
                         ),
                       },
+                      stackTrailingAtLargeText: stack,
                       onTap: tappable ? () {} : null,
                     ),
                 ],

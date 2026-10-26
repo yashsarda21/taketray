@@ -140,6 +140,21 @@ void main() {
         width: _callout,
       ),
       TtScenario(
+        'callout, warning, with action',
+        TtCallout(
+          icon: Symbols.smartphone_rounded,
+          title: 'Moving to a new phone?',
+          body: "That isn't supported yet.",
+          warning: true,
+          action: TtButton(
+            label: 'Learn more',
+            kind: TtButtonKind.text,
+            onPressed: () {},
+          ),
+        ),
+        width: _callout,
+      ),
+      TtScenario(
         'callout, with action, no title',
         TtCallout(
           icon: Symbols.tips_and_updates_rounded,

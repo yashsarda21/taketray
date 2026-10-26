@@ -15,14 +15,6 @@ TtListRow _reminder() => TtListRow(
   trailing: _switch(true, 'Evening reminder'),
 );
 
-TtListRow _folders() => TtListRow(
-  title: 'Watched folders',
-  subtitle: 'Camera, Download',
-  leading: const TtRowIcon(icon: Symbols.folder_open_rounded, boxed: false),
-  trailing: _chevron(),
-  onTap: () {},
-);
-
 void main() {
   ttGoldenTest(
     'Grouped rows',
@@ -91,7 +83,23 @@ void main() {
                   ),
                   trailing: Icon(Symbols.check_circle_rounded, fill: 1),
                 ),
-                _folders(),
+                TtListRow(
+                  title: 'Sort order',
+                  leading: const TtRowIcon(
+                    icon: Symbols.sort_rounded,
+                    boxed: false,
+                  ),
+                  trailing: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 4,
+                    children: [
+                      Text('Newest first'),
+                      Icon(Symbols.chevron_right_rounded),
+                    ],
+                  ),
+                  stackTrailingAtLargeText: true,
+                  onTap: () {},
+                ),
                 _reminder(),
                 const TtListRow(
                   title: 'Notifications',
@@ -100,6 +108,7 @@ void main() {
                     boxed: false,
                   ),
                   trailing: Text('Allowed'),
+                  stackTrailingAtLargeText: true,
                 ),
               ],
             ),

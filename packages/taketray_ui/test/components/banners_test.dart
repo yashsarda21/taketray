@@ -281,6 +281,54 @@ void main() {
       expect(bodyRect.width, greaterThan(200));
     });
 
+    testWidgets('a text action is underlined in the banner colour, except in '
+        'a VN banner', (tester) async {
+      for (final kind in TtBannerKind.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _banner(
+              kind: kind,
+              action: TtButton(
+                label: 'Allow',
+                kind: TtButtonKind.text,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final style = DefaultTextStyle.of(tester.element(find.text('Allow')))
+            .style;
+        if (kind == TtBannerKind.vn) {
+          expect(style.decoration, isNot(TextDecoration.underline));
+        } else {
+          final title = tester
+              .widget<Text>(find.text("TakeTray can't see your videos"))
+              .style!;
+          expect(style.decoration, TextDecoration.underline, reason: '$kind');
+          expect(style.decorationColor, title.color, reason: '$kind');
+        }
+      }
+    });
+
+    testWidgets('a filled action in a banner is not underlined', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          _banner(
+            action: TtButton(label: 'Allow', onPressed: () {}),
+          ),
+        ),
+      );
+      expect(
+        DefaultTextStyle.of(tester.element(find.text('Allow')))
+            .style
+            .decoration,
+        isNot(TextDecoration.underline),
+      );
+    });
+
     testWidgets('passes the accessibility guidelines in light and dark', (
       tester,
     ) async {
@@ -413,6 +461,36 @@ void main() {
       expect(action.top, greaterThanOrEqualTo(body.bottom));
       await tester.tap(find.text('Got it'));
       expect(calls, 1);
+    });
+
+    testWidgets('a warning callout underlines a text action; a normal one '
+        'does not', (tester) async {
+      for (final warning in [true, false]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            callout(
+              warning: warning,
+              action: TtButton(
+                label: 'Got it',
+                kind: TtButtonKind.text,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final style = DefaultTextStyle.of(tester.element(find.text('Got it')))
+            .style;
+        expect(
+          style.decoration == TextDecoration.underline,
+          warning,
+          reason: 'warning: $warning',
+        );
+        if (warning) {
+          final scheme = tester.element(find.byType(TtCallout)).scheme;
+          expect(style.decorationColor, scheme.onTertiaryContainer);
+        }
+      }
     });
 
     testWidgets('long text at 2x wraps in full', (tester) async {

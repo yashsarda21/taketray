@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// Which look and role a [TtBanner] has.
@@ -107,11 +109,7 @@ class TtBanner extends StatelessWidget {
         ? null
         : vn
         ? action
-        : Theme(
-            data: Theme.of(context)
-                .copyWith(colorScheme: scheme.copyWith(primary: content)),
-            child: action,
-          );
+        : _inheritColour(context, action, content);
 
     final row = Row(
       crossAxisAlignment: vn
@@ -282,11 +280,7 @@ class TtCallout extends StatelessWidget {
     // contrast on the tertiary container.
     final shownAction = action == null || !warning
         ? action
-        : Theme(
-            data: Theme.of(context)
-                .copyWith(colorScheme: scheme.copyWith(primary: content)),
-            child: action,
-          );
+        : _inheritColour(context, action, content);
     return Material(
       color: fill,
       borderRadius: BorderRadius.circular(tt.radii.xl),
@@ -390,4 +384,47 @@ class TtInfoBar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// [action] with its text-style buttons in [colour] and underlined, as in
+/// the prototype's `.banner .btn.text { color: inherit; text-decoration:
+/// underline }`, so the action reads as a link and not as more text.
+///
+/// Done through a copy of the theme, so `TtButton` keeps its API: the
+/// scheme's `primary` becomes [colour] and the label style gets an underline
+/// in [colour]. A `TtButton` of another kind is not underlined. Flutter has no
+/// `text-underline-offset`, so the underline sits at its default distance.
+Widget _inheritColour(BuildContext context, Widget action, Color colour) {
+  final theme = Theme.of(context);
+  final tt = context.tt;
+  final underline = action is! TtButton || action.kind == TtButtonKind.text;
+  final material = tt.text.material;
+  final text = tt.text;
+  final underlined = TtTextStyles(
+    material: material.copyWith(
+      labelLarge: material.labelLarge!.copyWith(
+        decoration: TextDecoration.underline,
+        decorationColor: colour,
+      ),
+    ),
+    pageTitle: text.pageTitle,
+    detailTitle: text.detailTitle,
+    screenTitle: text.screenTitle,
+    dialogTitle: text.dialogTitle,
+    shootTitle: text.shootTitle,
+    cardTitle: text.cardTitle,
+    groupLabel: text.groupLabel,
+    navLabel: text.navLabel,
+  );
+  return Theme(
+    data: theme.copyWith(
+      colorScheme: theme.colorScheme.copyWith(primary: colour),
+      extensions: [
+        for (final extension in theme.extensions.values)
+          if (extension is! TtThemeData) extension,
+        if (underline) tt.copyWith(text: underlined) else tt,
+      ],
+    ),
+    child: action,
+  );
 }

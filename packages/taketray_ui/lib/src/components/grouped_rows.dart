@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -146,6 +145,7 @@ class TtListRow extends StatelessWidget {
     this.trailing,
     this.onTap,
     this.semanticLabel,
+    this.stackTrailingAtLargeText = false,
     super.key,
   });
 
@@ -169,6 +169,13 @@ class TtListRow extends StatelessWidget {
   /// trailing control.
   final String? semanticLabel;
 
+  /// Whether [trailing] moves under the subtitle from a text scale of 1.5,
+  /// instead of staying beside the text. Set it for a trailing value, a
+  /// value with a chevron or a button, which would squeeze the title into
+  /// broken words at large text; leave it off for a switch or a lone
+  /// chevron, which are narrow. The call site decides, so any widget works.
+  final bool stackTrailingAtLargeText;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
@@ -178,11 +185,11 @@ class TtListRow extends StatelessWidget {
     final trailing = this.trailing;
     final subtitle = this.subtitle;
     final quiet = scheme.onSurfaceVariant;
-    // A value or button beside the text would squeeze it into broken words
-    // at large text: from 1.5x it goes under the text instead.
+    // A wide trailing beside the text would squeeze it into broken words at
+    // large text: from 1.5x it goes under the text instead, if asked.
     final stacked =
         trailing != null &&
-        (trailing is Text || trailing is TtButton) &&
+        stackTrailingAtLargeText &&
         MediaQuery.textScalerOf(context).scale(1) >=
             TtMetrics.listRowStackTrailingTextScale;
     final trailingBox = trailing == null

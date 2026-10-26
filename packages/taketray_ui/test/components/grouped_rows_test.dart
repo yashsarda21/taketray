@@ -317,8 +317,10 @@ void main() {
       expect(tester.getSize(find.byType(TtListRow)).height, greaterThan(56));
     });
 
-    testWidgets('at 2x a trailing value goes under the text and the title '
-        'is not broken inside a word', (tester) async {
+    testWidgets('with stackTrailingAtLargeText a trailing value goes under '
+        'the text at 2x and the title is not broken inside a word', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         ttTestApp(
           const TtGroupedRows(
@@ -327,6 +329,7 @@ void main() {
                 title: 'Notifications',
                 leading: TtRowIcon(icon: Symbols.notifications_rounded),
                 trailing: Text('Allowed'),
+                stackTrailingAtLargeText: true,
               ),
             ],
           ),
@@ -346,12 +349,88 @@ void main() {
       );
     });
 
-    testWidgets('at 1x a trailing value stays beside the text', (tester) async {
+    testWidgets('a wrapped trailing (value and chevron in a Row) stacks too', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         ttTestApp(
           const TtGroupedRows(
             children: [
-              TtListRow(title: 'Notifications', trailing: Text('Allowed')),
+              TtListRow(
+                title: 'Notifications',
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: 4,
+                  children: [
+                    Text('Allowed'),
+                    Icon(Symbols.chevron_right_rounded),
+                  ],
+                ),
+                stackTrailingAtLargeText: true,
+              ),
+            ],
+          ),
+          textScale: 2,
+        ),
+      );
+      final title = tester.getRect(find.text('Notifications'));
+      final value = tester.getRect(find.text('Allowed'));
+      expect(value.top, greaterThanOrEqualTo(title.bottom));
+      expect(value.left, title.left);
+    });
+
+    testWidgets('without the flag a trailing switch stays beside the text at '
+        '2x', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          TtGroupedRows(
+            children: [
+              TtListRow(
+                title: 'Evening reminder',
+                trailing: TtSwitch(
+                  value: true,
+                  onChanged: (_) {},
+                  semanticLabel: 'Evening reminder',
+                ),
+              ),
+            ],
+          ),
+          textScale: 2,
+        ),
+      );
+      final title = tester.getRect(find.text('Evening reminder'));
+      final toggle = tester.getRect(find.byType(TtSwitch));
+      expect(toggle.left, greaterThanOrEqualTo(title.right));
+    });
+
+    testWidgets('a trailing value without the flag stays beside the text at '
+        '2x (the call site decides)', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const TtGroupedRows(
+            children: [TtListRow(title: 'Mode', trailing: Text('Auto'))],
+          ),
+          textScale: 2,
+        ),
+      );
+      expect(
+        tester.getRect(find.text('Auto')).left,
+        greaterThan(tester.getRect(find.text('Mode')).right),
+      );
+    });
+
+    testWidgets('with the flag a trailing value stays beside the text at 1x', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const TtGroupedRows(
+            children: [
+              TtListRow(
+                title: 'Notifications',
+                trailing: Text('Allowed'),
+                stackTrailingAtLargeText: true,
+              ),
             ],
           ),
         ),
