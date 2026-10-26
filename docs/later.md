@@ -13,6 +13,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 4
 
+- Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
+
 - Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.
 - App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.
 - `TtTextField`:
