@@ -1,0 +1,8 @@
+include: package:very_good_analysis/analysis_options.yaml
+
+analyzer:
+  exclude:
+    - "build/**"
+# Unlike app/, this is a library: public_member_api_docs stays on so every
+# exported name is documented. tokens.g.dart is analysed too (it is generated
+# by design/tools/build_tokens.py, which must produce lint-clean Dart).

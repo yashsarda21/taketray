@@ -48,13 +48,20 @@ final _rules = <String, RegExp>{
         _lit,
   ),
   'raw-size': RegExp(
-    r'(?<!\w)SizedBox\((?:' + _args + r',)?\s*(?:width|height):\s*' + _lit,
+    r'(?<!\w)SizedBox(?:\((?:' +
+        _args +
+        r',)?\s*(?:width|height)|\.square\((?:' +
+        _args +
+        r',)?\s*dimension):\s*' +
+        _lit,
   ),
-  'raw-radius': RegExp(r'(?<!\w)(?:BorderRadius|Radius)\.circular\(\s*' + _lit),
+  'raw-radius': RegExp(
+    r'(?<!\w)(?:BorderRadius(?:Directional)?|Radius)\.circular\(\s*' + _lit,
+  ),
   'raw-duration': RegExp(
     r'(?<!\w)Duration\((?:' +
         _args +
-        r',)?\s*(?:milliseconds|seconds):\s*' +
+        r',)?\s*(?:microseconds|milliseconds|seconds|minutes|hours|days):\s*' +
         _lit,
   ),
 };

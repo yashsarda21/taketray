@@ -1,0 +1,722 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_theme_data.dart';
+
+/// A label with an icon that covers a clip tile, such as "Skipped".
+class TtClipMark {
+  /// A mark showing [icon] and [label].
+  const new({required this.icon, required this.label});
+
+  /// The glyph, drawn filled.
+  final IconData icon;
+
+  /// The words; one line, with an ellipsis if too long.
+  final String label;
+}
+
+/// A clip in a grid: a 3:4 thumbnail with the time it was shot (bottom left)
+/// and its length (bottom right).
+///
+/// Badges: the number of reels the clip is in (top left, only from 2), a
+/// horizontal-video mark (top right, only for a clip in fewer than 2 reels),
+/// and an optional [vnLabel] mark for a clip already in the VN folder. A
+/// [mark] covers the tile with a label and hides the time and length.
+///
+/// Giving [selected] puts the tile in selecting mode: a check circle appears
+/// at the top right, and a selected tile shrinks its picture inside a
+/// primary container frame. It is announced as a toggle then.
+///
+/// A thumbnail that fails to load shows a neutral placeholder.
+/// [semanticLabel] is what a screen reader says for the whole tile (the
+/// badges are not read on their own), so it should mention the time, length,
+/// reel count, mark and VN folder.
+class TtClipTile extends StatelessWidget {
+  /// A tile showing [thumbnail], announced as [semanticLabel].
+  const new({
+    required this.thumbnail,
+    required this.semanticLabel,
+    this.timeText,
+    this.durationText,
+    this.reelCount = 1,
+    this.horizontal = false,
+    this.selected,
+    this.mark,
+    this.vnLabel,
+    this.enabled = true,
+    this.onTap,
+    this.onLongPress,
+    super.key,
+  });
+
+  /// The picture.
+  final ImageProvider thumbnail;
+
+  /// What a screen reader says for the tile.
+  final String semanticLabel;
+
+  /// When the clip was shot, such as "9:41 AM", or null for none.
+  final String? timeText;
+
+  /// How long the clip is, such as "0:32", or null for none.
+  final String? durationText;
+
+  /// How many reels the clip is in; the layers badge shows from 2.
+  final int reelCount;
+
+  /// Whether the video is horizontal.
+  final bool horizontal;
+
+  /// Null outside selecting mode; otherwise whether this tile is selected.
+  final bool? selected;
+
+  /// A label over the whole tile, or null for none.
+  final TtClipMark? mark;
+
+  /// The text of the "already in the VN folder" mark, or null to hide it.
+  final String? vnLabel;
+
+  /// Whether taps and long presses are handled.
+  final bool enabled;
+
+  /// Called when the tile is tapped.
+  final VoidCallback? onTap;
+
+  /// Called when the tile is long pressed.
+  final VoidCallback? onLongPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    final selecting = selected != null;
+    final isSelected = selected ?? false;
+    final multi = reelCount >= 2;
+    final showHorizontal = horizontal && !multi;
+    final time = isSelected || mark != null ? null : timeText;
+    final duration = isSelected || mark != null ? null : durationText;
+    final vn = vnLabel;
+    final tileMark = mark;
+
+    // proto.css: .tile.sel { background: primary-container }
+    final background = isSelected
+        ? scheme.primaryContainer
+        : scheme.surfaceContainerHighest;
+
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      enabled: enabled,
+      toggled: selected,
+      label: semanticLabel,
+      onTap: enabled ? onTap : null,
+      onLongPress: enabled ? onLongPress : null,
+      child: AspectRatio(
+        aspectRatio: tt.sizes.clipTileAspect,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(tt.radii.m),
+          child: ColoredBox(
+            color: background,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                // proto.css: .tile .img, .tile.sel .img { scale(.86) }
+                AnimatedScale(
+                  scale: isSelected ? TtMetrics.clipTileSelectedScale : 1,
+                  duration: tt.motion.short4,
+                  curve: tt.motion.standard,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(tt.radii.m),
+                    child: Image(
+                      image: thumbnail,
+                      fit: BoxFit.cover,
+                      excludeFromSemantics: true,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const _Placeholder(),
+                    ),
+                  ),
+                ),
+                if (!isSelected) const _Scrim(),
+                if (multi)
+                  PositionedDirectional(
+                    start: TtMetrics.clipTileBadgeInset,
+                    top: TtMetrics.clipTileBadgeInset,
+                    child: _MultiBadge(count: reelCount),
+                  ),
+                if (showHorizontal)
+                  const PositionedDirectional(
+                    end: TtMetrics.clipTileBadgeInset,
+                    top: TtMetrics.clipTileBadgeInset,
+                    child: _HorizontalBadge(),
+                  ),
+                if (time != null || duration != null || vn != null)
+                  // The VN mark sits above the time and length, and keeps its
+                  // height off the bottom when they are hidden.
+                  PositionedDirectional(
+                    start: 0,
+                    end: 0,
+                    bottom: TtMetrics.clipTileTextBottom,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: TtMetrics.clipTileVnGap,
+                      children: [
+                        if (vn != null)
+                          Padding(
+                            // proto.css: .tile .vnmark { left: 5px } (no right
+                            // limit: the label may run to the tile's edge).
+                            padding: const EdgeInsetsDirectional.only(
+                              start: TtMetrics.clipTileVnInsetStart,
+                            ),
+                            child: Align(
+                              alignment: AlignmentDirectional.centerStart,
+                              child: _VnMark(label: vn),
+                            ),
+                          ),
+                        if (time != null || duration != null)
+                          Padding(
+                            padding: const EdgeInsetsDirectional.symmetric(
+                              horizontal: TtMetrics.clipTileTextInset,
+                            ),
+                            child: _TimeRow(time: time, duration: duration),
+                          )
+                        else
+                          const SizedBox(height: TtMetrics.clipTileTextHeight),
+                      ],
+                    ),
+                  ),
+                if (tileMark != null) _MarkOverlay(mark: tileMark),
+                if (selecting)
+                  PositionedDirectional(
+                    end: TtMetrics.clipTileSelectInset,
+                    top: TtMetrics.clipTileSelectInset,
+                    child: _SelectCircle(selected: isSelected),
+                  ),
+                // The ripple is drawn over the picture and the badges.
+                Positioned.fill(
+                  child: Material(
+                    type: MaterialType.transparency,
+                    child: InkWell(
+                      onTap: enabled ? onTap : null,
+                      onLongPress: enabled ? onLongPress : null,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The neutral picture for a thumbnail that failed to load.
+class _Placeholder extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    return ColoredBox(
+      color: scheme.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Symbols.movie_rounded,
+          size: tt.sizes.iconLarge,
+          color: scheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+/// The dark gradient over the bottom of the picture, behind the time and
+/// length.
+class _Scrim extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) {
+    // proto.css: .tile .scr-b
+    final black = context.scheme.shadow;
+    return IgnorePointer(
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: FractionallySizedBox(
+          heightFactor: TtMetrics.clipTileScrimHeightFactor,
+          widthFactor: 1,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  black.withValues(alpha: 0),
+                  black.withValues(alpha: TtMetrics.clipTileScrimOpacity),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The time (start) and length (end) along the bottom of the tile.
+class _TimeRow extends StatelessWidget {
+  const new({required this.time, required this.duration});
+
+  final String? time;
+  final String? duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final time = this.time;
+    final duration = this.duration;
+    // proto.css: .tile .tm, .tile .du
+    final style = tt.text
+        .numeric(tt.text.material.bodySmall!)
+        .copyWith(
+          color: tt.colors.onMedia,
+          fontWeight: FontWeight.w700,
+          fontVariations: const [
+            FontVariation('wght', TtMetrics.clipTileTextWeight),
+          ],
+          letterSpacing: 0,
+          shadows: [
+            Shadow(
+              color: context.scheme.shadow.withValues(
+                alpha: TtMetrics.clipTileTextShadowOpacity,
+              ),
+              blurRadius: TtMetrics.clipTileTextShadowBlur,
+              offset: const Offset(0, TtMetrics.clipTileTextShadowOffsetY),
+            ),
+          ],
+        );
+    // The two share the row in proportion to their length. At large text
+    // sizes each shrinks to its share rather than being cut off.
+    Widget part(String text, AlignmentGeometry alignment) => Flexible(
+      flex: math.max(1, text.length),
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: alignment,
+        child: Text(text, maxLines: 1, softWrap: false, style: style),
+      ),
+    );
+    return IgnorePointer(
+      child: Row(
+        mainAxisAlignment: time == null
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.spaceBetween,
+        spacing: tt.spacing.xxs,
+        children: [
+          if (time != null) part(time, AlignmentDirectional.centerStart),
+          if (duration != null) part(duration, AlignmentDirectional.centerEnd),
+        ],
+      ),
+    );
+  }
+}
+
+/// The dark rounded square that holds a badge on the picture.
+class _BadgeBox extends StatelessWidget {
+  const new({required this.child, this.padding = EdgeInsets.zero});
+
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    // proto.css: .tile .multi, .tile .hz
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: context.tt.colors.glassOnMedia.withValues(
+            alpha: TtMetrics.clipTileBadgeOpacity,
+          ),
+          borderRadius: BorderRadius.circular(TtMetrics.clipTileBadgeRadius),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minWidth: TtMetrics.clipTileBadgeSize,
+            minHeight: TtMetrics.clipTileBadgeSize,
+          ),
+          child: Padding(
+            padding: padding,
+            child: Center(widthFactor: 1, heightFactor: 1, child: child),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Layers icon and the number of reels the clip is in.
+class _MultiBadge extends StatelessWidget {
+  const new({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    // proto.css: .tile .multi { font: 700 11.5px/1 … }
+    final style = tt.text.navLabel.copyWith(
+      color: tt.colors.onMedia,
+      fontWeight: FontWeight.w700,
+      fontVariations: const [
+        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
+      ],
+      letterSpacing: 0,
+      height: 1,
+    );
+    return _BadgeBox(
+      padding: const EdgeInsetsDirectional.only(
+        start: TtMetrics.clipTileMultiPaddingStart,
+        end: TtMetrics.clipTileMultiPaddingEnd,
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: TtMetrics.clipTileMultiGap,
+        children: [
+          Icon(
+            Symbols.layers_rounded,
+            size: TtMetrics.clipTileMultiIconSize,
+            color: tt.colors.onMedia,
+            fill: 1,
+          ),
+          Text('$count', maxLines: 1, softWrap: false, style: style),
+        ],
+      ),
+    );
+  }
+}
+
+/// The mark on a horizontal video.
+class _HorizontalBadge extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) => _BadgeBox(
+    child: Icon(
+      Symbols.crop_16_9_rounded,
+      size: TtMetrics.clipTileHorizontalIconSize,
+      color: context.tt.colors.onMedia,
+    ),
+  );
+}
+
+/// "Already in the VN folder": a small inverse pill above the time.
+class _VnMark extends StatelessWidget {
+  const new({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // proto.css: .pill.vn, with ui.js's height 20, font 11 and padding 0 6 0 4
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.inverseSurface,
+          borderRadius: BorderRadius.circular(tt.radii.s),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(
+            minHeight: TtMetrics.clipTileVnHeight,
+          ),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.only(
+              start: TtMetrics.clipTileVnPaddingStart,
+              end: TtMetrics.clipTileVnPaddingEnd,
+            ),
+            child: Center(
+              widthFactor: 1,
+              heightFactor: 1,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: tt.spacing.xxs,
+                children: [
+                  Icon(
+                    Symbols.folder_copy_rounded,
+                    size: TtMetrics.clipTileVnIconSize,
+                    color: scheme.onInverseSurface,
+                  ),
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.text.material.labelMedium!.copyWith(
+                        fontSize: TtMetrics.clipTileVnFontSize,
+                        color: scheme.onInverseSurface,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The label over a marked tile: the picture dims and the label sits at the
+/// bottom.
+class _MarkOverlay extends StatelessWidget {
+  const new({required this.mark});
+
+  final TtClipMark mark;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // proto.css: .tile .mark, .tile .mark > span
+    final style = tt.text.navLabel.copyWith(
+      color: scheme.onInverseSurface,
+      fontWeight: FontWeight.w700,
+      fontVariations: const [
+        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
+      ],
+      letterSpacing: 0,
+    );
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: ColoredBox(
+          color: scheme.surface.withValues(
+            alpha: TtMetrics.clipTileMarkScrimOpacity,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(TtMetrics.clipTileMarkInset),
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: scheme.inverseSurface,
+                  borderRadius: BorderRadius.circular(
+                    TtMetrics.clipTileMarkRadius,
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: TtMetrics.clipTileMarkPaddingHorizontal,
+                    vertical: TtMetrics.clipTileMarkPaddingVertical,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: TtMetrics.clipTileMarkGap,
+                    children: [
+                      Icon(
+                        mark.icon,
+                        size: TtMetrics.clipTileMarkIconSize,
+                        color: scheme.onInverseSurface,
+                        fill: 1,
+                      ),
+                      Flexible(
+                        child: Text(
+                          mark.label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: style,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The round check in the corner while selecting.
+class _SelectCircle extends StatelessWidget {
+  const new({required this.selected});
+
+  final bool selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // proto.css: .tile .selc, .tile.sel .selc
+    return IgnorePointer(
+      child: SizedBox.square(
+        key: const ValueKey('tt-clip-select'),
+        dimension: TtMetrics.clipTileSelectSize,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: selected
+                ? scheme.primary
+                : scheme.shadow.withValues(
+                    alpha: TtMetrics.clipTileSelectFillOpacity,
+                  ),
+            border: Border.all(
+              color: selected ? scheme.primary : tt.colors.onMedia,
+              width: TtMetrics.clipTileSelectBorder,
+            ),
+          ),
+          child: selected
+              ? OverflowBox(
+                  minWidth: 0,
+                  minHeight: 0,
+                  maxWidth: TtMetrics.clipTileSelectTickSize,
+                  maxHeight: TtMetrics.clipTileSelectTickSize,
+                  child: Icon(
+                    Symbols.check_rounded,
+                    size: TtMetrics.clipTileSelectTickSize,
+                    weight: TtMetrics.clipTileSelectTickWeight,
+                    color: scheme.onPrimary,
+                  ),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+}
+
+/// A clip that is gone from the phone: a grey dashed tile with a camera-off
+/// icon, [label], and, when [removeLabel] is given, a small Remove button.
+///
+/// The label wraps to two lines, or one at large text sizes, so the tile
+/// never overflows.
+class TtMissingClipTile extends StatelessWidget {
+  /// A missing-clip tile saying [label].
+  const new({required this.label, this.removeLabel, this.onRemove, super.key});
+
+  /// What the tile says, such as "Missing from phone".
+  final String label;
+
+  /// The text of the Remove button, or null for no button.
+  final String? removeLabel;
+
+  /// Called when Remove is tapped.
+  final VoidCallback? onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    final removeLabel = this.removeLabel;
+    // proto.css: .tile.miss
+    // The label gets two lines, or one when text is enlarged so much that
+    // two would not leave room for the icon and the button.
+    final textScale = MediaQuery.textScalerOf(context).scale(1);
+    final labelLines = textScale > TtMetrics.clipTileMissingLabelScaleLimit
+        ? 1
+        : TtMetrics.clipTileMissingLabelLines.toInt();
+    return AspectRatio(
+      aspectRatio: tt.sizes.clipTileAspect,
+      child: CustomPaint(
+        foregroundPainter: _DashedBorderPainter(
+          color: scheme.outline,
+          radius: tt.radii.m,
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(tt.radii.m),
+          child: ColoredBox(
+            color: scheme.surfaceContainerHigh,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: TtMetrics.clipTileMissingPaddingHorizontal,
+                vertical: tt.spacing.xs,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                spacing: tt.spacing.xxs,
+                children: [
+                  Icon(
+                    Symbols.videocam_off_rounded,
+                    size: TtMetrics.clipTileMissingIconSize,
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  Flexible(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      maxLines: labelLines,
+                      overflow: TextOverflow.ellipsis,
+                      style: tt.text.material.labelMedium!.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  if (removeLabel != null)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        top: TtMetrics.clipTileMissingButtonGap,
+                      ),
+                      child: TtButton(
+                        label: removeLabel,
+                        kind: TtButtonKind.tonal,
+                        size: TtButtonSize.small,
+                        onPressed: onRemove,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Strokes a dashed rounded-rectangle outline just inside its bounds.
+class _DashedBorderPainter extends CustomPainter {
+  const new({required this.color, required this.radius});
+
+  final Color color;
+  final double radius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const width = TtMetrics.clipTileMissingBorder;
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          (Offset.zero & size).deflate(width / 2),
+          Radius.circular(radius - width / 2),
+        ),
+      );
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = width;
+    for (final metric in path.computeMetrics()) {
+      var at = 0.0;
+      while (at < metric.length) {
+        canvas.drawPath(
+          metric.extractPath(at, at + TtMetrics.clipTileMissingDashLength),
+          paint,
+        );
+        at +=
+            TtMetrics.clipTileMissingDashLength +
+            TtMetrics.clipTileMissingDashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.radius != radius;
+}

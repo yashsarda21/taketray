@@ -4,6 +4,7 @@
 **/.flutter-plugins*
 **/coverage/
 **/test/failures/
+**/test/**/failures/
 *.iml
 .idea/
 **/android/local.properties

@@ -1,0 +1,28 @@
+name: taketray_ui
+description: "TakeTray design system: generated tokens, the TakeTray theme and the shared widgets."
+publish_to: none
+
+environment:
+  sdk: ^3.13.5
+  flutter: 3.47.7
+
+resolution: workspace
+
+dependencies:
+  flutter:
+    sdk: flutter
+  material_symbols_icons: ^4.2960.0
+
+dev_dependencies:
+  alchemist: ^0.14.1
+  flutter_test:
+    sdk: flutter
+  very_good_analysis: ^11.0.0
+
+flutter:
+  uses-material-design: true
+
+  fonts:
+    - family: PlusJakartaSans
+      fonts:
+        - asset: fonts/PlusJakartaSans-Variable.ttf

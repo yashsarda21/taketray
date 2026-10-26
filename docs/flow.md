@@ -16,34 +16,59 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 
 1. `main.dart › main`: calls `runAppWithLogging(body, logDir: getApplicationSupportDirectory)` and nothing else; `ensureInitialized` happens inside the guarded zone (see "Error logging").
 2. `core/logging/logging_setup.dart › runAppWithLogging`: runs `body` in that zone, which calls `runApp(const ProviderScope(child: TakeTrayApp()))`.
-3. `app.dart › TakeTrayApp.build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `AppLocalizations` delegates, locales and `onGenerateTitle` (placeholder theme, phase 1 replaces it).
+3. `app.dart › TakeTrayApp.build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `AppLocalizations` delegates, locales, `onGenerateTitle` and the TakeTray themes: `theme: TakeTrayTheme.light()`, `darkTheme: TakeTrayTheme.dark()`; `themeMode` is left at its default, `ThemeMode.system`, so the app follows the phone's light/dark setting (D-50).
 4. `router/app_router.dart › appRouter` (`appRouterProvider`, kept alive): creates the `GoRouter` with `initialLocation: Routes.reels`, the `onException` handler and the `StatefulShellRoute.indexedStack` with branches reels, toTag, settings; disposes the router with the provider.
 5. `router/app_router.dart › onException`: called by go_router for any location no route matches (unknown top-level paths such as `/nope` and unknown paths below a tab root such as `/reels/stale` or `/to-tag/a/b`); logs `Logger('router').warning` without the location and calls `router.go(Routes.reels)`, so go_router's error page never shows.
-6. `features/shell/views/app_shell.dart › AppShell.build`: shows the active branch (`navigationShell`) above the placeholder `NavigationBar`; the branch shows its placeholder screen (`features/{reels,tagging,settings}/views/*_placeholder_screen.dart`), which only prints its localized tab title.
+6. `features/shell/views/app_shell.dart › AppShell.build`: builds a `Scaffold(extendBody: true)` whose body is the active branch (`navigationShell`) and whose `bottomNavigationBar` is the floating `TtNavPill` (items Reels, To tag, Settings with the `navReels`/`navToTag`/`navSettings` labels; the To tag badge count is a constant 0 until phase 5, and its semantics label is `toTagBadgeSemantics`). The body is wrapped in a `MediaQuery` that gives back the device's plain bottom inset, because `extendBody` otherwise adds the pill's height to it and `TtNavPill.reservedHeight` would count the pill twice (D-50). The branch shows its placeholder screen (`features/{reels,tagging,settings}/views/*_placeholder_screen.dart`): a `Scaffold` with a large `TtAppBar` titled with the localized tab name.
 
 ### Tab navigation
 
-1. `features/shell/views/app_shell.dart › NavigationBar.onDestinationSelected`: calls `navigationShell.goBranch(target, initialLocation: target == currentIndex)`. Each branch keeps its own navigator, so a tab returns to where it was; tapping the active tab again resets it to its root.
+1. `packages/taketray_ui/lib/src/components/nav_pill.dart › TtNavPill` (an item's `InkWell.onTap`, selected or not) calls `onSelected(i)`; `features/shell/views/app_shell.dart` passes `(target) =>` which calls `navigationShell.goBranch(target, initialLocation: target == currentIndex)`. Each branch keeps its own navigator, so a tab returns to where it was; tapping the active tab again resets it to its root.
 2. Android back on a tab other than Reels: `GoRouterDelegate.popRoute` first offers the pop to the branch navigator (a pushed route in that tab closes first); if that has nothing to pop, the root navigator reaches `AppShell`'s `PopScope` (`canPop: currentIndex == 0`).
 3. `AppShell › PopScope.onPopInvokedWithResult`: when `didPop` is false (index is not 0) it calls `navigationShell.goBranch(0)`, so the app stays open on Reels. On Reels, `canPop` is true and the system closes the app as usual.
 4. Code that calls `router.go('/to-tag')` etc. lands on the same branch switch; a location no route matches goes through `onException` in "App start" step 5.
+
+### Android back with a menu open
+
+1. `packages/taketray_ui/lib/src/components/menu.dart › _TtMenuButtonState`: `MenuAnchor.onOpen` / `onClose` keep an `_open` flag, which is the `canPop` of a `PopScope` around the anchor (D-51).
+2. System back → `GoRouterDelegate.popRoute` (as in "Tab navigation" step 2) offers the pop to the innermost navigator; the route holding the open menu has a `PopScope` with `canPop: false`, so the page does not pop and `onPopInvokedWithResult(didPop: false)` calls `MenuController.close`. The menu closes and the screen stays. With the menu closed `canPop` is true again, so the next back pops the page (or reaches `AppShell`'s `PopScope`) as before.
+
+### System bar icons
+
+1. `packages/taketray_ui/lib/src/components/app_bar.dart › TtAppBar.build`: wraps the bar in `AnnotatedRegion<SystemUiOverlayStyle>` with `ttSystemUiStyle(background)` for the bar's background (`surface`, or `secondaryContainer` in selection mode).
+2. `components/video_surface.dart › TtVideoSurface.build`: the same, for the black `videoBackground`.
+3. `components/internal/system_ui.dart › ttSystemUiStyle`: `ThemeData.estimateBrightnessForColor(background)`; a light background gives `SystemUiOverlayStyle.dark` (dark icons), a dark one `.light`. It sets `systemNavigationBarIconBrightness` the same way, because the constants assume a black navigation bar, and makes the status bar, navigation bar and divider transparent with `background.withValues(alpha: 0)`.
+4. Each frame, Flutter's `RenderView._updateSystemChrome` reads the style at the middle of the status bar (and, on Android, of the navigation bar); a lone region at the top supplies both. The first region found under a screen's `TtAppBar` or `TtVideoSurface` therefore sets the icon colours for that screen (D-51).
 
 ### Local checks (`tool/check`)
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
 
-1. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
-2. `tool/check` › `tool/flutter pub get` at the root (resolves the whole workspace into the single `pubspec.lock`).
-3. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over those of `app/lib`, `app/test`, `app/patrol_test`, `tool` that exist.
-4. `tool/check` › `tool/flutter analyze` in `app/` (rules from `app/analysis_options.yaml`).
-5. `tool/check` › `tool/dart analyze --fatal-infos` in `tool/` (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar) (rules from `tool/analysis_options.yaml`).
-6. `tool/check` › `tool/dart run taketray_tool:check_styles app/lib/features`:
-   1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory is clean).
-   2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above.
+`tool/check` declares `FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)` and `DART_MEMBERS=(tool)`. Every listed member must have a `pubspec.yaml`: a missing one fails the check, so a rename or deletion cannot pass silently (D-34).
+
+1. `tool/check` › workspace guard: reads the `workspace:` list in the root `pubspec.yaml` (the `  - x` lines after `workspace:`, up to the first non-list line). Any entry that is in neither `FLUTTER_MEMBERS` nor `DART_MEMBERS` fails with `workspace member <x> is not covered by tool/check`, so a new member cannot silently escape the checks. Then fails with `FAIL: <kind> member <x> is listed in tool/check but <x>/pubspec.yaml is missing` for any listed member without a `pubspec.yaml`, and with `FAIL: style directory <d> is listed in tool/check but does not exist` for a missing `STYLE_DIRS` entry.
+2. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
+3. `tool/check` › `tool/flutter pub get` at the root (resolves the whole workspace into the single `pubspec.lock`).
+4. `tool/check` › `python3 design/tools/build_tokens.py --check`: regenerates every token output in memory and compares it with disk (see "Token build"); prints `stale: <path>` for each difference and fails, or fails on a contrast failure. Writes nothing (D-35).
+5. `tool/check` › `tool/dart format --output=none --set-exit-if-changed` over `lib`, `test`, `patrol_test` of each Flutter member that has them, plus the whole of each Dart member (`tool`).
+6. `tool/check` › analyze each member (rules from its own `analysis_options.yaml`): `tool/flutter analyze` in each Flutter member, `tool/dart analyze --fatal-infos` in each Dart member (plain `dart analyze` exits 0 on infos, so the flag keeps the zero-issue bar).
+7. `tool/check` › `tool/dart run taketray_tool:check_styles <dir>` for each of `app/lib/features` and `packages/taketray_ui/lib/src/components` (`STYLE_DIRS`):
+   1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory prints `check_styles: directory <dir> not found` and exits 1).
+   2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above. Covered forms: `Color*`/`Colors.`, `TextStyle(`, `EdgeInsets[Directional].*`, `SizedBox(width|height:)` and `SizedBox.square(dimension:)`, `BorderRadius[Directional].circular` and `Radius.circular`, and `Duration(` in any unit from microseconds to days.
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
-7. `tool/check` › `tool/dart test` in `tool/` (includes `tool/test/style_rules_test.dart`).
-8. `tool/check` › `tool/flutter test` in `app/` (always; a missing or empty `app/test` fails the check).
+8. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`), then in each Flutter member (`tool/flutter test`). A member without a `test/` folder fails with `<member> has no test/ folder`.
 9. `tool/check` › prints `ALL CHECKS PASSED`.
+
+### Token build (`design/tools/build_tokens.py`)
+
+Run by hand after changing a token: `python3 design/tools/build_tokens.py`. Paths in this flow are relative to the repo root.
+
+1. `design/tools/build_tokens.py` (module level): builds the tonal palettes from the seeds, the colour roles for every brand option (`SCHEMES`) and picks the shipped one (`SHIPPED` → `LIGHT`, `DARK`, `PALETTES`); defines `TYPE`, `SHAPE`, `SPACING`, `ELEVATION`, `MOTION`, `SIZE`, `VIDEO_SURFACE` and `EXTENDED` (REC red, success green).
+2. `build_tokens.py › main`: `check_contrast` for the shipped brand and every option; any pair below its WCAG threshold prints `CONTRAST FAILURES` and exits 1 before anything is generated.
+3. `build_tokens.py › generate`: clears `OUTPUTS` and runs the writers, each handing its files to `emit(path, text)`: `write_json` (`design/tokens/taketray.tokens.json`, `design/prototype/assets/tokens.js`, `design/tokens/colour-options/*.json`), `write_css` (`design/prototype/assets/tokens.css`), `write_kotlin` (`design/handoff/compose/*.kt`) and `write_dart` (`packages/taketray_ui/lib/src/tokens/tokens.g.dart`: `ttLightScheme`, `ttDarkScheme`, `TtColorTokens`, `TtTypeTokens`, `TtSpaceTokens`, `TtRadiusTokens`, `TtMotionTokens`, `TtSizeTokens`; shipped brand only).
+4. Back in `main`: without `--check`, writes every entry of `OUTPUTS`; with `--check`, `stale_outputs` compares each with the file on disk, prints `stale: <path>` for each difference and exits 1 if any (0 otherwise, silently).
+5. `packages/taketray_ui/lib/src/theme/take_tray_theme.dart › TakeTrayTheme.light / dark / video`: build (once, cached) `ThemeData` from `ttLightScheme`, or `ttDarkScheme` after `_oled` (tt-style.css §1), or that with `surface` = `TtColorTokens.videoBackground`. `_build` creates `TtThemeData.fromScheme(scheme)` (`tt_theme_data.dart`), which builds `TtColors.fromScheme` (`tt_colors.dart`, scheme roles + `TtColorTokens` + `TtMetrics` opacities) and `TtTextStyles.fromScheme` (`tt_text_styles.dart`, `TtTypeTokens` with the scheme's `onSurface`), and installs it as the theme's only extension, next to the Material component themes (values in `tt_metrics.dart`).
+6. `packages/taketray_ui/lib/src/theme/tt_theme_data.dart › TtBuildContext.tt` (in any widget): `Theme.of(context).extension<TtThemeData>()` (throws a `FlutterError` if missing); when `MediaQuery.maybeDisableAnimationsOf(context)` is true, returns `copyWith(motion: TtMotion.reduced)`. `context.scheme` returns `Theme.of(context).colorScheme`.
 
 ### Release permission check (`tool/check_release_permissions`)
 
@@ -89,5 +114,15 @@ Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`
 2. `patrol_cli`: reads the `patrol:` block of `pubspec.yaml` (`app_name: TakeTray`, `android.package_name: app.taketray`), generates `test_bundle.dart` from the requested test file and has Gradle build the debug app APK plus the `androidTest` APK.
 3. `android/app/build.gradle.kts` › `defaultConfig.testInstrumentationRunner`: the test APK uses `pl.leancode.patrol.PatrolJUnitRunner`; `testOptions.execution = ANDROIDX_TEST_ORCHESTRATOR` runs each test in a fresh process through the `androidTestUtil` orchestrator (`clearPackageData` wipes app data between tests).
 4. **[bridge]** `android/app/src/androidTest/java/app/taketray/MainActivityTest.java › testCases`: starts `MainActivity` through the runner, waits for the Patrol app service in the app process and lists the Dart tests; `runDartTest` then runs one named test.
-5. `patrol_test/app_shell_test.dart › main`: `patrolTest` pumps `ProviderScope(child: TakeTrayApp())`, asserts the Reels screen shows "Reels", taps "To tag" then "Settings" inside the `NavigationBar` and asserts each placeholder screen shows its title (finders on the English labels, no sleeps; taps settle the UI).
+5. `patrol_test/app_shell_test.dart › main`: `patrolTest` pumps `ProviderScope(child: TakeTrayApp())`, asserts the Reels screen shows "Reels", taps "To tag" then "Settings" inside the `TtNavPill` (`$(TtNavPill).$('To tag')`, by label text) and asserts each placeholder screen shows its title (finders on the English labels, no sleeps; taps settle the UI).
 6. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`. Because of `--no-uninstall` it neither uninstalls before installing nor after the run: `app.taketray` and `app.taketray.test` stay on the device (app data is still cleared by the orchestrator, step 3).
+
+### Catalogue coverage (`widgetbook/test/catalog_coverage_test.dart`)
+
+Runs inside `tool/check` (step "test widgetbook") and with `(cd widgetbook && ../tool/flutter test)`. It keeps the Widgetbook catalogue complete (D-42).
+
+1. `widgetbook/test/catalog_coverage_test.dart › main`: lists the `*.dart` files directly in `packages/taketray_ui/lib/src/components/` (none if the folder does not exist yet).
+2. Same test: for each name, checks that `widgetbook/lib/components/<name>.dart` exists.
+3. `widgetbook/test/catalog_coverage_test.dart › _imports`: checks that `widgetbook/lib/catalog.dart` has an import of `components/<name>.dart` (`package:taketray_widgetbook/components/...`).
+4. Same test: `expect(problems, isEmpty)` fails listing every missing file and every missing import; a component without a catalogue file therefore fails `tool/check`.
+5. `widgetbook/lib/catalog.dart › ttCatalog`: the registered components, read by `widgetbook/lib/main.dart › TakeTrayCatalogue` (`Widgetbook.material`) when the catalogue runs.

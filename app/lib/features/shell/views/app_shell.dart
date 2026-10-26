@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
+import 'package:taketray_ui/taketray_ui.dart';
 
-/// Placeholder tab scaffold; phase 1 swaps the stock bar for the TakeTray nav.
+/// The number of clips waiting to be tagged, for the badge on the To tag tab.
+/// A constant 0 (no badge) until the tagging feature supplies it in phase 5.
+int _clipsToTag() => 0;
+
+/// The tab scaffold: the current tab's navigator behind the floating nav pill.
 class AppShell extends StatelessWidget {
   const new({required this.navigationShell, super.key});
 
@@ -12,6 +17,11 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final index = navigationShell.currentIndex;
+    final toTagCount = _clipsToTag();
+    // The device's bottom inset. The Scaffold below adds the pill's height to
+    // the body's padding (extendBody); the tabs reserve that room themselves
+    // with TtNavPill.reservedHeight, so the body gets the plain inset back.
+    final safePadding = MediaQuery.paddingOf(context);
     return PopScope(
       canPop: index == 0,
       onPopInvokedWithResult: (didPop, result) {
@@ -20,29 +30,34 @@ class AppShell extends StatelessWidget {
         }
       },
       child: Scaffold(
-        body: navigationShell,
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: index,
-          onDestinationSelected: (target) => navigationShell.goBranch(
+        extendBody: true,
+        body: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              padding: MediaQuery.paddingOf(context)
+                  .copyWith(bottom: safePadding.bottom),
+            ),
+            child: navigationShell,
+          ),
+        ),
+        bottomNavigationBar: TtNavPill(
+          currentIndex: index,
+          onSelected: (target) => navigationShell.goBranch(
             target,
             initialLocation: target == index,
           ),
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(Icons.movie_outlined),
-              selectedIcon: const Icon(Icons.movie),
+          items: [
+            TtNavItem(
+              icon: Symbols.video_library_rounded,
               label: l10n.navReels,
             ),
-            NavigationDestination(
-              icon: const Icon(Icons.label_outline),
-              selectedIcon: const Icon(Icons.label),
+            TtNavItem(
+              icon: Symbols.sell_rounded,
               label: l10n.navToTag,
+              badgeCount: toTagCount,
+              badgeSemanticLabel: l10n.toTagBadgeSemantics(toTagCount),
             ),
-            NavigationDestination(
-              icon: const Icon(Icons.settings_outlined),
-              selectedIcon: const Icon(Icons.settings),
-              label: l10n.navSettings,
-            ),
+            TtNavItem(icon: Symbols.settings_rounded, label: l10n.navSettings),
           ],
         ),
       ),

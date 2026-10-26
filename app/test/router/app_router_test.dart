@@ -8,6 +8,7 @@ import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
+import 'package:taketray_ui/taketray_ui.dart';
 
 Future<(ProviderContainer, GoRouter)> _pumpApp(WidgetTester tester) async {
   final container = ProviderContainer();
@@ -58,8 +59,8 @@ void main() {
 
         expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
         expect(find.textContaining('Page Not Found'), findsNothing);
-        final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-        expect(bar.selectedIndex, 0);
+        final bar = tester.widget<TtNavPill>(find.byType(TtNavPill));
+        expect(bar.currentIndex, 0);
       },
     );
   }
@@ -85,8 +86,8 @@ void main() {
 
     expect(handled, isTrue);
     expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
-    final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-    expect(bar.selectedIndex, 0);
+    final bar = tester.widget<TtNavPill>(find.byType(TtNavPill));
+    expect(bar.currentIndex, 0);
   });
 
   testWidgets('each tab keeps its own navigation stack', (tester) async {

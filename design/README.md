@@ -17,15 +17,18 @@ Open **`prototype/index.html`** in any browser (it needs an internet connection 
 | `handoff/compose/` | Generated Compose theme: `Color.kt`, `Type.kt`, `Shape.kt`, `Motion.kt`, `Theme.kt` (`TakeTrayTheme`, package `app.taketray.ui.theme`; change it to yours). |
 | `handoff/icons/<concept>/` | App icon sets for the three concepts (`tray` is recommended): adaptive background and foreground, monochrome themed icon, `mipmap-anydpi-v26/ic_launcher.xml`, notification icon. VectorDrawable XML plus SVG. |
 | `prototype/` | The hub and prototype. `assets/screens.js` renders every screen, `assets/refs.js` the reference-reels feature, `assets/welcome.js` the welcome options; `assets/states.js` lists every state; `assets/app.js` runs the prototype. |
-| `tools/build_tokens.py` | Regenerates the tokens JSON, `prototype/assets/tokens.css`, `tokens.js` and the Kotlin files from four brand seeds. |
+| `tools/build_tokens.py` | Regenerates the tokens JSON, the colour options, `prototype/assets/tokens.css`, `tokens.js`, the Kotlin files and the Flutter tokens (`packages/taketray_ui/lib/src/tokens/tokens.g.dart`, shipped brand only) from four brand seeds. |
 | `tools/build_icons.py` | Regenerates every icon file and `prototype/assets/icons.js` from one geometry source. |
 
 ## Regenerating
 
 ```sh
-python3 design/tools/build_tokens.py   # colours, type, Compose theme (fails below WCAG AA)
-python3 design/tools/build_icons.py    # app icon sets
+python3 design/tools/build_tokens.py           # colours, type, Compose theme, Flutter tokens (fails below WCAG AA)
+python3 design/tools/build_tokens.py --check   # writes nothing; lists stale outputs and exits 1 (run by tool/check)
+python3 design/tools/build_icons.py            # app icon sets
 ```
+
+The Flutter app reads its tokens only through `packages/taketray_ui` (`TakeTrayTheme`, `context.tt`), so commit the regenerated files together with the token change.
 
 ## Key decisions (details in the hub)
 
