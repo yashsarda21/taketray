@@ -603,7 +603,137 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 
-## 7. References, VN folders, settings and time zones *(coming in Task 8)*
+## 7. References, VN folders, settings and time zones
+
+**What we built:** four small repositories. `ReferencesRepository` saves the links you attach to a reel ("copy the style of this Instagram reel"), `VnRepository` remembers the folder a reel's clips were copied into for the VN editor, `SettingsRepository` stores your settings, and `ZoneRepository` keeps a history of which time zone the phone was in. Nothing in the app calls them yet; the reference screens, the VN copy flow, the settings screen and the Shooting-mode code in later phases will.
+
+**Why TakeTray needs it:** four different problems share one shape ("remember a little data, keep it tidy"). A creator shares the same Instagram reel into TakeTray twice and must not end up with two copies. Two trips are both called "Goa" and each needs its own folder on the phone. A setting that got corrupted must not stop the app from opening. And a clip shot in London should say "London time", even if you only noticed the clip back home in India.
+
+**Key ideas:**
+
+- **"Already saved" is an answer, not an error.** `add` can end in two normal ways: the link was new, or the reel already had it. Dart has a tool for "one of these exact outcomes": a *sealed class*. The compiler knows every subclass, so a `switch` that forgets one is a compile error.
+
+  ```dart
+  sealed class AddReferenceResult {
+    const new();
+  }
+
+  final class ReferenceAdded extends AddReferenceResult {
+    const new(this.reference);
+
+    final ReelReference reference;
+  }
+
+  final class ReferenceAlreadySaved extends AddReferenceResult {
+    const new(this.existing);
+
+    final ReelReference existing;
+  }
+  ```
+
+  Why not the simpler options? A `bool` ("was it added?") cannot carry the reference that was already there, and the screen wants to show it ("You already saved this: *Slow pans*"). An exception is meant for something going *wrong*; sharing a link twice is an ordinary thing a user does. With the sealed type, a screen writes `switch (result) { ReferenceAdded() => …, ReferenceAlreadySaved(:final existing) => … }` and cannot forget the second case. (Things that really are wrong still throw: a link that is not a web link throws `InvalidInputException(ReferenceUrlProblem.invalid)`, and a label over 60 characters throws `ReferenceLabelProblem.tooLong`.)
+
+- **Duplicates are decided on the cleaned link.** Instagram adds a different tracking code (`?igsh=…`) every time you share, and the same reel can be written `/reel/ABC` or `/p/ABC`, with `instagram.com` or `www.`. Section 4's `normalizeReferenceUrl` folds all of those to `https://www.instagram.com/p/ABC/`. The repository cleans the link *first*, and only then looks for an existing row in the same reel:
+
+  ```dart
+  final url = normalizeReferenceUrl(rawUrl);
+  if (url == null) {
+    throw const InvalidInputException(ReferenceUrlProblem.invalid);
+  }
+  // ...
+  final existing =
+      await (_db.select(_db.reelReferences)..where(
+            (r) => r.reelId.equals(reelId) & r.url.equals(url.toString()),
+          ))
+          .getSingleOrNull();
+  if (existing != null) {
+    return ReferenceAlreadySaved(_toReference(existing));
+  }
+  ```
+
+  The look-up and the insert are in one transaction, and the database's unique key on (reel, url) from Section 3 is the safety net behind them. The same link in *two different* reels is fine: each reel has its own list. The test `the same Instagram reel shared with different tracking, host or path is already saved` shares one reel five different ways and checks that all five report `ReferenceAlreadySaved`, pointing at the first one.
+
+- **A folder name must be unique on the phone: "Goa", then "Goa (2)".** Reel names do not have to be unique (Section 5), but the VN folder in `Movies/TakeTray/` does, because two folders cannot share a name, and Android treats `Goa` and `goa` as the same folder. `startSession` collects the folder name of *every* session, so a second reel called "Goa" gets the next free name:
+
+  ```dart
+  final taken = {
+    for (final s in await _db.select(_db.vnSessions).get()) s.folderName,
+    ...alsoTaken,
+  };
+  // ...
+  folderName: uniqueFolderName(base, taken),
+  ```
+
+  `alsoTaken` is for phase 8: only the code that talks to Android can list the folders already on disk, and it passes them in. A folder name is free again once its session ends. Ending a session deletes the copy records too (the database does it, `ON DELETE CASCADE`), so the caller deletes the copy *files* first.
+
+- **Settings: one row per setting, a default for everything, and a safe fallback.** The `settings` table is a plain key/value list; each value is stored as JSON text. After `save(const AppSettings(eveningReminderEnabled: false))` the table holds:
+
+  | key | value |
+  |---|---|
+  | `watchedFolders` | `["DCIM/Camera"]` |
+  | `eveningReminderEnabled` | `false` |
+  | `eveningReminderMinutes` | `1260` |
+
+  `load()` reads those rows and turns each into a setting. A key with no row gets its default (those live in `AppSettings`, Section 4). A key whose text is not valid JSON, has the wrong type (`"yes"` where a true/false belongs), or a reminder time that is not a minute of the day, is treated as missing, and a line is logged with the key *name* only, never the value:
+
+  ```dart
+  T? _read<T>(Map<String, String> raw, String key, T? Function(Object?) cast) {
+    final text = raw[key];
+    if (text == null) return null;
+    try {
+      final value = cast(jsonDecode(text));
+      if (value != null) return value;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $key is corrupt, using its default');
+    return null;
+  }
+  ```
+
+  One row per setting means one bad value costs one setting, not all of them, and adding a setting later is just a new key: no database change. `watch()` gives a stream that sends the settings now and after each change; `.distinct()` stops it repeating itself when a write changed nothing.
+
+- **Which keys go in a backup.** Later phases will keep this phone's own state in the same table (is Shooting mode on, how far the detector has read). That must not be restored onto another phone. So the backup does not export "everything except …"; it exports a short allow-list, and a new key is private until someone adds it here:
+
+  ```dart
+  static const Set<String> exportedKeys = {
+    watchedFoldersKey,
+    eveningReminderEnabledKey,
+    eveningReminderMinutesKey,
+  };
+  ```
+
+  `load`, `watch` and the backup (Task 9) all use this set, and `save` never touches other keys; a test saves settings next to a `shootingMode` row and checks that row is untouched.
+
+- **The time-zone timeline: "London time".** A video file does not record which time zone it was shot in, and TakeTray may only notice a new clip days later, back home. So the phone keeps a small history, one row each time the zone *changes*: "from this moment on, the phone was in this zone" (spec §8.3a). Say the phone is in India on the 5th, you fly to London on the 12th and return on the 19th:
+
+  | at | zoneId |
+  |---|---|
+  | 5 Oct | `Asia/Kolkata` |
+  | 12 Oct | `Europe/London` |
+  | 19 Oct | `Asia/Kolkata` |
+
+  A clip shot on the 15th is looked up by finding the last row at or before that moment: `Europe/London`. The clip viewer can then say "London time", but only because that differs from the zone the phone is in now. `record` is what keeps the table short: the phone will report its zone on every app start and background run, and only a *change* is stored.
+
+  ```dart
+  final inEffect =
+      await (_db.select(_db.zoneTimeline)
+            ..where(
+              (e) => e.at.isSmallerOrEqualValue(at.millisecondsSinceEpoch),
+            )
+            ..orderBy([(e) => OrderingTerm.desc(e.at)])
+            ..limit(1))
+          .getSingleOrNull();
+  if (inEffect?.zoneId == zoneId) return false;
+  ```
+
+  The look-up itself, `zoneAt`, is the pure function from Section 4: it loads the timeline, oldest first, and halves it until it finds the entry. A moment before the first row has no zone (`null`).
+
+**Where it lives:** `app/lib/data/repositories/references_repository.dart`, `vn_repository.dart`, `settings_repository.dart` and `zone_repository.dart` (each with its generated provider, e.g. `settingsRepositoryProvider`), and the tests next to them in `app/test/data/repositories/`.
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/references_repository_test.dart)`. You should see `+19: All tests passed!`. Then break the duplicate check on purpose: in `references_repository.dart`, in `add`, replace the line `final url = normalizeReferenceUrl(rawUrl);` with `final url = Uri.tryParse(rawUrl.trim());` (pretend links are not cleaned), run the same command, and two tests fail: `the same Instagram reel shared with different tracking, host or path is already saved` (the stored link is still `.../reel/ABC123/?igsh=…`) and `a link that is not an http(s) link throws and saves nothing`. Put the line back afterwards. The other three repositories have their own test files in the same folder (`+17`, `+12` and `+8` tests).
+
+**Decisions:** D-58 (this task), D-55 (the cleaning rule and `uniqueFolderName`), D-54 (the tables and the cascades), D-56 (reel names are not unique), D-10 (no URLs, labels or folder names in logs).
 
 ## 8. Backup: export and import *(coming in Task 9)*
 

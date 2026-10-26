@@ -89,6 +89,34 @@ Streams (`watchInbox(state)`, `watchPendingCount()`, `watchReelClips(reelId)`, `
 
 Unknown ids: an unknown reel throws `StateError` in `addNewClipsToReel`, `tagClip`, `addClipsToReel` and `removeClipsFromReel`; an unknown clip throws `StateError` in `tagClip`, `untagToInbox` and `addClipsToReel`. Each check runs before the first write, so nothing is changed. `skip`, `restore`, `removeClipsFromReel` and `recordVerification` ignore clip ids that do not exist (`skip`/`restore` also ignore clips with no `inbox` row).
 
+### References, VN folders, settings and time zones
+
+Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy flow (phase 8), settings (phase 10) and the native zone writer (phase 3) will. See D-58. Each is its own class in `data/repositories/`, built from `(AppDatabase, Clock)`.
+
+**Adding a reference** (`references_repository.dart › ReferencesRepository.add(reelId, rawUrl, {label})`):
+
+1. `normalizeReferenceUrl(rawUrl)` cleans the link (D-55). `null` throws `InvalidInputException(ReferenceUrlProblem.invalid)`.
+2. `checkReferenceLabel(label)`; a label over 60 characters throws `InvalidInputException(ReferenceLabelProblem.tooLong)`. Both throws happen before the database is touched.
+3. `_db.transaction`: an unknown reel throws `StateError`. Then it looks for a `reel_references` row with the same `reelId` and cleaned `url`.
+4. Found: returns `ReferenceAlreadySaved(existing)`; nothing is written and the new label is ignored.
+5. Not found: inserts the row (`source` from `referenceSourceOf`, `label` trimmed and null when blank, `createdAt` = now) and returns `ReferenceAdded(reference)`.
+
+`setLabel(id, label)` checks the label and updates the row (unknown id: `StateError`). `delete(id)` deletes one row (unknown id: nothing). `watchForReel` is newest first; `watchCounts` is reel id to count, without the reels that have none.
+
+**VN session** (`vn_repository.dart › VnRepository`):
+
+| Method | Writes |
+|---|---|
+| `startSession(reelId, base, {alsoTaken})` | Trims `base` (blank: `ArgumentError`). One transaction: unknown reel or a reel that already has a session throws `StateError`; the folder is `uniqueFolderName(base, {every vn_sessions.folderName} + alsoTaken)`; inserts the `vn_sessions` row. |
+| `addCopy(copy)` | Inserts a `vn_copies` row. `StateError` when the reel has no session or already has a copy of that clip. |
+| `endSession(reelId)` | Deletes the `vn_sessions` row; `ON DELETE CASCADE` deletes its `vn_copies` rows. The caller has deleted the files first. |
+
+`sessionOf` and `copiesOf` only read.
+
+**Settings** (`settings_repository.dart › SettingsRepository`): `load()` reads the rows whose key is in `exportedKeys` and decodes each value from JSON; a missing key, bad JSON, a wrong type or minutes outside 0 to 1439 gives that setting's default, and a corrupt one logs the key name. `save(settings)` upserts the three rows in one transaction and leaves other keys alone. `watch()` re-queries when the `settings` table changes and emits only when the result differs from the last one. Only `exportedKeys` (the three keys) is ever exported by a backup.
+
+**Zone timeline** (`zone_repository.dart › ZoneRepository.record(at, zoneId)`): in a transaction, reads the last `zone_timeline` row at or before `at`; if its `zoneId` equals the new one nothing is written, otherwise a row `(at, zoneId)` is inserted (replacing a row at exactly `at`). `zoneAt(instant)` reads the whole timeline, oldest first, and runs the domain `zoneAt` on it.
+
 ### Local checks (`tool/check`)
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
