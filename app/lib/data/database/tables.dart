@@ -32,7 +32,8 @@ class Reels extends Table {
 /// Its identity is `volumeName` + `mediaStoreId` for a detected clip, or
 /// `pickerUri` for a picked one. SQLite treats NULLs as distinct in a unique
 /// key, so a picked clip (no MediaStore identity) never collides with
-/// another.
+/// another. The `CHECK`s make sure the identity of a clip's source is never
+/// half empty, which would let it slip past the unique keys.
 @DataClassName('ClipRow')
 @TableIndex(name: 'clips_date_taken_utc', columns: {#dateTakenUtc})
 class Clips extends Table {
@@ -61,6 +62,16 @@ class Clips extends Table {
   List<Set<Column>> get uniqueKeys => [
     {volumeName, mediaStoreId},
     {pickerUri},
+  ];
+
+  @override
+  List<String> get customConstraints => [
+    // drift_dev reads these at build time and accepts only string literals,
+    // so the long one is split with adjacent strings instead of `+`.
+    // ignore: no_adjacent_strings_in_list
+    "CHECK (source <> 'mediaStore' OR "
+        '(volume_name IS NOT NULL AND media_store_id IS NOT NULL))',
+    "CHECK (source <> 'picker' OR picker_uri IS NOT NULL)",
   ];
 }
 
@@ -120,13 +131,19 @@ class VnSessions extends Table {
   Set<Column> get primaryKey => {reelId};
 }
 
-/// One copied file of a VN session.
+/// One copied file of a VN session: the app's only record of a file it
+/// created in `Movies/TakeTray/`.
+///
+/// `clipId` is deliberately not a foreign key: the row must outlive the clip
+/// row (a clip removed from its last reel is deleted), so the session can
+/// still find and delete the copy. Clip ids are `AUTOINCREMENT`, never
+/// reused, so a dangling id cannot point at another clip.
 @DataClassName('VnCopyRow')
+@TableIndex(name: 'vn_copies_clip_id', columns: {#clipId})
 class VnCopies extends Table {
   IntColumn get reelId =>
       integer().references(VnSessions, #reelId, onDelete: KeyAction.cascade)();
-  IntColumn get clipId =>
-      integer().references(Clips, #id, onDelete: KeyAction.cascade)();
+  IntColumn get clipId => integer()();
   IntColumn get copyMediaStoreId => integer()();
   TextColumn get fileName => text()();
   IntColumn get sizeBytes => integer()();

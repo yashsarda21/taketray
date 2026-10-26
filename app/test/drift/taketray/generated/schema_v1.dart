@@ -598,6 +598,8 @@ class Clips extends Table with TableInfo<Clips, ClipsData> {
   List<String> get customConstraints => const [
     'UNIQUE(volume_name, media_store_id)',
     'UNIQUE(picker_uri)',
+    'CHECK(source <> \'mediaStore\' OR(volume_name IS NOT NULL AND media_store_id IS NOT NULL))',
+    'CHECK(source <> \'picker\' OR picker_uri IS NOT NULL)',
   ];
   @override
   bool get dontWriteConstraints => true;
@@ -2150,7 +2152,7 @@ class VnCopies extends Table with TableInfo<VnCopies, VnCopiesData> {
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
-    $customConstraints: 'NOT NULL REFERENCES clips(id)ON DELETE CASCADE',
+    $customConstraints: 'NOT NULL',
   );
   late final GeneratedColumn<int> copyMediaStoreId = GeneratedColumn<int>(
     'copy_media_store_id',
@@ -2814,6 +2816,10 @@ class DatabaseAtV1 extends GeneratedDatabase {
     'clip_reels_reel_id',
     'CREATE INDEX clip_reels_reel_id ON clip_reels (reel_id)',
   );
+  late final Index vnCopiesClipId = Index(
+    'vn_copies_clip_id',
+    'CREATE INDEX vn_copies_clip_id ON vn_copies (clip_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2830,6 +2836,7 @@ class DatabaseAtV1 extends GeneratedDatabase {
     zoneTimeline,
     clipsDateTakenUtc,
     clipReelsReelId,
+    vnCopiesClipId,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -2871,13 +2878,6 @@ class DatabaseAtV1 extends GeneratedDatabase {
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'vn_sessions',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('vn_copies', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'clips',
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('vn_copies', kind: UpdateKind.delete)],

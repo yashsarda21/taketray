@@ -306,7 +306,10 @@
         ],
         "is_virtual": false,
         "without_rowid": false,
-        "constraints": [],
+        "constraints": [
+          "CHECK (source <> 'mediaStore' OR (volume_name IS NOT NULL AND media_store_id IS NOT NULL))",
+          "CHECK (source <> 'picker' OR picker_uri IS NOT NULL)"
+        ],
         "unique_keys": [
           [
             "volume_name",
@@ -662,8 +665,7 @@
     {
       "id": 6,
       "references": [
-        5,
-        1
+        5
       ],
       "type": "table",
       "data": {
@@ -702,25 +704,9 @@
             "moor_type": "int",
             "nullable": false,
             "customConstraints": null,
-            "defaultConstraints": "REFERENCES clips (id) ON DELETE CASCADE",
-            "dialectAwareDefaultConstraints": {
-              "sqlite": "REFERENCES clips (id) ON DELETE CASCADE"
-            },
             "default_dart": null,
             "default_client_dart": null,
-            "dsl_features": [
-              {
-                "foreign_key": {
-                  "to": {
-                    "table": "clips",
-                    "column": "id"
-                  },
-                  "initially_deferred": false,
-                  "on_update": null,
-                  "on_delete": "cascade"
-                }
-              }
-            ]
+            "dsl_features": []
           },
           {
             "name": "copy_media_store_id",
@@ -877,6 +863,25 @@
           }
         ]
       }
+    },
+    {
+      "id": 11,
+      "references": [
+        6
+      ],
+      "type": "index",
+      "data": {
+        "on": 6,
+        "name": "vn_copies_clip_id",
+        "sql": null,
+        "unique": false,
+        "columns": [
+          {
+            "column": "clip_id",
+            "order_by": null
+          }
+        ]
+      }
     }
   ],
   "fixed_sql": [
@@ -894,7 +899,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"clips\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"source\" TEXT NOT NULL, \"media_store_id\" INTEGER NULL, \"volume_name\" TEXT NULL, \"picker_uri\" TEXT NULL, \"size_bytes\" INTEGER NOT NULL, \"duration_ms\" INTEGER NOT NULL, \"date_taken_utc\" INTEGER NOT NULL, \"display_name\" TEXT NOT NULL, \"width\" INTEGER NOT NULL, \"height\" INTEGER NOT NULL, \"mime_type\" TEXT NOT NULL, \"time_zone_id\" TEXT NULL, \"generation_added\" INTEGER NULL, \"first_seen_at\" INTEGER NOT NULL, \"missing\" INTEGER NOT NULL DEFAULT 0 CHECK (\"missing\" IN (0, 1)), \"last_verified_at\" INTEGER NULL, UNIQUE (\"volume_name\", \"media_store_id\"), UNIQUE (\"picker_uri\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"clips\" (\"id\" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, \"source\" TEXT NOT NULL, \"media_store_id\" INTEGER NULL, \"volume_name\" TEXT NULL, \"picker_uri\" TEXT NULL, \"size_bytes\" INTEGER NOT NULL, \"duration_ms\" INTEGER NOT NULL, \"date_taken_utc\" INTEGER NOT NULL, \"display_name\" TEXT NOT NULL, \"width\" INTEGER NOT NULL, \"height\" INTEGER NOT NULL, \"mime_type\" TEXT NOT NULL, \"time_zone_id\" TEXT NULL, \"generation_added\" INTEGER NULL, \"first_seen_at\" INTEGER NOT NULL, \"missing\" INTEGER NOT NULL DEFAULT 0 CHECK (\"missing\" IN (0, 1)), \"last_verified_at\" INTEGER NULL, UNIQUE (\"volume_name\", \"media_store_id\"), UNIQUE (\"picker_uri\"), CHECK (source <> 'mediaStore' OR (volume_name IS NOT NULL AND media_store_id IS NOT NULL)), CHECK (source <> 'picker' OR picker_uri IS NOT NULL));"
         }
       ]
     },
@@ -939,7 +944,7 @@
       "sql": [
         {
           "dialect": "sqlite",
-          "sql": "CREATE TABLE IF NOT EXISTS \"vn_copies\" (\"reel_id\" INTEGER NOT NULL REFERENCES vn_sessions (reel_id) ON DELETE CASCADE, \"clip_id\" INTEGER NOT NULL REFERENCES clips (id) ON DELETE CASCADE, \"copy_media_store_id\" INTEGER NOT NULL, \"file_name\" TEXT NOT NULL, \"size_bytes\" INTEGER NOT NULL, PRIMARY KEY (\"reel_id\", \"clip_id\"));"
+          "sql": "CREATE TABLE IF NOT EXISTS \"vn_copies\" (\"reel_id\" INTEGER NOT NULL REFERENCES vn_sessions (reel_id) ON DELETE CASCADE, \"clip_id\" INTEGER NOT NULL, \"copy_media_store_id\" INTEGER NOT NULL, \"file_name\" TEXT NOT NULL, \"size_bytes\" INTEGER NOT NULL, PRIMARY KEY (\"reel_id\", \"clip_id\"));"
         }
       ]
     },
@@ -976,6 +981,15 @@
         {
           "dialect": "sqlite",
           "sql": "CREATE INDEX clip_reels_reel_id ON clip_reels (reel_id)"
+        }
+      ]
+    },
+    {
+      "name": "vn_copies_clip_id",
+      "sql": [
+        {
+          "dialect": "sqlite",
+          "sql": "CREATE INDEX vn_copies_clip_id ON vn_copies (clip_id)"
         }
       ]
     }

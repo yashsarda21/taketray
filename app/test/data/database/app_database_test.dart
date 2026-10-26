@@ -139,6 +139,82 @@ void main() {
       expect(await count('clips'), 2);
     });
 
+    test('a clip identity is never half empty', () async {
+      final noVolume = _mediaStoreClip().copyWith(
+        volumeName: const Value(null),
+      );
+      final noMediaStoreId = _mediaStoreClip().copyWith(
+        mediaStoreId: const Value(null),
+      );
+      final noPickerUri = _pickerClip('content://picker/1')
+          .copyWith(pickerUri: const Value(null));
+
+      for (final clip in [noVolume, noMediaStoreId, noPickerUri]) {
+        await expectLater(
+          db.into(db.clips).insert(clip),
+          throwsA(isA<SqliteException>()),
+        );
+      }
+      expect(await count('clips'), 0);
+    });
+
+    test('deleting a clip cascades its reel links and To tag row', () async {
+      final reel = await db.into(db.reels).insert(_reel('Goa'));
+      final clip = await db.into(db.clips).insert(_mediaStoreClip());
+      await db
+          .into(db.clipReels)
+          .insert(
+            ClipReelsCompanion.insert(clipId: clip, reelId: reel, addedAt: _t0),
+          );
+      await db
+          .into(db.inbox)
+          .insert(
+            InboxCompanion.insert(
+              clipId: Value(clip),
+              state: InboxState.pending,
+              addedAt: _t0,
+            ),
+          );
+
+      await (db.delete(db.clips)..where((c) => c.id.equals(clip))).go();
+
+      expect(await count('clip_reels'), 0);
+      expect(await count('inbox'), 0);
+      expect(await count('reels'), 1);
+    });
+
+    test('deleting a clip keeps the record of its VN copy', () async {
+      // The copy is a file the app created in Movies/TakeTray/; its row is
+      // the only way the VN session can find and delete it later.
+      final reel = await db.into(db.reels).insert(_reel('Goa'));
+      final clip = await db.into(db.clips).insert(_mediaStoreClip());
+      await db
+          .into(db.vnSessions)
+          .insert(
+            VnSessionsCompanion.insert(
+              reelId: Value(reel),
+              folderName: 'Goa',
+              createdAt: _t0,
+            ),
+          );
+      await db
+          .into(db.vnCopies)
+          .insert(
+            VnCopiesCompanion.insert(
+              reelId: reel,
+              clipId: clip,
+              copyMediaStoreId: 2001,
+              fileName: '2026-10-26_09-00-00.mp4',
+              sizeBytes: 12000000,
+            ),
+          );
+
+      await (db.delete(db.clips)..where((c) => c.id.equals(clip))).go();
+
+      final copies = await db.select(db.vnCopies).get();
+      expect(copies.map((c) => (c.clipId, c.copyMediaStoreId)), [(clip, 2001)]);
+    });
+
     test('a picked clip is unique by its URI only', () async {
       // Picked clips have no MediaStore identity; SQLite treats those NULLs as
       // distinct, so two different picked clips do not collide.
@@ -180,6 +256,29 @@ void main() {
       expect(raw.read<int>('created_at'), shotAt.millisecondsSinceEpoch);
     });
 
+    test(
+      'a local time is stored as the same instant and read as UTC',
+      () async {
+        final local = DateTime(2026, 10, 26, 9, 30, 15, 123);
+        final id = await db
+            .into(db.reels)
+            .insert(
+              ReelsCompanion.insert(
+                name: 'Goa',
+                status: ReelStatus.collecting,
+                createdAt: local,
+                updatedAt: local,
+              ),
+            );
+
+        final reel = await (db.select(
+          db.reels,
+        )..where((r) => r.id.equals(id))).getSingle();
+        expect(reel.createdAt, local.toUtc());
+        expect(reel.createdAt.isUtc, isTrue);
+      },
+    );
+
     test('enums are stored by name', () async {
       await db
           .into(db.reels)
@@ -199,12 +298,13 @@ void main() {
 
   test('a database from a newer app version is not opened', () async {
     // A downgrade (say, an older build installed with `adb install -d`) must
-    // not stamp a newer schema as version 1.
+    // not stamp a newer schema as the current version.
     late int Function() userVersion;
-    final newer = AppDatabase(
+    late final AppDatabase newer;
+    newer = AppDatabase(
       NativeDatabase.memory(
         setup: (raw) {
-          raw.execute('PRAGMA user_version = 2');
+          raw.execute('PRAGMA user_version = ${newer.schemaVersion + 1}');
           userVersion = () => raw.userVersion;
         },
       ),
@@ -215,6 +315,6 @@ void main() {
       newer.customSelect('SELECT 1').get(),
       throwsA(isA<UnsupportedError>()),
     );
-    expect(userVersion(), 2);
+    expect(userVersion(), newer.schemaVersion + 1);
   });
 }

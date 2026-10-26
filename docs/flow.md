@@ -47,10 +47,10 @@ Nothing opens the database yet: repositories (Tasks 6 to 8) read `appDatabasePro
 1. `data/database/connection.dart › appDatabase` (`appDatabaseProvider`, kept alive): `AppDatabase(driftDatabase(name: 'taketray'))`, which is `taketray.sqlite` in the app's private documents folder (drift_flutter, SQLite from the `sqlite3` package's build hooks); `ref.onDispose(db.close)`. Tests call `test/support/test_database.dart › testDatabase` instead, which passes `NativeDatabase.memory()`.
 2. Drift opens the file lazily, on the first query, and reads `PRAGMA user_version` (0 for a new file).
 3. `data/database/app_database.dart › AppDatabase.migration`:
-   1. `user_version` 0 (new file): `onCreate` runs `m.createAll()`, which creates the nine tables of `data/database/tables.dart` and the indexes `clips_date_taken_utc` and `clip_reels_reel_id`.
+   1. `user_version` 0 (new file): `onCreate` runs `m.createAll()`, which creates the nine tables of `data/database/tables.dart` (with the `clips` identity `CHECK`s) and the indexes `clips_date_taken_utc`, `clip_reels_reel_id` and `vn_copies_clip_id`.
    2. `user_version` equal to `schemaVersion` (1): nothing to migrate.
    3. Any other version: `onUpgrade` throws `UnsupportedError` (only a database from a newer TakeTray gets here at version 1). Drift writes the new `user_version` only after `onUpgrade` succeeds, so the file is left as it was and the query fails.
-   4. `beforeOpen`: `PRAGMA foreign_keys = ON`, on every open, so `ON DELETE CASCADE` works.
+   4. `beforeOpen`: `PRAGMA foreign_keys = ON`, on every open, so `ON DELETE CASCADE` works (`vn_copies.clip_id` has no foreign key on purpose, D-54).
 4. Drift sets `user_version` to `schemaVersion` and runs the waiting query. Instants are read and written through `data/database/converters.dart › UtcMillisConverter` (UTC milliseconds in int columns), enums through `textEnum` (by name).
 
 Changing the schema (by hand, `cd app`):

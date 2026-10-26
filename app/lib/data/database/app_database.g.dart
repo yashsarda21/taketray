@@ -2611,9 +2611,6 @@ class $VnCopiesTable extends VnCopies
     false,
     type: DriftSqlType.int,
     requiredDuringInsert: true,
-    defaultConstraints: GeneratedColumn.constraintIsAlways(
-      'REFERENCES clips (id) ON DELETE CASCADE',
-    ),
   );
   static const VerificationMeta _copyMediaStoreIdMeta = const VerificationMeta(
     'copyMediaStoreId',
@@ -3381,6 +3378,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'clip_reels_reel_id',
     'CREATE INDEX clip_reels_reel_id ON clip_reels (reel_id)',
   );
+  late final Index vnCopiesClipId = Index(
+    'vn_copies_clip_id',
+    'CREATE INDEX vn_copies_clip_id ON vn_copies (clip_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3397,6 +3398,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     zoneTimeline,
     clipsDateTakenUtc,
     clipReelsReelId,
+    vnCopiesClipId,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3438,13 +3440,6 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     WritePropagation(
       on: TableUpdateQuery.onTableName(
         'vn_sessions',
-        limitUpdateKind: UpdateKind.delete,
-      ),
-      result: [TableUpdate('vn_copies', kind: UpdateKind.delete)],
-    ),
-    WritePropagation(
-      on: TableUpdateQuery.onTableName(
-        'clips',
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('vn_copies', kind: UpdateKind.delete)],
@@ -4041,24 +4036,6 @@ final class $$ClipsTableReferences
       manager.$state.copyWith(prefetchedData: cache),
     );
   }
-
-  static MultiTypedResultKey<$VnCopiesTable, List<VnCopyRow>>
-  _vnCopiesRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
-    db.vnCopies,
-    aliasName: 'clips__id__vn_copies__clip_id',
-  );
-
-  $$VnCopiesTableProcessedTableManager get vnCopiesRefs {
-    final manager = $$VnCopiesTableTableManager(
-      $_db,
-      $_db.vnCopies,
-    ).filter((f) => f.clipId.id.sqlEquals($_itemColumn<int>('id')!));
-
-    final cache = $_typedResult.readTableOrNull(_vnCopiesRefsTable($_db));
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: cache),
-    );
-  }
 }
 
 class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
@@ -4199,31 +4176,6 @@ class $$ClipsTableFilterComposer extends Composer<_$AppDatabase, $ClipsTable> {
           }) => $$InboxTableFilterComposer(
             $db: $db,
             $table: $db.inbox,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
-
-  Expression<bool> vnCopiesRefs(
-    Expression<bool> Function($$VnCopiesTableFilterComposer f) f,
-  ) {
-    final $$VnCopiesTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vnCopies,
-      getReferencedColumn: (t) => t.clipId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VnCopiesTableFilterComposer(
-            $db: $db,
-            $table: $db.vnCopies,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -4459,31 +4411,6 @@ class $$ClipsTableAnnotationComposer
     );
     return f(composer);
   }
-
-  Expression<T> vnCopiesRefs<T extends Object>(
-    Expression<T> Function($$VnCopiesTableAnnotationComposer a) f,
-  ) {
-    final $$VnCopiesTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vnCopies,
-      getReferencedColumn: (t) => t.clipId,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$VnCopiesTableAnnotationComposer(
-            $db: $db,
-            $table: $db.vnCopies,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return f(composer);
-  }
 }
 
 class $$ClipsTableTableManager
@@ -4499,11 +4426,7 @@ class $$ClipsTableTableManager
           $$ClipsTableUpdateCompanionBuilder,
           (ClipRow, $$ClipsTableReferences),
           ClipRow,
-          PrefetchHooks Function({
-            bool clipReelsRefs,
-            bool inboxRefs,
-            bool vnCopiesRefs,
-          })
+          PrefetchHooks Function({bool clipReelsRefs, bool inboxRefs})
         > {
   $$ClipsTableTableManager(_$AppDatabase db, $ClipsTable table)
     : super(
@@ -4600,82 +4523,53 @@ class $$ClipsTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback:
-              ({
-                clipReelsRefs = false,
-                inboxRefs = false,
-                vnCopiesRefs = false,
-              }) {
-                return PrefetchHooks(
-                  db: db,
-                  explicitlyWatchedTables: [
-                    if (clipReelsRefs) db.clipReels,
-                    if (inboxRefs) db.inbox,
-                    if (vnCopiesRefs) db.vnCopies,
-                  ],
-                  addJoins: null,
-                  getPrefetchedDataCallback: (items) async {
-                    return [
-                      if (clipReelsRefs)
-                        await $_getPrefetchedDataByColumns<
-                          ClipRow,
-                          $ClipsTable,
-                          ClipReelRow,
-                          $ClipReelsTable
-                        >(
-                          currentTable: table,
-                          referencedTable: $$ClipsTableReferences
-                              ._clipReelsRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$ClipsTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).clipReelsRefs,
-                          currentColumn: 'id',
-                          referencedColumn: 'clip_id',
-                          typedResults: items,
-                        ),
-                      if (inboxRefs)
-                        await $_getPrefetchedDataByColumns<
-                          ClipRow,
-                          $ClipsTable,
-                          InboxRow,
-                          $InboxTable
-                        >(
-                          currentTable: table,
-                          referencedTable: $$ClipsTableReferences
-                              ._inboxRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$ClipsTableReferences(db, table, p0).inboxRefs,
-                          currentColumn: 'id',
-                          referencedColumn: 'clip_id',
-                          typedResults: items,
-                        ),
-                      if (vnCopiesRefs)
-                        await $_getPrefetchedDataByColumns<
-                          ClipRow,
-                          $ClipsTable,
-                          VnCopyRow,
-                          $VnCopiesTable
-                        >(
-                          currentTable: table,
-                          referencedTable: $$ClipsTableReferences
-                              ._vnCopiesRefsTable(db),
-                          managerFromTypedResult: (p0) =>
-                              $$ClipsTableReferences(
-                                db,
-                                table,
-                                p0,
-                              ).vnCopiesRefs,
-                          currentColumn: 'id',
-                          referencedColumn: 'clip_id',
-                          typedResults: items,
-                        ),
-                    ];
-                  },
-                );
+          prefetchHooksCallback: ({clipReelsRefs = false, inboxRefs = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [
+                if (clipReelsRefs) db.clipReels,
+                if (inboxRefs) db.inbox,
+              ],
+              addJoins: null,
+              getPrefetchedDataCallback: (items) async {
+                return [
+                  if (clipReelsRefs)
+                    await $_getPrefetchedDataByColumns<
+                      ClipRow,
+                      $ClipsTable,
+                      ClipReelRow,
+                      $ClipReelsTable
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ClipsTableReferences
+                          ._clipReelsRefsTable(db),
+                      managerFromTypedResult: (p0) =>
+                          $$ClipsTableReferences(db, table, p0).clipReelsRefs,
+                      currentColumn: 'id',
+                      referencedColumn: 'clip_id',
+                      typedResults: items,
+                    ),
+                  if (inboxRefs)
+                    await $_getPrefetchedDataByColumns<
+                      ClipRow,
+                      $ClipsTable,
+                      InboxRow,
+                      $InboxTable
+                    >(
+                      currentTable: table,
+                      referencedTable: $$ClipsTableReferences._inboxRefsTable(
+                        db,
+                      ),
+                      managerFromTypedResult: (p0) =>
+                          $$ClipsTableReferences(db, table, p0).inboxRefs,
+                      currentColumn: 'id',
+                      referencedColumn: 'clip_id',
+                      typedResults: items,
+                    ),
+                ];
               },
+            );
+          },
         ),
       );
 }
@@ -4692,11 +4586,7 @@ typedef $$ClipsTableProcessedTableManager =
       $$ClipsTableUpdateCompanionBuilder,
       (ClipRow, $$ClipsTableReferences),
       ClipRow,
-      PrefetchHooks Function({
-        bool clipReelsRefs,
-        bool inboxRefs,
-        bool vnCopiesRefs,
-      })
+      PrefetchHooks Function({bool clipReelsRefs, bool inboxRefs})
     >;
 typedef $$ClipReelsTableCreateCompanionBuilder = ClipReelsCompanion Function({
   required int clipId,
@@ -5950,28 +5840,6 @@ typedef $$VnCopiesTableUpdateCompanionBuilder = VnCopiesCompanion Function({
   Value<int> rowid,
 });
 
-final class $$VnCopiesTableReferences
-    extends BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow> {
-  $$VnCopiesTableReferences(super.$_db, super.$_table, super.$_typedResult);
-
-  static $ClipsTable _clipIdTable(_$AppDatabase db) =>
-      db.clips.createAlias('vn_copies__clip_id__clips__id');
-
-  $$ClipsTableProcessedTableManager get clipId {
-    final $_column = $_itemColumn<int>('clip_id')!;
-
-    final manager = $$ClipsTableTableManager(
-      $_db,
-      $_db.clips,
-    ).filter((f) => f.id.sqlEquals($_column));
-    final item = $_typedResult.readTableOrNull(_clipIdTable($_db));
-    if (item == null) return manager;
-    return ProcessedTableManager(
-      manager.$state.copyWith(prefetchedData: [item]),
-    );
-  }
-}
-
 class $$VnCopiesTableFilterComposer
     extends Composer<_$AppDatabase, $VnCopiesTable> {
   $$VnCopiesTableFilterComposer({
@@ -5981,6 +5849,11 @@ class $$VnCopiesTableFilterComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnFilters<int> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
   ColumnFilters<int> get copyMediaStoreId => $composableBuilder(
     column: $table.copyMediaStoreId,
     builder: (column) => ColumnFilters(column),
@@ -5995,29 +5868,6 @@ class $$VnCopiesTableFilterComposer
     column: $table.sizeBytes,
     builder: (column) => ColumnFilters(column),
   );
-
-  $$ClipsTableFilterComposer get clipId {
-    final $$ClipsTableFilterComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.clipId,
-      referencedTable: $db.clips,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ClipsTableFilterComposer(
-            $db: $db,
-            $table: $db.clips,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VnCopiesTableOrderingComposer
@@ -6029,6 +5879,11 @@ class $$VnCopiesTableOrderingComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<int> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get copyMediaStoreId => $composableBuilder(
     column: $table.copyMediaStoreId,
     builder: (column) => ColumnOrderings(column),
@@ -6043,29 +5898,6 @@ class $$VnCopiesTableOrderingComposer
     column: $table.sizeBytes,
     builder: (column) => ColumnOrderings(column),
   );
-
-  $$ClipsTableOrderingComposer get clipId {
-    final $$ClipsTableOrderingComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.clipId,
-      referencedTable: $db.clips,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ClipsTableOrderingComposer(
-            $db: $db,
-            $table: $db.clips,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VnCopiesTableAnnotationComposer
@@ -6077,6 +5909,9 @@ class $$VnCopiesTableAnnotationComposer
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumn<int> get clipId =>
+      $composableBuilder(column: $table.clipId, builder: (column) => column);
+
   GeneratedColumn<int> get copyMediaStoreId => $composableBuilder(
     column: $table.copyMediaStoreId,
     builder: (column) => column,
@@ -6087,29 +5922,6 @@ class $$VnCopiesTableAnnotationComposer
 
   GeneratedColumn<int> get sizeBytes =>
       $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
-
-  $$ClipsTableAnnotationComposer get clipId {
-    final $$ClipsTableAnnotationComposer composer = $composerBuilder(
-      composer: this,
-      getCurrentColumn: (t) => t.clipId,
-      referencedTable: $db.clips,
-      getReferencedColumn: (t) => t.id,
-      builder:
-          (
-            joinBuilder, {
-            $addJoinBuilderToRootComposer,
-            $removeJoinBuilderFromRootComposer,
-          }) => $$ClipsTableAnnotationComposer(
-            $db: $db,
-            $table: $db.clips,
-            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
-            joinBuilder: joinBuilder,
-            $removeJoinBuilderFromRootComposer:
-                $removeJoinBuilderFromRootComposer,
-          ),
-    );
-    return composer;
-  }
 }
 
 class $$VnCopiesTableTableManager
@@ -6123,9 +5935,9 @@ class $$VnCopiesTableTableManager
           $$VnCopiesTableAnnotationComposer,
           $$VnCopiesTableCreateCompanionBuilder,
           $$VnCopiesTableUpdateCompanionBuilder,
-          (VnCopyRow, $$VnCopiesTableReferences),
+          (VnCopyRow, BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>),
           VnCopyRow,
-          PrefetchHooks Function({bool clipId})
+          PrefetchHooks Function()
         > {
   $$VnCopiesTableTableManager(_$AppDatabase db, $VnCopiesTable table)
     : super(
@@ -6174,50 +5986,15 @@ class $$VnCopiesTableTableManager
               .map(
                 (e) => (
                   e.readTable<$VnCopiesTable, VnCopyRow>(table),
-                  $$VnCopiesTableReferences(db, table, e),
+                  BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>(
+                    db,
+                    table,
+                    e,
+                  ),
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({clipId = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [],
-              addJoins:
-                  <
-                    T extends TableManagerState<
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic,
-                      dynamic
-                    >
-                  >(state) {
-                    if (clipId) {
-                      state = state.withJoin(
-                        currentTable: table,
-                        currentColumn: table.clipId,
-                        referencedTable: $$VnCopiesTableReferences._clipIdTable(
-                          db,
-                        ),
-                        referencedColumn: $$VnCopiesTableReferences
-                            ._clipIdTable(db)
-                            .id,
-                      ) as T;
-                    }
-
-                    return state;
-                  },
-              getPrefetchedDataCallback: (items) async {
-                return [];
-              },
-            );
-          },
+          prefetchHooksCallback: null,
         ),
       );
 }
@@ -6232,9 +6009,9 @@ typedef $$VnCopiesTableProcessedTableManager =
       $$VnCopiesTableAnnotationComposer,
       $$VnCopiesTableCreateCompanionBuilder,
       $$VnCopiesTableUpdateCompanionBuilder,
-      (VnCopyRow, $$VnCopiesTableReferences),
+      (VnCopyRow, BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>),
       VnCopyRow,
-      PrefetchHooks Function({bool clipId})
+      PrefetchHooks Function()
     >;
 typedef $$SettingsTableCreateCompanionBuilder = SettingsCompanion Function({
   required String key,
