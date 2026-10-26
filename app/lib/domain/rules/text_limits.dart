@@ -24,8 +24,15 @@ class InvalidInputException implements Exception {
   String toString() => 'InvalidInputException($problem)';
 }
 
-/// Removes the spaces around a name; the inside is left alone.
-String normalizeName(String raw) => raw.trim();
+/// Spaces and invisible characters (zero-width space, non-joiner, joiner,
+/// word joiner, byte-order mark) at either end of a name.
+final _edgeBlanks = RegExp(
+  r'^[\s\u200B\u200C\u200D\u2060\uFEFF]+|[\s\u200B\u200C\u200D\u2060\uFEFF]+$',
+);
+
+/// Removes the spaces and invisible characters around a name; the inside is
+/// left alone.
+String normalizeName(String raw) => raw.replaceAll(_edgeBlanks, '');
 
 /// Checks a reel name the way it will be saved: trimmed, then 1 to
 /// [reelNameMaxLength] characters.

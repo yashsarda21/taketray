@@ -47,9 +47,34 @@ void main() {
     });
 
     test('an accented letter written as two code points is one character', () {
-      expect('é' * 40, hasLength(80));
-      expect(checkReelName('é' * 40), isNull);
-      expect(checkReelName('é' * 41), ReelNameProblem.tooLong);
+      // Written as an escape on purpose: "e" followed by U+0301 (combining
+      // acute accent) looks like one "é" but is two code points, and an
+      // editor that normalises text would silently merge a literal one.
+      const decomposed = 'e\u0301';
+      expect(decomposed * 40, hasLength(80));
+      expect(checkReelName(decomposed * 40), isNull);
+      expect(checkReelName(decomposed * 41), ReelNameProblem.tooLong);
+    });
+
+    test('a precomposed "é" counts once too', () {
+      expect(checkReelName('\u00e9' * 40), isNull);
+      expect(checkReelName('\u00e9' * 41), ReelNameProblem.tooLong);
+    });
+
+    test('a name of only invisible characters is empty', () {
+      for (final blank in ['\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF']) {
+        expect(checkReelName(blank * 3), ReelNameProblem.empty, reason: blank);
+      }
+      expect(checkReelName(' \u200B\uFEFF \u2060'), ReelNameProblem.empty);
+    });
+
+    test('invisible characters at the ends are trimmed, not counted', () {
+      expect(normalizeName('\u200BGoa\u200D\uFEFF'), 'Goa');
+      expect(checkReelName('\u200B${'a' * 40}\u2060'), isNull);
+    });
+
+    test('an invisible character inside a name is kept and counted', () {
+      expect(normalizeName('a\u200Bb'), 'a\u200Bb');
     });
   });
 
@@ -72,6 +97,8 @@ void main() {
 
     test('surrounding spaces do not count', () {
       expect(checkReferenceLabel(' ${'a' * 60} '), isNull);
+      expect(checkReferenceLabel('\u200B${'a' * 60}\uFEFF'), isNull);
+      expect(checkReferenceLabel('\u200B\u200C'), isNull);
     });
   });
 

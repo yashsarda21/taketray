@@ -32,17 +32,31 @@ void main() {
     });
 
     test('an Instagram URL with no path keeps a single slash', () {
-      expect(norm('https://instagram.com'), 'https://instagram.com/');
+      expect(norm('https://instagram.com'), 'https://www.instagram.com/');
     });
 
-    test('handles instagram.com and instagr.am', () {
+    test('every Instagram host and scheme gives one canonical URL', () {
+      const canonical = 'https://www.instagram.com/p/ABC/';
+      for (final raw in [
+        'https://www.instagram.com/p/ABC/?igsh=x',
+        'https://instagram.com/p/ABC/?utm_source=ig_web_copy_link',
+        'http://instagram.com/p/ABC?utm_source=ig_web_copy_link',
+        'https://m.instagram.com/p/ABC/',
+        'https://instagr.am/p/ABC/?igsh=x',
+        'HTTP://WWW.INSTAGRAM.COM:80/p/ABC//#top',
+      ]) {
+        expect(norm(raw), canonical, reason: raw);
+      }
+    });
+
+    test('different codes stay different', () {
       expect(
-        norm('https://instagram.com/p/XYZ/?igsh=x'),
-        'https://instagram.com/p/XYZ/',
+        norm('https://instagram.com/p/ABC/?igsh=x'),
+        isNot(norm('https://www.instagram.com/p/ABD/?igsh=x')),
       );
       expect(
-        norm('https://instagr.am/p/XYZ/?igsh=x'),
-        'https://instagr.am/p/XYZ/',
+        norm('https://www.instagram.com/reel/ABC/'),
+        isNot(norm('https://www.instagram.com/reel/abc/')),
       );
     });
 

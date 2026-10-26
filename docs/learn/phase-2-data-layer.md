@@ -283,13 +283,14 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   Section 3's database `CHECK` rules refuse a clip without its identity; `NewClip` refuses it one step earlier, in Dart, with a clear message (`a picker clip needs pickerUri`).
 
-- **Counting characters, not code.** Rule: a reel name is 1 to 40 characters after trimming spaces. In code, "length" is not what a person sees. This is real output from the tests:
+- **Counting characters, not code.** Rule: a reel name is 1 to 40 characters after trimming spaces and invisible characters (a zero-width space, for example, which you cannot see but which would otherwise make a blank name look filled in). In code, "length" is not what a person sees. This is real output from the tests:
 
   ```dart
   // 👨‍👩‍👧 is 5 code points and 8 UTF-16 units; 🇮🇳 is 2 code points.
   expect(checkReelName('👨‍👩‍👧' * 40), isNull);
-  expect('e\u0301' * 40, hasLength(80));   // 40 "é" typed as e + an accent
-  expect(checkReelName('e\u0301' * 40), isNull);
+  const decomposed = 'e\u0301';            // "e" + a combining accent: looks like é
+  expect(decomposed * 40, hasLength(80));   // 40 of them are 80 code units long
+  expect(checkReelName(decomposed * 40), isNull);
   ```
 
   Dart's `String.length` counts 16-bit units, so a family emoji is 8 and an `é` typed as two pieces is 2. The rule uses the `characters` package, which counts what you see:
@@ -311,13 +312,13 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   https://www.instagram.com/reel/ABC/?igsh=two&utm_source=ig
   ```
 
-  `normalizeReferenceUrl` turns both into `https://www.instagram.com/reel/ABC/`, so the second save is reported as "already saved" instead of adding a duplicate. Only the Instagram hosts lose their query; a YouTube link would break without `?v=`:
+  Different apps even spell the address differently (`http://instagram.com/reel/ABC?utm_source=ig_web_copy_link`, `https://m.instagram.com/reel/ABC/`, `https://instagr.am/reel/ABC/`). `normalizeReferenceUrl` turns all of these into the one form `https://www.instagram.com/reel/ABC/` (always `https`, always the `www.instagram.com` host, no query, exactly one trailing slash), so the second save is reported as "already saved" instead of adding a duplicate. Only those four Instagram hosts (`instagram.com`, `www.`, `m.` and `instagr.am`) are rewritten and lose their query; a YouTube link would break without `?v=`:
 
   ```dart
   if (!_instagramHosts.contains(parsed.host)) return withoutFragment;
   ```
 
-  Edge cases the tests pin down: text with a space in it is not a link (`'not a url'`, or a pasted sentence), `ftp://x` and `mailto:` are refused (only `http` and `https`), `instagram.com/reel/ABC` with no `https://` is refused (it has no scheme), the path is kept as typed except that an Instagram link always ends in exactly one `/` (so `.../ABC`, `.../ABC/` and `.../ABC//` match), and `l.instagram.com/?u=...` is left alone because its query *is* the link. The function returns `null` for anything unusable, so the caller can't forget to check.
+  Edge cases the tests pin down: text with a space in it is not a link (`'not a url'`, or a pasted sentence), `ftp://x` and `mailto:` are refused (only `http` and `https`), `instagram.com/reel/ABC` with no `https://` is refused (it has no scheme), the path is kept as typed (letters keep their case: `ABC` and `abc` are different reels) except that an Instagram link always ends in exactly one `/` (so `.../ABC`, `.../ABC/` and `.../ABC//` match), and `l.instagram.com/?u=...` is left alone because its query *is* the link. One honest limit: `/p/ABC/`, `/reel/ABC/` and `/someuser/reel/ABC/` can be the same video and are still treated as three different links. The function returns `null` for anything unusable, so the caller can't forget to check.
 
   `referenceSourceOf` then picks the label (Instagram, YouTube, TikTok, or plain link) from the host. It matches the domain or a subdomain of it (`m.youtube.com`, `vm.tiktok.com`), and never a look-alike: `notinstagram.com` is a plain link.
 
@@ -343,7 +344,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/domain/models/` (one file per model, plus `enums.dart` from Section 3) and `app/lib/domain/rules/` (`text_limits.dart`, `reference_url.dart`, `zone_lookup.dart`, `folder_names.dart`). Tests are in `app/test/domain/`, one file per rule and one for all the models.
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/domain)`. You should see `+71: All tests passed!`. Then break a rule on purpose: in `app/lib/domain/rules/text_limits.dart` change `const reelNameMaxLength = 40;` to `39`, run the same command, and watch `40 emoji pass and 41 fail` and the other limit tests fail. Change it back.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/domain)`. You should see `+76: All tests passed!`. Then break a rule on purpose: in `app/lib/domain/rules/text_limits.dart` change `const reelNameMaxLength = 40;` to `39`, run the same command, and watch `40 emoji pass and 41 fail` and the other limit tests fail. Change it back.
 
 **Decisions:** D-55.
 

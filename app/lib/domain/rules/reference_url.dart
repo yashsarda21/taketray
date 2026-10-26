@@ -6,10 +6,18 @@ enum ReferenceUrlProblem { invalid }
 
 final _trailingSlashes = RegExp(r'/+$');
 
-/// Hosts whose query string is only tracking (`?igsh=`, `?utm_source=`). Not
-/// every `*.instagram.com` host: `l.instagram.com/?u=<target>` keeps its
-/// whole meaning in the query.
-const _instagramHosts = {'instagram.com', 'www.instagram.com', 'instagr.am'};
+/// Hosts that all lead to the same Instagram pages and whose query string is
+/// only tracking (`?igsh=`, `?utm_source=`). Not every `*.instagram.com` host:
+/// `l.instagram.com/?u=<target>` keeps its whole meaning in the query.
+const _instagramHosts = {
+  'instagram.com',
+  'www.instagram.com',
+  'm.instagram.com',
+  'instagr.am',
+};
+
+/// The one form every [_instagramHosts] link is rewritten to.
+const _instagramCanonicalHost = 'www.instagram.com';
 
 /// Cleans a link the user pasted or shared, so the same page saved twice is
 /// recognised as one reference. Returns null when it is not an http(s) link
@@ -17,9 +25,12 @@ const _instagramHosts = {'instagram.com', 'www.instagram.com', 'instagr.am'};
 ///
 /// - Trims (a space inside the link makes it invalid), lowercases the scheme
 ///   and host, and drops a `#fragment`.
-/// - Instagram: drops the query and ends the path with exactly one `/`, so
-///   `.../reel/ABC/?igsh=x`, `.../reel/ABC?igsh=y` and `.../reel/ABC//` are
-///   all `https://www.instagram.com/reel/ABC/`.
+/// - Instagram (`instagram.com`, `www.`, `m.`, `instagr.am`): rewritten to
+///   `https://www.instagram.com`, query dropped, path ended with exactly one
+///   `/`. So `http://instagram.com/reel/ABC?utm_source=x`,
+///   `https://m.instagram.com/reel/ABC/` and
+///   `https://www.instagram.com/reel/ABC//?igsh=y` are all
+///   `https://www.instagram.com/reel/ABC/`.
 /// - Every other host keeps its query (`youtube.com/watch?v=` needs it).
 Uri? normalizeReferenceUrl(String raw) {
   final trimmed = raw.trim();
@@ -40,10 +51,8 @@ Uri? normalizeReferenceUrl(String raw) {
   if (!_instagramHosts.contains(parsed.host)) return withoutFragment;
 
   return Uri(
-    scheme: parsed.scheme,
-    userInfo: parsed.userInfo,
-    host: parsed.host,
-    port: parsed.hasPort ? parsed.port : null,
+    scheme: 'https',
+    host: _instagramCanonicalHost,
     path: '${parsed.path.replaceFirst(_trailingSlashes, '')}/',
   );
 }
