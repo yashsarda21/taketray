@@ -11,14 +11,16 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// an effect on the last action, which then uses the error colours.
 @immutable
 class TtDialogAction<T> {
-  /// An action showing [label] that closes the dialog with [value].
-  const new(this.label, this.value, {this.destructive = false});
-
-  /// The text on the button.
-  final String label;
+  /// An action that closes the dialog with [value] and shows [label].
+  ///
+  /// Same order as `TtMenuItem` and `TtPillTab`: the value, then the label.
+  const new(this.value, this.label, {this.destructive = false});
 
   /// What `showTtDialog` returns when this action is tapped.
   final T value;
+
+  /// The text on the button.
+  final String label;
 
   /// Whether the action deletes or discards something (error colours, when
   /// it is the last action).

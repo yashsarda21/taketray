@@ -24,14 +24,14 @@ Widget _bar(
 TtIconButton _action(String label, {VoidCallback? onPressed}) => TtIconButton(
   icon: Symbols.search_rounded,
   semanticLabel: label,
-  style: TtIconButtonStyle.glass,
+  style: TtIconButtonStyle.circle,
   onPressed: onPressed ?? () {},
 );
 
 TtIconButton _back() => TtIconButton(
   icon: Symbols.arrow_back_rounded,
   semanticLabel: 'Back',
-  style: TtIconButtonStyle.glass,
+  style: TtIconButtonStyle.circle,
   onPressed: () {},
 );
 
@@ -162,7 +162,7 @@ void main() {
       expect(fill(), scheme.surface);
     });
 
-    testWidgets('glass actions sit on a circle, except in selection mode', (
+    testWidgets('circle actions sit on a circle, except in selection mode', (
       tester,
     ) async {
       final circles = find.descendant(

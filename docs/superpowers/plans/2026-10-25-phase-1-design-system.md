@@ -283,7 +283,7 @@ Each component task follows the same cycle. The task lists only what differs: th
 **API:**
 - `enum TtButtonKind { filled, tonal, outlined, text, ghost, danger, attention }`, `enum TtButtonSize { small, medium, large }` (min heights 36/44/56; the tap target is always ≥ 48).
 - `TtButton({required String label, required VoidCallback? onPressed, TtButtonKind kind = TtButtonKind.filled, TtButtonSize size = TtButtonSize.medium, IconData? icon, String? semanticLabel, bool expand = false, Key? key})`: `null` onPressed means disabled.
-- `enum TtIconButtonStyle { plain, glass, onVideo }`; `TtIconButton({required IconData icon, required String semanticLabel, required VoidCallback? onPressed, TtIconButtonStyle style = TtIconButtonStyle.plain, bool filled = false, bool? pressed, Key? key})`. `pressed` non-null means toggle semantics.
+- `enum TtIconButtonStyle { plain, circle, onVideo }`; `TtIconButton({required IconData icon, required String semanticLabel, required VoidCallback? onPressed, TtIconButtonStyle style = TtIconButtonStyle.plain, bool filled = false, bool? pressed, Key? key})`. `pressed` non-null means toggle semantics.
 - `TtFab({required String label, required IconData icon, required VoidCallback onPressed, Key? key})`: extended, 52 dp, a stadium in primary with the primary-tinted shadow.
 - `TtGlass({required Widget child, required double radius, Color? tint, double blur = TtMetrics.glassBlur, bool shadow = true, Key? key})`.
 - `TtGlassPill({required IconData icon, Color? iconColor, String? text, Key? key})`: dark glass on media.
@@ -462,7 +462,7 @@ Each component task follows the same cycle. The task lists only what differs: th
 **API:**
 - `TtSheet({required Widget child, String? title, Widget? footer, bool fullScreen = false, Key? key})`: inset 8 dp, radius 32, drag handle, `surfaceContainer`, hairline border; `fullScreen` has no inset and no radius.
 - `Future<T?> showTtSheet<T>(BuildContext context, {required WidgetBuilder builder, bool fullScreen = false, bool isDismissible = true})`: a modal bottom sheet, transparent route background, the blurred `.scrim`, keyboard-safe.
-- `TtDialogAction<T>(String label, T value, {bool destructive = false})`; `TtDialog<T>({required String title, String? body, Widget? content, required List<TtDialogAction<T>> actions, Key? key})`, with equal-width action buttons:
+- `TtDialogAction<T>(T value, String label, {bool destructive = false})`; `TtDialog<T>({required String title, String? body, Widget? content, required List<TtDialogAction<T>> actions, Key? key})`, with equal-width action buttons:
   - the last action is primary
   - a destructive last action uses the error colours
 - `Future<T?> showTtDialog<T>(BuildContext context, {required String title, String? body, Widget? content, required List<TtDialogAction<T>> actions})`.

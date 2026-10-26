@@ -81,9 +81,9 @@ class _DialogKnobs {
       title: title,
       body: body,
       actions: [
-        if (count > 1) TtDialogAction(first, 'first'),
-        if (count > 2) const TtDialogAction('Later', 'middle'),
-        TtDialogAction(last, 'last', destructive: destructive),
+        if (count > 1) TtDialogAction('first', first),
+        if (count > 2) const TtDialogAction('middle', 'Later'),
+        TtDialogAction('last', last, destructive: destructive),
       ],
     );
   }

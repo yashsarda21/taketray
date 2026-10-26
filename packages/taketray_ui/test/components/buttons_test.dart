@@ -494,7 +494,7 @@ void main() {
       }
     });
 
-    testWidgets('glass is a solid surfaceContainerHigh circle, no blur', (
+    testWidgets('circle is a solid surfaceContainerHigh circle, no blur', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -503,7 +503,7 @@ void main() {
             child: TtIconButton(
               icon: Symbols.close_rounded,
               semanticLabel: 'Close',
-              style: TtIconButtonStyle.glass,
+              style: TtIconButtonStyle.circle,
               onPressed: () {},
             ),
           ),

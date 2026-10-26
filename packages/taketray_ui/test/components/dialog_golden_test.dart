@@ -24,8 +24,8 @@ void main() {
                 'Shooting mode has been on for 14 days. While it is on, '
                 'every new video goes to To tag.',
             actions: [
-              TtDialogAction('Keep it on', 'keep'),
-              TtDialogAction('Turn off', 'off'),
+              TtDialogAction('keep', 'Keep it on'),
+              TtDialogAction('off', 'Turn off'),
             ],
           ),
         ),
@@ -39,8 +39,8 @@ void main() {
                 'The 12 copies made so far will be deleted. Your original '
                 'clips are not affected.',
             actions: [
-              TtDialogAction('Keep copying', 'keep'),
-              TtDialogAction('Stop', 'stop', destructive: true),
+              TtDialogAction('keep', 'Keep copying'),
+              TtDialogAction('stop', 'Stop', destructive: true),
             ],
           ),
         ),
@@ -53,7 +53,7 @@ void main() {
             body:
                 'It may be damaged, or in a format your phone does not '
                 'support. The file is still in your gallery.',
-            actions: [TtDialogAction('OK', 'ok')],
+            actions: [TtDialogAction('ok', 'OK')],
           ),
         ),
       ),
@@ -67,8 +67,8 @@ void main() {
                 'it with the other reels that have all their clips. You can '
                 'change this any time from the reel page.',
             actions: [
-              TtDialogAction('Not now', 'no'),
-              TtDialogAction('Mark as Ready to edit', 'yes'),
+              TtDialogAction('no', 'Not now'),
+              TtDialogAction('yes', 'Mark as Ready to edit'),
             ],
           ),
         ),

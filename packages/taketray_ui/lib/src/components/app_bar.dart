@@ -10,7 +10,7 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// title style, or, when [large], 80 dp with the big page title of a tab
 /// screen. An optional [leading] widget (a back or close button) comes
 /// first and the [actions] come last. Give icon buttons the
-/// `TtIconButtonStyle.glass` style: they then sit on small circles.
+/// `TtIconButtonStyle.circle` style: they then sit on small circles.
 ///
 /// [selection] turns it into the contextual bar of a multi-select: a
 /// `secondaryContainer` background, a one-line medium title and plain

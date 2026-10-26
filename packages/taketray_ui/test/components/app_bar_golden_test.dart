@@ -75,7 +75,7 @@ void main() {
 Widget _action(IconData icon, String label) => TtIconButton(
   icon: icon,
   semanticLabel: label,
-  style: TtIconButtonStyle.glass,
+  style: TtIconButtonStyle.circle,
   onPressed: _noop,
 );
 

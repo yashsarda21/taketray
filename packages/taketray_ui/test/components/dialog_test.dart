@@ -7,8 +7,8 @@ import '../support/tt_accessibility.dart';
 import '../support/tt_test_app.dart';
 
 const _two = [
-  TtDialogAction<String>('Cancel', 'cancel'),
-  TtDialogAction<String>('Keep', 'keep'),
+  TtDialogAction<String>('cancel', 'Cancel'),
+  TtDialogAction<String>('keep', 'Keep'),
 ];
 
 Widget _dialog({
@@ -135,8 +135,8 @@ void main() {
         ttTestApp(
           _dialog(
             actions: const [
-              TtDialogAction<String>('Cancel', 'cancel'),
-              TtDialogAction<String>('Delete', 'delete', destructive: true),
+              TtDialogAction<String>('cancel', 'Cancel'),
+              TtDialogAction<String>('delete', 'Delete', destructive: true),
             ],
           ),
         ),
@@ -148,7 +148,7 @@ void main() {
     testWidgets('a single action fills the width', (tester) async {
       await tester.pumpWidget(
         ttTestApp(
-          _dialog(actions: const [TtDialogAction<String>('Got it', 'ok')]),
+          _dialog(actions: const [TtDialogAction<String>('ok', 'Got it')]),
         ),
       );
       final panel = tester.getRect(find.byType(TtDialog<String>));
@@ -175,8 +175,8 @@ void main() {
         ttTestApp(
           _dialog(
             actions: const [
-              TtDialogAction<String>('Keep it', 'keep'),
-              TtDialogAction<String>('Remove clip', 'remove'),
+              TtDialogAction<String>('keep', 'Keep it'),
+              TtDialogAction<String>('remove', 'Remove clip'),
             ],
           ),
           textScale: 2,
@@ -225,8 +225,8 @@ void main() {
           ttTestApp(
             _dialog(
               actions: [
-                TtDialogAction<String>(first, 'a'),
-                TtDialogAction<String>(last, 'b', destructive: true),
+                TtDialogAction<String>('a', first),
+                TtDialogAction<String>('b', last, destructive: true),
               ],
             ),
           ),
@@ -254,8 +254,8 @@ void main() {
           _dialog(
             title: 'Mark Autumn recipes as Ready to edit?',
             actions: const [
-              TtDialogAction<String>('Not now', 'no'),
-              TtDialogAction<String>('Mark as Ready to edit', 'yes'),
+              TtDialogAction<String>('no', 'Not now'),
+              TtDialogAction<String>('yes', 'Mark as Ready to edit'),
             ],
           ),
           textScale: 2,

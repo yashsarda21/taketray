@@ -274,7 +274,7 @@ enum TtIconButtonStyle {
 
   /// On a small solid circle (`surfaceContainerHigh`), as in the top app
   /// bar. Inside a `TtAppBar` in selection mode the circle is left out.
-  glass,
+  circle,
 
   /// White, for use on video.
   onVideo,
@@ -306,7 +306,7 @@ class TtIconButton extends StatelessWidget {
   /// Called when the button is tapped; null disables the button.
   final VoidCallback? onPressed;
 
-  /// Where the button sits: on a plain surface, on glass or on video.
+  /// Where the button sits: on a plain surface, on a circle or on video.
   final TtIconButtonStyle style;
 
   /// Whether the glyph is drawn in its filled variant (a selected look).
@@ -323,10 +323,10 @@ class TtIconButton extends StatelessWidget {
     // proto.css: .appbar.sel .ib { color: on-secondary-container } and
     // tt-style.css: .appbar:not(.sel) .ib::before (no circle in selection).
     final inSelectionBar =
-        style == TtIconButtonStyle.glass && TtBarScope.selectionOf(context);
+        style == TtIconButtonStyle.circle && TtBarScope.selectionOf(context);
     final color = switch (style) {
       TtIconButtonStyle.plain => on ? scheme.primary : scheme.onSurfaceVariant,
-      TtIconButtonStyle.glass =>
+      TtIconButtonStyle.circle =>
         on
             ? scheme.primary
             : inSelectionBar
@@ -367,7 +367,7 @@ class TtIconButton extends StatelessWidget {
       onTap: onPressed,
       child: SizedBox.square(
         dimension: target,
-        child: style == TtIconButtonStyle.glass && !inSelectionBar
+        child: style == TtIconButtonStyle.circle && !inSelectionBar
             ? Stack(
                 fit: StackFit.expand,
                 children: [
@@ -376,7 +376,7 @@ class TtIconButton extends StatelessWidget {
                   // A solid circle, as in the prototype (D-43): no blur.
                   Padding(
                     padding: const EdgeInsets.all(
-                      TtMetrics.iconButtonGlassInset,
+                      TtMetrics.iconButtonCircleInset,
                     ),
                     child: DecoratedBox(
                       decoration: BoxDecoration(

@@ -44,7 +44,7 @@ final WidgetbookComponent ttAppBarComponent = WidgetbookComponent(
                 ? TtIconButton(
                     icon: Symbols.arrow_back_rounded,
                     semanticLabel: 'Back',
-                    style: TtIconButtonStyle.glass,
+                    style: TtIconButtonStyle.circle,
                     onPressed: () {},
                   )
                 : null,
@@ -53,7 +53,7 @@ final WidgetbookComponent ttAppBarComponent = WidgetbookComponent(
                 TtIconButton(
                   icon: icon,
                   semanticLabel: label,
-                  style: TtIconButtonStyle.glass,
+                  style: TtIconButtonStyle.circle,
                   onPressed: () {},
                 ),
             ],

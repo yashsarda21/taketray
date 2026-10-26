@@ -121,9 +121,9 @@ abstract final class TtMetrics {
 
   // ---- Icon buttons ----
 
-  /// Gap between the 48 dp tap target and the glass circle drawn inside it.
+  /// Gap between the 48 dp tap target and the circle drawn inside it.
   // tt-style.css: .style-tt .appbar:not(.sel) .ib::before { inset: 5px }
-  static const double iconButtonGlassInset = 5;
+  static const double iconButtonCircleInset = 5;
 
   // ---- Floating action button ----
 
