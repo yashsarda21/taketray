@@ -49,3 +49,14 @@ The Patrol run installs the debug app and a test APK (`app.taketray.test`) and l
 ## Emulators
 
 Emulators (API 30, 33, 34+) are deferred: low disk; the existing `Pixel_3a_API_32` AVD's system image is missing. Tests run on the S24 only for now (decision D-32). When disk allows, create AVDs with `sdkmanager`/`avdmanager` (Google APIs, arm64) and run the same `tool/patrol test` command with the emulator's id.
+
+## Phase 1 check
+
+Phase 1 is the design system: the shared look of the app and a catalogue that lists every component. The controller installs two APKs on the phone with `tool/adb install -r`: the TakeTray release app (`app/build/app/outputs/flutter-apk/app-release.apk`) and the "TakeTray UI" catalogue (`widgetbook/build/app/outputs/flutter-apk/app-release.apk`). Then check each of these on the phone:
+
+1. Open TakeTray. It should open on Reels, with the floating pill of tabs at the bottom.
+2. Tap each tab. The screen should switch each time. Press back: you should return to Reels.
+3. Switch the phone's dark mode on and off (Settings > Display). TakeTray should change between the light and dark look to match.
+4. Open "TakeTray UI". Every component should be listed in the catalogue.
+5. In the catalogue, switch between light, dark and video, and set the text size to 2.0. No layout should break: no text cut off or overlapping, and nothing sticking out of its box.
+6. Look at the buttons, cards, the shooting card and the tag player controls. They should look like the prototype (`design/prototype/index.html`).
