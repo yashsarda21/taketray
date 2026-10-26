@@ -969,7 +969,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
     contents: read
   ```
 
-  `on` is when to run: on every push, and on every pull request (a proposal to merge a branch). `permissions: contents: read` means the robot may read the code and nothing else, so even a mistake in the workflow cannot change your repository. There are no passwords or other secrets in the file, and nothing is published anywhere.
+  `on` is when to run: on every push, and on every pull request (a proposal to merge a branch). `permissions: contents: read` means the robot may read the code and nothing else, so even a mistake in the workflow cannot change your repository. There are no passwords or other secrets in the file, and nothing is deployed. (GitHub does keep the saved caches and any uploaded failure pictures for a while, private to the repository.)
 
 - **The robot does what you do, in the same order.** The steps are: download the code, install Flutter 3.47.7, run `tool/check`. The install step is the one line that makes the wrappers work unchanged:
 
@@ -982,9 +982,9 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
         https://github.com/flutter/flutter.git "$HOME/development/flutter"
   ```
 
-  `tool/flutter` is just `exec "$HOME/development/flutter/bin/flutter" "$@"` (Section 1 explains why the wrappers exist). Putting Flutter in the same folder on the robot's computer means `tool/check` runs there without changing a single line. `--depth 1` downloads only the latest snapshot instead of Flutter's whole history, which is much faster. The `if:` skips the download when a saved copy already exists (next point).
+  `tool/flutter` is just `exec "$HOME/development/flutter/bin/flutter" "$@"` (the wrappers exist because the `flutter` on this Mac's `PATH` is an old 2.8.1; `docs/dev-setup.md` lists them). Putting Flutter in the same folder on the robot's computer means `tool/check` runs there without changing a single line. `--depth 1` downloads only the latest snapshot instead of Flutter's whole history, which is much faster. The `if:` skips the download when a saved copy already exists (next point).
 
-- **Caches make the second run quicker.** The first run downloads Flutter (about 1 GB once its helper files are included) and every package. GitHub can save a folder between runs, under a name you choose (a *key*). Flutter is saved under its version; the packages under the fingerprint of `pubspec.lock`, so they are downloaded again only when a package changes:
+- **Caches make the second run quicker.** The first run downloads Flutter (it is large: on this Mac the folder is several GB once its helper files are included) and every package. GitHub can save a folder between runs, under a name you choose (a *key*). Flutter is saved under its version; the packages under the fingerprint of `pubspec.lock`, so they are downloaded again only when a package changes:
 
   ```yaml
   key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
@@ -996,7 +996,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 - **One script, two places.** The robot does not list the checks itself. It runs `tool/check`, the same file you run by hand. If the workflow listed the format check, the analysis and the tests as separate steps, then the day someone added a step to `tool/check` (the coverage gate in Section 9 was one) they would also have to remember to edit the workflow, and the two would slowly disagree: green on GitHub, red on your Mac, or the other way round. With one script there is one definition of "healthy". The workflow only prepares the computer (Flutter, caches) and calls it.
 
-- **Why goldens differ by platform.** A golden test (Phase 1, D-39) draws a component and compares the picture with a saved PNG. The same text is drawn slightly differently by macOS, Linux and Windows, and even by different macOS versions, so a PNG made on a Mac with real text would fail on Ubuntu by a few pixels. That is why the tests keep two sets of pictures: `goldens/ci/` draws text as plain blocks, so it looks the same on any computer, and `goldens/macos/` has real text, for a human to compare with the prototype. The test setup picks the sets from one environment variable, `CI`:
+- **Why goldens differ by platform.** A golden test (Phase 1, D-39) draws a component and compares the picture with a saved PNG. The same text is drawn slightly differently by macOS, Linux and Windows, and even by different macOS versions, so a PNG made on a Mac with real text would fail on Ubuntu by a few pixels. That is why the tests keep two sets of pictures: `goldens/ci/` draws text as plain blocks, so it is expected to look the same on any computer, and `goldens/macos/` has real text, for a human to compare with the prototype. The test setup picks the sets from one environment variable, `CI`:
 
   ```dart
   final onCi = Platform.environment.containsKey('CI');
@@ -1007,7 +1007,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   ),
   ```
 
-  (`packages/taketray_ui/test/flutter_test_config.dart`.) The block pictures always run. The real-text pictures run only on macOS, and only when `CI` is not set. On Ubuntu they would not run anyway, because only macOS pictures exist; setting `CI` as well means they stay off even if someone later runs the workflow on a Mac runner. GitHub sets `CI=true` itself, and the workflow states it too so the check does not rely on a default. On your Mac without `CI`, both sets run. If a golden fails on GitHub, the workflow uploads the `failures/` folder (the new picture, the saved one and the difference) so you can download it from the run's page.
+  (`packages/taketray_ui/test/flutter_test_config.dart`.) The block pictures always run. The real-text pictures run only on macOS, and only when `CI` is not set. On Ubuntu they would not run anyway, because only macOS pictures exist; setting `CI` as well means they stay off even if someone later runs the workflow on a Mac runner. GitHub sets `CI=true` itself, and the workflow states it too so the check does not rely on a default. On your Mac without `CI`, both sets run. One thing is not proven yet: the block pictures were all made on an Apple Silicon Mac, and soft edges (blur, rounded corners) can differ by a single pixel on an Intel-style Linux machine, and the comparison allows no difference at all. The first run on GitHub will tell. If it fails only on pixels, the fix is to regenerate `goldens/ci/` on Linux, look at the difference, and commit the new pictures (D-60). If a golden fails on GitHub, the workflow uploads the `failures/` folder (the new picture, the saved one and the difference) so you can download it from the run's page.
 
 - **Why the phone tests stay local.** The Patrol test (Phase 1, D-32) installs the app on the Samsung S24 and taps through it. GitHub's computers have no phone attached, and a pretend phone (an emulator) is slow and unreliable there, so those tests run on your desk. `tool/check_release_permissions` is local for another reason: it builds the real release app, which needs the Android SDK, a large install that the other checks do not need (no step in `tool/check` builds an APK). So a green tick on GitHub means "the code checks pass", and it does not replace running Patrol on the S24 or the permission check at the end of a phase. D-60 records the split.
 

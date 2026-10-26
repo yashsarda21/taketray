@@ -18,7 +18,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 
 ## Automatic checks on GitHub (D-60)
 
-`.github/workflows/check.yml` runs on every push and pull request (Ubuntu, 30-minute limit, read-only token, no secrets). It installs Flutter 3.47.7 into `~/development/flutter`, the folder the wrappers use, and runs `tool/check` with `CI=true`: the same script as on your Mac, so a green local run should be green there.
+`.github/workflows/check.yml` runs on every push and pull request (Ubuntu, 30-minute limit, read-only token, no secrets). It installs Flutter 3.47.7 into `~/development/flutter`, the folder the wrappers use, and runs `tool/check` with `CI=true`: the same script as on your Mac, so a green local run is expected to be green there (with one open question about the golden images, below).
 
 - **Runs on CI:** everything in `tool/check` (generated-file and token freshness, format, analysis, style rules, all tests with only the `goldens/ci/` images, the coverage gate). The drift tests download a prebuilt SQLite when they are built, so the runner needs the network; the app itself stays offline.
 - **Does not run on CI:** the Patrol smoke test and anything that needs the phone (they stay local, on the S24, D-32), the macOS goldens (switched off by `CI`, D-39) and `tool/check_release_permissions` (it needs the Android SDK; run it by hand at the end of each phase).
@@ -32,7 +32,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 The component tests in `packages/taketray_ui/test/` compare screenshots with PNGs in `test/components/goldens/` (D-39).
 
 - Regenerate after an intended visual change, from the package, with the pinned SDK: `cd packages/taketray_ui && ../../tool/flutter test --update-goldens test/components/<name>_test.dart`. Then run the same test without the flag, and look at the new PNGs before committing.
-- `goldens/ci/` (text drawn as blocks) is checked everywhere and is stable on any machine. `goldens/macos/` has real text and icons, so it is tied to the macOS version and font rendering of the Mac that made it (D-39). After a macOS update every macOS golden can turn red with no code change: regenerate them on the owner's Mac and review the diff before committing.
+- `goldens/ci/` (text drawn as blocks) is checked everywhere. Its text is drawn as Ahem blocks, so it is expected to match across machines, but the images were made on an arm64 Mac and blur or anti-aliasing may differ by a pixel on x64 Linux. The first CI run confirms it; if it fails there, regenerate `goldens/ci/` on Linux and review the diff (D-60). `goldens/macos/` has real text and icons, so it is tied to the macOS version and font rendering of the Mac that made it (D-39). After a macOS update every macOS golden can turn red with no code change: regenerate them on the owner's Mac and review the diff before committing.
 - When the `CI` environment variable is set, the macOS goldens are switched off and only `goldens/ci/` runs.
 - A failing golden writes `*_masterImage.png`, `*_testImage.png`, `*_isolatedDiff.png` and `*_maskedDiff.png` to a `failures/` folder next to the test file (for example `packages/taketray_ui/test/components/failures/`). It is git-ignored; never commit it.
 
