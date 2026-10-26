@@ -63,6 +63,24 @@ abstract final class TtMetrics {
   // proto.css: .btn.text { padding: 0 12px }
   static const double buttonPaddingHorizontalText = 12;
 
+  /// Minimum height of a dialog action button.
+  // tt-style.css: .style-tt .dlg .acts .btn { min-height: 48px }
+  static const double buttonMinHeightDialog = 48;
+
+  /// Horizontal padding inside a dialog action button.
+  // tt-style.css: .style-tt .dlg .acts .btn { padding: 0 12px }
+  static const double buttonPaddingHorizontalDialog = 12;
+
+  /// Gap between two buttons of a `TtButtonRow`, across or down.
+  // tt-style.css: .style-tt .dlg .acts { gap: 8px }
+  // proto.css: .sheet .sh-foot { gap: 8px }
+  static const double buttonRowSpacing = 8;
+
+  /// Most lines a dialog action label wraps to before it ends in an
+  /// ellipsis (a stacked action at large text keeps its whole label).
+  // (not in the prototype: .btn is one line; added for 2x text, D-48)
+  static const double buttonDialogMaxLines = 2;
+
   /// Horizontal padding inside a ghost button (on video).
   // proto.css: .qrow .btn.ghost { padding: 0 18px }
   static const double buttonPaddingHorizontalGhost = 18;
@@ -242,6 +260,181 @@ abstract final class TtMetrics {
   /// Corner radius of a dialog.
   // tt-style.css: .style-tt .dlg { border-radius: 32px }
   static const double dialogRadius = 32;
+
+  /// Widest a dialog gets (it is narrower on a narrow screen).
+  // proto.css: .dlg { width: 100%; max-width: 312px }
+  static const double dialogMaxWidth = 312;
+
+  /// Padding above the title of a dialog.
+  // tt-style.css: .style-tt .dlg { padding: 26px 22px 18px }
+  static const double dialogPaddingTop = 26;
+
+  /// Padding at the sides of a dialog.
+  // tt-style.css: .style-tt .dlg { padding: 26px 22px 18px }
+  static const double dialogPaddingHorizontal = 22;
+
+  /// Padding under the actions of a dialog.
+  // tt-style.css: .style-tt .dlg { padding: 26px 22px 18px }
+  static const double dialogPaddingBottom = 18;
+
+  /// Gap between the title of a dialog and what follows it.
+  // proto.css: .dlg h2 { margin: 0 0 16px }
+  static const double dialogTitleGap = 16;
+
+  /// Gap between the body of a dialog and its custom content.
+  // proto.css: .dlg p { margin: 0 0 12px }
+  static const double dialogBodyGap = 12;
+
+  /// Gap between the content of a dialog and its actions.
+  // tt-style.css: .style-tt .dlg .acts { margin-top: 18px }
+  static const double dialogActionsGap = 18;
+
+  // ---- Overlays (sheet, dialog, menu) ----
+
+  /// Opacity of the scrim (the page's scrim colour) behind a sheet or dialog.
+  // tt-style.css: .style-tt .scrim { background: rgba(0,0,0,.5) }
+  static const double scrimOpacity = 0.5;
+
+  /// Background blur behind a sheet or dialog scrim.
+  // tt-style.css: .style-tt .scrim { backdrop-filter: blur(3px) }
+  static const double scrimBlur = 3;
+
+  /// Blur radius of the shadow of a sheet or dialog.
+  // tt-style.css: .style-tt .sheet { box-shadow: 0 20px 50px -10px … }
+  static const double overlayShadowBlur = 50;
+
+  /// Vertical offset of the shadow of a sheet or dialog.
+  // tt-style.css: .style-tt .sheet { box-shadow: 0 20px 50px -10px … }
+  static const double overlayShadowOffsetY = 20;
+
+  /// Spread of the shadow of a sheet or dialog (negative: it shrinks).
+  // tt-style.css: .style-tt .sheet { box-shadow: 0 20px 50px -10px … }
+  static const double overlayShadowSpread = -10;
+
+  /// Opacity of black in the shadow of a sheet or dialog.
+  // tt-style.css: .style-tt .sheet { box-shadow: … rgba(0,0,0,.5) }
+  static const double overlayShadowOpacity = 0.5;
+
+  // ---- Sheet ----
+
+  /// Gap between a floating sheet and the screen's sides and bottom.
+  // tt-style.css: .style-tt .sheet { left: 8px; right: 8px; bottom: 8px }
+  static const double sheetInset = 8;
+
+  /// Corner radius of a floating sheet.
+  // tt-style.css: .style-tt .sheet { border-radius: 32px }
+  static const double sheetRadius = 32;
+
+  /// Largest share of the screen's height a floating sheet takes.
+  // proto.css: .sheet { max-height: 92% }
+  static const double sheetMaxHeightFraction = 0.92;
+
+  /// Width of the drag handle.
+  // proto.css: .sheet .handle { width: 32px; height: 4px }
+  static const double sheetHandleWidth = 32;
+
+  /// Height of the drag handle (half of it is its corner radius).
+  // proto.css: .sheet .handle { width: 32px; height: 4px; border-radius: 2px }
+  static const double sheetHandleHeight = 4;
+
+  /// Opacity of `onSurfaceVariant` in the drag handle.
+  // proto.css: .sheet .handle { … opacity: .4 }
+  static const double sheetHandleOpacity = 0.4;
+
+  /// Space above the drag handle.
+  // proto.css: .sheet .handle { margin: 16px auto 8px }
+  static const double sheetHandleMarginTop = 16;
+
+  /// Space under the drag handle.
+  // proto.css: .sheet .handle { margin: 16px auto 8px }
+  static const double sheetHandleMarginBottom = 8;
+
+  /// Padding above the title of a sheet.
+  // proto.css: .sheet .sh-head { padding: 4px 24px 12px }
+  static const double sheetHeaderPaddingTop = 4;
+
+  /// Padding at the sides of the title of a sheet.
+  // proto.css: .sheet .sh-head { padding: 4px 24px 12px }
+  static const double sheetHeaderPaddingHorizontal = 24;
+
+  /// Padding under the title of a sheet.
+  // proto.css: .sheet .sh-head { padding: 4px 24px 12px }
+  static const double sheetHeaderPaddingBottom = 12;
+
+  /// Padding above the footer of a sheet.
+  // proto.css: .sheet .sh-foot { padding: 12px 16px 16px }
+  static const double sheetFooterPaddingTop = 12;
+
+  /// Padding at the sides of the footer of a sheet.
+  // proto.css: .sheet .sh-foot { padding: 12px 16px 16px }
+  static const double sheetFooterPaddingHorizontal = 16;
+
+  /// Padding under the footer of a sheet.
+  // proto.css: .sheet .sh-foot { padding: 12px 16px 16px }
+  static const double sheetFooterPaddingBottom = 16;
+
+  // ---- Snack ----
+
+  /// Padding before the content of a snack.
+  // proto.css: .snack { padding: 6px 8px 6px 16px }
+  static const double snackPaddingStart = 16;
+
+  /// Padding after the content (the action) of a snack.
+  // proto.css: .snack { padding: 6px 8px 6px 16px }
+  static const double snackPaddingEnd = 8;
+
+  /// Padding above and under the content of a snack.
+  // proto.css: .snack { padding: 6px 8px 6px 16px }
+  static const double snackPaddingVertical = 6;
+
+  /// Gap between the parts of a snack.
+  // proto.css: .snack { gap: 8px }
+  static const double snackGap = 8;
+
+  /// Padding above and under the message of a snack.
+  // proto.css: .snack .grow { padding: 8px 0 }
+  static const double snackMessagePadding = 8;
+
+  /// How far the snack's action colour moves from `inversePrimary` towards
+  /// `onInverseSurface`. The 94 % fill lets 6 % of a dark page through, which
+  /// takes the dark theme's action to 4.4:1; this brings it above 4.5:1.
+  // (not in the prototype: proto.css: .snack .btn.text uses inverse-primary)
+  static const double snackActionContrastMix = 0.15;
+
+  /// Size of the leading icon of a snack.
+  // proto.css: .snack .ms.lead { font-size: 20px }
+  static const double snackIconSize = 20;
+
+  // ---- Menu ----
+
+  /// Corner radius of a menu.
+  // tt-style.css: .style-tt .menu { border-radius: 20px }
+  static const double menuRadius = 20;
+
+  /// Corner radius of a menu item.
+  // tt-style.css: .style-tt .menu .mi { border-radius: 14px }
+  static const double menuItemRadius = 14;
+
+  /// Padding around the items of a menu.
+  // tt-style.css: .style-tt .menu { padding: 6px }
+  static const double menuPadding = 6;
+
+  /// Narrowest a menu gets.
+  // proto.css: .menu { min-width: 200px }
+  static const double menuMinWidth = 200;
+
+  /// Widest a menu gets.
+  // proto.css: .menu { max-width: 300px }
+  static const double menuMaxWidth = 300;
+
+  /// Horizontal padding inside a menu item.
+  // proto.css: .menu .mi { padding: 0 16px }
+  static const double menuItemPaddingHorizontal = 16;
+
+  /// Elevation of a menu. Flutter has no spread or offset on a Material's
+  /// shadow, so this approximates the CSS shadow.
+  // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … .4 }
+  static const double menuElevation = 6;
 
   // ---- Switch ----
 

@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -129,6 +129,61 @@ void main() {
       expect(await heightOf(TtButtonSize.small), 36);
       expect(await heightOf(TtButtonSize.medium), 44);
       expect(await heightOf(TtButtonSize.large), 56);
+      expect(await heightOf(TtButtonSize.dialog), 48);
+    });
+
+    testWidgets('the dialog size has 12 dp sides and wraps to two lines', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: TtButton(
+              label: 'Delete copies',
+              size: TtButtonSize.dialog,
+              kind: TtButtonKind.tonal,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      final button = tester.getRect(find.byType(TtButton));
+      final label = tester.getRect(find.text('Delete copies'));
+      expect(label.left - button.left, 12);
+      expect(button.right - label.right, 12);
+
+      // A label too long for one line wraps instead of being cut.
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            // The width of a stacked action in a 312 dp dialog.
+            child: SizedBox(
+              width: 268,
+              child: TtButton(
+                label: 'Mark as Ready to edit',
+                size: TtButtonSize.dialog,
+                expand: true,
+                onPressed: () {},
+              ),
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+      final text = tester.widget<Text>(find.text('Mark as Ready to edit'));
+      expect(text.maxLines, 2);
+      // Two lines of 40 dp (label-large at 2x), not one.
+      expect(
+        tester.getSize(find.text('Mark as Ready to edit')).height,
+        greaterThan(60),
+      );
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Mark as Ready to edit'))
+            .didExceedMaxLines,
+        isFalse,
+      );
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('the small button keeps a 48 x 48 tap target', (tester) async {
@@ -206,6 +261,73 @@ void main() {
         ),
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('TtButtonRow', () {
+    Widget row({double width = 328}) => Center(
+      child: SizedBox(
+        width: width,
+        child: TtButtonRow(
+          children: [
+            TtButton(
+              label: 'Cancel',
+              kind: TtButtonKind.tonal,
+              onPressed: () {},
+            ),
+            TtButton(label: 'Add to reel', onPressed: () {}),
+          ],
+        ),
+      ),
+    );
+
+    testWidgets('puts buttons side by side, equal widths, 8 dp apart', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(row()));
+      final a = tester.getRect(find.widgetWithText(TtButton, 'Cancel'));
+      final b = tester.getRect(find.widgetWithText(TtButton, 'Add to reel'));
+      expect(a.top, b.top);
+      expect(a.width, b.width);
+      expect(a.width, (328 - 8) / 2);
+      expect(b.left - a.right, 8);
+    });
+
+    testWidgets('stacks them, full width, when a label does not fit', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(row(), textScale: 2));
+      final a = tester.getRect(find.widgetWithText(TtButton, 'Cancel'));
+      final b = tester.getRect(find.widgetWithText(TtButton, 'Add to reel'));
+      expect(b.top - a.bottom, 8);
+      expect(a.width, 328);
+      expect(b.width, 328);
+      for (final label in ['Cancel', 'Add to reel']) {
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text(label))
+              .didExceedMaxLines,
+          isFalse,
+          reason: label,
+        );
+      }
+    });
+
+    testWidgets('answers intrinsic size queries', (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            Center(
+              child: SizedBox(width: 328, child: IntrinsicHeight(child: row())),
+            ),
+            textScale: scale,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        final box = tester.renderObject<RenderBox>(find.byType(TtButtonRow));
+        expect(box.getMaxIntrinsicHeight(328), box.size.height);
+        expect(box.getDryLayout(const BoxConstraints(maxWidth: 328)), box.size);
+      }
     });
   });
 

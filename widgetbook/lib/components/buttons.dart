@@ -102,6 +102,58 @@ final WidgetbookComponent ttFabComponent = WidgetbookComponent(
   ],
 );
 
+/// `TtButtonRow`: equal-width buttons that stack when a label does not fit.
+final WidgetbookComponent ttButtonRowComponent = WidgetbookComponent(
+  name: 'TtButtonRow',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final count = context.knobs.int.slider(
+          label: 'buttons',
+          initialValue: 2,
+          min: 1,
+          max: 3,
+        );
+        final first = context.knobs.string(
+          label: 'first label',
+          initialValue: 'Cancel',
+        );
+        final last = context.knobs.string(
+          label: 'last label',
+          initialValue: 'Add to reel',
+        );
+        final size = context.knobs.object.dropdown<TtButtonSize>(
+          label: 'size',
+          options: TtButtonSize.values,
+          initialOption: TtButtonSize.medium,
+          labelBuilder: (v) => v.name,
+        );
+        return _Stage(
+          onPhoto: false,
+          child: TtButtonRow(
+            children: [
+              for (var i = 0; i < count; i++)
+                TtButton(
+                  label: i == count - 1
+                      ? last
+                      : i == 0
+                      ? first
+                      : 'Skip',
+                  size: size,
+                  kind: i == count - 1
+                      ? TtButtonKind.filled
+                      : TtButtonKind.tonal,
+                  onPressed: () {},
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  ],
+);
+
 /// [child] centred, over a sample photo with a video scrim when [onPhoto].
 class _Stage extends StatelessWidget {
   const new({required this.child, required this.onPhoto});

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:taketray_ui/src/components/internal/button_row.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -38,13 +39,18 @@ enum TtButtonSize {
 
   /// 56 dp, with a larger label.
   large,
+
+  /// 48 dp with 12 dp sides, for the equal-width actions of a dialog
+  /// (`.dlg .acts .btn`). Its label wraps to a second line instead of being
+  /// cut short.
+  dialog,
 }
 
 /// A pill-shaped button.
 ///
-/// Sized by [size] (36, 44 or 56 dp tall) and coloured by [kind]. The tap
-/// target is at least 48 x 48 dp even for the small size. A null [onPressed]
-/// disables it.
+/// Sized by [size] (36, 44, 56 or, in a dialog, 48 dp tall) and coloured
+/// by [kind]. The tap target is at least 48 x 48 dp even for the small size.
+/// A null [onPressed] disables it.
 class TtButton extends StatelessWidget {
   /// A button showing [label] that calls [onPressed] when tapped.
   const new({
@@ -58,7 +64,8 @@ class TtButton extends StatelessWidget {
     super.key,
   });
 
-  /// The text shown on the button; one line, with an ellipsis if too long.
+  /// The text shown on the button; one line (two for [TtButtonSize.dialog]),
+  /// with an ellipsis if too long.
   final String label;
 
   /// Called when the button is tapped; null disables the button.
@@ -93,7 +100,11 @@ class TtButton extends StatelessWidget {
           child: Text(
             label,
             semanticsLabel: semanticLabel,
-            maxLines: 1,
+            maxLines: size == TtButtonSize.dialog
+                ? TtMetrics.buttonDialogMaxLines.toInt()
+                : 1,
+            // A wrapped dialog label is centred like the one-line ones.
+            textAlign: size == TtButtonSize.dialog ? TextAlign.center : null,
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -174,6 +185,10 @@ class TtButton extends StatelessWidget {
         TtMetrics.buttonMinHeightLarge,
         TtMetrics.buttonPaddingHorizontalLarge,
       ),
+      TtButtonSize.dialog => (
+        TtMetrics.buttonMinHeightDialog,
+        TtMetrics.buttonPaddingHorizontalDialog,
+      ),
     };
     final sides = switch (kind) {
       TtButtonKind.text => TtMetrics.buttonPaddingHorizontalText,
@@ -225,6 +240,27 @@ class TtButton extends StatelessWidget {
       visualDensity: VisualDensity.standard,
     );
   }
+}
+
+/// Equal-width buttons side by side, [TtMetrics.buttonRowSpacing] apart, as
+/// in a dialog's actions (`.dlg .acts`) or a sheet's footer (`.sh-foot`).
+///
+/// When a button's label does not fit its share of the width on one line
+/// (long labels, large text), the buttons are stacked one per row at the
+/// full width instead, so no label is cut to a few letters. Needs a bounded
+/// width.
+class TtButtonRow extends StatelessWidget {
+  /// A row of [children], usually [TtButton]s, first to last.
+  const new({required this.children, super.key});
+
+  /// The buttons; when stacked, the first is on top.
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => TtButtonRowLayout(
+    spacing: TtMetrics.buttonRowSpacing,
+    children: children,
+  );
 }
 
 /// How a [TtIconButton] sits on its surroundings.

@@ -1,8 +1,10 @@
 import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
 import 'package:taketray_widgetbook/components/clip_tile.dart';
+import 'package:taketray_widgetbook/components/dialog.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
+import 'package:taketray_widgetbook/components/menu.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/player_chrome.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
@@ -10,8 +12,10 @@ import 'package:taketray_widgetbook/components/reel_card.dart';
 import 'package:taketray_widgetbook/components/reel_chip.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
+import 'package:taketray_widgetbook/components/sheet.dart';
 import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
+import 'package:taketray_widgetbook/components/snack.dart';
 import 'package:taketray_widgetbook/components/stat_strip.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
 import 'package:taketray_widgetbook/components/tag_panel.dart';
@@ -31,6 +35,7 @@ final List<WidgetbookNode> ttCatalog = [
     name: 'Controls',
     children: [
       ttButtonComponent,
+      ttButtonRowComponent,
       ttIconButtonComponent,
       ttFabComponent,
       ttCountBadgeComponent,
@@ -82,6 +87,13 @@ final List<WidgetbookNode> ttCatalog = [
   WidgetbookFolder(name: 'Inputs', children: [ttTextFieldComponent]),
   WidgetbookFolder(
     name: 'Overlays',
-    children: [ttGlassComponent, ttGlassPillComponent],
+    children: [
+      ttGlassComponent,
+      ttGlassPillComponent,
+      ttSheetComponent,
+      ttDialogComponent,
+      ttSnackComponent,
+      ttMenuButtonComponent,
+    ],
   ),
 ];
