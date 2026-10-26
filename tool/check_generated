@@ -3,21 +3,33 @@
 #
 # For every member whose pubspec.yaml has build_runner in dev_dependencies
 # (or only the members named as arguments), it hashes the generated files,
-# regenerates them, hashes again and reports every file that changed,
-# appeared or disappeared. It compares hashes, not `git status`, so a dirty
-# working tree does not cause a false failure. Run `tool/flutter pub get`
-# first (tool/check does). Steps: docs/flow.md ("Generated-file freshness").
+# deletes the *.g.dart / *.freezed.dart ones, regenerates everything, hashes
+# again and reports every file that changed, appeared or disappeared. It
+# compares hashes, not `git status`, so a dirty working tree does not cause a
+# false failure; it checks the working tree, not what is committed. Run
+# `tool/flutter pub get` first (tool/check does).
+# Steps: docs/flow.md ("Generated-file freshness").
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 root="$(pwd)"
+
+# True when the pubspec lists build_runner under dev_dependencies (not under
+# dependencies or dependency_overrides).
+has_dev_build_runner() {
+  awk '
+    /^[^ \t#]/ { in_dev = ($0 ~ /^dev_dependencies:/) }
+    in_dev && /^  build_runner:/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$1"
+}
 
 if [ "$#" -gt 0 ]; then
   members=("$@")
 else
   members=()
   while IFS= read -r pubspec; do
-    if grep -qE '^  build_runner:' "$pubspec"; then
+    if has_dev_build_runner "$pubspec"; then
       m="$(dirname "$pubspec")"
       members+=("${m#./}")
     fi
@@ -52,6 +64,20 @@ hash_generated() {
     done
 }
 
+# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/ of member
+# $1, so the generators must write every one of them again. A file they no
+# longer produce (an orphan) is then gone from the "after" hashes and reported
+# as stale; build_runner alone would leave it if its build cache is cold.
+# drift_schemas/ and test/drift/ are kept: old schema dumps cannot be rebuilt.
+delete_generated_code() {
+  local m="$1" d
+  for d in lib test; do
+    [ -d "$m/$d" ] || continue
+    find "$m/$d" -type f \( -name '*.g.dart' -o -name '*.freezed.dart' \) \
+      -not -path "$m/test/drift/*" -delete
+  done
+}
+
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
@@ -63,6 +89,7 @@ for m in "${members[@]}"; do
   fi
   echo "==> generated files in $m"
   hash_generated "$m" >"$work/before"
+  delete_generated_code "$m"
 
   (cd "$m" && "$root/tool/dart" run build_runner build)
   if [ -f "$m/build.yaml" ] && grep -q 'databases:' "$m/build.yaml"; then

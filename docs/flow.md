@@ -64,11 +64,12 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 
 Run by `tool/check` (step 4), or by hand: `tool/check_generated` (all members) or `tool/check_generated app`. Run `tool/flutter pub get` first. See D-53.
 
-1. `tool/check_generated` › start: `cd`s to the repo root and sets `root`. Without arguments it finds every `pubspec.yaml` up to three levels deep (outside `.dart_tool` and `build`) that has a `  build_runner:` line; none found prints `no member with build_runner in dev_dependencies found` and exits 1.
+1. `tool/check_generated` › start: `cd`s to the repo root and sets `root`. Without arguments it finds every `pubspec.yaml` up to three levels deep (outside `.dart_tool` and `build`) that has a `  build_runner:` line inside its `dev_dependencies:` section (`has_dev_build_runner`); none found prints `no member with build_runner in dev_dependencies found` and exits 1.
 2. Per member, `hash_generated`: lists `*.g.dart` and `*.freezed.dart` under `lib/` and `test/`, everything under `drift_schemas/` and everything under `test/drift/` (folders that do not exist are skipped), sorted, and runs `shasum` on each. The result is `path<TAB>sha1` lines, saved as "before".
-3. `(cd <member> && tool/dart run build_runner build)` regenerates the files. If `<member>/build.yaml` exists and contains `databases:`, `tool/dart run drift_dev make-migrations` runs as well. A failing generator fails the script.
-4. `hash_generated` again, saved as "after". An `awk` join of the two lists collects every path whose hash changed, that is only in "before" (disappeared) or only in "after" (appeared).
-5. If any path was collected, prints `stale: <path>` for each and `generated files were out of date and have been regenerated; review and commit them` to stderr, exit 1; the regenerated files stay on disk. Otherwise prints `generated files fresh`, exit 0.
+3. `delete_generated_code`: deletes every `*.g.dart` and `*.freezed.dart` under `lib/` and `test/` (except under `test/drift/`); `drift_schemas/` and `test/drift/` are kept, because old schema dumps cannot be regenerated. A generated file that no generator writes any more therefore stays gone.
+4. `(cd <member> && tool/dart run build_runner build)` regenerates the files. If `<member>/build.yaml` exists and contains `databases:`, `tool/dart run drift_dev make-migrations` runs as well. A failing generator fails the script.
+5. `hash_generated` again, saved as "after". An `awk` join of the two lists collects every path whose hash changed, that is only in "before" (disappeared, which includes orphans removed in step 3) or only in "after" (appeared). It checks the working tree, not the commit: a fresh file that was never `git add`ed passes.
+6. If any path was collected, prints `stale: <path>` for each and `generated files were out of date and have been regenerated; review and commit them` to stderr, exit 1; the regenerated files stay on disk. Otherwise prints `generated files fresh`, exit 0.
 
 `app/lib/l10n/gen/` is not checked: it is git-ignored and rebuilt by `pub get` (D-27).
 

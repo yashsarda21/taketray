@@ -13,9 +13,9 @@ log="$(dirname "$0")/../stub.log"
 echo "$(basename "$PWD") $*" >> "$log"
 case "$1 $2" in
   "run build_runner")
+    [ -f ../fail_generator ] && exit 3
     printf 'canonical\n' > lib/a.g.dart
     printf 'canonical\n' > lib/b.freezed.dart
-    rm -f lib/orphan.g.dart
     ;;
   "run drift_dev")
     mkdir -p drift_schemas test/drift
@@ -110,11 +110,29 @@ void main() {
     },
   );
 
-  test('ignores a dirty tree and files that are not generated', () async {
+  test('ignores hand-written files', () async {
     _write('app/lib/hand_written.dart', 'void main() {}\n');
     _write('app/test/hand_written_test.dart', 'void main() {}\n');
     final result = await _run();
     expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+  });
+
+  test('fails, and never says fresh, when the generator fails', () async {
+    _write('fail_generator', '');
+    final result = await _run();
+    expect(result.exitCode, isNot(0));
+    expect(result.stdout, isNot(contains('generated files fresh')));
+  });
+
+  test('ignores build_runner outside dev_dependencies', () async {
+    _write(
+      'app/pubspec.yaml',
+      'name: app\ndependencies:\n  build_runner: ^2.0.0\n'
+          'dev_dependencies:\n  test: ^1.0.0\n',
+    );
+    final result = await _run();
+    expect(result.exitCode, 1);
+    expect(result.stderr, contains('no member with build_runner'));
   });
 
   test('skips members without build_runner', () async {
@@ -149,6 +167,17 @@ void main() {
       final result = await _run();
       expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
       expect(_log(), contains('run drift_dev make-migrations'));
+    });
+
+    test('keeps old schema dumps, which cannot be regenerated', () async {
+      _write('app/drift_schemas/drift_schema_v0.json', 'old dump\n');
+      final result = await _run();
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(
+        File('${repo.path}/app/drift_schemas/drift_schema_v0.json')
+            .existsSync(),
+        isTrue,
+      );
     });
 
     test('fails on a stale drift schema', () async {
