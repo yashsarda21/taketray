@@ -9,7 +9,7 @@ void main() {
     test('drops the Instagram tracking query', () {
       expect(
         norm('https://www.instagram.com/reel/ABC/?igsh=x'),
-        'https://www.instagram.com/reel/ABC/',
+        'https://www.instagram.com/p/ABC/',
       );
     });
 
@@ -23,11 +23,11 @@ void main() {
     test('with or without a trailing slash is the same Instagram URL', () {
       expect(
         norm('https://www.instagram.com/reel/ABC'),
-        'https://www.instagram.com/reel/ABC/',
+        'https://www.instagram.com/p/ABC/',
       );
       expect(
         norm('https://www.instagram.com/reel/ABC///?igsh=x'),
-        'https://www.instagram.com/reel/ABC/',
+        'https://www.instagram.com/p/ABC/',
       );
     });
 
@@ -49,6 +49,54 @@ void main() {
       }
     });
 
+    test('every kind of post path folds to /p/<code>/', () {
+      for (final path in [
+        '/reel/ABC',
+        '/reels/ABC/',
+        '/p/ABC',
+        '/tv/ABC/',
+        '/someuser/reel/ABC/',
+        '/some.user/p/ABC//',
+        '/someuser/reels/ABC',
+      ]) {
+        expect(
+          norm('https://www.instagram.com$path?igsh=x'),
+          'https://www.instagram.com/p/ABC/',
+          reason: path,
+        );
+      }
+    });
+
+    test('codes with _ and - are kept whole', () {
+      expect(
+        norm('https://instagram.com/reel/A_b-9/?igsh=x'),
+        'https://www.instagram.com/p/A_b-9/',
+      );
+    });
+
+    test('paths that are not a post only get one trailing slash', () {
+      expect(
+        norm('https://www.instagram.com/reels?igsh=x'),
+        'https://www.instagram.com/reels/',
+      );
+      expect(
+        norm('https://www.instagram.com/someuser/reels//'),
+        'https://www.instagram.com/someuser/reels/',
+      );
+      expect(
+        norm('https://www.instagram.com/someuser'),
+        'https://www.instagram.com/someuser/',
+      );
+      expect(
+        norm('https://www.instagram.com/explore/tags/goa/'),
+        'https://www.instagram.com/explore/tags/goa/',
+      );
+      expect(
+        norm('https://www.instagram.com/reel/ABC/comments/'),
+        'https://www.instagram.com/reel/ABC/comments/',
+      );
+    });
+
     test('different codes stay different', () {
       expect(
         norm('https://instagram.com/p/ABC/?igsh=x'),
@@ -57,6 +105,10 @@ void main() {
       expect(
         norm('https://www.instagram.com/reel/ABC/'),
         isNot(norm('https://www.instagram.com/reel/abc/')),
+      );
+      expect(
+        norm('https://www.instagram.com/someuser/reel/ABC/'),
+        isNot(norm('https://www.instagram.com/someuser/reel/ABD/')),
       );
     });
 

@@ -6,6 +6,12 @@ enum ReferenceUrlProblem { invalid }
 
 final _trailingSlashes = RegExp(r'/+$');
 
+/// An Instagram post path: `/p/CODE`, `/reel/CODE`, `/reels/CODE` or
+/// `/tv/CODE`, optionally behind a `/user` segment. Group 1 is the code.
+final _instagramPostPath = RegExp(
+  r'^/(?:[^/]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)/*$',
+);
+
 /// Hosts that all lead to the same Instagram pages and whose query string is
 /// only tracking (`?igsh=`, `?utm_source=`). Not every `*.instagram.com` host:
 /// `l.instagram.com/?u=<target>` keeps its whole meaning in the query.
@@ -27,10 +33,12 @@ const _instagramCanonicalHost = 'www.instagram.com';
 ///   and host, and drops a `#fragment`.
 /// - Instagram (`instagram.com`, `www.`, `m.`, `instagr.am`): rewritten to
 ///   `https://www.instagram.com`, query dropped, path ended with exactly one
-///   `/`. So `http://instagram.com/reel/ABC?utm_source=x`,
-///   `https://m.instagram.com/reel/ABC/` and
-///   `https://www.instagram.com/reel/ABC//?igsh=y` are all
-///   `https://www.instagram.com/reel/ABC/`.
+///   `/`. A post path (`/p/`, `/reel/`, `/reels/` or `/tv/` + code, with an
+///   optional `/user` before it) becomes `/p/<code>/`, so
+///   `http://instagram.com/reel/ABC?utm_source=x`,
+///   `https://m.instagram.com/someuser/reel/ABC/` and
+///   `https://www.instagram.com/tv/ABC//?igsh=y` are all
+///   `https://www.instagram.com/p/ABC/`.
 /// - Every other host keeps its query (`youtube.com/watch?v=` needs it).
 Uri? normalizeReferenceUrl(String raw) {
   final trimmed = raw.trim();
@@ -53,8 +61,17 @@ Uri? normalizeReferenceUrl(String raw) {
   return Uri(
     scheme: 'https',
     host: _instagramCanonicalHost,
-    path: '${parsed.path.replaceFirst(_trailingSlashes, '')}/',
+    path: _instagramPath(parsed.path),
   );
+}
+
+/// `/p/CODE/` for a post path (Instagram redirects `/p/<reel code>` to the
+/// reel, so one form covers all of them; the code keeps its case). Any other
+/// path only gets exactly one trailing slash.
+String _instagramPath(String path) {
+  final code = _instagramPostPath.firstMatch(path)?.group(1);
+  if (code != null) return '/p/$code/';
+  return '${path.replaceFirst(_trailingSlashes, '')}/';
 }
 
 /// Which site a link points to. [url] should come from
