@@ -7,7 +7,11 @@ import 'package:taketray_ui/src/tokens/tokens.g.dart';
 /// TakeTray style (`design/prototype/assets/tt-style.css`).
 ///
 /// Each carries a [TtThemeData] extension (read it with `context.tt`) and
-/// Material component themes, so stock widgets already look TakeTray.
+/// Material component themes for buttons, the snack bar, the bottom sheet,
+/// the dialog and the app bar. Anything else (a stock `Switch`, `Checkbox`,
+/// `TextField`, progress indicator or `AlertDialog`) only gets Material's
+/// defaults in the TakeTray colours, so feature code uses the `Tt*`
+/// components.
 abstract final class TakeTrayTheme {
   /// The light theme.
   static ThemeData light() => _light;
