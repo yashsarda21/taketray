@@ -735,7 +735,129 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Decisions:** D-58 (this task), D-55 (the cleaning rule and `uniqueFolderName`), D-54 (the tables and the cascades), D-56 (reel names are not unique), D-10 (no URLs, labels or folder names in logs).
 
-## 8. Backup: export and import *(coming in Task 9)*
+## 8. Backup: export and import
+
+**What we built:** a `BackupService` that turns the whole database into one JSON text file (`exportJson`) and turns such a file back into the database (`importJson`), replacing everything that was there. The file format is written out by hand in `backup_format.dart`. Choosing where the file is saved, and the "this replaces all your data" warning, belong to the Settings screen in phase 10.
+
+**Why TakeTray needs it:** all of TakeTray's data lives in one file in the app's private storage. If the app is uninstalled, the phone is reset or something goes wrong, the reels, tags and saved links are gone. A backup is a copy the owner keeps somewhere else. And because an import *replaces* everything, the one thing it must never do is destroy good data because the file was bad.
+
+**Key ideas:**
+
+- **A file format has its own version number.** Section 3 explained how the *database* changes shape between app versions: the file on the phone remembers its version (`user_version`), and a migration upgrades it the first time the new app opens it. A backup file is different: it leaves the phone, and it can be opened by any TakeTray, older or newer, months later. Nothing upgrades it. So the file says which format it is written in, the same way a `.docx` says which Word wrote it:
+
+  ```dart
+  const backupSchemaVersion = 1;
+
+  /// The `app` value of every TakeTray backup.
+  const backupAppName = 'TakeTray';
+  ```
+
+  The two numbers are independent: the database could reach version 5 while the backup format stays at 1, as long as the file still means the same thing. The format version only goes up when an old reader would *misunderstand* a new file. Every file starts like this (from the committed sample, `app/test/data/backup/fixtures/backup_v1.json`):
+
+  ```json
+  {
+    "app": "TakeTray",
+    "schemaVersion": 1,
+    "exportedAt": "2026-10-26T18:00:00.000Z",
+    "reels": [
+      {
+        "id": 3,
+        "name": "Goa 🌴",
+  ```
+
+  and the reader checks those two keys before anything else. That is how an older TakeTray can say "this backup is from a newer version, update the app" instead of half-reading a file it doesn't understand:
+
+  ```dart
+  if (root is! Map<String, Object?> || root['app'] != backupAppName) {
+    throw const BackupException(BackupProblem.notTakeTray);
+  }
+  final version = root['schemaVersion'];
+  if (version is! int || version < 1) {
+    throw const BackupException(BackupProblem.notTakeTray);
+  }
+  if (version > backupSchemaVersion) {
+    throw const BackupException(BackupProblem.newerVersion);
+  }
+  ```
+
+  The other direction is handled by ignoring keys the reader doesn't know: a later version can *add* a field (a reel colour, say) without raising the version, and this version simply skips it.
+
+  Why write the format by hand instead of reusing the models' `toJson` from Section 4? Because `toJson` follows the code: rename a field in `Clip` and the JSON changes with it. A backup file written today must still read the same in two years, so its shape is spelled out key by key in `encodeBackup` and `_readV1`, and a committed sample file (the "golden fixture") must import and export back to exactly the same text. If someone changes the format by accident, that test fails.
+
+- **Check everything, then replace.** An import has two halves, and the first never touches the database. `decodeBackup` reads the *whole* file into memory and checks it: every key is present with the right kind of value, the enums are known, every link in `clipReels` points at a clip and a reel that are in the file, reel names are 1 to 40 characters, labels at most 60, links are web links, no id appears twice, no clip identity appears twice, and every time has a `Z` or an offset (`2026-10-20T13:30:00.000+05:30` is stored as 08:00 UTC; a time with neither could be anyone's local time, so it is refused rather than guessed to be UTC, D-55). The checks are done by a small helper that knows where it is in the file, so a failure can be logged as `clips[3].source` without logging the value:
+
+  ```dart
+  T value<T>(String key) {
+    if (!_map.containsKey(key)) throw invalid(key);
+    final v = _map[key];
+    if (v is! T) throw invalid(key);
+    return v;
+  }
+  ```
+
+  Why check in Dart when the database has foreign keys and `CHECK`s of its own? Some rules SQL can't check (40 *characters*, counting an emoji as one, Section 4), and a database error halfway through says "FOREIGN KEY constraint failed" where the user should see "this backup is damaged". The four outcomes are a plain enum the Settings screen can turn into messages: `notJson`, `notTakeTray`, `newerVersion`, `invalidData`.
+
+- **One transaction means all or nothing.** Only a file that passed every check gets to the second half: delete every row of every table, then insert the backup's rows, keeping their ids:
+
+  ```dart
+  await _db.transaction(() async {
+    // Children before parents, so no foreign key is ever left dangling.
+    await _db.delete(_db.vnCopies).go();
+    await _db.delete(_db.vnSessions).go();
+    await _db.delete(_db.clipReels).go();
+    await _db.delete(_db.inbox).go();
+    await _db.delete(_db.reelReferences).go();
+    await _db.delete(_db.clips).go();
+    await _db.delete(_db.reels).go();
+    await _db.delete(_db.settings).go();
+    await _db.delete(_db.zoneTimeline).go();
+
+    await _db.batch((b) {
+      b
+        ..insertAll(_db.reels, data.reels)
+        ..insertAll(_db.clips, data.clips)
+        ..insertAll(_db.clipReels, data.clipReels)
+        ..insertAll(_db.inbox, data.inbox)
+        ..insertAll(_db.reelReferences, data.references)
+        ..insertAll(_db.settings, _settingRows(data))
+        ..insertAll(_db.zoneTimeline, data.zoneTimeline);
+    });
+  });
+  ```
+
+  A transaction (Section 5) is SQLite's promise that a group of changes happens completely or not at all. If the phone died between the deletes and the inserts, or an insert failed, SQLite rolls back to exactly the old data: there is never a moment where the reels are deleted and the backup isn't in yet. The checks in the first half make that failure very unlikely; the transaction makes it harmless anyway. Two locks on one door.
+
+  Keeping ids means every link in the file (`"clipId": 10, "reelId": 3`) still points at the right row without any renumbering. SQLite's `AUTOINCREMENT` counter only ever goes up: inserting id 14 moves it to 14, and deleting rows never lowers it. So the next clip added after an import gets an id above every imported one *and* above every id used before the import. That matters because a VN copy record may hold the id of a clip that no longer exists (Section 3), and that id must never come back as a different clip. The tests `new rows after an import never reuse an imported id` and `an import never lowers the id counters` check both.
+
+- **The round trip is the proof.** How do you know export and import agree on every field? Fill a database with every kind of row (two reels in different states, a clip in two reels, a pending, a skipped and a picked clip, a missing clip, references with and without a label, a VN session, a time-zone timeline, non-default settings), export it, import that into a brand-new database, and export again. The two files must be identical, apart from `exportedAt`:
+
+  ```dart
+  final first = await backup.exportJson();
+
+  final other = freshDatabase();
+  final summary = await BackupService(other, clock).importJson(first);
+  clock.advance(const Duration(hours: 1));
+  final second = await BackupService(other, clock).exportJson();
+
+  expect(second, isNot(first), reason: 'exportedAt moved');
+  expect(_withoutExportedAt(second), _withoutExportedAt(first));
+  ```
+
+  A field that export forgot, import dropped, or a time that lost its milliseconds would make the second file differ. For that to be a fair comparison the export has to be *stable*: rows are always sorted (by id; links by clip then reel; the timeline by time) and keys are always written in the same order.
+
+  The other half of Review Focus 2 is the failure tests. Each one seeds a database, tries a broken file, and checks that the right problem is reported *and* that every row of every table is exactly as before: `nope` is `notJson`, `{"app":"Other"}` is `notTakeTray`, `schemaVersion: 2` is `newerVersion`, and 44 different breakages (a link to clip 999, a 41-character name, a time without `Z`, 30 February, two clips with the same MediaStore id…) are each `invalidData`.
+
+- **What is deliberately left out.** A backup holds what is *yours*: reels, clips, links, To tag and Skipped, settings, the zone timeline. It leaves out what belongs to *this phone*:
+  - **VN sessions and their copy records.** They describe files sitting in this phone's `Movies/TakeTray/` folder. On another phone (or after a reset) those files aren't there, and records pointing at them would be lies. After an import, any copies still on the phone are no longer owned by the app; the storage screen (phase 8) lists them so you can delete them.
+  - **Phone-state settings** such as "Shooting mode is on" and how far the detector has read the media library (phase 3). Only the three keys in `SettingsRepository.exportedKeys` (Section 7) are exported, and an import deletes every other key, so after an import Shooting mode is off until you turn it on again.
+
+  Clips themselves *are* included, but only as facts (which MediaStore id, when shot, how long); the videos are never in the backup. That's why the spec plans an "X of Y clips found" message after an import (phases 3 and 10): on a different phone, many of those ids won't point at your videos.
+
+**Where it lives:** `app/lib/data/backup/backup_format.dart` (the format: `backupSchemaVersion`, `encodeBackup`, `decodeBackup`, `BackupProblem`, `BackupException`), `app/lib/data/backup/backup_service.dart` (`BackupService`, `ImportSummary`, `backupServiceProvider`), and the tests in `app/test/data/backup/` with the golden file `fixtures/backup_v1.json`. The steps are in `docs/flow.md` ("Backup export and import").
+
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/backup)`. You should see `+75: All tests passed!`. Then see why the Dart checks matter even though the database has its own rules: in `app/lib/data/backup/backup_format.dart`, in `_readV1`, delete the line `if (checkReelName(name) != null) throw r.invalid('name');` and run the same command. Three tests fail: `a 41-character reel name: invalidData` and `a reel name of only spaces: invalidData` (SQLite happily stores both, so the import goes through and replaces the seeded reels) and `logs counts only: no names, links, labels or file names` (its broken file is no longer refused). Put the line back with `git checkout -- app/lib/data/backup/backup_format.dart` (run it from the repo root).
+
+**Decisions:** D-59 (this task), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs).
 
 ## 9. Measuring test coverage *(coming in Task 10)*
 

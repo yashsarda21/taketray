@@ -117,6 +117,27 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy fl
 
 **Zone timeline** (`zone_repository.dart › ZoneRepository.record(at, zoneId)`): in a transaction, reads the last `zone_timeline` row at or before `at`; if its `zoneId` equals the new one nothing is written. Otherwise: if the last row strictly before `at` already has the new zone, the row at exactly `at` is deleted (it was the only way to get here); else a row `(at, zoneId)` is inserted (replacing a row at exactly `at`). Then the first row after `at` is deleted when it has the new zone, so the timeline never has two neighbours with the same zone. `zoneAt(instant)` reads the whole timeline, oldest first, and runs the domain `zoneAt` on it.
 
+### Backup export and import
+
+Nothing calls this yet. The Settings screen (phase 10) will choose the file with the Storage Access Framework and show the warning before an import; the "X of Y clips found" report after an import needs the media bridge (phase 3) and that screen (phase 10). See D-59. All in `data/backup/`.
+
+**Export** (`backup_service.dart › BackupService.exportJson()`):
+
+1. `_db.transaction` (one consistent snapshot) reads `reels`, `reel_references` and `clips` by id, `clip_reels` by clip then reel, `inbox` by clip, `zone_timeline` by time, and the settings through `SettingsRepository.load()` (only `exportedKeys`; a missing or corrupt one is its default). `vn_sessions`, `vn_copies` and every other `settings` key are not read.
+2. `backup_format.dart › encodeBackup(data, clock.now())` writes the v1 object (`app`, `schemaVersion`, `exportedAt`, then the seven sections) with `JsonEncoder.withIndent('  ')`; times are UTC ISO-8601 with milliseconds and `Z`.
+3. Logs the row counts (never names, links, labels or file names, D-10) and returns the text.
+
+**Import** (`backup_service.dart › BackupService.importJson(json)`):
+
+1. `backup_format.dart › decodeBackup(json)` reads the whole file before the database is touched:
+   1. `jsonDecode`; a `FormatException` → `BackupException(notJson)`.
+   2. Not an object, or `app` is not "TakeTray" → `notTakeTray`. `schemaVersion` missing, not a whole number or below 1 → `notTakeTray`; above `backupSchemaVersion` (1) → `newerVersion`, without reading the rest.
+   3. `_readV1`: `exportedAt`, then `reels`, `references`, `clips`, `clipReels`, `inbox`, `zoneTimeline` and `settings`, each through `_Fields`, whose getters throw `_Invalid('<path>')` for a missing key or a wrong type; the section loops check ids (≥ 1, unique), links to `reels` and `clips` read earlier, duplicates, names, labels, links, the clip identity rule, minutes and times (D-59 lists them). Any `_Invalid` → `BackupException(invalidData, where: path)`. Text is trimmed and links cleaned as the repositories do.
+   4. On any `BackupException`: logs the problem and path (no values) and rethrows. Nothing was written.
+2. `_db.transaction`: deletes every row of `vn_copies`, `vn_sessions`, `clip_reels`, `inbox`, `reel_references`, `clips`, `reels`, `settings` and `zone_timeline` (children first), then one `batch` inserts `reels`, `clips`, `clip_reels`, `inbox`, `reel_references`, the three settings rows (each value `jsonEncode`d, as `SettingsRepository.save` writes them) and `zone_timeline`, all with the file's ids. Any failure rolls the whole transaction back.
+3. SQLite moves each `AUTOINCREMENT` counter (`sqlite_sequence`) up to the highest inserted id and never down, so later rows never reuse an id (D-54).
+4. Logs the counts and returns `ImportSummary(reels, clips, references, inboxPending, inboxSkipped)`. Every `watch…` stream re-queries. Shooting mode is off afterwards (its key is gone); phase 3 resets the baselines.
+
 ### Local checks (`tool/check`)
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
