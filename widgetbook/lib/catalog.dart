@@ -1,3 +1,4 @@
+import 'package:taketray_widgetbook/components/app_bar.dart';
 import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/banners.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
@@ -8,6 +9,7 @@ import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/grouped_rows.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
 import 'package:taketray_widgetbook/components/menu.dart';
+import 'package:taketray_widgetbook/components/nav_pill.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/player_chrome.dart';
 import 'package:taketray_widgetbook/components/progress.dart';
@@ -49,7 +51,10 @@ final List<WidgetbookNode> ttCatalog = [
       ttSuggestionChipComponent,
     ],
   ),
-  WidgetbookFolder(name: 'Navigation', children: [ttPillTabsComponent]),
+  WidgetbookFolder(
+    name: 'Navigation',
+    children: [ttAppBarComponent, ttNavPillComponent, ttPillTabsComponent],
+  ),
   WidgetbookFolder(
     name: 'Clips',
     children: [

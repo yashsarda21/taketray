@@ -1,6 +1,5 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
+import 'package:taketray_ui/src/components/internal/bar_scope.dart';
 import 'package:taketray_ui/src/components/internal/button_row.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -64,8 +63,10 @@ class TtButton extends StatelessWidget {
     super.key,
   });
 
-  /// The text shown on the button; one line (two for [TtButtonSize.dialog]),
-  /// with an ellipsis if too long.
+  /// The text shown on the button; one line, with an ellipsis if too long.
+  /// Two lines for [TtButtonSize.dialog] and from
+  /// [TtMetrics.largeTextScale] up, so a long label stays readable at large
+  /// text.
   final String label;
 
   /// Called when the button is tapped; null disables the button.
@@ -89,6 +90,11 @@ class TtButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final style = _style(context);
+    // At large text a label wraps to a second line instead of being cut to a
+    // few letters (not in the prototype, which has no text scaling).
+    final wrap =
+        size == TtButtonSize.dialog ||
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     final child = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -100,11 +106,9 @@ class TtButton extends StatelessWidget {
           child: Text(
             label,
             semanticsLabel: semanticLabel,
-            maxLines: size == TtButtonSize.dialog
-                ? TtMetrics.buttonDialogMaxLines.toInt()
-                : 1,
-            // A wrapped dialog label is centred like the one-line ones.
-            textAlign: size == TtButtonSize.dialog ? TextAlign.center : null,
+            maxLines: wrap ? TtMetrics.buttonDialogMaxLines.toInt() : 1,
+            // A wrapped label is centred like the one-line ones.
+            textAlign: wrap ? TextAlign.center : null,
             overflow: TextOverflow.ellipsis,
           ),
         ),
@@ -268,7 +272,8 @@ enum TtIconButtonStyle {
   /// Just the icon, in the secondary content colour.
   plain,
 
-  /// On a small glass circle, as in the top app bar.
+  /// On a small solid circle (`surfaceContainerHigh`), as in the top app
+  /// bar. Inside a `TtAppBar` in selection mode the circle is left out.
   glass,
 
   /// White, for use on video.
@@ -315,9 +320,18 @@ class TtIconButton extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     final on = pressed ?? false;
+    // proto.css: .appbar.sel .ib { color: on-secondary-container } and
+    // tt-style.css: .appbar:not(.sel) .ib::before (no circle in selection).
+    final inSelectionBar =
+        style == TtIconButtonStyle.glass && TtBarScope.selectionOf(context);
     final color = switch (style) {
       TtIconButtonStyle.plain => on ? scheme.primary : scheme.onSurfaceVariant,
-      TtIconButtonStyle.glass => on ? scheme.primary : scheme.onSurface,
+      TtIconButtonStyle.glass =>
+        on
+            ? scheme.primary
+            : inSelectionBar
+            ? scheme.onSecondaryContainer
+            : scheme.onSurface,
       TtIconButtonStyle.onVideo =>
         on ? tt.colors.readyOnMedia : tt.colors.onVideo,
     };
@@ -353,21 +367,21 @@ class TtIconButton extends StatelessWidget {
       onTap: onPressed,
       child: SizedBox.square(
         dimension: target,
-        child: style == TtIconButtonStyle.glass
+        child: style == TtIconButtonStyle.glass && !inSelectionBar
             ? Stack(
                 fit: StackFit.expand,
                 children: [
+                  // tt-style.css: .appbar:not(.sel) .ib::before { inset: 5px;
+                  // border-radius: 50%; background: surface-container-high }
+                  // A solid circle, as in the prototype (D-43): no blur.
                   Padding(
                     padding: const EdgeInsets.all(
                       TtMetrics.iconButtonGlassInset,
                     ),
-                    child: ClipOval(
-                      child: BackdropFilter(
-                        filter: ui.ImageFilter.blur(
-                          sigmaX: TtMetrics.glassBlur,
-                          sigmaY: TtMetrics.glassBlur,
-                        ),
-                        child: ColoredBox(color: tt.colors.glass),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: scheme.surfaceContainerHigh,
                       ),
                     ),
                   ),

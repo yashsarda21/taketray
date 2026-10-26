@@ -52,7 +52,13 @@ class TtCountBadge extends StatelessWidget {
           child: Center(
             widthFactor: 1,
             heightFactor: 1,
-            child: Text(label, maxLines: 1, softWrap: false, style: style),
+            // Not in the prototype: decorative overlay. The number stops
+            // growing at TtMetrics.badgeMaxTextScale so the badge does not
+            // cover the icon it sits on at large text.
+            child: MediaQuery.withClampedTextScaling(
+              maxScaleFactor: TtMetrics.badgeMaxTextScale,
+              child: Text(label, maxLines: 1, softWrap: false, style: style),
+            ),
           ),
         ),
       ),

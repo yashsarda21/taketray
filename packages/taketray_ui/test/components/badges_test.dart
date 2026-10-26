@@ -47,6 +47,29 @@ void main() {
       expect(size.height, greaterThanOrEqualTo(18));
     });
 
+    testWidgets('clamps its own text scale so it stays small at 2x', (
+      tester,
+    ) async {
+      Future<Size> sizeAt(double scale) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(child: TtCountBadge(count: 12)),
+            textScale: scale,
+          ),
+        );
+        return tester.getSize(find.byType(TtCountBadge));
+      }
+
+      final normal = await sizeAt(1);
+      final clamped = await sizeAt(TtMetrics.badgeMaxTextScale);
+      final doubled = await sizeAt(2);
+      // Not in the prototype: decorative overlay, it must not grow over the
+      // icon it decorates. 2x is the same as the clamp.
+      expect(doubled, clamped);
+      expect(doubled.height, lessThanOrEqualTo(normal.height * 1.3 + 1));
+      expect(doubled.height, lessThan(24));
+    });
+
     for (final brightness in Brightness.values) {
       testWidgets('passes the accessibility guidelines (${brightness.name})', (
         tester,

@@ -264,6 +264,66 @@ void main() {
     });
   });
 
+  group('TtButton at large text', () {
+    const label = 'Turn on Shooting mode';
+
+    Widget button(double width) => Center(
+      child: SizedBox(
+        width: width,
+        child: TtButton(label: label, expand: true, onPressed: () {}),
+      ),
+    );
+
+    testWidgets('keeps one line below the large-text scale', (tester) async {
+      await tester.pumpWidget(ttTestApp(button(300), textScale: 1.4));
+      expect(tester.widget<Text>(find.text(label)).maxLines, 1);
+      // 1x is untouched: one line, 44 dp high.
+      await tester.pumpWidget(ttTestApp(button(300)));
+      expect(tester.widget<Text>(find.text(label)).maxLines, 1);
+    });
+
+    testWidgets('wraps to two lines from the large-text scale', (tester) async {
+      for (final scale in [TtMetrics.largeTextScale, 2.0]) {
+        await tester.pumpWidget(ttTestApp(button(300), textScale: scale));
+        expect(tester.widget<Text>(find.text(label)).maxLines, 2);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(label),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse, reason: '${scale}x');
+        expect(tester.takeException(), isNull);
+      }
+    });
+
+    testWidgets('a stacked TtButtonRow button wraps too', (tester) async {
+      const long = 'Add to 3 reels & name them';
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 328,
+              child: TtButtonRow(
+                children: [
+                  TtButton(
+                    label: 'Cancel',
+                    kind: TtButtonKind.tonal,
+                    onPressed: () {},
+                  ),
+                  TtButton(label: long, onPressed: () {}),
+                ],
+              ),
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(long));
+      expect(paragraph.didExceedMaxLines, isFalse);
+      // Two lines of text, not a fragment ending in an ellipsis.
+      expect(tester.getSize(find.text(long)).height, greaterThan(60));
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('TtButtonRow', () {
     Widget row({double width = 328}) => Center(
       child: SizedBox(
@@ -432,6 +492,44 @@ void main() {
         );
         expect(tester.getSize(find.byType(TtIconButton)), const Size(48, 48));
       }
+    });
+
+    testWidgets('glass is a solid surfaceContainerHigh circle, no blur', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: TtIconButton(
+              icon: Symbols.close_rounded,
+              semanticLabel: 'Close',
+              style: TtIconButtonStyle.glass,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      final button = find.byType(TtIconButton);
+      expect(
+        find.descendant(of: button, matching: find.byType(BackdropFilter)),
+        findsNothing,
+      );
+      final circle = find.descendant(
+        of: button,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle,
+        ),
+      );
+      expect(circle, findsOneWidget);
+      final decoration =
+          tester.widget<DecoratedBox>(circle).decoration as BoxDecoration;
+      final scheme = Theme.of(tester.element(button)).colorScheme;
+      expect(decoration.color, scheme.surfaceContainerHigh);
+      // 48 dp target, inset 5 dp: a 38 dp circle (tt-style.css .ib::before).
+      expect(tester.getSize(circle), const Size(38, 38));
     });
 
     for (final brightness in Brightness.values) {

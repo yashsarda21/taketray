@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/app_router.dart';
+import 'package:taketray_ui/taketray_ui.dart';
 
-/// Root widget. The theme here is a placeholder replaced in phase 1.
+/// Root widget: the TakeTray light and dark themes, following the system
+/// (`themeMode` defaults to [ThemeMode.system]).
 class TakeTrayApp extends ConsumerWidget {
   const new({super.key});
 
@@ -14,8 +16,8 @@ class TakeTrayApp extends ConsumerWidget {
       routerConfig: ref.watch(appRouterProvider),
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
-      theme: ThemeData(useMaterial3: true),
-      darkTheme: ThemeData.dark(useMaterial3: true),
+      theme: TakeTrayTheme.light(),
+      darkTheme: TakeTrayTheme.dark(),
       debugShowCheckedModeBanner: false,
     );
   }

@@ -8,6 +8,16 @@
 /// source. Spacing, radii, sizes, colours, text styles and durations that are
 /// tokens come from `context.tt` instead.
 abstract final class TtMetrics {
+  // ---- Large text ----
+
+  /// The text scale from which layouts change for large text: a button label
+  /// wraps to two lines, a list row or banner moves its trailing part under
+  /// the text, and the tag panel shows one chip per row. One threshold for
+  /// the whole system, so all of them switch together.
+  // Not in the prototype: it has no text scaling. At 2x a 164 dp cell, a
+  // button or a row beside an action shows only a few letters of its text.
+  static const double largeTextScale = 1.5;
+
   // ---- Glass (floating chrome) ----
 
   /// Background blur behind glass chrome (nav pill, glass circles).
@@ -194,6 +204,12 @@ abstract final class TtMetrics {
   /// Weight of the count badge's digits.
   // proto.css: .badge { font: 700 11.5px/18px … }
   static const double badgeFontWeight = 700;
+
+  /// The largest text scale a count badge draws its number at.
+  // Not in the prototype: decorative overlay. The badge sits on the corner of
+  // an icon, so at 2x text it would grow over the icon it decorates; 1.3 is
+  // the largest scale at which the 18 dp badge keeps its height.
+  static const double badgeMaxTextScale = 1.3;
 
   // ---- Record dot ----
 
@@ -1305,7 +1321,8 @@ abstract final class TtMetrics {
   // Not in the prototype: large-text layout (D-47). At 2x a 164 dp cell shows
   // about 5 letters of a name, so reel names that share a first word cannot
   // be told apart; one full-width chip shows about 12.
-  static const double tagPanelSingleColumnTextScale = 1.5;
+  /// The same threshold as [largeTextScale], under its earlier name.
+  static const double tagPanelSingleColumnTextScale = largeTextScale;
 
   /// Tallest the panel gets at large text: the cap grows with the text scale
   /// (340 dp at 1x, times the scale) up to this.
@@ -1413,7 +1430,7 @@ abstract final class TtMetrics {
   /// under the text, because beside it the title would break inside words.
   /// Not in the prototype (it has no text scaling); the same threshold as
   /// [tagPanelSingleColumnTextScale].
-  static const double listRowStackTrailingTextScale = 1.5;
+  static const double listRowStackTrailingTextScale = largeTextScale;
 
   /// Side of the box behind a boxed row icon.
   // proto.css: .li .lead.box { width: 40px; height: 40px }
@@ -1445,7 +1462,7 @@ abstract final class TtMetrics {
   /// beside it the action would squeeze the text to a few letters per line.
   /// Not in the prototype (it has no text scaling); the same threshold as
   /// [tagPanelSingleColumnTextScale].
-  static const double bannerActionBelowTextScale = 1.5;
+  static const double bannerActionBelowTextScale = largeTextScale;
 
   /// Space before and after the content of a callout.
   // proto.css: .callout { padding: 12px 14px }
@@ -1502,4 +1519,63 @@ abstract final class TtMetrics {
   /// Widest the body text of an empty state grows.
   // proto.css: .empty p { max-width: 280px }
   static const double emptyBodyMaxWidth = 280;
+
+  // ---- App bar ----
+
+  /// Height of the large app bar (the page title of a tab screen), with
+  /// [appBarLargePaddingTop] above its content.
+  // tt-style.css: .style-tt .appbar.big { height: 80px; padding-top: 10px }
+  static const double appBarLargeHeight = 80;
+
+  /// Space above the content of the large app bar.
+  // tt-style.css: .style-tt .appbar.big { height: 80px; padding-top: 10px }
+  static const double appBarLargePaddingTop = 10;
+
+  /// The largest text scale an app bar draws its title and subtitle at.
+  // Not in the prototype: it has no text scaling. The bar is fixed chrome
+  // (64 dp, or 80 dp large), so a title and subtitle at 2x would not fit;
+  // 1.5 is the largest scale at which both stay inside 64 dp.
+  static const double appBarMaxTextScale = 1.5;
+
+  // ---- Floating nav pill ----
+
+  /// Height of the floating navigation pill.
+  // tt-style.css: .style-tt .navbar { height: 64px }
+  static const double navPillHeight = 64;
+
+  /// Corner radius of the pill.
+  // tt-style.css: .style-tt .navbar { border-radius: 32px }
+  static const double navPillRadius = 32;
+
+  /// Padding between the pill's edge and its items.
+  // tt-style.css: .style-tt .navbar { padding: 6px }
+  static const double navPillPadding = 6;
+
+  /// Distance from the pill to the bottom edge of the screen (above the
+  /// safe area).
+  // tt-style.css: .style-tt .navbar { left: 20px; right: 20px; bottom: 10px }
+  static const double navPillInsetBottom = 10;
+
+  /// Corner radius of a nav item and of its selected fill.
+  // tt-style.css: .style-tt .navbar .it { border-radius: 26px }
+  static const double navItemRadius = 26;
+
+  /// Gap between a nav item's icon and its label.
+  // tt-style.css: .style-tt .navbar .it { gap: 1px }
+  static const double navItemGap = 1;
+
+  /// How far right of the icon's middle the count badge starts.
+  // tt-style.css: .style-tt .badge { left: calc(50% + 4px) }
+  static const double navBadgeOffsetX = 4;
+
+  /// How far below the icon's top the count badge starts (above it when
+  /// negative).
+  // tt-style.css: .style-tt .badge { top: -4px }
+  static const double navBadgeOffsetY = -4;
+
+  /// The largest text scale a nav label is drawn at.
+  // Not in the prototype: it has no text scaling. The pill is fixed at
+  // 64 dp, so a label at 2x (28 dp of text under a 24 dp icon) would not fit
+  // in the 52 dp inside the padding; at 1.5 it does.
+  static const double navPillMaxTextScale = 1.5;
 }
