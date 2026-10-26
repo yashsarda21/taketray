@@ -40,6 +40,13 @@
   - Any added or changed flow updates `docs/flow.md`.
   - Each item from `docs/later.md` that is done is deleted from that file.
   - Docs go in the same commit as the code.
+- **Learning guide (owner's request):** `docs/learn/phase-2-data-layer.md` explains this phase to the owner, who wants to learn from it. Tasks 2 and 4–12 each fill in their own section, which is already stubbed in the file, in the same commit as the code. Each section follows the template at the top of the guide:
+  - plain English, a reader who knows programming but not Drift or Riverpod
+  - short real snippets from the code just written, never invented code
+  - one "try it yourself" command that really works
+  - links to the `D-xx` entries
+
+  Reviewers check the section against the code: a wrong explanation is a defect. Task 13 turns the sections into one guide.
 - **Models:** Tasks 4 and 9 and the phase review run on Opus. Every other task runs on Sonnet.
 - **Git:** work on branch `phase-2-data-layer` and stay local until the "After merge" step. Commits end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Phone:** only `app.taketray`, `app.taketray.dev` (after Task 1) and `app.taketray.widgetbook` may be installed, cleared or run on the S24.
@@ -635,6 +642,27 @@ Unknown extra keys are ignored, so later versions can add fields.
   Commit message: `test: phase 2 on-device database check`.
 
 ---
+
+### Task 13: Finish the learning guide
+
+**Files:** modify `docs/learn/phase-2-data-layer.md`.
+
+- [ ] **Step 1: Make it read as one guide**
+
+  - Read the whole guide and the code it points to.
+  - Even out the voice.
+  - Remove repetition between sections.
+  - Fix every file path and snippet so it matches HEAD.
+  - Fill the "Glossary" from the terms the sections use.
+  - Check that the two Mermaid diagrams (the layers, and the life of a clip) match the code.
+
+- [ ] **Step 2: Check every "try it yourself" command**
+
+  Run each one and confirm it works as written.
+
+- [ ] **Step 3: Commit**
+
+  Commit message: `docs: phase 2 learning guide`.
 
 ## After merge: move to GitHub (owner gate)
 
