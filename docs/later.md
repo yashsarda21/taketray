@@ -4,15 +4,6 @@ Items that reviews found and parked for a later phase. When a phase is planned, 
 
 Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26).
 
-## Phase 2 (with GitHub and CI)
-
-- `build_tokens.py --check` ignores unknown flags and can't detect orphaned outputs.
-- `fixtureThumb` paths are relative to the working directory, so they break if CI runs from another folder.
-- `expectTtAccessible` has negative tests only for the tap target.
-- The Widgetbook coverage test checks the import, not that the component is registered in `ttCatalog`.
-- The Widgetbook use-case test window (2400) is fragile.
-- Doc comments hard-code token values. Fix them opportunistically.
-
 ## Phase 3
 
 - `TtBanner`: assert that `onTap` and an action are not both set, since the action would nest a button.

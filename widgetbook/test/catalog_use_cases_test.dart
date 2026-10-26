@@ -23,13 +23,22 @@ List<_Entry> _entries(List<WidgetbookNode> nodes, [String folder = '']) => [
     },
 ];
 
+/// Scrolls the navigation tree to the row labelled [label], then taps it.
+Future<void> _tapInTree(WidgetTester tester, String label) async {
+  final row = find.text(label);
+  await tester.ensureVisible(row);
+  await tester.pump();
+  await tester.tap(row);
+}
+
 void main() {
   testWidgets('every use case in the catalogue opens without an error', (
     tester,
   ) async {
-    // A tall desktop-sized window: the navigation panel is shown and every
-    // entry of the tree is on screen to tap.
-    tester.view.physicalSize = const Size(1600, 2400);
+    // A desktop-sized window, so the navigation panel is shown. The tree is
+    // longer than the window; each entry is scrolled into view before a tap,
+    // so the catalogue can grow without resizing the window.
+    tester.view.physicalSize = const Size(1600, 900);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const TakeTrayCatalogue());
@@ -40,18 +49,18 @@ void main() {
     for (final (:folder, :component, :name) in entries) {
       // Open the folder and the component if the tree has them closed.
       if (find.text(component.name).evaluate().isEmpty) {
-        await tester.tap(find.text(folder));
+        await _tapInTree(tester, folder);
         await tester.pumpAndSettle();
       }
       // A component with one use case is listed as that use case.
       if (component.useCases.length == 1) {
-        await tester.tap(find.text(component.name));
+        await _tapInTree(tester, component.name);
       } else {
         if (find.text(name).evaluate().isEmpty) {
-          await tester.tap(find.text(component.name));
+          await _tapInTree(tester, component.name);
           await tester.pumpAndSettle();
         }
-        await tester.tap(find.text(name));
+        await _tapInTree(tester, name);
       }
       // Not pumpAndSettle: TtRecDot pulses for ever.
       await tester.pump();

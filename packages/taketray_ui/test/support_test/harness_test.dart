@@ -46,6 +46,51 @@ void main() {
         throwsA(isA<TestFailure>()),
       );
     });
+
+    testWidgets('fails an unlabelled icon button', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: IconButton(onPressed: () {}, icon: const Icon(Icons.add)),
+          ),
+        ),
+      );
+      // The 48 dp target is met, so only the label guideline can fail.
+      await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+      await expectLater(
+        expectTtAccessible(tester),
+        throwsA(
+          isA<TestFailure>().having(
+            (e) => e.message,
+            'message',
+            contains('should have a semantic label'),
+          ),
+        ),
+      );
+    });
+
+    testWidgets('fails low-contrast text', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: Text(
+              'Faint',
+              style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 16),
+            ),
+          ),
+        ),
+      );
+      await expectLater(
+        expectTtAccessible(tester),
+        throwsA(
+          isA<TestFailure>().having(
+            (e) => e.message,
+            'message',
+            contains('contrast should follow WCAG'),
+          ),
+        ),
+      );
+    });
   });
 
   group('ttTestApp', () {

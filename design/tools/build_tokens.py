@@ -17,10 +17,12 @@ each palette keeps the seed's hue and chroma, and "tone" is CIE L* (0 = black,
 in OKLCH; chroma is reduced where a tone falls outside the sRGB gamut.
 
 Run:  python3 design/tools/build_tokens.py           (writes every output)
-      python3 design/tools/build_tokens.py --check   (writes nothing; prints each stale
-                                                       output and exits 1 if any differ)
-Both exit 1 when a colour pair is below its WCAG contrast threshold.
+      python3 design/tools/build_tokens.py --check   (writes nothing; prints each stale output
+                                                       and each orphan, and exits 1 if any)
+Unknown flags exit 2. An orphan is a file in a folder this script owns outright
+(GENERATED_DIRS) that it would not write. Both exit 1 when a colour pair is below its WCAG contrast threshold.
 """
+import argparse
 import json
 import math
 import sys
@@ -813,8 +815,32 @@ def stale_outputs():
     return stale
 
 
+# Folders whose every matching file is generated, so a file there that the script would
+# not write is an orphan (a renamed or removed option or file left behind). Only folders
+# that hold nothing hand-written belong here: design/tokens/ and design/prototype/assets/
+# mix in hand-written files, so they are not scanned.
+GENERATED_DIRS = [
+    (ROOT / 'tokens' / 'colour-options', '*.json'),
+    (ROOT / 'handoff' / 'compose', '*.kt'),
+]
+
+
+def orphan_outputs():
+    """Files in GENERATED_DIRS that the script would not write."""
+    return sorted(path for folder, pattern in GENERATED_DIRS
+                  for path in folder.glob(pattern) if path not in OUTPUTS)
+
+
+def parse_args(argv):
+    parser = argparse.ArgumentParser(description='Build TakeTray design tokens.',
+                                     allow_abbrev=False)
+    parser.add_argument('--check', action='store_true',
+                        help='write nothing; report stale outputs and orphans, exit 1 if any')
+    return parser.parse_args(argv)
+
+
 def main(argv):
-    check_only = '--check' in argv
+    check_only = parse_args(argv).check
     rows, failures = check_contrast()
     for key, sc in SCHEMES.items():
         _, f2 = check_contrast(sc['light'], sc['dark'])
@@ -844,7 +870,10 @@ def main(argv):
         stale = stale_outputs()
         for path in stale:
             print(f'stale: {path.relative_to(ROOT.parent)} (run python3 design/tools/build_tokens.py)')
-        sys.exit(1 if stale else 0)
+        orphans = orphan_outputs()
+        for path in orphans:
+            print(f'orphan: {path.relative_to(ROOT.parent)} (not written by build_tokens.py; delete it)')
+        sys.exit(1 if stale or orphans else 0)
     for path, text in OUTPUTS.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
