@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:taketray_ui/src/components/internal/bar_scope.dart';
+import 'package:taketray_ui/src/components/internal/system_ui.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_sizes.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -129,11 +131,17 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
     );
 
     // The background reaches under the status bar; the content sits below.
-    return ColoredBox(
-      color: selection ? scheme.secondaryContainer : scheme.surface,
-      child: SafeArea(
-        bottom: false,
-        child: TtBarScope(selection: selection, child: bar),
+    // Material's AppBar picks the status bar icon colour from its
+    // background; this bar replaces it, so it does the same (D-51).
+    final background = selection ? scheme.secondaryContainer : scheme.surface;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: ttSystemUiStyle(background),
+      child: ColoredBox(
+        color: background,
+        child: SafeArea(
+          bottom: false,
+          child: TtBarScope(selection: selection, child: bar),
+        ),
       ),
     );
   }

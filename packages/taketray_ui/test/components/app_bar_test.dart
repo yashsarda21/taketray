@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -34,6 +35,15 @@ TtIconButton _back() => TtIconButton(
   style: TtIconButtonStyle.circle,
   onPressed: () {},
 );
+
+SystemUiOverlayStyle _systemStyle(WidgetTester tester) => tester
+    .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+      find.descendant(
+        of: find.byType(TtAppBar),
+        matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+      ),
+    )
+    .value;
 
 void main() {
   group('TtAppBar', () {
@@ -309,5 +319,46 @@ void main() {
         await expectTtAccessible(tester);
       });
     }
+
+    group('system bar icons (D-51)', () {
+      testWidgets('are dark on the light theme', (tester) async {
+        await tester.pumpWidget(_bar(const TtAppBar(title: 'Reels')));
+        final style = _systemStyle(tester);
+        expect(style.statusBarIconBrightness, Brightness.dark);
+        expect(style.systemNavigationBarIconBrightness, Brightness.dark);
+        expect(style.statusBarColor!.a, 0);
+        expect(style.systemNavigationBarColor!.a, 0);
+      });
+
+      testWidgets('are light on the dark theme', (tester) async {
+        await tester.pumpWidget(
+          _bar(const TtAppBar(title: 'Reels'), brightness: Brightness.dark),
+        );
+        final style = _systemStyle(tester);
+        expect(style.statusBarIconBrightness, Brightness.light);
+        expect(style.systemNavigationBarIconBrightness, Brightness.light);
+        expect(style.statusBarColor!.a, 0);
+        expect(style.systemNavigationBarColor!.a, 0);
+      });
+
+      for (final brightness in Brightness.values) {
+        testWidgets('follow the selection bar (${brightness.name})', (
+          tester,
+        ) async {
+          await tester.pumpWidget(
+            _bar(
+              const TtAppBar(title: '2 selected', selection: true),
+              brightness: brightness,
+            ),
+          );
+          final expected = brightness == Brightness.light
+              ? Brightness.dark
+              : Brightness.light;
+          final style = _systemStyle(tester);
+          expect(style.statusBarIconBrightness, expected);
+          expect(style.systemNavigationBarIconBrightness, expected);
+        });
+      }
+    });
   });
 }

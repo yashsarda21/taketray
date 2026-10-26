@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -120,5 +121,30 @@ void main() {
       expect(find.byType(ExcludeSemantics), findsWidgets);
       handle.dispose();
     });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('asks for light system bar icons (${brightness.name})', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const TtVideoSurface(child: SizedBox.expand()),
+            brightness: brightness,
+          ),
+        );
+        final style = tester
+            .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+              find.descendant(
+                of: find.byType(TtVideoSurface),
+                matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+              ),
+            )
+            .value;
+        expect(style.statusBarIconBrightness, Brightness.light);
+        expect(style.systemNavigationBarIconBrightness, Brightness.light);
+        expect(style.statusBarColor!.a, 0);
+        expect(style.systemNavigationBarColor!.a, 0);
+      });
+    }
   });
 }

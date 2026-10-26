@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:taketray_ui/src/components/internal/system_ui.dart';
 import 'package:taketray_ui/src/theme/take_tray_theme.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -30,25 +32,30 @@ class TtVideoSurface extends StatelessWidget {
       child: Builder(
         builder: (context) {
           final colors = context.tt.colors;
-          return Material(
-            color: colors.videoBackground,
-            child: Stack(
-              fit: StackFit.passthrough,
-              children: [
-                child,
-                if (scrims) ...[
-                  _Scrim(
-                    top: true,
-                    height: TtMetrics.videoScrimTopHeight,
-                    color: colors.videoScrimTop,
-                  ),
-                  _Scrim(
-                    top: false,
-                    height: TtMetrics.videoScrimBottomHeight,
-                    color: colors.videoScrimBottom,
-                  ),
+          // Black ground: light system bar icons, whatever the app theme is
+          // (D-51).
+          return AnnotatedRegion<SystemUiOverlayStyle>(
+            value: ttSystemUiStyle(colors.videoBackground),
+            child: Material(
+              color: colors.videoBackground,
+              child: Stack(
+                fit: StackFit.passthrough,
+                children: [
+                  child,
+                  if (scrims) ...[
+                    _Scrim(
+                      top: true,
+                      height: TtMetrics.videoScrimTopHeight,
+                      color: colors.videoScrimTop,
+                    ),
+                    _Scrim(
+                      top: false,
+                      height: TtMetrics.videoScrimBottomHeight,
+                      color: colors.videoScrimBottom,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           );
         },

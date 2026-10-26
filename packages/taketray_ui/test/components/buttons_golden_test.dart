@@ -240,7 +240,8 @@ class _IconButtonRow extends StatelessWidget {
       ),
     );
     if (style == TtIconButtonStyle.plain) return row;
-    // The circle style sits over content; on video the icon is white over the picture.
+    // The circle style sits over content; on video the icon is white over
+    // the picture.
     return DecoratedBox(
       decoration: BoxDecoration(image: _darkPhoto(2)),
       child: row,
