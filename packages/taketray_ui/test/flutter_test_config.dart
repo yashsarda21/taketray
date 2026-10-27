@@ -8,16 +8,19 @@ import 'package:flutter_test/flutter_test.dart';
 
 /// Golden setup for every test in this package (D-39).
 ///
-/// - CI goldens (`goldens/ci/`, text drawn as blocks) are always on, so they
-///   compare the same on every machine.
-/// - Platform goldens (`goldens/macos/`, real text) are on only on macOS and
-///   off when the `CI` environment variable is set.
+/// The `CI` environment variable picks the set (D-61):
+/// - `CI` set (GitHub Actions, or `CI=true` by hand): only the CI goldens
+///   (`goldens/ci/`, text drawn as blocks) run. They are made and compared on
+///   Linux, with no tolerance.
+/// - `CI` not set (the owner's Mac): only the platform goldens
+///   (`goldens/macos/`, real text, macOS only) run.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   TestWidgetsFlutterBinding.ensureInitialized();
   await _loadPackageFonts();
   final onCi = Platform.environment.containsKey('CI');
   await AlchemistConfig.runWithConfig(
     config: AlchemistConfig(
+      ciGoldensConfig: CiGoldensConfig(enabled: onCi),
       platformGoldensConfig: PlatformGoldensConfig(
         enabled: !onCi,
         platforms: {HostPlatform.macOS},

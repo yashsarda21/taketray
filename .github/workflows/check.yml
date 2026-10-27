@@ -19,8 +19,9 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  # GitHub already sets CI=true; stated here because the macOS goldens switch
-  # off on it (D-39) and the check must not depend on a default.
+  # GitHub already sets CI=true; stated here because it switches the macOS
+  # goldens off and the Linux goldens/ci on (D-61), and the check must not
+  # depend on a default.
   CI: "true"
   # Must match EXPECTED_FLUTTER in tool/check, which fails on any other version.
   FLUTTER_VERSION: "3.47.7"

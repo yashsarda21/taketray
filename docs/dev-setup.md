@@ -18,23 +18,31 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 
 ## Automatic checks on GitHub (D-60)
 
-`.github/workflows/check.yml` runs on every push and pull request (Ubuntu, 30-minute limit, read-only token, no secrets). It installs Flutter 3.47.7 into `~/development/flutter`, the folder the wrappers use, and runs `tool/check` with `CI=true`: the same script as on your Mac, so a green local run is expected to be green there (with one open question about the golden images, below).
+`.github/workflows/check.yml` runs on every push and pull request (Ubuntu, 30-minute limit, read-only token, no secrets). It installs Flutter 3.47.7 into `~/development/flutter`, the folder the wrappers use, and runs `tool/check` with `CI=true`: the same script as on your Mac, so a green local run is expected to be green there (the CI golden images are a separate set made on Linux, see "Goldens" below).
 
-- **Runs on CI:** everything in `tool/check` (generated-file and token freshness, format, analysis, style rules, all tests with only the `goldens/ci/` images, the coverage gate). The drift tests download a prebuilt SQLite when they are built, so the runner needs the network; the app itself stays offline.
-- **Does not run on CI:** the Patrol smoke test and anything that needs the phone (they stay local, on the S24, D-32), the macOS goldens (switched off by `CI`, D-39) and `tool/check_release_permissions` (it needs the Android SDK; run it by hand at the end of each phase).
-- **Same run on your Mac:** `CI=true tool/check` (it skips the macOS goldens, as CI does).
+- **Runs on CI:** everything in `tool/check` (generated-file and token freshness, format, analysis, style rules, all tests with only the `goldens/ci/` images (Linux-made, D-61), the coverage gate). The drift tests download a prebuilt SQLite when they are built, so the runner needs the network; the app itself stays offline.
+- **Does not run on CI:** the Patrol smoke test and anything that needs the phone (they stay local, on the S24, D-32), the macOS goldens (switched off by `CI`, D-61) and `tool/check_release_permissions` (it needs the Android SDK; run it by hand at the end of each phase).
+- **Same run on your Mac:** plain `tool/check`. It compares `goldens/macos/` only; `goldens/ci/` is for GitHub (D-61). `CI=true tool/check` on the Mac compares the Linux images and is expected to fail on pixels.
 - **When it fails on golden images:** the run uploads the `failures/` folders as an artifact named `golden-failures` (on the run's summary page).
 - **Changing the Flutter version:** edit `FLUTTER_VERSION` in the workflow and `EXPECTED_FLUTTER` in `tool/check` together. Packages are cached by `pubspec.lock`, Flutter by its version.
-- **The repository has no remote yet,** so the workflow has been checked locally only. After pushing, the first run is slow (nothing is cached) and is the real test of it.
+- **The first run** on a new Flutter version is slow because nothing is cached yet.
 
 ## Goldens
 
-The component tests in `packages/taketray_ui/test/` compare screenshots with PNGs in `test/components/goldens/` (D-39).
+The component tests in `packages/taketray_ui/test/` compare screenshots with PNGs in `test/components/goldens/` and `test/theme/goldens/` (D-39). There are two sets, and the `CI` environment variable picks which one runs (D-61):
 
-- Regenerate after an intended visual change, from the package, with the pinned SDK: `cd packages/taketray_ui && ../../tool/flutter test --update-goldens test/components/<name>_test.dart`. Then run the same test without the flag, and look at the new PNGs before committing.
-- `goldens/ci/` (text drawn as blocks) is checked everywhere. Its text is drawn as Ahem blocks, so it is expected to match across machines, but the images were made on an arm64 Mac and blur or anti-aliasing may differ by a pixel on x64 Linux. The first CI run confirms it; if it fails there, regenerate `goldens/ci/` on Linux and review the diff (D-60). `goldens/macos/` has real text and icons, so it is tied to the macOS version and font rendering of the Mac that made it (D-39). After a macOS update every macOS golden can turn red with no code change: regenerate them on the owner's Mac and review the diff before committing.
-- When the `CI` environment variable is set, the macOS goldens are switched off and only `goldens/ci/` runs.
-- A failing golden writes `*_masterImage.png`, `*_testImage.png`, `*_isolatedDiff.png` and `*_maskedDiff.png` to a `failures/` folder next to the test file (for example `packages/taketray_ui/test/components/failures/`). It is git-ignored; never commit it.
+- **`goldens/macos/`** (real text and icons) runs on your Mac when `CI` is not set. It is tied to the macOS version and font rendering of the Mac that made it. After a macOS update every macOS golden can turn red with no code change: regenerate them and review the diff before committing.
+- **`goldens/ci/`** (text drawn as blocks) runs only when `CI` is set, which GitHub does. It is made on GitHub's Linux runner, never on the Mac: the Mac's images differ from Linux's by a few pixels (anti-aliasing and image scaling), and both sets are compared with zero tolerance.
+
+Update the macOS set after an intended visual change, from the package, with the pinned SDK: `cd packages/taketray_ui && ../../tool/flutter test --update-goldens test/components/<name>_test.dart`. Then run the same test without the flag, and look at the new PNGs before committing. This writes only `goldens/macos/`, because `CI` is not set.
+
+Update the CI set (needed whenever a visual change alters a component):
+
+1. Push the branch. On GitHub open Actions, "update goldens", "Run workflow" on that branch (or `gh workflow run update-goldens.yml --ref <branch>`). It makes the images on Linux and uploads them as the artifact `ci-goldens`; it commits nothing.
+2. When the run is green, take its id from the URL (or `gh run list --workflow update-goldens.yml`) and run `tool/pull_ci_goldens <run-id>` in the repo. It needs `gh` installed and logged in (`gh auth login`), and refuses to run if `goldens/ci/` has uncommitted changes. It copies the images in and prints which files changed.
+3. Look at the changed PNGs, commit them, push. The `check` workflow then passes on them.
+
+A failing golden writes `*_masterImage.png`, `*_testImage.png`, `*_isolatedDiff.png` and `*_maskedDiff.png` to a `failures/` folder next to the test file (for example `packages/taketray_ui/test/components/failures/`). It is git-ignored; never commit it. On GitHub the `check` run uploads these folders as the artifact `golden-failures`.
 
 ## One-time: Patrol CLI
 

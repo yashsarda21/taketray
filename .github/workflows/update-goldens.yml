@@ -1,0 +1,85 @@
+# Makes the CI golden images (goldens/ci/) on Linux, where they are compared
+# (D-61). Run by hand on a branch (Actions > update goldens > Run workflow);
+# then, on the Mac, `tool/pull_ci_goldens <run-id>` copies the images in so
+# they can be reviewed and committed. This workflow never pushes or commits.
+name: update goldens
+
+on:
+  workflow_dispatch:
+
+# Read-only: the images leave only as an artifact.
+permissions:
+  contents: read
+
+env:
+  # The CI goldens are the ones enabled by CI (see flutter_test_config.dart).
+  CI: "true"
+  # Must match EXPECTED_FLUTTER in tool/check and FLUTTER_VERSION in check.yml.
+  FLUTTER_VERSION: "3.47.7"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Same Flutter folder, cache key and install as check.yml.
+      - name: Cache Flutter
+        id: flutter-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/development/flutter
+          key: flutter-${{ runner.os }}-${{ env.FLUTTER_VERSION }}
+
+      - name: Install Flutter ${{ env.FLUTTER_VERSION }}
+        if: steps.flutter-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/development"
+          git clone --depth 1 --branch "$FLUTTER_VERSION" \
+            https://github.com/flutter/flutter.git "$HOME/development/flutter"
+
+      - name: Prepare Flutter
+        run: |
+          tool/flutter config --disable-analytics
+          tool/flutter precache --universal
+          tool/flutter --version
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      - name: pub get
+        run: tool/flutter pub get
+
+      # taketray_ui is the only member with CI goldens. A new member that gets
+      # some needs its own step here (and a line in docs/flow.md).
+      - name: Update the CI goldens
+        working-directory: packages/taketray_ui
+        run: ../../tool/flutter test --update-goldens --tags golden
+
+      # Copies every goldens/ci/ image under its repository path, so
+      # tool/pull_ci_goldens can put it back in the same place.
+      - name: Collect the CI goldens
+        run: |
+          mkdir -p "$RUNNER_TEMP/ci-goldens"
+          find . -path '*/goldens/ci/*.png' -not -path './.git/*' \
+            -exec cp --parents {} "$RUNNER_TEMP/ci-goldens" \;
+          find "$RUNNER_TEMP/ci-goldens" -name '*.png' | wc -l
+
+      - name: Upload the CI goldens
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-goldens
+          path: ${{ runner.temp }}/ci-goldens
+          if-no-files-found: error

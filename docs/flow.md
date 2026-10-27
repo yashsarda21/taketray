@@ -156,7 +156,7 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
    1. `tool/bin/check_styles.dart › main`: lists `**/*.dart` under the directory (skips `*.g.dart`, `*.freezed.dart`; a missing directory prints `check_styles: directory <dir> not found` and exits 1).
    2. `tool/lib/src/style_rules.dart › findStyleViolations`: per file, blanks comments out of the whole text (`_blankComments`, offsets kept), runs each rule regex over the full text so multi-line calls match, maps each match start to its line, and skips it when `// style-check: allow <reason>` is on that line or on a comment-only line above. Covered forms: `Color*`/`Colors.`, `TextStyle(`, `EdgeInsets[Directional].*`, `SizedBox(width|height:)` and `SizedBox.square(dimension:)`, `BorderRadius[Directional].circular` and `Radius.circular`, and `Duration(` in any unit from microseconds to days.
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
-9. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`, `check_generated_test.dart`, `check_script_test.dart` and `check_coverage_test.dart`), then in each Flutter member (`tool/flutter test`; the member named in `COVERAGE_MEMBER`, `app`, runs `tool/flutter test --coverage`, which also writes `app/coverage/lcov.info`; the folder is git-ignored). A member without a `test/` folder fails with `<member> has no test/ folder`.
+9. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`, `check_generated_test.dart`, `check_script_test.dart` and `check_coverage_test.dart`), then in each Flutter member (`tool/flutter test`, which without `CI` runs the `goldens/macos/` comparisons and not `goldens/ci/`, D-61; the member named in `COVERAGE_MEMBER`, `app`, runs `tool/flutter test --coverage`, which also writes `app/coverage/lcov.info`; the folder is git-ignored). A member without a `test/` folder fails with `<member> has no test/ folder`.
 10. `tool/check` › `tool/dart run taketray_tool:check_coverage app/coverage/lcov.info 80 lib/domain/ lib/data/`: at least 80 % of the executable lines under each prefix must have run in a test.
     1. `tool/bin/check_coverage.dart › main`: needs the lcov file, a minimum from 0 to 100 (not `NaN`) and at least one prefix, each prefix ending in `/` (so `lib/data` cannot match `lib/database_x/`), otherwise prints `usage: ...` and exits 64; a missing lcov file prints `check_coverage: <file> not found` and exits 1.
     2. `_parseLcov`: reads the lcov text, one record per source file (`SF:` path, one `DA:<line>,<times run>` per executable line, `end_of_record`). A file counts every `DA:` line as found and every `DA:` with a count above 0 as hit. Files ending in `.g.dart` or `.freezed.dart` are dropped (generated code, D-53).
@@ -168,16 +168,31 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
 
 Runs on every `push` and `pull_request`, and by hand (`workflow_dispatch`); nothing is deployed and there are no secrets. See D-60.
 
-1. Workflow header: `permissions: contents: read`; `concurrency` group `check-<workflow>-<ref>` with `cancel-in-progress` for every ref except `refs/heads/main`, so a newer run on the same branch or pull request cancels the older one, while main runs always finish; `env.CI: "true"` (turns the macOS goldens off, D-39) and `env.FLUTTER_VERSION: "3.47.7"` (must equal `EXPECTED_FLUTTER` in `tool/check`).
+1. Workflow header: `permissions: contents: read`; `concurrency` group `check-<workflow>-<ref>` with `cancel-in-progress` for every ref except `refs/heads/main`, so a newer run on the same branch or pull request cancels the older one, while main runs always finish; `env.CI: "true"` (turns the macOS goldens off and the Linux `goldens/ci/` comparisons on, D-61) and `env.FLUTTER_VERSION: "3.47.7"` (must equal `EXPECTED_FLUTTER` in `tool/check`).
 2. Job `check` on `ubuntu-latest`, `timeout-minutes: 30`: `actions/checkout` (`persist-credentials: false`).
 3. `actions/cache` on `~/development/flutter`, key `flutter-<os>-<version>`. On a miss, `git clone --depth 1 --branch 3.47.7` into that folder (the path `tool/flutter` and `tool/dart` use).
 4. `Prepare Flutter`: `tool/flutter config --disable-analytics`, `tool/flutter precache --universal` (Dart SDK, the test engine `flutter_tester`; no Android SDK because `tool/check` builds no APK), `tool/flutter --version`.
 5. `actions/cache` on `~/.pub-cache`, key `pub-<os>-<hash of pubspec.lock>`, falling back to the newest `pub-<os>-` entry.
 6. `Check required programs`: fails with `missing on the runner: <name>` unless `git`, `python3`, `shasum`, `awk`, `find` and `sort` exist.
-7. `tool/check` (the "Local checks" flow above), unchanged.
+7. `tool/check` (the "Local checks" flow above), unchanged; with `CI` set it compares `goldens/ci/`, the images made on Linux by the flow below.
 8. On failure, `actions/upload-artifact` stores every `failures/` folder under a `test/` folder as `golden-failures`.
 
 Not on CI: Patrol and device tests, and `tool/check_release_permissions`.
+
+### Updating CI goldens (`.github/workflows/update-goldens.yml`, `tool/pull_ci_goldens`)
+
+The `goldens/ci/` images must be made on Linux, the machine that compares them (D-61). Two steps, one on GitHub and one on the Mac; nothing is committed or pushed by either.
+
+1. `.github/workflows/update-goldens.yml` (`workflow_dispatch` only, `permissions: contents: read`; started from the Actions tab or `gh workflow run update-goldens.yml --ref <branch>`):
+   1. `env.CI: "true"`, `env.FLUTTER_VERSION: "3.47.7"`; job `update` on `ubuntu-latest`, `timeout-minutes: 30`; checkout, the Flutter and pub caches and the Flutter install and precache exactly as in `check.yml`; `tool/flutter pub get`.
+   2. In `packages/taketray_ui`: `../../tool/flutter test --update-goldens --tags golden`. With `CI` set `flutter_test_config.dart` enables only the CI goldens, so only `goldens/ci/` is rewritten. (`packages/taketray_ui` is the only member with CI goldens.)
+   3. `find . -path '*/goldens/ci/*.png'` copies every image into `$RUNNER_TEMP/ci-goldens` with `cp --parents`, keeping its repository path, and prints how many; `actions/upload-artifact` stores that folder as `ci-goldens` (fails if it is empty).
+2. `tool/pull_ci_goldens <run-id>` on the Mac:
+   1. Usage error (exit 64) unless there is exactly one numeric argument. Fails with a clear message if `gh` is not installed or `gh auth status` fails.
+   2. Fails and lists the files if `git status --porcelain --untracked-files=all` shows any change under a `goldens/ci/` folder.
+   3. `gh run download <run-id> -n ci-goldens -D <temp dir>`; fails if the artifact has no `goldens/ci/*.png`.
+   4. Deletes each tracked `goldens/ci/*.png` that the artifact does not have, then copies every artifact image to the same repository path (creating folders for new tests).
+   5. Prints the number copied and `git status --short` for the `goldens/ci/` paths. The owner looks at the images, commits and pushes; the `check` run then compares them on Linux.
 
 ### Generated-file freshness (`tool/check_generated`)
 
