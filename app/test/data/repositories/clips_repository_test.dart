@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -52,6 +54,37 @@ NewClip pickerClip(String uri) => NewClip.picker(
   height: 0,
   mimeType: 'video/mp4',
 );
+
+/// A [FixedClock] that, the first time it is read after [arm], starts an
+/// orphan sweep outside the caller's transaction and does not wait for it.
+///
+/// The repositories read the clock inside their transaction, before they
+/// insert a clip, so the sweep is queued while that transaction is open, just
+/// like a reel delete or a remove-from-reel tapped at that moment. It runs as
+/// soon as the database lets it: after the transaction if the clip and its
+/// place are saved together, between them if someone split them in two.
+class _SweepingClock extends FixedClock {
+  _SweepingClock(super.time, this._db);
+
+  final AppDatabase _db;
+  bool _armed = false;
+
+  /// The sweep started by the armed read: how many clips it deleted.
+  Future<int>? sweep;
+
+  void arm() => _armed = true;
+
+  @override
+  DateTime now() {
+    if (_armed) {
+      _armed = false;
+      // Zone.root: outside the transaction's zone, so drift treats it as
+      // another caller instead of running it inside the transaction.
+      sweep = Zone.root.run(_db.deleteOrphanClips);
+    }
+    return super.now();
+  }
+}
 
 void main() {
   setUp(() {
@@ -271,6 +304,89 @@ void main() {
         throwsStateError,
       );
       expect(await clipIds(), isEmpty);
+    });
+  });
+
+  group('a sweep while clips are being added cannot delete them (R6b)', () {
+    late _SweepingClock sweeping;
+
+    setUp(() {
+      sweeping = _SweepingClock(_t0, db);
+    });
+
+    test('addDetectedClips: a sweep started mid-transaction cannot delete the '
+        'new clip', () async {
+      sweeping.arm();
+
+      final [id] = await ClipsRepository(
+        db,
+        sweeping,
+      ).addDetectedClips([mediaStoreClip(10)]);
+
+      expect(sweeping.sweep, isNotNull, reason: 'the sweep was started');
+      expect(await sweeping.sweep, 0);
+      expect(await clipIds(), [id]);
+      expect((await inboxRows()).single.clipId, id);
+    });
+
+    test('addNewClipsToReel: a sweep started mid-transaction cannot delete the '
+        'new clip', () async {
+      final reel = await reels.create('Goa');
+      sweeping.arm();
+
+      final ids = await ClipsRepository(db, sweeping).addNewClipsToReel(
+        reel.id,
+        [mediaStoreClip(10), pickerClip('content://p/1')],
+      );
+
+      expect(sweeping.sweep, isNotNull, reason: 'the sweep was started');
+      expect(await sweeping.sweep, 0);
+      expect(await clipIds(), [...ids]..sort());
+      for (final id in ids) {
+        expect(await reelIdsOf(id), {reel.id});
+      }
+    });
+
+    // The same race between repositories: one adds clips while another
+    // deletes a reel, whose transaction ends with the global sweep (D-56).
+    // Both are started before either runs, so the delete's transaction is
+    // queued right behind the add's.
+    Future<int> reelWithAClipOnlyThere() async {
+      final reel = await reels.create('Paris');
+      await repo.addNewClipsToReel(reel.id, [mediaStoreClip(99)]);
+      return reel.id;
+    }
+
+    test('addNewClipsToReel and a reel delete at once: the new clips stay, '
+        "the deleted reel's clip goes", () async {
+      final goa = await reels.create('Goa');
+      final paris = await reelWithAClipOnlyThere();
+
+      final (ids, _) = await (
+        repo.addNewClipsToReel(goa.id, [
+          mediaStoreClip(10),
+          mediaStoreClip(11),
+        ]),
+        reels.delete(paris),
+      ).wait;
+
+      expect(await clipIds(), [...ids]..sort(), reason: 'clip 99 was swept');
+      for (final id in ids) {
+        expect(await reelIdsOf(id), {goa.id});
+      }
+    });
+
+    test('addDetectedClips and a reel delete at once: the new clips stay, '
+        "the deleted reel's clip goes", () async {
+      final paris = await reelWithAClipOnlyThere();
+
+      final (ids, _) = await (
+        repo.addDetectedClips([mediaStoreClip(10), mediaStoreClip(11)]),
+        reels.delete(paris),
+      ).wait;
+
+      expect(await clipIds(), [...ids]..sort(), reason: 'clip 99 was swept');
+      expect({for (final r in await inboxRows()) r.clipId}, ids.toSet());
     });
   });
 

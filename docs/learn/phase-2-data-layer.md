@@ -612,7 +612,22 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
   if (missing.isNotEmpty) await _touchReels({reelId}, now);
   ```
 
-  The test `a clip added this way survives the orphan sweep` calls `deleteOrphanClips()` right afterwards and checks the clip is still there.
+  The test `a clip added this way survives the orphan sweep` calls `deleteOrphanClips()` right afterwards and checks the clip is still there. That alone proves little: it would still pass if someone split the insert and the link into two transactions, because the sweep only runs once both are done. The race the transaction prevents is a sweep that starts *while* the clip is being added. The tests in the group `a sweep while clips are being added cannot delete them (R6b)` make that happen on purpose with a clock that, when the repository reads the time inside its transaction, starts a sweep from outside it:
+
+  ```dart
+  @override
+  DateTime now() {
+    if (_armed) {
+      _armed = false;
+      // Zone.root: outside the transaction's zone, so drift treats it as
+      // another caller instead of running it inside the transaction.
+      sweep = Zone.root.run(_db.deleteOrphanClips);
+    }
+    return super.now();
+  }
+  ```
+
+  Drift lets only one transaction or statement use the database at a time, so the sweep waits for the open transaction and then finds the clip already in its place: it deletes nothing. Two more tests run `addNewClipsToReel` or `addDetectedClips` together with a reel delete from `ReelsRepository`, whose transaction ends with the same sweep. When one method's transaction was split in two on purpose (clips in the first, links or `inbox` rows in the second), that method's two new tests failed with `FOREIGN KEY constraint failed`: the sweep ran between the two halves and deleted the new clip, so its link or `inbox` row had nothing to point at. The older "survives the orphan sweep" tests still passed.
 
 - **Tagging replaces the links but keeps `addedAt`.** `tagClip(id, {goa, paris})` does not mean "add these"; it means "the clip is in *exactly* these reels". So the method compares the reels it is in now with the ones you asked for, removes the difference one way, adds it the other way, and leaves the reels that are in both alone:
 
@@ -665,7 +680,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
 **Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`. The steps of each change are in `docs/flow.md` ("Tagging data changes").
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+45: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards with `git checkout -- app/lib/data/repositories/clips_repository.dart` (from the repo root).
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+49: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards with `git checkout -- app/lib/data/repositories/clips_repository.dart` (from the repo root).
 
 **Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 
