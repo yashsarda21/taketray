@@ -299,6 +299,46 @@ void main() {
       },
     );
 
+    test('dates outside 0000–9999 survive export and import', () async {
+      // MediaStore dates come from file metadata, and garbage exists there.
+      // `toIso8601String` writes such years as `+010001` or `-0001`; the file
+      // must read them back, or one odd clip makes the backup unrestorable.
+      final clips = ClipsRepository(db, clock);
+      final ids = await clips.addDetectedClips([
+        _detected(1, DateTime.utc(10001)),
+        _detected(2, DateTime.utc(-1)),
+        _detected(3, DateTime.utc(1904)),
+        // The earliest instant a DateTime can hold.
+        _detected(
+          4,
+          DateTime.fromMillisecondsSinceEpoch(-8640000000000000, isUtc: true),
+        ),
+      ]);
+      // The latest one, as a lastVerifiedAt (a nullable time).
+      await ClipsRepository(
+        db,
+        FixedClock(
+          DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
+        ),
+      ).recordVerification(found: {ids[0]}, missing: {});
+      final first = await backup.exportJson();
+
+      expect(first, contains('"dateTakenUtc": "+010001-01-01T00:00:00.000Z"'));
+      expect(first, contains('"dateTakenUtc": "-0001-01-01T00:00:00.000Z"'));
+      expect(first, contains('"dateTakenUtc": "-271821-04-20T00:00:00.000Z"'));
+      expect(
+        first,
+        contains('"lastVerifiedAt": "+275760-09-13T00:00:00.000Z"'),
+      );
+
+      final other = freshDatabase();
+      final summary = await BackupService(other, clock).importJson(first);
+      final second = await BackupService(other, clock).exportJson();
+
+      expect(summary.clips, 4);
+      expect(_withoutExportedAt(second), _withoutExportedAt(first));
+    });
+
     test('every row comes back with its id and values', () async {
       await _Seeded(db, clock).fill();
       final json = await backup.exportJson();
@@ -525,6 +565,14 @@ void main() {
           _section(f, 'reels').first['createdAt'] = '2026-10-20',
       'a time that is not a real date': (f) =>
           _section(f, 'reels').first['createdAt'] = '2026-02-30T08:00:00.000Z',
+      'a five-digit year': (f) => _section(f, 'reels').first['createdAt'] =
+          '+10001-01-01T00:00:00.000Z',
+      'a year a date cannot hold': (f) =>
+          _section(f, 'reels').first['createdAt'] =
+              '+999999-01-01T00:00:00.000Z',
+      'a time past the last instant a date can hold': (f) =>
+          _section(f, 'reels').first['createdAt'] =
+              '+275760-09-13T00:00:00.000-01:00',
       'a time as a number': (f) =>
           _section(f, 'inbox').first['addedAt'] = 1761462000000,
       'no exportedAt': (f) => f.remove('exportedAt'),

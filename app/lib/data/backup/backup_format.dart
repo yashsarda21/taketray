@@ -418,25 +418,44 @@ String? _nullableTime(DateTime? instant) =>
 
 /// A date and time with seconds, an optional fraction, and a `Z` or an
 /// explicit offset (D-55: a time without one is never guessed to be UTC).
+///
+/// The year is written the way `DateTime.toIso8601String` writes it: four
+/// digits for 0 to 9999, `-0001` for a year before 0 down to -9999, and a
+/// sign with six digits beyond that (`+010001`, `-271821`). A video's date
+/// comes from its file and can be any of these.
 final _instant = RegExp(
-  r'^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?'
+  r'^([+-]\d{6}|-?\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?'
   r'(?:Z|[+-](\d{2}):?(\d{2}))$',
 );
 
 /// [text] as a UTC instant cut to whole milliseconds (what the database
 /// stores, so two times that would be stored the same compare equal), or null
-/// when it is not an [_instant] or names a date or time that does not exist
-/// (`DateTime.parse` would roll 30 February over into March).
+/// when it is not an [_instant], names a date or time that does not exist
+/// (`DateTime.parse` would roll 30 February over into March), or lies outside
+/// what a `DateTime` can hold (about 271,821 BC to AD 275,760).
 DateTime? _parseInstant(String text) {
   final match = _instant.firstMatch(text);
   if (match == null) return null;
   final [year, month, day, hour, minute, second] = [
     for (var g = 1; g <= 6; g++) int.parse(match.group(g)!),
   ];
-  final asWritten = DateTime.utc(year, month, day, hour, minute, second);
   final offsetHours = int.parse(match.group(7) ?? '0');
   final offsetMinutes = int.parse(match.group(8) ?? '0');
-  if (asWritten.month != month ||
+  final DateTime asWritten;
+  final DateTime instant;
+  try {
+    asWritten = DateTime.utc(year, month, day, hour, minute, second);
+    instant = DateTime.parse(text);
+  } on Object {
+    // Past the last instant a DateTime can hold (`ArgumentError` or
+    // `FormatException`, depending on which side of the offset it falls).
+    return null;
+  }
+  // The date must be the one written. A year far past the range does not
+  // always throw: it can wrap around to another date (`+999999` becomes a
+  // day in 169110 BC), which this comparison also refuses.
+  if (asWritten.year != year ||
+      asWritten.month != month ||
       asWritten.day != day ||
       asWritten.hour != hour ||
       asWritten.minute != minute ||
@@ -446,7 +465,7 @@ DateTime? _parseInstant(String text) {
     return null;
   }
   return DateTime.fromMillisecondsSinceEpoch(
-    DateTime.parse(text).millisecondsSinceEpoch,
+    instant.millisecondsSinceEpoch,
     isUtc: true,
   );
 }
