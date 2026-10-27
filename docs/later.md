@@ -6,6 +6,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 3
 
+- Logging hardening (Phase 2 final re-review): make the log-privacy test check the raw `LogRecord.message`, not `formatRecord` output (which already masks `scheme://` text); guard `formatRecord` in the Logger listener so an error whose `toString()` throws can't escape; reset `driftRuntimeOptions.dontWarnAboutMultipleDatabases` after the logging test.
+
 - Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/` or `lib/domain/` that no test imports is not counted (new `lib/data` code lands in this phase). Preferred fix: at check time, generate a temporary test that imports every non-generated `lib/domain/**` and `lib/data/**` file, so unloaded files show up with 0 hits (enum-only files have no executable lines and stay absent by themselves). Fallback: compare the lcov file list with the `.dart` files on disk and fail on a missing one, with a one-entry allowlist for `domain/models/enums.dart`. Do the same for `view_models/` when phase 4 adds it to the prefixes.
 
 - The media bridge supplies the `NOT NULL` clip fields with a fallback (R4g, D-57): when MediaStore has no `DATE_TAKEN`, use `DATE_ADDED`, then `DATE_MODIFIED`; an unknown width or height is `0`. The repository stores what it is given; the rule is written only in the doc comments of `NewClip` and `ClipFingerprint`.
