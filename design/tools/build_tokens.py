@@ -19,8 +19,9 @@ in OKLCH; chroma is reduced where a tone falls outside the sRGB gamut.
 Run:  python3 design/tools/build_tokens.py           (writes every output)
       python3 design/tools/build_tokens.py --check   (writes nothing; prints each stale output
                                                        and each orphan, and exits 1 if any)
-Unknown flags exit 2. An orphan is a file in a folder this script owns outright
-(GENERATED_DIRS) that it would not write. Both exit 1 when a colour pair is below its WCAG contrast threshold.
+An orphan is a file in a folder this script owns outright (GENERATED_DIRS) that
+it would not write. An unknown flag exits 2. In either mode the script exits 1
+when a colour pair is below its WCAG contrast threshold.
 """
 import argparse
 import json

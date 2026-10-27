@@ -2,11 +2,13 @@
 
 Items that reviews found and parked for a later phase. When a phase is planned, read its section and put each item into a task (or say in the plan why it is dropped). Delete an item once it is done.
 
-Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26).
+Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), and the Phase 2 task reviews and its final whole-branch review (2026-10-27).
 
 ## Phase 3
 
 - Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/` or `lib/domain/` that no test imports is not counted (new `lib/data` code lands in this phase). Preferred fix: at check time, generate a temporary test that imports every non-generated `lib/domain/**` and `lib/data/**` file, so unloaded files show up with 0 hits (enum-only files have no executable lines and stay absent by themselves). Fallback: compare the lcov file list with the `.dart` files on disk and fail on a missing one, with a one-entry allowlist for `domain/models/enums.dart`. Do the same for `view_models/` when phase 4 adds it to the prefixes.
+
+- The media bridge supplies the `NOT NULL` clip fields with a fallback (R4g, D-57): when MediaStore has no `DATE_TAKEN`, use `DATE_ADDED`, then `DATE_MODIFIED`; an unknown width or height is `0`. The repository stores what it is given; the rule is written only in the doc comments of `NewClip` and `ClipFingerprint`.
 
 - The media bridge treats a MediaStore `DATE_TAKEN` before 1970 or more than a day in the future as missing and uses the R4g fallback (`DATE_ADDED`, then `DATE_MODIFIED`), because container metadata holds garbage (QuickTime epochs, wrong units). The backup round-trips any date a `DateTime` can hold (years such as `+010001` or `-0001` included), but a clip dated 1904 or the year 10001 would sort to the far end of To tag and of its reels.
 
@@ -47,6 +49,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - guarding the VN-mark start-only padding
 - The shooting card needs a top-level semantics label. The icon-only `TtGlassPill` needs a semantics doc.
 - Review the `TtCardRow` API: its look is currently chosen by `trailingText`.
+- Widgetbook tests, when screens grow the catalogue:
+  - `widgetbook/test/catalog_use_cases_test.dart` taps each use case but never checks the tap selected it. After the pump, add `expect(WidgetbookState.of(tester.element(find.byType(Scaffold).first)).useCase?.name, name)` (checked in a scratch copy during the Phase 2 Task 3 review).
+  - `widgetbook/test/catalog_coverage_test.dart` (`_unregisteredFiles`) is satisfied by any one registered class in a file, so a second widget added to a registered file goes unnoticed. Check per class, with an allow-list of classes that are deliberately not in the catalogue.
 
 ## Phase 5 (tagging and the player)
 
@@ -78,6 +83,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 9 (references)
 
+- The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it.
 - The reference card's "Open" button takes half the row at 2×.
 - The banner margin is not configurable (`refs.js` overrides it).
 
@@ -85,12 +91,17 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - The Export/Import buttons: decode and validate the backup JSON off the UI isolate (`compute`/`Isolate.run`) so a large file doesn't freeze the screen; show "X of Y clips found" after the media check.
 
+- When the Settings screen watches `SettingsRepository.watch()`, a corrupt stored value logs its "Setting … is corrupt" warning on every emission, not once. Log it once per key (or repair the row on first read).
+
+- The reminder-time form must keep `eveningReminderMinutes` within 0 to 1439 itself: `AppSettings` does not check it, and `SettingsRepository.save` throws `ArgumentError` for anything else.
+
 - `.ib.tonal` icon button.
 - `TtListRow` tall and disabled variants.
 - The disabled-on `TtSwitch` tick is at full opacity.
 
 ## Phase 11 (polish and release)
 
+- `design/tools/build_tokens.py --check` scans only `design/tokens/colour-options/` and `design/handoff/compose/` for orphans. Add `packages/taketray_ui/lib/src/tokens/` (it holds only `tokens.g.dart`) to `GENERATED_DIRS`.
 - Release as an app bundle or split per ABI (the APK is 48.9 MB for 3 ABIs).
 - Build warnings: CupertinoIcons not bundled, and the Patrol plugin applies KGP.
 - `TtGlass`: the shadow bleeds through the translucent fill.

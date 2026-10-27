@@ -53,8 +53,7 @@ void main() {
   setUp(() async {
     repo = Directory.systemTemp.createTempSync('check_generated_test');
     Directory('${repo.path}/tool').createSync();
-    File('bin/../check_generated')
-        .copySync('${repo.path}/tool/check_generated');
+    File('check_generated').copySync('${repo.path}/tool/check_generated');
     _write('tool/dart', _fakeDart.trimLeft());
     await Process.run('chmod', [
       '+x',
