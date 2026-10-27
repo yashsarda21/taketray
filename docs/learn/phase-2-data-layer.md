@@ -865,7 +865,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
   The checks compare values the way the database will store them. Times are cut to whole milliseconds as they are read, because that is all the database keeps. Two zone entries at `…00.000Z` and `…00.000400Z` look different in the file, but they would be the same row in the database, so they are a duplicate.
 
-- **Fixing what the app would never write, instead of refusing it.** Two states pass every database rule but break TakeTray's own rules (Sections 5 and 6): a clip that is in a reel *and* in To tag, and a clip in no reel and no list (an orphan). Refusing the whole backup over one of them would leave the user with nothing to restore. Importing them as they are would cause trouble later: an orphan is invisible, and because its video is already "known", the detector would never put it in To tag again. So the reader repairs them the way the repositories would, before anything is counted or stored:
+- **Fixing what the app would never write, instead of refusing it.** Three states can be in a file but break TakeTray's own rules (Sections 5 to 7): a clip that is in a reel *and* in To tag, a clip in no reel and no list (an orphan), and two references of one reel that are the same page once their links are cleaned. Refusing the whole backup over one of them would leave the user with nothing to restore. Importing them as they are would cause trouble later: an orphan is invisible, and because its video is already "known", the detector would never put it in To tag again. So the reader repairs them the way the repositories would, before anything is counted or stored:
 
   ```dart
   final linked = {for (final l in clipReels) l.clipId};
@@ -880,7 +880,19 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
   ];
   ```
 
-  The link wins over the To tag row, as in `tagClip`, and then a clip with no place is left out, as `deleteOrphanClips` would do. `ImportSummary` counts what was actually stored.
+  The link wins over the To tag row, as in `tagClip`, and then a clip with no place is left out, as `deleteOrphanClips` would do.
+
+  The references case looks impossible today, since `ReferencesRepository.add` never saves a page twice (Section 7). It becomes possible the day a later TakeTray cleans links differently: D-55 already accepts that two YouTube shares with different `?si=` tracking are two references, and if a later version strips `?si=`, a database holding such a pair would write a backup that the same version then refuses. So the reader keeps the reference the user saved first (the lowest id) and drops the rest:
+
+  ```dart
+  final firstSaved = <(int, String), ReelReferenceRow>{};
+  for (final r in references) {
+    final kept = firstSaved[(r.reelId, r.url)];
+    if (kept == null || r.id < kept.id) firstSaved[(r.reelId, r.url)] = r;
+  }
+  ```
+
+  `ImportSummary` counts what was actually stored, and the log line says how many rows of each kind were left out.
 
 - **One transaction means all or nothing.** Only a file that passed every check gets to the second half: delete every row of every table, then insert the backup's rows, keeping their ids:
 
@@ -932,7 +944,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
   A field that export forgot, import dropped, or a time that lost its milliseconds would make the second file differ. For that to be a fair comparison the export has to be *stable*: rows are always sorted (by id; links by clip then reel; the timeline by time) and keys are always written in the same order.
 
-  The other half of Review Focus 2 is the failure tests. Each one seeds a database, tries a broken file, and checks that the right problem is reported *and* that every row of every table is exactly as before: `nope` is `notJson`, `{"app":"Other"}` is `notTakeTray`, `schemaVersion: 2` is `newerVersion`, and 56 different breakages (a link to clip 999, a 41-character name, a time without `Z`, 30 February, two clips with the same MediaStore id, two zone entries in the same millisecond…) are each `invalidData`, and each test also checks *where* the file was refused (`clipReels[0].clipId`), so a case cannot pass because some other rule happened to fire first. One more test plants a database trigger that refuses the backup's reels halfway through the replace. It stands in for any rule the checks might miss, and it proves that even then the import reports `invalidData` and every old row is still there.
+  The other half of Review Focus 2 is the failure tests. Each one seeds a database, tries a broken file, and checks that the right problem is reported *and* that every row of every table is exactly as before: `nope` is `notJson`, `{"app":"Other"}` is `notTakeTray`, `schemaVersion: 2` is `newerVersion`, and 55 different breakages (a link to clip 999, a 41-character name, a time without `Z`, 30 February, two clips with the same MediaStore id, two zone entries in the same millisecond…) are each `invalidData`, and each test also checks *where* the file was refused (`clipReels[0].clipId`), so a case cannot pass because some other rule happened to fire first. One more test plants a database trigger that refuses the backup's reels halfway through the replace. It stands in for any rule the checks might miss, and it proves that even then the import reports `invalidData` and every old row is still there.
 
 - **What is deliberately left out.** A backup holds what is *yours*: reels, clips, links, To tag and Skipped, settings, the zone timeline. It leaves out what belongs to *this phone*:
   - **VN sessions and their copy records.** They describe files sitting in this phone's `Movies/TakeTray/` folder. On another phone (or after a reset) those files aren't there, and records pointing at them would be lies. After an import, any copies still on the phone are no longer owned by the app; the storage screen (phase 8) lists them so you can delete them.

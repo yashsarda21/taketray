@@ -69,6 +69,7 @@ class BackupData {
     required this.zoneTimeline,
     this.inboxRowsDropped = 0,
     this.orphanClipsDropped = 0,
+    this.referencesDropped = 0,
   });
 
   final List<ReelRow> reels;
@@ -86,6 +87,10 @@ class BackupData {
   /// Clips in the file that [decodeBackup] left out because they were in no
   /// reel and no list.
   final int orphanClipsDropped;
+
+  /// References in the file that [decodeBackup] left out because a reference
+  /// with a lower id on the same reel has the same cleaned link.
+  final int referencesDropped;
 }
 
 /// Writes [data] as a version-1 backup file: JSON with a 2-space indent and
@@ -182,10 +187,11 @@ String encodeBackup(
 /// `normalizeReferenceUrl`, times cut to whole milliseconds (as the database
 /// stores them).
 ///
-/// Two states the app never makes are brought back to its rules instead of
-/// refusing the file: a clip that is in a reel loses its `inbox` row, and a
-/// clip in no reel and no list is left out (the orphan rule, D-56). The
-/// returned rows are exactly what is stored.
+/// Three states the app never makes are brought back to its rules instead of
+/// refusing the file: of two references of one reel with the same cleaned
+/// link, only the one with the lower id is kept; a clip that is in a reel
+/// loses its `inbox` row; and a clip in no reel and no list is left out (the
+/// orphan rule, D-56). The returned rows are exactly what is stored.
 BackupData decodeBackup(String text) {
   final Object? root;
   try {
@@ -234,16 +240,13 @@ BackupData _readV1(_Fields file) {
 
   final references = <ReelReferenceRow>[];
   final referenceIds = <int>{};
-  final referenceUrls = <(int, String)>{};
   for (final r in file.objects('references')) {
     final id = r.id('id');
     if (!referenceIds.add(id)) throw r.invalid('id');
     final reelId = r.id('reelId');
     if (!reelIds.contains(reelId)) throw r.invalid('reelId');
     final url = normalizeReferenceUrl(r.string('url'))?.toString();
-    if (url == null || !referenceUrls.add((reelId, url))) {
-      throw r.invalid('url');
-    }
+    if (url == null) throw r.invalid('url');
     final label = r.nullableString('label');
     if (checkReferenceLabel(label) != null) throw r.invalid('label');
     references.add(
@@ -352,11 +355,25 @@ BackupData _readV1(_Fields file) {
   // hand, or a slip in some version). Refusing it would leave the user with
   // no restorable backup, and importing it as it is misbehaves later (D-59),
   // so it is brought back to the app's rules:
+  // - one reel has one reference per page: of the references whose cleaned
+  //   links are the same, the one with the lowest id (the first saved) is
+  //   kept, as `ReferencesRepository.add` would have kept it. A file can
+  //   hold such a pair when a later version cleans links differently (D-55);
   // - a clip in a reel is not also in To tag or Skipped: the link wins, as
   //   in `tagClip` and `addClipsToReel` (D-57);
   // - a clip in no reel and no list is left out, the rule of
   //   `deleteOrphanClips` (D-56). Only `clip_reels` and `inbox` name clips,
   //   so nothing else points at it.
+  final firstSaved = <(int, String), ReelReferenceRow>{};
+  for (final r in references) {
+    final kept = firstSaved[(r.reelId, r.url)];
+    if (kept == null || r.id < kept.id) firstSaved[(r.reelId, r.url)] = r;
+  }
+  final keptReferences = [
+    for (final r in references)
+      if (identical(firstSaved[(r.reelId, r.url)], r)) r,
+  ];
+
   final linked = {for (final l in clipReels) l.clipId};
   final keptInbox = [
     for (final i in inbox)
@@ -370,7 +387,7 @@ BackupData _readV1(_Fields file) {
 
   return BackupData(
     reels: reels,
-    references: references,
+    references: keptReferences,
     clips: keptClips,
     clipReels: clipReels,
     inbox: keptInbox,
@@ -378,6 +395,7 @@ BackupData _readV1(_Fields file) {
     zoneTimeline: zoneTimeline,
     inboxRowsDropped: inbox.length - keptInbox.length,
     orphanClipsDropped: clips.length - keptClips.length,
+    referencesDropped: references.length - keptReferences.length,
   );
 }
 
@@ -474,7 +492,7 @@ DateTime? _parseInstant(String text) {
 /// own limit is 2^63 - 1, and once a table's `AUTOINCREMENT` counter reaches
 /// it, every new row in that table fails ("database or disk is full") until
 /// the next import; a hand-edited id near it must not do that.
-const _maxId = 1 << 53;
+const int _maxId = 1 << 53;
 
 /// A problem in the file at [where]; turned into [BackupException].
 class _Invalid implements Exception {

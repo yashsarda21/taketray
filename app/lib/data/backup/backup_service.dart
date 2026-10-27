@@ -165,7 +165,8 @@ class BackupService {
     );
     _log.info(
       'Imported ${_counts(data)}; left out ${data.inboxRowsDropped} inbox '
-      'rows of clips in a reel and ${data.orphanClipsDropped} orphan clips',
+      'rows of clips in a reel, ${data.orphanClipsDropped} orphan clips '
+      'and ${data.referencesDropped} duplicate references',
     );
     return summary;
   }

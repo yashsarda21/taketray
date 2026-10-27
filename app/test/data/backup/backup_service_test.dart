@@ -601,16 +601,6 @@ void main() {
             (f) => _section(f, 'references').last['id'] = 2,
             where: 'references[3].id',
           ),
-          'the same page twice on one reel (after cleaning the link)': (
-            (f) {
-              final copy =
-                  Map<String, dynamic>.of(_section(f, 'references').first)
-                    ..['id'] = 9
-                    ..['url'] = 'https://instagram.com/reel/ABC123?igsh=other';
-              (f['references'] as List).add(copy);
-            },
-            where: 'references[4].url',
-          ),
           'a reference link that is not a web link': (
             (f) =>
                 _section(f, 'references').first['url'] = 'ftp://example.com/x',
@@ -982,6 +972,44 @@ void main() {
       expect([for (final c in clips) c.id], unorderedEquals([10, 11, 12, 14]));
       expect(await db.deleteOrphanClips(), 0, reason: 'same rule as D-56');
     });
+
+    test(
+      'the same page twice on one reel keeps the reference with the lower id',
+      () async {
+        // Reference 2 is reel 3's Instagram reel. Two more rows name the same
+        // page once the link is cleaned: possible after a later version
+        // cleans links differently (D-55), so the file is not refused.
+        final file = _fixtureMap();
+        Map<String, dynamic> samePage(int id, String url, String label) =>
+            Map<String, dynamic>.of(_section(file, 'references').first)
+              ..['id'] = id
+              ..['url'] = url
+              ..['label'] = label;
+        (file['references'] as List)
+          ..add(
+            samePage(9, 'https://instagram.com/reel/ABC123?igsh=x', 'Later'),
+          )
+          ..add(samePage(1, 'http://instagr.am/p/ABC123', 'Earliest'));
+        final records = <LogRecord>[];
+        final sub = Logger('backup').onRecord.listen(records.add);
+        addTearDown(sub.cancel);
+
+        final summary = await backup.importJson(jsonEncode(file));
+
+        expect(summary.references, 4);
+        final refs = await (db.select(
+          db.reelReferences,
+        )..where((r) => r.reelId.equals(3))).get();
+        expect(
+          {for (final r in refs) r.id: (r.url, r.label)},
+          {
+            1: ('https://www.instagram.com/p/ABC123/', 'Earliest'),
+            8: ('https://example.com/lighting-guide?part=2', null),
+          },
+        );
+        expect(records.last.message, endsWith('and 2 duplicate references'));
+      },
+    );
 
     test('a pending clip that is also in a reel stays, in the reel', () async {
       final file = _fixtureMap();
