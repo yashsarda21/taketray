@@ -1,7 +1,7 @@
 import json, random, sys
 R='/Users/sardap/Documents/github/reel-helper'
-T=f'file://{R}/app/assets/sample/thumbs/'
-d=json.load(open(f'{R}/app/assets/sample/sample_data.json'))
+T=f'file://{R}/reference/prototype-app/assets/sample/thumbs/'
+d=json.load(open(f'{R}/reference/prototype-app/assets/sample/sample_data.json'))
 clips=[c for c in d['clips'] if c['orient']=='v']
 by={k:[c for c in clips if k in c['reels']] for k in ['r1','r2','r3']}
 random.seed(7)
@@ -17,7 +17,7 @@ def tray(k,name):
     imgs=''.join(f'<img src="{T}{c["id"]}.jpg" style="left:{x[i]}px;transform:rotate({rot[i]}deg);z-index:{[1,3,2][i]}">' for i,c in enumerate(cs))
     return f'<div class="tray"><div class="stand">{imgs}<div class="base"></div></div><b>{name}</b><small>{len(by[k])} clips</small></div>'
 html=f'''<!doctype html><html><head><meta charset="utf-8"><style>
-@font-face{{font-family:J;src:url(file://{R}/app/assets/fonts/PlusJakartaSans-Variable.ttf);font-weight:200 800}}
+@font-face{{font-family:J;src:url(file://{R}/packages/taketray_ui/fonts/PlusJakartaSans-Variable.ttf);font-weight:200 800}}
 *{{box-sizing:border-box;margin:0}}
 body{{width:1080px;height:1350px;overflow:hidden;background:#0E0F12;font-family:J,sans-serif;color:#F1F2F6;position:relative;padding:76px 72px 0}}
 .kick{{display:flex;align-items:center;gap:14px;font-size:24px;font-weight:700;letter-spacing:3px;text-transform:uppercase;color:#9AA3B2}}
