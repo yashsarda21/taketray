@@ -450,7 +450,7 @@ final _instant = RegExp(
 /// stores, so two times that would be stored the same compare equal), or null
 /// when it is not an [_instant], names a date or time that does not exist
 /// (`DateTime.parse` would roll 30 February over into March), or lies outside
-/// what a `DateTime` can hold (about 271,821 BC to AD 275,760).
+/// what a `DateTime` can hold (the years -271821 to 275760).
 DateTime? _parseInstant(String text) {
   final match = _instant.firstMatch(text);
   if (match == null) return null;
@@ -471,7 +471,7 @@ DateTime? _parseInstant(String text) {
   }
   // The date must be the one written. A year far past the range does not
   // always throw: it can wrap around to another date (`+999999` becomes a
-  // day in 169110 BC), which this comparison also refuses.
+  // day in the year -169110), which this comparison also refuses.
   if (asWritten.year != year ||
       asWritten.month != month ||
       asWritten.day != day ||
