@@ -263,6 +263,23 @@ void main() {
       await expectGuideline(tester, meetsGuideline(ttTextContrastGuideline));
     });
 
+    testWidgets('fails 4.42:1 text at 14 dp, just under the line', (
+      tester,
+    ) async {
+      await pump(tester, color: const Color(0xFF787878), size: 14);
+      await expectGuideline(
+        tester,
+        doesNotMeetGuideline(ttTextContrastGuideline),
+      );
+    });
+
+    testWidgets('passes 4.61:1 text at 14 dp, just over the line', (
+      tester,
+    ) async {
+      await pump(tester, color: const Color(0xFF757575), size: 14);
+      await expectGuideline(tester, meetsGuideline(ttTextContrastGuideline));
+    });
+
     testWidgets('fails 3:1 text at 14 dp', (tester) async {
       await pump(tester, color: const Color(0xFF949494), size: 14);
       await expectGuideline(
@@ -303,4 +320,298 @@ void main() {
       expect(evaluation.reason, contains('#cccccc on #ffffff'));
     });
   });
+
+  group('worst case', () {
+    testWidgets('fails white text half over black, half over white', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _page(
+          const SizedBox(
+            width: 240,
+            height: 60,
+            child: Stack(
+              children: [
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  width: 120,
+                  child: ColoredBox(color: _black),
+                ),
+                Center(
+                  child: Text(
+                    'Half on white',
+                    style: TextStyle(color: _white, fontSize: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final sample = await _only(tester);
+      expect(sample.background, _white);
+      expect(await _evaluate(tester), _fails);
+    });
+
+    testWidgets('fails white text over a black-to-white gradient', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _page(
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [_black, _white]),
+            ),
+            child: Text(
+              'Over a gradient',
+              style: TextStyle(color: _white, fontSize: 20),
+            ),
+          ),
+        ),
+      );
+      expect((await _only(tester)).ratio, lessThan(1.1));
+      expect(await _evaluate(tester), _fails);
+    });
+
+    testWidgets('passes white text over a gradient that stays dark', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _page(
+          const DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(colors: [_black, Color(0xFF555555)]),
+            ),
+            child: Text(
+              'Over a gradient',
+              style: TextStyle(color: _white, fontSize: 20),
+            ),
+          ),
+        ),
+      );
+      final sample = await _only(tester);
+      // The light end is the worst: about #555555, 7.5:1.
+      expect(sample.ratio, inInclusiveRange(7, 8));
+      expect(await _evaluate(tester), _passes);
+    });
+
+    testWidgets('fails a faint span inside Text.rich', (tester) async {
+      await tester.pumpWidget(
+        _page(
+          const Text.rich(
+            TextSpan(
+              text: 'Readable and ',
+              style: TextStyle(color: _black, fontSize: 14),
+              children: [
+                TextSpan(
+                  text: 'faint',
+                  style: TextStyle(color: Color(0xFFCCCCCC)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      final sample = await _only(tester);
+      expect(sample.foreground, const Color(0xFFCCCCCC));
+      expect(await _evaluate(tester), _fails);
+    });
+
+    testWidgets('passes a Text.rich whose spans all have contrast', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _page(
+          const Text.rich(
+            TextSpan(
+              text: 'Black and ',
+              style: TextStyle(color: _black, fontSize: 14),
+              children: [
+                TextSpan(
+                  text: 'dark blue',
+                  style: TextStyle(color: Color(0xFF003366)),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(await _evaluate(tester), _passes);
+    });
+  });
+
+  group('which texts', () {
+    testWidgets('measures each text of a page with its own colours', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _page(
+          const Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('One', style: TextStyle(color: _black, fontSize: 14)),
+              ColoredBox(
+                color: Color(0xFF203040),
+                child: Text(
+                  'Two',
+                  style: TextStyle(color: _white, fontSize: 14),
+                ),
+              ),
+              Text(
+                'Three',
+                style: TextStyle(color: Color(0xFF8B0000), fontSize: 14),
+              ),
+            ],
+          ),
+        ),
+      );
+      final samples = {for (final s in await _measure(tester)) s.text: s};
+      expect(samples.keys, unorderedEquals(['One', 'Two', 'Three']));
+      expect(samples['One']!.foreground, _black);
+      expect(samples['One']!.background, _white);
+      expect(samples['Two']!.foreground, _white);
+      expect(samples['Two']!.background, const Color(0xFF203040));
+      expect(samples['Three']!.foreground, const Color(0xFF8B0000));
+      expect(samples['Three']!.background, _white);
+    });
+
+    testWidgets('measures the text typed in a TextField', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 240,
+              child: TextField(
+                controller: TextEditingController(text: 'Typed text'),
+                style: const TextStyle(color: Color(0xFF336699), fontSize: 16),
+              ),
+            ),
+          ),
+        ),
+      );
+      final samples = await _measure(tester);
+      final typed = samples.singleWhere((s) => s.text == 'Typed text');
+      expect(typed.foreground, const Color(0xFF336699));
+      expect(typed.fontSize, 16);
+    });
+
+    testWidgets('measures text merged into a parent label', (tester) async {
+      // Flutter's guideline cannot find these: the node's label is
+      // "Title\nfaint", not either text.
+      await tester.pumpWidget(
+        _page(
+          const MergeSemantics(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Title', style: TextStyle(color: _black, fontSize: 14)),
+                Text(
+                  'faint',
+                  style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 14),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(
+        (await _measure(tester)).map((s) => s.text),
+        unorderedEquals(['Title', 'faint']),
+      );
+      expect(await _evaluate(tester), _fails);
+    });
+
+    testWidgets('measures text excluded from semantics', (tester) async {
+      await tester.pumpWidget(
+        _page(
+          const ExcludeSemantics(
+            child: Text(
+              'faint',
+              style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 14),
+            ),
+          ),
+        ),
+      );
+      expect(await _evaluate(tester), _fails);
+    });
+
+    testWidgets('skips text whose semantics are disabled', (tester) async {
+      await tester.pumpWidget(
+        _page(
+          Semantics(
+            enabled: false,
+            child: const Text(
+              'faint',
+              style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 14),
+            ),
+          ),
+        ),
+      );
+      expect(await _measure(tester), isEmpty);
+      expect(await _evaluate(tester), _passes);
+    });
+  });
+
+  group('unsupported styles', () {
+    for (final (name, style) in [
+      ('a foreground paint', TextStyle(foreground: Paint()..color = _black)),
+      ('a background paint', TextStyle(background: Paint()..color = _white)),
+      ('a background colour', const TextStyle(backgroundColor: _white)),
+    ]) {
+      testWidgets('throws on $name and restores every text', (tester) async {
+        await tester.pumpWidget(
+          _page(
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Plain',
+                  style: TextStyle(color: _black, fontSize: 14),
+                ),
+                Text('Odd', style: style.copyWith(fontSize: 14)),
+              ],
+            ),
+          ),
+        );
+        final paragraphs = tester
+            .renderObjectList<RenderParagraph>(find.byType(RichText))
+            .toList();
+        final spans = [for (final p in paragraphs) p.text];
+        await expectLater(_measure(tester), throwsStateError);
+        for (var i = 0; i < paragraphs.length; i++) {
+          expect(identical(paragraphs[i].text, spans[i]), isTrue);
+        }
+      });
+    }
+
+    testWidgets('throws on text without a colour', (tester) async {
+      await tester.pumpWidget(
+        _page(const Text('Bare', style: TextStyle(fontSize: 14))),
+      );
+      await expectLater(_measure(tester), throwsStateError);
+    });
+  });
 }
+
+/// Runs [ttTextContrastGuideline] with semantics on.
+Future<Evaluation> _evaluate(WidgetTester tester) async {
+  final semantics = tester.ensureSemantics();
+  try {
+    return await ttTextContrastGuideline.evaluate(tester);
+  } finally {
+    semantics.dispose();
+  }
+}
+
+final Matcher _passes = isA<Evaluation>().having(
+  (e) => e.passed,
+  'passed',
+  isTrue,
+);
+final Matcher _fails = isA<Evaluation>().having(
+  (e) => e.passed,
+  'passed',
+  isFalse,
+);

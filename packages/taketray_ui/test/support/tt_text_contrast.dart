@@ -10,10 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 ///
 /// Flutter's [textContrastGuideline] takes a screenshot and guesses the text
 /// colour as the most frequent "light" or "dark" pixel around the text. That
-/// guess depends on how the font is rasterised: on Linux (FreeType) a 12 to
-/// 14 dp glyph has so few fully covered pixels that an anti-aliased edge
-/// pixel wins, and text that is fine reads as 1.2:1. This guideline checks
-/// the same texts with the same thresholds, but measures each one from two
+/// guess depends on how the font is rasterised: on Linux a 12 to 14 dp
+/// glyph has so few fully covered pixels that an anti-aliased edge pixel
+/// wins, and text that is fine reads as 1.2:1 (likely FreeType vs the Mac's
+/// CoreText; inferred, see D-62). This guideline checks
+/// the same texts with the same thresholds, but measures each one from three
 /// screenshots in which no glyph is drawn:
 ///
 /// - the background: every text in the view painted transparent (and without
@@ -21,13 +22,26 @@ import 'package:flutter_test/flutter_test.dart';
 /// - the foreground: every text run replaced by a solid box in the text's own
 ///   colour (its `backgroundColor`), so each box pixel is exactly what a
 ///   fully covered glyph pixel is after every opacity, blend and translucent
-///   layer above and below it.
+///   layer above and below it;
+/// - the probe: the same boxes in the inverted colour, so a box pixel shows
+///   up even where the text colour equals the background.
 ///
-/// Inside the text's paint bounds, the pixels where the two images differ
-/// are the text; the most frequent (box, background) pair of colours gives
-/// the ratio. Boxes and fills have no glyph edges, so the result does not
-/// depend on the font rasteriser. Text shadows are left out, which can only
-/// lower the ratio.
+/// Inside the text's paint bounds, the pixels that the foreground or the
+/// probe changed are the text's boxes. Pixels on a box edge (a 4-neighbour
+/// outside the boxes: partly covered rows and columns, clip edges) are left
+/// out. Each remaining pixel has a (foreground, background) pair; the text's
+/// ratio is the worst one, ignoring the worst [ignoredShare] of its pixels so
+/// that a few stray pixels cannot decide it. So at least 98 % of the text's
+/// fully covered pixels meet the reported ratio, and a band under the
+/// threshold (text half over a light area, the light end of a gradient)
+/// fails. Boxes and fills have no glyph edges, so the result does not depend
+/// on the font rasteriser. Text shadows are left out, which can only lower
+/// the ratio.
+///
+/// Besides the texts Flutter's guideline picks (semantics nodes whose label
+/// is the text), every other shown text is measured too (a hit-testable,
+/// non-empty [Text] or [EditableText], unless its semantics are disabled or
+/// hidden), so text merged into a parent label cannot pass unmeasured.
 ///
 /// Every text render object is restored, and the frame repainted, before
 /// this returns.
@@ -41,6 +55,10 @@ class TtTextContrastGuideline extends AccessibilityGuideline {
   /// As Flutter's guideline: a ratio 0.01 under the target still passes.
   static const double _tolerance = -0.01;
 
+  /// The share of a text's fully covered pixels whose worst ratios are
+  /// ignored: 2 %.
+  static const double ignoredShare = 0.02;
+
   @override
   String get description =>
       'Text contrast should follow WCAG guidelines '
@@ -49,7 +67,8 @@ class TtTextContrastGuideline extends AccessibilityGuideline {
   @override
   Future<Evaluation> evaluate(WidgetTester tester) async {
     var result = const Evaluation.pass();
-    for (final sample in await measureTtTextContrast(tester)) {
+    final samples = await measureTtTextContrast(tester);
+    for (final sample in samples) {
       if (sample.ratio - sample.required >= _tolerance) continue;
       result += Evaluation.fail(
         '"${sample.text}": expected a contrast ratio of at least '
@@ -127,6 +146,7 @@ Future<List<TtTextContrastSample>> measureTtTextContrast(
       renderView,
       targets,
     );
+    _collectShownTexts(tester, renderView, targets);
     if (targets.isEmpty) continue;
 
     final texts = <RenderBox>[];
@@ -142,11 +162,14 @@ Future<List<TtTextContrastSample>> measureTtTextContrast(
 
     late final _Shot background;
     late final _Shot boxes;
+    late final _Shot probe;
     try {
-      _restyleAll(originals, boxes: false);
+      _restyleAll(originals, _Paint.hidden);
       background = await _shoot(tester, renderView);
-      _restyleAll(originals, boxes: true);
+      _restyleAll(originals, _Paint.boxes);
       boxes = await _shoot(tester, renderView);
+      _restyleAll(originals, _Paint.probe);
+      probe = await _shoot(tester, renderView);
     } finally {
       originals.forEach(_setTextOf);
       _flush(tester);
@@ -158,7 +181,7 @@ Future<List<TtTextContrastSample>> measureTtTextContrast(
         box.getTransformTo(null),
         box.paintBounds,
       );
-      final (fg, bg) = _dominantPair(background, boxes, rect);
+      final (fg, bg) = _worstPair(background, boxes, probe, rect);
       samples.add(
         TtTextContrastSample(
           text: target.label,
@@ -227,10 +250,6 @@ _Target? _targetFor(
     throw StateError('Unexpected renderObject type: $renderBox');
   }
   final globalTransform = renderBox.getTransformTo(null);
-  final paintBoundsWithOffset = MatrixUtils.transformRect(
-    globalTransform,
-    renderBox.paintBounds.inflate(4),
-  );
   final rootTransform = Matrix4.identity();
   renderView.applyPaintTransform(renderView.child!, rootTransform);
   rootTransform.multiply(globalTransform);
@@ -249,7 +268,17 @@ _Target? _targetFor(
   }
   final intersection = nodeBounds.intersect(screenBounds);
   if (intersection.width <= 0 || intersection.height <= 0) return null;
+  return _textTarget(element, label, renderView);
+}
 
+/// [element] (a [Text] or [EditableText]) as a target, or null when it is
+/// more than 50 px off screen (Flutter's rule).
+_Target? _textTarget(Element element, String label, RenderView renderView) {
+  final renderBox = element.renderObject! as RenderBox;
+  final paintBoundsWithOffset = MatrixUtils.transformRect(
+    renderBox.getTransformTo(null),
+    renderBox.paintBounds.inflate(4),
+  );
   final widget = element.widget;
   final TextStyle style;
   if (widget is Text) {
@@ -309,50 +338,127 @@ void _setTextOf(RenderBox box, InlineSpan span) {
   }
 }
 
-void _restyleAll(Map<RenderBox, InlineSpan> originals, {required bool boxes}) {
+/// Adds every shown text that the semantics walk did not reach: a
+/// hit-testable [Text] or [EditableText] with something other than spaces in
+/// it, typically one whose semantics are merged into a parent label (a tile,
+/// a chip) or excluded. As in Flutter's walk, text whose semantics node (after
+/// merging) is disabled, hidden or invisible is exempt, and so is text more
+/// than 50 px off screen. This is what keeps the check from passing because
+/// it measured nothing (D-62).
+void _collectShownTexts(
+  WidgetTester tester,
+  RenderView renderView,
+  List<_Target> targets,
+) {
+  final reached = {for (final t in targets) t.text};
+  for (final element
+      in find
+          .byWidgetPredicate((w) => w is Text || w is EditableText)
+          .hitTestable()
+          .evaluate()) {
+    final label = switch (element.widget) {
+      final Text t => t.data ?? t.textSpan?.toPlainText() ?? '',
+      final EditableText t => t.controller.text,
+      _ => '',
+    };
+    if (label.trim().isEmpty) continue;
+    if (tester.viewOf(find.byElementPredicate((e) => e == element)) !=
+        renderView.flutterView) {
+      continue;
+    }
+    final node = _effectiveSemantics(element.renderObject!);
+    if (node != null &&
+        (node.isInvisible ||
+            node.flagsCollection.isHidden ||
+            node.flagsCollection.isEnabled == ui.Tristate.isFalse)) {
+      continue;
+    }
+    final target = _textTarget(element, label, renderView);
+    if (target == null || reached.contains(target.text)) continue;
+    reached.add(target.text);
+    targets.add(target);
+  }
+}
+
+/// The semantics node that [object] ends up in, after merging.
+SemanticsNode? _effectiveSemantics(RenderObject object) {
+  RenderObject? current = object;
+  SemanticsNode? node;
+  while (current != null && node == null) {
+    node = current.debugSemantics;
+    current = current.parent;
+  }
+  while (node != null && node.isMergedIntoParent) {
+    node = node.parent;
+  }
+  return node;
+}
+
+/// What [_restyle] draws in place of the glyphs.
+enum _Paint {
+  /// Nothing: the glyphs are transparent.
+  hidden,
+
+  /// Each run's box in the run's text colour.
+  boxes,
+
+  /// Each run's box in the inverse of the run's text colour.
+  probe,
+}
+
+void _restyleAll(Map<RenderBox, InlineSpan> originals, _Paint paint) {
   originals.forEach((box, span) {
-    _setTextOf(box, _restyle(span, boxes: boxes, root: true));
+    _setTextOf(box, _restyle(span, paint: paint, root: true));
   });
 }
 
+Color _inverse(Color c) =>
+    Color.from(alpha: c.a, red: 1 - c.r, green: 1 - c.g, blue: 1 - c.b);
+
 const _clear = Color(0x00000000);
 
-/// [span] with its glyphs transparent and without shadows, and with, when
-/// [boxes], each run's box filled with the run's text colour.
+/// [span] with its glyphs transparent and without shadows, and each run's
+/// box filled as [paint] says.
 InlineSpan _restyle(
   InlineSpan span, {
-  required bool boxes,
+  required _Paint paint,
   required bool root,
+  Color? inherited,
 }) {
   if (span is! TextSpan) return span;
   final style = span.style;
-  TextStyle? restyled;
-  if (style == null) {
-    if (root) throw StateError('Text without a style: "${span.toPlainText()}"');
-  } else {
-    if (style.foreground != null ||
-        style.background != null ||
-        style.backgroundColor != null) {
-      throw StateError(
-        'The TakeTray contrast check does not measure text with a '
-        'foreground or background paint: "${span.toPlainText()}"',
-      );
-    }
-    final color = style.color;
-    if (root && color == null) {
-      throw StateError('Text without a colour: "${span.toPlainText()}"');
-    }
-    restyled = style.copyWith(
-      color: color == null ? null : _clear,
-      backgroundColor: boxes ? color : null,
-      shadows: root || style.shadows != null ? const <Shadow>[] : null,
-      decorationColor: style.decorationColor == null ? null : _clear,
+  if (style != null &&
+      (style.foreground != null ||
+          style.background != null ||
+          style.backgroundColor != null)) {
+    throw StateError(
+      'The TakeTray contrast check does not measure text with a '
+      'foreground or background paint: "${span.toPlainText()}"',
     );
   }
+  final color = style?.color;
+  final effective = color ?? inherited;
+  if (effective == null && (span.text ?? '').isNotEmpty) {
+    throw StateError('Text without a colour: "${span.text}"');
+  }
+  final restyled = style?.copyWith(
+    color: color == null ? null : _clear,
+    backgroundColor: color == null
+        ? null
+        : switch (paint) {
+            _Paint.hidden => null,
+            _Paint.boxes => color,
+            _Paint.probe => _inverse(color),
+          },
+    shadows: root || style.shadows != null ? const <Shadow>[] : null,
+    decorationColor: style.decorationColor == null ? null : _clear,
+  );
   return TextSpan(
     text: span.text,
     children: span.children
-        ?.map((c) => _restyle(c, boxes: boxes, root: false))
+        ?.map(
+          (c) => _restyle(c, paint: paint, root: false, inherited: effective),
+        )
         .toList(),
     style: restyled,
     recognizer: span.recognizer,
@@ -403,31 +509,96 @@ Future<_Shot> _shoot(WidgetTester tester, RenderView renderView) async {
   return shot!;
 }
 
-/// The most frequent (box, background) pair among the pixels of [rect] that
-/// the boxes changed; (background, background) when none did, which is a
-/// ratio of 1.
-(Color, Color) _dominantPair(_Shot background, _Shot boxes, Rect rect) {
+/// The worst (box, background) pair among the fully covered box pixels of
+/// [rect], ignoring the worst [TtTextContrastGuideline.ignoredShare] of them;
+/// (background, background), a ratio of 1, when no box pixel is visible.
+(Color, Color) _worstPair(
+  _Shot background,
+  _Shot boxes,
+  _Shot probe,
+  Rect rect,
+) {
   final r = rect.intersect(
     Rect.fromLTWH(0, 0, background.width.toDouble(), background.height * 1.0),
   );
-  final pairs = <(int, int), int>{};
+  final left = r.left.floor();
+  final top = r.top.floor();
+  final w = r.isEmpty ? 0 : r.right.ceil() - left;
+  final h = r.isEmpty ? 0 : r.bottom.ceil() - top;
+  final inBox = List<bool>.filled(w * h, false);
   final plain = <int, int>{};
-  for (var x = r.left.floor(); x < r.right.ceil(); x++) {
-    for (var y = r.top.floor(); y < r.bottom.ceil(); y++) {
-      final b = background.at(x, y);
-      final f = boxes.at(x, y);
+  for (var y = 0; y < h; y++) {
+    for (var x = 0; x < w; x++) {
+      final b = background.at(left + x, top + y);
       plain.update(b, (n) => n + 1, ifAbsent: () => 1);
-      if (f != b) pairs.update((f, b), (n) => n + 1, ifAbsent: () => 1);
+      inBox[y * w + x] =
+          boxes.at(left + x, top + y) != b || probe.at(left + x, top + y) != b;
     }
   }
+  bool covered(int x, int y) =>
+      x >= 0 && y >= 0 && x < w && y < h && inBox[y * w + x];
+
+  Map<(int, int), int> pairsWhere(bool Function(int x, int y) keep) {
+    final pairs = <(int, int), int>{};
+    for (var y = 0; y < h; y++) {
+      for (var x = 0; x < w; x++) {
+        if (!keep(x, y)) continue;
+        final key = (
+          boxes.at(left + x, top + y),
+          background.at(left + x, top + y),
+        );
+        pairs.update(key, (n) => n + 1, ifAbsent: () => 1);
+      }
+    }
+    return pairs;
+  }
+
+  var pairs = pairsWhere(
+    (x, y) =>
+        covered(x, y) &&
+        covered(x - 1, y) &&
+        covered(x + 1, y) &&
+        covered(x, y - 1) &&
+        covered(x, y + 1),
+  );
+  // Text too small for a box pixel with four box neighbours: use them all.
+  if (pairs.isEmpty) pairs = pairsWhere(covered);
   if (pairs.isEmpty) {
     if (plain.isEmpty) return (_clear, _clear);
     final bg = _rgbaToColor(_mode(plain, _intBefore));
     return (bg, bg);
   }
-  final (f, b) = _mode(pairs, _pairBefore);
+
+  final ranked =
+      pairs.entries
+          .map((e) => (e.key, e.value, _ratio(e.key.$1, e.key.$2)))
+          .toList()
+        ..sort((a, b) {
+          final byRatio = a.$3.compareTo(b.$3);
+          return byRatio != 0
+              ? byRatio
+              : (_pairBefore(a.$1, b.$1) ? -1 : (a.$1 == b.$1 ? 0 : 1));
+        });
+  final total = pairs.values.fold(0, (a, b) => a + b);
+  final ignored = total * TtTextContrastGuideline.ignoredShare;
+  var seen = 0;
+  for (final (pair, count, _) in ranked) {
+    seen += count;
+    if (seen > ignored) {
+      return (_rgbaToColor(pair.$1), _rgbaToColor(pair.$2));
+    }
+  }
+  final (f, b) = ranked.last.$1;
   return (_rgbaToColor(f), _rgbaToColor(b));
 }
+
+double _ratio(int fgRgba, int bgRgba) => TtTextContrastSample(
+  text: '',
+  foreground: _rgbaToColor(fgRgba),
+  background: _rgbaToColor(bgRgba),
+  fontSize: null,
+  bold: false,
+).ratio;
 
 /// The most frequent key; ties go to the key that [before] puts first, so
 /// the result does not depend on map order.
