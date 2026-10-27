@@ -2,6 +2,14 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:drift/drift.dart'
+    show
+        CouldNotRollBackException,
+        DriftWrappedException,
+        InvalidDataException,
+        VerificationMeta;
+import 'package:drift/isolate.dart' show DriftRemoteException;
+import 'package:drift/native.dart' show SqliteException;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
@@ -34,16 +42,54 @@ String _redact(String text) => text
     .replaceAll(_windowsPath, _redacted)
     .replaceAll(_absolutePath, _redacted);
 
-String _describeError(Object error) {
-  if (error is FileSystemException) {
-    // Never print `path`: it is a video or folder location (D-10).
-    final os = error.osError;
-    final osText = os == null
-        ? ''
-        : ' (OS error: ${_redact(os.message)}, errno = ${os.errorCode})';
-    return '${error.runtimeType}: ${_redact(error.message)}$osText';
-  }
-  return _redact(error.toString());
+/// Where `SqliteException.toString()` starts printing the SQL statement and
+/// every value bound to it: reel names, labels, links, file names.
+const String _statementMarker = 'Causing statement';
+
+/// [text] without a SQLite statement and its values, and everything after
+/// them (a value may span lines), for error text that embeds a
+/// `SqliteException` some other way.
+String _withoutStatement(String text) {
+  final at = text.indexOf(_statementMarker);
+  if (at < 0) return text;
+  return '${text.substring(0, at).trimRight()} <statement removed>';
+}
+
+/// [error] as one log line: its type and what went wrong, never a path or a
+/// value the user typed (D-10).
+///
+/// Database errors are rebuilt from their fields instead of `toString()`,
+/// which prints the failing statement with its values (`SqliteException`) or
+/// the whole row (`InvalidDataException`). SQLite's own message names only
+/// tables and columns.
+String _describeError(Object? error) => switch (error) {
+  FileSystemException() => _describeFileError(error),
+  SqliteException(:final extendedResultCode, :final message) =>
+    'SqliteException($extendedResultCode): ${_redact(message)}',
+  // The phone's database runs on a background isolate, so its errors arrive
+  // wrapped; the cause is the `SqliteException` (or, when drift had to
+  // serialise it, its text).
+  DriftRemoteException(:final remoteCause) => _describeError(remoteCause),
+  // Its message prints the whole row; the failing columns are enough.
+  InvalidDataException(:final errors) =>
+    'InvalidDataException(${errors.keys.map(_column).join(', ')})',
+  CouldNotRollBackException(:final exception, :final cause) =>
+    'CouldNotRollBackException: ${_describeError(exception)}; '
+        'rolled back because of ${_describeError(cause)}',
+  DriftWrappedException(:final cause, :final message) =>
+    'DriftWrappedException: ${_describeError(cause)} (${_redact(message)})',
+  _ => _redact(_withoutStatement(error.toString())),
+};
+
+String _column(VerificationMeta meta) => meta.dartGetterName;
+
+/// Never prints `path`: it is a video or folder location.
+String _describeFileError(FileSystemException error) {
+  final os = error.osError;
+  final osText = os == null
+      ? ''
+      : ' (OS error: ${_redact(os.message)}, errno = ${os.errorCode})';
+  return '${error.runtimeType}: ${_redact(error.message)}$osText';
 }
 
 String _truncate(String text) {
@@ -60,12 +106,15 @@ String _truncate(String text) {
 ///
 /// Path-like and URI-like tokens in the message and error text are replaced
 /// with `<path>`, and a `FileSystemException` is rendered without its path, so
-/// video names and locations never reach the log (D-10). Stack traces are kept
-/// as they are. A record longer than 8 KiB is truncated.
+/// video names and locations never reach the log (D-10). Database errors are
+/// rendered by their result code and SQLite's message, without the statement
+/// and the values bound to it, and any other text that embeds a statement
+/// loses it (`<statement removed>`). Stack traces are kept as they are. A
+/// record longer than 8 KiB is truncated.
 String formatRecord(LogRecord r) {
   final buffer = StringBuffer(
     '${r.time.toUtc().toIso8601String()} ${r.level.name} ${r.loggerName}: '
-    '${_redact(r.message)}',
+    '${_redact(_withoutStatement(r.message))}',
   );
   final error = r.error;
   if (error != null) buffer.write('\n  error: ${_describeError(error)}');

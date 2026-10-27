@@ -940,11 +940,31 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
   Clips themselves *are* included, but only as facts (which MediaStore id, when shot, how long); the videos are never in the backup. That's why the spec plans an "X of Y clips found" message after an import (phases 3 and 10): on a different phone, many of those ids won't point at your videos.
 
+- **The log never gets your text, even from an error.** Every repository logs ids and counts only (`Deleted reel 7: removed 1 reel, swept 2 clips`), never a reel name, a label, a link or a file name, because the log file can be sent from Settings (D-10). Errors are the sneaky part. When an insert fails (on a phone, a full disk; in the test below, a trigger that refuses every reel), SQLite's exception prints the statement *and every value bound to it*:
+
+  ```text
+  SqliteException(1811): while selecting from statement, refused, constraint failed (code 1811)
+    Causing statement: INSERT INTO "reels" ("name", "description", "status", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?) RETURNING *, parameters: Secret Goa, https://instagram.com/reel/x, collecting, 1793059200000, 1793059200000
+  ```
+
+  If such an error is ever logged (an uncaught error always is), the reel name would be in the file. So the log formatter never prints a database error's own text; it rebuilds the line from the error's fields:
+
+  ```dart
+  SqliteException(:final extendedResultCode, :final message) =>
+    'SqliteException($extendedResultCode): ${_redact(message)}',
+  // The phone's database runs on a background isolate, so its errors arrive
+  // wrapped; the cause is the `SqliteException` (or, when drift had to
+  // serialise it, its text).
+  DriftRemoteException(:final remoteCause) => _describeError(remoteCause),
+  ```
+
+  The line becomes `SqliteException(1811): refused`: what went wrong, but not with what. As a last net, any other text that contains `Causing statement` is cut there. The import's own refusal goes one step further and logs only the code. The tests in `logging_setup_test.dart` (group `database errors never carry user text (D-10)`) make a real insert fail, on the in-memory database and on a background-isolate one, and check that the log line has no `Secret`.
+
 **Where it lives:** `app/lib/data/backup/backup_format.dart` (the format: `backupSchemaVersion`, `encodeBackup`, `decodeBackup`, `BackupProblem`, `BackupException`), `app/lib/data/backup/backup_service.dart` (`BackupService`, `ImportSummary`, `backupServiceProvider`), and the tests in `app/test/data/backup/` with the golden file `fixtures/backup_v1.json`. The steps are in `docs/flow.md` ("Backup export and import").
 
 **Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/backup)`. You should see `+86: All tests passed!`. Then see why the Dart checks matter even though the database has its own rules: in `app/lib/data/backup/backup_format.dart`, in `_readV1`, delete the line `if (checkReelName(name) != null) throw r.invalid('name');` and run the same command. Three tests fail: `a 41-character reel name: invalidData` and `a reel name of only spaces: invalidData` (SQLite happily stores both, so the import goes through and replaces the seeded reels) and `logs counts only: no names, links, labels or file names` (its broken file is no longer refused). Put the line back with `git checkout -- app/lib/data/backup/backup_format.dart` (run it from the repo root).
 
-**Decisions:** D-59 (the backup format and the import), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs).
+**Decisions:** D-59 (the backup format and the import), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs), D-28 (how errors are written to the log).
 
 ## 9. Measuring test coverage
 

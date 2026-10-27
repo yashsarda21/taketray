@@ -2,11 +2,64 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:drift/drift.dart'
+    show
+        CouldNotRollBackException,
+        DriftWrappedException,
+        InvalidDataException,
+        Value,
+        driftRuntimeOptions;
+import 'package:drift/isolate.dart' show DriftRemoteException;
+import 'package:drift/native.dart' show NativeDatabase, SqliteException;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/logging/log_file_sink.dart';
 import 'package:taketray/core/logging/logging_setup.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
+
+import '../../support/fixed_clock.dart';
+
+/// Text a database error may carry that must never reach the log (D-10).
+const List<String> _secrets = ['Secret', 'instagram', 'INSERT', 'parameters'];
+
+/// [error] as `formatRecord` writes it.
+String _logged(Object error) =>
+    formatRecord(LogRecord(Level.SEVERE, 'x', 'crash', error));
+
+/// A SQLite error like a full phone, with the statement and values SQLite's
+/// own `toString()` prints.
+SqliteException _diskFull() => SqliteException(
+  extendedResultCode: 13,
+  message: 'database or disk is full',
+  causingStatement: 'INSERT INTO "reels" ("name", "description") VALUES (?, ?)',
+  parametersToStatement: ['Secret Goa', 'https://instagram.com/x'],
+);
+
+/// Inserts a reel named "Secret Goa" into [db] after a trigger that refuses
+/// every reel, and returns what the insert threw.
+Future<Object> _failedInsert(AppDatabase db) async {
+  await db.customStatement(
+    'CREATE TRIGGER refuse_reels BEFORE INSERT ON reels '
+    "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+  );
+  try {
+    await ReelsRepository(
+      db,
+      FixedClock(DateTime.utc(2026, 10, 27)),
+    ).create('Secret Goa', description: 'https://instagram.com/reel/x');
+  } on Object catch (e) {
+    return e;
+  }
+  fail('the insert was not refused');
+}
+
+void _expectNoSecrets(String line) {
+  for (final secret in _secrets) {
+    expect(line, isNot(contains(secret)), reason: line);
+  }
+}
 
 void main() {
   late Directory dir;
@@ -157,6 +210,111 @@ void main() {
       final line = formatRecord(LogRecord(Level.INFO, 'é' * 20000, 'big'));
       expect(line, endsWith('…[truncated]'));
       expect(line.codeUnits.length, lessThan(8 * 1024));
+    });
+  });
+
+  group('database errors never carry user text (D-10)', () {
+    test('renders a SqliteException without its statement or values', () {
+      final line = _logged(_diskFull());
+
+      expect(line, contains('error: SqliteException(13): database or disk'));
+      _expectNoSecrets(line);
+    });
+
+    test('renders a DriftRemoteException by its SqliteException', () async {
+      // The phone runs the database on a background isolate, so its errors
+      // arrive wrapped (drift_flutter); the wrapper's text is the cause's.
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      final db = AppDatabase(
+        NativeDatabase.createInBackground(File('${dir.path}/t.sqlite')),
+      );
+      addTearDown(db.close);
+
+      final error = await _failedInsert(db);
+
+      expect(error, isA<DriftRemoteException>());
+      expect('$error', contains('Secret Goa'), reason: 'what the fix hides');
+      final line = _logged(error);
+      expect(line, contains('error: SqliteException(1811): refused'));
+      _expectNoSecrets(line);
+    });
+
+    test('renders a real failed insert without its values', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+
+      final error = await _failedInsert(db);
+
+      expect(error, isA<SqliteException>());
+      expect('$error', contains('Secret Goa'), reason: 'what the fix hides');
+      final line = _logged(error);
+      expect(line, contains('error: SqliteException(1811): refused'));
+      _expectNoSecrets(line);
+    });
+
+    test('renders an InvalidDataException by its columns only', () async {
+      final db = AppDatabase(NativeDatabase.memory());
+      addTearDown(db.close);
+      Object? error;
+      try {
+        // No name: drift refuses the row before SQLite sees it, and its
+        // message prints the whole row.
+        await db
+            .into(db.reels)
+            .insert(const ReelsCompanion(description: Value('Secret Goa')));
+      } on Object catch (e) {
+        error = e;
+      }
+
+      expect(error, isA<InvalidDataException>());
+      expect('$error', contains('Secret Goa'), reason: 'what the fix hides');
+      final line = _logged(error!);
+      expect(line, contains('error: InvalidDataException(name)'));
+      _expectNoSecrets(line);
+    });
+
+    test('renders drift wrappers by their causes', () {
+      final rollBack = _logged(
+        CouldNotRollBackException(
+          _diskFull(),
+          StackTrace.empty,
+          SqliteException(extendedResultCode: 10, message: 'disk I/O error'),
+        ),
+      );
+      expect(
+        rollBack,
+        contains(
+          'error: CouldNotRollBackException: SqliteException(10): disk I/O '
+          'error; rolled back because of SqliteException(13): database or '
+          'disk is full',
+        ),
+      );
+      _expectNoSecrets(rollBack);
+
+      final wrapped = _logged(
+        DriftWrappedException(message: 'a hint', cause: _diskFull()),
+      );
+      expect(
+        wrapped,
+        contains(
+          'error: DriftWrappedException: SqliteException(13): database or '
+          'disk is full (a hint)',
+        ),
+      );
+      _expectNoSecrets(wrapped);
+    });
+
+    test('cuts the statement out of any other text that carries it', () {
+      final inError = _logged(StateError('save failed: ${_diskFull()}'));
+      expect(inError, contains('save failed: SqliteException(13)'));
+      expect(inError, contains('<statement removed>'));
+      _expectNoSecrets(inError);
+
+      final inMessage = formatRecord(
+        LogRecord(Level.WARNING, 'save failed: ${_diskFull()}', 'reels'),
+      );
+      expect(inMessage, contains('reels: save failed: SqliteException(13)'));
+      _expectNoSecrets(inMessage);
     });
   });
 
