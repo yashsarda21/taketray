@@ -266,6 +266,26 @@ Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`
 6. `patrol_test/database_test.dart › main`: a second on-device test, with no screens. It makes a `ProviderContainer`, creates a reel through `reelsRepositoryProvider` (the first query opens `taketray.sqlite` in the dev app's storage through drift_flutter, loading the bundled `libsqlite3.so`), closes `appDatabaseProvider`, makes a second container, and reads the reel back with `getById` and through `backupServiceProvider.exportJson`. Finding the reel in the second container proves the row reached the file.
 7. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`. Because of `--no-uninstall` it neither uninstalls before installing nor after the run: `app.taketray.dev` ("TakeTray Dev" on the phone, next to the real TakeTray) and `app.taketray.dev.test` stay on the device (the dev app's data is still cleared by the orchestrator, step 3; the real app is untouched).
 
+### Accessibility check in component tests (`expectTtAccessible`)
+
+Called by component tests after pumping a widget (`packages/taketray_ui/test/support/tt_accessibility.dart`). See D-62.
+
+1. `expectTtAccessible`: turns semantics on, then expects, in order, `androidTapTargetGuideline`, `labeledTapTargetGuideline`, `ttTextContrastGuideline` and, only when `Platform.isMacOS`, Flutter's `textContrastGuideline`. Semantics are disposed even when one fails.
+2. `tt_text_contrast.dart › TtTextContrastGuideline.evaluate` → `measureTtTextContrast`, per render view:
+   1. `_collectTargets`: walks the semantics tree exactly as Flutter's `MinimumTextContrastGuideline` does (skips invisible, merged, hidden and disabled nodes, routes and empty labels; for each label, the hit-testable `Text`/`EditableText` elements whose box meets the node), then `_textTarget` skips text more than 50 px off screen and records the font size and boldness Flutter would use, and the element's `RenderParagraph` or `RenderEditable`.
+   2. `_collectShownTexts`: adds every other hit-testable, non-empty `Text` or `EditableText` in the view (text merged into a parent label, or excluded from semantics), unless `_effectiveSemantics` (the node it ends up in after merging) is disabled, hidden or invisible, or it is off screen. A text render object is never added twice.
+   3. Collects every `RenderParagraph` and `RenderEditable` in the view and keeps their spans.
+   4. `_restyleAll(_Paint.hidden)` gives each one a copy of its spans with the text colour transparent, shadows removed and any `decorationColor` transparent. A span with a `foreground`/`background` paint or a `backgroundColor`, or a run with no colour (own or inherited), throws `StateError`. Layout, compositing bits and paint are flushed; `_shoot` takes the view at one pixel per dp (as Flutter's guideline): the background image.
+   5. `_restyleAll(_Paint.boxes)`: the same with `backgroundColor` set to each span's own colour (children inherit it). Second image: each run is a solid box in the text colour, composited like a glyph would be.
+   6. `_restyleAll(_Paint.probe)`: the boxes in the inverted colour. Third image.
+   7. In `finally`: the original spans are put back and the frame is flushed again, so nothing later sees the restyled text, also when a step threw.
+   8. `_worstPair`, per target, inside its paint bounds:
+      1. Box pixels are those the second or third image changed. A pixel with a 4-neighbour that is not a box pixel is dropped; if that leaves none (tiny text), all box pixels are used.
+      2. Each kept pixel gives a (second-image colour, background colour) pair. Pairs are ranked by contrast ratio (lowest first; equal ratios by colour value).
+      3. The worst pairs are skipped while together they make up no more than 2 % (`ignoredShare`) of the kept pixels; the next pair is the sample.
+      4. No box pixel at all (the text is clipped away, or fully transparent) gives the background against itself, 1:1.
+3. Back in `evaluate`: each sample whose ratio is more than 0.01 under `MinimumTextContrastGuideline.targetContrastRatio(fontSize, bold:)` adds a failure naming the text, the ratio, the font size and both colours (`#rrggbb on #rrggbb`).
+
 ### Catalogue coverage (`widgetbook/test/catalog_coverage_test.dart`)
 
 Runs inside `tool/check` (step "test widgetbook") and with `(cd widgetbook && ../tool/flutter test)`. It keeps the Widgetbook catalogue complete (D-42).
