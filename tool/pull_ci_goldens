@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Copies the CI golden images made by the "update goldens" workflow into the
+# working tree (D-61). Usage: tool/pull_ci_goldens <run-id>
+#
+# The artifact `ci-goldens` holds every goldens/ci/ image under its repository
+# path. Each goldens/ci/ folder in the tree is replaced by what the artifact
+# has for it (images the run no longer makes are removed). Nothing is
+# committed: review the images, then commit. Steps: docs/flow.md
+# ("Updating CI goldens").
+set -euo pipefail
+
+if [ "$#" -ne 1 ] || ! [[ "$1" =~ ^[0-9]+$ ]]; then
+  echo "usage: tool/pull_ci_goldens <run-id>" >&2
+  echo "  run-id: the number in the URL of an 'update goldens' run on GitHub" >&2
+  exit 64
+fi
+run_id="$1"
+
+cd "$(dirname "$0")/.."
+
+if ! command -v gh >/dev/null 2>&1; then
+  echo "pull_ci_goldens: the GitHub CLI (gh) is not installed; see https://cli.github.com" >&2
+  exit 1
+fi
+if ! gh auth status >/dev/null 2>&1; then
+  echo "pull_ci_goldens: gh is not logged in; run 'gh auth login' first" >&2
+  exit 1
+fi
+
+# Refuse to mix new images with uncommitted changes (including untracked
+# files) in any goldens/ci/ folder.
+dirty="$(git status --porcelain --untracked-files=all | grep '/goldens/ci/' || true)"
+if [ -n "$dirty" ]; then
+  echo "pull_ci_goldens: goldens/ci has uncommitted changes; commit or discard them first:" >&2
+  echo "$dirty" >&2
+  exit 1
+fi
+
+tmp="$(mktemp -d)"
+trap 'rm -rf "$tmp"' EXIT
+
+gh run download "$run_id" -n ci-goldens -D "$tmp"
+
+new_files="$(cd "$tmp" && find . -path '*/goldens/ci/*.png' | sed 's|^\./||' | sort)"
+if [ -z "$new_files" ]; then
+  echo "pull_ci_goldens: run $run_id has no goldens/ci images in its ci-goldens artifact" >&2
+  exit 1
+fi
+
+# Drop the images in the tree that the run did not make, then copy the new
+# ones over (creating folders for new tests).
+old_files="$(git ls-files '*/goldens/ci/*.png' | sort)"
+comm -23 <(printf '%s\n' "$old_files") <(printf '%s\n' "$new_files") |
+  while IFS= read -r f; do
+    [ -n "$f" ] && rm -f -- "$f"
+  done
+while IFS= read -r f; do
+  mkdir -p "$(dirname "$f")"
+  cp -- "$tmp/$f" "$f"
+done <<<"$new_files"
+
+printf 'Copied %s images from run %s. Changes:\n' \
+  "$(printf '%s\n' "$new_files" | wc -l | tr -d ' ')" "$run_id"
+git status --short --untracked-files=all | grep '/goldens/ci/' || echo "(no changes: the images already match)"

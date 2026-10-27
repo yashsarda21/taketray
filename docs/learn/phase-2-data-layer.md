@@ -1112,18 +1112,19 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
 - **One script, two places.** The robot does not list the checks itself. It runs `tool/check`, the same file you run by hand. If the workflow listed the format check, the analysis and the tests as separate steps, then the day someone added a step to `tool/check` (the coverage gate in Section 9 was one) they would also have to remember to edit the workflow, and the two would slowly disagree: green on GitHub, red on your Mac, or the other way round. With one script there is one definition of "healthy". The workflow only prepares the computer (Flutter, caches) and calls it.
 
-- **Why goldens differ by platform.** A golden test (Phase 1, D-39) draws a component and compares the picture with a saved PNG. The same text is drawn slightly differently by macOS, Linux and Windows, and even by different macOS versions, so a PNG made on a Mac with real text would fail on Ubuntu by a few pixels. That is why the tests keep two sets of pictures: `goldens/ci/` draws text as plain blocks, so it is expected to look the same on any computer, and `goldens/macos/` has real text, for a human to compare with the prototype. The test setup picks the sets from one environment variable, `CI`:
+- **Why goldens differ by platform.** A golden test (Phase 1, D-39) draws a component and compares the picture with a saved PNG. The same text is drawn slightly differently by macOS, Linux and Windows, and even by different macOS versions, so the tests keep two sets of pictures: `goldens/macos/` has real text, for a human to compare with the prototype, and `goldens/ci/` draws text as plain blocks, which was meant to look the same on any computer. The test setup picks the set from one environment variable, `CI`:
 
   ```dart
   final onCi = Platform.environment.containsKey('CI');
   ...
+  ciGoldensConfig: CiGoldensConfig(enabled: onCi),
   platformGoldensConfig: PlatformGoldensConfig(
     enabled: !onCi,
     platforms: {HostPlatform.macOS},
   ),
   ```
 
-  (`packages/taketray_ui/test/flutter_test_config.dart`.) The block pictures always run. The real-text pictures run only on macOS, and only when `CI` is not set. On Ubuntu they would not run anyway, because only macOS pictures exist; setting `CI` as well means they stay off even if someone later runs the workflow on a Mac runner. GitHub sets `CI=true` itself, and the workflow states it too so the check does not rely on a default. On your Mac without `CI`, both sets run. One thing is not proven yet: the block pictures were all made on an Apple Silicon Mac, and soft edges (blur, rounded corners) can differ by a single pixel on an Intel-style Linux machine, and the comparison allows no difference at all. The first run on GitHub will tell. If it fails only on pixels, the fix is to regenerate `goldens/ci/` on Linux, look at the difference, and commit the new pictures (D-60). If a golden fails on GitHub, the workflow uploads the `failures/` folder (the new picture, the saved one and the difference) so you can download it from the run's page.
+  (`packages/taketray_ui/test/flutter_test_config.dart`.) GitHub sets `CI=true` itself, and the workflow states it too so the check does not rely on a default. **What happened on the first run:** the plan said the block pictures should match everywhere, with one doubt written down: they were all made on an Apple Silicon Mac, and soft edges (blur, rounded corners, scaled images) can differ by a pixel on an Intel-style Linux machine, while the comparison allows no difference at all. The doubt was right. The first GitHub run passed every logic test, but 58 block pictures failed, each by between 0.00 and 3 % of its pixels. **What we chose** (D-61): not to allow a small difference, because then a real one-pixel regression could hide in it. Instead each machine keeps its own exact pictures. On GitHub (`CI` set) only `goldens/ci/` runs, and those pictures are made on GitHub's own Linux computer; on your Mac (`CI` not set) only `goldens/macos/` runs. The Linux pictures are made by a workflow you start by hand, "update goldens" (`.github/workflows/update-goldens.yml`), which runs the tests with `--update-goldens` on Linux and hands back the new pictures as a download. It does not commit anything, because the workflow's key is read-only (D-60). Then `tool/pull_ci_goldens <run-id>` on your Mac downloads them into the right folders, you look at them, and you commit. If a golden fails on GitHub, the `check` workflow uploads the `failures/` folder (the new picture, the saved one and the difference) so you can download it from the run's page.
 
 - **Why the phone tests stay local.** The Patrol test (Phase 1, D-32) installs the app on the Samsung S24 and taps through it. GitHub's computers have no phone attached, and a pretend phone (an emulator) is slow and unreliable there, so those tests run on your desk. `tool/check_release_permissions` is local for another reason: it builds the real release app, which needs the Android SDK, a large install that the other checks do not need (no step in `tool/check` builds an APK). So a green tick on GitHub means "the code checks pass", and it does not replace running Patrol on the S24 or the permission check at the end of a phase. D-60 records the split.
 
@@ -1141,7 +1142,7 @@ With `CI` set, `tool/check` skips the macOS-only pictures, exactly like the robo
 
 To see the difference that `CI` makes, run the golden test without it (`cd packages/taketray_ui && ../../tool/flutter test test/components`): on a Mac it also compares the `goldens/macos/` pictures. In this section's run it passed 663 tests, against 589 with `CI=true` in front.
 
-**Decisions:** D-60 (CI runs `tool/check`, CI goldens only, Patrol and the release check stay local), D-39 (the two sets of goldens).
+**Decisions:** D-60 (CI runs `tool/check`, Patrol and the release check stay local), D-61 (CI goldens are made and checked on Linux only, macOS goldens on the Mac only), D-39 (the two sets of goldens).
 
 ## 11. Proving it works on the phone
 
