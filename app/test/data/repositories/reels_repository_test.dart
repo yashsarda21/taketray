@@ -2,7 +2,11 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
+import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
+import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
@@ -363,6 +367,65 @@ void main() {
 
       expect(await clipIds(), isEmpty);
       expect(await db.select(db.vnCopies).get(), hasLength(1));
+    });
+
+    test('deleting a reel updates every stream that showed it', () async {
+      // The links and references go by ON DELETE CASCADE, which drift only
+      // reports to watchers through its generated stream-update rules.
+      final clips = ClipsRepository(db, clock);
+      final references = ReferencesRepository(db, clock);
+      final goa = await repo.create('Goa');
+      NewClip clip(int id) => NewClip.mediaStore(
+        mediaStoreId: id,
+        volumeName: 'external_primary',
+        fingerprint: ClipFingerprint(
+          sizeBytes: id,
+          durationMs: 1000,
+          dateTakenUtc: _t0,
+          displayName: 'VID_$id.mp4',
+        ),
+        width: 1080,
+        height: 1920,
+        mimeType: 'video/mp4',
+      );
+      final [first, _] = await clips.addNewClipsToReel(goa.id, [
+        clip(1),
+        clip(2),
+      ]);
+      await references.add(goa.id, 'https://example.com/a');
+      await clips.addDetectedClips([clip(3)]);
+
+      final counts = <Map<int, int>>[];
+      final refs = <int>[];
+      final reelClips = <int>[];
+      final reelIdsOfFirst = <Set<int>>[];
+      final pending = <int>[];
+      final subs = [
+        references.watchCounts().listen(counts.add),
+        references.watchForReel(goa.id).listen((r) => refs.add(r.length)),
+        clips.watchReelClips(goa.id).listen((c) => reelClips.add(c.length)),
+        clips.watchReelIdsOf(first).listen(reelIdsOfFirst.add),
+        clips.watchPendingCount().listen(pending.add),
+      ];
+      for (final sub in subs) {
+        addTearDown(sub.cancel);
+      }
+      await pumpEventQueue();
+      // Before the delete, every stream shows the reel.
+      expect(counts.last, {goa.id: 1});
+      expect(refs.last, 1);
+      expect(reelClips.last, 2);
+      expect(reelIdsOfFirst.last, {goa.id});
+      expect(pending.last, 1);
+
+      await repo.delete(goa.id);
+      await pumpEventQueue();
+
+      expect(counts.last, isEmpty);
+      expect(refs.last, 0);
+      expect(reelClips.last, 0);
+      expect(reelIdsOfFirst.last, isEmpty);
+      expect(pending.last, 1, reason: 'the clip in To tag is not affected');
     });
 
     test('an unknown id deletes no reel but still sweeps orphans', () async {

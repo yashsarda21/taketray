@@ -94,15 +94,41 @@ void main() {
   );
 
   test('a list with a non-string entry is corrupt', () async {
-    await _put('watchedFolders', '["DCIM/Camera", 3]');
+    // A lenient reader that kept the strings would give ['Movies/Drone'].
+    await _put('watchedFolders', '["Movies/Drone", 3]');
     expect((await repo.load()).watchedFolders, ['DCIM/Camera']);
   });
 
   test('a value of the wrong type is corrupt', () async {
-    await _put('eveningReminderEnabled', '1');
-    await _put('eveningReminderMinutes', '"1260"');
-    await repo.save(const AppSettings()); // fixes all three
+    // A lenient reader would turn these into false and 30; the defaults are
+    // true and 1260.
+    await _put('eveningReminderEnabled', '0');
+    await _put('eveningReminderMinutes', '"30"');
+
     expect(await repo.load(), const AppSettings());
+  });
+
+  test('save repairs corrupt rows', () async {
+    await _put('watchedFolders', '{not json');
+    await _put('eveningReminderEnabled', '0');
+    await _put('eveningReminderMinutes', '"30"');
+    const saved = AppSettings(
+      watchedFolders: ['Movies/Drone'],
+      eveningReminderEnabled: false,
+      eveningReminderMinutes: 30,
+    );
+
+    await repo.save(saved);
+
+    expect(await repo.load(), saved);
+    final rows = {
+      for (final r in await db.select(db.settings).get()) r.key: r.value,
+    };
+    expect(rows, {
+      'watchedFolders': '["Movies/Drone"]',
+      'eveningReminderEnabled': 'false',
+      'eveningReminderMinutes': '30',
+    });
   });
 
   test('save refuses reminder minutes outside a day', () async {

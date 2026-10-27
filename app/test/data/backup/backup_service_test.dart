@@ -2,8 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/isolate.dart' show DriftRemoteException;
+import 'package:drift/native.dart' show NativeDatabase, SqliteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/core/logging/logging_setup.dart';
 import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -795,6 +798,23 @@ void main() {
       );
     });
 
+    test('watchAll emits the imported reels', () async {
+      await _Seeded(db, clock).fill();
+      final emitted = <List<int>>[];
+      final sub = ReelsRepository(db, clock).watchAll().listen(
+        (reels) => emitted.add([for (final r in reels) r.id]),
+      );
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      final before = emitted.last;
+
+      await backup.importJson(_fixture());
+      await pumpEventQueue();
+
+      expect(before, hasLength(2));
+      expect(emitted.last, [3, 7, 9], reason: 'newest updatedAt first');
+    });
+
     test('an empty backup empties the database', () async {
       await _Seeded(db, clock).fill();
       final empty = await BackupService(freshDatabase(), clock).exportJson();
@@ -1050,6 +1070,144 @@ void main() {
       expect(await _reelNames(db), ['London', 'Goa 🌴']);
     },
   );
+
+  group('database errors during the replace', () {
+    /// A database on drift's background isolate, as on the phone
+    /// (drift_flutter), in a file that is deleted after the test.
+    AppDatabase backgroundDatabase() {
+      final dir = Directory.systemTemp.createTempSync('taketray_backup_test');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final other = AppDatabase(
+        NativeDatabase.createInBackground(File('${dir.path}/t.sqlite')),
+      );
+      addTearDown(other.close);
+      return other;
+    }
+
+    Future<void> refuseReels(AppDatabase target) => target.customStatement(
+      'CREATE TRIGGER refuse_reels BEFORE INSERT ON reels '
+      "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+    );
+
+    test('a constraint error from the background isolate is still '
+        'invalidData and changes nothing', () async {
+      final target = backgroundDatabase();
+      await _Seeded(target, clock).fill();
+      await refuseReels(target);
+      final rowsBefore = await _everyRow(target);
+
+      await expectLater(
+        BackupService(target, clock).importJson(_fixture()),
+        _throwsProblem(BackupProblem.invalidData),
+      );
+
+      expect(await _everyRow(target), rowsBefore);
+    });
+
+    test('a non-constraint error is rethrown as it is and changes '
+        'nothing', () async {
+      await _Seeded(db, clock).fill();
+      final rowsBefore = await _everyRow(db);
+      await db.customStatement('PRAGMA query_only = ON');
+
+      await expectLater(
+        backup.importJson(_fixture()),
+        throwsA(isA<SqliteException>().having((e) => e.resultCode, 'code', 8)),
+        reason: 'SQLITE_READONLY is not a broken backup',
+      );
+
+      expect(await _everyRow(db), rowsBefore);
+    });
+
+    test('a non-constraint error from the background isolate is rethrown '
+        'as it is and changes nothing', () async {
+      final target = backgroundDatabase();
+      await _Seeded(target, clock).fill();
+      final rowsBefore = await _everyRow(target);
+      await target.customStatement('PRAGMA query_only = ON');
+
+      await expectLater(
+        BackupService(target, clock).importJson(_fixture()),
+        throwsA(
+          isA<DriftRemoteException>().having(
+            (e) => e.remoteCause,
+            'remoteCause',
+            isA<SqliteException>().having((e) => e.resultCode, 'code', 8),
+          ),
+        ),
+      );
+
+      expect(await _everyRow(target), rowsBefore);
+    });
+  });
+
+  test('every repository logs ids and counts only (D-10)', () async {
+    final records = <LogRecord>[];
+    final sub = Logger.root.onRecord.listen(records.add);
+    addTearDown(sub.cancel);
+    final seeded = _Seeded(db, clock);
+
+    // Every kind of write, with the user's text in it: the fill (names,
+    // descriptions, links, labels, file names, folders, zones), then edits,
+    // removals and deletes.
+    await seeded.fill();
+    await seeded.reels.rename(seeded.london, 'Secret London trip');
+    await seeded.reels.setDescription(seeded.goa, 'Secret beach plan');
+    final ref = await seeded.references.add(
+      seeded.goa,
+      'https://secret.example/clip',
+      label: 'Secret label',
+    );
+    final refId = (ref as ReferenceAdded).reference.id;
+    await seeded.references.setLabel(refId, 'Secret relabel');
+    await seeded.references.delete(refId);
+    await seeded.clips.removeClipsFromReel(seeded.london, [
+      ...(await db.select(db.clipReels).get()).map((l) => l.clipId),
+    ]);
+    await seeded.vn.endSession(seeded.goa);
+    await expectLater(
+      seeded.vn.startSession(seeded.goa, ' \u200B '),
+      throwsArgumentError,
+    );
+    await seeded.vn.startSession(seeded.london, 'Secret folder');
+    await db
+        .into(db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: SettingsRepository.watchedFoldersKey,
+            value: '["DCIM/Secret", 3]',
+          ),
+        );
+    await seeded.settings.load();
+    await seeded.reels.delete(seeded.goa);
+
+    expect(
+      {for (final r in records) r.loggerName},
+      containsAll(['reels', 'clips', 'references', 'vn', 'zones', 'settings']),
+      reason: 'every repository logged something',
+    );
+    final lines = records.map(formatRecord).join('\n');
+    for (final secret in [
+      'Goa',
+      'London',
+      'Secret',
+      'Beach',
+      'instagram',
+      'ABC123',
+      'youtu',
+      'example',
+      'Slow pans',
+      'VID_',
+      'friend.mp4',
+      'content://',
+      'DCIM',
+      'WhatsApp',
+      'Kolkata',
+      '20261026_0700',
+    ]) {
+      expect(lines, isNot(contains(secret)), reason: secret);
+    }
+  });
 
   test('logs counts only: no names, links, labels or file names', () async {
     final records = <LogRecord>[];
