@@ -70,6 +70,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
   - automatic checks on GitHub for every push
 - **TakeTray Dev**: debug builds and on-device tests install as a separate app, so tests never touch your real data.
 - **Learning guide**: [docs/learn/phase-2-data-layer.md](docs/learn/phase-2-data-layer.md) explains the whole phase in plain English, with the real code.
+- **GitHub checks**: every push runs the full `tool/check` on GitHub's Linux machines. Screenshot tests keep a separate, exact set of pictures for Linux, and text readability (contrast) is measured from the real colours, so it gives the same result on every computer. How it all works: [docs/learn/github-automatic-checks.md](docs/learn/github-automatic-checks.md).
 
 ## Running the checks
 
@@ -95,5 +96,6 @@ Set-up details: [docs/dev-setup.md](docs/dev-setup.md).
 | `docs/decisions.md` | Every meaningful decision and why |
 | `docs/flow.md` | How each part of the app runs, step by step |
 | `docs/later.md` | Work parked for later phases |
-| `docs/learn/` | Learning guides, one per phase |
+| `docs/learn/` | Learning guides: one per phase, plus how GitHub's automatic checks work |
+| `.github/workflows/` | GitHub's automatic checks |
 | `docs/superpowers/` | The build design and the phase plans |
