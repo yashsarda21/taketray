@@ -1,61 +1,22 @@
 # Learning guide: Phase 2, the data layer
 
-This guide explains how TakeTray remembers things: your reels, the clips in them, the To tag list, saved Instagram references and your settings. It is written alongside the code, one section per task, so every snippet here is real code from this repository.
+This guide explains how TakeTray remembers things: your reels, the clips in them, the To tag list, saved Instagram references and your settings. Every code snippet in it is real code from this repository, and every "Try it yourself" command was run for this guide.
 
-You don't need to know Drift, Riverpod or SQL to follow it. Basic programming knowledge is enough.
+You don't need to know Drift, Riverpod or SQL to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
-> **Status:** sections marked *(coming in Task N)* are filled in as each task is built.
+## How to read this guide
 
----
-
-## The big picture
-
-TakeTray never copies or changes your videos. It only stores **facts about them**: which video it is (an id from Android's media library), when it was shot, and which reels it belongs to. Those facts live in a small database file inside the app's private storage on the phone.
-
-The code is split into layers. Each layer only talks to the one below it:
-
-```mermaid
-flowchart TD
-    UI["Screens (phase 4 onwards)<br/>Home, To tag, tag player…"]
-    REPO["Repositories<br/>ReelsRepository, ClipsRepository, …<br/><i>app/lib/data/repositories/</i>"]
-    DOMAIN["Domain: models and rules<br/>Reel, Clip, name limits, URL clean-up<br/><i>app/lib/domain/</i>"]
-    DB["Drift database (SQLite file on the phone)<br/><i>app/lib/data/database/</i>"]
-    BACKUP["Backup: export / import JSON<br/><i>app/lib/data/backup/</i>"]
-
-    UI --> REPO
-    REPO --> DB
-    REPO -. uses .-> DOMAIN
-    BACKUP --> DB
-    BACKUP -. uses .-> DOMAIN
-```
-
-Why split it this way?
-- **Screens never write SQL.** They ask a repository ("tag this clip into these reels"), and the repository makes sure the rules are kept, for example that a clip doesn't end up in To tag twice.
-- **Rules live in one place.** "A reel name is at most 40 characters" is written once in the domain layer and used everywhere.
-- **Everything is testable on a laptop.** Tests run against a database that lives only in memory, so they're fast and never touch your phone.
-
-## The life of a clip
-
-How a video moves through TakeTray's data. Phase 3 does the detecting; this phase builds the storage it writes to.
-
-```mermaid
-stateDiagram-v2
-    [*] --> ToTag: addDetectedClips (detected while Shooting mode is on)
-    [*] --> InReels: addNewClipsToReel (picked by hand, phase 7)
-    ToTag --> InReels: tagClip / addClipsToReel
-    ToTag --> Skipped: skip
-    Skipped --> ToTag: restore
-    Skipped --> InReels: tagClip / addClipsToReel
-    InReels --> ToTag: untagToInbox (Undo)
-    InReels --> InReels: tagClip / addClipsToReel / removeClipsFromReel
-    InReels --> [*]: removeClipsFromReel from its last reel (the clip's record is deleted, the video is not)
-```
-
----
+- **Order.** Read the big picture and the life of a clip first. Then the sections 1 to 11 go from the ground up: tools and setup (1, 2), the database (3), the app's own models and rules (4), the repositories that use them (5 to 7), backup (8), and the checks that keep it all honest (9 to 11).
+- **Names you will meet.**
+  - `D-xx` is an entry in `docs/decisions.md`, where each decision is written down with its reasons.
+  - "Phase 3", "phase 4" and so on are the later stages of building TakeTray. Phase 3 reads the phone's real videos, phase 4 builds the reel screens, phase 5 the tagging screen and player, phase 7 adding videos by hand, phase 8 the VN editor hand-off and phase 10 settings. Nothing in the app calls the data layer yet; those phases will.
+  - "Spec §8.3a" means a section of the product spec, `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`.
+  - "Review Focus 1" to "5" are the five risky situations this phase was reviewed against (for example, "the same Instagram reel shared twice"). Some test names carry the label.
+- **Commands.** Run every command from the repository root (the folder that contains `app/` and `tool/`), always through the wrappers in `tool/` (`tool/flutter`, `tool/dart`), never a `flutter` found on your `PATH`. Some "Try it yourself" steps break the code on purpose to show that a test notices. Each one tells you how to put the file back (`git checkout -- <file>`). Check with `git status` that nothing is left over.
 
 ## How each section is written
 
-Every task section below uses the same shape:
+Every section below uses the same shape:
 
 - **What we built:** two or three sentences.
 - **Why TakeTray needs it:** the real problem it solves.
@@ -64,34 +25,114 @@ Every task section below uses the same shape:
 - **Try it yourself:** one command you can run, and what you should see.
 - **Decisions:** the `D-xx` entries in `docs/decisions.md`.
 
+## Contents
+
+1. [A separate test copy of the app](#1-a-separate-test-copy-of-the-app)
+2. [Keeping generated code honest](#2-keeping-generated-code-honest)
+3. [The database](#3-the-database)
+4. [Models and rules](#4-models-and-rules)
+5. [Saving reels](#5-saving-reels)
+6. [Clips and the To tag list](#6-clips-and-the-to-tag-list)
+7. [References, VN folders, settings and time zones](#7-references-vn-folders-settings-and-time-zones)
+8. [Backup: export and import](#8-backup-export-and-import)
+9. [Measuring test coverage](#9-measuring-test-coverage)
+10. [Automatic checks on GitHub](#10-automatic-checks-on-github)
+11. [Proving it works on the phone](#11-proving-it-works-on-the-phone)
+
+[Glossary](#glossary) · [What's next](#whats-next)
+
+---
+
+## The big picture
+
+TakeTray never copies or changes your videos. It only stores **facts about them**: which video it is (an id from Android's media library), when it was shot, and which reels it belongs to. Those facts live in a small database file inside the app's private storage on the phone.
+
+The code is split into layers. Screens talk to repositories, repositories talk to the database, and a separate "domain" layer holds the app's own words and rules that everyone shares:
+
+```mermaid
+flowchart TD
+    UI["Screens (phase 4 onwards)<br/>Home, To tag, tag player…"]
+    REPO["Repositories<br/>ReelsRepository, ClipsRepository, …<br/><i>app/lib/data/repositories/</i>"]
+    BACKUP["Backup: export / import JSON<br/><i>app/lib/data/backup/</i>"]
+    DB["Drift database (SQLite file on the phone)<br/><i>app/lib/data/database/</i>"]
+    DOMAIN["Domain: models and rules<br/>Reel, Clip, name limits, URL clean-up<br/><i>app/lib/domain/</i>"]
+    CORE["Clock: what time is it now?<br/><i>app/lib/core/clock.dart</i>"]
+
+    UI --> REPO
+    REPO --> DB
+    BACKUP --> DB
+    REPO -. uses .-> DOMAIN
+    BACKUP -. uses .-> DOMAIN
+    DB -. uses enums from .-> DOMAIN
+    REPO -. asks the time .-> CORE
+    BACKUP -. asks the time .-> CORE
+```
+
+A solid arrow means "calls". A dotted arrow means "uses the words and rules of". The domain layer imports nothing from the layers above it, and neither Flutter nor Drift. (The backup also reads one list from `SettingsRepository`, the keys a backup may contain, Section 7.)
+
+Why split it this way?
+- **Screens never write SQL.** They ask a repository ("tag this clip into these reels"), and the repository makes sure the rules are kept, for example that a clip doesn't end up in To tag twice.
+- **Rules live in one place.** "A reel name is at most 40 characters" is written once in the domain layer and used everywhere.
+- **Everything is testable on a laptop.** Tests run against a database that lives only in memory, so they're fast and never touch your phone.
+
+## The life of a clip
+
+How a video record moves through TakeTray's data. Phase 3 does the detecting; this phase builds the storage it writes to. A clip is always in exactly one of three places: **To tag** (the list of new clips waiting for you), **Skipped** (clips you set aside), or **in one or more reels**. Each arrow is a method of `ClipsRepository` (Section 6), except the last, which is also done by deleting a reel (Section 5).
+
+```mermaid
+stateDiagram-v2
+    state "To tag" as ToTag
+    state "In reels" as InReels
+
+    [*] --> ToTag: addDetectedClips (a new clip is detected)
+    [*] --> InReels: addNewClipsToReel (a new clip is picked by hand, phase 7)
+    ToTag --> Skipped: skip
+    Skipped --> ToTag: restore
+    ToTag --> InReels: tagClip / addClipsToReel / addNewClipsToReel (clip already known)
+    Skipped --> InReels: tagClip / addClipsToReel / addNewClipsToReel (clip already known)
+    InReels --> ToTag: untagToInbox (Undo)
+    InReels --> InReels: tagClip / addClipsToReel / removeClipsFromReel (still in another reel)
+    InReels --> [*]: removeClipsFromReel from its last reel, or deleting that reel (the record is deleted, the video is not)
+```
+
+Things the arrows do not show:
+- **Seeing a known clip again changes nothing.** If `addDetectedClips` reports a video TakeTray already knows, it stays exactly where it is: in a reel, in To tag or in Skipped. It never comes back to To tag (D-57).
+- **Moving into a reel always empties the lists.** `tagClip`, `addClipsToReel` and `addNewClipsToReel` delete the clip's To tag / Skipped entry, so a clip is never in a reel and in a list at once. This includes a clip that was waiting in To tag or Skipped and that you then pick by hand (`addNewClipsToReel`, D-57).
+- **`skip` and `restore` only move clips that are in a list.** A clip that is in a reel is left alone.
+- **`untagToInbox` is also safe on a clip already in a list**: it ends up in To tag with a fresh time.
+
 ---
 
 ## 1. A separate test copy of the app
 
-Task 1 is a build setting, not data. In short: debug builds and the automatic phone tests install as **TakeTray Dev** (`app.taketray.dev`), a separate app with its own storage, so tests can never wipe your real TakeTray data. See D-52.
+**What we built:** a build setting, not data. Debug builds and the automatic phone tests now install as **TakeTray Dev** (`app.taketray.dev`), a second app with its own storage and its own database file. The release build is still **TakeTray** (`app.taketray`).
 
-The change is a few lines in `app/android/app/build.gradle.kts`:
+**Why TakeTray needs it:** the automatic phone tests (Patrol, Section 11) clear an app's data between tests. If they ran inside the real TakeTray, a test could wipe your real reels. With a separate app the test data and your data can never mix (D-52).
 
-```kotlin
-debug {
-    applicationIdSuffix = ".dev"
-    manifestPlaceholders["appLabel"] = "TakeTray Dev"
-}
-```
+**Key ideas:**
 
-Release and profile builds keep `app.taketray` and the name "TakeTray", which is the default set in `defaultConfig` (it can't sit on `release`, because Flutter's profile build doesn't inherit it). The manifest reads the name from the placeholder (`android:label="${appLabel}"`).
+- **Two apps from one code base.** Android tells apps apart by their *application id* (a package name like `app.taketray`). Add a suffix to the id and Android treats it as a different app, with its own private storage. The change is a few lines in `app/android/app/build.gradle.kts`:
+
+  ```kotlin
+  debug {
+      applicationIdSuffix = ".dev"
+      manifestPlaceholders["appLabel"] = "TakeTray Dev"
+  }
+  ```
+
+- **The name on the home screen is a placeholder.** The manifest reads it from `android:label="${appLabel}"`. Release and profile builds keep the name "TakeTray", which is the default set in `defaultConfig` (it can't sit on `release`, because Flutter's profile build doesn't inherit it).
 
 **Where it lives:** `app/android/app/build.gradle.kts`, `app/android/app/src/main/AndroidManifest.xml`, and the `patrol:` block in `app/pubspec.yaml` (`package_name: app.taketray.dev`).
 
-**Decisions:** D-52.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter build apk --debug)`, then `$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2 dump badging app/build/app/outputs/flutter-apk/app-debug.apk | grep -E "^package:|application-label:"`. You should see `package: name='app.taketray.dev'` and `application-label:'TakeTray Dev'`. (If your Android build-tools folder has another version number, use that one.)
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter build apk --debug)`, then `$HOME/Library/Android/sdk/build-tools/36.0.0/aapt2 dump badging app/build/app/outputs/flutter-apk/app-debug.apk | grep -E "^package:|application-label:"`. You should see `package: name='app.taketray.dev'` and `application-label:'TakeTray Dev'`.
+**Decisions:** D-52.
 
 ## 2. Keeping generated code honest
 
 **What we built:** a script, `tool/check_generated`, that `tool/check` runs right after `pub get`. It re-runs the code generators and fails if any committed generated file would change. We also tidied three small things in `tool/check` itself.
 
-**Why TakeTray needs it:** from this phase on, a lot of the app's code is written by tools, not by hand: the database (Drift), the immutable models (Freezed), the JSON conversion and the Riverpod providers. If you change a source file and forget to regenerate, the generated file is silently out of date. The app may still compile and then behave like the old code. We want that to be impossible to forget.
+**Why TakeTray needs it:** from this phase on, a lot of the app's code is written by tools, not by hand: the database (Drift, Section 3), the immutable models and their JSON conversion (Freezed, Section 4) and the Riverpod providers (Section 3). If you change a source file and forget to regenerate, the generated file is silently out of date. The app may still compile and then behave like the old code. We want that to be impossible to forget.
 
 **Key ideas:**
 
@@ -106,7 +147,7 @@ if [ -f "$m/build.yaml" ] && grep -q 'databases:' "$m/build.yaml"; then
 fi
 ```
 
-- **What is fingerprinted.** `*.g.dart` and `*.freezed.dart` under `lib/` and `test/`, everything in `drift_schemas/`, and everything in `test/drift/` (where Drift's migration tool writes helper files). The Drift files are never deleted before regenerating, because old schema snapshots cannot be rebuilt. The Drift parts are skipped until the database exists (Task 4). The translations in `app/lib/l10n/gen/` are not checked: they are not committed at all, `pub get` rebuilds them (D-27).
+- **What is fingerprinted.** `*.g.dart` and `*.freezed.dart` under `lib/` and `test/`, everything in `drift_schemas/`, and everything in `test/drift/` (where Drift's migration tool writes helper files). The Drift files are never deleted before regenerating, because old schema snapshots cannot be rebuilt. The Drift step (`make-migrations`) runs only for a member whose `build.yaml` lists a `databases:` entry, which is the app since Section 3. The translations in `app/lib/l10n/gen/` are not checked: they are not committed at all, `pub get` rebuilds them (D-27).
 - **A failed check fixes itself.** The generators leave the new files on disk, so after a failure you just look at `git status`, review the changes and commit them. Running the check again passes.
 - **Testing the check.** `tool/test/check_generated_test.dart` builds a throwaway repo whose `tool/dart` is a stand-in generator that always writes the same content. That lets the tests prove the exit code is 1 for an edited, missing or leftover file and 0 for fresh ones, without waiting for the real generators.
 
@@ -120,7 +161,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 ## 3. The database
 
-**What we built:** the database itself: nine tables (reels, clips, which clip is in which reel, the To tag list, saved links, VN copies, settings and a time-zone history), the code that opens it, the rules for how times and fixed choices are stored, and a test that stops the tables from changing by accident. Nothing reads or writes it yet; the repositories in Tasks 6 to 8 do that.
+**What we built:** the database itself: nine tables (reels, clips, which clip is in which reel, the To tag list, saved links, VN copies, settings and a time-zone history), the code that opens it, the rules for how times and fixed choices are stored, and a test that stops the tables from changing by accident. The repositories in Sections 5 to 7 are what read and write it.
 
 **Why TakeTray needs it:** every reel you make and every clip you tag has to survive the app being closed, the phone restarting and the app being updated. And once the app is on your phone, the shape of this data is on your phone too: a later version can't just change it, it has to convert what is already there.
 
@@ -128,7 +169,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 - **SQLite: the database is a file, not a server.** With MySQL or MongoDB on a website, the database is a separate program on a server, and your code talks to it over the network with a host name, a user and a password. SQLite has no server. It is a library built into the app, and the whole database is one file, `taketray.sqlite`, in TakeTray's private folder on the phone. No other app can read it, there is no password and no network (TakeTray has no internet permission at all), and only one user ever uses it. It still speaks the same SQL as MySQL: tables, rows, `SELECT`, `JOIN`, indexes, transactions. We use tables and joins rather than MongoDB-style documents because the data is relational: one clip can be in many reels, and one reel has many clips.
 
-- **Drift: tables written in Dart.** Instead of writing `CREATE TABLE` by hand, you describe each table as a Dart class, and Drift's code generator writes the SQL, a typed class for each row and the query code (in `app_database.g.dart`, about 6,500 lines nobody edits). This is the reels table:
+- **Drift: tables written in Dart.** Instead of writing `CREATE TABLE` by hand, you describe each table as a Dart class, and Drift's code generator writes the SQL, a typed class for each row and the query code (in `app_database.g.dart`, over 6,000 lines that nobody edits). This is the reels table:
 
   ```dart
   @DataClassName('ReelRow')
@@ -148,7 +189,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   CREATE TABLE "reels" ("id" INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "name" TEXT NOT NULL, "description" TEXT NULL, "status" TEXT NOT NULL, "created_at" INTEGER NOT NULL, "updated_at" INTEGER NOT NULL)
   ```
 
-  The gain over writing SQL strings is that mistakes are caught when the code compiles, not when you tap a button: a misspelt column (`db.reels.nmae`) or a text where a number belongs does not compile, and every row comes back as a `ReelRow` with real Dart types (`DateTime createdAt`, `ReelStatus status`). The row classes end in `Row` so they don't clash with the app's own `Reel` and `Clip` models (Task 5); repositories turn one into the other.
+  The gain over writing SQL strings is that mistakes are caught when the code compiles, not when you tap a button: a misspelt column (`db.reels.nmae`) or a text where a number belongs does not compile, and every row comes back as a `ReelRow` with real Dart types (`DateTime createdAt`, `ReelStatus status`). The row classes end in `Row` so they don't clash with the app's own `Reel` and `Clip` models (Section 4); repositories turn one into the other.
 
 - **The tables at a glance** (all in `app/lib/data/database/tables.dart`):
 
@@ -164,7 +205,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | `settings` | one setting, its value stored as JSON text | `key` |
   | `zone_timeline` | "from this moment, the phone was in this time zone" | `at` |
 
-  The unique keys on `clips` are what will stop the same video being added twice (Review Focus 5 in Task 7). They have one gap: SQLite treats two NULLs as different, so a detected clip saved without its `volume_name` would never match anything. Two `CHECK` rules close it, so the database itself refuses such a row (the test `a clip identity is never half empty`):
+  The unique keys on `clips` are what will stop the same video being added twice (Review Focus 5, "the same video seen twice", Section 6). They have one gap: SQLite treats two NULLs as different, so a detected clip saved without its `volume_name` would never match anything. Two `CHECK` rules close it, so the database itself refuses such a row (the test `a clip identity is never half empty`):
 
   ```dart
   "CHECK (source <> 'mediaStore' OR "
@@ -185,7 +226,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   beforeOpen: (details) => customStatement('PRAGMA foreign_keys = ON'),
   ```
 
-  Deleting a clip, in turn, deletes its reel links and its To tag row. Deleting a reel does not delete its clips: a clip may be in other reels. Clearing out clips that end up in no reel is a repository rule (Task 6).
+  Deleting a clip, in turn, deletes its reel links and its To tag row. Deleting a reel does not delete its clips: a clip may be in other reels. Clearing out clips that end up in no reel is a repository rule (Section 5).
 
   One link is deliberately *not* a foreign key: `vn_copies.clip_id` is a plain number (`IntColumn get clipId => integer()();`). A `vn_copies` row is TakeTray's only note of a file it copied into `Movies/TakeTray/` for VN. If removing a clip from its last reel deleted that note too, the app would lose track of a file it created. Clip ids are never reused (`AUTOINCREMENT`), so the leftover number can't point at the wrong clip (the test `deleting a clip keeps the record of its VN copy`).
 
@@ -231,7 +272,20 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   When version 2 comes, `make-migrations` saves `drift_schema_v2.json` and generates more: a `stepByStep` helper to write the upgrade with, and `migration_test.dart`, which upgrades a version 1 database to version 2 and checks the result, plus a template for checking that rows survive the upgrade. So a broken migration fails on a laptop, not on your phone. At version 1 those files don't exist yet, because there is nothing to upgrade from; the test helpers in `test/drift/taketray/generated/` were made with `dart run drift_dev schema generate --data-classes --companions` (D-54).
 
-- **"Now" comes from a provider.** Code that stores a time asks `clockProvider` for it instead of calling `DateTime.now()`, so a test can swap in a `FixedClock` and know exactly which time gets saved. The database is a provider too, `appDatabaseProvider`, which opens the file once and keeps it open while the app runs. Tests use `testDatabase()`, a fresh database that lives only in memory.
+- **Providers: shared objects that code asks for by name.** The app needs exactly one open database, and many classes need it. Riverpod (the library the app uses for this) solves that with *providers*. A provider is a small function that builds one object, and Riverpod builds it the first time anyone asks and then hands the same object to everyone. This is the database provider:
+
+  ```dart
+  @Riverpod(keepAlive: true)
+  AppDatabase appDatabase(Ref ref) {
+    final db = AppDatabase(driftDatabase(name: 'taketray'));
+    ref.onDispose(db.close);
+    return db;
+  }
+  ```
+
+  Code that needs the database writes `ref.watch(appDatabaseProvider)`. You never write `appDatabaseProvider` yourself: Riverpod's code generator (Section 2) writes it from the function name. `keepAlive: true` keeps the database open as long as the app runs, and `onDispose` closes it when the app's set of providers is thrown away. The advantage over a global variable is that a test can replace any provider with a different one, and nothing else has to change.
+
+- **"Now" comes from a provider too.** Code that stores a time asks `clockProvider` instead of calling `DateTime.now()`. In the app that is the real clock. In a test it is a `FixedClock` whose time only moves when the test says so, so the test knows exactly which time gets saved. Tests also use `testDatabase()`, a fresh database that lives only in memory.
 
 **Where it lives:** `app/lib/data/database/` (`tables.dart`, `converters.dart`, `app_database.dart`, `connection.dart`), `app/lib/domain/models/enums.dart`, `app/lib/core/clock.dart`, `app/build.yaml`, `app/drift_schemas/taketray/`, `app/test/drift/taketray/`, `app/test/data/database/app_database_test.dart`, `app/test/support/`. The open-and-migrate steps are in `docs/flow.md` ("Database open and migrations").
 
@@ -241,7 +295,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 ## 4. Models and rules
 
-**What we built:** the app's own words for its data, and the small rules about them. Nine immutable model classes (`Reel`, `Clip`, `NewClip`, `ClipFingerprint`, `ReelReference`, `VnSession`, `VnCopy`, `ZoneEntry`, `AppSettings`) and five pure rules: how long a name may be, how a pasted link is cleaned, which site a link is from, which time zone the phone was in at a moment, and what to call a second VN folder with the same name. None of it touches the database yet; the repositories in Tasks 6 to 8 will use it.
+**What we built:** the app's own words for its data, and the small rules about them. Nine immutable model classes (`Reel`, `Clip`, `NewClip`, `ClipFingerprint`, `ReelReference`, `VnSession`, `VnCopy`, `ZoneEntry`, `AppSettings`) and five pure rules: how long a name may be, how a pasted link is cleaned, which site a link is from, which time zone the phone was in at a moment, and what to call a second VN folder with the same name. None of it touches the database; the repositories in Sections 5 to 7 use it.
 
 **Why TakeTray needs it:** the screens should be able to say `reel.status` and `clip.fingerprint.durationMs` without knowing there are tables underneath, and the rules ("40 characters", "the same Instagram reel is one reference") must be written once, so the reel form, the importer and the share handler all agree.
 
@@ -254,10 +308,8 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   ```dart
   @freezed
   abstract class ZoneEntry with _$ZoneEntry {
-    const factory ZoneEntry({
-      required DateTime at,
-      required String zoneId,
-    }) = _ZoneEntry;
+    const factory ZoneEntry({required DateTime at, required String zoneId}) =
+        _ZoneEntry;
 
     factory ZoneEntry.fromJson(Map<String, dynamic> json) =>
         _$ZoneEntryFromJson(json);
@@ -283,7 +335,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   NewClip.picker(pickerUri: 'content://...', fingerprint: ...)
   ```
 
-  Section 3's database `CHECK` rules refuse a clip without its identity; `NewClip` refuses it one step earlier, in Dart, with a clear message (`a picker clip needs pickerUri`).
+  Section 3's database `CHECK` rules refuse a clip without its identity; `NewClip` refuses it one step earlier, in Dart, with a clear message (`a picker clip needs pickerUri`). That early check is an `assert`, which Dart runs in tests and debug builds, so a slip shows up in a test, not as an SQL error on the phone.
 
 - **Counting characters, not code.** Rule: a reel name is 1 to 40 characters after trimming spaces and invisible characters (a zero-width space, for example, which you cannot see but which would otherwise make a blank name look filled in). In code, "length" is not what a person sees. This is real output from the tests:
 
@@ -314,13 +366,22 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   https://www.instagram.com/reel/ABC/?igsh=two&utm_source=ig
   ```
 
-  Different apps even spell the address differently (`http://instagram.com/reel/ABC?utm_source=ig_web_copy_link`, `https://m.instagram.com/reel/ABC/`, `https://instagr.am/tv/ABC/`, `https://www.instagram.com/someuser/reel/ABC/`). `normalizeReferenceUrl` turns all of these into the one form `https://www.instagram.com/p/ABC/` (always `https`, always the `www.instagram.com` host, no query, exactly one trailing slash, and the post written as `/p/<code>/`), so the second save is reported as "already saved" instead of adding a duplicate. Only those four Instagram hosts (`instagram.com`, `www.`, `m.` and `instagr.am`) are rewritten and lose their query; a YouTube link would break without `?v=`:
+  Different apps even spell the address differently (`http://instagram.com/reel/ABC?utm_source=ig_web_copy_link`, `https://m.instagram.com/reel/ABC/`, `https://instagr.am/tv/ABC/`, `https://www.instagram.com/someuser/reel/ABC/`). `normalizeReferenceUrl` turns all of these into the one form `https://www.instagram.com/p/ABC/`: always `https`, always the `www.instagram.com` host, no query, exactly one trailing slash, and the post written as `/p/<code>/`. Instagram shows one post under `/p/ABC/`, `/reel/ABC/`, `/reels/ABC/`, `/tv/ABC/` and `/someuser/reel/ABC/` (and redirects `/p/` to the reel when it is one), so all of them become `/p/ABC/`. The second save is then reported as "already saved" instead of adding a duplicate.
+
+  Only four Instagram hosts (`instagram.com`, `www.`, `m.` and `instagr.am`) are rewritten and lose their query. Every other link keeps its query, because a YouTube link would break without `?v=`:
 
   ```dart
   if (!_instagramHosts.contains(parsed.host)) return withoutFragment;
   ```
 
-  Edge cases the tests pin down: text with a space in it is not a link (`'not a url'`, or a pasted sentence), `ftp://x` and `mailto:` are refused (only `http` and `https`), `instagram.com/reel/ABC` with no `https://` is refused (it has no scheme), the path is kept as typed (letters keep their case: `ABC` and `abc` are different reels) except on Instagram, where a post is folded to `/p/<code>/` and every Instagram path ends in exactly one `/` (so `.../ABC`, `.../ABC/` and `.../ABC//` match), and `l.instagram.com/?u=...` is left alone because its query *is* the link. Instagram shows the same post under `/p/ABC/`, `/reel/ABC/`, `/reels/ABC/`, `/tv/ABC/` and `/someuser/reel/ABC/`, and redirects `/p/` to the reel when it is one, so all of them are written as `/p/ABC/`; the code keeps its capitals, because `ABC` and `abc` are different posts. A profile (`/someuser/`) or `/reels/` with no code just gets its trailing slash. The function returns `null` for anything unusable, so the caller can't forget to check.
+  The tests pin down the edge cases:
+  - Text with a space in it is not a link (`'not a url'`, or a pasted sentence).
+  - Only `http` and `https` are links: `ftp://x` and `mailto:` are refused, and so is `instagram.com/reel/ABC` with no `https://`, because it has no scheme.
+  - The code keeps its capitals: `ABC` and `abc` are different posts.
+  - `.../ABC`, `.../ABC/` and `.../ABC//` all match, because every Instagram path ends in exactly one `/`. A profile (`/someuser/`) or `/reels/` with no code just gets its trailing slash.
+  - `l.instagram.com/?u=...` is left alone, because there the query *is* the link.
+
+  The function returns `null` for anything unusable, so the caller can't forget to check.
 
   `referenceSourceOf` then picks the label (Instagram, YouTube, TikTok, or plain link) from the host. It matches the domain or a subdomain of it (`m.youtube.com`, `vm.tiktok.com`), and never a look-alike: `notinstagram.com` is a plain link.
 
@@ -346,7 +407,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Where it lives:** `app/lib/domain/models/` (one file per model, plus `enums.dart` from Section 3) and `app/lib/domain/rules/` (`text_limits.dart`, `reference_url.dart`, `zone_lookup.dart`, `folder_names.dart`). Tests are in `app/test/domain/`, one file per rule and one for all the models.
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/domain)`. You should see `+79: All tests passed!`. Then break a rule on purpose: in `app/lib/domain/rules/text_limits.dart` change `const reelNameMaxLength = 40;` to `39`, run the same command, and watch `40 emoji pass and 41 fail` and the other limit tests fail. Change it back.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/domain)`. You should see `+79: All tests passed!`. Then break a rule on purpose: in `app/lib/domain/rules/text_limits.dart` change `const reelNameMaxLength = 40;` to `39`, run the same command, and watch seven tests fail, among them `40 characters pass and 41 fail` and `40 emoji pass and 41 fail (an emoji is one character)`. Put it back with `git checkout -- app/lib/domain/rules/text_limits.dart` (from the repo root).
 
 **Decisions:** D-55.
 
@@ -368,7 +429,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
     final Clock _clock;
   ```
 
-  and creating a reel is where the rules are applied:
+  (`new(...)` is how this project writes a class's ordinary constructor, the one called with just the class name. The `this._db` parameters store the values straight into the fields.) Creating a reel is where the rules are applied:
 
   ```dart
   Future<Reel> create(String name, {String? description}) async {
@@ -387,7 +448,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
         );
   ```
 
-  A bad name throws `InvalidInputException(ReelNameProblem.tooLong)` before anything is saved, and the form can show the matching message. Two reels may have the same name (D-56); the id tells them apart.
+  `ReelsCompanion.insert(...)` is Drift's *companion* class: it holds the values of a row you are about to insert, and leaves out the ones the database fills in itself (here `id`). A bad name throws `InvalidInputException(ReelNameProblem.tooLong)` before anything is saved, and the form can show the matching message. Two reels may have the same name (D-56); the id tells them apart.
 
 - **A transaction: all of it, or none of it.** Deleting a reel is several changes: the reel, its links to clips, its saved references, its VN rows, and then any clip left with no home. If the app were killed after the first and before the last, the database would be half-cleaned. A transaction groups the changes so that SQLite either keeps all of them or none (like `BEGIN` / `COMMIT` in MySQL). This is the real delete:
 
@@ -440,7 +501,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   }
   ```
 
-  A small worked example. Clip 1 is in reels Goa and Paris. Clip 2 is only in Goa. Clip 3 is only in Goa and also waiting in To tag. You delete Goa:
+  A small worked example. Clip 1 is in reels Goa and Paris. Clip 2 is only in Goa. Clip 3 is in Goa and also waiting in To tag. (The repositories never put a clip in a reel and in a list at once, Section 6, but the database allows it and the rule does not assume otherwise.) You delete Goa:
 
   | Clip | Still in a reel? | In To tag / Skipped? | After deleting Goa |
   |---|---|---|---|
@@ -450,9 +511,9 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   Only the clip record is deleted, never the video file. And the `vn_copies` rows of a deleted clip are left alone on purpose (D-54): they are the app's only record of a file it created in `Movies/TakeTray/`, so the VN code (phase 8) can still find and delete that file. For the same reason the caller must delete a reel's VN copy files *before* calling `delete`.
 
-**Where it lives:** `app/lib/data/repositories/reels_repository.dart` (with its generated `reelsRepositoryProvider`, which hands out one repository built from the database and clock providers), `app/lib/data/database/housekeeping.dart`, and the tests in `app/test/data/repositories/reels_repository_test.dart`.
+**Where it lives:** `app/lib/data/repositories/reels_repository.dart` (with its generated `reelsRepositoryProvider`, which hands out one repository built from the database and clock providers), `app/lib/data/database/housekeeping.dart`, and the tests in `app/test/data/repositories/reels_repository_test.dart`. The steps of a delete are in `docs/flow.md` ("Deleting a reel").
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/reels_repository_test.dart)`. You should see `+20: All tests passed!`. Then break the orphan rule on purpose: in `app/lib/data/database/housekeeping.dart` remove the `& c.id.isNotInQuery(inInbox)` part, run the same command, and watch `delete keeps a clip that is in To tag or Skipped` and `deleteOrphanClips deletes only clips with no reel and no inbox row` fail. Put the line back afterwards.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/reels_repository_test.dart)`. You should see `+20: All tests passed!`. Then break the orphan rule on purpose: in `app/lib/data/database/housekeeping.dart` remove the `& c.id.isNotInQuery(inInbox)` part, run the same command, and watch `delete keeps a clip that is in To tag or Skipped` and `deleteOrphanClips deletes only clips with no reel and no inbox row` fail. Put the line back afterwards with `git checkout -- app/lib/data/database/housekeeping.dart` (from the repo root).
 
 **Decisions:** D-56 (names are not unique, the shared orphan rule, delete as one transaction), D-54 (the cascades and the VN copy rows that outlive their clip), D-10 (no names in logs).
 
@@ -470,6 +531,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   |---|---|---|
   | The detector finds it | `addDetectedClips` | a `clips` row and an `inbox` row `pending`: it is in To tag |
   | You tag it into Goa and Paris | `tagClip(id, {goa, paris})` | two `clip_reels` rows; the `inbox` row is deleted |
+  | (By hand, phase 7) you pick a video for Goa | `addNewClipsToReel(goa, [clip])` | a new clip gets a `clips` row and a link, no `inbox` row; a clip TakeTray already knew is found by its identity, linked, and its `inbox` row (pending or skipped) is deleted |
   | You tap Undo | `untagToInbox(id)` | both `clip_reels` rows deleted; `inbox` row `pending` again |
   | You skip it | `skip([id])` | `inbox.state` becomes `skipped` |
   | You change your mind | `restore([id])` | `inbox.state` is `pending` again |
@@ -477,7 +539,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   A clip is always in at least one of two kinds of place: a list (an `inbox` row: To tag or Skipped) or one or more reels (`clip_reels` rows), and this repository never puts it in both kinds at once. The moment it is in none of them it is an *orphan* (Section 5) and is deleted. That is why each method that inserts a clip also gives it a place in the same database transaction (a group of changes that is saved all together): a clip with no place, even for a moment, could be swept away by another delete, because the sweep looks at the whole table.
 
-- **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addDetectedClips` first asks "do I already know this clip?", using its identity: the MediaStore id plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
+- **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addDetectedClips` first asks "do I already know this clip?", using its identity: the MediaStore id (Android's own catalogue number for the video) plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
 
   ```dart
   Future<int?> _findId(NewClip clip) {
@@ -597,9 +659,9 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 - **Unknown times and sizes are the caller's job.** `dateTakenUtc`, `width` and `height` can never be empty in the database. The repository stores what it is given; the phase 3 code that talks to Android fills a missing date from the date the video was added (then modified), and a missing width or height with `0` (D-57).
 
-**Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`.
+**Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`. The steps of each change are in `docs/flow.md` ("Tagging data changes").
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+45: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards.
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+45: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards with `git checkout -- app/lib/data/repositories/clips_repository.dart` (from the repo root).
 
 **Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 
@@ -703,7 +765,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   };
   ```
 
-  `load`, `watch` and the backup (Task 9) all use this set, and `save` never touches other keys; a test saves settings next to a `shootingMode` row and checks that row is untouched.
+  `load`, `watch` and the backup (Section 8) all use this set, and `save` never touches other keys; a test saves settings next to a `shootingMode` row and checks that row is untouched.
 
 - **The time-zone timeline: "London time".** A video file does not record which time zone it was shot in, and TakeTray may only notice a new clip days later, back home. So the phone keeps a small history, one row each time the zone *changes*: "from this moment on, the phone was in this zone" (spec §8.3a). Say the phone is in India on the 5th, you fly to London on the 12th and return on the 19th:
 
@@ -729,7 +791,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
   The look-up itself, `zoneAt`, is the pure function from Section 4: it loads the timeline, oldest first, and halves it until it finds the entry. A moment before the first row has no zone (`null`).
 
-**Where it lives:** `app/lib/data/repositories/references_repository.dart`, `vn_repository.dart`, `settings_repository.dart` and `zone_repository.dart` (each with its generated provider, e.g. `settingsRepositoryProvider`), and the tests next to them in `app/test/data/repositories/`.
+**Where it lives:** `app/lib/data/repositories/references_repository.dart`, `vn_repository.dart`, `settings_repository.dart` and `zone_repository.dart` (each with its generated provider, e.g. `settingsRepositoryProvider`), and the tests next to them in `app/test/data/repositories/`. The steps are in `docs/flow.md` ("References, VN folders, settings and time zones").
 
 **Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/references_repository_test.dart)`. You should see `+26: All tests passed!`. Then break the duplicate check on purpose: in `references_repository.dart`, in `add`, replace the line `final url = normalizeReferenceUrl(rawUrl);` with `final url = Uri.tryParse(rawUrl.trim());` (pretend links are not cleaned), run the same command, and three tests fail: `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` (the stored link is still `.../reel/ABC123/?igsh=…`) and, as side effects, `moving the reel on Home › a rejected link or label does not move the reel` and `a link that is not an http(s) link throws and saves nothing` (the unclean parser accepts a link the real one rejects). Put the line back afterwards with `git checkout -- app/lib/data/repositories/references_repository.dart` (run it from the repo root; it undoes any uncommitted edit to that file). The other three repositories have their own test files in the same folder (`+17`, `+12` and `+11` tests).
 
@@ -896,13 +958,13 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   DA:23,0
   DA:24,0
   DA:29,18
-  DA:35,18
+  DA:43,6
   LF:11
   LH:9
   end_of_record
   ```
 
-  (Trimmed: the real record has eleven `DA:` lines.) `SF:` is the file, and `DA:<line>,<count>` says line 35 ran 18 times and lines 23 and 24 never ran (`LF` and `LH` are the file's totals: 11 lines found, 9 hit; `check_coverage` adds up the `DA:` lines itself). Lines that can't run (comments, blank lines, `import`s) are not listed. The coverage of a folder is the lines that ran divided by the lines that could run. `check_coverage` adds this up per folder prefix:
+  (Trimmed: the real record has eleven `DA:` lines.) `SF:` is the file, and `DA:<line>,<count>` says line 29 ran 18 times and lines 23 and 24 never ran (`LF` and `LH` are the file's totals: 11 lines found, 9 hit; `check_coverage` adds up the `DA:` lines itself). Lines that can't run (comments, blank lines, `import`s) are not listed. The coverage of a folder is the lines that ran divided by the lines that could run. `check_coverage` adds this up per folder prefix:
 
   ```dart
   final percent = hit * 100 / found;
@@ -920,7 +982,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | `lib/domain/` | 62 of 64 | 96.9 % |
   | `lib/data/` | 857 of 957 | 89.6 % |
 
-- **Why 80 % and not 100 %.** The last stretch costs the most and protects the least. Look at what is *not* covered here. In `domain`, lines 23 and 24 of `text_limits.dart` are `InvalidInputException.toString()`, used only when an error is printed. In `data`, 100 hand-written lines did not run, and by far the biggest part (73 of them) is `database/tables.dart`: the Drift table declarations (`IntColumn get id => integer()...`). Only 2 of its 75 lines ran, because the real columns are built by the generated `app_database.g.dart`, and these declarations are read by the code generator, not run by the tests. Nothing is untested there; the lines just never execute. The rest are small: `ImportSummary.hashCode` and `toString()`, the one-line Riverpod `settingsRepository` wiring, and `connection.dart` (three lines that open the real database file on the phone, which a laptop test must not do: tests use an in-memory database instead). Chasing those to 100 % means writing tests whose only job is to turn the number green. 80 % is a floor that leaves room for those lines but not for a whole untested feature. The rule in `tool/check` is the same for every prefix, and the real percentages are well above it, so the floor only trips when something real is missing.
+- **Why 80 % and not 100 %.** The last stretch costs the most and protects the least. Look at what is *not* covered here. In `domain`, lines 23 and 24 of `text_limits.dart` are `InvalidInputException.toString()`, used only when an error is printed. In `data`, 100 hand-written lines did not run, and by far the biggest part (73 of them) is `database/tables.dart`: the Drift table declarations (`IntColumn get id => integer()...`). Only 2 of its 75 lines ran, because the real columns are built by the generated `app_database.g.dart`, and these declarations are read by the code generator, not run by the tests. Nothing is untested there; the lines just never execute. The rest are small: `ImportSummary`'s `==`, `hashCode` and `toString()`, the one-line provider function at the bottom of each repository file and of `backup_service.dart` (the real app calls those, the tests build the classes directly), and `connection.dart` (three lines that open the real database file on the phone, which a laptop test must not do: tests use an in-memory database instead). Chasing those to 100 % means writing tests whose only job is to turn the number green. 80 % is a floor that leaves room for those lines but not for a whole untested feature. The rule in `tool/check` is the same for every prefix, and the real percentages are well above it, so the floor only trips when something real is missing.
 
 - **Why generated files are excluded.** `*.g.dart` and `*.freezed.dart` (Section 2) are written by tools, not by us. They are large (`app_database.g.dart` alone is 6,311 lines, 2,666 of them executable, and the tests run 913 of those) and mostly code we never call directly. Counting them would drag the percentage down for lines nobody can sensibly test, and a drop there would say nothing about our own code. The tools are tested by their authors, and the freshness check (Section 2) already makes sure the generated files match the source. The filter is two lines in `_parseLcov`:
 
@@ -964,12 +1026,13 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   on:
     push:
     pull_request:
+    workflow_dispatch:
 
   permissions:
     contents: read
   ```
 
-  `on` is when to run: on every push, and on every pull request (a proposal to merge a branch). `permissions: contents: read` means the robot may read the code and nothing else, so even a mistake in the workflow cannot change your repository. There are no passwords or other secrets in the file, and nothing is deployed. (GitHub does keep the saved caches and any uploaded failure pictures for a while, private to the repository.)
+  `on` is when to run: on every push, on every pull request (a proposal to merge a branch), and when you press "Run workflow" by hand (`workflow_dispatch`). A newer push to the same branch cancels the older run that is still going, except on `main`, where every run is kept. `permissions: contents: read` means the robot may read the code and nothing else, so even a mistake in the workflow cannot change your repository. There are no passwords or other secrets in the file, and nothing is deployed. (GitHub does keep the saved caches and any uploaded failure pictures for a while, private to the repository.)
 
 - **The robot does what you do, in the same order.** The steps are: download the code, install Flutter 3.47.7, run `tool/check`. The install step is the one line that makes the wrappers work unchanged:
 
@@ -1023,13 +1086,13 @@ CI=true tool/check
 
 With `CI` set, `tool/check` skips the macOS-only pictures, exactly like the robot. It takes about three minutes on a warm laptop and should end with the coverage lines and `ALL CHECKS PASSED` (this section's run: `lib/domain/  96.9%  62/64 lines`, `lib/data/  89.6%  857/957 lines`). That includes a run from a fresh, empty home folder with a fresh Flutter clone, which is what the robot starts from.
 
-To see the difference that `CI` makes, run the golden test without it (`cd packages/taketray_ui && ../../tool/flutter test test/components`): on a Mac it also compares the `goldens/macos/` pictures, so it runs more tests than with `CI=true` in front.
+To see the difference that `CI` makes, run the golden test without it (`cd packages/taketray_ui && ../../tool/flutter test test/components`): on a Mac it also compares the `goldens/macos/` pictures. In this section's run it passed 663 tests, against 589 with `CI=true` in front.
 
 **Decisions:** D-60 (CI runs `tool/check`, CI goldens only, Patrol and the release check stay local), D-39 (the two sets of goldens).
 
 ## 11. Proving it works on the phone
 
-**What we built:** one Patrol test, `app/patrol_test/database_test.dart`, that runs on your Samsung S24 inside **TakeTray Dev**. It opens the real database, saves a reel, closes the database, opens it again, reads the reel back and exports it. Alongside it, three checks on the release app: it still has no `INTERNET` permission, it contains the SQLite library, and it starts without crashing.
+**What we built:** one Patrol test, `app/patrol_test/database_test.dart`, that runs on your Samsung S24 inside **TakeTray Dev**. It opens the real database, saves a reel, closes the database, opens it again, reads the reel back and exports it. Alongside it, three checks on the release app: it still has no `INTERNET` permission (`tool/check_release_permissions`), it contains the SQLite library, and it starts without crashing.
 
 **Why TakeTray needs it:** every database test so far ran on the Mac. A Mac test proves the rules are right, but it cannot prove the database works on the phone, for two reasons:
 
@@ -1085,6 +1148,8 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 
   (The real list is longer: it also has the Patrol test APK `app.taketray.dev.test`, the Phase 1 catalogue `app.taketray.widgetbook` and an older `app.taketray.test`. The filter `app.taketray` matches them all.)
 
+- **No `INTERNET` permission in the release app.** TakeTray is fully offline (D-09, D-31), and the script `tool/check_release_permissions` builds the release app and fails if it asks Android for internet access. It is too slow for every `tool/check` run (it needs the Android SDK and a full release build), so it is run at the end of a phase: `tool/check_release_permissions`.
+
 - **Last, run the real release app.** The release build goes over the old one with `install -r` (keeps its data) and is launched. The check is that it has a process id and logs no crash, using a log read filtered to TakeTray's own process:
 
   ```
@@ -1104,4 +1169,42 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 
 ---
 
-## Glossary *(completed in Task 13)*
+## Glossary
+
+Terms are in alphabetical order. The link takes you to the section where the idea is explained.
+
+- **Cascade (`ON DELETE CASCADE`).** A database rule that deletes the rows that depend on a deleted row: deleting a reel also deletes its clip links, saved links and VN session. See [Section 3](#3-the-database).
+- **CI (continuous integration).** A robot, here GitHub Actions, that runs the project's checks on a clean computer every time code is pushed. See [Section 10](#10-automatic-checks-on-github).
+- **Clock / `clockProvider`.** The one place the app asks "what time is it?", so tests can fix the time. See [Section 3](#3-the-database).
+- **Code generation (`build_runner`).** A tool that writes repetitive code (database classes, model methods, providers) into `.g.dart` and `.freezed.dart` files, so you don't. See [Section 2](#2-keeping-generated-code-honest).
+- **Companion.** A Drift class (for example `ReelsCompanion`) that holds the values of a row you are about to insert or update, where some may be left unset. See [Section 5](#5-saving-reels).
+- **Coverage.** The share of code lines that ran at least once while the tests ran. It shows which code no test touches, not whether the tests check anything. See [Section 9](#9-measuring-test-coverage).
+- **Domain layer.** The app's own models (`Reel`, `Clip`) and rules (name limits, link clean-up), with no Flutter and no Drift in them. See [Section 4](#4-models-and-rules).
+- **Drift.** A Dart library that lets you describe database tables as Dart classes and writes the SQL and the query code for you. See [Section 3](#3-the-database).
+- **Foreign key.** A column that must point at an existing row in another table, so the database refuses a link to something that isn't there. See [Section 3](#3-the-database).
+- **Freezed.** A code generator for models that can never change after they are built: it writes `==`, `copyWith` and JSON conversion. See [Section 4](#4-models-and-rules).
+- **Generated file.** A file written by a tool, not by hand, and committed to git; `tool/check_generated` fails when one is out of date. See [Section 2](#2-keeping-generated-code-honest).
+- **Golden test.** A test that draws a component and compares the picture with a saved image. See [Section 10](#10-automatic-checks-on-github).
+- **Idempotent.** Doing it twice has the same result as doing it once. Saving the same detected clip twice leaves one clip. See [Section 6](#6-clips-and-the-to-tag-list).
+- **Immutable.** Cannot be changed after it is built; to change it you make a changed copy. See [Section 4](#4-models-and-rules).
+- **Inbox (To tag and Skipped).** The `inbox` table: clips waiting to be tagged (`pending`, shown as To tag) or set aside (`skipped`). See [Section 6](#6-clips-and-the-to-tag-list).
+- **JSON.** A plain-text format for structured data. Settings values and the backup file are JSON. See [Section 7](#7-references-vn-folders-settings-and-time-zones) and [Section 8](#8-backup-export-and-import).
+- **lcov.** The plain-text report format that `flutter test --coverage` writes. See [Section 9](#9-measuring-test-coverage).
+- **MediaStore.** Android's own catalogue of the videos and photos on the phone; a clip's id there is how TakeTray recognises it. See [Section 6](#6-clips-and-the-to-tag-list).
+- **Migration.** Converting a database from an older shape to a newer one, done by the app itself the first time the new version opens it. See [Section 3](#3-the-database).
+- **Orphan clip.** A clip record that is in no reel and in neither To tag nor Skipped. Nothing can reach it, so it is deleted. See [Section 5](#5-saving-reels).
+- **Patrol.** The tool that runs automatic tests on the real phone. See [Section 11](#11-proving-it-works-on-the-phone).
+- **Provider (Riverpod).** A small function that builds one shared object (the database, the clock, a repository) the first time it is asked for; code asks for it by name and tests can swap it. See [Section 3](#3-the-database).
+- **Repository.** The one class screens use to read and change a kind of data; it applies the rules and hides the database. See [Section 5](#5-saving-reels).
+- **Riverpod.** The library the app uses for providers and for passing shared objects around. See [Section 3](#3-the-database).
+- **Schema version.** The number that says which shape of tables a database file has (`PRAGMA user_version`); the app compares it with the version it expects. The backup file has its own, separate version. See [Section 3](#3-the-database) and [Section 8](#8-backup-export-and-import).
+- **Sealed class.** A Dart class whose subclasses are all known, so a `switch` that forgets one is a compile error; used for "added" or "already saved". See [Section 7](#7-references-vn-folders-settings-and-time-zones).
+- **SQLite.** A database that is a single file and a library inside the app, with no server. See [Section 3](#3-the-database).
+- **Stream / `watch()`.** A query that sends the current rows now and again after every change, so screens update by themselves. See [Section 5](#5-saving-reels).
+- **Transaction.** A group of database changes that are saved completely or not at all. See [Section 5](#5-saving-reels).
+- **UTC milliseconds.** How every moment is stored: milliseconds since 1 January 1970 in UTC, in a plain integer. See [Section 3](#3-the-database).
+- **VN.** The video editor TakeTray can hand clips to by copying them into a folder. See [Section 7](#7-references-vn-folders-settings-and-time-zones).
+
+## What's next
+
+Phase 2 built the storage and proved it works on the phone, but nothing in the app uses it yet. Phase 3 connects it to the phone's real videos: it reads Android's media library, recognises new clips and saves them through `ClipsRepository.addDetectedClips`, the first step of the life of a clip above. Phase 4 then builds the reel screens on the repositories from Sections 5 to 7.
