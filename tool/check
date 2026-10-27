@@ -11,10 +11,14 @@ EXPECTED_FLUTTER="3.47.7"
 FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)
 DART_MEMBERS=(tool)
 
+# The Flutter member whose tests run with --coverage (see the coverage step).
+COVERAGE_MEMBER=app
+
 # Folders that the style rules (docs/flow.md, D-19) apply to.
 STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
 
 cd "$(dirname "$0")/.."
+root="$(pwd)"
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -27,6 +31,15 @@ in_list() {
   done
   return 1
 }
+
+# A member in both lists would be analyzed and tested twice, and with the wrong
+# tool for one of them.
+for m in "${FLUTTER_MEMBERS[@]}"; do
+  if in_list "$m" "${DART_MEMBERS[@]}"; then
+    echo "FAIL: member $m is listed in both FLUTTER_MEMBERS and DART_MEMBERS in tool/check; it must be in exactly one" >&2
+    exit 1
+  fi
+done
 
 step "workspace members"
 # The `workspace:` list in the root pubspec.yaml: the `  - x` lines after
@@ -96,6 +109,11 @@ echo "Flutter ${EXPECTED_FLUTTER}"
 step "pub get"
 tool/flutter pub get
 
+step "generated files fresh"
+# Fails when a committed *.g.dart / *.freezed.dart / drift_schemas file differs
+# from what build_runner writes now (D-53).
+tool/check_generated
+
 step "design tokens fresh"
 # Fails when a generated token file (Dart, CSS, JSON, Kotlin) differs from
 # what design/tools/build_tokens.py would write (D-35).
@@ -115,11 +133,11 @@ tool/dart format --output=none --set-exit-if-changed "${format_paths[@]}"
 
 for m in "${flutter_present[@]}"; do
   step "analyze $m"
-  (cd "$m" && "$OLDPWD/tool/flutter" analyze)
+  (cd "$m" && "$root/tool/flutter" analyze)
 done
 for m in "${dart_present[@]}"; do
   step "analyze $m"
-  (cd "$m" && "$OLDPWD/tool/dart" analyze --fatal-infos)
+  (cd "$m" && "$root/tool/dart" analyze --fatal-infos)
 done
 
 for d in "${STYLE_DIRS[@]}"; do
@@ -133,7 +151,7 @@ for m in "${dart_present[@]}"; do
     echo "$m has no test/ folder" >&2
     exit 1
   fi
-  (cd "$m" && "$OLDPWD/tool/dart" test)
+  (cd "$m" && "$root/tool/dart" test)
 done
 for m in "${flutter_present[@]}"; do
   step "test $m"
@@ -141,7 +159,19 @@ for m in "${flutter_present[@]}"; do
     echo "$m has no test/ folder" >&2
     exit 1
   fi
-  (cd "$m" && "$OLDPWD/tool/flutter" test)
+  if [ "$m" = "$COVERAGE_MEMBER" ]; then
+    # Also writes $m/coverage/lcov.info for the coverage step below.
+    (cd "$m" && "$root/tool/flutter" test --coverage)
+  else
+    (cd "$m" && "$root/tool/flutter" test)
+  fi
 done
+
+step "coverage (domain and data)"
+# At least 80 % of the lines in lib/domain/ and lib/data/ must run in a test
+# (generated files are not counted). Phase 4 adds lib/features/*/view_models/
+# here once it exists (spec section 10).
+tool/dart run taketray_tool:check_coverage "$COVERAGE_MEMBER/coverage/lcov.info" 80 \
+  lib/domain/ lib/data/
 
 printf '\nALL CHECKS PASSED\n'

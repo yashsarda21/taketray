@@ -1,0 +1,94 @@
+# Runs tool/check, the same script as on the owner's Mac (D-60).
+# Not run here: Patrol and anything that needs the phone (they stay local, on
+# the S24), and tool/check_release_permissions (needs the Android SDK).
+name: check
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Nothing here writes to the repository, and there are no secrets.
+permissions:
+  contents: read
+
+# A newer push to the same branch or pull request cancels the older run.
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  # Runs on main are never cancelled, so every main commit keeps its result.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  # GitHub already sets CI=true; stated here because the macOS goldens switch
+  # off on it (D-39) and the check must not depend on a default.
+  CI: "true"
+  # Must match EXPECTED_FLUTTER in tool/check, which fails on any other version.
+  FLUTTER_VERSION: "3.47.7"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # tool/flutter and tool/dart run "$HOME/development/flutter/bin/...", so
+      # Flutter goes exactly there. The cache holds the clone together with the
+      # Dart SDK and engine files that the first run downloads into it.
+      - name: Cache Flutter
+        id: flutter-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/development/flutter
+          key: flutter-${{ runner.os }}-${{ env.FLUTTER_VERSION }}
+
+      - name: Install Flutter ${{ env.FLUTTER_VERSION }}
+        if: steps.flutter-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$HOME/development"
+          git clone --depth 1 --branch "$FLUTTER_VERSION" \
+            https://github.com/flutter/flutter.git "$HOME/development/flutter"
+
+      # Downloads the Dart SDK and the desktop test engine (flutter_tester).
+      # The Android SDK is not needed: tool/check builds no APK.
+      - name: Prepare Flutter
+        run: |
+          tool/flutter config --disable-analytics
+          tool/flutter precache --universal
+          tool/flutter --version
+
+      - name: Cache pub packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            pub-${{ runner.os }}-
+
+      # Stops early, with a clear message, if the runner image ever drops a
+      # program that tool/check calls directly.
+      - name: Check required programs
+        run: |
+          for p in git python3 shasum awk find sort; do
+            command -v "$p" >/dev/null || { echo "missing on the runner: $p" >&2; exit 1; }
+          done
+
+      - name: Run tool/check
+        run: tool/check
+
+      # A failing golden writes its images to a failures/ folder (D-39).
+      - name: Upload golden failures
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: golden-failures
+          path: |
+            **/test/**/failures/**
+            **/test/failures/**
+          if-no-files-found: ignore

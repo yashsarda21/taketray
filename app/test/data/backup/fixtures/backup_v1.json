@@ -1,0 +1,190 @@
+{
+  "app": "TakeTray",
+  "schemaVersion": 1,
+  "exportedAt": "2026-10-26T18:00:00.000Z",
+  "reels": [
+    {
+      "id": 3,
+      "name": "Goa 🌴",
+      "description": "Beach week",
+      "status": "collecting",
+      "createdAt": "2026-10-20T08:00:00.000Z",
+      "updatedAt": "2026-10-25T17:30:00.123Z"
+    },
+    {
+      "id": 7,
+      "name": "London",
+      "description": null,
+      "status": "published",
+      "createdAt": "2026-09-01T10:00:00.000Z",
+      "updatedAt": "2026-09-14T12:00:00.000Z"
+    },
+    {
+      "id": 9,
+      "name": "Lisbon",
+      "description": "Trams at golden hour",
+      "status": "ready",
+      "createdAt": "2026-08-01T07:00:00.000Z",
+      "updatedAt": "2026-08-20T19:45:00.000Z"
+    }
+  ],
+  "references": [
+    {
+      "id": 2,
+      "reelId": 3,
+      "url": "https://www.instagram.com/p/ABC123/",
+      "source": "instagram",
+      "label": "Slow pans",
+      "createdAt": "2026-10-21T09:15:00.000Z"
+    },
+    {
+      "id": 5,
+      "reelId": 7,
+      "url": "https://www.youtube.com/watch?v=xyz",
+      "source": "youtube",
+      "label": null,
+      "createdAt": "2026-09-02T11:00:00.000Z"
+    },
+    {
+      "id": 6,
+      "reelId": 9,
+      "url": "https://www.tiktok.com/@someone/video/7300000000000000000",
+      "source": "tiktok",
+      "label": "Tram shot",
+      "createdAt": "2026-08-02T08:00:00.000Z"
+    },
+    {
+      "id": 8,
+      "reelId": 3,
+      "url": "https://example.com/lighting-guide?part=2",
+      "source": "link",
+      "label": null,
+      "createdAt": "2026-10-23T10:00:00.000Z"
+    }
+  ],
+  "clips": [
+    {
+      "id": 10,
+      "source": "mediaStore",
+      "mediaStoreId": 1001,
+      "volumeName": "external_primary",
+      "pickerUri": null,
+      "sizeBytes": 52428800,
+      "durationMs": 12500,
+      "dateTakenUtc": "2026-10-22T06:10:05.250Z",
+      "displayName": "VID_20261022_114005.mp4",
+      "width": 1080,
+      "height": 1920,
+      "mimeType": "video/mp4",
+      "timeZoneId": "Asia/Kolkata",
+      "generationAdded": 41,
+      "firstSeenAt": "2026-10-22T06:12:00.000Z",
+      "missing": false,
+      "lastVerifiedAt": "2026-10-25T17:00:00.000Z"
+    },
+    {
+      "id": 11,
+      "source": "mediaStore",
+      "mediaStoreId": 1002,
+      "volumeName": "external_primary",
+      "pickerUri": null,
+      "sizeBytes": 31457280,
+      "durationMs": 8000,
+      "dateTakenUtc": "2026-10-22T06:15:00.000Z",
+      "displayName": "VID_20261022_114500.mp4",
+      "width": 1080,
+      "height": 1920,
+      "mimeType": "video/mp4",
+      "timeZoneId": "Asia/Kolkata",
+      "generationAdded": 42,
+      "firstSeenAt": "2026-10-22T06:16:00.000Z",
+      "missing": false,
+      "lastVerifiedAt": null
+    },
+    {
+      "id": 12,
+      "source": "mediaStore",
+      "mediaStoreId": 1003,
+      "volumeName": "external_primary",
+      "pickerUri": null,
+      "sizeBytes": 1048576,
+      "durationMs": 2000,
+      "dateTakenUtc": "2026-10-22T06:20:00.000Z",
+      "displayName": "VID_20261022_115000.mp4",
+      "width": 1920,
+      "height": 1080,
+      "mimeType": "video/mp4",
+      "timeZoneId": null,
+      "generationAdded": null,
+      "firstSeenAt": "2026-10-22T06:21:00.000Z",
+      "missing": true,
+      "lastVerifiedAt": "2026-10-25T17:00:00.000Z"
+    },
+    {
+      "id": 14,
+      "source": "picker",
+      "mediaStoreId": null,
+      "volumeName": null,
+      "pickerUri": "content://media/picker/0/com.android.providers.media.photopicker/media/88",
+      "sizeBytes": 20971520,
+      "durationMs": 15000,
+      "dateTakenUtc": "2026-09-10T14:00:00.000Z",
+      "displayName": "friend.mp4",
+      "width": 0,
+      "height": 0,
+      "mimeType": "video/mp4",
+      "timeZoneId": null,
+      "generationAdded": null,
+      "firstSeenAt": "2026-09-12T08:00:00.000Z",
+      "missing": false,
+      "lastVerifiedAt": null
+    }
+  ],
+  "clipReels": [
+    {
+      "clipId": 10,
+      "reelId": 3,
+      "addedAt": "2026-10-22T07:00:00.000Z"
+    },
+    {
+      "clipId": 10,
+      "reelId": 7,
+      "addedAt": "2026-10-22T07:00:00.000Z"
+    },
+    {
+      "clipId": 14,
+      "reelId": 7,
+      "addedAt": "2026-09-12T08:00:00.000Z"
+    }
+  ],
+  "inbox": [
+    {
+      "clipId": 11,
+      "state": "pending",
+      "addedAt": "2026-10-22T06:16:00.000Z"
+    },
+    {
+      "clipId": 12,
+      "state": "skipped",
+      "addedAt": "2026-10-22T06:21:00.000Z"
+    }
+  ],
+  "settings": {
+    "watchedFolders": [
+      "DCIM/Camera",
+      "Movies/WhatsApp"
+    ],
+    "eveningReminderEnabled": false,
+    "eveningReminderMinutes": 1200
+  },
+  "zoneTimeline": [
+    {
+      "at": "2026-09-01T00:00:00.000Z",
+      "zoneId": "Europe/London"
+    },
+    {
+      "at": "2026-10-19T22:30:00.000Z",
+      "zoneId": "Asia/Kolkata"
+    }
+  ]
+}

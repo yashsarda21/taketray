@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# Fails when committed generated files are stale (D-53).
+#
+# For every member whose pubspec.yaml has build_runner in dev_dependencies
+# (or only the members named as arguments), it hashes the generated files,
+# deletes the *.g.dart / *.freezed.dart ones, regenerates everything, hashes
+# again and reports every file that changed, appeared or disappeared. It
+# compares hashes, not `git status`, so a dirty working tree does not cause a
+# false failure; it checks the working tree, not what is committed. Run
+# `tool/flutter pub get` first (tool/check does).
+# Steps: docs/flow.md ("Generated-file freshness").
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+root="$(pwd)"
+
+# True when the pubspec lists build_runner under dev_dependencies (not under
+# dependencies or dependency_overrides).
+has_dev_build_runner() {
+  awk '
+    /^[^ \t#]/ { in_dev = ($0 ~ /^dev_dependencies:/) }
+    in_dev && /^  build_runner:/ { found = 1 }
+    END { exit found ? 0 : 1 }
+  ' "$1"
+}
+
+if [ "$#" -gt 0 ]; then
+  members=("$@")
+else
+  members=()
+  while IFS= read -r pubspec; do
+    if has_dev_build_runner "$pubspec"; then
+      m="$(dirname "$pubspec")"
+      members+=("${m#./}")
+    fi
+  done < <(find . -maxdepth 3 -name pubspec.yaml \
+    -not -path '*/.dart_tool/*' -not -path '*/build/*' | sort)
+fi
+
+if [ "${#members[@]}" -eq 0 ]; then
+  echo "no member with build_runner in dev_dependencies found" >&2
+  exit 1
+fi
+
+# Prints "<path><TAB><sha1>" for every generated file of member $1, with paths
+# relative to the repo root, sorted. Generated files are *.g.dart and
+# *.freezed.dart under lib/ and test/, everything under drift_schemas/ and
+# everything under test/drift/ (drift_dev make-migrations writes its schema
+# helpers there). Absent folders are skipped.
+hash_generated() {
+  local m="$1" d f sum
+  local dirs=()
+  for d in lib test drift_schemas; do
+    [ -d "$m/$d" ] && dirs+=("$m/$d")
+  done
+  [ "${#dirs[@]}" -eq 0 ] && return 0
+  find "${dirs[@]}" -type f \( \
+    -name '*.g.dart' -o -name '*.freezed.dart' \
+    -o -path "$m/drift_schemas/*" -o -path "$m/test/drift/*" \) -print0 |
+    sort -z |
+    while IFS= read -r -d '' f; do
+      sum="$(shasum "$f")"
+      printf '%s\t%s\n' "$f" "${sum%% *}"
+    done
+}
+
+# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/ of member
+# $1, so the generators must write every one of them again. A file they no
+# longer produce (an orphan) is then gone from the "after" hashes and reported
+# as stale; build_runner alone would leave it if its build cache is cold.
+# drift_schemas/ and test/drift/ are kept: old schema dumps cannot be rebuilt.
+delete_generated_code() {
+  local m="$1" d
+  for d in lib test; do
+    [ -d "$m/$d" ] || continue
+    find "$m/$d" -type f \( -name '*.g.dart' -o -name '*.freezed.dart' \) \
+      -not -path "$m/test/drift/*" -delete
+  done
+}
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"' EXIT
+
+stale=()
+for m in "${members[@]}"; do
+  if [ ! -f "$m/pubspec.yaml" ]; then
+    echo "FAIL: member $m has no pubspec.yaml" >&2
+    exit 1
+  fi
+  echo "==> generated files in $m"
+  hash_generated "$m" >"$work/before"
+  delete_generated_code "$m"
+
+  (cd "$m" && "$root/tool/dart" run build_runner build)
+  if [ -f "$m/build.yaml" ] && grep -q 'databases:' "$m/build.yaml"; then
+    (cd "$m" && "$root/tool/dart" run drift_dev make-migrations)
+  fi
+
+  hash_generated "$m" >"$work/after"
+  while IFS= read -r path; do
+    stale+=("$path")
+  done < <(awk -F'\t' '
+    NR == FNR { before[$1] = $2; next }
+    { after[$1] = $2 }
+    END {
+      for (p in before) if (!(p in after) || before[p] != after[p]) print p
+      for (p in after) if (!(p in before)) print p
+    }' "$work/before" "$work/after" | sort -u)
+done
+
+if [ "${#stale[@]}" -gt 0 ]; then
+  for path in "${stale[@]}"; do
+    echo "stale: $path"
+  done
+  echo "generated files were out of date and have been regenerated; review and commit them" >&2
+  exit 1
+fi
+echo "generated files fresh"

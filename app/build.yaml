@@ -1,0 +1,20 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # `dart run drift_dev make-migrations` reads these: it dumps each
+          # schema version to drift_schemas/ and writes migration tests to
+          # test/drift/ (D-54, docs/flow.md "Database open and migrations").
+          databases:
+            taketray: lib/data/database/app_database.dart
+          schema_dir: drift_schemas/
+          test_dir: test/drift/
+          # Times are int columns with UtcMillisConverter, never drift's
+          # DateTime columns; this keeps any DateTime column numeric too.
+          store_date_time_values_as_text: false
+      json_serializable:
+        options:
+          # Nested models (Clip.fingerprint) are written as plain maps, so
+          # toJson() output can go straight back into fromJson().
+          explicit_to_json: true
