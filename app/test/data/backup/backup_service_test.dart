@@ -171,8 +171,12 @@ Future<List<String>> _reelNames(AppDatabase db) async => [
     reel.name,
 ];
 
-Matcher _throwsProblem(BackupProblem problem) => throwsA(
-  isA<BackupException>().having((e) => e.problem, 'problem', problem),
+/// A [BackupException] with [problem], refused [where] in the file (`null`:
+/// no place, as for every problem but `invalidData` and a constraint error).
+Matcher _throwsProblem(BackupProblem problem, {String? where}) => throwsA(
+  isA<BackupException>()
+      .having((e) => e.problem, 'problem', problem)
+      .having((e) => e.where, 'where', where),
 );
 
 void main() {
@@ -435,8 +439,15 @@ void main() {
       rowsBefore = await _everyRow(db);
     });
 
-    Future<void> expectRejected(String json, BackupProblem problem) async {
-      await expectLater(backup.importJson(json), _throwsProblem(problem));
+    Future<void> expectRejected(
+      String json,
+      BackupProblem problem, {
+      String? where,
+    }) async {
+      await expectLater(
+        backup.importJson(json),
+        _throwsProblem(problem, where: where),
+      );
       expect(await _reelNames(db), ['London', 'Goa 🌴']);
       expect(await _everyRow(db), rowsBefore);
     }
@@ -485,130 +496,283 @@ void main() {
     );
 
     // Each entry breaks one rule in an otherwise valid file.
-    final invalid = <String, void Function(Map<String, dynamic>)>{
-      'a clip–reel link to clip 999': (f) =>
-          _section(f, 'clipReels').first['clipId'] = 999,
-      'a 41-character reel name': (f) =>
-          _section(f, 'reels').first['name'] = 'a' * 41,
-      'a reel name of only spaces': (f) =>
-          _section(f, 'reels').first['name'] = '   ',
-      'an unknown reel status': (f) =>
-          _section(f, 'reels').first['status'] = 'archived',
-      'a reel id that is text': (f) => _section(f, 'reels').first['id'] = '3',
-      'a reel id that is not whole': (f) =>
-          _section(f, 'reels').first['id'] = 3.5,
-      'a reel id of 0': (f) {
-        _section(f, 'reels').first['id'] = 0;
-        _section(f, 'references').first['reelId'] = 0;
-        _section(f, 'clipReels').first['reelId'] = 0;
-      },
-      'two reels with the same id': (f) => _section(f, 'reels').last['id'] = 3,
-      'a reel without a description key': (f) =>
-          _section(f, 'reels').last.remove('description'),
-      'a missing section': (f) => f.remove('clips'),
-      'a section that is not a list': (f) => f['reels'] = <String, dynamic>{},
-      'a row that is not an object': (f) => (f['inbox'] as List).add(11),
-      'a reference to reel 999': (f) =>
-          _section(f, 'references').first['reelId'] = 999,
-      'a link to reel 999': (f) =>
-          _section(f, 'clipReels').first['reelId'] = 999,
-      'the same link listed twice': (f) =>
-          (f['clipReels'] as List).add(_section(f, 'clipReels').first),
-      'an inbox row for clip 999': (f) =>
-          _section(f, 'inbox').first['clipId'] = 999,
-      'two inbox rows for one clip': (f) =>
-          _section(f, 'inbox').last['clipId'] = 11,
-      'an unknown inbox state': (f) =>
-          _section(f, 'inbox').first['state'] = 'later',
-      'two references with the same id': (f) =>
-          _section(f, 'references').last['id'] = 2,
-      'the same page twice on one reel (after cleaning the link)': (f) {
-        final copy = Map<String, dynamic>.of(_section(f, 'references').first)
-          ..['id'] = 9
-          ..['url'] = 'https://instagram.com/reel/ABC123?igsh=other';
-        (f['references'] as List).add(copy);
-      },
-      'a reference link that is not a web link': (f) =>
-          _section(f, 'references').first['url'] = 'ftp://example.com/x',
-      'a 61-character label': (f) =>
-          _section(f, 'references').first['label'] = 'b' * 61,
-      'an unknown reference source': (f) =>
-          _section(f, 'references').first['source'] = 'vimeo',
-      'two clips with the same id': (f) => _section(f, 'clips').last['id'] = 10,
-      'an unknown clip source': (f) =>
-          _section(f, 'clips').first['source'] = 'camera',
-      'a detected clip without a volume': (f) =>
-          _section(f, 'clips').first['volumeName'] = null,
-      'a detected clip without a MediaStore id': (f) =>
-          _section(f, 'clips').first['mediaStoreId'] = null,
-      'a picked clip without a picker link': (f) =>
-          _section(f, 'clips').last['pickerUri'] = null,
-      'two clips with the same MediaStore identity': (f) =>
-          _section(f, 'clips')[1]['mediaStoreId'] = 1001,
-      'two clips with the same picker link': (f) {
-        final copy = Map<String, dynamic>.of(_section(f, 'clips').last)
-          ..['id'] = 15;
-        (f['clips'] as List).add(copy);
-        (f['clipReels'] as List).add({
-          'clipId': 15,
-          'reelId': 3,
-          'addedAt': '2026-09-12T08:00:00.000Z',
-        });
-      },
-      '"missing" as a number': (f) => _section(f, 'clips').first['missing'] = 0,
-      'a size as text': (f) =>
-          _section(f, 'clips').first['sizeBytes'] = '52428800',
-      'a time without Z or an offset': (f) =>
-          _section(f, 'clips').first['dateTakenUtc'] =
-              '2026-10-22T06:10:05.250',
-      'a date-only time': (f) =>
-          _section(f, 'reels').first['createdAt'] = '2026-10-20',
-      'a time that is not a real date': (f) =>
-          _section(f, 'reels').first['createdAt'] = '2026-02-30T08:00:00.000Z',
-      'a five-digit year': (f) => _section(f, 'reels').first['createdAt'] =
-          '+10001-01-01T00:00:00.000Z',
-      'a year a date cannot hold': (f) =>
-          _section(f, 'reels').first['createdAt'] =
-              '+999999-01-01T00:00:00.000Z',
-      'a time past the last instant a date can hold': (f) =>
-          _section(f, 'reels').first['createdAt'] =
-              '+275760-09-13T00:00:00.000-01:00',
-      'a time as a number': (f) =>
-          _section(f, 'inbox').first['addedAt'] = 1761462000000,
-      'no exportedAt': (f) => f.remove('exportedAt'),
-      'settings that are not an object': (f) => f['settings'] = <Object?>[],
-      'settings without a key': (f) =>
-          (f['settings'] as Map).remove('eveningReminderEnabled'),
-      'a watched folder that is not text': (f) =>
-          (f['settings'] as Map)['watchedFolders'] = ['DCIM/Camera', 3],
-      'a reminder minute outside the day': (f) =>
-          (f['settings'] as Map)['eveningReminderMinutes'] = 1440,
-      'a negative reminder minute': (f) =>
-          (f['settings'] as Map)['eveningReminderMinutes'] = -1,
-      'two zone entries at the same moment': (f) =>
-          (f['zoneTimeline'] as List).add({
-            'at': '2026-09-01T01:00:00.000+01:00',
-            'zoneId': 'Asia/Kolkata',
-          }),
-      'two zone entries in the same millisecond': (f) =>
-          (f['zoneTimeline'] as List).add({
-            'at': '2026-09-01T00:00:00.000400Z',
-            'zoneId': 'Asia/Kolkata',
-          }),
-      'a negative size': (f) => _section(f, 'clips').first['sizeBytes'] = -1,
-      'a negative duration': (f) =>
-          _section(f, 'clips').first['durationMs'] = -1,
-      'a negative width': (f) => _section(f, 'clips').first['width'] = -1,
-      'a negative height': (f) => _section(f, 'clips').first['height'] = -1,
-      'a negative reel id': (f) => _section(f, 'reels').first['id'] = -3,
-      'a zone id that is not text': (f) =>
-          _section(f, 'zoneTimeline').first['zoneId'] = null,
-    };
-    for (final MapEntry(key: name, value: breakIt) in invalid.entries) {
-      test('$name: invalidData', () async {
+    final invalid =
+        <String, (void Function(Map<String, dynamic>), {String where})>{
+          'a clip–reel link to clip 999': (
+            (f) => _section(f, 'clipReels').first['clipId'] = 999,
+            where: 'clipReels[0].clipId',
+          ),
+          'a 41-character reel name': (
+            (f) => _section(f, 'reels').first['name'] = 'a' * 41,
+            where: 'reels[0].name',
+          ),
+          'a reel name of only spaces': (
+            (f) => _section(f, 'reels').first['name'] = '   ',
+            where: 'reels[0].name',
+          ),
+          'an unknown reel status': (
+            (f) => _section(f, 'reels').first['status'] = 'archived',
+            where: 'reels[0].status',
+          ),
+          'a reel id that is text': (
+            (f) => _section(f, 'reels').first['id'] = '3',
+            where: 'reels[0].id',
+          ),
+          'a reel id that is not whole': (
+            (f) => _section(f, 'reels').first['id'] = 3.5,
+            where: 'reels[0].id',
+          ),
+          'a reel id of 0': (
+            (f) {
+              _section(f, 'reels').first['id'] = 0;
+              _section(f, 'references').first['reelId'] = 0;
+              _section(f, 'clipReels').first['reelId'] = 0;
+            },
+            where: 'reels[0].id',
+          ),
+          'a clip id of 0': (
+            (f) {
+              _section(f, 'clips').first['id'] = 0;
+              for (final link in _section(f, 'clipReels')) {
+                if (link['clipId'] == 10) link['clipId'] = 0;
+              }
+            },
+            where: 'clips[0].id',
+          ),
+          'a reference id of 0': (
+            (f) => _section(f, 'references').first['id'] = 0,
+            where: 'references[0].id',
+          ),
+          'a reel id beyond 2^53': (
+            (f) {
+              // Past SQLite's last id, every new row of the table would fail.
+              _section(f, 'reels').first['id'] = 1 << 60;
+              for (final row in [
+                ..._section(f, 'references'),
+                ..._section(f, 'clipReels'),
+              ]) {
+                if (row['reelId'] == 3) row['reelId'] = 1 << 60;
+              }
+            },
+            where: 'reels[0].id',
+          ),
+          'two reels with the same id': (
+            (f) => _section(f, 'reels').last['id'] = 3,
+            where: 'reels[2].id',
+          ),
+          'a reel without a description key': (
+            (f) => _section(f, 'reels').last.remove('description'),
+            where: 'reels[2].description',
+          ),
+          'a missing section': ((f) => f.remove('clips'), where: 'clips'),
+          'a section that is not a list': (
+            (f) => f['reels'] = <String, dynamic>{},
+            where: 'reels',
+          ),
+          'a row that is not an object': (
+            (f) => (f['inbox'] as List).add(11),
+            where: 'inbox[2]',
+          ),
+          'a reference to reel 999': (
+            (f) => _section(f, 'references').first['reelId'] = 999,
+            where: 'references[0].reelId',
+          ),
+          'a link to reel 999': (
+            (f) => _section(f, 'clipReels').first['reelId'] = 999,
+            where: 'clipReels[0].reelId',
+          ),
+          'the same link listed twice': (
+            (f) => (f['clipReels'] as List).add(_section(f, 'clipReels').first),
+            where: 'clipReels[3].reelId',
+          ),
+          'an inbox row for clip 999': (
+            (f) => _section(f, 'inbox').first['clipId'] = 999,
+            where: 'inbox[0].clipId',
+          ),
+          'two inbox rows for one clip': (
+            (f) => _section(f, 'inbox').last['clipId'] = 11,
+            where: 'inbox[1].clipId',
+          ),
+          'an unknown inbox state': (
+            (f) => _section(f, 'inbox').first['state'] = 'later',
+            where: 'inbox[0].state',
+          ),
+          'two references with the same id': (
+            (f) => _section(f, 'references').last['id'] = 2,
+            where: 'references[3].id',
+          ),
+          'the same page twice on one reel (after cleaning the link)': (
+            (f) {
+              final copy =
+                  Map<String, dynamic>.of(_section(f, 'references').first)
+                    ..['id'] = 9
+                    ..['url'] = 'https://instagram.com/reel/ABC123?igsh=other';
+              (f['references'] as List).add(copy);
+            },
+            where: 'references[4].url',
+          ),
+          'a reference link that is not a web link': (
+            (f) =>
+                _section(f, 'references').first['url'] = 'ftp://example.com/x',
+            where: 'references[0].url',
+          ),
+          'a 61-character label': (
+            (f) => _section(f, 'references').first['label'] = 'b' * 61,
+            where: 'references[0].label',
+          ),
+          'an unknown reference source': (
+            (f) => _section(f, 'references').first['source'] = 'vimeo',
+            where: 'references[0].source',
+          ),
+          'two clips with the same id': (
+            (f) => _section(f, 'clips').last['id'] = 10,
+            where: 'clips[3].id',
+          ),
+          'an unknown clip source': (
+            (f) => _section(f, 'clips').first['source'] = 'camera',
+            where: 'clips[0].source',
+          ),
+          'a detected clip without a volume': (
+            (f) => _section(f, 'clips').first['volumeName'] = null,
+            where: 'clips[0].volumeName',
+          ),
+          'a detected clip without a MediaStore id': (
+            (f) => _section(f, 'clips').first['mediaStoreId'] = null,
+            where: 'clips[0].mediaStoreId',
+          ),
+          'a picked clip without a picker link': (
+            (f) => _section(f, 'clips').last['pickerUri'] = null,
+            where: 'clips[3].pickerUri',
+          ),
+          'two clips with the same MediaStore identity': (
+            (f) => _section(f, 'clips')[1]['mediaStoreId'] = 1001,
+            where: 'clips[1].mediaStoreId',
+          ),
+          'two clips with the same picker link': (
+            (f) {
+              final copy = Map<String, dynamic>.of(_section(f, 'clips').last)
+                ..['id'] = 15;
+              (f['clips'] as List).add(copy);
+              (f['clipReels'] as List).add({
+                'clipId': 15,
+                'reelId': 3,
+                'addedAt': '2026-09-12T08:00:00.000Z',
+              });
+            },
+            where: 'clips[4].pickerUri',
+          ),
+          '"missing" as a number': (
+            (f) => _section(f, 'clips').first['missing'] = 0,
+            where: 'clips[0].missing',
+          ),
+          'a size as text': (
+            (f) => _section(f, 'clips').first['sizeBytes'] = '52428800',
+            where: 'clips[0].sizeBytes',
+          ),
+          'a time without Z or an offset': (
+            (f) => _section(f, 'clips').first['dateTakenUtc'] =
+                '2026-10-22T06:10:05.250',
+            where: 'clips[0].dateTakenUtc',
+          ),
+          'a date-only time': (
+            (f) => _section(f, 'reels').first['createdAt'] = '2026-10-20',
+            where: 'reels[0].createdAt',
+          ),
+          'a time that is not a real date': (
+            (f) => _section(f, 'reels').first['createdAt'] =
+                '2026-02-30T08:00:00.000Z',
+            where: 'reels[0].createdAt',
+          ),
+          'a five-digit year': (
+            (f) => _section(f, 'reels').first['createdAt'] =
+                '+10001-01-01T00:00:00.000Z',
+            where: 'reels[0].createdAt',
+          ),
+          'a year a date cannot hold': (
+            (f) => _section(f, 'reels').first['createdAt'] =
+                '+999999-01-01T00:00:00.000Z',
+            where: 'reels[0].createdAt',
+          ),
+          'a time past the last instant a date can hold': (
+            (f) => _section(f, 'reels').first['createdAt'] =
+                '+275760-09-13T00:00:00.000-01:00',
+            where: 'reels[0].createdAt',
+          ),
+          'a time as a number': (
+            (f) => _section(f, 'inbox').first['addedAt'] = 1761462000000,
+            where: 'inbox[0].addedAt',
+          ),
+          'no exportedAt': ((f) => f.remove('exportedAt'), where: 'exportedAt'),
+          'settings that are not an object': (
+            (f) => f['settings'] = <Object?>[],
+            where: 'settings',
+          ),
+          'settings without a key': (
+            (f) => (f['settings'] as Map).remove('eveningReminderEnabled'),
+            where: 'settings.eveningReminderEnabled',
+          ),
+          'a watched folder that is not text': (
+            (f) =>
+                (f['settings'] as Map)['watchedFolders'] = ['DCIM/Camera', 3],
+            where: 'settings.watchedFolders',
+          ),
+          'a reminder minute outside the day': (
+            (f) => (f['settings'] as Map)['eveningReminderMinutes'] = 1440,
+            where: 'settings.eveningReminderMinutes',
+          ),
+          'a negative reminder minute': (
+            (f) => (f['settings'] as Map)['eveningReminderMinutes'] = -1,
+            where: 'settings.eveningReminderMinutes',
+          ),
+          'two zone entries at the same moment': (
+            (f) => (f['zoneTimeline'] as List).add({
+              'at': '2026-09-01T01:00:00.000+01:00',
+              'zoneId': 'Asia/Kolkata',
+            }),
+            where: 'zoneTimeline[2].at',
+          ),
+          'two zone entries in the same millisecond': (
+            (f) => (f['zoneTimeline'] as List).add({
+              'at': '2026-09-01T00:00:00.000400Z',
+              'zoneId': 'Asia/Kolkata',
+            }),
+            where: 'zoneTimeline[2].at',
+          ),
+          'a negative size': (
+            (f) => _section(f, 'clips').first['sizeBytes'] = -1,
+            where: 'clips[0].sizeBytes',
+          ),
+          'a negative duration': (
+            (f) => _section(f, 'clips').first['durationMs'] = -1,
+            where: 'clips[0].durationMs',
+          ),
+          'a negative width': (
+            (f) => _section(f, 'clips').first['width'] = -1,
+            where: 'clips[0].width',
+          ),
+          'a negative height': (
+            (f) => _section(f, 'clips').first['height'] = -1,
+            where: 'clips[0].height',
+          ),
+          'a negative reel id': (
+            (f) => _section(f, 'reels').first['id'] = -3,
+            where: 'reels[0].id',
+          ),
+          'a zone id that is not text': (
+            (f) => _section(f, 'zoneTimeline').first['zoneId'] = null,
+            where: 'zoneTimeline[0].zoneId',
+          ),
+        };
+    for (final MapEntry(key: name, value: (breakIt, :where))
+        in invalid.entries) {
+      test('$name: invalidData at $where', () async {
         final file = _fixtureMap();
         breakIt(file);
-        await expectRejected(jsonEncode(file), BackupProblem.invalidData);
+        await expectRejected(
+          jsonEncode(file),
+          BackupProblem.invalidData,
+          where: where,
+        );
       });
     }
 
@@ -684,6 +848,26 @@ void main() {
       expect(reel.id, greaterThan(9));
       expect(clip, greaterThan(14));
       expect((added as ReferenceAdded).reference.id, greaterThan(8));
+    });
+
+    test('an id of 2^53 is accepted, and new rows go above it', () async {
+      final file = _fixtureMap();
+      _section(file, 'clips').first['id'] = 1 << 53;
+      for (final link in _section(file, 'clipReels')) {
+        if (link['clipId'] == 10) link['clipId'] = 1 << 53;
+      }
+
+      await backup.importJson(jsonEncode(file));
+      final [clip] = await ClipsRepository(
+        db,
+        clock,
+      ).addDetectedClips([_detected(5000, _t0)]);
+
+      expect(await ClipsRepository(db, clock).watchReelIdsOf(1 << 53).first, {
+        3,
+        7,
+      });
+      expect(clip, (1 << 53) + 1);
     });
 
     test('an import never lowers the id counters', () async {
@@ -852,7 +1036,7 @@ void main() {
     _section(broken, 'reels').first['name'] = 'Secret trip ${'x' * 40}';
     await expectLater(
       backup.importJson(jsonEncode(broken)),
-      _throwsProblem(BackupProblem.invalidData),
+      _throwsProblem(BackupProblem.invalidData, where: 'reels[0].name'),
     );
 
     final backupLines = [

@@ -470,6 +470,12 @@ DateTime? _parseInstant(String text) {
   );
 }
 
+/// The largest id a file may hold, far above any real database. SQLite's
+/// own limit is 2^63 - 1, and once a table's `AUTOINCREMENT` counter reaches
+/// it, every new row in that table fails ("database or disk is full") until
+/// the next import; a hand-edited id near it must not do that.
+const _maxId = 1 << 53;
+
 /// A problem in the file at [where]; turned into [BackupException].
 class _Invalid implements Exception {
   const new(this.where);
@@ -508,10 +514,10 @@ class _Fields {
     return v;
   }
 
-  /// A database id: a whole number of at least 1.
+  /// A database id: a whole number from 1 to [_maxId].
   int id(String key) {
     final v = integer(key);
-    if (v < 1) throw invalid(key);
+    if (v < 1 || v > _maxId) throw invalid(key);
     return v;
   }
 
