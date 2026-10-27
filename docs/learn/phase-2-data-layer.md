@@ -1,6 +1,6 @@
 # Learning guide: Phase 2, the data layer
 
-This guide explains how TakeTray remembers things: your reels, the clips in them, the To tag list, saved Instagram references and your settings. Every code snippet in it is real code from this repository, and every "Try it yourself" command was run for this guide.
+This guide explains how TakeTray remembers things: your reels, the clips in them, the To tag list, saved Instagram references and your settings. Every code snippet in it is real code from this repository, and every "Try it yourself" command was run when this guide was written. The one exception is the phone command in Section 11: it needs the phone, so it was run during the earlier on-device check of the phase.
 
 You don't need to know Drift, Riverpod or SQL to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -9,9 +9,10 @@ You don't need to know Drift, Riverpod or SQL to follow it. Basic programming kn
 - **Order.** Read the big picture and the life of a clip first. Then the sections 1 to 11 go from the ground up: tools and setup (1, 2), the database (3), the app's own models and rules (4), the repositories that use them (5 to 7), backup (8), and the checks that keep it all honest (9 to 11).
 - **Names you will meet.**
   - `D-xx` is an entry in `docs/decisions.md`, where each decision is written down with its reasons.
-  - "Phase 3", "phase 4" and so on are the later stages of building TakeTray. Phase 3 reads the phone's real videos, phase 4 builds the reel screens, phase 5 the tagging screen and player, phase 7 adding videos by hand, phase 8 the VN editor hand-off and phase 10 settings. Nothing in the app calls the data layer yet; those phases will.
+  - "Phase 3", "phase 4" and so on are the later stages of building TakeTray. Phase 3 reads the phone's real videos, phase 4 builds the reel screens, phase 5 the tagging screen and player, phase 7 adding videos by hand, phase 8 the VN editor hand-off (VN is a video-editing app; TakeTray copies a reel's clips into a folder for it to open) and phase 10 settings. "Phase 0" and "Phase 1" were already built: the project set-up, and the shared look of the app with its component catalogue. Nothing in the app calls the data layer yet; those phases will.
   - "Spec §8.3a" means a section of the product spec, `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`.
   - "Review Focus 1" to "5" are the five risky situations this phase was reviewed against (for example, "the same Instagram reel shared twice"). Some test names carry the label.
+- **`tool/check`.** The one script that checks the whole project: it makes sure generated files are fresh, then formats, analyses and tests everything, and measures test coverage. Sections 2, 9 and 10 each add or explain a step of it.
 - **Commands.** Run every command from the repository root (the folder that contains `app/` and `tool/`), always through the wrappers in `tool/` (`tool/flutter`, `tool/dart`), never a `flutter` found on your `PATH`. Some "Try it yourself" steps break the code on purpose to show that a test notices. Each one tells you how to put the file back (`git checkout -- <file>`). Check with `git status` that nothing is left over.
 
 ## How each section is written
@@ -151,7 +152,7 @@ fi
 - **A failed check fixes itself.** The generators leave the new files on disk, so after a failure you just look at `git status`, review the changes and commit them. Running the check again passes.
 - **Testing the check.** `tool/test/check_generated_test.dart` builds a throwaway repo whose `tool/dart` is a stand-in generator that always writes the same content. That lets the tests prove the exit code is 1 for an edited, missing or leftover file and 0 for fresh ones, without waiting for the real generators.
 
-The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) instead of relying on `$OLDPWD`; made it refuse a member that is listed as both a Flutter and a Dart member; and added a test that the style check flags `Duration(days: 1)`.
+The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`) instead of relying on `$OLDPWD`; made it refuse a member that is listed as both a Flutter and a Dart member; and added a test that the style check flags `Duration(days: 1)`.
 
 **Where it lives:** `tool/check_generated`, `tool/check` (step "generated files fresh"), `tool/test/check_generated_test.dart`, `tool/test/check_script_test.dart`, `docs/flow.md` ("Generated-file freshness").
 
@@ -167,7 +168,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Key ideas:**
 
-- **SQLite: the database is a file, not a server.** With MySQL or MongoDB on a website, the database is a separate program on a server, and your code talks to it over the network with a host name, a user and a password. SQLite has no server. It is a library built into the app, and the whole database is one file, `taketray.sqlite`, in TakeTray's private folder on the phone. No other app can read it, there is no password and no network (TakeTray has no internet permission at all), and only one user ever uses it. It still speaks the same SQL as MySQL: tables, rows, `SELECT`, `JOIN`, indexes, transactions. We use tables and joins rather than MongoDB-style documents because the data is relational: one clip can be in many reels, and one reel has many clips.
+- **SQLite: the database is a file, not a server.** With MySQL or MongoDB on a website, the database is a separate program on a server, and your code talks to it over the network with a host name, a user and a password. SQLite has no server. It is a library built into the app, and the whole database is one file, `taketray.sqlite`, in TakeTray's private folder on the phone. No other app can read it, there is no password and no network (TakeTray has no internet permission at all), and only one user ever uses it. It still speaks SQL (a dialect close to MySQL's, with some differences) and has the same ideas: tables, rows, `SELECT`, `JOIN`, indexes, transactions. We use tables and joins rather than MongoDB-style documents because the data is relational: one clip can be in many reels, and one reel has many clips.
 
 - **Drift: tables written in Dart.** Instead of writing `CREATE TABLE` by hand, you describe each table as a Dart class, and Drift's code generator writes the SQL, a typed class for each row and the query code (in `app_database.g.dart`, over 6,000 lines that nobody edits). This is the reels table:
 
@@ -204,6 +205,8 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   | `vn_copies` | one copied file of that session | (`reel_id`, `clip_id`) |
   | `settings` | one setting, its value stored as JSON text | `key` |
   | `zone_timeline` | "from this moment, the phone was in this time zone" | `at` |
+
+  Two words in that table: **MediaStore** is Android's own catalogue of the photos and videos on the phone, and a detected video is identified by its MediaStore id plus the storage volume it is on. A **picker** clip is one you choose by hand with Android's photo picker, which gives a link (a URI, such as `content://...`) instead of an id. **VN** is the video-editing app TakeTray can copy a reel's clips into a folder for (Section 7).
 
   The unique keys on `clips` are what will stop the same video being added twice (Review Focus 5, "the same video seen twice", Section 6). They have one gap: SQLite treats two NULLs as different, so a detected clip saved without its `volume_name` would never match anything. Two `CHECK` rules close it, so the database itself refuses such a row (the test `a clip identity is never half empty`):
 
@@ -331,6 +334,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 - **`Clip` and `NewClip`.** A clip that is about to be saved has no `id` yet (the database hands it out), no `firstSeenAt` and so on. So there are two types: `Clip` is one that is stored, `NewClip` is one that is not yet. `NewClip` has two ways to build it, one per source, each asking for exactly the identity that source has:
 
   ```dart
+  // Trimmed: each real call also needs width, height and mimeType.
   NewClip.mediaStore(mediaStoreId: 1, volumeName: 'external_primary', fingerprint: ...)
   NewClip.picker(pickerUri: 'content://...', fingerprint: ...)
   ```
@@ -448,7 +452,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
         );
   ```
 
-  `ReelsCompanion.insert(...)` is Drift's *companion* class: it holds the values of a row you are about to insert, and leaves out the ones the database fills in itself (here `id`). A bad name throws `InvalidInputException(ReelNameProblem.tooLong)` before anything is saved, and the form can show the matching message. Two reels may have the same name (D-56); the id tells them apart.
+  `ReelsCompanion.insert(...)` is Drift's *companion* class: it holds the values of a row you are about to insert, and leaves out the ones the database fills in itself (here `id`). `Value(...)` wraps a column that may be left unset: `Value(x)` means "set it to x" (even to `null`), while leaving the column out means "not given". The required columns, such as `name`, are passed plainly. A bad name throws `InvalidInputException(ReelNameProblem.tooLong)` before anything is saved, and the form can show the matching message. Two reels may have the same name (D-56); the id tells them apart.
 
 - **A transaction: all of it, or none of it.** Deleting a reel is several changes: the reel, its links to clips, its saved references, its VN rows, and then any clip left with no home. If the app were killed after the first and before the last, the database would be half-cleaned. A transaction groups the changes so that SQLite either keeps all of them or none (like `BEGIN` / `COMMIT` in MySQL). This is the real delete:
 
@@ -462,7 +466,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   });
   ```
 
-  Only one `delete` is written by hand. The reel's links, references and VN session rows disappear by themselves because the tables were declared with `ON DELETE CASCADE` (Section 3). Both `delete` calls report how many rows they removed, and that is what the log line prints ("removed 1 reel, swept 2 clips": ids and counts, never the reel's name). An unknown id removes no reel but the orphan sweep still runs, and the test `an unknown id deletes no reel but still sweeps orphans` proves it.
+  (The `..` is Dart's *cascade*: `a..where(...)` runs `where` on `a` and gives back `a` itself, which is how Drift queries are built up step by step: `delete(table)..where(...)` then `.go()` to run it.) Only one `delete` is written by hand. The reel's links, references and VN session rows disappear by themselves because the tables were declared with `ON DELETE CASCADE` (Section 3). Both `delete` calls report how many rows they removed, and that is what the log line prints ("removed 1 reel, swept 2 clips": ids and counts, never the reel's name). An unknown id removes no reel but the orphan sweep still runs, and the test `an unknown id deletes no reel but still sweeps orphans` proves it.
 
 - **A Stream: a query that keeps answering.** A normal query returns the rows once. A Drift `watch()` query returns a `Stream`: it sends the current rows straight away and sends them again every time the table changes. Home listens once and its list updates by itself when a reel is renamed or deleted, without any "refresh" code:
 
@@ -713,7 +717,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   }
   ```
 
-  The look-up and the insert are in one transaction, and the database's unique key on (reel, url) from Section 3 is the safety net behind them. The same link in *two different* reels is fine: each reel has its own list. Adding, relabelling or deleting a reference also sets the reel's `updatedAt` to now (in the same transaction), so the reel moves to the top of Home as it does when a clip changes; a link that is "already saved" changes nothing, so it does not. The test `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` shares one reel five different ways and checks that all five report `ReferenceAlreadySaved`, pointing at the first one.
+  The look-up and the insert are in one transaction, and the database's unique key on (reel, url) from Section 3 is the safety net behind them. The same link in *two different* reels is fine: each reel has its own list. Adding, relabelling or deleting a reference also sets the reel's `updatedAt` to now (in the same transaction), so the reel moves to the top of Home as it does when a clip changes; a link that is "already saved" changes nothing, so it does not. The test `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` saves one reel, shares it five more ways and checks that all five report `ReferenceAlreadySaved`, pointing at the first one.
 
 - **A folder name must be unique on the phone: "Goa", then "Goa (2)".** Reel names do not have to be unique (Section 5), but the VN folder in `Movies/TakeTray/` does, because two folders cannot share a name, and Android treats `Goa` and `goa` as the same folder. `startSession` collects the folder name of *every* session, so a second reel called "Goa" gets the next free name:
 
@@ -789,13 +793,13 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
   if (inEffect?.zoneId == zoneId) return false;
   ```
 
-  The look-up itself, `zoneAt`, is the pure function from Section 4: it loads the timeline, oldest first, and halves it until it finds the entry. A moment before the first row has no zone (`null`).
+  The look-up itself, `ZoneRepository.zoneAt(instant)`, loads the whole timeline, oldest first, and hands it to the pure function `zoneAt` from Section 4, which halves it until it finds the entry. A moment before the first row has no zone (`null`).
 
 **Where it lives:** `app/lib/data/repositories/references_repository.dart`, `vn_repository.dart`, `settings_repository.dart` and `zone_repository.dart` (each with its generated provider, e.g. `settingsRepositoryProvider`), and the tests next to them in `app/test/data/repositories/`. The steps are in `docs/flow.md` ("References, VN folders, settings and time zones").
 
 **Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/references_repository_test.dart)`. You should see `+26: All tests passed!`. Then break the duplicate check on purpose: in `references_repository.dart`, in `add`, replace the line `final url = normalizeReferenceUrl(rawUrl);` with `final url = Uri.tryParse(rawUrl.trim());` (pretend links are not cleaned), run the same command, and three tests fail: `the same Instagram reel shared with different tracking, host or path is already saved (Review Focus 1)` (the stored link is still `.../reel/ABC123/?igsh=…`) and, as side effects, `moving the reel on Home › a rejected link or label does not move the reel` and `a link that is not an http(s) link throws and saves nothing` (the unclean parser accepts a link the real one rejects). Put the line back afterwards with `git checkout -- app/lib/data/repositories/references_repository.dart` (run it from the repo root; it undoes any uncommitted edit to that file). The other three repositories have their own test files in the same folder (`+17`, `+12` and `+11` tests).
 
-**Decisions:** D-58 (this task), D-55 (the cleaning rule and `uniqueFolderName`), D-54 (the tables and the cascades), D-56 (reel names are not unique), D-10 (no URLs, labels or folder names in logs).
+**Decisions:** D-58 (references, VN folders, settings and the time-zone timeline), D-55 (the cleaning rule and `uniqueFolderName`), D-54 (the tables and the cascades), D-56 (reel names are not unique), D-10 (no URLs, labels or folder names in logs).
 
 ## 8. Backup: export and import
 
@@ -940,7 +944,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 
 **Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/backup)`. You should see `+86: All tests passed!`. Then see why the Dart checks matter even though the database has its own rules: in `app/lib/data/backup/backup_format.dart`, in `_readV1`, delete the line `if (checkReelName(name) != null) throw r.invalid('name');` and run the same command. Three tests fail: `a 41-character reel name: invalidData` and `a reel name of only spaces: invalidData` (SQLite happily stores both, so the import goes through and replaces the seeded reels) and `logs counts only: no names, links, labels or file names` (its broken file is no longer refused). Put the line back with `git checkout -- app/lib/data/backup/backup_format.dart` (run it from the repo root).
 
-**Decisions:** D-59 (this task), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs).
+**Decisions:** D-59 (the backup format and the import), D-54 (ids are `AUTOINCREMENT` and never reused, the tables), D-55 (times without a zone are never guessed), D-58 (`exportedKeys`), D-10 (counts only in logs).
 
 ## 9. Measuring test coverage
 
@@ -1084,7 +1088,7 @@ The same task also: made `tool/check` find the repo root once (`root="$(pwd)"`) 
 CI=true tool/check
 ```
 
-With `CI` set, `tool/check` skips the macOS-only pictures, exactly like the robot. It takes about three minutes on a warm laptop and should end with the coverage lines and `ALL CHECKS PASSED` (this section's run: `lib/domain/  96.9%  62/64 lines`, `lib/data/  89.6%  857/957 lines`). That includes a run from a fresh, empty home folder with a fresh Flutter clone, which is what the robot starts from.
+With `CI` set, `tool/check` skips the macOS-only pictures, exactly like the robot. It takes about three minutes on a warm laptop and should end with the coverage lines and `ALL CHECKS PASSED` (this section's run: `lib/domain/  96.9%  62/64 lines`, `lib/data/  89.6%  857/957 lines`). (When this guide was written, the same check was also run once from an empty home folder with a fresh Flutter clone, which is what GitHub's robot starts from. Your run does not need that.)
 
 To see the difference that `CI` makes, run the golden test without it (`cd packages/taketray_ui && ../../tool/flutter test test/components`): on a Mac it also compares the `goldens/macos/` pictures. In this section's run it passed 663 tests, against 589 with `CI=true` in front.
 
@@ -1174,6 +1178,7 @@ To see the difference that `CI` makes, run the golden test without it (`cd packa
 Terms are in alphabetical order. The link takes you to the section where the idea is explained.
 
 - **Cascade (`ON DELETE CASCADE`).** A database rule that deletes the rows that depend on a deleted row: deleting a reel also deletes its clip links, saved links and VN session. See [Section 3](#3-the-database).
+- **Cascade operator (`..`).** Dart syntax: `a..where(...)` calls a method on `a` and then gives back `a`, so calls can be chained. Drift queries use it. See [Section 5](#5-saving-reels).
 - **CI (continuous integration).** A robot, here GitHub Actions, that runs the project's checks on a clean computer every time code is pushed. See [Section 10](#10-automatic-checks-on-github).
 - **Clock / `clockProvider`.** The one place the app asks "what time is it?", so tests can fix the time. See [Section 3](#3-the-database).
 - **Code generation (`build_runner`).** A tool that writes repetitive code (database classes, model methods, providers) into `.g.dart` and `.freezed.dart` files, so you don't. See [Section 2](#2-keeping-generated-code-honest).
@@ -1183,6 +1188,7 @@ Terms are in alphabetical order. The link takes you to the section where the ide
 - **Drift.** A Dart library that lets you describe database tables as Dart classes and writes the SQL and the query code for you. See [Section 3](#3-the-database).
 - **Foreign key.** A column that must point at an existing row in another table, so the database refuses a link to something that isn't there. See [Section 3](#3-the-database).
 - **Freezed.** A code generator for models that can never change after they are built: it writes `==`, `copyWith` and JSON conversion. See [Section 4](#4-models-and-rules).
+- **Future.** Dart's name for a value that arrives later, like a JavaScript Promise; `await` waits for it. Every database call returns one. See [Section 5](#5-saving-reels).
 - **Generated file.** A file written by a tool, not by hand, and committed to git; `tool/check_generated` fails when one is out of date. See [Section 2](#2-keeping-generated-code-honest).
 - **Golden test.** A test that draws a component and compares the picture with a saved image. See [Section 10](#10-automatic-checks-on-github).
 - **Idempotent.** Doing it twice has the same result as doing it once. Saving the same detected clip twice leaves one clip. See [Section 6](#6-clips-and-the-to-tag-list).
@@ -1194,6 +1200,7 @@ Terms are in alphabetical order. The link takes you to the section where the ide
 - **Migration.** Converting a database from an older shape to a newer one, done by the app itself the first time the new version opens it. See [Section 3](#3-the-database).
 - **Orphan clip.** A clip record that is in no reel and in neither To tag nor Skipped. Nothing can reach it, so it is deleted. See [Section 5](#5-saving-reels).
 - **Patrol.** The tool that runs automatic tests on the real phone. See [Section 11](#11-proving-it-works-on-the-phone).
+- **Picker clip.** A clip chosen by hand with Android's photo picker and identified by a link (URI), not a MediaStore id. See [Section 3](#3-the-database).
 - **Provider (Riverpod).** A small function that builds one shared object (the database, the clock, a repository) the first time it is asked for; code asks for it by name and tests can swap it. See [Section 3](#3-the-database).
 - **Repository.** The one class screens use to read and change a kind of data; it applies the rules and hides the database. See [Section 5](#5-saving-reels).
 - **Riverpod.** The library the app uses for providers and for passing shared objects around. See [Section 3](#3-the-database).
@@ -1203,7 +1210,8 @@ Terms are in alphabetical order. The link takes you to the section where the ide
 - **Stream / `watch()`.** A query that sends the current rows now and again after every change, so screens update by themselves. See [Section 5](#5-saving-reels).
 - **Transaction.** A group of database changes that are saved completely or not at all. See [Section 5](#5-saving-reels).
 - **UTC milliseconds.** How every moment is stored: milliseconds since 1 January 1970 in UTC, in a plain integer. See [Section 3](#3-the-database).
-- **VN.** The video editor TakeTray can hand clips to by copying them into a folder. See [Section 7](#7-references-vn-folders-settings-and-time-zones).
+- **`Value(...)` (Drift).** A wrapper that says whether a column in an insert or update is set; `Value(x)` sets it, leaving it out means "not given". See [Section 5](#5-saving-reels).
+- **VN.** A video-editing app that TakeTray can hand clips to by copying them into a folder. See [Section 7](#7-references-vn-folders-settings-and-time-zones).
 
 ## What's next
 
