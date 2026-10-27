@@ -266,6 +266,20 @@ Run by hand on a connected phone (`docs/dev-setup.md`); not part of `tool/check`
 6. `patrol_test/database_test.dart › main`: a second on-device test, with no screens. It makes a `ProviderContainer`, creates a reel through `reelsRepositoryProvider` (the first query opens `taketray.sqlite` in the dev app's storage through drift_flutter, loading the bundled `libsqlite3.so`), closes `appDatabaseProvider`, makes a second container, and reads the reel back with `getById` and through `backupServiceProvider.exportJson`. Finding the reel in the second container proves the row reached the file.
 7. `patrol_cli` prints the per-step results and the summary, and writes an HTML report to `app/build/app/reports/androidTests/connected/debug/index.html`. Because of `--no-uninstall` it neither uninstalls before installing nor after the run: `app.taketray.dev` ("TakeTray Dev" on the phone, next to the real TakeTray) and `app.taketray.dev.test` stay on the device (the dev app's data is still cleared by the orchestrator, step 3; the real app is untouched).
 
+### Accessibility check in component tests (`expectTtAccessible`)
+
+Called by component tests after pumping a widget (`packages/taketray_ui/test/support/tt_accessibility.dart`). See D-62.
+
+1. `expectTtAccessible`: turns semantics on, then expects, in order, `androidTapTargetGuideline`, `labeledTapTargetGuideline`, `ttTextContrastGuideline` and, only when `Platform.isMacOS`, Flutter's `textContrastGuideline`. Semantics are disposed even when one fails.
+2. `tt_text_contrast.dart › TtTextContrastGuideline.evaluate` → `measureTtTextContrast`, per render view:
+   1. `_collectTargets`: walks the semantics tree exactly as Flutter's `MinimumTextContrastGuideline` does (skips invisible, merged, hidden and disabled nodes, routes and empty labels; for each label, the hit-testable `Text`/`EditableText` elements whose box meets the node; skips text more than 50 px off screen) and records the font size and boldness Flutter would use, and the element's `RenderParagraph` or `RenderEditable`.
+   2. Collects every `RenderParagraph` and `RenderEditable` in the view and keeps their spans.
+   3. `_restyleAll(boxes: false)` gives each one a copy of its spans with the text colour transparent, shadows removed and any `decorationColor` transparent (a span with a `foreground`/`background` paint or a `backgroundColor` throws `StateError`); layout, compositing bits and paint are flushed; `_shoot` takes the view at one pixel per dp (as Flutter's guideline): the background image.
+   4. `_restyleAll(boxes: true)` does the same with `backgroundColor` set to each span's own colour (children inherit it); second image: each run is a solid box in the text colour, composited like a glyph would be.
+   5. In `finally`: the original spans are put back and the frame is flushed again, so nothing later sees the restyled text.
+   6. `_dominantPair`: inside each target's paint bounds, the pixels that differ between the two images are counted by (box colour, background colour); the most frequent pair (ties to the smaller value) is the sample. No differing pixel means the text is invisible: the sample is the background against itself, 1:1.
+3. Back in `evaluate`: each sample whose ratio is more than 0.01 under `MinimumTextContrastGuideline.targetContrastRatio(fontSize, bold:)` adds a failure naming the text, the ratio, the font size and both colours (`#rrggbb on #rrggbb`).
+
 ### Catalogue coverage (`widgetbook/test/catalog_coverage_test.dart`)
 
 Runs inside `tool/check` (step "test widgetbook") and with `(cd widgetbook && ../tool/flutter test)`. It keeps the Widgetbook catalogue complete (D-42).
