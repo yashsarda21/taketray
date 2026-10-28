@@ -128,6 +128,32 @@ String formatRecord(LogRecord r) {
   return _truncate(buffer.toString());
 }
 
+const String _unprintableError = '<unprintable error>';
+
+/// [formatRecord], for the log listener, which must never throw: it runs
+/// inside `Logger.log`, so a throw would come out of the caller's own log
+/// call (or out of the app's error handler).
+///
+/// An error whose `toString` throws is written as `<unprintable error>`; the
+/// message is kept. The stack is dropped in that case, because it may be
+/// unprintable too.
+String _formatRecordSafely(LogRecord record) {
+  try {
+    return formatRecord(record);
+  } on Object {
+    // Only the error and the stack are printed by user-supplied code; the
+    // message is a String.
+    return formatRecord(
+      LogRecord(
+        record.level,
+        record.message,
+        record.loggerName,
+        record.error == null ? null : _unprintableError,
+      ),
+    );
+  }
+}
+
 /// Message object of framework error records; its `toString` is the logged
 /// message, its identity tells the console echo to skip the record.
 const _FrameworkErrorTag _frameworkErrorTag = _FrameworkErrorTag();
@@ -189,7 +215,7 @@ Future<void> runAppWithLogging(
   final state = _state = _LogState();
   unawaited(_subscription?.cancel());
   _subscription = Logger.root.onRecord.listen((record) {
-    final line = formatRecord(record);
+    final line = _formatRecordSafely(record);
     // Debug builds also show every record on the console (uncaught async
     // errors would otherwise only reach the device file). Framework errors
     // are skipped: `presentError` below already printed them. Release builds

@@ -6,7 +6,6 @@ import 'package:drift/isolate.dart' show DriftRemoteException;
 import 'package:drift/native.dart' show NativeDatabase, SqliteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
-import 'package:taketray/core/logging/logging_setup.dart';
 import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -1186,7 +1185,9 @@ void main() {
       containsAll(['reels', 'clips', 'references', 'vn', 'zones', 'settings']),
       reason: 'every repository logged something',
     );
-    final lines = records.map(formatRecord).join('\n');
+    // The raw message, not `formatRecord`: that redacts paths and URIs, which
+    // would hide a leak instead of catching it.
+    final lines = records.map((r) => r.message).join('\n');
     for (final secret in [
       'Goa',
       'London',

@@ -26,6 +26,10 @@ final WidgetbookComponent ttBannerComponent = WidgetbookComponent(
           label: 'action',
           initialValue: true,
         );
+        final iconFilled = context.knobs.boolean(
+          label: 'icon filled',
+          initialValue: true,
+        );
         final tappable = context.knobs.boolean(label: 'tappable (no action)');
         final action = withAction
             ? kind == TtBannerKind.vn
@@ -57,6 +61,7 @@ final WidgetbookComponent ttBannerComponent = WidgetbookComponent(
           title: title,
           body: body.isEmpty ? null : body,
           action: action,
+          iconFilled: iconFilled,
           onTap: tappable && action == null ? () {} : null,
         );
       },

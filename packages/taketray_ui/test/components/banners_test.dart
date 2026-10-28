@@ -12,6 +12,7 @@ Widget _banner({
   String? body = 'Allow access to find new clips.',
   Widget? action,
   VoidCallback? onTap,
+  bool iconFilled = true,
 }) => TtBanner(
   kind: kind,
   icon: Symbols.no_photography_rounded,
@@ -19,6 +20,7 @@ Widget _banner({
   body: body,
   action: action,
   onTap: onTap,
+  iconFilled: iconFilled,
 );
 
 Widget _allow([VoidCallback? onPressed]) => TtButton(
@@ -187,6 +189,54 @@ void main() {
         isFalse,
       );
       handle.dispose();
+    });
+
+    test('TtBanner with onTap and action asserts', () {
+      // A tappable banner is one button; a button inside it would be a second,
+      // nested one.
+      expect(
+        () => TtBanner(
+          kind: TtBannerKind.attention,
+          icon: Symbols.sell_rounded,
+          title: 'x',
+          onTap: () {},
+          action: _allow(),
+        ),
+        throwsAssertionError,
+      );
+      // Either one alone is fine.
+      expect(
+        () => TtBanner(
+          kind: TtBannerKind.attention,
+          icon: Symbols.sell_rounded,
+          title: 'x',
+          onTap: () {},
+        ),
+        returnsNormally,
+      );
+      expect(
+        () => TtBanner(
+          kind: TtBannerKind.attention,
+          icon: Symbols.sell_rounded,
+          title: 'x',
+          action: _allow(),
+        ),
+        returnsNormally,
+      );
+    });
+
+    testWidgets('the icon is filled unless iconFilled is false', (
+      tester,
+    ) async {
+      double fillOfIcon() => tester
+          .widget<Icon>(find.byIcon(Symbols.no_photography_rounded))
+          .fill!;
+
+      await tester.pumpWidget(ttTestApp(_banner()));
+      expect(fillOfIcon(), 1, reason: 'the default');
+
+      await tester.pumpWidget(ttTestApp(_banner(iconFilled: false)));
+      expect(fillOfIcon(), 0);
     });
 
     testWidgets('only a warning is a live region', (tester) async {
