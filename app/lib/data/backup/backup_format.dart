@@ -281,6 +281,11 @@ BackupData _readV1(_Fields file) {
       case ClipSource.picker:
         if (pickerUri == null) throw c.invalid('pickerUri');
     }
+    // A detached clip (D-71) holds minus its own id; no other negative number
+    // is a MediaStore id, and a wrong one could collide with a live clip's.
+    if (mediaStoreId != null && mediaStoreId < 0 && mediaStoreId != -id) {
+      throw c.invalid('mediaStoreId');
+    }
     if (volumeName != null &&
         mediaStoreId != null &&
         !mediaStoreIdentities.add((volumeName, mediaStoreId))) {

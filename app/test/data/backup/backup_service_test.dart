@@ -308,7 +308,7 @@ void main() {
     test('a detached clip (negative mediaStoreId) round-trips', () async {
       final clips = ClipsRepository(db, clock);
       final reel = await ReelsRepository(db, clock).create('Goa');
-      final [kept, gone, listed] = await clips.addDetectedClips([
+      final [kept, untouched, listed] = await clips.addDetectedClips([
         _detected(1, _t0),
         _detected(2, _t0),
         _detected(3, _t0),
@@ -329,7 +329,7 @@ void main() {
       expect(rows[kept]!.missing, isTrue);
       expect(rows[kept]!.volumeName, 'external_primary');
       expect(rows[listed]!.mediaStoreId, -listed);
-      expect(rows[gone]!.mediaStoreId, 2);
+      expect(rows[untouched]!.mediaStoreId, 2);
       expect(rows[again]!.mediaStoreId, 1);
       expect(
         _withoutExportedAt(await BackupService(other, clock).exportJson()),
@@ -761,6 +761,14 @@ void main() {
               'zoneId': 'Asia/Kolkata',
             }),
             where: 'zoneTimeline[2].at',
+          ),
+          'a negative mediaStoreId that is not minus its own clip id': (
+            (f) => _section(f, 'clips').first['mediaStoreId'] = -5,
+            where: 'clips[0].mediaStoreId',
+          ),
+          "a negative mediaStoreId that is minus another clip's id": (
+            (f) => _section(f, 'clips').first['mediaStoreId'] = -11,
+            where: 'clips[0].mediaStoreId',
           ),
           'a negative size': (
             (f) => _section(f, 'clips').first['sizeBytes'] = -1,

@@ -199,12 +199,15 @@ class PhoneStateRepository {
       }
     } on FormatException {
       // Not JSON, or a date that is not a date: fall through.
-      // json_serializable's generated `fromJson` signals JSON of the wrong
-      // shape with a cast error; there is no other way to ask "is this
-      // readable?", so it is caught below.
       // ignore: avoid_catching_errors
     } on TypeError {
-      // JSON of the wrong shape: fall through.
+      // json_serializable's generated `fromJson` signals JSON of the wrong
+      // shape with a cast error, and a number too big for a double (1e400 is
+      // Infinity) with `UnsupportedError` from `toInt`. There is no other way
+      // to ask "is this readable?", so both are caught: fall through.
+      // ignore: avoid_catching_errors
+    } on UnsupportedError {
+      // See above.
     }
     _log.warning('Setting $shootingModeKey is corrupt, reading it as off');
     return ShootingState.off;

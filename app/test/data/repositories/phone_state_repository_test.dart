@@ -177,6 +177,11 @@ void main() {
       ('a baseline of the wrong shape', '{"on": false, "baselines": {"a": 3}}'),
       ('a bad date', '{"on": true, "baselines": {}, "since": "$secret"}'),
       ('on without a start time', '{"on": true, "baselines": {}}'),
+      (
+        'a generation too big for a double (1e400 is Infinity)',
+        '{"on": true, "since": "2026-10-28T09:00:00.000Z", "baselines": '
+            '{"a": {"version": "v", "generation": 1e400}}}',
+      ),
     ]) {
       test('$name reads as off and logs the key only', () async {
         await _put('shootingMode', raw);
