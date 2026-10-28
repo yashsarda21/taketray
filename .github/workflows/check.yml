@@ -27,6 +27,8 @@ env:
   CI: "true"
   # Must match EXPECTED_FLUTTER in tool/check, which fails on any other version.
   FLUTTER_VERSION: "3.47.7"
+  # The NDK that Flutter 3.47.7 names (flutter.ndkVersion); checked below.
+  ANDROID_NDK_VERSION: "28.2.13676358"
 
 jobs:
   check:
@@ -105,17 +107,54 @@ jobs:
           restore-keys: |
             gradle-${{ runner.os }}-
 
-      # The ubuntu image ships the Android SDK and sets ANDROID_HOME; stop
-      # early, with a clear message, if that ever changes.
+      # The ubuntu image ships the Android SDK in /usr/local/lib/android/sdk
+      # and sets ANDROID_HOME to it (the NDK cache below uses that path); stop
+      # early, with a clear message, if that ever changes, or if Flutter names
+      # another NDK than ANDROID_NDK_VERSION.
       - name: Check the Android SDK
         run: |
-          if [ -z "${ANDROID_HOME:-}" ] || [ ! -d "$ANDROID_HOME/platforms" ]; then
-            echo "ANDROID_HOME is not set to an Android SDK on the runner" >&2
+          if [ "${ANDROID_HOME:-}" != /usr/local/lib/android/sdk ] || [ ! -d "$ANDROID_HOME/platforms" ]; then
+            echo "ANDROID_HOME is not the runner's Android SDK in /usr/local/lib/android/sdk (got '${ANDROID_HOME:-}')" >&2
+            exit 1
+          fi
+          flutter_ndk="$(sed -n 's/.*val ndkVersion: String = "\(.*\)".*/\1/p' \
+            "$HOME/development/flutter/packages/flutter_tools/gradle/src/main/kotlin/FlutterExtension.kt")"
+          if [ "$flutter_ndk" != "$ANDROID_NDK_VERSION" ]; then
+            echo "Flutter names NDK '$flutter_ndk' but ANDROID_NDK_VERSION is '$ANDROID_NDK_VERSION'; update check.yml" >&2
             exit 1
           fi
           echo "ANDROID_HOME=$ANDROID_HOME"
           ls "$ANDROID_HOME/platforms" "$ANDROID_HOME/build-tools"
+          ls "$ANDROID_HOME/ndk" || true
           java -version
+
+      # Gradle needs the NDK even to configure the unit tests: a plugin with
+      # native code (jni, used by path_provider_android) builds with
+      # flutter.ndkVersion. The image does not ship that version, and Gradle's
+      # own download of it is slow and failed once (run 40701015612), so it is
+      # installed with sdkmanager, retried, and cached.
+      - name: Cache the Android NDK
+        id: ndk-cache
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/lib/android/sdk/ndk/${{ env.ANDROID_NDK_VERSION }}
+          key: ndk-${{ runner.os }}-${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Install the Android NDK
+        if: steps.ndk-cache.outputs.cache-hit != 'true'
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          for attempt in 1 2 3; do
+            # Licences are already accepted on the image, so there is no prompt.
+            if "$sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" </dev/null >/dev/null; then
+              break
+            fi
+            echo "NDK install attempt $attempt failed" >&2
+            rm -rf "$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION"
+            if [ "$attempt" = 3 ]; then exit 1; fi
+          done
+          test -f "$ANDROID_HOME/ndk/$ANDROID_NDK_VERSION/source.properties"
+          ls "$ANDROID_HOME/ndk"
 
       - name: Run tool/check
         run: tool/check

@@ -42,7 +42,7 @@ flowchart TD
     G --> H["5. Check required programs<br/>(git, python3, shasum, awk, find, sort)"]
     H --> H2["6. Java 17<br/>(for Gradle and the Android unit tests)"]
     H2 --> H3["7. Gradle and Robolectric files<br/>(from the cache when the Gradle files are unchanged)"]
-    H3 --> H4["8. Check the Android SDK<br/>(already on the runner)"]
+    H3 --> H4["8. Check the Android SDK<br/>(already on the runner)<br/>and get the NDK (from the cache, or installed once)"]
     H4 --> I["9. Run tool/check with CI=true"]
     I -->|all passed| J["✅ green tick on the commit"]
     I -->|anything failed| K["❌ red cross on the commit"]
@@ -58,7 +58,7 @@ Step by step, in plain words:
 5. **Check the tools are there.** If GitHub ever removes a program the scripts need, this fails early with a clear message instead of a confusing error later.
 6. **Java 17.** Since phase 3, `tool/check` also runs the Android side's unit tests (the Kotlin code that reads the phone's videos, D-67). They are built by **Gradle**, Android's build tool, which needs Java. `actions/setup-java` installs the Temurin build of Java 17, the version the app's code is compiled for.
 7. **Gradle and Robolectric files.** The first Android test run downloads a lot: Gradle itself, the libraries, and about 650 MB of Android system code that **Robolectric** (the library that runs Android code on an ordinary computer) needs for each Android version it tests. They are kept in a cache keyed on the Gradle files, so later runs restore them instead.
-8. **Check the Android SDK.** GitHub's Ubuntu machines already have Android's developer kit installed, and say where in `ANDROID_HOME`. This step stops early with a clear message if that ever changes, and prints which Android versions and Java are there.
+8. **Check the Android SDK, and get the NDK.** GitHub's Ubuntu machines already have Android's developer kit installed, and say where in `ANDROID_HOME`. This step stops early with a clear message if that ever changes, and prints which Android versions and Java are there. One piece is missing from the machine: the **NDK**, Android's kit for C code, in the exact version Flutter asks for (28.2). TakeTray has no C code of its own, but one library it uses (`jni`, behind `path_provider_android`) does, and Gradle wants the NDK before it will even start the tests. The first run installs it with Android's `sdkmanager` (trying up to three times; Gradle's own download of it once broke half-way, in run 40701015612) and caches it; later runs restore it.
 9. **Run `tool/check`.** This is the same script you run on the Mac: workspace and SDK checks, `pub get`, generated files fresh, design tokens fresh, format, analyse every package, style rules, every test in every package, the Android unit tests (`tool/test_android`), and the coverage gate. `CI=true` is set, which makes the screenshot tests use GitHub's own Linux pictures (see below).
 10. **Upload failures (only on red).** If a screenshot test failed, the "what I expected / what I got / the difference" images are saved as an **artifact**, a zip file you can download from the run page.
 
