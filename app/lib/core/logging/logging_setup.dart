@@ -130,27 +130,41 @@ String formatRecord(LogRecord r) {
 
 const String _unprintableError = '<unprintable error>';
 
-/// [formatRecord], for the log listener, which must never throw: it runs
-/// inside `Logger.log`, so a throw would come out of the caller's own log
-/// call (or out of the app's error handler).
+/// [formatRecord], for the log listener, which must never throw.
 ///
-/// An error whose `toString` throws is written as `<unprintable error>`; the
-/// message is kept. The stack is dropped in that case, because it may be
-/// unprintable too.
+/// The `logging` package calls listeners synchronously, but an exception from
+/// one does not reach the code that logged: the zone gets it as an uncaught
+/// error. The log line would be lost, and the uncaught error would go to the
+/// app's own error handler, which logs again.
+///
+/// Only the error's and the stack's `toString` run code that is not ours. When
+/// printing fails, the line is written without the stack; when the error
+/// itself cannot be printed, it is written as `<unprintable error>`. The
+/// message and logger name are always kept.
 String _formatRecordSafely(LogRecord record) {
   try {
     return formatRecord(record);
   } on Object {
-    // Only the error and the stack are printed by user-supplied code; the
-    // message is a String.
-    return formatRecord(
-      LogRecord(
-        record.level,
-        record.message,
-        record.loggerName,
-        record.error == null ? null : _unprintableError,
-      ),
-    );
+    // The stack may be the one that cannot be printed.
+    try {
+      return formatRecord(
+        LogRecord(
+          record.level,
+          record.message,
+          record.loggerName,
+          record.error,
+        ),
+      );
+    } on Object {
+      return formatRecord(
+        LogRecord(
+          record.level,
+          record.message,
+          record.loggerName,
+          record.error == null ? null : _unprintableError,
+        ),
+      );
+    }
   }
 }
 

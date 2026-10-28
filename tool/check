@@ -64,10 +64,11 @@ done
 # some test loads, so without this a file nobody tests would not count against
 # the total at all.
 write_coverage_imports() {
-  local prefix dir file
+  local prefix dir file before counts=""
   local files=()
   shopt -s nullglob
   for prefix in "${COVERAGE_PREFIXES[@]}"; do
+    before=${#files[@]}
     # Unquoted on purpose: a `*` in the prefix expands to one path segment.
     for dir in $COVERAGE_MEMBER/$prefix; do
       [ -d "$dir" ] || continue
@@ -77,6 +78,7 @@ write_coverage_imports() {
         files+=("$file")
       done < <(find "$dir" -type f -name '*.dart' ! -name '*.g.dart' ! -name '*.freezed.dart')
     done
+    counts+="${counts:+, }$prefix $((${#files[@]} - before)) files"
   done
   shopt -u nullglob
   {
@@ -92,7 +94,8 @@ write_coverage_imports() {
     echo "  test('loads every file under the coverage prefixes', () {});"
     echo "}"
   } >"$root/$COVERAGE_IMPORTS_FILE"
-  echo "coverage imports: ${#files[@]} files"
+  # One count per prefix, so a glob that matches nothing shows in the log.
+  echo "coverage imports: $counts"
 }
 
 step "workspace members"

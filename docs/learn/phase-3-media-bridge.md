@@ -165,26 +165,32 @@ The last line should be `RELEASE PERMISSIONS OK`. Now break it on purpose: delet
 
 **Key ideas:**
 
-- **The log listener must never throw.** Every `Logger('x').severe(...)` call runs the app's listener in the middle of the caller's own code. The listener turns the record into one line of text. An error object can have a `toString()` that itself throws (a broken platform exception, for example), and then the throw would come out of the log call. Now the listener goes through a small wrapper that falls back to a fixed placeholder:
+- **The log listener must never throw.** Every `Logger('x').severe(...)` call runs the app's listener, which turns the record into one line of text. An error object can have a `toString()` that itself throws (a broken platform exception, for example). The `logging` package calls listeners synchronously, but an exception from a listener does not come out of the caller's log call: Dart's zone catches it and reports it as an *uncaught error*. The result is two problems: the log line is lost, and the uncaught error goes to the app's own error handler, which logs again. So the listener goes through a small wrapper with two fallbacks, first without the stack trace (it may be the one that cannot print), then with the error replaced by a fixed placeholder:
 
   ```dart
   String _formatRecordSafely(LogRecord record) {
     try {
       return formatRecord(record);
     } on Object {
-      return formatRecord(
-        LogRecord(
-          record.level,
-          record.message,
-          record.loggerName,
-          record.error == null ? null : _unprintableError,
-        ),
-      );
+      try {
+        return formatRecord(
+          LogRecord(record.level, record.message, record.loggerName, record.error),
+        );
+      } on Object {
+        return formatRecord(
+          LogRecord(
+            record.level,
+            record.message,
+            record.loggerName,
+            record.error == null ? null : _unprintableError,
+          ),
+        );
+      }
     }
   }
   ```
 
-  The message and logger name are kept, the error becomes `<unprintable error>`, and the stack is dropped, because it may not print either. (The timestamp of such a line is the moment of the fallback, a few microseconds later.)
+  The message and logger name are always kept. A stack that cannot print is simply left out; an error that cannot print becomes `<unprintable error>`. (The timestamp of such a line is the moment of the fallback, a few microseconds later.)
 
 - **A privacy test must read the raw message.** The log has a privacy rule (D-10): no video name, folder, link or reel name. `formatRecord` hides anything that looks like a path or a link, so a test that checked its output could pass while the *code* was leaking, because the leak was already masked. The privacy test now reads `LogRecord.message`, the text the code wrote itself:
 
@@ -200,7 +206,7 @@ The last line should be `RELEASE PERMISSIONS OK`. Now break it on purpose: delet
   trap 'rm -f "$root/$COVERAGE_IMPORTS_FILE"' EXIT
   ```
 
-  The generated file is a list of imports and one empty test:
+  The script prints how many files each prefix gave, for example `coverage imports: lib/domain/ 13 files, lib/data/ 13 files, lib/platform/ 0 files, ...`, so a glob that matches nothing is visible in the log. The generated file is a list of imports and one empty test:
 
   ```dart
   import 'package:taketray/data/backup/backup_service.dart';

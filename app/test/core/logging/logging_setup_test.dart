@@ -429,13 +429,32 @@ void main() {
       onSinkReady: sinkReady.complete,
     );
 
-    // `Logger.log` runs the listener synchronously: a throw would come out
-    // of this call.
+    // `Logger.log` runs the listener synchronously, inside the logging
+    // package's stream. A throw there does not reach this call: the zone gets
+    // it as an uncaught error, which fails this test (and in the app goes to
+    // the error handler, which logs again), and the line is lost.
     Logger('scan').severe('scan failed', _ThrowingToString());
 
     final content = await (await sinkReady.future).readAll();
     expect(content, contains('SEVERE scan: scan failed'));
     expect(content, contains('<unprintable error>'));
+  });
+
+  test('a stack trace whose toString throws still writes the line', () async {
+    final sinkReady = Completer<LogFileSink>();
+    await runAppWithLogging(
+      () {},
+      logDir: () async => dir,
+      onSinkReady: sinkReady.complete,
+    );
+
+    Logger('scan').severe('scan failed', StateError('fine'), _ThrowingStack());
+
+    final content = await (await sinkReady.future).readAll();
+    expect(content, contains('SEVERE scan: scan failed'));
+    // The error still prints; only the stack is dropped.
+    expect(content, contains('error: Bad state: fine'));
+    expect(content, isNot(contains('stack:')));
   });
 
   test('FlutterError and platform errors are logged as crash', () async {
@@ -561,4 +580,10 @@ void main() {
 class _ThrowingToString {
   @override
   String toString() => throw StateError('toString broke');
+}
+
+/// A stack trace that cannot be printed.
+class _ThrowingStack implements StackTrace {
+  @override
+  String toString() => throw StateError('stack toString broke');
 }
