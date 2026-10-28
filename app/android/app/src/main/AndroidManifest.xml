@@ -8,7 +8,7 @@
 
     <!-- No Google backup or phone-to-phone transfer of app data (D-64): the
          database holds MediaStore ids that would point at other videos on
-         another phone. The two XML files exclude every domain; allowBackup is
+         another phone, so a new phone starts with an empty TakeTray. The two XML files exclude every domain; allowBackup is
          off as well. Checked by tool/check_release_permissions. -->
     <application
         android:label="${appLabel}"

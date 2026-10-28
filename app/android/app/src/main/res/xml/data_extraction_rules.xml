@@ -1,11 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Android 12+ (API 31+): nothing of TakeTray's is backed up to Google or
-     copied to a new phone (D-64). drift_flutter keeps taketray.sqlite under
-     app_flutter/, which is the "file" domain, together with its -wal and -shm
-     files. Its clip rows hold MediaStore ids, and on another phone those ids
-     point at other videos. Moving to a new phone is Export / Import only.
-     Every domain is excluded, in both cloud backup and device transfer.
-     Checked by tool/check_release_permissions. -->
+     copied to a new phone (D-64). drift_flutter keeps taketray.sqlite, with
+     its -wal and -shm files, in app_flutter/ (path_provider's documents
+     directory). Android counts that folder under the "root" domain, so
+     "root" is the exclusion that covers the database. The other domains are
+     excluded too, so nothing else leaves the phone either (shared
+     preferences with the native zone list, cache). The database holds
+     MediaStore ids, which on another phone would point at other videos.
+     A new phone starts with an empty TakeTray; Export / Import is a
+     same-phone backup, and moving phones is not supported in v1.
+     The device_* domains are not listed: the app uses no device-protected
+     storage. Every other domain is excluded, in both cloud backup and
+     device transfer. Checked by tool/check_release_permissions. -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="root" path="." />

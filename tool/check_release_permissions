@@ -63,6 +63,16 @@ facts="$(awk '
 
 problems=()
 
+# A parse that found nothing must not look like "nothing forbidden". The release
+# manifest always has at least one uses-permission (the plugins add some), so
+# zero facts means the xmltree format changed or the awk pass broke.
+if ! grep -q '^permission ' <<<"$facts"; then
+  problems+=("no permissions were parsed from the manifest dump (aapt2 xmltree format changed?)")
+fi
+if ! grep -q '^application ' <<<"$facts"; then
+  problems+=("no <application> attributes were parsed from the manifest dump (aapt2 xmltree format changed?)")
+fi
+
 # --- Google backup is off (D-64). ---
 app_attr() { awk -v a="$1" '$1 == "application" && $2 == a { print $3 }' <<<"$facts"; }
 if [ "$(app_attr allowBackup)" != "false" ]; then
@@ -85,6 +95,9 @@ FORBIDDEN_PERMISSIONS=(
 for p in "${FORBIDDEN_PERMISSIONS[@]}"; do
   if awk -v p="$p" '$1 == "permission" && $2 == p { found = 1 } END { exit !found }' <<<"$facts"; then
     problems+=("$p permission found in release build")
+  elif grep -qF "name='$p'" <<<"$permissions"; then
+    # Second opinion: aapt2's own permission list, in case the xmltree parse missed it.
+    problems+=("$p permission found in release build (aapt2 dump permissions)")
   fi
 done
 
