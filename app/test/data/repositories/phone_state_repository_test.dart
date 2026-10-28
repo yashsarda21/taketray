@@ -387,6 +387,58 @@ void main() {
       expect(await repo.loadShooting(), session);
     });
 
+    test(
+      'a rebuilt volume may write a lower generation in one version',
+      () async {
+        const back = VolumeBaseline(version: 'v1', generation: 4);
+
+        expect(
+          await repo.advanceBaseline(
+            'external_primary',
+            expectedSession: session,
+            expected: _phone,
+            next: back,
+            rebuilt: true,
+          ),
+          isTrue,
+        );
+
+        expect((await repo.loadShooting()).baselines, {
+          'external_primary': back,
+        });
+      },
+    );
+
+    test('rebuilt still refuses a stale session or baseline', () async {
+      const back = VolumeBaseline(version: 'v1', generation: 4);
+      const other = VolumeBaseline(version: 'v1', generation: 41);
+      expect(
+        await repo.advanceBaseline(
+          'external_primary',
+          expectedSession: session,
+          expected: other,
+          next: back,
+          rebuilt: true,
+        ),
+        isFalse,
+      );
+      await repo.turnShootingOff();
+      clock.advance(_minute);
+      final newer = await turnOn();
+      expect(
+        await repo.advanceBaseline(
+          'external_primary',
+          expectedSession: session,
+          expected: _phone,
+          next: back,
+          rebuilt: true,
+        ),
+        isFalse,
+      );
+
+      expect(await repo.loadShooting(), newer);
+    });
+
     test('a version change (Resync) may write a lower generation', () async {
       const resynced = VolumeBaseline(version: 'v2', generation: 3);
 

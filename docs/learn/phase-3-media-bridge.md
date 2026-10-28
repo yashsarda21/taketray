@@ -688,7 +688,132 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repos
 
 ## 7. Scanner, verifier and zone sync (and Add earlier videos)
 
-_Written in Task 7._
+**What we built:** the code that turns the bridge (Section 3), the rules (Section 5) and the database writes (Section 6) into behaviour. Three classes in `app/lib/data/media/`:
+
+- `MediaScanner.scan()` looks for new videos on every volume while Shooting mode is on and puts them in To tag. It also notices when Android has rebuilt its media library and finds the stored clips again, and it holds "Add earlier videos" (`countEarlier`, `addEarlier`).
+- `MediaVerifier.verify(clips)` / `verifyAll()` check that stored clips' videos still exist, and flag or remove the ones that do not.
+- `ZoneSync.sync()` copies the time zone changes the Android side saw while the app was closed into the zone timeline.
+
+All media jobs share one `MediaWorkQueue`, which runs them one at a time. Nothing calls any of this yet: Task 10 wires the scan and the zone sync to app start, resume and opening To tag.
+
+**Why TakeTray needs it:** this is where the two promises of the phase are kept: a video shot while Shooting mode is on always reaches To tag (never skipped forever), and a stored clip is never paired with the wrong video. Every one of the five Review Focus situations ends here: limited access, a video still being recorded, a rebuilt library, three triggers at once, a removed SD card or a deleted video.
+
+**Key ideas:**
+
+- **One queue for every media job.** Picture a scan that is half-way through a rebuild: it has read the new library and is about to give clip A its new number, 21. At that moment a verify starts for clip A. It still sees A's *old* number, 1, asks the phone for video 1, gets a different video back, and detaches A: a clip that was about to be found again is now missing for good. Running the jobs one after the other removes this whole kind of bug. The queue is a chain of futures:
+
+  ```dart
+  Future<T> run<T>(Future<T> Function() job) {
+    final result = _tail.then((_) => job());
+    // The next job waits for this one, whatever its outcome; the error itself
+    // reaches only the caller, through `result`.
+    _tail = result.then<void>((_) {}, onError: (Object _) {});
+    return result;
+  }
+  ```
+
+  Each job starts when the previous `_tail` completes. `_tail` is replaced by a future that completes, without an error, when this job is done, so a job that throws does not stop the jobs after it; its error still reaches its own caller through `result`. The verifier also re-reads the clips from the database inside its job (`clipsByIds`), because the `Clip` objects its caller passed in were read *before* the scan ran.
+
+- **Three triggers, two runs (coalescing).** App start, resume and opening To tag can all call `scan()` within a second. Each one must be answered by a scan that started *after* it was called, or it would miss a video that just arrived. But three scans in a row would do the same work three times. So the scanner remembers the scan that is queued but has not started yet, and hands that same future to every caller until it starts:
+
+  ```dart
+  Future<ScanOutcome> scan() => _queued ??= _queue.run(() {
+    _queued = null;
+    return _scanOnce();
+  });
+  ```
+
+  When the queued scan starts, it clears `_queued`, so the next call queues a fresh one. A test pauses one run, calls `scan()` three times, and checks that the three calls got the *identical* future and that the bridge saw exactly two runs.
+
+- **Nothing without full access.** Under "Select photos and videos" a query only returns the videos the user picked. A scan would see nothing new, and a verifier would think every other clip had been deleted. So the scan returns `ScanNoAccess` and the verifier returns everything as `skipped`, and neither writes anything (Review Focus 1).
+
+- **Paging with a cursor that is not the baseline.** A volume can have many new videos, so the scan asks for them in pages of 500. Android gives every row written in one transaction the same *generation*, so a page can end in the middle of one generation. If the next page started "after the last row's generation", the rest of that generation would be skipped, and the baseline would then move past it: those videos would never reach To tag. The scan keeps a cursor, separate from the baseline, and moves it with `nextPageCursor` (one *below* the page's highest generation, Section 5), counting rows that come back twice only once:
+
+  ```dart
+  if (page.length < limit || pastCaptured) break;
+  final next = nextPageCursor(cursor: cursor, page: page);
+  if (next != null) {
+    cursor = next;
+    limit = pageSize;
+  } else if (limit < maxPageLimit) {
+    limit = min(limit * 2, maxPageLimit);
+  } else {
+    truncated = true;
+    break;
+  }
+  ```
+
+  When a full page is all one generation, `nextPageCursor` is null and the same page is asked for again with twice the limit (500, 1000, …, 16 000). If it is still stuck at 16 000 the scan stops, saves what it saw, and `advanceBaseline(truncated: true)` holds the baseline just below that generation, so nothing is lost; it is logged as a warning.
+
+- **Bounded by the generation read first.** Before paging, the scan reads the volume's generation (`captured`). A row added after that belongs to the *next* scan: it is not kept, and the page that holds it is the last. This matters in a race: a scan pauses between two pages, the user turns Shooting mode off, films something, and turns it on again. Without the bound, the old scan's next page would pick up the video shot while Shooting mode was off. The baseline never moves past `captured`, so those rows are not lost; the next scan returns them.
+
+- **The baseline moves last, and by compare-and-set.** The clips are saved with `addDetectedClips` first, and only after that succeeds does the baseline move, through Section 6's compare-and-set. If saving fails (a full disk, a crash), the baseline is where it was and the next scan sees the same videos again (saving a clip twice changes nothing). If Shooting mode went off and on meanwhile, the write is refused. A test injects a failing `addDetectedClips` and checks the baseline did not move; moving the baseline first makes that test fail.
+
+- **A rebuilt library adds nothing.** When a volume's version changes, the scan does not look for "new" videos at all: every row would look new. It reads `allVideos`, finds each stored clip again with `matchAfterRebuild` (Section 5), applies the result with `applyRebuildMatch` (Section 6) and starts the volume from now. The one test with 50 videos in the "new" library checks that 0 are added and that every stored clip on that volume ends up either on its own video again or detached and missing. A rebuild noticed because the generation went *backwards* under the same version needs one extra permission: Section 6's compare-and-set refuses a lower generation within one version, so the scanner passes `rebuilt: true` for this one write (D-72).
+
+- **An error never means "missing".** If `videosByIds` fails for a volume, the verifier marks every clip of that volume `skipped`, never missing: a missing clip that is only in To tag is removed from the list, so treating an error as "gone" would throw away the user's clips. The same goes for a volume that is not mounted (a removed SD card): skipped, untouched (Review Focus 5).
+
+- **Zone sync clears only what it has saved.** `ZoneSync.sync` merges the native list plus "the zone now" with `recordAll`, and only then tells Android to forget its entries, up to the newest *native* one (not "now", so an entry Android wrote a moment after the read survives). With an empty native list it clears nothing.
+
+- **Add earlier videos never touches a baseline.** Turning Shooting mode on starts from now, so videos shot just before are not detected. "Add earlier videos" asks the phone for the videos shot in the last seven calendar days, drops the ones TakeTray already knows (in To tag, Skipped or a reel), and counts or adds them per range: today, yesterday and today, the last seven days. The days are local calendar days (Section 5), so at 00:05 "today" does not include 23:59 last night; those tests also run in London's daylight-saving step of `tool/check` (D-73).
+
+One scan, as a sequence (one volume, `ScanAfter`):
+
+```mermaid
+sequenceDiagram
+    participant C as Caller (Task 10)
+    participant S as MediaScanner
+    participant Q as MediaWorkQueue
+    participant P as PhoneStateRepository
+    participant B as MediaBridge (Kotlin)
+    participant R as ClipsRepository
+    C->>S: scan()
+    S->>Q: run(_scanOnce) (or the queued scan's future)
+    Q->>S: start when the previous job is done
+    S->>P: loadShooting()
+    P-->>S: on, since, baselines
+    S->>B: accessReport()
+    B-->>S: full
+    S->>P: markAccessWasFull()
+    S->>B: currentZoneId(), volumes()
+    B-->>S: volume (version, generation = captured)
+    Note over S: planVolume → ScanAfter(g); cursor = g, limit = 500
+    loop until a short page, a row past captured, or stuck at 16000
+        S->>B: videosAddedAfter(volume, cursor, folders, limit)
+        B-->>S: page (oldest generation first)
+        Note over S: keep rows ≤ captured, by id; full page → nextPageCursor, or double the limit
+    end
+    S->>R: knownMediaStoreIds(), then addDetectedClips(usable rows)
+    R-->>S: ids (new ones in To tag)
+    Note over S: advanceBaseline(from: g, captured, seen, truncated)
+    S->>P: advanceBaseline(volume, expectedSession, expected, next)
+    P-->>S: wrote, or refused (it had changed)
+    S-->>C: ScanDone(added, resynced, failedVolumes)
+```
+
+**Where it lives:** `app/lib/data/media/media_work_queue.dart` (`MediaWorkQueue`, `mediaWorkQueueProvider`), `media_scanner.dart` (`MediaScanner`, `ScanOutcome`, `mediaScannerProvider`), `media_verifier.dart` (`MediaVerifier`, `VerifyOutcome`, `mediaVerifierProvider`), `zone_sync.dart` (`ZoneSync`, `zoneSyncProvider`); new reads in `app/lib/data/repositories/clips_repository.dart` (`knownMediaStoreIds`, `clipsByIds`, `allClipIds`) and the `rebuilt` flag in `phone_state_repository.dart`. Tests in `app/test/data/media/`: `media_scanner_test.dart`, `add_earlier_test.dart`, `media_verifier_test.dart`, `zone_sync_test.dart`, `media_work_queue_test.dart`, with the shared `media_harness.dart` (a fresh in-memory database, a `FakeMediaBridge` that also records the paging and batch arguments, and the repositories). The flows are in `docs/flow.md` ("Finding new clips", "Checking clips still exist", "Adding earlier videos").
+
+**Try it yourself:** see the bug the paging rule prevents. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/data/media/media_scanner_test.dart --plain-name "shared generation")
+```
+
+It ends with `All tests passed!`. The test puts 450 new videos at separate generations and then 600 more that all share generation 600. Now, in `app/lib/data/media/media_scanner.dart`, replace the line
+
+```dart
+      final next = nextPageCursor(cursor: cursor, page: page);
+```
+
+with the rule the plan first had, "the next page starts after the last row's generation":
+
+```dart
+      final int? next = page.last.generationAdded;
+```
+
+and run the same command. It fails with ``Expected: <Instance of 'ScanDone'> with `added`: <1050> ...`` and `Actual: ScanDone:<ScanDone(500, resynced: {}, failed: {})>`: the first page held 450 videos plus 50 of generation 600, the second page asked for "after 600" and got nothing, and the other 550 videos of generation 600 were never added; the baseline then moved to 600, so they never would be. Put the file back with `git checkout -- app/lib/data/media/media_scanner.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-72 (the queue, coalescing, full access only, the paging and its bound, the baseline after the insert, an error never meaning missing, the zone sync, and the `rebuilt` flag), D-73 (Add earlier videos), with D-70 (the plan per volume and the pending hold) and D-71 (compare-and-set, detached clips) as background.
 
 ---
 

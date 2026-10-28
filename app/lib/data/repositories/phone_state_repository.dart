@@ -96,7 +96,9 @@ class PhoneStateRepository {
   /// - when [expected] and [next] have the same version, `next.generation` is
   ///   not below `expected.generation` (a baseline never moves backwards). A
   ///   different version is a resync, whose generations start over, so any
-  ///   generation may be written then.
+  ///   generation may be written then. So may one under the same version
+  ///   when [rebuilt] is true: the scanner resynced the volume because its
+  ///   generation went backwards (D-70), and the old numbers mean nothing.
   ///
   /// Other volumes and `earlierAdded` are kept.
   Future<bool> advanceBaseline(
@@ -104,6 +106,7 @@ class PhoneStateRepository {
     required ShootingState expectedSession,
     required VolumeBaseline? expected,
     required VolumeBaseline next,
+    bool rebuilt = false,
   }) async {
     final wrote = await _db.transaction(() async {
       final since = expectedSession.since;
@@ -116,7 +119,8 @@ class PhoneStateRepository {
         return false;
       }
       if (current.baselines[volume] != expected) return false;
-      if (expected != null &&
+      if (!rebuilt &&
+          expected != null &&
           expected.version == next.version &&
           next.generation < expected.generation) {
         return false;

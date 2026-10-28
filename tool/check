@@ -35,7 +35,10 @@ STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
 # skip themselves in any other zone). Paths are relative to $DST_MEMBER. The
 # step "daylight-saving tests" runs them again in that zone (D-69).
 DST_MEMBER=app
-DST_TESTS=(test/domain/rules/earlier_window_test.dart)
+DST_TESTS=(
+  test/domain/rules/earlier_window_test.dart
+  test/data/media/add_earlier_test.dart
+)
 
 cd "$(dirname "$0")/.."
 root="$(pwd)"

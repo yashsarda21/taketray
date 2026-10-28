@@ -72,7 +72,7 @@ Nothing calls this yet; the reel screens (phase 4 onwards) will. See D-56.
 
 ### Tagging data changes
 
-Nothing calls this yet (the scanner and verifier of phase 3 will call the four rows after `recordVerification`); detection (phase 3), the tag player (phase 5) and the reel screens (phase 4 onwards) will. All in `data/repositories/clips_repository.dart › ClipsRepository`; every method that writes is one transaction, and every stream re-queries after any of the tables it reads change. See D-57. A clip's identity is `volumeName` + `mediaStoreId` (or `pickerUri`); "find" below means looking a clip up by that.
+The scanner and the verifier ("Finding new clips", "Checking clips still exist" below) call `addDetectedClips` and the rows from `recordVerification` on; the tag player (phase 5) and the reel screens (phase 4 onwards) will call the rest. All in `data/repositories/clips_repository.dart › ClipsRepository`; every method that writes is one transaction, and every stream re-queries after any of the tables it reads change. See D-57. A clip's identity is `volumeName` + `mediaStoreId` (or `pickerUri`); "find" below means looking a clip up by that.
 
 | Method | Writes |
 |---|---|
@@ -84,6 +84,8 @@ Nothing calls this yet (the scanner and verifier of phase 3 will call the four r
 | `addClipsToReel(reelId, ids)` | A `clip_reels` row for each clip the reel did not have; `reels.updatedAt` = now if any was added. The clips' `inbox` rows (pending or skipped) are deleted. |
 | `removeClipsFromReel(reelId, ids)` | Deletes those `clip_reels` rows; `reels.updatedAt` = now if any was removed; then `deleteOrphanClips()` (a clip in no reel and no list is deleted; its `vn_copies` row stays). |
 | `recordVerification(found:, missing:)` | `clips.missing` and `clips.lastVerifiedAt` = now for the listed clips. |
+| `knownMediaStoreIds(volumeName, ids)` | Nothing (a read): which of `ids` a stored clip on that volume holds, whatever its source (the lookup `addDetectedClips` uses). A detached clip holds `-clipId`, so its old number is not known. Asked in batches of 500. |
+| `clipsByIds(ids)` / `allClipIds()` | Nothing (reads): the clips that exist, by id (batches of 500; unknown ids left out) / every clip id. |
 | `mediaStoreClipsOn(volumeName)` | Nothing (a read): the MediaStore clips of that volume with `mediaStoreId > 0`, by id. Detached clips, picked clips and other volumes are left out. |
 | `applyRebuildMatch(volumeName, match)` | One transaction (D-71). First it selects the eligible clips of the match: on that volume, source `mediaStore`, `mediaStoreId > 0` (a detached clip from a stale match, a picked clip, another volume and an unknown id are ignored). Then `mediaStoreId = -clipId` for every eligible clip in `match.remap` and `match.lost`. Then, if a clip outside the match holds one of the eligible new ids, `StateError` and everything is rolled back. Then each `remap` clip gets its new `mediaStoreId`, `missing = false`, `lastVerifiedAt` = now; each `lost` clip keeps `-clipId` with `missing = true`, `lastVerifiedAt` = now. `ArgumentError`, nothing written, for a clip in both sets, two clips with one new id, or a new id below 1. An empty match writes nothing. |
 | `detach(ids)` | The same as `lost` above: `mediaStoreId = -clipId`, `missing = true`, `lastVerifiedAt` = now, for MediaStore clips. Unknown ids and picked clips are ignored; an empty set does nothing. Used when a verified id now holds a different video. |
@@ -132,7 +134,7 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy fl
 | `loadShooting()` / `watchShooting()` | Nothing. The watch emits only when the state changes. |
 | `turnShootingOn(baselines)` | One transaction. Shooting mode off: writes `on`, `since` = now, the baselines and `earlierAdded: false`, and returns it. Already on: writes nothing and returns the current state (the first `since`, baselines and `earlierAdded` stay). |
 | `turnShootingOff()` | Deletes the `shootingMode` row (baselines and `since` go with it). |
-| `advanceBaseline(volume, expectedSession:, expected:, next:)` | One transaction, compare-and-set. Writes `next` as `volume`'s baseline, keeping the other volumes and `earlierAdded`, only if all hold: Shooting mode is on with the same `since` as `expectedSession`; the stored baseline of `volume` equals `expected` (null: none stored); and, with `expected` and `next` on the same version, `next.generation >= expected.generation`. Returns whether it wrote. |
+| `advanceBaseline(volume, expectedSession:, expected:, next:, rebuilt: false)` | One transaction, compare-and-set. Writes `next` as `volume`'s baseline, keeping the other volumes and `earlierAdded`, only if all hold: Shooting mode is on with the same `since` as `expectedSession`; the stored baseline of `volume` equals `expected` (null: none stored); and, with `expected` and `next` on the same version and `rebuilt` false, `next.generation >= expected.generation`. The scanner passes `rebuilt: true` after a resync (D-72). Returns whether it wrote. |
 | `markEarlierAdded()` | `earlierAdded = true` while Shooting mode is on; nothing when it is off. |
 | `markAccessWasFull()` / `accessWasFull()` | Sets / reads `mediaAccessWasFull`. Shooting mode going off does not clear it; unreadable reads as false. |
 
@@ -162,7 +164,7 @@ Nothing calls this yet. The Settings screen (phase 10) will choose the file with
 
 Run from anywhere; the script changes to the repo root and stops at the first failing step. A fresh clone, or any ARB edit, needs `tool/flutter pub get` (or `tool/flutter gen-l10n`) before analyze or IDE use, because `app/lib/l10n/gen/` is generated, not committed (D-27); `tool/check` does the `pub get` itself.
 
-`tool/check` declares `FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)` and `DART_MEMBERS=(tool)`, and `DST_MEMBER=app` with `DST_TESTS=(test/domain/rules/earlier_window_test.dart)`, the test files whose daylight-saving cases need Europe/London (step 9b). Every listed member must have a `pubspec.yaml`: a missing one fails the check, so a rename or deletion cannot pass silently (D-34).
+`tool/check` declares `FLUTTER_MEMBERS=(app packages/taketray_ui widgetbook)` and `DART_MEMBERS=(tool)`, and `DST_MEMBER=app` with `DST_TESTS=(test/domain/rules/earlier_window_test.dart test/data/media/add_earlier_test.dart)`, the test files whose daylight-saving cases need Europe/London (step 9b). Every listed member must have a `pubspec.yaml`: a missing one fails the check, so a rename or deletion cannot pass silently (D-34).
 
 1. `tool/check` › workspace guard: reads the `workspace:` list in the root `pubspec.yaml` (the `  - x` lines after `workspace:`, up to the first non-list line). Before that, a member listed in both `FLUTTER_MEMBERS` and `DART_MEMBERS` fails with `FAIL: member <x> is listed in both FLUTTER_MEMBERS and DART_MEMBERS in tool/check; it must be in exactly one`. Any entry that is in neither `FLUTTER_MEMBERS` nor `DART_MEMBERS` fails with `workspace member <x> is not covered by tool/check`, so a new member cannot silently escape the checks. Then fails with `FAIL: <kind> member <x> is listed in tool/check but <x>/pubspec.yaml is missing` for any listed member without a `pubspec.yaml`, with `FAIL: style directory <d> is listed in tool/check but does not exist` for a missing `STYLE_DIRS` entry, and with `FAIL: daylight-saving test <member>/<file> is listed in tool/check but does not exist` for a missing `DST_TESTS` file.
 2. `tool/check` › SDK version: runs `tool/flutter --version`; fails with `Expected Flutter <x>` unless the output contains `Flutter 3.47.7` (`EXPECTED_FLUTTER` in the script).
@@ -177,7 +179,7 @@ Run from anywhere; the script changes to the repo root and stops at the first fa
    3. Back in `main`: prints `path:line rule snippet` per violation and exits 1, otherwise exits 0.
 9. `tool/check` › tests in each Dart member (`tool/dart test`, which includes `tool/test/style_rules_test.dart`, `check_generated_test.dart`, `check_script_test.dart` and `check_coverage_test.dart`), then in each Flutter member (`tool/flutter test`, which without `CI` runs the `goldens/macos/` comparisons and not `goldens/ci/`, D-61; the member named in `COVERAGE_MEMBER`, `app`, runs `tool/flutter test --coverage`, which also writes `app/coverage/lcov.info`; the folder is git-ignored). A member without a `test/` folder fails with `<member> has no test/ folder`.
 9a. `tool/check` › `write_coverage_imports`, just before the `app` test run (and nowhere else, so the format and analyze steps never see the file): writes `app/test/_coverage_imports_test.dart`, a test with one empty case that imports every non-generated `.dart` file under the `COVERAGE_PREFIXES` (relative to `app/`: `lib/domain/`, `lib/data/`, `lib/platform/`, `lib/features/*/view_models/`). A `*` in a prefix expands as a shell glob, so it is exactly one folder name. `*.g.dart` and `*.freezed.dart` are skipped (generated, D-53), and so is any file that starts with `part of` (a part cannot be imported). The script prints one count per prefix, for example `coverage imports: lib/domain/ 13 files, lib/data/ 13 files, lib/platform/ 0 files, lib/features/*/view_models/ 0 files`, so a glob that matches nothing is visible in the log. The task that creates the view models (Task 9) must see its count become non-zero there; a stuck 0 means the files are not being counted. (`lib/platform/` has counted since Task 3: `lib/platform/ 1 files`, `media_bridge.dart`.) The file is deleted right after the test run, by an `EXIT` trap if the run fails, and at the start of the next run if a killed run left it; it is git-ignored and never committed (D-65).
-9b. `tool/check` › the step `daylight-saving tests (TZ=Europe/London)`: `(cd app && TZ=Europe/London tool/flutter test --run-skipped test/domain/rules/earlier_window_test.dart)` (the `DST_TESTS`). Its London cases (2026-10-25, clocks go back, a 25-hour day; 2027-03-28, clocks go forward, a 23-hour day; a UTC `now` at 00:30 summer time, which is still the day before in UTC) skip themselves, with a reason, in any other zone, so in the run of step 9 they skip unless the machine is in London (CI runs in UTC). Here they run in London, and `--run-skipped` means they cannot skip: the case `the zone is Europe/London` fails if `TZ` did not take effect, and the others fail with wrong instants. The rest of the file runs a second time too. See D-69.
+9b. `tool/check` › the step `daylight-saving tests (TZ=Europe/London)`: `(cd app && TZ=Europe/London tool/flutter test --run-skipped test/domain/rules/earlier_window_test.dart test/data/media/add_earlier_test.dart)` (the `DST_TESTS`; the second holds the same two days for "Add earlier videos", D-73). Its London cases (2026-10-25, clocks go back, a 25-hour day; 2027-03-28, clocks go forward, a 23-hour day; a UTC `now` at 00:30 summer time, which is still the day before in UTC) skip themselves, with a reason, in any other zone, so in the run of step 9 they skip unless the machine is in London (CI runs in UTC). Here they run in London, and `--run-skipped` means they cannot skip: the case `the zone is Europe/London` fails if `TZ` did not take effect, and the others fail with wrong instants. The rest of each file runs a second time too. See D-69.
 9c. `tool/check` › `tool/test_android`, the step `android unit tests`: the Kotlin media bridge's Robolectric tests (see "Android unit tests" below, D-67). Needs a JDK and the Android SDK.
 10. `tool/check` › `tool/dart run taketray_tool:check_coverage app/coverage/lcov.info 80 lib/domain/ lib/data/ lib/platform/ 'lib/features/*/view_models/'`: at least 80 % of the executable lines under each prefix must have run in a test. Because of step 9a every file under a prefix is loaded, so a file no test uses shows up in lcov with all its lines at 0 and lowers the total.
     1. `tool/bin/check_coverage.dart › main`: needs the lcov file, a minimum from 0 to 100 (not `NaN`) and at least one prefix, otherwise prints `usage: ...` and exits 64. A prefix must end in `/` (so `lib/data` cannot match `lib/database_x/`); a `*` is allowed only as a whole segment (`lib/feat*/` and `lib/**/` are usage errors). A missing lcov file prints `check_coverage: <file> not found` and exits 1.
@@ -235,7 +237,7 @@ Run by `tool/check` (step 4), or by hand: `tool/check_generated` (all members) o
 
 ### Native bridge (`lib/platform/`, `pigeons/media_api.dart`)
 
-Nothing in Dart calls the bridge yet: the scanner, the verifier and the screens (Tasks 7 to 10) will. The Kotlin side is the real MediaStore reader, registered by `MainActivity` (Task 4, "Kotlin side" below). See D-66. Paths are relative to `app/`.
+The scanner, the verifier and the zone sync (`lib/data/media/`, the three sections after this one) call the bridge; the screens (Tasks 8 to 10) will too. The Kotlin side is the real MediaStore reader, registered by `MainActivity` (Task 4, "Kotlin side" below). See D-66. Paths are relative to `app/`.
 
 **Making the contract** (by hand, when a new native question is needed):
 
@@ -246,7 +248,7 @@ Nothing in Dart calls the bridge yet: the scanner, the verifier and the screens 
 
 **One call, for example the scan asking for new videos** (Dart side, today):
 
-1. A caller (Task 7 on) reads `ref.read(mediaBridgeProvider)`, `platform/media_bridge.dart › mediaBridge`, kept alive, which builds `PigeonMediaBridge()`.
+1. A caller (`MediaScanner`, through `mediaScannerProvider`) reads `ref.watch(mediaBridgeProvider)`, `platform/media_bridge.dart › mediaBridge`, kept alive, which builds `PigeonMediaBridge()`.
 2. `media_bridge.dart › PigeonMediaBridge.videosAddedAfter(volumeName, afterGeneration, folders, limit)` calls the same method on its `MediaHostApi` (`media_api.g.dart`).
 3. `media_api.g.dart › MediaHostApi.videosAddedAfter` sends `[volumeName, afterGeneration, folders, limit]` on the channel with `BasicMessageChannel` and the generated codec. **[bridge]**
 4. Kotlin: `MediaHostApi.setUp` (in `MediaApi.g.kt`) decodes the arguments and launches `MediaHostApiImpl.videosAddedAfter` in a coroutine on `Dispatchers.Main`; the method moves to `Dispatchers.IO` for the query (see "Kotlin side" below), and the reply is sent on the main thread when it returns.
@@ -271,6 +273,66 @@ Nothing in Dart calls the bridge yet: the scanner, the verifier and the screens 
 8. **Camera and Settings**: `openVideoCamera` starts `MediaStore.INTENT_ACTION_VIDEO_CAMERA` and returns false on `ActivityNotFoundException`; `openAppSettings` starts `ACTION_APPLICATION_DETAILS_SETTINGS` for `package:<this app>`.
 
 **In tests:** `test/support/fake_media_bridge.dart › FakeMediaBridge` implements `MediaBridge` from lists the test sets. `videosAddedAfter` keeps rows with a higher generation in a listed folder (each asked folder gets one trailing `/`; the stored path is compared as it is, ignoring the case of A to Z only, like `COLLATE NOCASE`), pending rows included, oldest generation first, at most `limit`; `videosShotSince` is the superset the contract describes and leaves pending rows out; `allVideos` leaves pending rows out; `videosByIds` returns the rows that exist. `failNext(method)` makes the next call throw a `PlatformException`; `gate(method)` pauses the next call until the returned `Completer` completes (the answer is read when the call starts); `calls` is the log of method names. `test/platform/media_bridge_test.dart` tests `PigeonMediaBridge` against a stub `MediaHostApi` and, for the wire format and error replies, against the generated channels with a mock binary messenger.
+
+### Finding new clips (`lib/data/media/media_scanner.dart`, D-72)
+
+Nothing triggers it yet; Task 10 calls `ref.read(mediaScannerProvider).scan()` on app start, on resume and when To tag opens. Every media job (scan, Add earlier videos, verify) runs on the one `MediaWorkQueue` (`media_work_queue.dart`, `mediaWorkQueueProvider`, keep-alive): one at a time, in order; a job that throws fails only its own caller.
+
+**Calling `scan()`:**
+
+1. `MediaScanner.scan`: if a scan is already queued and has not started, return its future (calls while a scan runs share one follow-up). Otherwise queue a new one with `MediaWorkQueue.run` and remember it.
+2. When the queue starts it, the scanner forgets it as "queued" (later calls queue the next one) and runs `_scanOnce`.
+
+**One scan** (`_scanOnce`):
+
+1. `PhoneStateRepository.loadShooting()`. Off → `ScanShootingOff`. Nothing else is read.
+2. `bridge.accessReport()`. Not `full` → `ScanNoAccess`; nothing written. Full → `markAccessWasFull()` writes `mediaAccessWasFull`.
+3. Reads once: `SettingsRepository.load().watchedFolders`, `ZoneRepository.all()` (the timeline), `bridge.currentZoneId()`, `clock.now()`, then `bridge.volumes()`. A `PlatformException` in step 2 or 3 is logged with its code (never its message) and rethrown.
+4. For each volume, `planVolume(stored baseline, volume)` (`domain/rules/baseline.dart`, D-70):
+   - `SkipVolume` (not mounted): nothing. A card that is not listed at all is not visited either. Its baseline and clips stay.
+   - `StartFromNow` (no baseline): `advanceBaseline(volume, expected: null, next: (version, generation))`. No video on it is new.
+   - `Resync` (version changed, or generation went back): `bridge.allVideos(volume)` → `ClipsRepository.mediaStoreClipsOn(volume)` → `matchAfterRebuild(those clips, rows, volumeName: volume, now)` → `applyRebuildMatch(volume, match)` (writes `clips.mediaStoreId`, `missing`, `lastVerifiedAt`) → `advanceBaseline(expected: the stored baseline, next: (version, generation), rebuilt: true)`. No clip is added. If the last write is refused (Shooting mode went off and on meanwhile), the remap stays and nothing else is written.
+   - `ScanAfter(g)`: the paging below.
+   - A `PlatformException` from any of these puts the volume in `failedVolumes`; its baseline is not written; the next volume runs. Any other error ends the scan and reaches the caller.
+5. Returns `ScanDone(added, resynced, failedVolumes)`.
+
+**`ScanAfter(g)`, paging one volume** (`_scanAfter`):
+
+1. `captured` = the volume's generation from step 3. `cursor` = `g`, `limit` = 500.
+2. `bridge.videosAddedAfter(volume, cursor, folders, limit)`. Rows with `generationAdded > captured` are dropped, and the page that held one is the last. The others are kept in a map by MediaStore id (a row that comes back on the next page counts once; the later copy wins).
+3. Fewer rows than `limit`: the last page.
+4. A full page: `next = nextPageCursor(cursor, page)`. Not null: `cursor = next`, `limit = 500`, back to 2. Null (every row in one generation, or no progress): `limit` doubles (1000, 2000, …, 16000) and the same cursor is asked again. Still stalled at 16000: stop, `truncated` = true.
+5. The usable rows (`isUsable`: finished, with a length) → `ClipsRepository.knownMediaStoreIds` (to count the new ones) → `addDetectedClips([newClipFrom(v, now, zoneId: zoneAt(timeline, shotAt(v)) ?? currentZone)])`: new clips get a `clips` row and an `inbox` row `pending`.
+6. Only after step 5 succeeded: `advanceBaseline(from: g, captured, seen: every kept row, truncated)` (`domain/rules/baseline.dart`). If that differs from `g`, `PhoneStateRepository.advanceBaseline(volume, expectedSession, expected: stored baseline, next: (version, generation))`, compare-and-set (a stale scan writes nothing).
+7. Logs the volume name and counts (rows, pages, usable, new, pending, whether the baseline moved); a truncated scan logs a warning.
+
+### Checking clips still exist (`lib/data/media/media_verifier.dart`, D-72)
+
+Nothing calls it yet (Tasks 9 and 10 will, where clips are shown; Phase 10 calls `verifyAll` after an import).
+
+1. `MediaVerifier.verify(clips)` keeps only the clip ids and queues the check on `MediaWorkQueue`; `verifyAll()` queues it with `ClipsRepository.allClipIds()`. No ids: an empty `VerifyOutcome`, the bridge is not called.
+2. `bridge.accessReport()`. Not `full` → every id `skipped`; nothing written.
+3. `ClipsRepository.clipsByIds(ids)` reads the clips as they are now (a scan before it in the queue may have remapped them). Ids that no longer exist are `skipped`.
+4. `bridge.volumes()`. A picked clip, a detached one (`mediaStoreId` null or ≤ 0) and a clip whose volume is not listed as mounted are `skipped`.
+5. Per volume, the clips' MediaStore ids go to `bridge.videosByIds(volume, batch)` in batches of 500. If a batch throws a `PlatformException`, every clip of that volume is `skipped` (logged by volume name and code). Otherwise, per clip: a row that is `sameVideo` → found; a row that is not → "other video"; no row → gone.
+6. Writes, in order: `detach(other video)` (`mediaStoreId = -clipId`, `missing`, `lastVerifiedAt`); `recordVerification(found:, missing: gone)` (`missing`, `lastVerifiedAt`); `removeMissingFromLists(gone ∪ other video)` (their `inbox` rows go, then the orphan sweep; a clip in a reel stays, flagged).
+7. Returns `VerifyOutcome(found, missing: gone ∪ other video, skipped)`.
+
+A failing `accessReport` or `volumes()` throws before anything is written.
+
+**Zone sync** (`lib/data/media/zone_sync.dart › ZoneSync.sync`, `zoneSyncProvider`; Task 10 calls it with the scan): `bridge.pendingZoneChanges()` and `bridge.currentZoneId()`, then `ZoneRepository.recordAll(native entries + (now, current zone))`, then, only if that succeeded and the native list was not empty, `bridge.clearZoneChangesUpTo(the newest native atMs)`. Any failure throws and leaves the native list as it was.
+
+### Adding earlier videos (`MediaScanner.countEarlier` / `addEarlier`, D-73)
+
+Nothing calls it yet (Task 9's controller, from the Shooting mode card's link and To tag's menu). Both run on `MediaWorkQueue`, so they wait for a running scan.
+
+1. `bridge.accessReport()`. Not `full`: `countEarlier` returns 0 for every range, `addEarlier` throws `StateError`. Nothing else is read.
+2. `SettingsRepository.load().watchedFolders`; `start = earlierWindowStart(lastSevenDays, now)`.
+3. For each mounted volume from `bridge.volumes()`: `bridge.videosShotSince(volume, folders, start)` (a `PlatformException` leaves that volume out); keep the rows with `shotInWindow(v, start)`; drop those `ClipsRepository.knownMediaStoreIds` reports (in To tag, Skipped or a reel).
+4. `countEarlier`: for each range, how many of those have `shotInWindow(v, earlierWindowStart(range, now))`. Writes nothing.
+5. `addEarlier(range)`: those of the range. None → `[]`, nothing written. Otherwise `ZoneRepository.all()` and `bridge.currentZoneId()`, `addDetectedClips` (new `clips` + `inbox` `pending` rows), then `PhoneStateRepository.markEarlierAdded()` (only while Shooting mode is on). Returns the new clip ids.
+
+No baseline is read or written.
 
 ### Android unit tests (`tool/test_android`)
 

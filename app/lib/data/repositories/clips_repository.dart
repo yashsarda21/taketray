@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -262,6 +264,62 @@ class ClipsRepository {
               ..orderBy([(c) => OrderingTerm.asc(c.id)]))
             .get();
     return [for (final row in rows) _toClip(row)];
+  }
+
+  /// Which of [mediaStoreIds] a stored clip on volume [volumeName] holds: the
+  /// ones [addDetectedClips] would find instead of inserting. Like it, this
+  /// looks at every clip with that volume and number, whatever its source; a
+  /// detached clip holds `-clipId`, so its old number is not known.
+  ///
+  /// The scanner uses it to count new clips, and "Add earlier videos" to
+  /// leave known videos out. Asked in batches of [idBatch].
+  Future<Set<int>> knownMediaStoreIds(
+    String volumeName,
+    Iterable<int> mediaStoreIds,
+  ) async {
+    final known = <int>{};
+    for (final batch in _batches(mediaStoreIds.toSet())) {
+      final query = _db.selectOnly(_db.clips)
+        ..addColumns([_db.clips.mediaStoreId])
+        ..where(
+          _db.clips.volumeName.equals(volumeName) &
+              _db.clips.mediaStoreId.isIn(batch),
+        );
+      known.addAll(
+        await query.map((row) => row.read(_db.clips.mediaStoreId)!).get(),
+      );
+    }
+    return known;
+  }
+
+  /// The clips with these ids that exist, by id. Unknown ids are left out.
+  /// Asked in batches of [idBatch].
+  Future<List<Clip>> clipsByIds(Iterable<int> clipIds) async {
+    final rows = <ClipRow>[];
+    for (final batch in _batches(clipIds.toSet())) {
+      rows.addAll(
+        await (_db.select(_db.clips)..where((c) => c.id.isIn(batch))).get(),
+      );
+    }
+    rows.sort((a, b) => a.id.compareTo(b.id));
+    return [for (final row in rows) _toClip(row)];
+  }
+
+  /// The ids of every stored clip.
+  Future<Set<int>> allClipIds() async {
+    final query = _db.selectOnly(_db.clips)..addColumns([_db.clips.id]);
+    return (await query.map((row) => row.read(_db.clips.id)!).get()).toSet();
+  }
+
+  /// How many ids one `IN (...)` query takes, well below SQLite's limit on
+  /// bound variables.
+  static const idBatch = 500;
+
+  static Iterable<List<int>> _batches(Set<int> ids) sync* {
+    final list = ids.toList();
+    for (var start = 0; start < list.length; start += idBatch) {
+      yield list.sublist(start, min(start + idBatch, list.length));
+    }
   }
 
   /// Applies what `matchAfterRebuild` found after Android rebuilt volume

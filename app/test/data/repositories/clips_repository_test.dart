@@ -784,6 +784,68 @@ void main() {
           ),
         );
 
+    group('knownMediaStoreIds', () {
+      test(
+        'the ids held on that volume, as addDetectedClips finds them',
+        () async {
+          final [_, b] = await detect([10, 11]);
+          await detect([12], volume: '1234-ABCD');
+          await pickerWithVolume(13);
+          await repo.detach({b});
+
+          expect(
+            await repo.knownMediaStoreIds('external_primary', [
+              10,
+              11,
+              12,
+              13,
+              99,
+            ]),
+            {10, 13},
+          );
+          expect(await repo.knownMediaStoreIds('1234-ABCD', [10, 12]), {12});
+          expect(
+            await repo.knownMediaStoreIds('external_primary', []),
+            isEmpty,
+          );
+        },
+      );
+
+      test('works past one batch of ids', () async {
+        await detect([for (var i = 1; i <= 1201; i++) i]);
+
+        final known = await repo.knownMediaStoreIds('external_primary', [
+          for (var i = 1; i <= 1300; i++) i,
+        ]);
+
+        expect(known, {for (var i = 1; i <= 1201; i++) i});
+      });
+    });
+
+    group('clipsByIds and allClipIds', () {
+      test('return the clips that exist, by id', () async {
+        final [a, b] = await detect([10, 11]);
+        await repo.addDetectedClips([pickerClip('content://p/1')]);
+        final all = await repo.allClipIds();
+
+        expect(all, hasLength(3));
+        expect(all, containsAll([a, b]));
+        final clips = await repo.clipsByIds([b, a, 999]);
+        expect([for (final c in clips) c.id], [a, b]);
+        expect(clips.first.mediaStoreId, 10);
+        expect(await repo.clipsByIds([]), isEmpty);
+      });
+
+      test('clipsByIds works past one batch of ids', () async {
+        final ids = await detect([for (var i = 1; i <= 1201; i++) i]);
+
+        final clips = await repo.clipsByIds(ids);
+
+        expect([for (final c in clips) c.id], ids);
+        expect(await repo.allClipIds(), ids.toSet());
+      });
+    });
+
     group('mediaStoreClipsOn', () {
       test('excludes detached clips and other volumes', () async {
         final [a, b] = await detect([10, 11]);
