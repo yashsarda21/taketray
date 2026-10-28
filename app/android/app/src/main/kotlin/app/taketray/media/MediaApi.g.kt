@@ -617,9 +617,10 @@ interface MediaHostApi {
   /** Every non-pending video on the volume (for the rebuild resync). */
   suspend fun allVideos(volumeName: String): List<VideoRowMsg>
   /**
-   * Non-pending videos in one of [folders] whose DATE_TAKEN (ms) or
-   * DATE_ADDED/DATE_MODIFIED (s) is >= sinceMs, or whose DATE_ADDED is null:
-   * a superset that Dart narrows with shotAt ("Add earlier videos").
+   * Non-pending videos in one of [folders] whose DATE_TAKEN (ms) >= sinceMs,
+   * or whose DATE_ADDED/DATE_MODIFIED (seconds) >= sinceMs ~/ 1000 (rounded
+   * down), or whose DATE_ADDED is null: a superset that Dart narrows with
+   * shotAt ("Add earlier videos").
    */
   suspend fun videosShotSince(volumeName: String, folders: List<String>, sinceMs: Long): List<VideoRowMsg>
   suspend fun videoFolders(): List<VideoFolderMsg>

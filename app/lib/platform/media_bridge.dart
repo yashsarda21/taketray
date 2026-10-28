@@ -45,9 +45,10 @@ abstract interface class MediaBridge {
   /// Every non-pending video on the volume (for the rebuild resync).
   Future<List<MediaVideo>> allVideos(String volumeName);
 
-  /// Non-pending videos in one of [folders] whose date taken (ms) or date
-  /// added / modified (s) is at or after [sinceMs], or whose date added is
-  /// unknown: a superset that the caller narrows ("Add earlier videos").
+  /// Non-pending videos in one of [folders] whose date taken (ms) is at or
+  /// after [sinceMs], or whose date added / modified (seconds) is at or after
+  /// `sinceMs ~/ 1000` (rounded down), or whose date added is unknown: a
+  /// superset that the caller narrows ("Add earlier videos").
   Future<List<MediaVideo>> videosShotSince(
     String volumeName,
     List<String> folders,

@@ -44,6 +44,27 @@ void main() {
       expect(await fake.videosAddedAfter('v', 0, ['DCIM/Camera/'], 0), isEmpty);
     });
 
+    test(
+      'compares the stored path as is: no slash added, ASCII case only',
+      () async {
+        fake.videosByVolume['v'] = [
+          fakeVideo(id: 1, folder: 'DCIM/Camera'),
+          fakeVideo(id: 2, folder: 'Vidéos/'),
+          fakeVideo(id: 3, folder: 'VIDÉOS/'),
+          fakeVideo(id: 4, folder: 'DCIM/CAMERA/'),
+        ];
+        // The phone adds the slash to the requested folder only, so a stored
+        // path without one never matches.
+        final plain = await fake.videosAddedAfter('v', 0, ['DCIM/Camera'], 10);
+        expect(plain.map((v) => v.mediaStoreId), [4]);
+        // SQLite's NOCASE folds only A-Z: 'é' and 'É' are different letters.
+        final accented = await fake.videosAddedAfter('v', 0, ['Vidéos/'], 10);
+        expect(accented.map((v) => v.mediaStoreId), [2]);
+        final shot = await fake.videosShotSince('v', ['Vidéos'], 0);
+        expect(shot.map((v) => v.mediaStoreId), [2]);
+      },
+    );
+
     test('includes pending rows', () async {
       fake.videosByVolume['v'] = [
         fakeVideo(id: 1, generation: 10, pending: true),
@@ -145,6 +166,15 @@ void main() {
       expect(await fake.volumes(), isEmpty);
       await expectLater(fake.allVideos('v'), throwsA(isA<PlatformException>()));
       expect(fake.calls, ['volumes', 'allVideos']);
+    });
+
+    test('a failure also uses up a gate set for the same method', () async {
+      fake
+        ..failNext('volumes')
+        ..gate('volumes');
+      await expectLater(fake.volumes(), throwsA(isA<PlatformException>()));
+      // The gate went with the failed call: this one does not wait.
+      expect(await fake.volumes().timeout(const Duration(seconds: 1)), isEmpty);
     });
 
     test('two queued failures fail two calls', () async {

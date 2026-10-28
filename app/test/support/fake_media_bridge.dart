@@ -57,10 +57,11 @@ MediaVideo fakeVideo({
 ///   the phone could.
 ///
 /// `videosAddedAfter`, `videosShotSince`, `allVideos` and `videosByIds` filter
-/// the way the contract in `pigeons/media_api.dart` says. A folder matches a
-/// video exactly and ignoring case, both written with exactly one trailing
-/// '/'. `videosAddedAfter` includes pending rows; `videosShotSince` and
-/// `allVideos` leave them out; `videosByIds` returns any row that exists.
+/// the way the contract in `pigeons/media_api.dart` says. Like the phone, a
+/// requested folder gets exactly one trailing '/' and is then compared with the
+/// stored path as it is, ignoring ASCII case only (SQLite's COLLATE NOCASE).
+/// `videosAddedAfter` includes pending rows; `videosShotSince` and `allVideos`
+/// leave them out; `videosByIds` returns any row that exists.
 class FakeMediaBridge implements MediaBridge {
   MediaAccess access = const MediaAccess(
     level: MediaAccessLevel.full,
@@ -103,10 +104,11 @@ class FakeMediaBridge implements MediaBridge {
   /// Used up by that one call.
   Completer<void> gate(String method) => _gates[method] = Completer<void>();
 
-  /// Logs the call, throws a queued failure, reads the answer, then waits for
-  /// a gate.
+  /// Logs the call, throws a queued failure (which also uses up a gate set for
+  /// the same method), reads the answer, then waits for a gate.
   Future<T> _call<T>(String method, T Function() answer) async {
     calls.add(method);
+    final gate = _gates.remove(method);
     final failures = _failures[method] ?? 0;
     if (failures > 0) {
       _failures[method] = failures - 1;
@@ -116,7 +118,6 @@ class FakeMediaBridge implements MediaBridge {
       );
     }
     final result = answer();
-    final gate = _gates.remove(method);
     if (gate != null) await gate.future;
     return result;
   }
@@ -151,7 +152,7 @@ class FakeMediaBridge implements MediaBridge {
             .where(
               (v) =>
                   v.generationAdded > afterGeneration &&
-                  wanted.contains(_normalize(v.relativePath)),
+                  wanted.contains(_asciiLower(v.relativePath)),
             )
             .toList()
           ..sort((a, b) {
@@ -190,7 +191,7 @@ class FakeMediaBridge implements MediaBridge {
         .where(
           (v) =>
               !v.isPending &&
-              wanted.contains(_normalize(v.relativePath)) &&
+              wanted.contains(_asciiLower(v.relativePath)) &&
               ((v.dateTakenMs ?? -1) >= sinceMs ||
                   v.dateAddedSec == null ||
                   v.dateAddedSec! >= sinceSec ||
@@ -234,11 +235,14 @@ class FakeMediaBridge implements MediaBridge {
   List<MediaVideo> _of(String volumeName) =>
       videosByVolume[volumeName] ?? const [];
 
+  /// The requested folders as the phone compares them: each one with exactly
+  /// one trailing '/' and no leading one, then lower-cased in ASCII.
   Set<String> _folderSet(List<String> folders) =>
-      folders.map(_normalize).toSet();
+      folders.map((f) => _asciiLower(_withSlash(f))).toSet();
 
-  /// Lower case, with exactly one trailing '/' and no leading one.
-  static String _normalize(String path) {
+  /// Strips leading and trailing '/' and adds one trailing '/'. Only the
+  /// requested folders get this; a stored path is compared as it is.
+  static String _withSlash(String path) {
     var start = 0;
     var end = path.length;
     while (start < end && path[start] == '/') {
@@ -247,6 +251,12 @@ class FakeMediaBridge implements MediaBridge {
     while (end > start && path[end - 1] == '/') {
       end--;
     }
-    return '${path.substring(start, end).toLowerCase()}/';
+    return '${path.substring(start, end)}/';
   }
+
+  /// Lower-cases A to Z only, like SQLite's COLLATE NOCASE: 'É' stays 'É'.
+  static String _asciiLower(String text) => text.replaceAllMapped(
+    RegExp('[A-Z]'),
+    (m) => String.fromCharCode(m[0]!.codeUnitAt(0) + 32),
+  );
 }

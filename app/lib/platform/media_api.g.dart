@@ -690,9 +690,10 @@ class MediaHostApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<VideoRowMsg>();
   }
 
-  /// Non-pending videos in one of [folders] whose DATE_TAKEN (ms) or
-  /// DATE_ADDED/DATE_MODIFIED (s) is >= sinceMs, or whose DATE_ADDED is null:
-  /// a superset that Dart narrows with shotAt ("Add earlier videos").
+  /// Non-pending videos in one of [folders] whose DATE_TAKEN (ms) >= sinceMs,
+  /// or whose DATE_ADDED/DATE_MODIFIED (seconds) >= sinceMs ~/ 1000 (rounded
+  /// down), or whose DATE_ADDED is null: a superset that Dart narrows with
+  /// shotAt ("Add earlier videos").
   Future<List<VideoRowMsg>> videosShotSince(
     String volumeName,
     List<String> folders,
