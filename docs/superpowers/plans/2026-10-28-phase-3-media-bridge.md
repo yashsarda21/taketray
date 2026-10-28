@@ -198,7 +198,7 @@ docs/learn/phase-3-media-bridge.md
   - In both XML files, exclude every domain:
     - `data_extraction_rules.xml` excludes `root`, `file`, `database`, `sharedpref` and `external` (path `.`), in both `<cloud-backup>` and `<device-transfer>`.
     - `backup_rules.xml` has the same `<exclude>`s inside `<full-backup-content>`.
-  - Comment why: drift_flutter's file lives under `app_flutter/`, which is domain `file`, with `-wal`/`-shm` sidecars. On another phone, its MediaStore ids would point at other videos.
+  - Comment why: drift_flutter's file lives under `app_flutter/` (`context.getDir("flutter")`), which is backup domain `root` (`file` is only `files/`), with `-wal`/`-shm` sidecars. On another phone, its MediaStore ids would point at other videos.
 
 - [ ] **Step 4: Run the check again**
 
@@ -213,11 +213,11 @@ docs/learn/phase-3-media-bridge.md
   - stub sections 1–11 (one per task 1–11): `## N. <title>` plus `_Written in Task N._`
   - "Glossary" and "What's next" stubs
 
-  Fill in Section 1 now: why moving to a new phone uses Export/Import and not Google backup, in plain words, with the manifest snippet.
+  Fill in Section 1 now: why Google backup is off, in plain words, with the manifest snippet. Export/Import is a same-phone backup (spec §8.6); moving phones isn't supported in v1.
 
 - [ ] **Step 6: Update the docs and commit**
 
-  - Add **D-64, no Google backup or device transfer of app data**. It records the owner's choice, the alternative (copy the data and re-match by fingerprint) and why it lost (a wrong video is possible, and only helps when the videos moved too). Consequence: a new phone starts empty, and Export/Import is the only way to move.
+  - Add **D-64, no Google backup or device transfer of app data**. It records the owner's choice, the alternative (copy the data and re-match by fingerprint) and why it lost (a wrong video is possible, and only helps when the videos moved too). Consequence: a new phone starts empty; Export/Import is a same-phone backup, and moving phones isn't supported in v1 (spec §8.6).
   - Update "Release permission check" in `docs/flow.md`.
   - Delete the Auto Backup line from `docs/later.md`.
   - Commit as `build(android): no Google backup of app data; release manifest checks (D-64)`, then push.
