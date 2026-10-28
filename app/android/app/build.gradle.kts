@@ -36,6 +36,9 @@ android {
 
     testOptions {
         execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        // Robolectric unit tests (tool/test_android, D-67) read the merged
+        // manifest and resources.
+        unitTests.isIncludeAndroidResources = true
     }
 
     buildTypes {
@@ -64,6 +67,25 @@ flutter {
     source = "../.."
 }
 
+// With unitTests.isIncludeAndroidResources, the unit-test package reads the
+// merged assets folder, which Flutter's copyFlutterAssets<Variant> task also
+// writes without declaring it; Gradle 9 refuses that, so order the two.
+tasks.configureEach {
+    val variant = Regex("package(\\w+)UnitTestForUnitTest").matchEntire(name)?.groupValues?.get(1)
+    if (variant != null) dependsOn("copyFlutterAssets$variant")
+}
+
 dependencies {
+    // The Pigeon code launches its async handlers on Dispatchers.Main, which
+    // lives in this artifact. It already arrives through the Flutter embedding;
+    // declared so the bridge never depends on that by accident.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+
     androidTestUtil("androidx.test:orchestrator:1.5.1")
+
+    // Android unit tests on the JVM (tool/test_android, D-67). The SDK levels
+    // they run on are in src/test/resources/robolectric.properties.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.17")
+    testImplementation("androidx.test:core:1.7.0")
 }

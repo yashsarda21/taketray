@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds the release APK and checks its merged manifest: no forbidden
 # permission (INTERNET and the media permissions TakeTray never asks for),
-# Google backup off (D-64) and, once ENFORCE_MEDIA_PERMISSIONS is on, exactly
-# the media permissions TakeTray needs. Slow (full release build), so it is not
+# Google backup off (D-64) and exactly the media permissions TakeTray needs
+# (D-68). Slow (full release build), so it is not
 # part of tool/check; run it at the end of every phase. Steps are documented in
 # docs/flow.md ("Release permission check").
 set -euo pipefail
@@ -102,9 +102,9 @@ for p in "${FORBIDDEN_PERMISSIONS[@]}"; do
 done
 
 # --- Media permissions that must be there (name:maxSdkVersion, '-' = no max). ---
-# Off until Task 4 of phase 3 adds them to the manifest; that task sets the
-# default to 1. Run with ENFORCE_MEDIA_PERMISSIONS=1 to try it earlier.
-ENFORCE_MEDIA_PERMISSIONS="${ENFORCE_MEDIA_PERMISSIONS:-0}"
+# On by default since phase 3, Task 4 added them to the manifest (D-68).
+# ENFORCE_MEDIA_PERMISSIONS=0 switches this part off for a one-off experiment.
+ENFORCE_MEDIA_PERMISSIONS="${ENFORCE_MEDIA_PERMISSIONS:-1}"
 REQUIRED_PERMISSIONS=(
   android.permission.READ_MEDIA_VIDEO:-
   android.permission.READ_MEDIA_VISUAL_USER_SELECTED:-

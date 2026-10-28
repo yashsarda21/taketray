@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Runs the Android unit tests (Robolectric, on the JVM; no phone or emulator):
+# the Kotlin media bridge in app/android/app/src/test/ (D-67). Part of
+# tool/check and CI. Extra arguments go to Gradle, for example
+#   tool/test_android --tests 'app.taketray.media.VideoQueriesTest'
+# Steps are documented in docs/flow.md ("Android unit tests").
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+# Gradle's settings read flutter.sdk from app/android/local.properties, and
+# the Gradle wrapper script app/android/gradlew comes from the Flutter tool too
+# (both are git-ignored). Let the Flutter tool write them when either is
+# missing or local.properties names another Flutter than tool/flutter runs.
+expected_sdk="$HOME/development/flutter"
+properties="app/android/local.properties"
+current_sdk=""
+if [ -f "$properties" ]; then
+  current_sdk="$(sed -n 's/^flutter\.sdk=//p' "$properties")"
+fi
+if [ "$current_sdk" != "$expected_sdk" ] || [ ! -x app/android/gradlew ]; then
+  echo "Writing the Android build config (flutter.sdk is '${current_sdk:-unset}', expected '$expected_sdk')"
+  (cd app && ../tool/flutter build apk --debug --config-only)
+fi
+
+cd app/android
+./gradlew :app:testDebugUnitTest --console=plain "$@"

@@ -226,6 +226,11 @@ for m in "${flutter_present[@]}"; do
   fi
 done
 
+step "android unit tests"
+# The Kotlin media bridge, with Robolectric on the JVM (D-67). Needs a JDK and
+# the Android SDK; see tool/test_android.
+tool/test_android
+
 step "coverage (domain, data, platform, view models)"
 # At least 80 % of the lines under each prefix must run in a test (generated
 # files are not counted). Prefixes that match no file yet pass with "no files".

@@ -40,21 +40,27 @@ flowchart TD
     E --> F["3. Prepare Flutter<br/>(analytics off, download test engine)"]
     F --> G["4. Pub packages<br/>(from the cache when pubspec.lock is unchanged)"]
     G --> H["5. Check required programs<br/>(git, python3, shasum, awk, find, sort)"]
-    H --> I["6. Run tool/check with CI=true"]
+    H --> H2["6. Java 17<br/>(for Gradle and the Android unit tests)"]
+    H2 --> H3["7. Gradle and Robolectric files<br/>(from the cache when the Gradle files are unchanged)"]
+    H3 --> H4["8. Check the Android SDK<br/>(already on the runner)"]
+    H4 --> I["9. Run tool/check with CI=true"]
     I -->|all passed| J["✅ green tick on the commit"]
     I -->|anything failed| K["❌ red cross on the commit"]
-    K --> L["7. Upload failed screenshot pictures<br/>as a downloadable 'artifact'"]
+    K --> L["10. Upload failed screenshot pictures<br/>as a downloadable 'artifact'"]
 ```
 
 Step by step, in plain words:
 
 1. **Check out the repository.** The fresh machine downloads TakeTray's code at that exact commit. It's given read-only access (`permissions: contents: read`), so it can't change the repository, and it doesn't keep the login afterwards (`persist-credentials: false`).
 2. **Get Flutter 3.47.7.** It must be the same version as on the Mac, because `tool/check` fails on any other. The first run clones Flutter from GitHub. Later runs restore it from a **cache**, a saved copy GitHub keeps between runs, which saves several minutes.
-3. **Prepare Flutter.** It turns analytics off (TakeTray sends nothing anywhere) and downloads the small engine that runs Flutter tests without a screen. No Android SDK is needed, because `tool/check` doesn't build an APK.
+3. **Prepare Flutter.** It turns analytics off (TakeTray sends nothing anywhere) and downloads the small engine that runs Flutter tests without a screen. `tool/check` doesn't build an APK.
 4. **Pub packages.** It restores the Dart packages from a cache keyed on `pubspec.lock`. When a package version changes, the lock file changes, so the cache is rebuilt.
 5. **Check the tools are there.** If GitHub ever removes a program the scripts need, this fails early with a clear message instead of a confusing error later.
-6. **Run `tool/check`.** This is the same script you run on the Mac: workspace and SDK checks, `pub get`, generated files fresh, design tokens fresh, format, analyse every package, style rules, every test in every package, and the coverage gate. `CI=true` is set, which makes the screenshot tests use GitHub's own Linux pictures (see below).
-7. **Upload failures (only on red).** If a screenshot test failed, the "what I expected / what I got / the difference" images are saved as an **artifact**, a zip file you can download from the run page.
+6. **Java 17.** Since phase 3, `tool/check` also runs the Android side's unit tests (the Kotlin code that reads the phone's videos, D-67). They are built by **Gradle**, Android's build tool, which needs Java. `actions/setup-java` installs the Temurin build of Java 17, the version the app's code is compiled for.
+7. **Gradle and Robolectric files.** The first Android test run downloads a lot: Gradle itself, the libraries, and about 650 MB of Android system code that **Robolectric** (the library that runs Android code on an ordinary computer) needs for each Android version it tests. They are kept in a cache keyed on the Gradle files, so later runs restore them instead.
+8. **Check the Android SDK.** GitHub's Ubuntu machines already have Android's developer kit installed, and say where in `ANDROID_HOME`. This step stops early with a clear message if that ever changes, and prints which Android versions and Java are there.
+9. **Run `tool/check`.** This is the same script you run on the Mac: workspace and SDK checks, `pub get`, generated files fresh, design tokens fresh, format, analyse every package, style rules, every test in every package, the Android unit tests (`tool/test_android`), and the coverage gate. `CI=true` is set, which makes the screenshot tests use GitHub's own Linux pictures (see below).
+10. **Upload failures (only on red).** If a screenshot test failed, the "what I expected / what I got / the difference" images are saved as an **artifact**, a zip file you can download from the run page.
 
 A full run takes about **6 to 10 minutes**. The first run of the day can take longer while caches fill.
 
@@ -167,7 +173,8 @@ The repository is **private**. GitHub's free plan includes **2,000 minutes a mon
 | The picture-update workflow | `.github/workflows/update-goldens.yml` |
 | The script both run | `tool/check` |
 | Bringing Linux pictures in | `tool/pull_ci_goldens` |
-| Decisions | D-60 (CI), D-61 (two picture sets), D-62 (exact contrast check) in `docs/decisions.md` |
+| The Android unit tests | `tool/test_android`, tests in `app/android/app/src/test/` |
+| Decisions | D-60 (CI), D-61 (two picture sets), D-62 (exact contrast check), D-67 (Android unit tests) in `docs/decisions.md` |
 | Step-by-step flows | "Local checks", "Automatic checks on GitHub" and "Updating CI goldens" in `docs/flow.md` |
 | Set-up notes | "Automatic checks on GitHub" and "Goldens" in `docs/dev-setup.md` |
 
@@ -179,7 +186,9 @@ The repository is **private**. GitHub's free plan includes **2,000 minutes a mon
 - **Run, job, step:** one execution of a workflow; a group of steps on one machine; a single command.
 - **Runner:** the fresh computer GitHub lends for a run (`ubuntu-latest` here).
 - **Trigger:** what starts a workflow (`push`, `pull_request`, or `workflow_dispatch` for "by hand").
-- **Cache:** files GitHub saves between runs (Flutter, Dart packages) so later runs are faster.
+- **Cache:** files GitHub saves between runs (Flutter, Dart packages, Gradle and Robolectric files) so later runs are faster.
+- **Gradle:** Android's build tool; it compiles the Kotlin code and runs its unit tests.
+- **Robolectric:** a library that runs Android's own code on an ordinary computer, so Kotlin that talks to Android can be tested without a phone.
 - **Artifact:** a file a run saves for you to download (failure pictures, new Linux pictures).
 - **Golden test:** a test that compares a drawn component with a saved reference picture.
 - **`CI=true`:** the switch that tells TakeTray's tests they're on GitHub, so they use the Linux pictures.
