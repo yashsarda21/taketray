@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -9,6 +10,7 @@ import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/rules/fingerprint_match.dart';
 
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
@@ -742,6 +744,474 @@ void main() {
         () => repo.recordVerification(found: {id}, missing: {id}),
         throwsArgumentError,
       );
+    });
+  });
+
+  group('phone queries, rebuild remap and detach', () {
+    Future<ClipRow> rowOf(int id) =>
+        (db.select(db.clips)..where((c) => c.id.equals(id))).getSingle();
+
+    /// Every row of every table, as text.
+    Future<String> snapshot() async => [
+      for (final table in db.allTables)
+        '${table.actualTableName}: ${await db.select(table).get()}',
+    ].join('\n');
+
+    Future<List<int>> detect(List<int> mediaStoreIds, {String? volume}) =>
+        repo.addDetectedClips([
+          for (final id in mediaStoreIds)
+            mediaStoreClip(id, volumeName: volume ?? 'external_primary'),
+        ]);
+
+    group('mediaStoreClipsOn', () {
+      test('excludes detached clips and other volumes', () async {
+        final [a, b] = await detect([10, 11]);
+        final [onCard] = await detect([10], volume: '1234-ABCD');
+        await repo.addDetectedClips([pickerClip('content://p/1')]);
+        await repo.detach({b});
+
+        final clips = await repo.mediaStoreClipsOn('external_primary');
+
+        expect(clips.map((c) => c.id), [a]);
+        expect(clips.single.mediaStoreId, 10);
+        expect(clips.single.volumeName, 'external_primary');
+        expect((await repo.mediaStoreClipsOn('1234-ABCD')).map((c) => c.id), [
+          onCard,
+        ]);
+      });
+
+      test('an unknown volume is empty', () async {
+        await detect([10]);
+
+        expect(await repo.mediaStoreClipsOn('nope'), isEmpty);
+        expect(await repo.mediaStoreClipsOn(''), isEmpty);
+      });
+
+      test('keeps clips flagged missing that still hold their id', () async {
+        final [a] = await detect([10]);
+        await repo.recordVerification(found: {}, missing: {a});
+
+        final clips = await repo.mediaStoreClipsOn('external_primary');
+
+        expect(clips.single.missing, isTrue);
+      });
+    });
+
+    group('applyRebuildMatch', () {
+      test('swaps two ids without a unique clash', () async {
+        final [a, b] = await detect([10, 20]);
+        clock.advance(_minute);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 20, b: 10}, lost: {}),
+        );
+
+        final rowA = await rowOf(a);
+        final rowB = await rowOf(b);
+        expect(rowA.mediaStoreId, 20);
+        expect(rowB.mediaStoreId, 10);
+        expect(rowA.missing, isFalse);
+        expect(rowA.lastVerifiedAt, _t0.add(_minute));
+        expect(rowB.lastVerifiedAt, _t0.add(_minute));
+        // The fingerprint and the identity rest of the row are untouched.
+        expect(rowA.displayName, 'VID_10.mp4');
+        expect(rowA.volumeName, 'external_primary');
+        expect(rowA.firstSeenAt, _t0);
+      });
+
+      test('a three-way rotation works', () async {
+        final [a, b, c] = await detect([10, 20, 30]);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 20, b: 30, c: 10}, lost: {}),
+        );
+
+        expect(
+          [
+            for (final id in [a, b, c]) (await rowOf(id)).mediaStoreId,
+          ],
+          [20, 30, 10],
+        );
+      });
+
+      test("a remap to the clip's own current id works", () async {
+        final [a, b] = await detect([10, 20]);
+        clock.advance(_minute);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 10}, lost: {b}),
+        );
+
+        final rowA = await rowOf(a);
+        expect(rowA.mediaStoreId, 10);
+        expect(rowA.lastVerifiedAt, _t0.add(_minute));
+      });
+
+      test('found clips are no longer missing', () async {
+        final [a] = await detect([10]);
+        await repo.recordVerification(found: {}, missing: {a});
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 77}, lost: {}),
+        );
+
+        final row = await rowOf(a);
+        expect(row.missing, isFalse);
+        expect(row.mediaStoreId, 77);
+      });
+
+      test('an empty match changes nothing', () async {
+        final [a] = await detect([10]);
+        await repo.tagClip(a, {(await reels.create('Goa')).id});
+        await detect([11]);
+        clock.advance(_minute);
+        final before = await snapshot();
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          const RebuildMatch(remap: {}, lost: {}),
+        );
+
+        expect(await snapshot(), before);
+      });
+
+      test('lost clips become missing with a negative id', () async {
+        final [a, b, c] = await detect([10, 11, 12]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(a, {goa});
+        await repo.skip([c]);
+        clock.advance(_minute);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {b: 99}, lost: {a, c}),
+        );
+
+        final rowA = await rowOf(a);
+        final rowC = await rowOf(c);
+        expect(rowA.mediaStoreId, -a);
+        expect(rowC.mediaStoreId, -c);
+        expect(rowA.missing, isTrue);
+        expect(rowC.missing, isTrue);
+        expect(rowA.lastVerifiedAt, _t0.add(_minute));
+        expect(rowA.volumeName, 'external_primary');
+        expect(rowA.displayName, 'VID_10.mp4', reason: 'the fingerprint stays');
+        expect((await rowOf(b)).mediaStoreId, 99);
+        // A lost clip stays where it was: in its reel, or in Skipped.
+        expect(await reelIdsOf(a), {goa});
+        expect(
+          (await inboxRows()).map((r) => (r.clipId, r.state)),
+          containsAll([(b, InboxState.pending), (c, InboxState.skipped)]),
+        );
+      });
+
+      test('a remap onto the old id of a lost clip works', () async {
+        final [a, lost] = await detect([10, 20]);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 20}, lost: {lost}),
+        );
+
+        expect((await rowOf(a)).mediaStoreId, 20);
+        expect((await rowOf(lost)).mediaStoreId, -lost);
+      });
+
+      test(
+        "a detached clip's old id can be detected again as a new clip",
+        () async {
+          final [a] = await detect([10]);
+          await repo.applyRebuildMatch(
+            'external_primary',
+            RebuildMatch(remap: {}, lost: {a}),
+          );
+
+          final again = await detect([10]);
+
+          expect(again.single, isNot(a));
+          expect(await clipIds(), [a, again.single]);
+          expect((await rowOf(again.single)).mediaStoreId, 10);
+          expect((await rowOf(a)).mediaStoreId, -a);
+          expect(
+            (await inboxRows()).map((r) => r.clipId),
+            containsAll([a, again.single]),
+          );
+        },
+      );
+
+      test('fails atomically on an outside clash', () async {
+        // A swaps with B, C moves to 30, and an outside clip D holds 30.
+        final [a, b, c, d] = await detect([10, 20, 21, 30]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(b, {goa});
+        await repo.recordVerification(found: {}, missing: {a});
+        clock.advance(_minute);
+        final before = await snapshot();
+
+        await expectLater(
+          repo.applyRebuildMatch(
+            'external_primary',
+            RebuildMatch(remap: {a: 20, b: 10, c: 30}, lost: {}),
+          ),
+          throwsStateError,
+        );
+
+        // Every row of every table is as it was, not just the throw.
+        expect(await snapshot(), before);
+        expect((await rowOf(a)).mediaStoreId, 10);
+        expect((await rowOf(d)).mediaStoreId, 30);
+      });
+
+      test('an outside clash with a clip that is not in the match', () async {
+        final [a, outside] = await detect([10, 20]);
+
+        await expectLater(
+          repo.applyRebuildMatch(
+            'external_primary',
+            RebuildMatch(remap: {a: 20}, lost: {}),
+          ),
+          throwsStateError,
+        );
+
+        expect((await rowOf(a)).mediaStoreId, 10);
+        expect((await rowOf(outside)).mediaStoreId, 20);
+      });
+
+      test('the same id on another volume is not a clash', () async {
+        final [a] = await detect([10]);
+        final [onCard] = await detect([20], volume: '1234-ABCD');
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 20}, lost: {}),
+        );
+
+        expect((await rowOf(a)).mediaStoreId, 20);
+        expect((await rowOf(onCard)).mediaStoreId, 20);
+      });
+
+      test('clips on another volume or unknown ids are left alone', () async {
+        final [a] = await detect([10]);
+        final [onCard] = await detect([11], volume: '1234-ABCD');
+        final [picked] = await repo.addDetectedClips([
+          pickerClip('content://p/1'),
+        ]);
+        final before = await snapshot();
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {onCard: 50, 9999: 51}, lost: {picked, 8888}),
+        );
+
+        expect(await snapshot(), before);
+        expect((await rowOf(a)).mediaStoreId, 10);
+      });
+
+      test(
+        'a clip in both remap and lost throws and changes nothing',
+        () async {
+          final [a, b] = await detect([10, 11]);
+          final before = await snapshot();
+
+          await expectLater(
+            repo.applyRebuildMatch(
+              'external_primary',
+              RebuildMatch(remap: {a: 50, b: 51}, lost: {a}),
+            ),
+            throwsArgumentError,
+          );
+
+          expect(await snapshot(), before);
+        },
+      );
+
+      test('two clips mapped to one id throws and changes nothing', () async {
+        final [a, b] = await detect([10, 11]);
+        final before = await snapshot();
+
+        await expectLater(
+          repo.applyRebuildMatch(
+            'external_primary',
+            RebuildMatch(remap: {a: 50, b: 50}, lost: {}),
+          ),
+          throwsArgumentError,
+        );
+
+        expect(await snapshot(), before);
+      });
+
+      test('a target that is not a MediaStore id throws', () async {
+        final [a] = await detect([10]);
+        final before = await snapshot();
+
+        for (final target in [0, -1, -a]) {
+          await expectLater(
+            repo.applyRebuildMatch(
+              'external_primary',
+              RebuildMatch(remap: {a: target}, lost: {}),
+            ),
+            throwsArgumentError,
+            reason: 'target $target',
+          );
+        }
+
+        expect(await snapshot(), before);
+      });
+
+      test('logs counts only', () async {
+        final records = <LogRecord>[];
+        final sub = Logger.root.onRecord.listen(records.add);
+        addTearDown(sub.cancel);
+        final [a, b] = await detect([10, 11]);
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {a: 50}, lost: {b}),
+        );
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('1 found'));
+        expect(lines, contains('1 lost'));
+        expect(lines, isNot(contains('VID_')));
+        expect(lines, isNot(contains('external_primary')));
+      });
+    });
+
+    group('detach', () {
+      test('does the same as lost', () async {
+        final [a, b] = await detect([10, 11]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(a, {goa});
+        clock.advance(_minute);
+
+        await repo.detach({a, b});
+
+        for (final id in [a, b]) {
+          final row = await rowOf(id);
+          expect(row.mediaStoreId, -id);
+          expect(row.missing, isTrue);
+          expect(row.lastVerifiedAt, _t0.add(_minute));
+          expect(row.volumeName, 'external_primary');
+        }
+        expect(await reelIdsOf(a), {goa});
+        expect((await inboxRows()).single.clipId, b);
+      });
+
+      test('an empty set does nothing', () async {
+        await detect([10]);
+        clock.advance(_minute);
+        final before = await snapshot();
+
+        await repo.detach({});
+
+        expect(await snapshot(), before);
+      });
+
+      test('an unknown clip id is ignored without an error', () async {
+        final [a] = await detect([10]);
+        final before = await snapshot();
+
+        await repo.detach({9999});
+
+        expect(await snapshot(), before);
+        expect((await rowOf(a)).mediaStoreId, 10);
+      });
+
+      test('a picked clip has no MediaStore id to detach', () async {
+        final [picked] = await repo.addDetectedClips([
+          pickerClip('content://p/1'),
+        ]);
+        final before = await snapshot();
+
+        await repo.detach({picked});
+
+        expect(await snapshot(), before);
+      });
+
+      test('detaching twice keeps the negative id', () async {
+        final [a] = await detect([10]);
+
+        await repo.detach({a});
+        clock.advance(_minute);
+        await repo.detach({a});
+
+        expect((await rowOf(a)).mediaStoreId, -a);
+      });
+    });
+
+    group('removeMissingFromLists', () {
+      test('deletes an inbox-only clip and keeps one in a reel', () async {
+        final [pending, skipped, inReel] = await detect([10, 11, 12]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(inReel, {goa});
+        await repo.skip([skipped]);
+        await repo.detach({pending, skipped, inReel});
+
+        final deleted = await repo.removeMissingFromLists({
+          pending,
+          skipped,
+          inReel,
+        });
+
+        expect(deleted, 2);
+        expect(await clipIds(), [inReel]);
+        expect(await inboxRows(), isEmpty);
+        expect(await reelIdsOf(inReel), {goa});
+        expect((await rowOf(inReel)).missing, isTrue);
+      });
+
+      test(
+        'a clip in both the inbox and a reel keeps its link and row',
+        () async {
+          final [both, gone] = await detect([10, 11]);
+          final goa = (await reels.create('Goa')).id;
+          await repo.tagClip(both, {goa});
+          // The database allows an inbox row beside a link (a backup drops
+          // them, the repository never writes them): only the inbox row goes.
+          await db
+              .into(db.inbox)
+              .insert(
+                InboxCompanion.insert(
+                  clipId: Value(both),
+                  state: InboxState.pending,
+                  addedAt: _t0,
+                ),
+              );
+          final updatedBefore = await updatedAt(goa);
+
+          final deleted = await repo.removeMissingFromLists({both, gone});
+
+          expect(deleted, 1);
+          expect(await clipIds(), [both]);
+          expect(await inboxRows(), isEmpty);
+          expect(await reelIdsOf(both), {goa});
+          expect(await updatedAt(goa), updatedBefore);
+        },
+      );
+
+      test('an empty set returns 0 and leaves orphans alone', () async {
+        final [a] = await detect([10]);
+        final before = await snapshot();
+
+        expect(await repo.removeMissingFromLists({}), 0);
+
+        expect(await snapshot(), before);
+        expect(await clipIds(), [a]);
+      });
+
+      test('clips not in the set stay, unknown ids are ignored', () async {
+        final [a, b] = await detect([10, 11]);
+
+        final deleted = await repo.removeMissingFromLists({a, 9999});
+
+        expect(deleted, 1);
+        expect(await clipIds(), [b]);
+        expect((await inboxRows()).single.clipId, b);
+      });
     });
   });
 

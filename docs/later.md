@@ -4,10 +4,6 @@ Items that reviews found and parked for a later phase. When a phase is planned, 
 
 Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), and the Phase 2 task reviews and its final whole-branch review (2026-10-27).
 
-## Phase 3
-
-- Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
-
 ## Phase 4
 
 - Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.

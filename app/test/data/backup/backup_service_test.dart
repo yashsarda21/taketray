@@ -305,6 +305,38 @@ void main() {
       },
     );
 
+    test('a detached clip (negative mediaStoreId) round-trips', () async {
+      final clips = ClipsRepository(db, clock);
+      final reel = await ReelsRepository(db, clock).create('Goa');
+      final [kept, gone, listed] = await clips.addDetectedClips([
+        _detected(1, _t0),
+        _detected(2, _t0),
+        _detected(3, _t0),
+      ]);
+      await clips.tagClip(kept, {reel.id});
+      await clips.detach({kept, listed});
+      // A new video can now take the old id 1: that is a different clip.
+      final [again] = await clips.addDetectedClips([_detected(1, _t0)]);
+      final first = await backup.exportJson();
+
+      final other = freshDatabase();
+      await BackupService(other, clock).importJson(first);
+
+      final rows = {
+        for (final c in await other.select(other.clips).get()) c.id: c,
+      };
+      expect(rows[kept]!.mediaStoreId, -kept);
+      expect(rows[kept]!.missing, isTrue);
+      expect(rows[kept]!.volumeName, 'external_primary');
+      expect(rows[listed]!.mediaStoreId, -listed);
+      expect(rows[gone]!.mediaStoreId, 2);
+      expect(rows[again]!.mediaStoreId, 1);
+      expect(
+        _withoutExportedAt(await BackupService(other, clock).exportJson()),
+        _withoutExportedAt(first),
+      );
+    });
+
     test('dates outside 0000–9999 survive export and import', () async {
       // MediaStore dates come from file metadata, and garbage exists there.
       // `toIso8601String` writes such years as `+010001` or `-0001`; the file

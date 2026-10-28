@@ -8,6 +8,7 @@ import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/rules/fingerprint_match.dart';
 
 part 'clips_repository.g.dart';
 
@@ -244,6 +245,141 @@ class ClipsRepository {
     _log.info('Verified ${found.length} found, ${missing.length} missing');
   }
 
+  /// The clips on volume [volumeName] that still hold a MediaStore id: the
+  /// ones a verifier or a rebuild match can look for. Detached clips
+  /// (`mediaStoreId` below 1, see [detach]), picked clips and clips of other
+  /// volumes are not in it; a clip flagged missing that kept its id is. By id.
+  Future<List<Clip>> mediaStoreClipsOn(String volumeName) async {
+    final rows =
+        await (_db.select(_db.clips)
+              ..where(
+                (c) =>
+                    c.volumeName.equals(volumeName) &
+                    c.mediaStoreId.isBiggerThanValue(0),
+              )
+              ..orderBy([(c) => OrderingTerm.asc(c.id)]))
+            .get();
+    return [for (final row in rows) _toClip(row)];
+  }
+
+  /// Applies what `matchAfterRebuild` found after Android rebuilt volume
+  /// [volumeName]'s media library, in one transaction (D-71):
+  ///
+  /// 1. Every clip in `match.remap` and `match.lost` is detached: its
+  ///    `mediaStoreId` becomes `-clipId`. Nothing holds a positive id any
+  ///    more, so ids can be swapped or rotated, and a clip may take the old
+  ///    id of a lost one, without the unique key (volume, id) ever clashing.
+  /// 2. A clip in `remap` gets its new id, `missing = false` and
+  ///    `lastVerifiedAt` = now.
+  /// 3. A clip in `lost` keeps `-clipId`, with `missing = true` and
+  ///    `lastVerifiedAt` = now: the clip stays where it is (To tag, Skipped,
+  ///    its reels), and its old number can never match a different video.
+  ///
+  /// Only clips of this volume with a MediaStore id are touched; an unknown
+  /// id, a picked clip or a clip of another volume in the match is ignored.
+  ///
+  /// Throws [ArgumentError], changing nothing, for an invalid match: a clip
+  /// in both sets, two clips with one new id, or a new id below 1. Throws
+  /// [StateError], rolling every change back, when a clip outside the match
+  /// holds a new id (the id would belong to two clips).
+  Future<void> applyRebuildMatch(String volumeName, RebuildMatch match) async {
+    final both = match.remap.keys.toSet().intersection(match.lost);
+    if (both.isNotEmpty) {
+      throw ArgumentError.value(
+        both,
+        'match',
+        'a clip cannot be both found and lost',
+      );
+    }
+    final targets = match.remap.values.toList();
+    if (targets.any((id) => id < 1)) {
+      throw ArgumentError.value(
+        match.remap,
+        'match',
+        'a new MediaStore id must be above 0',
+      );
+    }
+    if (targets.toSet().length != targets.length) {
+      throw ArgumentError.value(
+        match.remap,
+        'match',
+        'two clips cannot get the same MediaStore id',
+      );
+    }
+    if (match.remap.isEmpty && match.lost.isEmpty) return;
+
+    await _db.transaction(() async {
+      final now = _clock.now();
+      for (final clipId in {...match.remap.keys, ...match.lost}) {
+        await _setMediaStoreId(volumeName, clipId, -clipId);
+      }
+      // Every clip of the match is negative now, so a positive holder of a
+      // new id is a clip outside the match.
+      final clash =
+          await (_db.select(_db.clips)..where(
+                (c) =>
+                    c.volumeName.equals(volumeName) &
+                    c.mediaStoreId.isIn(targets),
+              ))
+              .get();
+      if (clash.isNotEmpty) {
+        throw StateError(
+          '${clash.length} clips outside the match hold a new MediaStore id',
+        );
+      }
+      for (final MapEntry(key: clipId, value: newId) in match.remap.entries) {
+        await _setMediaStoreId(
+          volumeName,
+          clipId,
+          newId,
+          verification: ClipsCompanion(
+            missing: const Value(false),
+            lastVerifiedAt: Value(now),
+          ),
+        );
+      }
+      await _markDetached(match.lost, now, volumeName: volumeName);
+    });
+    _log.info(
+      'Applied a rebuild: ${match.remap.length} found, '
+      '${match.lost.length} lost',
+    );
+  }
+
+  /// Detaches clips: each gets `mediaStoreId = -clipId`, `missing = true` and
+  /// `lastVerifiedAt` = now, like a lost clip in [applyRebuildMatch]. It is
+  /// for a verified id that now holds a different video (D-71).
+  ///
+  /// The clip keeps its row and its place, but its old MediaStore number can
+  /// no longer be found by [addDetectedClips] or matched to a new video: a
+  /// video that later gets that number is a new clip. Unknown ids and clips
+  /// without a MediaStore id (picked ones) are ignored.
+  Future<void> detach(Set<int> clipIds) async {
+    if (clipIds.isEmpty) return;
+    final now = _clock.now();
+    await _db.transaction(() => _markDetached(clipIds, now));
+    _log.info('Detached ${clipIds.length} clips');
+  }
+
+  /// Takes clips that are missing out of To tag and Skipped: deletes the
+  /// `inbox` rows of [clipIds], then the clips left in no reel and no list
+  /// (the orphan rule, D-56), in one transaction. Returns how many clips were
+  /// deleted.
+  ///
+  /// A clip in a reel is only ever flagged missing, never removed: its link
+  /// and its row stay, even if it also has an `inbox` row (only that row
+  /// goes). Ids that do not exist are ignored. The video file is never
+  /// touched, and neither is a `vn_copies` row (D-54).
+  Future<int> removeMissingFromLists(Set<int> clipIds) async {
+    if (clipIds.isEmpty) return 0;
+    final deleted = await _db.transaction(() async {
+      await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(clipIds))).go();
+      return await _db.deleteOrphanClips();
+    });
+    _log.info('Removed $deleted missing clips from the lists');
+    return deleted;
+  }
+
   /// The clips in To tag ([InboxState.pending]) or Skipped
   /// ([InboxState.skipped]), by shooting time, oldest first (ties: lowest id
   /// first), again after every change.
@@ -359,6 +495,44 @@ class ClipsRepository {
           InboxCompanion(state: Value(state)),
         );
     _log.info('Set $changed of ${ids.length} clips to ${state.name}');
+  }
+
+  /// Sets `mediaStoreId` (and [verification], when given) of clip [clipId] if
+  /// it is a MediaStore clip of [volumeName].
+  Future<void> _setMediaStoreId(
+    String volumeName,
+    int clipId,
+    int mediaStoreId, {
+    ClipsCompanion verification = const ClipsCompanion(),
+  }) =>
+      (_db.update(_db.clips)..where(
+            (c) => c.id.equals(clipId) & c.volumeName.equals(volumeName),
+          ))
+          .write(verification.copyWith(mediaStoreId: Value(mediaStoreId)));
+
+  /// Detaches [clipIds] (`mediaStoreId = -id`, missing, verified at [now]).
+  /// With [volumeName], only clips of that volume; always only clips that
+  /// have a MediaStore id.
+  Future<void> _markDetached(
+    Set<int> clipIds,
+    DateTime now, {
+    String? volumeName,
+  }) async {
+    for (final clipId in clipIds) {
+      await (_db.update(_db.clips)..where((c) {
+            final holds = c.id.equals(clipId) & c.mediaStoreId.isNotNull();
+            return volumeName == null
+                ? holds
+                : holds & c.volumeName.equals(volumeName);
+          }))
+          .write(
+            ClipsCompanion(
+              mediaStoreId: Value(-clipId),
+              missing: const Value(true),
+              lastVerifiedAt: Value(now),
+            ),
+          );
+    }
   }
 
   Future<void> _markVerified(

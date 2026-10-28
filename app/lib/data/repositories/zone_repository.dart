@@ -80,6 +80,71 @@ class ZoneRepository {
     _log.info(recorded ? 'Recorded a time zone change' : 'Zone unchanged');
   }
 
+  /// Merges [entries] into the timeline in time order, in one transaction.
+  /// It is for entries that arrive in any order, such as the native side's
+  /// timeline (phase 3): [record] one at a time can drop a later observation
+  /// (D-58), and this cannot.
+  ///
+  /// 1. The whole timeline is read, and [entries] are added to it. Times are
+  ///    cut to milliseconds, like the stored ones. An entry at an instant that
+  ///    already has one replaces it; for two new entries at one instant the
+  ///    later one in iteration order wins.
+  /// 2. Everything is sorted by time, and every entry whose zone equals the
+  ///    one before it is dropped (it marks no change).
+  /// 3. The table is rewritten, unless the result is what it already holds.
+  ///
+  /// The result never has two neighbours with the same zone, also when the
+  /// stored timeline had some. An empty [entries] changes nothing.
+  Future<void> recordAll(Iterable<ZoneEntry> entries) async {
+    final added = [
+      for (final e in entries) (e.at.millisecondsSinceEpoch, e.zoneId),
+    ];
+    if (added.isEmpty) return;
+    final (before, after) = await _db.transaction(() async {
+      final stored = await all();
+      final byTime = <int, String>{
+        for (final e in stored) e.at.millisecondsSinceEpoch: e.zoneId,
+      };
+      for (final (millis, zoneId) in added) {
+        byTime[millis] = zoneId;
+      }
+      final times = byTime.keys.toList()..sort();
+      final merged = <ZoneEntry>[];
+      for (final millis in times) {
+        final zoneId = byTime[millis]!;
+        if (merged.isNotEmpty && merged.last.zoneId == zoneId) continue;
+        merged.add(
+          ZoneEntry(
+            at: DateTime.fromMillisecondsSinceEpoch(millis, isUtc: true),
+            zoneId: zoneId,
+          ),
+        );
+      }
+      if (!_sameTimeline(merged, stored)) {
+        await _db.delete(_db.zoneTimeline).go();
+        await _db.batch(
+          (b) => b.insertAll(_db.zoneTimeline, [
+            for (final e in merged)
+              ZoneTimelineCompanion.insert(at: Value(e.at), zoneId: e.zoneId),
+          ]),
+        );
+      }
+      return (stored.length, merged.length);
+    });
+    _log.info(
+      'Merged ${added.length} zone entries: $before entries before, '
+      '$after after',
+    );
+  }
+
+  bool _sameTimeline(List<ZoneEntry> a, List<ZoneEntry> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
   /// The zone the phone was in at [instant], or null when [instant] is before
   /// the first entry (or there are none).
   Future<String?> zoneAt(DateTime instant) async =>

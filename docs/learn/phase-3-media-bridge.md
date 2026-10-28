@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 5 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 6 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -618,7 +618,71 @@ and run both commands again. In a zone without daylight saving (India, or UTC as
 
 ## 6. Phone state and clip writes
 
-_Written in Task 6._
+**What we built:** the database side of the bridge. A new `PhoneStateRepository` remembers whether Shooting mode is on, when it was switched on, and where each volume stood (its baseline). `ClipsRepository` learns four new writes: list the clips that still hold a MediaStore number, apply the result of a library rebuild, *detach* a clip from its number, and take missing clips out of the To tag and Skipped lists. `ZoneRepository` gets `recordAll`, which merges time zone entries in time order. Nothing calls them yet; the scanner and the verifier (Section 7) will.
+
+**Why TakeTray needs it:** the rules in Section 5 only give *answers* ("this clip is video 77 now", "start the next scan after generation 40"). Something has to store the answers safely, and two of the five Review Focus situations are really about storing. A scan takes a while, and in that time the user can switch Shooting mode off and on, or a second scan can finish first. If the old scan then writes its baseline, a clip shot while Shooting mode was off could appear, or a baseline could move backwards (Review Focus 4). And when Android renumbers its videos, an old clip must never keep a number that now belongs to a different video (Review Focus 3).
+
+**Key ideas:**
+
+- **One key, one JSON value, one row.** Shooting mode, its start time and its baselines are stored together under the key `shootingMode` in the `settings` table (the same key/value table as the user's settings). Because it is one row, it is written or not written; there is no moment where Shooting mode is on but the baselines are missing. A missing row means "off". So does a row that cannot be read (not JSON, the wrong shape, or "on" with no start time); the repository then logs the *key name* and nothing else, because a stored value could hold a MediaStore version string, and the log must never carry those (D-10):
+
+  ```dart
+  _log.warning('Setting $shootingModeKey is corrupt, reading it as off');
+  return ShootingState.off;
+  ```
+
+  `turnShootingOn` is also safe to call twice: if Shooting mode is already on it writes nothing and returns the state that is stored, so the first start time stays. A second boolean, `mediaAccessWasFull` ("did we ever have full access to the videos?"), has its own key and survives Shooting mode going off.
+
+- **These keys never leave the phone.** A backup file only exports the keys in `SettingsRepository.exportedKeys`, and the two phone-state keys are not in it. Importing a backup deletes every row of the `settings` table first, so after a restore Shooting mode is off and the baselines are gone. That is deliberate: a baseline is a position in *this phone's* media library, and means nothing in a restored one. Two tests guard it: one checks that an export contains neither key name, the other imports a backup over a database with Shooting mode on and checks it is off afterwards.
+
+- **Compare-and-set: "move the baseline only if nothing changed meanwhile".** Picture the race. At 10:00 scan A reads the state: session started at 09:00, baseline for the phone's storage `(v1, 40)`. It queries MediaStore for a few seconds. At 10:01 the user turns Shooting mode off and at 10:02 on again, which starts a new session with its own baselines. Then A finishes and wants to store `(v1, 45)`. `advanceBaseline` takes what A *saw* (`expectedSession` and `expected`) and what A *wants* (`next`), and checks everything inside one database transaction:
+
+  ```dart
+  if (current.baselines[volume] != expected) return false;
+  if (expected != null &&
+      expected.version == next.version &&
+      next.generation < expected.generation) {
+    return false;
+  }
+  ```
+
+  The two checks above come after a first one: the method refuses unless Shooting mode is on with the same `since` (start time) as `expectedSession`. In the story, the new session has a different `since`, so A's write is refused (it returns `false`) and nothing changes. All three, in order: Shooting mode is on with the same start time; the stored baseline for that volume is exactly the one the caller saw (`null` means "none stored yet"); and, when the version is the same, the generation does not go down. A *different* version is a resync, where generations start over, so then a lower number is allowed. The transaction matters too: with two scans that saw the same state, both would pass the checks if they ran side by side, and both would write. Inside a transaction they run one after the other, so the second sees the first one's write and is refused. A test starts two calls together (`Future.wait`) and checks that exactly one returns `true`.
+
+- **A lost clip keeps its row but gives up its number.** Say Android rebuilds its library and a clip stored with MediaStore id 10 is not found again. The clip may be in a reel, so the row must stay. But id 10 may be given to a different video later, and if the clip still held 10, the detector would think the new video *is* the old clip: a wrong video in the user's reel, the worst bug (spec §4). So the clip gets the number `-clipId` (clip 7 gets `-7`), `missing = true`, and `lastVerifiedAt` = now. Clip ids are never reused (`AUTOINCREMENT`, D-54), so `-7` can never equal a real MediaStore id, and the `(volumeName, mediaStoreId)` unique key still holds. Later, `addDetectedClips` with id 10 finds no row and inserts a new clip. `detach` does the same for one clip whose verified number now points at a different video.
+
+- **Swapping numbers without a clash.** After a rebuild clip A may move from 10 to 20 while clip B moves from 20 to 10. The database refuses two rows with the same `(volumeName, mediaStoreId)` at any moment, so moving A first fails (B still holds 20), and so does moving B first. `applyRebuildMatch` first gives every clip in the match a free, negative number, and only then the real ones:
+
+  ```dart
+  for (final clipId in {...match.remap.keys, ...match.lost}) {
+    await _setMediaStoreId(volumeName, clipId, -clipId);
+  }
+  ```
+
+  After that loop, any clip that still holds a positive number is a clip *outside* the match. If such a clip holds one of the new numbers, the method throws `StateError`. Because everything is one transaction, that throw also undoes the negative numbers just written, so the database is exactly as it was (a test compares every row of four tables before and after). Lost clips are made negative in the same first step, so a found clip may take the old number of a lost clip. A match that contradicts itself (a clip both found and lost, two clips with one new number, a new number below 1) is a mistake in the calling code, and throws `ArgumentError` before anything is written.
+
+- **A missing clip that nobody tagged just leaves.** `removeMissingFromLists` deletes the `inbox` rows (To tag and Skipped) of the given clips, then runs the shared orphan sweep (D-56). A clip in a reel is never deleted; it only stays flagged missing so the user can see and fix it. If a clip happens to have both an `inbox` row and a reel link, only the `inbox` row goes. An empty set returns 0 and does not sweep.
+
+- **Zone entries merged in time order.** `ZoneRepository.record` handles one entry at a time and is exact only when entries arrive in time order (D-58 shows a case where it loses a later one). `recordAll` reads the whole timeline, adds the new entries (cut to whole milliseconds; the same instant replaces the old entry, and for two new entries at one instant the later one in the list wins), sorts by time, drops every entry whose zone equals the one before it, and rewrites the table, only if the result is different:
+
+  ```dart
+  final times = byTime.keys.toList()..sort();
+  ...
+  if (merged.isNotEmpty && merged.last.zoneId == zoneId) continue;
+  ```
+
+  So London recorded for the 12th and Kolkata for the 5th, arriving in that order, still end up as Kolkata (5th), London (12th).
+
+**Where it lives:** `app/lib/data/repositories/phone_state_repository.dart` (`PhoneStateRepository`, `phoneStateRepositoryProvider`), `clips_repository.dart` (`mediaStoreClipsOn`, `applyRebuildMatch`, `detach`, `removeMissingFromLists`), `zone_repository.dart` (`recordAll`); tests in `app/test/data/repositories/` (`phone_state_repository_test.dart`, `clips_repository_test.dart`, `zone_repository_test.dart`) and `app/test/data/backup/backup_service_test.dart` (a detached clip, with its negative number, survives an export and an import). The flow tables are in `docs/flow.md` ("Tagging data changes", "Phone state", "Merging many entries").
+
+**Try it yourself:** see why the temporary numbers exist. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart --plain-name "swaps two ids")
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repository.dart`, delete the three lines of the loop in `applyRebuildMatch` that call `_setMediaStoreId(volumeName, clipId, -clipId)` (the `for` line, the call and the closing brace) and run the same command. The test fails with `Bad state: 2 clips outside the match hold a new MediaStore id`: without the temporary numbers, A and B still hold each other's new numbers, so each looks like an outsider. Put the file back with `git checkout -- app/lib/data/repositories/clips_repository.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-71 (phone state in one key and never exported, the compare-and-set baseline, a lost clip's negative number, an inbox-only missing clip leaving To tag, and the time-ordered zone merge), with D-58 (the zone timeline) and D-56 (the orphan rule) as background.
 
 ---
 

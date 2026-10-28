@@ -31,9 +31,10 @@ class SettingsRepository {
 
   /// The keys of the user's settings, and the only ones a backup exports.
   ///
-  /// The `settings` table will also hold state that belongs to this phone
-  /// (Shooting mode, the baselines, from phase 3). Those keys must never be
-  /// added here: restoring them on another phone would be wrong.
+  /// The `settings` table also holds state that belongs to this phone
+  /// (`PhoneStateRepository`: Shooting mode, the baselines, whether access was
+  /// full). Those keys must never be added here: restoring them on another
+  /// phone would be wrong (D-71).
   static const Set<String> exportedKeys = {
     watchedFoldersKey,
     eveningReminderEnabledKey,

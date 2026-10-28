@@ -72,7 +72,7 @@ Nothing calls this yet; the reel screens (phase 4 onwards) will. See D-56.
 
 ### Tagging data changes
 
-Nothing calls this yet; detection (phase 3), the tag player (phase 5) and the reel screens (phase 4 onwards) will. All in `data/repositories/clips_repository.dart › ClipsRepository`; every method that writes is one transaction, and every stream re-queries after any of the tables it reads change. See D-57. A clip's identity is `volumeName` + `mediaStoreId` (or `pickerUri`); "find" below means looking a clip up by that.
+Nothing calls this yet (the scanner and verifier of phase 3 will call the four rows after `recordVerification`); detection (phase 3), the tag player (phase 5) and the reel screens (phase 4 onwards) will. All in `data/repositories/clips_repository.dart › ClipsRepository`; every method that writes is one transaction, and every stream re-queries after any of the tables it reads change. See D-57. A clip's identity is `volumeName` + `mediaStoreId` (or `pickerUri`); "find" below means looking a clip up by that.
 
 | Method | Writes |
 |---|---|
@@ -84,8 +84,14 @@ Nothing calls this yet; detection (phase 3), the tag player (phase 5) and the re
 | `addClipsToReel(reelId, ids)` | A `clip_reels` row for each clip the reel did not have; `reels.updatedAt` = now if any was added. The clips' `inbox` rows (pending or skipped) are deleted. |
 | `removeClipsFromReel(reelId, ids)` | Deletes those `clip_reels` rows; `reels.updatedAt` = now if any was removed; then `deleteOrphanClips()` (a clip in no reel and no list is deleted; its `vn_copies` row stays). |
 | `recordVerification(found:, missing:)` | `clips.missing` and `clips.lastVerifiedAt` = now for the listed clips. |
+| `mediaStoreClipsOn(volumeName)` | Nothing (a read): the clips of that volume with `mediaStoreId > 0`, by id. Detached clips, picked clips and other volumes are left out. |
+| `applyRebuildMatch(volumeName, match)` | One transaction (D-71). First, `mediaStoreId = -clipId` for every clip in `match.remap` and `match.lost`. Then, if a clip outside the match holds one of the new ids, `StateError` and everything is rolled back. Then each `remap` clip gets its new `mediaStoreId`, `missing = false`, `lastVerifiedAt` = now; each `lost` clip keeps `-clipId` with `missing = true`, `lastVerifiedAt` = now. Only clips of that volume with a MediaStore id are touched. `ArgumentError`, nothing written, for a clip in both sets, two clips with one new id, or a new id below 1. An empty match writes nothing. |
+| `detach(ids)` | The same as `lost` above: `mediaStoreId = -clipId`, `missing = true`, `lastVerifiedAt` = now, for clips that have a MediaStore id. Unknown ids and picked clips are ignored; an empty set does nothing. Used when a verified id now holds a different video. |
+| `removeMissingFromLists(ids)` | Deletes the `inbox` rows of those clips (To tag and Skipped), then `deleteOrphanClips()`, in one transaction; returns how many clips were deleted. A clip in a reel keeps its `clip_reels` rows and its row. An empty set returns 0 and sweeps nothing. |
 
 Streams (`watchInbox(state)`, `watchPendingCount()`, `watchReelClips(reelId)`, `watchReelIdsOf(clipId)`) write nothing. The first and third sort by `clips.dateTakenUtc`, ties by `clips.id`.
+
+A clip that is lost or detached keeps its row, its place and its fingerprint, and holds the negative id `-clipId`. That number is never a real MediaStore id and is never reused, so the video that later gets the old number is a new clip (`addDetectedClips` does not find the old row, D-71).
 
 Unknown ids: an unknown reel throws `StateError` in `addNewClipsToReel`, `tagClip`, `addClipsToReel` and `removeClipsFromReel`; an unknown clip throws `StateError` in `tagClip`, `untagToInbox` and `addClipsToReel`. Each check runs before the first write, so nothing is changed. `skip`, `restore`, `removeClipsFromReel` and `recordVerification` ignore clip ids that do not exist (`skip`/`restore` also ignore clips with no `inbox` row).
 
@@ -113,9 +119,22 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the VN copy fl
 
 `sessionOf` and `copiesOf` only read.
 
-**Settings** (`settings_repository.dart › SettingsRepository`): `load()` reads the rows whose key is in `exportedKeys` and decodes each value from JSON; a missing key, bad JSON, a wrong type or minutes outside 0 to 1439 gives that setting's default, and a corrupt one logs the key name. `save(settings)` upserts the three rows in one transaction and leaves other keys alone. `watch()` re-queries when the `settings` table changes and emits only when the result differs from the last one. Only `exportedKeys` (the three keys) is ever exported by a backup.
+**Settings** (`settings_repository.dart › SettingsRepository`): `load()` reads the rows whose key is in `exportedKeys` and decodes each value from JSON; a missing key, bad JSON, a wrong type or minutes outside 0 to 1439 gives that setting's default, and a corrupt one logs the key name. `save(settings)` upserts the three rows in one transaction and leaves other keys alone. `watch()` re-queries when the `settings` table changes and emits only when the result differs from the last one. Only `exportedKeys` (the three keys) is ever exported by a backup; the phone-state keys below are not.
 
 **Zone timeline** (`zone_repository.dart › ZoneRepository.record(at, zoneId)`): in a transaction, reads the last `zone_timeline` row at or before `at`; if its `zoneId` equals the new one nothing is written. Otherwise: if the last row strictly before `at` already has the new zone, the row at exactly `at` is deleted (it was the only way to get here); else a row `(at, zoneId)` is inserted (replacing a row at exactly `at`). Then the first row after `at` is deleted when it has the new zone, so the timeline never has two neighbours with the same zone. `zoneAt(instant)` reads the whole timeline, oldest first, and runs the domain `zoneAt` on it.
+
+**Merging many entries** (`ZoneRepository.recordAll(entries)`, D-71): for entries that may arrive in any order, such as the native timeline. In one transaction it reads the whole timeline, adds the entries (cut to milliseconds; an entry at an existing instant replaces it; for two new ones at one instant the later in iteration order wins), sorts by time, drops every entry whose zone equals the one before it, and rewrites the table, only if the result differs from what is stored. An empty list does nothing. `record` is for one entry at a time and is exact only for entries that arrive in time order (D-58).
+
+**Phone state** (`phone_state_repository.dart › PhoneStateRepository`, D-71): Shooting mode and where each volume stood live in the `settings` table under `shootingMode` (one JSON value: `on`, `since`, `baselines` by volume name, `earlierAdded`) and `mediaAccessWasFull` (a JSON boolean). Neither key is in `exportedKeys`, so a backup never holds them, and an import deletes them: Shooting mode is off afterwards. A missing row is `ShootingState.off`; a value that is not JSON, has the wrong shape, or says `on` with no `since` is off too, and only the key name is logged.
+
+| Method | Writes |
+|---|---|
+| `loadShooting()` / `watchShooting()` | Nothing. The watch emits only when the state changes. |
+| `turnShootingOn(baselines)` | One transaction. Shooting mode off: writes `on`, `since` = now, the baselines and `earlierAdded: false`, and returns it. Already on: writes nothing and returns the current state (the first `since`, baselines and `earlierAdded` stay). |
+| `turnShootingOff()` | Deletes the `shootingMode` row (baselines and `since` go with it). |
+| `advanceBaseline(volume, expectedSession:, expected:, next:)` | One transaction, compare-and-set. Writes `next` as `volume`'s baseline, keeping the other volumes and `earlierAdded`, only if all hold: Shooting mode is on with the same `since` as `expectedSession`; the stored baseline of `volume` equals `expected` (null: none stored); and, with `expected` and `next` on the same version, `next.generation >= expected.generation`. Returns whether it wrote. |
+| `markEarlierAdded()` | `earlierAdded = true` while Shooting mode is on; nothing when it is off. |
+| `markAccessWasFull()` / `accessWasFull()` | Sets / reads `mediaAccessWasFull`. Shooting mode going off does not clear it; unreadable reads as false. |
 
 ### Backup export and import
 
