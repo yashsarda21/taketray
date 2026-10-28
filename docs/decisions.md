@@ -448,3 +448,10 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - A new text style feature (a gradient `foreground` paint, highlighted text) needs the guideline extended before its component can call `expectTtAccessible`.
   - Decorative text that is shown is now held to AA too. Exempt it only through its semantics (disabled), never by skipping the check.
   - Supersedes the `expectTtAccessible` sentence of D-39.
+
+### D-63 · Each phase works on its own branch and lands on `main` through a green pull request
+- Date: 2026-10-28 · Phase: 3 · Task: 1
+- Decision: each phase works on a branch named `phase-N-…` (this one: `phase-3-media-bridge`), created from an up-to-date `main`. The branch is pushed after every task commit, so CI (D-60) runs on it each time, and a red run is fixed in the task that caused it. The phase ends with a pull request into `main`, which must be green. The owner approves before it is merged, and the branch is deleted after the merge.
+- Why: the owner asked for it on 2026-10-27, so `main` only ever gets code that CI has passed and the owner has reviewed.
+- Alternatives considered: committing straight to `main` as phases 0 to 2 did (a red or half-finished commit can sit on `main`, and CI only judges it after the fact).
+- Consequences: CI runs more often (once per task push). A phase's work is only visible on `main` after the owner merges the pull request. The pull request description ends with the generated-with line, and commits end with a `Co-Authored-By` line.
