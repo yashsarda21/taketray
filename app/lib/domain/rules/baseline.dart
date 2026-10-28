@@ -64,27 +64,53 @@ VolumePlan planVolume(VolumeBaseline? baseline, MediaVolume current) {
 /// The generation to store as the new baseline after a scan.
 ///
 /// [from] is the baseline the scan started from, [captured] the volume's
-/// generation read before the query, and [seen] every row the query
-/// returned (pending ones included).
+/// generation read before the query, and [seen] every row the scan returned
+/// (pending ones included, all pages together). [truncated] is true when the
+/// scan stopped before the end: its last page was full and was not followed.
 ///
 /// A pending row (a video still being recorded) holds the baseline just
 /// before the oldest one, so the next scan sees it again once it is
-/// finished. Otherwise the baseline moves to the highest of [captured] and
-/// the rows' generations. It never moves below [from].
+/// finished. A truncated scan ignores [captured] and holds one below the
+/// highest generation seen: rows written in one transaction share a
+/// generation, so a full page can end in the middle of one. Otherwise the
+/// baseline moves to the highest of [captured] and the rows' generations.
+/// It never moves below [from].
 int advanceBaseline({
   required int from,
   required int captured,
   required List<MediaVideo> seen,
+  bool truncated = false,
 }) {
   final pending = [
     for (final v in seen)
       if (v.isPending) v.generationAdded,
   ];
-  if (pending.isNotEmpty) {
-    return max(from, pending.reduce(min) - 1);
+  final pendingHold = pending.isEmpty ? null : pending.reduce(min) - 1;
+  if (truncated) {
+    if (seen.isEmpty) return from;
+    final cut = seen.map((v) => v.generationAdded).reduce(max) - 1;
+    return max(from, pendingHold == null ? cut : min(pendingHold, cut));
   }
+  if (pendingHold != null) return max(from, pendingHold);
   return seen.fold(
     max(from, captured),
     (best, v) => max(best, v.generationAdded),
   );
+}
+
+/// The cursor for the next page of a scan that asked for rows added after
+/// [cursor] and got the full [page] back (D-70).
+///
+/// The answer is one below the page's highest generation, because the page
+/// may end in the middle of that generation. It is null when the page is
+/// empty, when every row on it shares one generation (the next page would be
+/// the same rows again), or when the answer would not move past [cursor].
+/// Null means the scan has stalled: ask again with a bigger limit.
+int? nextPageCursor({required int cursor, required List<MediaVideo> page}) {
+  if (page.isEmpty) return null;
+  final generations = page.map((v) => v.generationAdded);
+  final highest = generations.reduce(max);
+  if (generations.reduce(min) == highest) return null;
+  final next = highest - 1;
+  return next > cursor ? next : null;
 }

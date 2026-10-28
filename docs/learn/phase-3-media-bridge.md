@@ -509,7 +509,7 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
 **Key ideas:**
 
-- **The life of a new video: generations, a pending row, a baseline.** MediaStore keeps a counter per volume, the *generation*. Every change to the library takes the next number, and each row remembers the number it was added with (`generationAdded`). When Shooting mode is switched on, TakeTray writes down each volume's current generation: that is the volume's *baseline*. "New videos" then simply means "rows added after the baseline". Here is one take, on the phone's own storage:
+- **The life of a new video: generations, a pending row, a baseline.** MediaStore keeps a counter per volume, the *generation*. Each write to the library moves it up, and each row remembers the number it was added with (`generationAdded`). Rows written in one go (one database *transaction*) share a number, so several rows can have the same generation. When Shooting mode is switched on, TakeTray writes down each volume's current generation: that is the volume's *baseline*. "New videos" then simply means "rows added after the baseline". Here is one take, on the phone's own storage:
 
   1. 10:00, Shooting mode on. The volume is at generation 40 (version `v1`), so the baseline is `(v1, 40)`.
   2. 10:05, the creator presses record. The camera app inserts its row straight away, as id 501 with `generationAdded` 41, marked *pending* (`IS_PENDING`: "still being written"), with no duration yet.
@@ -526,6 +526,15 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
   5. 10:10, the next scan asks again for rows after 40. Row 501 comes back, finished, 63 seconds long, so it becomes a clip in To tag. Now the baseline moves to the highest of the captured generation and the rows seen.
 
   Had the baseline moved to 41 at 10:06, the question "added after 41?" would never return row 501 again, and that take would be lost for good. That is Review Focus 2, and the test `holds before the oldest pending row` guards it.
+
+- **Reading in pages without skipping a row.** The query returns at most a set number of rows (its *limit*), oldest generation first. Because rows can share a generation, a full page can end in the middle of one: say the limit is 4 and the page ends with one of the three rows at generation 12. Two rules keep the other two:
+
+  ```dart
+  final cut = seen.map((v) => v.generationAdded).reduce(max) - 1;
+  return max(from, pendingHold == null ? cut : min(pendingHold, cut));
+  ```
+
+  If a scan stops early (`truncated: true`), the baseline only moves to one *below* the last generation it saw, 11 here, so the next scan asks for "after 11" and gets all of generation 12 again. And while paging, the next page starts from `nextPageCursor`, also one below the last generation. That means a row or two can arrive twice, so the scanner (Section 7) removes the doubles. If every row on a page has the same generation, starting one below it would return the very same page, so `nextPageCursor` answers `null`: "ask again with a bigger limit". The scan's cursor is kept apart from the baseline on purpose: a recording that stays pending for hours holds the baseline, but the cursor still moves on to the rows after it.
 
 - **A plan per volume, decided in a fixed order.** Before a scan, each volume gets one of four plans. The order matters, because the first check that applies wins:
 
@@ -570,13 +579,13 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
 - **When unsure, the clip is missing.** A fingerprint is not an identity: two takes of the same shot can have the same size, length and date. `matchAfterRebuild` only gives a clip its new id when there is no doubt at all:
 
-  1. its candidates are the usable rows *on the clip's own volume* that are `sameVideo`;
+  1. its candidates are the usable rows *on the volume being matched* that are `sameVideo`;
   2. if there are several, only those with the clip's old file name stay (the name breaks a tie, but never makes a match);
   3. a clip left with exactly one candidate claims it;
   4. a row claimed by two clips goes to neither;
   5. every other clip is *lost*, and the verifier (Section 7) will show it as missing.
 
-  A clip with no candidate, with two equally good ones, or sharing its one candidate with another clip is lost. A missing clip can be fixed by the user; a wrong one silently swaps their take. The candidates must be on the clip's own volume because the answer is only the new *id*: id 77 on the SD card is a different video from id 77 on the phone. A test runs 200 random cases and checks every time that each clip ends up in exactly one of "found" and "lost", and that no row is ever given to two clips.
+  A clip with no candidate, with two equally good ones, or sharing its one candidate with another clip is lost. A missing clip can be fixed by the user; a wrong one silently swaps their take. The match runs for one volume at a time (`volumeName`) and only looks at that volume's rows, because the answer is only the new *id*: id 77 on the SD card is a different video from id 77 on the phone. Passing a clip from another volume is a mistake in the caller, so it throws an `ArgumentError` instead of quietly calling that clip lost (which would show a good clip as missing). A test runs 200 random cases and checks every time that each clip ends up in exactly one of "found" and "lost", that no row is ever given to two clips, and, against a separate step-by-step count of each clip's candidates, that every found clip had exactly one (or exactly one with its name) and every lost clip had a reason to be lost.
 
 - **"The last 2 days" means calendar days.** "Add earlier videos" (Section 7) offers today, the last 2 days and the last 7 days. A creator means "yesterday and today", not "the last 48 hours", so the window starts at local midnight:
 
@@ -586,7 +595,7 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
   Dart's `DateTime(year, month, day)` builds a local date, and a day number of 0 or less rolls back into the previous month (3 January minus 6 days is 28 December). Building the date this way, instead of subtracting `Duration(days: n)`, matters twice a year. On 25 October 2026 the UK's clocks go back and that day lasts 25 hours; on 28 March 2027 they go forward and it lasts 23. Subtracting 24-hour days from midnight on the 26th lands at 01:00 on the 25th, not at midnight. Those cases only show in a time zone that changes its clocks, so `tool/check` runs `earlier_window_test.dart` a second time with `TZ=Europe/London` and `--run-skipped`, so the London cases cannot skip there (step 9b of "Local checks" in `docs/flow.md`).
 
-**Where it lives:** `app/lib/domain/rules/clip_date.dart` (`shotAt`), `media_clip.dart` (`newClipFrom`, `isUsable`), `baseline.dart` (`VolumePlan`, `planVolume`, `advanceBaseline`), `fingerprint_match.dart` (`sameVideo`, `RebuildMatch`, `matchAfterRebuild`), `earlier_window.dart` (`EarlierRange`, `earlierWindowStart`, `shotInWindow`); the tests beside them in `app/test/domain/rules/`; the London step (`daylight-saving tests`, with `DST_TESTS`) in `tool/check`.
+**Where it lives:** `app/lib/domain/rules/clip_date.dart` (`shotAt`), `media_clip.dart` (`newClipFrom`, `isUsable`), `baseline.dart` (`VolumePlan`, `planVolume`, `advanceBaseline`, `nextPageCursor`), `fingerprint_match.dart` (`sameVideo`, `RebuildMatch`, `matchAfterRebuild`), `earlier_window.dart` (`EarlierRange`, `earlierWindowStart`, `shotInWindow`); the tests beside them in `app/test/domain/rules/`; the London step (`daylight-saving tests`, with `DST_TESTS`) in `tool/check`.
 
 **Try it yourself:** see why the London run exists. From the repo root:
 
@@ -595,7 +604,7 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 (cd app && TZ=Europe/London ../tool/flutter test --run-skipped test/domain/rules/earlier_window_test.dart)
 ```
 
-Unless your computer is set to UK time, the first ends with `+11 ~3: All tests passed!`: the three London cases were skipped (`~3`). The second ends with `+14: All tests passed!`. Now, in `app/lib/domain/rules/earlier_window.dart`, replace the `return` line of `earlierWindowStart` with
+Unless your computer is set to UK time, the first ends with `+11 ~4: All tests passed!`: the four London cases were skipped (`~4`). The second ends with `+15: All tests passed!`. Now, in `app/lib/domain/rules/earlier_window.dart`, replace the `return` line of `earlierWindowStart` with
 
 ```dart
   return DateTime(local.year, local.month, local.day).subtract(Duration(days: daysBack)).toUtc();
@@ -603,7 +612,7 @@ Unless your computer is set to UK time, the first ends with `+11 ~3: All tests p
 
 and run both commands again. In a zone without daylight saving (India, or UTC as on GitHub's machines) the first still passes: the bug is invisible there. The second fails, for example `clocks go back (2026-10-25, a 25-hour day) [E]` with `Expected: DateTime:<2026-10-24 23:00:00.000Z>` and `Actual: DateTime:<2026-10-25 00:00:00.000Z>`: the window would start an hour late, at 01:00 on the 25th. Put the file back with `git checkout -- app/lib/domain/rules/earlier_window.dart`.
 
-**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-70 (the plan per volume and the pending hold).
+**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-70 (the plan per volume, the pending hold, and paging a scan without skipping a shared generation).
 
 ---
 

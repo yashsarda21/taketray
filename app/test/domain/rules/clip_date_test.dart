@@ -166,6 +166,33 @@ void main() {
     );
   });
 
+  test('with a now that has milliseconds, the seconds bound rounds down', () {
+    // The bound is 12:00:00.500 tomorrow: 12:00:00 is inside, 12:00:01 is
+    // half a second past it.
+    final halfNow = DateTime.utc(2026, 10, 28, 12, 0, 0, 500);
+    expect(
+      shotAt(
+        dated(taken: null, added: dayAheadSec, modified: modifiedSec),
+        now: halfNow,
+      ),
+      utcSec(dayAheadSec),
+    );
+    expect(
+      shotAt(
+        dated(taken: null, added: dayAheadSec + 1, modified: modifiedSec),
+        now: halfNow,
+      ),
+      utcSec(modifiedSec),
+    );
+    expect(
+      shotAt(
+        dated(taken: null, added: null, modified: dayAheadSec + 1),
+        now: halfNow,
+      ),
+      halfNow,
+    );
+  });
+
   test('seconds so large that × 1000 overflows are not plausible', () {
     // 18446745853709552 × 1000 is 2^64 + 1780000000384: in 64-bit
     // arithmetic it wraps around to 1780000000384, a date in 2026.

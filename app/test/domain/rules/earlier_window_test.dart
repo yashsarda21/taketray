@@ -95,6 +95,8 @@ void main() {
     });
 
     test('a UTC now is read in local time', () {
+      // Here the UTC and local dates are the same in most zones; the London
+      // group has the case where they differ.
       final local = DateTime(2026, 10, 28, 14, 30);
       expect(
         earlierWindowStart(EarlierRange.today, local.toUtc()),
@@ -106,6 +108,28 @@ void main() {
   group('a daylight-saving day still starts at midnight (Europe/London)', () {
     test('the zone is Europe/London', () {
       expect(_inLondon, isTrue, reason: 'run with TZ=Europe/London');
+    }, skip: _londonOnly);
+
+    test('a UTC now just after local midnight is read in local time', () {
+      // 00:30 on the 20th in summer time (BST) is still the 19th in UTC.
+      final utcNow = DateTime(2026, 10, 20, 0, 30).toUtc();
+      expect(utcNow, DateTime.utc(2026, 10, 19, 23, 30));
+      expect(
+        earlierWindowStart(EarlierRange.today, utcNow),
+        DateTime(2026, 10, 20).toUtc(),
+      );
+      expect(
+        earlierWindowStart(EarlierRange.today, utcNow),
+        DateTime.utc(2026, 10, 19, 23),
+      );
+      expect(
+        earlierWindowStart(EarlierRange.lastTwoDays, utcNow),
+        DateTime(2026, 10, 19).toUtc(),
+      );
+      expect(
+        earlierWindowStart(EarlierRange.lastTwoDays, utcNow),
+        DateTime.utc(2026, 10, 18, 23),
+      );
     }, skip: _londonOnly);
 
     test('clocks go back (2026-10-25, a 25-hour day)', () {

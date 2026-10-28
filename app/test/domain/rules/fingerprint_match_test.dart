@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/clip_date.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
@@ -12,6 +13,8 @@ import '../../support/fake_media_bridge.dart';
 
 void main() {
   final now = DateTime.utc(2026, 10, 28, 12);
+  const primary = 'external_primary';
+  const sd = '1a2b-3c4d';
   const takenMs = 1780000000000;
   final taken = DateTime.fromMillisecondsSinceEpoch(takenMs, isUtc: true);
 
@@ -32,7 +35,7 @@ void main() {
     int id,
     ClipFingerprint fingerprint, {
     int oldId = 1,
-    String volume = 'external_primary',
+    String volume = primary,
   }) => Clip(
     id: id,
     source: ClipSource.mediaStore,
@@ -120,6 +123,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(), oldId: 5)],
         [fakeVideo(id: 77, name: 'VID_1.mp4'), fakeVideo(id: 78, sizeBytes: 9)],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, {10: 77});
@@ -130,6 +134,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(name: 'old.mp4'))],
         [fakeVideo(id: 77, name: 'new.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, {10: 77});
@@ -140,6 +145,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(name: 'b.mp4'))],
         [fakeVideo(id: 77, name: 'a.mp4'), fakeVideo(id: 78, name: 'b.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, {10: 78});
@@ -150,6 +156,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(name: 'b.mp4'))],
         [fakeVideo(id: 77, name: 'b.mp4'), fakeVideo(id: 78, name: 'b.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -160,6 +167,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(name: 'c.mp4'))],
         [fakeVideo(id: 77, name: 'a.mp4'), fakeVideo(id: 78, name: 'b.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -174,6 +182,7 @@ void main() {
           fakeVideo(id: 78, name: 'b.mp4'),
           fakeVideo(id: 79, name: 'b.mp4'),
         ],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -184,6 +193,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(), oldId: 3), clip(11, fp(), oldId: 4)],
         [fakeVideo(id: 77, name: 'VID_1.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -194,6 +204,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(name: 'b.mp4')), clip(11, fp(name: 'b.mp4'))],
         [fakeVideo(id: 77, name: 'a.mp4'), fakeVideo(id: 78, name: 'b.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -213,6 +224,7 @@ void main() {
           fakeVideo(id: 78, name: 'p.mp4'),
           fakeVideo(id: 79, name: 'q.mp4'),
         ],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, {10: 77});
@@ -225,6 +237,7 @@ void main() {
         matchAfterRebuild(
           [clip(10, fp())],
           [fakeVideo(id: 77, name: 'VID_1.mp4', pending: true)],
+          volumeName: primary,
           now: now,
         ).lost,
         {10},
@@ -233,6 +246,7 @@ void main() {
         matchAfterRebuild(
           [clip(10, fp(durationMs: 0))],
           [fakeVideo(id: 77, name: 'VID_1.mp4', durationMs: 0)],
+          volumeName: primary,
           now: now,
         ).lost,
         {10},
@@ -245,6 +259,7 @@ void main() {
           fakeVideo(id: 76, name: 'VID_1.mp4', pending: true),
           fakeVideo(id: 77, name: 'VID_1.mp4'),
         ],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, {10: 77});
@@ -257,6 +272,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(durationMs: 0))],
         [fakeVideo(id: 77, name: 'VID_1.mp4', durationMs: null)],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -267,41 +283,75 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp(sizeBytes: 1))],
         [fakeVideo(id: 77)],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
       expect(result.lost, {10});
     });
 
-    test('a video on another volume is never a candidate', () {
+    test('a row on another volume is never a candidate', () {
       final result = matchAfterRebuild(
-        // The clip is on external_primary.
         [clip(10, fp())],
-        [fakeVideo(id: 77, volume: '1a2b-3c4d', name: 'VID_1.mp4')],
+        [fakeVideo(id: 77, volume: sd, name: 'VID_1.mp4')],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
       expect(result.lost, {10});
     });
 
-    test('the same id on two volumes is two different videos', () {
+    test('the same id on another volume does not make a match ambiguous', () {
       final result = matchAfterRebuild(
+        [clip(10, fp())],
         [
-          clip(10, fp()), // on external_primary
-          clip(11, fp(), volume: '1a2b-3c4d'),
+          fakeVideo(id: 77, volume: sd, name: 'VID_1.mp4'),
+          fakeVideo(id: 77, name: 'VID_1.mp4'),
         ],
-        [
-          fakeVideo(id: 77, name: 'VID_1.mp4'), // on external_primary
-          fakeVideo(id: 77, volume: '1a2b-3c4d', name: 'VID_1.mp4'),
-        ],
+        volumeName: primary,
         now: now,
       );
-      expect(result.remap, {10: 77, 11: 77});
+      expect(result.remap, {10: 77});
       expect(result.lost, isEmpty);
     });
 
+    test('a clip from another volume throws', () {
+      // A silent "lost" would mark a good clip on another volume missing.
+      expect(
+        () => matchAfterRebuild(
+          [clip(10, fp()), clip(11, fp(), volume: sd)],
+          [fakeVideo(id: 77, name: 'VID_1.mp4')],
+          volumeName: primary,
+          now: now,
+        ),
+        throwsArgumentError,
+      );
+      // A picked clip has no volume at all.
+      final picked = clip(12, fp()).copyWith(
+        source: ClipSource.picker,
+        volumeName: null,
+        mediaStoreId: null,
+        pickerUri: 'content://picked/12',
+      );
+      expect(picked.volumeName, isNull);
+      expect(
+        () => matchAfterRebuild(
+          [picked],
+          const [],
+          volumeName: primary,
+          now: now,
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('an empty stored list gives an empty result', () {
-      final result = matchAfterRebuild(const [], [fakeVideo(id: 77)], now: now);
+      final result = matchAfterRebuild(
+        const [],
+        [fakeVideo(id: 77)],
+        volumeName: primary,
+        now: now,
+      );
       expect(result.remap, isEmpty);
       expect(result.lost, isEmpty);
     });
@@ -310,6 +360,7 @@ void main() {
       final result = matchAfterRebuild(
         [clip(10, fp()), clip(11, fp(sizeBytes: 3))],
         const [],
+        volumeName: primary,
         now: now,
       );
       expect(result.remap, isEmpty);
@@ -317,15 +368,15 @@ void main() {
     });
 
     test('every stored clip is in exactly one set', () {
-      const volumes = ['external_primary', '1a2b-3c4d'];
       const names = ['a.mp4', 'b.mp4', 'c.mp4'];
       final rng = Random(20261028);
       var remapped = 0;
       var lost = 0;
 
       for (var round = 0; round < 200; round++) {
-        // A small pool of values, so that equal fingerprints, equal names
-        // and shared ids happen often.
+        // A small pool of values, so that equal fingerprints and equal names
+        // happen often. Every row has its own id; some rows are on the SD
+        // card and must be ignored.
         int size() => 1 + rng.nextInt(2);
         int? duration() => [null, 0, 1000, 2000][rng.nextInt(4)];
         int date() => takenMs + rng.nextInt(2);
@@ -335,8 +386,8 @@ void main() {
         final current = [
           for (var i = 0; i < videoCount; i++)
             fakeVideo(
-              id: 100 + rng.nextInt(6),
-              volume: volumes[rng.nextInt(2)],
+              id: 100 + i,
+              volume: rng.nextInt(4) == 0 ? sd : primary,
               sizeBytes: size(),
               durationMs: duration(),
               dateTakenMs: date(),
@@ -354,11 +405,15 @@ void main() {
                 date: DateTime.fromMillisecondsSinceEpoch(date(), isUtc: true),
                 name: names[rng.nextInt(3)],
               ),
-              volume: volumes[rng.nextInt(2)],
             ),
         ];
 
-        final result = matchAfterRebuild(stored, current, now: now);
+        final result = matchAfterRebuild(
+          stored,
+          current,
+          volumeName: primary,
+          now: now,
+        );
         final ids = {for (final c in stored) c.id};
         final reason = 'round $round';
 
@@ -373,21 +428,61 @@ void main() {
           reason: reason,
         );
 
-        final given = <(String?, int)>{};
-        for (final c in stored) {
-          final newId = result.remap[c.id];
-          if (newId == null) continue;
-          // No video is given to two clips.
-          expect(given.add((c.volumeName, newId)), isTrue, reason: reason);
-          // The video is usable, on the clip's volume, and the same video.
-          final matches = current.where(
-            (v) =>
-                v.mediaStoreId == newId &&
-                v.volumeName == c.volumeName &&
+        // An independent oracle: a clip's candidates, and the ones of them
+        // that keep its name.
+        List<MediaVideo> candidatesOf(Clip c) => [
+          for (final v in current)
+            if (v.volumeName == primary &&
                 isUsable(v) &&
-                sameVideo(c.fingerprint, v, now: now),
-          );
-          expect(matches, isNotEmpty, reason: reason);
+                sameVideo(c.fingerprint, v, now: now))
+              v,
+        ];
+        List<MediaVideo> namedOf(Clip c) => [
+          for (final v in candidatesOf(c))
+            if (v.displayName == c.fingerprint.displayName) v,
+        ];
+        int? pickOf(Clip c) {
+          final all = candidatesOf(c);
+          if (all.length == 1) return all.single.mediaStoreId;
+          final named = namedOf(c);
+          if (all.length > 1 && named.length == 1) {
+            return named.single.mediaStoreId;
+          }
+          return null;
+        }
+
+        final claims = <int, int>{};
+        for (final c in stored) {
+          final pick = pickOf(c);
+          if (pick != null) claims[pick] = (claims[pick] ?? 0) + 1;
+        }
+
+        final given = <int>{};
+        for (final c in stored) {
+          final all = candidatesOf(c);
+          final named = namedOf(c);
+          final newId = result.remap[c.id];
+          if (newId != null) {
+            // No row is given to two clips.
+            expect(given.add(newId), isTrue, reason: reason);
+            // It was the clip's only candidate, or its only one by name.
+            final sole = all.length == 1 && all.single.mediaStoreId == newId;
+            final soleByName =
+                all.length > 1 &&
+                named.length == 1 &&
+                named.single.mediaStoreId == newId;
+            expect(sole || soleByName, isTrue, reason: reason);
+            expect(claims[newId], 1, reason: reason);
+          } else {
+            // Lost only when ambiguous, without a candidate, or when its one
+            // pick was claimed by another clip too.
+            final pick = pickOf(c);
+            expect(
+              pick == null || claims[pick]! >= 2,
+              isTrue,
+              reason: '$reason: clip ${c.id} lost without a reason',
+            );
+          }
         }
         remapped += result.remap.length;
         lost += result.lost.length;

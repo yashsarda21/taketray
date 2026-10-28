@@ -144,4 +144,137 @@ void main() {
       expect(advanceBaseline(from: 10, captured: 10, seen: const []), 10);
     });
   });
+
+  group('truncated scans and paging', () {
+    // Rows written in one transaction share a generation, so ids and
+    // generations are given separately.
+    MediaVideo at(int id, int generation, {bool pending = false}) =>
+        fakeVideo(id: id, generation: generation, pending: pending);
+
+    test(
+      'a page cut inside a shared generation keeps the baseline below it',
+      () {
+        // Generation 12 has rows 4, 5 and 6; the limit of 4 cut after row 4.
+        final page = [at(1, 11), at(2, 11), at(3, 11), at(4, 12)];
+        expect(
+          advanceBaseline(from: 10, captured: 30, seen: page, truncated: true),
+          11,
+        );
+        // Not truncated, the same rows move the baseline as before.
+        expect(advanceBaseline(from: 10, captured: 30, seen: page), 30);
+      },
+    );
+
+    test(
+      'a page all in one generation stalls the cursor and holds below it',
+      () {
+        final page = [at(1, 12), at(2, 12), at(3, 12)];
+        expect(nextPageCursor(cursor: 10, page: page), isNull);
+        expect(nextPageCursor(cursor: 11, page: page), isNull);
+        expect(
+          advanceBaseline(from: 10, captured: 30, seen: page, truncated: true),
+          11,
+        );
+      },
+    );
+
+    test(
+      'a stuck pending row holds the baseline while the cursor moves on',
+      () {
+        // A recording pending at 11, then more rows than the limit (5).
+        final first = [
+          at(1, 11, pending: true),
+          at(2, 12),
+          at(3, 13),
+          at(4, 14),
+          at(5, 15),
+        ];
+        expect(
+          advanceBaseline(from: 10, captured: 40, seen: first, truncated: true),
+          10,
+        );
+        expect(nextPageCursor(cursor: 10, page: first), 14);
+
+        final second = [at(5, 15), at(6, 16), at(7, 17)];
+        expect(nextPageCursor(cursor: 14, page: second), 16);
+        // The whole scan, both pages, still holds before the pending row.
+        expect(
+          advanceBaseline(from: 10, captured: 40, seen: [...first, ...second]),
+          10,
+        );
+      },
+    );
+
+    test('truncated with a pending row still holds before the pending row', () {
+      // A pending row is never above the page's highest generation, so the
+      // pending hold is always the lower of the two.
+      final page = [at(1, 11), at(2, 12), at(3, 14, pending: true), at(4, 15)];
+      expect(
+        advanceBaseline(from: 10, captured: 30, seen: page, truncated: true),
+        13,
+      );
+      // The pending row is earlier.
+      final early = [at(1, 11, pending: true), at(2, 12), at(3, 15)];
+      expect(
+        advanceBaseline(from: 10, captured: 30, seen: early, truncated: true),
+        10,
+      );
+    });
+
+    test('truncated with no rows → from', () {
+      expect(
+        advanceBaseline(
+          from: 10,
+          captured: 30,
+          seen: const [],
+          truncated: true,
+        ),
+        10,
+      );
+    });
+
+    test('truncated never goes below from', () {
+      expect(
+        advanceBaseline(
+          from: 10,
+          captured: 30,
+          seen: [at(1, 8), at(2, 9)],
+          truncated: true,
+        ),
+        10,
+      );
+      // A page whose highest generation is from + 1 holds at from.
+      expect(
+        advanceBaseline(
+          from: 10,
+          captured: 30,
+          seen: [at(1, 11)],
+          truncated: true,
+        ),
+        10,
+      );
+    });
+
+    test('nextPageCursor moves to one below the highest generation', () {
+      expect(
+        nextPageCursor(cursor: 10, page: [at(1, 11), at(2, 13), at(3, 12)]),
+        12,
+      );
+      // One generation above the cursor: a page of rows at cursor + 1 only
+      // stalls.
+      expect(nextPageCursor(cursor: 10, page: [at(1, 11)]), isNull);
+      expect(nextPageCursor(cursor: 10, page: [at(1, 11), at(2, 12)]), 11);
+    });
+
+    test('nextPageCursor never stays at or goes below the cursor', () {
+      // Rows at or below the cursor should not come back from the query; if
+      // they do, the cursor must not stay put or move back.
+      expect(nextPageCursor(cursor: 12, page: [at(1, 11), at(2, 13)]), isNull);
+      expect(nextPageCursor(cursor: 20, page: [at(1, 11), at(2, 13)]), isNull);
+    });
+
+    test('nextPageCursor of an empty page is null', () {
+      expect(nextPageCursor(cursor: 10, page: const []), isNull);
+    });
+  });
 }
