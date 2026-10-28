@@ -58,6 +58,7 @@ dev_dependencies:
   freezed: ^4.0.1
   json_serializable: ^6.15.2
   patrol: ^4.10.0
+  pigeon: 29.0.11
   riverpod_generator: ^4.0.9
   very_good_analysis: ^11.0.0
 

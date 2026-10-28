@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Fails when committed generated files are stale (D-53).
 #
-# For every member whose pubspec.yaml has build_runner in dev_dependencies
-# (or only the members named as arguments), it hashes the generated files,
-# deletes the *.g.dart / *.freezed.dart ones, regenerates everything, hashes
-# again and reports every file that changed, appeared or disappeared. It
+# For every member whose pubspec.yaml has build_runner or pigeon in
+# dev_dependencies (or only the members named as arguments), it hashes the
+# generated files, deletes the *.g.dart / *.freezed.dart / *.g.kt ones,
+# regenerates everything (Pigeon for each pigeons/*.dart, then build_runner),
+# hashes again and reports every file that changed, appeared or disappeared. It
 # compares hashes, not `git status`, so a dirty working tree does not cause a
 # false failure; it checks the working tree, not what is committed. Run
 # `tool/flutter pub get` first (tool/check does).
@@ -14,12 +15,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 root="$(pwd)"
 
-# True when the pubspec lists build_runner under dev_dependencies (not under
+# True when the pubspec $1 lists package $2 under dev_dependencies (not under
 # dependencies or dependency_overrides).
-has_dev_build_runner() {
-  awk '
+has_dev_dependency() {
+  awk -v pkg="$2" '
     /^[^ \t#]/ { in_dev = ($0 ~ /^dev_dependencies:/) }
-    in_dev && /^  build_runner:/ { found = 1 }
+    in_dev && index($0, "  " pkg ":") == 1 { found = 1 }
     END { exit found ? 0 : 1 }
   ' "$1"
 }
@@ -29,7 +30,8 @@ if [ "$#" -gt 0 ]; then
 else
   members=()
   while IFS= read -r pubspec; do
-    if has_dev_build_runner "$pubspec"; then
+    if has_dev_dependency "$pubspec" build_runner ||
+      has_dev_dependency "$pubspec" pigeon; then
       m="$(dirname "$pubspec")"
       members+=("${m#./}")
     fi
@@ -38,24 +40,25 @@ else
 fi
 
 if [ "${#members[@]}" -eq 0 ]; then
-  echo "no member with build_runner in dev_dependencies found" >&2
+  echo "no member with build_runner or pigeon in dev_dependencies found" >&2
   exit 1
 fi
 
 # Prints "<path><TAB><sha1>" for every generated file of member $1, with paths
 # relative to the repo root, sorted. Generated files are *.g.dart and
-# *.freezed.dart under lib/ and test/, everything under drift_schemas/ and
-# everything under test/drift/ (drift_dev make-migrations writes its schema
-# helpers there). Absent folders are skipped.
+# *.freezed.dart under lib/ and test/, *.g.kt under android/app/src/ (Pigeon's
+# Kotlin output), everything under drift_schemas/ and everything under
+# test/drift/ (drift_dev make-migrations writes its schema helpers there).
+# Absent folders are skipped.
 hash_generated() {
   local m="$1" d f sum
   local dirs=()
-  for d in lib test drift_schemas; do
+  for d in lib test drift_schemas android/app/src; do
     [ -d "$m/$d" ] && dirs+=("$m/$d")
   done
   [ "${#dirs[@]}" -eq 0 ] && return 0
   find "${dirs[@]}" -type f \( \
-    -name '*.g.dart' -o -name '*.freezed.dart' \
+    -name '*.g.dart' -o -name '*.freezed.dart' -o -name '*.g.kt' \
     -o -path "$m/drift_schemas/*" -o -path "$m/test/drift/*" \) -print0 |
     sort -z |
     while IFS= read -r -d '' f; do
@@ -64,11 +67,12 @@ hash_generated() {
     done
 }
 
-# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/ of member
-# $1, so the generators must write every one of them again. A file they no
-# longer produce (an orphan) is then gone from the "after" hashes and reported
-# as stale; build_runner alone would leave it if its build cache is cold.
-# drift_schemas/ and test/drift/ are kept: old schema dumps cannot be rebuilt.
+# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/, and the
+# *.g.kt files under android/app/src/, of member $1, so the generators must
+# write every one of them again. A file they no longer produce (an orphan) is
+# then gone from the "after" hashes and reported as stale; build_runner alone
+# would leave it if its build cache is cold. drift_schemas/ and test/drift/ are
+# kept: old schema dumps cannot be rebuilt.
 delete_generated_code() {
   local m="$1" d
   for d in lib test; do
@@ -76,6 +80,9 @@ delete_generated_code() {
     find "$m/$d" -type f \( -name '*.g.dart' -o -name '*.freezed.dart' \) \
       -not -path "$m/test/drift/*" -delete
   done
+  [ -d "$m/android/app/src" ] &&
+    find "$m/android/app/src" -type f -name '*.g.kt' -delete
+  return 0
 }
 
 work="$(mktemp -d)"
@@ -91,7 +98,28 @@ for m in "${members[@]}"; do
   hash_generated "$m" >"$work/before"
   delete_generated_code "$m"
 
-  (cd "$m" && "$root/tool/dart" run build_runner build)
+  # Pigeon first: build_runner then sees the files Pigeon wrote (a .dart file
+  # in lib/ may import them).
+  if has_dev_dependency "$m/pubspec.yaml" pigeon; then
+    for pigeon_input in "$m"/pigeons/*.dart; do
+      [ -f "$pigeon_input" ] || continue
+      (cd "$m" && "$root/tool/dart" run pigeon --input "pigeons/$(basename "$pigeon_input")")
+    done
+    # Pigeon does not format its Dart output, but tool/check's format step
+    # does: format it here, so the committed file can be both formatted and
+    # fresh. Only Pigeon's files exist in lib/ and test/ at this point (the
+    # others were deleted above and build_runner has not run yet).
+    pigeon_dart=()
+    while IFS= read -r -d '' f; do
+      pigeon_dart+=("$f")
+    done < <(find "$m/lib" "$m/test" -type f -name '*.g.dart' -print0 2>/dev/null)
+    if [ "${#pigeon_dart[@]}" -gt 0 ]; then
+      "$root/tool/dart" format "${pigeon_dart[@]}"
+    fi
+  fi
+  if has_dev_dependency "$m/pubspec.yaml" build_runner; then
+    (cd "$m" && "$root/tool/dart" run build_runner build)
+  fi
   if [ -f "$m/build.yaml" ] && grep -q 'databases:' "$m/build.yaml"; then
     (cd "$m" && "$root/tool/dart" run drift_dev make-migrations)
   fi
