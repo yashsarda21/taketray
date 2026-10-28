@@ -6,12 +6,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 3
 
-- The media bridge supplies the `NOT NULL` clip fields with a fallback (R4g, D-57): when MediaStore has no `DATE_TAKEN`, use `DATE_ADDED`, then `DATE_MODIFIED`; an unknown width or height is `0`. The repository stores what it is given; the rule is written only in the doc comments of `NewClip` and `ClipFingerprint`.
-
-- The media bridge treats a MediaStore `DATE_TAKEN` before 1970 or more than a day in the future as missing and uses the R4g fallback (`DATE_ADDED`, then `DATE_MODIFIED`), because container metadata holds garbage (QuickTime epochs, wrong units). The backup round-trips any date a `DateTime` can hold (years such as `+010001` or `-0001` included), but a clip dated 1904 or the year 10001 would sort to the far end of To tag and of its reels.
-
-- After a backup import, Shooting mode is off and its MediaStore baselines are gone (D-59). The scan must treat a missing baseline as "start from now", never as "everything is new".
-
 - Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
 
 ## Phase 4

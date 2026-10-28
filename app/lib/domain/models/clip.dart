@@ -41,9 +41,11 @@ abstract class Clip with _$Clip {
 /// identity their source needs.
 ///
 /// [width], [height] and the fingerprint's `dateTakenUtc` are required, and
-/// the repository stores them as given (D-57). Phase 3's bridge supplies the
-/// date from DATE_ADDED, then DATE_MODIFIED, when MediaStore has no date
-/// taken, and `0` for a width or height MediaStore does not know.
+/// the repository stores them as given (D-57). A detected clip is built by
+/// `newClipFrom` (`domain/rules/media_clip.dart`): the date is `shotAt`
+/// (`domain/rules/clip_date.dart`, D-69), the first plausible one of
+/// DATE_TAKEN, DATE_ADDED and DATE_MODIFIED, and a width or height MediaStore
+/// does not know is `0`.
 ///
 /// The main constructor asserts that the identity fields match [source] (the
 /// same rule the database enforces with `CHECK`s, D-54), so a half-empty

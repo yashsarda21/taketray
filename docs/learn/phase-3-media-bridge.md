@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 4 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 5 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -503,7 +503,107 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
 ## 5. The media rules
 
-_Written in Task 5._
+**What we built:** the small, pure functions that decide which video is which. They answer five questions: *when* was this video shot, which rows can become clips, where should the next scan of a volume start, has a stored clip's video come back under a new number, and does a video fall inside "today", "the last 2 days" or "the last 7 days". None of them talks to Android or the database; each takes plain values and returns a plain answer, so all of them run in fast tests on a laptop.
+
+**Why TakeTray needs it:** these rules carry the phase's two big risks. If a rule moves too far, a video the creator just shot never reaches To tag. If a rule guesses, a clip in a reel quietly points at somebody else's video, the worst bug TakeTray can have (spec §4). The scanner, the verifier and the screens (Sections 6 to 9) only *call* these rules; the judgment lives here, in one place, with a test for every edge.
+
+**Key ideas:**
+
+- **The life of a new video: generations, a pending row, a baseline.** MediaStore keeps a counter per volume, the *generation*. Every change to the library takes the next number, and each row remembers the number it was added with (`generationAdded`). When Shooting mode is switched on, TakeTray writes down each volume's current generation: that is the volume's *baseline*. "New videos" then simply means "rows added after the baseline". Here is one take, on the phone's own storage:
+
+  1. 10:00, Shooting mode on. The volume is at generation 40 (version `v1`), so the baseline is `(v1, 40)`.
+  2. 10:05, the creator presses record. The camera app inserts its row straight away, as id 501 with `generationAdded` 41, marked *pending* (`IS_PENDING`: "still being written"), with no duration yet.
+  3. 10:06, TakeTray comes to the front and scans. The plan for the volume is `ScanAfter(40)`. It reads the volume's generation first (41, the `captured` value), then asks for rows added after 40, and gets row 501, still pending. A pending row is not *usable*, so no clip is made. And the baseline does **not** move to 41:
+
+     ```dart
+     if (pending.isNotEmpty) {
+       return max(from, pending.reduce(min) - 1);
+     }
+     ```
+
+     `advanceBaseline(from: 40, captured: 41, seen: [row 501])` gives `max(40, 41 - 1)`, which is 40.
+  4. 10:07, recording stops. The camera clears the pending flag. The row's `generationAdded` stays 41: it records when the row was *inserted*, and finishing the file does not change it.
+  5. 10:10, the next scan asks again for rows after 40. Row 501 comes back, finished, 63 seconds long, so it becomes a clip in To tag. Now the baseline moves to the highest of the captured generation and the rows seen.
+
+  Had the baseline moved to 41 at 10:06, the question "added after 41?" would never return row 501 again, and that take would be lost for good. That is Review Focus 2, and the test `holds before the oldest pending row` guards it.
+
+- **A plan per volume, decided in a fixed order.** Before a scan, each volume gets one of four plans. The order matters, because the first check that applies wins:
+
+  ```dart
+  if (!current.isMounted) return const SkipVolume();
+  if (baseline == null) return const StartFromNow();
+  if (current.version != baseline.version) return const Resync();
+  if (current.generation < baseline.generation) return const Resync();
+  return ScanAfter(baseline.generation);
+  ```
+
+  A removed SD card has no version at all. If that were read as "the version changed", TakeTray would start matching its clips again, find none, and mark them all missing while the card is only in a drawer. So "not mounted" is checked first. A volume with no baseline (after a backup import, or a card first seen during a session) *starts from now*: nothing already on it counts as new, rather than the whole library pouring into To tag. The version is a meaningless string that only says "same" or "changed", so it is compared for equality and nothing else. `VolumePlan` is a *sealed* class: the four plans are its only subclasses, so a `switch` over a plan is checked by the compiler to handle every one.
+
+- **When was it shot? The first plausible date.** A video file's own date (DATE_TAKEN) often holds rubbish: 1904 (the start of QuickTime's calendar), a value in the wrong units, a camera clock years ahead. So `shotAt` tries three dates in order and takes the first *plausible* one, meaning not before 1970 and not more than one day after now:
+
+  ```dart
+  final taken = v.dateTakenMs;
+  if (taken != null && taken >= 0 && taken <= latestMs) {
+    return DateTime.fromMillisecondsSinceEpoch(taken, isUtc: true);
+  }
+  for (final seconds in [v.dateAddedSec, v.dateModifiedSec]) {
+    if (seconds != null && seconds >= 0 && seconds <= latestSec) {
+      return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
+    }
+  }
+  return nowUtc;
+  ```
+
+  DATE_TAKEN is in milliseconds; DATE_ADDED (when the file reached the library) and DATE_MODIFIED are in seconds. If all three are bad, the answer is "now". The day of slack allows a clock that is a few hours ahead. One subtle line: the seconds are compared *before* they are multiplied by 1000. A large enough garbage value multiplied by 1000 overflows the 64-bit integer and wraps around, and one such value (18446745853709552) lands exactly on a date in May 2026, which would look perfectly plausible. A test checks that this value is refused.
+
+- **"The same video" without an id.** Usually a clip is found by its volume and MediaStore id. But sometimes Android rebuilds its media library (after a restore, or a database reset), and every video gets a new id. Then TakeTray recognises its clips by their *fingerprint*:
+
+  ```dart
+  bool sameVideo(ClipFingerprint f, MediaVideo v, {required DateTime now}) =>
+      v.sizeBytes > 0 &&
+      f.sizeBytes == v.sizeBytes &&
+      f.durationMs == (v.durationMs ?? 0) &&
+      f.dateTakenUtc.isAtSameMomentAs(shotAt(v, now: now));
+  ```
+
+  Size, duration and shooting date, and **not** the file name, because a gallery app can rename a file without changing the video. A size of 0 means Android did not know it, so it never counts as a match. `isAtSameMomentAs` compares the instant itself; Dart's `==` on two `DateTime`s also compares whether each is marked UTC, which is not what "same date" means here.
+
+- **When unsure, the clip is missing.** A fingerprint is not an identity: two takes of the same shot can have the same size, length and date. `matchAfterRebuild` only gives a clip its new id when there is no doubt at all:
+
+  1. its candidates are the usable rows *on the clip's own volume* that are `sameVideo`;
+  2. if there are several, only those with the clip's old file name stay (the name breaks a tie, but never makes a match);
+  3. a clip left with exactly one candidate claims it;
+  4. a row claimed by two clips goes to neither;
+  5. every other clip is *lost*, and the verifier (Section 7) will show it as missing.
+
+  A clip with no candidate, with two equally good ones, or sharing its one candidate with another clip is lost. A missing clip can be fixed by the user; a wrong one silently swaps their take. The candidates must be on the clip's own volume because the answer is only the new *id*: id 77 on the SD card is a different video from id 77 on the phone. A test runs 200 random cases and checks every time that each clip ends up in exactly one of "found" and "lost", and that no row is ever given to two clips.
+
+- **"The last 2 days" means calendar days.** "Add earlier videos" (Section 7) offers today, the last 2 days and the last 7 days. A creator means "yesterday and today", not "the last 48 hours", so the window starts at local midnight:
+
+  ```dart
+  return DateTime(local.year, local.month, local.day - daysBack).toUtc();
+  ```
+
+  Dart's `DateTime(year, month, day)` builds a local date, and a day number of 0 or less rolls back into the previous month (3 January minus 6 days is 28 December). Building the date this way, instead of subtracting `Duration(days: n)`, matters twice a year. On 25 October 2026 the UK's clocks go back and that day lasts 25 hours; on 28 March 2027 they go forward and it lasts 23. Subtracting 24-hour days from midnight on the 26th lands at 01:00 on the 25th, not at midnight. Those cases only show in a time zone that changes its clocks, so `tool/check` runs `earlier_window_test.dart` a second time with `TZ=Europe/London` and `--run-skipped`, so the London cases cannot skip there (step 9b of "Local checks" in `docs/flow.md`).
+
+**Where it lives:** `app/lib/domain/rules/clip_date.dart` (`shotAt`), `media_clip.dart` (`newClipFrom`, `isUsable`), `baseline.dart` (`VolumePlan`, `planVolume`, `advanceBaseline`), `fingerprint_match.dart` (`sameVideo`, `RebuildMatch`, `matchAfterRebuild`), `earlier_window.dart` (`EarlierRange`, `earlierWindowStart`, `shotInWindow`); the tests beside them in `app/test/domain/rules/`; the London step (`daylight-saving tests`, with `DST_TESTS`) in `tool/check`.
+
+**Try it yourself:** see why the London run exists. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/domain/rules/earlier_window_test.dart)
+(cd app && TZ=Europe/London ../tool/flutter test --run-skipped test/domain/rules/earlier_window_test.dart)
+```
+
+Unless your computer is set to UK time, the first ends with `+11 ~3: All tests passed!`: the three London cases were skipped (`~3`). The second ends with `+14: All tests passed!`. Now, in `app/lib/domain/rules/earlier_window.dart`, replace the `return` line of `earlierWindowStart` with
+
+```dart
+  return DateTime(local.year, local.month, local.day).subtract(Duration(days: daysBack)).toUtc();
+```
+
+and run both commands again. In a zone without daylight saving (India, or UTC as on GitHub's machines) the first still passes: the bug is invisible there. The second fails, for example `clocks go back (2026-10-25, a 25-hour day) [E]` with `Expected: DateTime:<2026-10-24 23:00:00.000Z>` and `Actual: DateTime:<2026-10-25 00:00:00.000Z>`: the window would start an hour late, at 01:00 on the 25th. Put the file back with `git checkout -- app/lib/domain/rules/earlier_window.dart`.
+
+**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-70 (the plan per volume and the pending hold).
 
 ---
 

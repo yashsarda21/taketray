@@ -31,6 +31,12 @@ COVERAGE_IMPORTS_FILE="app/test/_coverage_imports_test.dart"
 # Folders that the style rules (docs/flow.md, D-19) apply to.
 STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
 
+# Test files with daylight-saving cases that only hold in Europe/London (they
+# skip themselves in any other zone). Paths are relative to $DST_MEMBER. The
+# step "daylight-saving tests" runs them again in that zone (D-69).
+DST_MEMBER=app
+DST_TESTS=(test/domain/rules/earlier_window_test.dart)
+
 cd "$(dirname "$0")/.."
 root="$(pwd)"
 
@@ -154,6 +160,13 @@ for d in "${STYLE_DIRS[@]}"; do
   fi
 done
 
+for t in "${DST_TESTS[@]}"; do
+  if [ ! -f "$DST_MEMBER/$t" ]; then
+    echo "FAIL: daylight-saving test $DST_MEMBER/$t is listed in tool/check but does not exist" >&2
+    exit 1
+  fi
+done
+
 step "SDK version"
 version_output="$(tool/flutter --version 2>&1)"
 if ! grep -qF "Flutter ${EXPECTED_FLUTTER} " <<<"$version_output"; then
@@ -225,6 +238,12 @@ for m in "${flutter_present[@]}"; do
     (cd "$m" && "$root/tool/flutter" test)
   fi
 done
+
+step "daylight-saving tests (TZ=Europe/London)"
+# The London-only cases skip in the run above unless the machine is in
+# London. Here they run in that zone, and --run-skipped means they can never
+# skip: if TZ did not take effect, they fail instead of passing silently.
+(cd "$DST_MEMBER" && TZ=Europe/London "$root/tool/flutter" test --run-skipped "${DST_TESTS[@]}")
 
 step "android unit tests"
 # The Kotlin media bridge, with Robolectric on the JVM (D-67). Needs a JDK and
