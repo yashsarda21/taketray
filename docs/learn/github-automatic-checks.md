@@ -62,7 +62,7 @@ Step by step, in plain words:
 9. **Run `tool/check`.** This is the same script you run on the Mac: workspace and SDK checks, `pub get`, generated files fresh, design tokens fresh, format, analyse every package, style rules, every test in every package, the Android unit tests (`tool/test_android`), and the coverage gate. `CI=true` is set, which makes the screenshot tests use GitHub's own Linux pictures (see below).
 10. **Upload failures (only on red).** If a screenshot test failed, the "what I expected / what I got / the difference" images are saved as an **artifact**, a zip file you can download from the run page.
 
-A full run takes about **6 to 10 minutes**. The first run of the day can take longer while caches fill.
+A full run takes about **10 to 12 minutes** (it was 6 to 7 before the Android unit tests joined in phase 3; they add about 3 to 4.5 minutes). The first run after a cache is rebuilt can take longer while caches fill.
 
 ### Two small rules in `check.yml`
 
@@ -149,7 +149,7 @@ The lessons:
 
 ## What it costs
 
-The repository is **private**. GitHub's free plan includes **2,000 minutes a month** of Linux runs for private repositories. One check run is about 6–10 minutes, so that's roughly 200–300 pushes a month, plenty for TakeTray. You can see the usage under *GitHub → Settings → Billing*.
+The repository is **private**. GitHub's free plan includes **2,000 minutes a month** of Linux runs for private repositories. One check run is about 10–12 minutes, so that's roughly 170–200 pushes a month, plenty for TakeTray. You can see the usage under *GitHub → Settings → Billing*.
 
 ---
 
