@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 (API 30): the same rule as data_extraction_rules.xml, in the
+     older format. Nothing of TakeTray's is backed up (D-64). drift_flutter
+     keeps taketray.sqlite under app_flutter/, which is the "file" domain,
+     together with its -wal and -shm files. Its clip rows hold MediaStore ids,
+     and on another phone those ids point at other videos. Moving to a new
+     phone is Export / Import only. -->
+<full-backup-content>
+    <exclude domain="root" path="." />
+    <exclude domain="file" path="." />
+    <exclude domain="database" path="." />
+    <exclude domain="sharedpref" path="." />
+    <exclude domain="external" path="." />
+</full-backup-content>

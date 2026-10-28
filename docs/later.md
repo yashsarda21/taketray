@@ -18,8 +18,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
 
-- **Owner decision: Android Auto Backup.** The manifest sets no `allowBackup`, so Android may back up `taketray.sqlite` to the owner's Google account and restore it on a new phone, where MediaStore ids point at other videos. Options: exclude the database with `dataExtractionRules` (export/import stays the only backup), or keep it and rely on the version-change fingerprint resync. Explain both plainly and let the owner choose.
-
 - `TtBanner`: assert that `onTap` and an action are not both set, since the action would nest a button.
 - Banner and callout icons are always filled. Match each banner's prototype icon.
 
