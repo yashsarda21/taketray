@@ -606,7 +606,11 @@ interface MediaHostApi {
   fun accessReport(): AccessReportMsg
   suspend fun requestAccess(): AccessReportMsg
   fun openAppSettings()
-  fun volumes(): List<VolumeMsg>
+  /**
+   * Async because it reads MediaStore (binder calls): Kotlin answers off
+   * the main thread.
+   */
+  suspend fun volumes(): List<VolumeMsg>
   /**
    * GENERATION_ADDED > afterGeneration, IS_PENDING rows included, rows in
    * one of [folders] (exact folder, case-insensitive), ordered by
@@ -624,7 +628,11 @@ interface MediaHostApi {
    */
   suspend fun videosShotSince(volumeName: String, folders: List<String>, sinceMs: Long): List<VideoRowMsg>
   suspend fun videoFolders(): List<VideoFolderMsg>
-  /** JPEG bytes, or null when the video is gone or unreadable. */
+  /**
+   * JPEG bytes, or null when the video is gone or unreadable. [widthPx] and
+   * [heightPx] must be above 0 (otherwise the call fails) and each is capped
+   * at 4096; the picture's longer side is at most max(widthPx, heightPx).
+   */
   suspend fun thumbnail(volumeName: String, mediaStoreId: Long, widthPx: Long, heightPx: Long): ByteArray?
   fun currentZoneId(): String
   fun pendingZoneChanges(): List<ZoneChangeMsg>
@@ -692,12 +700,14 @@ interface MediaHostApi {
         val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.volumes$separatedMessageChannelSuffix", codec)
         if (api != null) {
           channel.setMessageHandler { _, reply ->
-            val wrapped: List<Any?> = try {
-              listOf(api.volumes())
-            } catch (exception: Throwable) {
-              MediaApiPigeonUtils.wrapError(exception)
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.volumes())
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
             }
-            reply.reply(wrapped)
           }
         } else {
           channel.setMessageHandler(null)

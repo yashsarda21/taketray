@@ -47,22 +47,29 @@ object MediaAccessChecker {
         }
 
     /**
-     * After a request: Android will show its dialog again only when it would
-     * show a rationale for the first permission. Full access needs no asking.
+     * Whether TakeTray stops asking after a request (D-68, Ruling F). Android
+     * gives no rationale both before the first ask and after the final "Don't
+     * allow"; it does give one between the first and the second denial. So a
+     * request ends blocked only when access is not full, there is no
+     * rationale now, and there was one before the request (the second denial)
+     * or the last request had already ended blocked (a dismissal while
+     * blocked). A first dismissal (no rationale before or after) stays askable.
      */
-    fun canAskAgainAfterRequest(
+    fun blockedAfterRequest(
         level: MediaAccessLevelMsg,
-        rationale: Boolean,
-    ): Boolean = level == MediaAccessLevelMsg.FULL || rationale
+        rationaleBefore: Boolean,
+        rationaleAfter: Boolean,
+        wasBlocked: Boolean,
+    ): Boolean = level != MediaAccessLevelMsg.FULL && !rationaleAfter && (rationaleBefore || wasBlocked)
 
     /**
-     * In a report without a request. "No rationale" means both "never asked"
-     * and "asked and blocked", so [blocked] (the remembered result of the last
-     * request, false before any) tells them apart.
+     * Whether Dart may show the dialog: always with full access, always with
+     * limited access (Android shows the picker again for partial access,
+     * Ruling G), when Android would show a rationale, or when not [blocked].
      */
-    fun canAskAgainNow(
+    fun canAskAgain(
         level: MediaAccessLevelMsg,
         rationale: Boolean,
         blocked: Boolean,
-    ): Boolean = level == MediaAccessLevelMsg.FULL || rationale || !blocked
+    ): Boolean = level == MediaAccessLevelMsg.FULL || level == MediaAccessLevelMsg.LIMITED || rationale || !blocked
 }

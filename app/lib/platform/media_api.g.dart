@@ -596,6 +596,8 @@ class MediaHostApi {
     );
   }
 
+  /// Async because it reads MediaStore (binder calls): Kotlin answers off
+  /// the main thread.
   Future<List<VolumeMsg>> volumes() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.taketray.MediaHostApi.volumes$pigeonVar_messageChannelSuffix';
@@ -738,7 +740,9 @@ class MediaHostApi {
     return (pigeonVar_replyValue! as List<Object?>).cast<VideoFolderMsg>();
   }
 
-  /// JPEG bytes, or null when the video is gone or unreadable.
+  /// JPEG bytes, or null when the video is gone or unreadable. [widthPx] and
+  /// [heightPx] must be above 0 (otherwise the call fails) and each is capped
+  /// at 4096; the picture's longer side is at most max(widthPx, heightPx).
   Future<Uint8List?> thumbnail(
     String volumeName,
     int mediaStoreId,

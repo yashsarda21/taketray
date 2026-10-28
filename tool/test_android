@@ -3,6 +3,7 @@
 # the Kotlin media bridge in app/android/app/src/test/ (D-67). Part of
 # tool/check and CI. Extra arguments go to Gradle, for example
 #   tool/test_android --tests 'app.taketray.media.VideoQueriesTest'
+#   tool/test_android -ProbolectricSdks=35   (one SDK level, for quick runs)
 # Steps are documented in docs/flow.md ("Android unit tests").
 set -euo pipefail
 

@@ -116,6 +116,9 @@ abstract class MediaHostApi {
 
   void openAppSettings();
 
+  /// Async because it reads MediaStore (binder calls): Kotlin answers off
+  /// the main thread.
+  @async
   List<VolumeMsg> volumes();
 
   /// GENERATION_ADDED > afterGeneration, IS_PENDING rows included, rows in
@@ -150,7 +153,9 @@ abstract class MediaHostApi {
   @async
   List<VideoFolderMsg> videoFolders();
 
-  /// JPEG bytes, or null when the video is gone or unreadable.
+  /// JPEG bytes, or null when the video is gone or unreadable. [widthPx] and
+  /// [heightPx] must be above 0 (otherwise the call fails) and each is capped
+  /// at 4096; the picture's longer side is at most max(widthPx, heightPx).
   @async
   Uint8List? thumbnail(
     String volumeName,

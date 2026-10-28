@@ -1,9 +1,13 @@
 package app.taketray.media
 
 import android.app.Activity
+import android.content.ContentResolver
 import android.content.Context
+import android.database.MatrixCursor
+import android.graphics.Point
 import android.os.Build
 import android.provider.MediaStore
+import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
 import java.io.FileNotFoundException
 import java.util.TimeZone
@@ -133,40 +137,117 @@ class MediaHostApiImplTest {
         assertEquals("no-activity", requestError()?.code)
     }
 
+    private val firstPermission get() = MediaAccessChecker.permissionsToRequest(sdk).first()
+
+    private fun rationale(show: Boolean) =
+        shadowOf(activity.packageManager).setShouldShowRequestPermissionRationale(firstPermission, show)
+
+    /**
+     * One permission request: [before] is Android's rationale when it is
+     * asked, [after] the rationale when the answer comes; [grant] gives full
+     * access in the dialog.
+     */
+    private suspend fun CoroutineScope.request(
+        before: Boolean,
+        after: Boolean,
+        grant: Boolean = false,
+    ): AccessReportMsg {
+        rationale(before)
+        val pending = async(start = CoroutineStart.UNDISPATCHED) { impl.requestAccess() }
+        rationale(after)
+        if (grant) shadowOf(activity.application).grantPermissions(fullPermission)
+        assertTrue(impl.onPermissionResult(code))
+        return pending.await()
+    }
+
+    /** Two denials: the second takes the rationale from true to false. */
+    private suspend fun CoroutineScope.getBlocked() {
+        assertTrue(request(before = false, after = true).canAskAgain)
+        assertFalse(request(before = true, after = false).canAskAgain)
+    }
+
     @Test
-    fun `a denial without a rationale is remembered as cannot ask again`() =
+    fun `before any request a denied report can ask`() {
+        assertEquals(AccessReportMsg(MediaAccessLevelMsg.DENIED, true, sdk.toLong()), impl.accessReport())
+    }
+
+    @Test
+    fun `request - a first dismissal stays askable`() =
         timed {
-            assertEquals(AccessReportMsg(MediaAccessLevelMsg.DENIED, true, sdk.toLong()), impl.accessReport())
-
-            val first = async(start = CoroutineStart.UNDISPATCHED) { impl.requestAccess() }
-            shadowOf(activity.packageManager).setShouldShowRequestPermissionRationale(
-                MediaAccessChecker.permissionsToRequest(sdk).first(),
-                false,
-            )
-            impl.onPermissionResult(code)
-            assertFalse(first.await().canAskAgain)
-            assertFalse(impl.accessReport().canAskAgain)
-            // A fresh impl (the app restarted) still remembers it.
-            assertFalse(MediaHostApiImpl(activity, noVolumes).accessReport().canAskAgain)
-
-            // Android shows its dialog again (a rationale), or access became full.
-            shadowOf(activity.packageManager).setShouldShowRequestPermissionRationale(
-                MediaAccessChecker.permissionsToRequest(sdk).first(),
-                true,
-            )
+            assertTrue(request(before = false, after = false).canAskAgain)
             assertTrue(impl.accessReport().canAskAgain)
         }
 
     @Test
-    fun `a denial with a rationale can ask again`() =
+    fun `request - a first explicit denial stays askable`() =
         timed {
-            val first = async(start = CoroutineStart.UNDISPATCHED) { impl.requestAccess() }
-            shadowOf(activity.packageManager).setShouldShowRequestPermissionRationale(
-                MediaAccessChecker.permissionsToRequest(sdk).first(),
-                true,
-            )
-            impl.onPermissionResult(code)
-            assertTrue(first.await().canAskAgain)
+            assertTrue(request(before = false, after = true).canAskAgain)
+            assertTrue(impl.accessReport().canAskAgain)
+        }
+
+    @Test
+    fun `request - a second denial with the rationale going from true to false is blocked`() =
+        timed {
+            getBlocked()
+            assertFalse(impl.accessReport().canAskAgain)
+            // A fresh impl (the app restarted) still remembers it.
+            assertFalse(MediaHostApiImpl(activity, noVolumes).accessReport().canAskAgain)
+        }
+
+    @Test
+    fun `request - a dismissal while blocked stays blocked`() =
+        timed {
+            getBlocked()
+            assertFalse(request(before = false, after = false).canAskAgain)
+            assertFalse(impl.accessReport().canAskAgain)
+        }
+
+    @Test
+    fun `request - a grant clears the flag`() =
+        timed {
+            getBlocked()
+            assertEquals(AccessReportMsg(MediaAccessLevelMsg.FULL, true, sdk.toLong()), request(false, false, grant = true))
+            // Revoked later, with no rationale (Android's auto-reset): askable.
+            shadowOf(activity.application).denyPermissions(fullPermission)
+            rationale(false)
+            assertTrue(impl.accessReport().canAskAgain)
+        }
+
+    @Test
+    fun `accessReport clears a stale block when access is full`() =
+        timed {
+            getBlocked()
+            // Granted in Settings, without a request.
+            shadowOf(activity.application).grantPermissions(fullPermission)
+            assertEquals(MediaAccessLevelMsg.FULL, impl.accessReport().level)
+            shadowOf(activity.application).denyPermissions(fullPermission)
+            rationale(false)
+            assertTrue(impl.accessReport().canAskAgain)
+        }
+
+    @Test
+    @Config(sdk = [34, 35])
+    fun `limited access can always ask again`() =
+        timed {
+            getBlocked()
+            shadowOf(activity.application).grantPermissions(MediaAccessChecker.READ_MEDIA_VISUAL_USER_SELECTED)
+            assertEquals(AccessReportMsg(MediaAccessLevelMsg.LIMITED, true, sdk.toLong()), impl.accessReport())
+            assertEquals(AccessReportMsg(MediaAccessLevelMsg.LIMITED, true, sdk.toLong()), request(true, false))
+        }
+
+    @Test
+    fun `a failing permission request reaches Dart without its message and frees the slot`() =
+        timed {
+            impl =
+                MediaHostApiImpl(activity, noVolumes) { _, _, _ ->
+                    throw IllegalStateException("content://media/external/video/media/1 /storage/emulated/0/x.mp4")
+                }
+            repeat(2) {
+                val error = requestError()
+                assertEquals("native-error", error?.code)
+                assertEquals("requestAccess failed: IllegalStateException", error?.message)
+                assertFalse(error.toString().contains("content://"))
+            }
         }
 
     @Test
@@ -219,6 +300,165 @@ class MediaHostApiImplTest {
         }
 
     @Test
+    fun `a thumbnail size of 0 or less is an error`() =
+        timed {
+            FakeMediaProvider.install()
+            for ((w, h) in listOf(0L to 96L, 96L to 0L, -5L to 96L)) {
+                try {
+                    impl.thumbnail("external_primary", 1, w, h)
+                    fail("expected an error for $w x $h")
+                } catch (e: FlutterError) {
+                    assertEquals("native-error", e.code)
+                }
+            }
+            assertTrue(FakeMediaProvider.opens.isEmpty())
+        }
+
+    @Test
+    fun `a thumbnail request is capped at 4096 pixels a side`() =
+        timed {
+            FakeMediaProvider.install(FileNotFoundException("gone"))
+            assertNull(impl.thumbnail("external_primary", 1, 10_000, 5_000))
+            @Suppress("DEPRECATION")
+            val size = FakeMediaProvider.opens.single().getParcelable<Point>(ContentResolver.EXTRA_SIZE)
+            assertEquals(Point(4096, 4096), size)
+        }
+
+    /** A cursor in [VideoQueries.PROJECTION] order; each row maps column to value, missing columns null. */
+    private fun cursorOf(rows: List<Map<String, Any?>>): MatrixCursor =
+        MatrixCursor(VideoQueries.PROJECTION).apply {
+            for (r in rows) addRow(VideoQueries.PROJECTION.map { r[it] }.toTypedArray())
+        }
+
+    private fun videoRow(
+        id: Long,
+        path: String? = "DCIM/Camera/",
+        pending: Long = 0,
+    ) = mapOf(
+        MediaColumns._ID to id,
+        MediaColumns.GENERATION_ADDED to id,
+        MediaColumns.SIZE to 1000L,
+        MediaColumns.RELATIVE_PATH to path,
+        MediaColumns.IS_PENDING to pending,
+    )
+
+    private fun FakeMediaProvider.Query.selectionArgs() =
+        args!!.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS)!!.toList()
+
+    @Test
+    fun `videosByIds drops duplicate ids and asks in chunks of 500, rows concatenated`() =
+        timed {
+            FakeMediaProvider.install(answer = { q -> cursorOf(q.selectionArgs().map { videoRow(it.toLong()) }) })
+            val ids = (1L..1201L).toList() + listOf(7L, 600L, 1201L)
+            val rows = impl.videosByIds("external_primary", ids)
+
+            val queries = FakeMediaProvider.queries
+            assertEquals(listOf(500, 500, 201), queries.map { it.selectionArgs().size })
+            val chunks = listOf((1L..500L).toList(), (501L..1000L).toList(), (1001L..1201L).toList())
+            for ((q, chunk) in queries.zip(chunks)) {
+                assertEquals(MediaStore.Video.Media.getContentUri("external_primary"), q.uri)
+                assertEquals(VideoQueries.PROJECTION.toList(), q.projection)
+                assertEquals(VideoQueries.idsSelection(chunk).first, q.args!!.getString(ContentResolver.QUERY_ARG_SQL_SELECTION))
+                assertEquals(chunk.map { it.toString() }, q.selectionArgs())
+                assertEquals(MediaStore.MATCH_INCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+            }
+            assertEquals((1L..1201L).toList(), rows.map { it.mediaStoreId })
+            assertTrue(rows.all { it.volumeName == "external_primary" })
+        }
+
+    @Test
+    fun `videosAddedAfter asks the volume's video table, pending included, with the limit`() =
+        timed {
+            FakeMediaProvider.install(answer = { cursorOf(listOf(videoRow(42), videoRow(43, pending = 1))) })
+            val rows = impl.videosAddedAfter("abcd-1234", 41, listOf("DCIM/Camera"), 25)
+
+            val q = FakeMediaProvider.queries.single()
+            assertEquals(MediaStore.Video.Media.getContentUri("abcd-1234"), q.uri)
+            assertEquals(VideoQueries.PROJECTION.toList(), q.projection)
+            val expected = VideoQueries.addedAfterSelection(41, listOf("DCIM/Camera"))
+            assertEquals(expected.first, q.args!!.getString(ContentResolver.QUERY_ARG_SQL_SELECTION))
+            assertEquals(expected.second.toList(), q.selectionArgs())
+            assertEquals(MediaStore.MATCH_INCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+            assertEquals(MediaStore.MATCH_EXCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED))
+            assertEquals(25, q.args!!.getInt(ContentResolver.QUERY_ARG_LIMIT))
+            assertEquals(listOf(42L, 43L), rows.map { it.mediaStoreId })
+            assertEquals(listOf(false, true), rows.map { it.isPending })
+            assertTrue(rows.all { it.volumeName == "abcd-1234" })
+        }
+
+    @Test
+    fun `videoFolders counts per path on every volume, a null path as empty, sorted`() =
+        timed {
+            val twoVolumes =
+                object : Volumes {
+                    override fun names() = setOf("external_primary", "abcd-1234")
+
+                    override fun version(volume: String): String? = "v"
+
+                    override fun generation(volume: String) = 1L
+                }
+            impl = MediaHostApiImpl(activity, twoVolumes)
+            val primary = MediaStore.Video.Media.getContentUri("external_primary")
+            FakeMediaProvider.install(answer = { q ->
+                val paths =
+                    if (q.uri == primary) listOf("Movies/", "DCIM/Camera/", "DCIM/Camera/") else listOf("DCIM/", null)
+                MatrixCursor(arrayOf(MediaColumns.RELATIVE_PATH)).apply { paths.forEach { addRow(arrayOf<Any?>(it)) } }
+            })
+            assertEquals(
+                listOf(
+                    VideoFolderMsg("abcd-1234", "", 1),
+                    VideoFolderMsg("abcd-1234", "DCIM/", 1),
+                    VideoFolderMsg("external_primary", "DCIM/Camera/", 2),
+                    VideoFolderMsg("external_primary", "Movies/", 1),
+                ),
+                impl.videoFolders(),
+            )
+            val queries = FakeMediaProvider.queries
+            assertEquals(
+                listOf(MediaStore.Video.Media.getContentUri("abcd-1234"), primary),
+                queries.map { it.uri },
+            )
+            for (q in queries) {
+                assertEquals(listOf(MediaColumns.RELATIVE_PATH), q.projection)
+                assertEquals(MediaStore.MATCH_EXCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+            }
+        }
+
+    @Test
+    fun `a query on an unknown or unmounted volume is an error, never an empty answer`() =
+        timed {
+            FakeMediaProvider.install(answer = {
+                throw IllegalArgumentException("Volume external_gone not found: content://media/external_gone/video/media")
+            })
+            impl =
+                MediaHostApiImpl(
+                    activity,
+                    object : Volumes {
+                        override fun names() = setOf("external_gone")
+
+                        override fun version(volume: String): String? = null
+
+                        override fun generation(volume: String) = 0L
+                    },
+                )
+            for (call in listOf<suspend () -> Unit>(
+                { impl.videosByIds("external_gone", listOf(1, 2)) },
+                { impl.videosAddedAfter("external_gone", 0, listOf("DCIM/Camera/"), 10) },
+                { impl.allVideos("external_gone") },
+                { impl.videosShotSince("external_gone", listOf("DCIM/Camera/"), 0) },
+                { impl.videoFolders() },
+            )) {
+                try {
+                    call()
+                    fail("expected an error")
+                } catch (e: FlutterError) {
+                    assertEquals("native-error", e.code)
+                    assertFalse(e.toString().contains("content://"))
+                }
+            }
+        }
+
+    @Test
     fun `a query that gets no cursor is an error, never an empty answer`() =
         timed {
             // An empty list from videosByIds would mean "every clip is gone".
@@ -241,11 +481,13 @@ class MediaHostApiImplTest {
     @Test
     fun `no ids, no folders to ask about, or a limit of 0 give no rows without a query`() =
         timed {
+            FakeMediaProvider.install()
             assertEquals(emptyList<VideoRowMsg>(), impl.videosByIds("external_primary", emptyList()))
             assertEquals(emptyList<VideoRowMsg>(), impl.videosAddedAfter("external_primary", 0, listOf("A/"), 0))
             assertEquals(emptyList<VideoRowMsg>(), impl.videosAddedAfter("external_primary", 0, listOf("A/"), -1))
             assertEquals(emptyList<VideoRowMsg>(), impl.videosAddedAfter("external_primary", 0, emptyList(), 10))
             assertEquals(emptyList<VideoRowMsg>(), impl.videosShotSince("external_primary", emptyList(), 0))
+            assertTrue(FakeMediaProvider.queries.isEmpty())
         }
 
     @Test
@@ -266,7 +508,8 @@ class MediaHostApiImplTest {
     }
 
     @Test
-    fun `volumes come from the injected volume source`() {
-        assertEquals(emptyList<VolumeMsg>(), impl.volumes())
-    }
+    fun `volumes come from the injected volume source`() =
+        timed {
+            assertEquals(emptyList<VolumeMsg>(), impl.volumes())
+        }
 }

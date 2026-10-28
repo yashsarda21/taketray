@@ -26,9 +26,11 @@ import kotlinx.coroutines.withContext
  * and reports them. It decides nothing about which video is which.
  *
  * Threading: Pigeon runs every handler on the main thread; the `suspend`
- * (@async) ones that read MediaStore switch to Dispatchers.IO and Pigeon
- * replies on the main thread when they return. [requestAccess] stays on the
- * main thread, where Android delivers the permission result.
+ * (@async) ones that read MediaStore (volumes, the row queries, folders,
+ * thumbnails) switch to Dispatchers.IO and Pigeon replies on the main thread
+ * when they return. [requestAccess] stays on the main thread, where Android
+ * delivers the permission result; the quick synchronous ones (permission
+ * state, zone list, intents) run on the main thread.
  *
  * Errors: an unexpected exception reaches Dart as FlutterError
  * "native-error" with the method and the exception's class name only, never
@@ -37,6 +39,9 @@ import kotlinx.coroutines.withContext
 class MediaHostApiImpl(
     activity: Activity,
     private val volumeSource: Volumes = MediaStoreVolumes(activity.applicationContext),
+    private val askPermissions: (Activity, Array<String>, Int) -> Unit = { host, permissions, code ->
+        host.requestPermissions(permissions, code)
+    },
 ) : MediaHostApi {
     private val context: Context = activity.applicationContext
     private val resolver: ContentResolver = context.contentResolver
@@ -56,8 +61,9 @@ class MediaHostApiImpl(
     override fun accessReport(): AccessReportMsg =
         guarded("accessReport") {
             val level = currentLevel()
-            val canAskAgain =
-                MediaAccessChecker.canAskAgainNow(level, rationale(), blocked = prefs.getBoolean(KEY_BLOCKED, false))
+            // Full access (granted in Settings, say) ends any earlier block.
+            if (level == MediaAccessLevelMsg.FULL && blocked()) setBlocked(false)
+            val canAskAgain = MediaAccessChecker.canAskAgain(level, rationale(), blocked())
             AccessReportMsg(level, canAskAgain, sdkInt.toLong())
         }
 
@@ -69,18 +75,23 @@ class MediaHostApiImpl(
     override suspend fun requestAccess(): AccessReportMsg {
         val host = activity ?: throw FlutterError("no-activity", "requestAccess needs the activity")
         if (pendingRequest != null) throw FlutterError("busy", "a permission request is already showing")
+        val rationaleBefore = guarded("requestAccess") { rationale() }
         val request = CompletableDeferred<Unit>()
         pendingRequest = request
         try {
-            host.requestPermissions(MediaAccessChecker.permissionsToRequest(sdkInt), PERMISSION_REQUEST_CODE)
+            guarded("requestAccess") {
+                askPermissions(host, MediaAccessChecker.permissionsToRequest(sdkInt), PERMISSION_REQUEST_CODE)
+            }
             request.await()
         } finally {
             if (pendingRequest === request) pendingRequest = null
         }
         return guarded("requestAccess") {
             val level = currentLevel()
-            val canAskAgain = MediaAccessChecker.canAskAgainAfterRequest(level, rationale())
-            prefs.edit().putBoolean(KEY_BLOCKED, !canAskAgain).apply()
+            val rationaleAfter = rationale()
+            val blocked = MediaAccessChecker.blockedAfterRequest(level, rationaleBefore, rationaleAfter, blocked())
+            setBlocked(blocked)
+            val canAskAgain = MediaAccessChecker.canAskAgain(level, rationaleAfter, blocked)
             Log.i(LOG_TAG, "access request answered: $level, canAskAgain $canAskAgain")
             AccessReportMsg(level, canAskAgain, sdkInt.toLong())
         }
@@ -116,6 +127,10 @@ class MediaHostApiImpl(
             )
         }
 
+    private fun blocked(): Boolean = prefs.getBoolean(KEY_BLOCKED, false)
+
+    private fun setBlocked(blocked: Boolean) = prefs.edit().putBoolean(KEY_BLOCKED, blocked).apply()
+
     private fun currentLevel(): MediaAccessLevelMsg =
         MediaAccessChecker.level(sdkInt) { context.checkSelfPermission(it) == PackageManager.PERMISSION_GRANTED }
 
@@ -125,7 +140,7 @@ class MediaHostApiImpl(
 
     // ---- Volumes and rows ----
 
-    override fun volumes(): List<VolumeMsg> = guarded("volumes") { readVolumes(volumeSource) }
+    override suspend fun volumes(): List<VolumeMsg> = io("volumes") { readVolumes(volumeSource) }
 
     override suspend fun videosAddedAfter(
         volumeName: String,
@@ -244,7 +259,7 @@ class MediaHostApiImpl(
         /** The request code of the media permission request (16 bits, unlike any plugin's). */
         const val PERMISSION_REQUEST_CODE = 0x7A71
 
-        /** Remembers that the last request ended with "cannot ask again" (see MediaAccessChecker.canAskAgainNow). */
+        /** Remembers that the last request ended blocked (MediaAccessChecker.blockedAfterRequest); cleared by full access. */
         private const val KEY_BLOCKED = "media_request_blocked"
 
         /** No thumbnail is asked bigger than this; a larger request is capped. */

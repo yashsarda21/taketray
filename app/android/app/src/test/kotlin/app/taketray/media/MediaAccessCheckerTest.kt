@@ -86,21 +86,50 @@ class MediaAccessCheckerTest {
         assertArrayEquals(both, MediaAccessChecker.permissionsToRequest(35))
     }
 
+    private val full = MediaAccessLevelMsg.FULL
+    private val limited = MediaAccessLevelMsg.LIMITED
+    private val denied = MediaAccessLevelMsg.DENIED
+
+    private fun blocked(
+        level: MediaAccessLevelMsg,
+        before: Boolean,
+        after: Boolean,
+        wasBlocked: Boolean,
+    ) = MediaAccessChecker.blockedAfterRequest(level, rationaleBefore = before, rationaleAfter = after, wasBlocked = wasBlocked)
+
     @Test
-    fun `canAskAgain after a request is the rationale unless access is full`() {
-        assertTrue(MediaAccessChecker.canAskAgainAfterRequest(MediaAccessLevelMsg.FULL, rationale = false))
-        assertTrue(MediaAccessChecker.canAskAgainAfterRequest(MediaAccessLevelMsg.DENIED, rationale = true))
-        assertFalse(MediaAccessChecker.canAskAgainAfterRequest(MediaAccessLevelMsg.DENIED, rationale = false))
-        assertFalse(MediaAccessChecker.canAskAgainAfterRequest(MediaAccessLevelMsg.LIMITED, rationale = false))
+    fun `a first dismissal stays askable`() {
+        assertFalse(blocked(denied, before = false, after = false, wasBlocked = false))
     }
 
     @Test
-    fun `canAskAgain in a report is false only after a request that left it false`() {
-        // Never asked: Android says "no rationale" both before the first ask and
-        // after a permanent denial, so only the remembered result tells them apart.
-        assertTrue(MediaAccessChecker.canAskAgainNow(MediaAccessLevelMsg.DENIED, rationale = false, blocked = false))
-        assertFalse(MediaAccessChecker.canAskAgainNow(MediaAccessLevelMsg.DENIED, rationale = false, blocked = true))
-        assertTrue(MediaAccessChecker.canAskAgainNow(MediaAccessLevelMsg.DENIED, rationale = true, blocked = true))
-        assertTrue(MediaAccessChecker.canAskAgainNow(MediaAccessLevelMsg.FULL, rationale = false, blocked = true))
+    fun `a first explicit denial stays askable`() {
+        assertFalse(blocked(denied, before = false, after = true, wasBlocked = false))
+    }
+
+    @Test
+    fun `a second denial, rationale true then false, is blocked`() {
+        assertTrue(blocked(denied, before = true, after = false, wasBlocked = false))
+    }
+
+    @Test
+    fun `a dismissal while blocked stays blocked`() {
+        assertTrue(blocked(denied, before = false, after = false, wasBlocked = true))
+    }
+
+    @Test
+    fun `a grant clears the flag`() {
+        assertFalse(blocked(full, before = true, after = false, wasBlocked = true))
+        assertFalse(blocked(full, before = false, after = false, wasBlocked = true))
+    }
+
+    @Test
+    fun `canAskAgain is true when full, limited, with a rationale, or not blocked`() {
+        assertTrue(MediaAccessChecker.canAskAgain(full, rationale = false, blocked = true))
+        // Android shows the picker again for partial access (Ruling G).
+        assertTrue(MediaAccessChecker.canAskAgain(limited, rationale = false, blocked = true))
+        assertTrue(MediaAccessChecker.canAskAgain(denied, rationale = true, blocked = true))
+        assertTrue(MediaAccessChecker.canAskAgain(denied, rationale = false, blocked = false))
+        assertFalse(MediaAccessChecker.canAskAgain(denied, rationale = false, blocked = true))
     }
 }

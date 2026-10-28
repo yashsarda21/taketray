@@ -11,11 +11,20 @@ import android.provider.MediaStore
 import org.robolectric.Robolectric
 
 /**
- * Stands in for Android's media provider in Robolectric tests: every query
- * answers with no cursor (as when the real provider is unavailable), and
- * opening a thumbnail throws [openError].
+ * Stands in for Android's media provider in Robolectric tests. It records
+ * every query (uri, projection, query arguments) in [queries] and answers
+ * with [answer], which by default gives no cursor (as when the real provider
+ * is unavailable). Opening a thumbnail records its options in [opens] and
+ * throws [openError].
  */
 class FakeMediaProvider : ContentProvider() {
+    /** One recorded query. [args] is a copy of the Bundle the resolver passed. */
+    data class Query(
+        val uri: Uri,
+        val projection: List<String>?,
+        val args: Bundle?,
+    )
+
     override fun onCreate() = true
 
     override fun query(
@@ -24,27 +33,34 @@ class FakeMediaProvider : ContentProvider() {
         selection: String?,
         selectionArgs: Array<out String>?,
         sortOrder: String?,
-    ): Cursor? = null
+    ): Cursor? = throw AssertionError("the bridge must query with a Bundle")
 
     override fun query(
         uri: Uri,
         projection: Array<out String>?,
         queryArgs: Bundle?,
         cancellationSignal: CancellationSignal?,
-    ): Cursor? = null
+    ): Cursor? {
+        val q = Query(uri, projection?.toList(), queryArgs?.let { Bundle(it) })
+        queries += q
+        return answer(q)
+    }
 
     override fun openTypedAssetFile(
         uri: Uri,
         mimeTypeFilter: String,
         opts: Bundle?,
         signal: CancellationSignal?,
-    ): AssetFileDescriptor = throw openError
+    ): AssetFileDescriptor {
+        opens += opts?.let { Bundle(it) } ?: Bundle()
+        throw openError
+    }
 
     override fun openTypedAssetFile(
         uri: Uri,
         mimeTypeFilter: String,
         opts: Bundle?,
-    ): AssetFileDescriptor = throw openError
+    ): AssetFileDescriptor = openTypedAssetFile(uri, mimeTypeFilter, opts, null)
 
     override fun getType(uri: Uri): String? = null
 
@@ -70,9 +86,24 @@ class FakeMediaProvider : ContentProvider() {
         /** What opening a thumbnail throws. */
         var openError: Exception = java.io.FileNotFoundException("gone")
 
-        /** Registers a fresh provider for the media authority. */
-        fun install(openError: Exception = java.io.FileNotFoundException("gone")) {
+        /** How a query is answered; may throw. */
+        var answer: (Query) -> Cursor? = { null }
+
+        /** Every query since [install], in order. */
+        val queries = mutableListOf<Query>()
+
+        /** The options of every thumbnail open since [install]. */
+        val opens = mutableListOf<Bundle>()
+
+        /** Registers a fresh provider for the media authority and resets the recordings. */
+        fun install(
+            openError: Exception = java.io.FileNotFoundException("gone"),
+            answer: (Query) -> Cursor? = { null },
+        ) {
             this.openError = openError
+            this.answer = answer
+            queries.clear()
+            opens.clear()
             Robolectric.setupContentProvider(FakeMediaProvider::class.java, MediaStore.AUTHORITY)
         }
     }

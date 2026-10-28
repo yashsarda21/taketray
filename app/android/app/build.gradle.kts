@@ -67,6 +67,12 @@ flutter {
     source = "../.."
 }
 
+// `tool/test_android -ProbolectricSdks=35` runs the Robolectric tests on one
+// SDK level only, for quick iterations (robolectric.properties lists all four).
+tasks.withType<Test>().configureEach {
+    providers.gradleProperty("robolectricSdks").orNull?.let { systemProperty("robolectric.enabledSdks", it) }
+}
+
 // With unitTests.isIncludeAndroidResources, the unit-test package reads the
 // merged assets folder, which Flutter's copyFlutterAssets<Variant> task also
 // writes without declaring it; Gradle 9 refuses that, so order the two.
