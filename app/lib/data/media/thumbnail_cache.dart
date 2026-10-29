@@ -310,8 +310,8 @@ Future<Directory> thumbnailCacheDir(Ref ref) async {
   return Directory('${cache.path}/thumbs');
 }
 
-/// The one [ThumbnailCache] of the app. Task 10 calls `prune()` on it once at
-/// start.
+/// The one [ThumbnailCache] of the app. `MediaLifecycle` calls `prune()` on
+/// it once at start (D-75).
 @Riverpod(keepAlive: true)
 Future<ThumbnailCache> thumbnailCache(Ref ref) async => ThumbnailCache(
   ref.watch(mediaBridgeProvider),

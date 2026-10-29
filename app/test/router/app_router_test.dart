@@ -10,8 +10,10 @@ import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import '../support/vm_harness.dart';
+
 Future<(ProviderContainer, GoRouter)> _pumpApp(WidgetTester tester) async {
-  final container = ProviderContainer();
+  final container = ProviderContainer(overrides: VmHarness().appOverrides);
   addTearDown(container.dispose);
   await tester.pumpWidget(
     UncontrolledProviderScope(container: container, child: const TakeTrayApp()),

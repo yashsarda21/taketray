@@ -54,14 +54,14 @@ final class ThumbnailCacheDirProvider
 
 String _$thumbnailCacheDirHash() => r'706438624165131f8aa1593f8ee61b3cf1c02bca';
 
-/// The one [ThumbnailCache] of the app. Task 10 calls `prune()` on it once at
-/// start.
+/// The one [ThumbnailCache] of the app. `MediaLifecycle` calls `prune()` on
+/// it once at start (D-75).
 
 @ProviderFor(thumbnailCache)
 final thumbnailCacheProvider = ThumbnailCacheProvider._();
 
-/// The one [ThumbnailCache] of the app. Task 10 calls `prune()` on it once at
-/// start.
+/// The one [ThumbnailCache] of the app. `MediaLifecycle` calls `prune()` on
+/// it once at start (D-75).
 
 final class ThumbnailCacheProvider
     extends
@@ -71,8 +71,8 @@ final class ThumbnailCacheProvider
           FutureOr<ThumbnailCache>
         >
     with $FutureModifier<ThumbnailCache>, $FutureProvider<ThumbnailCache> {
-  /// The one [ThumbnailCache] of the app. Task 10 calls `prune()` on it once at
-  /// start.
+  /// The one [ThumbnailCache] of the app. `MediaLifecycle` calls `prune()` on
+  /// it once at start (D-75).
   ThumbnailCacheProvider._()
     : super(
         from: null,

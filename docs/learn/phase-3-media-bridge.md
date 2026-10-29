@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 8 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 9 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -695,7 +695,7 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repos
 - `LibraryResync` holds the one "find the clips again after a rebuild" step, which the scanner and the verifier both use.
 - `ZoneSync.sync()` copies the time zone changes the Android side saw while the app was closed into the zone timeline.
 
-All media jobs share one `MediaWorkQueue`, which runs them one at a time. Nothing calls any of this yet: Task 10 wires the scan and the zone sync to app start, resume and opening To tag.
+All media jobs share one `MediaWorkQueue`, which runs them one at a time. Section 9 wires the scan and the zone sync to app start, resume and opening To tag.
 
 **Why TakeTray needs it:** this is where the two promises of the phase are kept: a video shot while Shooting mode is on always reaches To tag (never skipped forever), and a stored clip is never paired with the wrong video. Every one of the five Review Focus situations ends here: limited access, a video still being recorded, a rebuilt library, three triggers at once, a removed SD card or a deleted video.
 
@@ -781,7 +781,7 @@ One scan, as a sequence (one volume, `ScanAfter`):
 
 ```mermaid
 sequenceDiagram
-    participant C as Caller (Task 10)
+    participant C as Caller (Section 9)
     participant S as MediaScanner
     participant Q as MediaWorkQueue
     participant P as PhoneStateRepository
@@ -876,7 +876,7 @@ and run the same command. It fails with ``Expected: <Instance of 'ScanDone'> wit
 
   The entry is removed when the load ends, successful or not. A failure is therefore *not* remembered: every caller that shared the failed load gets `null`, and the next call tries again.
 
-- **Pruning.** `prune()` adds up the sizes of the `.jpg` files and, while the total is above `maxBytes` (64 MB), deletes the one with the oldest modified time. Exactly 64 MB deletes nothing. It also deletes every `.tmp` file left by a crash and does not count those, except a temp file that is being written right now (the cache remembers its paths), which it never touches. Other files and folders are left alone. Task 10 will call `prune()` once when the app starts; nothing prunes while the app runs. Android may also empty the cache folder by itself: the next `load` creates the folder again.
+- **Pruning.** `prune()` adds up the sizes of the `.jpg` files and, while the total is above `maxBytes` (64 MB), deletes the one with the oldest modified time. Exactly 64 MB deletes nothing. It also deletes every `.tmp` file left by a crash and does not count those, except a temp file that is being written right now (the cache remembers its paths), which it never touches. Other files and folders are left alone. `MediaLifecycle` (Section 9) calls `prune()` once when the app starts; nothing prunes while the app runs. Android may also empty the cache folder by itself: the next `load` creates the folder again.
 
 - **The image provider.** Flutter's `Image` widget asks an `ImageProvider` for its picture. `ClipThumbnailImage` takes a clip, a *logical* size (the size in layout units, like 100) and a `ThumbnailCache`. Phones draw more pixels than layout units: at a device pixel ratio of 3, a 100-unit square is 300 pixels wide. So the provider multiplies:
 
@@ -913,7 +913,133 @@ It ends with `All tests passed!`. The test makes four files of 40 bytes with dif
 
 ## 9. View models and app lifecycle
 
-_Written in Task 9._
+**What we built:** the layer between the data classes of Sections 6 to 8 and the screens that Section 10 builds. Four *view models* (small Riverpod classes that hold what a screen shows and the actions it can take) and one widget that starts the media work when the app opens:
+
+- `MediaAccessController`: does TakeTray have access to the videos, which banner goes with that, and the "Allow" button.
+- `ShootingModeController`: the Shooting mode switch and the camera shortcut.
+- `ToTagController`: the list of clips waiting in To tag, and the scan and check that run when it opens.
+- `EarlierVideosController`: the "Add earlier videos" sheet: the counts, adding a range, and Undo.
+- `MediaLifecycle`: a widget around the whole app that runs the zone sync, the access check and the scan on start and on resume.
+
+There is still no screen. Section 10 only has to show these states and call these methods.
+
+**Why TakeTray needs it:** the earlier sections are all *capabilities*; nothing yet decides *when* they run or what the user sees when they fail. Three of the five Review Focus situations are decided here. With limited or lost access (Focus 1) the banner must say the right thing. With Shooting mode turned off and on quickly, or the app start, a resume and opening To tag all asking for a scan at once (Focus 4), nothing may run twice side by side. And an error from Android or the database must never turn into an uncaught error that ends the app.
+
+**Key ideas:**
+
+- **A view model is a class that holds a screen's state.** Each one is a Riverpod *notifier*: a class whose `build()` gives the first state, and which sets `state` again when something changes. A screen watches the state and calls the methods. The classes use code generation (`@riverpod`), so after changing one you run `tool/dart run build_runner build` in `app/` to refresh its `.g.dart` file (`tool/check_generated` fails when that was forgotten). Two lifetimes are in use. `MediaAccessController` and `ShootingModeController` are `keepAlive: true`: they live for the whole app, so the lifecycle widget and every screen share one state. `ToTagController` and `EarlierVideosController` auto-dispose: they are created when a screen starts watching them and thrown away when it stops, so opening the sheet again counts again.
+
+- **The banner rule, and why "was full" is remembered.** Under the Shooting mode card, TakeTray says nothing, "Manual mode", or "TakeTray can't see your videos". The whole rule is one `switch`:
+
+  ```dart
+  AccessBanner bannerFor(MediaAccessLevel level, {required bool wasFull}) =>
+      switch (level) {
+        MediaAccessLevel.full => AccessBanner.none,
+        MediaAccessLevel.limited => AccessBanner.manual,
+        MediaAccessLevel.denied =>
+          wasFull ? AccessBanner.lost : AccessBanner.manual,
+      };
+  ```
+
+  "Denied" can mean two different things: the user never allowed it (a new install) or Android took the permission away later (months unused, or the user switched it off). The second one deserves the louder message, but Android does not say which it is. So TakeTray remembers: the first time any code sees *full* access, it stores `mediaAccessWasFull` (Section 6). Denied with that flag is `lost`; denied without it is `manual`. Limited is `manual` even when access was full before, because then the user chose to share fewer videos. The flag is stored by every read that sees full access, not only by the Allow button, so if the user grants access in the phone's settings page and comes back, the next resume stores it.
+
+- **`allow()` reads the permission fresh.** The screen may show an hour-old answer. Meanwhile the user could have tapped "Don't allow" twice in a dialog, which makes Android stop showing it. So `allow()` first asks the bridge again:
+
+  ```dart
+  final report = await bridge.accessReport();
+  if (report.level == MediaAccessLevel.full) { /* show it and scan */ return; }
+  if (!report.canAskAgain && report.level != MediaAccessLevel.limited) {
+    await bridge.openAppSettings();
+    ...
+    return;
+  }
+  final result = await bridge.requestAccess();
+  ```
+
+  (Shortened.) Three paths result. Android will still show its dialog (or the level is *limited*, which can always be widened): ask. A full answer stores the flag and starts one scan; a limited or denied answer is only shown. Android will not show the dialog any more: open this app's page in the phone's settings. A second request while the first dialog is still open fails with `busy` (Section 4); that is logged and changes nothing.
+
+- **Turning Shooting mode on.** The switch records *where each volume stands right now*, because Shooting mode means "videos shot from now on" (Section 7). For each mounted volume (one whose `version` is not null) the baseline is its version and generation:
+
+  ```dart
+  return {
+    for (final v in volumes ?? const <MediaVolume>[])
+      if (v.version != null)
+        v.name: VolumeBaseline(version: v.version!, generation: v.generation),
+  };
+  ```
+
+  An unmounted SD card has no version, so it gets no baseline. If the volume list cannot be read at all the baselines are empty, which is safe: the scanner starts a volume that has no baseline from "now" (Section 7). Before that, if access is denied and Android would still ask, the switch asks first, but it turns Shooting mode on *whatever the answer was*: without full access a scan simply does nothing, and the banner explains why. Turning on twice keeps the first session (`turnShootingOn` returns the current state, Section 6). Last, it starts a scan and does not wait for it.
+
+- **Fast taps: a chain.** Tapping the switch on and off quickly starts two calls. If they ran side by side, the second could finish first and the stored state would be the older tap. So `setOn` puts each call at the end of a chain:
+
+  ```dart
+  Future<void> setOn(bool on) {
+    final run = _tail.then((_) => on ? _turnOn() : _turnOff());
+    _tail = run;
+    return run;
+  }
+  ```
+
+  Each call starts when the previous one is done, so the state ends as the last tap asked.
+
+- **Errors are logged by type, never shown as crashes.** A function that starts work and does not wait for it ("fire and forget") has nowhere to send an error: it becomes an *uncaught* error, which in a release build is a problem report at best. So every such call goes through `guarded`:
+
+  ```dart
+  try {
+    return await job();
+  } on Object catch (error) {
+    log.warning('$what failed: ${error.runtimeType}');
+    return null;
+  }
+  ```
+
+  It catches everything (an `Error` too, because `ThumbnailCache.load` can let one through) and logs only `error.runtimeType`, for example `The scan failed: PlatformException`. The message is left out on purpose: an error message from Android or the file system can contain a path or a file name, and the logs must not (D-10, Section 2). Riverpod 3 also retries a provider whose `build` threw, with a growing delay; these view models turn that off (`retry: noRetry`), so a failed count stays failed until the sheet is opened again.
+
+- **To tag shows the database, and checks the phone behind it.** The state of `ToTagController` is `watchInbox(pending)` from Section 6: it updates by itself whenever a scan adds a clip or a verify removes one. When it is first built it also runs, without blocking the list, `scan()` and then `verify()` of the clips that are waiting. The two are independent: if the scan throws, the verify still runs, and the list still shows what is in the database. `onResume()` repeats both. Because the scan and the verifier share the one media queue and the scanner coalesces calls (Section 7), three triggers at once cost one more scan, not three.
+
+- **"Add earlier videos": count, add, Undo.** `EarlierVideosController` reads `countEarlier()` when the sheet opens (it works even with Shooting mode off). `add(range)` calls `addEarlier` and returns the new clips' ids; afterwards it counts again, so the numbers no longer include what was just added. `add` and `undo` *rethrow* their errors (after logging the type), because here the sheet needs to tell the user that it did not work. Undo has a subtle rule. The obvious tool, `removeMissingFromLists`, only removes clips that are flagged *missing*, and the just-added clips are not, so Undo would do nothing and not complain. Instead Undo has its own repository method:
+
+  ```dart
+  await (_db.delete(_db.inbox)..where(
+        (i) =>
+            i.clipId.isIn(clipIds) &
+            i.state.equalsValue(InboxState.pending) &
+            i.clipId.isNotInQuery(inAReel),
+      ))
+      .go();
+  return await _db.deleteOrphanClips();
+  ```
+
+  It deletes the To tag entry only for ids that are still waiting (not skipped) and in no reel, and then the orphan sweep (Section 6) deletes the clip rows left in no place. If between "Add" and "Undo" the user tagged one of the clips into a reel or skipped it, that clip is the user's work now, and it stays. The call goes through the media queue so an Undo cannot run in the middle of a scan.
+
+- **`MediaLifecycle`: the same three steps, in order, one run at a time.** It is a widget that shows its `child` unchanged and listens to the app's lifecycle. On the first frame and every time the app comes back to the front it runs:
+
+  ```dart
+  await guarded(_log, 'The zone sync', () => ref.read(zoneSyncProvider).sync());
+  await guarded(_log, 'The access check', () => ref.read(mediaAccessControllerProvider.notifier).refresh());
+  await guarded(_log, 'The scan', () => ref.read(mediaScannerProvider).scan());
+  ```
+
+  The order has reasons. The zone sync first, because a new clip gets its time zone from the zone timeline (Section 6); the access check before the scan, because a scan without full access does nothing, and the access may have changed in the phone's settings meanwhile. Each step runs even if the one before it failed (every step is guarded). And a *resume while the start is still running* does not start a second run side by side: it sets a flag, and when the current run ends, exactly one more run follows, however many resumes came. The first frame also prunes the thumbnail cache (Section 8) once per process, not on resume.
+
+**Where it lives:** `app/lib/features/media_access/view_models/media_access_controller.dart`, `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `app/lib/features/tagging/view_models/to_tag_controller.dart` and `earlier_videos_controller.dart`, `app/lib/app/media_lifecycle.dart` (wrapped around the router in `app/lib/app.dart`), `app/lib/core/guarded.dart`, and `ClipsRepository.undoEarlierAdd` in `app/lib/data/repositories/clips_repository.dart`, each with a generated `.g.dart`. Tests mirror these paths under `app/test/`. `app/test/support/vm_harness.dart` builds a fresh in-memory database, a `FakeMediaBridge` and a Riverpod container that use them, so a test can store a clip, call a method and look at the bridge's list of calls. The tests of the whole app (`app_test.dart`, `router/app_router_test.dart`) use the same overrides, so the lifecycle never reaches the real platform channels.
+
+**Try it yourself:** see the banner rule. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/features/media_access --plain-name "denied, wasFull=true -> lost")
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/features/media_access/view_models/media_access_controller.dart`, swap the two results in `bannerFor`:
+
+```dart
+      MediaAccessLevel.denied =>
+        wasFull ? AccessBanner.manual : AccessBanner.lost,
+```
+
+Run the same command. It fails with `Expected: AccessBanner:<AccessBanner.lost>` and `Actual: AccessBanner:<AccessBanner.manual>`: a phone that lost its access would show the mild "Manual mode" message, and a new install the alarming one. Put the file back with `git checkout -- app/lib/features/media_access/view_models/media_access_controller.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-75 (the banner rule, the Shooting-on flow, the order and single-run rule of the lifecycle, guarded calls, and Undo), with D-68 (the permission levels and `busy`), D-71 (phone state, compare-and-set), D-72 (the queue and coalescing), D-73 (Add earlier videos) and D-10 (no names or paths in logs) as background.
 
 ---
 

@@ -20,6 +20,7 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 4. `router/app_router.dart › appRouter` (`appRouterProvider`, kept alive): creates the `GoRouter` with `initialLocation: Routes.reels`, the `onException` handler and the `StatefulShellRoute.indexedStack` with branches reels, toTag, settings; disposes the router with the provider.
 5. `router/app_router.dart › onException`: called by go_router for any location no route matches (unknown top-level paths such as `/nope` and unknown paths below a tab root such as `/reels/stale` or `/to-tag/a/b`); logs `Logger('router').warning` without the location and calls `router.go(Routes.reels)`, so go_router's error page never shows.
 6. `features/shell/views/app_shell.dart › AppShell.build`: builds a `Scaffold(extendBody: true)` whose body is the active branch (`navigationShell`) and whose `bottomNavigationBar` is the floating `TtNavPill` (items Reels, To tag, Settings with the `navReels`/`navToTag`/`navSettings` labels; the To tag badge count is a constant 0 until phase 5, and its semantics label is `toTagBadgeSemantics`). The body is wrapped in a `MediaQuery` that gives back the device's plain bottom inset, because `extendBody` otherwise adds the pill's height to it and `TtNavPill.reservedHeight` would count the pill twice (D-50). The branch shows its placeholder screen (`features/{reels,tagging,settings}/views/*_placeholder_screen.dart`): a `Scaffold` with a large `TtAppBar` titled with the localized tab name.
+7. `app/media_lifecycle.dart › MediaLifecycle` wraps the `MaterialApp.router` that step 3 builds, and starts the media work on the first frame (see "App start and resume").
 
 ### Tab navigation
 
@@ -279,7 +280,7 @@ The scanner, the verifier and the zone sync (`lib/data/media/`, the three sectio
 
 ### Finding new clips (`lib/data/media/media_scanner.dart`, D-72)
 
-Nothing triggers it yet; Task 10 calls `ref.read(mediaScannerProvider).scan()` on app start, on resume and when To tag opens. Every media job (scan, Add earlier videos, verify) runs on the one `MediaWorkQueue` (`media_work_queue.dart`, `mediaWorkQueueProvider`, keep-alive): one at a time, in order; a job that throws fails only its own caller.
+Triggered by "App start and resume" (below, D-75): `MediaLifecycle` on the first frame and on resume, `ToTagController` when To tag opens and on resume, the access controller after a grant, and the Shooting mode switch after it turns on. Every media job (scan, Add earlier videos, verify) runs on the one `MediaWorkQueue` (`media_work_queue.dart`, `mediaWorkQueueProvider`, keep-alive): one at a time, in order; a job that throws fails only its own caller.
 
 **Calling `scan()`:**
 
@@ -325,11 +326,11 @@ Nothing calls it yet (Tasks 9 and 10 will, where clips are shown; Phase 10 calls
 
 A failing `accessReport` or `volumes()` throws before anything is written.
 
-**Zone sync** (`lib/data/media/zone_sync.dart › ZoneSync.sync`, `zoneSyncProvider`; Task 10 calls it with the scan): `bridge.pendingZoneChanges()` and `bridge.currentZoneId()`, then `ZoneRepository.recordAll(native entries + (now, current zone))`, then, only if that succeeded and the native list was not empty, `bridge.clearZoneChangesUpTo(the newest native atMs)`. Any failure throws and leaves the native list as it was.
+**Zone sync** (`lib/data/media/zone_sync.dart › ZoneSync.sync`, `zoneSyncProvider`; `MediaLifecycle` calls it before the scan, see "App start and resume"): `bridge.pendingZoneChanges()` and `bridge.currentZoneId()`, then `ZoneRepository.recordAll(native entries + (now, current zone))`, then, only if that succeeded and the native list was not empty, `bridge.clearZoneChangesUpTo(the newest native atMs)`. Any failure throws and leaves the native list as it was.
 
 ### Adding earlier videos (`MediaScanner.countEarlier` / `addEarlier`, D-73)
 
-Nothing calls it yet (Task 9's controller, from the Shooting mode card's link and To tag's menu). Both run on `MediaWorkQueue`, so they wait for a running scan.
+`EarlierVideosController` (`features/tagging/view_models/earlier_videos_controller.dart`, D-75) calls it; the sheet's UI (the Shooting mode card's link and To tag's menu) comes in Task 10. Both run on `MediaWorkQueue`, so they wait for a running scan.
 
 1. `bridge.accessReport()`. Not `full`: `countEarlier` returns 0 for every range, `addEarlier` throws `StateError`. Nothing else is read.
 2. `SettingsRepository.load().watchedFolders`; `start = earlierWindowStart(lastSevenDays, now)`.
@@ -337,11 +338,33 @@ Nothing calls it yet (Task 9's controller, from the Shooting mode card's link an
 4. `countEarlier`: for each range, how many of those have `shotInWindow(v, earlierWindowStart(range, now))`. Writes nothing.
 5. `addEarlier(range)`: those of the range. None → `[]`, nothing written. Otherwise `ZoneRepository.all()` and `bridge.currentZoneId()`, `addCheckedClips` with the same check (new `clips` + `inbox` `pending` rows; a stored clip that is another video is detached), then `PhoneStateRepository.markEarlierAdded()` (only while Shooting mode is on). Returns the inserted clip ids: exactly the ones `countEarlier` counted for that range.
 
+6. **Opening the sheet:** `EarlierVideosController.build` calls `countEarlier()`; it works with Shooting mode off. A failure is logged by type (never the message) and becomes an `AsyncError` state, which is not retried by itself.
+7. **Add:** `EarlierVideosController.add(range)` calls `addEarlier(range)`, then `countEarlier()` again (the counts now leave out the added videos). A failure is logged by type and rethrown, so the sheet can say it did not work; if only the recount fails, the old counts stay.
+8. **Undo:** `EarlierVideosController.undo(ids)` runs `ClipsRepository.undoEarlierAdd(ids.toSet())` on `MediaWorkQueue` (so never beside a scan), then counts again. In one transaction `undoEarlierAdd` deletes the `inbox` row of each id that is still `pending` (not skipped) and in no reel, then runs the orphan sweep (D-56), and returns how many clips went. A clip tagged or skipped since it was added stays; an empty set or a second undo deletes nothing. (`removeMissingFromLists` is not used: it only removes clips flagged missing.)
+
 No baseline is read or written.
+
+### App start and resume (`lib/app/media_lifecycle.dart`, `lib/features/*/view_models/`, D-75)
+
+`MediaLifecycle` is a widget in `TakeTrayApp` above the router. It has an `AppLifecycleListener` and shows its child unchanged.
+
+1. **First frame** (`addPostFrameCallback`): starts the prune (step 5) and a run (steps 2 to 4).
+2. **Run, step 1: zone sync.** `ZoneSync.sync()`.
+3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state.
+4. **Run, step 3: scan.** `MediaScanner.scan()` (see "Finding new clips").
+5. **Prune, once per process:** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
+6. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
+7. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune.
+8. **Runs never overlap.** A start or resume while a run is going sets a flag; when the run ends, exactly one more run follows, however many triggers came. The scanner's own coalescing (D-72) and the media queue stay in force underneath.
+
+**Other places that start media work (all guarded, none waited for by the UI):**
+- `ToTagController.build` (when To tag is opened) and `onResume()`: `scan()`, then `verify` of the clips waiting in To tag (`watchInbox(pending).first`). The two are independent: a failed scan does not skip the verify. The list is the database's own (`watchInbox(pending)`) whatever happens.
+- `MediaAccessController.allow()`: reads a fresh `accessReport()`. Full already → shows it, scans. `canAskAgain` or limited → `requestAccess()`; a full answer stores `mediaAccessWasFull` and scans; limited or denied is only shown. Otherwise `openAppSettings()`. A second request while one waits (`busy`) is logged and changes nothing.
+- `ShootingModeController.setOn(true)`: calls run one after another in the order made, so the last call wins. `askIfDenied()` (a request only if denied and `canAskAgain`); baselines `{volume: VolumeBaseline(version, generation)}` of the mounted volumes (`version != null`) from `bridge.volumes()`, or `{}` if that throws; `turnShootingOn(baselines)` (already on: the first session is kept); then a scan. `setOn(false)` calls `turnShootingOff()` and leaves To tag alone. `openCamera()` returns `bridge.openVideoCamera()`, or false on a failure.
 
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 
-Nothing shows a tile yet (Task 10); `ThumbnailCache.prune()` is not called yet either. Paths are relative to `app/`.
+Nothing shows a tile yet (Task 10); `MediaLifecycle` calls `ThumbnailCache.prune()` once per process ("App start and resume"). Paths are relative to `app/`.
 
 **Showing one tile** (`Image(image: ClipThumbnailImage(clip:, logicalSize:, cache:), errorBuilder: placeholder)`):
 
@@ -354,7 +377,7 @@ Nothing shows a tile yet (Task 10); `ThumbnailCache.prune()` is not called yet e
 7. Write: create the folder if missing, write `<fileName>.tmp`, rename it to `<fileName>`. If that fails with an `Exception`, log by volume and exception type, delete the temp file, and still return the bytes. The entry in `_inFlight` is removed when the load ends, whatever the result.
 8. Back in the provider: bytes are decoded; null bytes or a decode failure make the stream report an error (silent). On a decode failure of non-null bytes the provider first calls `ThumbnailCache.discard(clip, sizePx)` (deletes that key's file; nothing if a load of that key is running), so the next tile asks the bridge again instead of reading the same bad file. In both cases it schedules `ImageCache.evict(key)` so the failed key is not kept. The `Image` shows its `errorBuilder`, the placeholder.
 
-**Pruning** (`ThumbnailCache.prune()`, once at app start from Task 10; never during a session):
+**Pruning** (`ThumbnailCache.prune()`, once at app start from `MediaLifecycle`; never during a session):
 
 1. List the folder (a missing folder: stop). For each file: a `.tmp` that this cache is not writing right now is deleted; a `.jpg` is `stat`ed (one that has vanished since the listing is skipped) and collected with its size and modified time; everything else (other names, sub-folders) is left alone.
 2. Sort the `.jpg` files by modified time, oldest first (ties by path); `total` is their summed size.

@@ -7,15 +7,23 @@ import 'package:taketray/features/settings/views/settings_placeholder_screen.dar
 import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/vm_harness.dart';
+
 Finder _inScreen(Type screen, String text) =>
     find.descendant(of: find.byType(screen), matching: find.text(text));
 
 Finder _inPill(String text) =>
     find.descendant(of: find.byType(TtNavPill), matching: find.text(text));
 
-Future<void> _pumpApp(WidgetTester tester) async {
-  await tester.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+/// The app on an in-memory database and a `FakeMediaBridge`:
+/// `MediaLifecycle` runs at start, and must not reach the phone's channels.
+Future<VmHarness> _pumpApp(WidgetTester tester) async {
+  final harness = VmHarness();
+  await tester.pumpWidget(
+    ProviderScope(overrides: harness.appOverrides, child: const TakeTrayApp()),
+  );
   await tester.pumpAndSettle();
+  return harness;
 }
 
 void main() {
@@ -30,6 +38,22 @@ void main() {
     expect(_inPill('To tag'), findsOneWidget);
     expect(_inPill('Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+  });
+
+  testWidgets('starts the media work through the bridge on the first frame', (
+    tester,
+  ) async {
+    final harness = await _pumpApp(tester);
+    await tester.runAsync(settle);
+
+    expect(
+      harness.bridge.calls,
+      containsAllInOrder([
+        'pendingZoneChanges',
+        'currentZoneId',
+        'accessReport',
+      ]),
+    );
   });
 
   testWidgets('uses the TakeTray theme', (tester) async {

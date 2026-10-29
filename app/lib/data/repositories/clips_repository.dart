@@ -503,6 +503,39 @@ class ClipsRepository {
     return deleted;
   }
 
+  /// Undo for "Add earlier videos" (D-75): takes the just-added clips in
+  /// [clipIds] back out of To tag. In one transaction it deletes the `inbox`
+  /// row of each id that is still waiting in To tag ([InboxState.pending])
+  /// and in no reel, then runs the orphan sweep (D-56). Returns how many
+  /// clips were deleted.
+  ///
+  /// A clip that was tagged into a reel, or skipped, since it was added is
+  /// the user's work now, so it keeps its row, its link and its state. Unknown
+  /// ids are ignored, an empty set writes nothing, and a second undo of the
+  /// same ids deletes nothing. The sweep is global (as in every use of it), so
+  /// a clip that was already in no reel and no list goes too. The video files
+  /// are never touched.
+  ///
+  /// This is only the database step. The caller runs it on the media queue,
+  /// so it cannot interleave with a scan.
+  Future<int> undoEarlierAdd(Set<int> clipIds) async {
+    if (clipIds.isEmpty) return 0;
+    final deleted = await _db.transaction(() async {
+      final inAReel = _db.selectOnly(_db.clipReels)
+        ..addColumns([_db.clipReels.clipId]);
+      await (_db.delete(_db.inbox)..where(
+            (i) =>
+                i.clipId.isIn(clipIds) &
+                i.state.equalsValue(InboxState.pending) &
+                i.clipId.isNotInQuery(inAReel),
+          ))
+          .go();
+      return await _db.deleteOrphanClips();
+    });
+    _log.info('Undid an earlier add: removed $deleted clips');
+    return deleted;
+  }
+
   /// Writes what one verify found, in one transaction (D-72), so a crash
   /// cannot leave a detached clip in To tag:
   ///

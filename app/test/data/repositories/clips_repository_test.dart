@@ -1692,6 +1692,105 @@ void main() {
         expect((await inboxRows()).single.clipId, b);
       });
     });
+
+    group('undoEarlierAdd', () {
+      test(
+        'removes exactly the added ids and keeps older To tag clips',
+        () async {
+          final [older1, older2] = await detect([10, 11]);
+          final [added1, added2] = await detect([20, 21]);
+
+          final removed = await repo.undoEarlierAdd({added1, added2});
+
+          expect(removed, 2);
+          expect(await clipIds(), [older1, older2]);
+          expect((await inboxRows()).map((r) => r.clipId), [older1, older2]);
+        },
+      );
+
+      test(
+        'a clip tagged into a reel in between keeps its row and link',
+        () async {
+          final [added, tagged] = await detect([20, 21]);
+          final goa = (await reels.create('Goa')).id;
+          await repo.tagClip(tagged, {goa});
+
+          final removed = await repo.undoEarlierAdd({added, tagged});
+
+          expect(removed, 1);
+          expect(await clipIds(), [tagged]);
+          expect(await reelIdsOf(tagged), {goa});
+          expect(await inboxRows(), isEmpty);
+        },
+      );
+
+      test('a clip skipped in between survives, still skipped', () async {
+        final [added, skipped] = await detect([20, 21]);
+        await repo.skip([skipped]);
+
+        final removed = await repo.undoEarlierAdd({added, skipped});
+
+        expect(removed, 1);
+        expect(await clipIds(), [skipped]);
+        final row = (await inboxRows()).single;
+        expect(row.clipId, skipped);
+        expect(row.state, InboxState.skipped);
+      });
+
+      test('an empty set returns 0 and changes nothing', () async {
+        await detect([10]);
+        final before = await snapshot();
+
+        expect(await repo.undoEarlierAdd({}), 0);
+
+        expect(await snapshot(), before);
+      });
+
+      test('undoing twice removes nothing the second time', () async {
+        final [keep] = await detect([10]);
+        final [added] = await detect([20]);
+
+        expect(await repo.undoEarlierAdd({added}), 1);
+        expect(await repo.undoEarlierAdd({added}), 0);
+
+        expect(await clipIds(), [keep]);
+      });
+
+      test('unknown ids are ignored', () async {
+        final [keep] = await detect([10]);
+
+        expect(await repo.undoEarlierAdd({9999}), 0);
+
+        expect(await clipIds(), [keep]);
+      });
+
+      test('the orphan sweep runs: an unlisted clip goes too', () async {
+        final [added] = await detect([20]);
+        // A clip in no reel and no list (only a hand-made backup can leave it).
+        final orphan = await db
+            .into(db.clips)
+            .insert(
+              ClipsCompanion.insert(
+                source: ClipSource.mediaStore,
+                mediaStoreId: const Value(50),
+                volumeName: const Value('external_primary'),
+                sizeBytes: 1,
+                durationMs: 1,
+                dateTakenUtc: _t0,
+                displayName: 'x.mp4',
+                width: 1,
+                height: 1,
+                mimeType: 'video/mp4',
+                firstSeenAt: _t0,
+              ),
+            );
+
+        final removed = await repo.undoEarlierAdd({added});
+
+        expect(removed, 2);
+        expect(await clipIds(), isNot(contains(orphan)));
+      });
+    });
   });
 
   group('watching', () {
