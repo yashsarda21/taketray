@@ -339,6 +339,31 @@ Nothing calls it yet (Task 9's controller, from the Shooting mode card's link an
 
 No baseline is read or written.
 
+### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
+
+Nothing shows a tile yet (Task 10); `ThumbnailCache.prune()` is not called yet either. Paths are relative to `app/`.
+
+**Showing one tile** (`Image(image: ClipThumbnailImage(clip:, logicalSize:, cache:), errorBuilder: placeholder)`):
+
+1. `ClipThumbnailImage.obtainKey(configuration)`: `ClipThumbnailKey.of(clip, (logicalSize * (devicePixelRatio ?? 1)).round())`. A clip with no key (picked, detached, no volume, size below 1) makes the future fail with a `StateError`, which is the image error (step 8).
+2. Flutter's image cache looks the key up (volume, number, `sizeBytes`, date taken, pixel size). A hit shows the decoded picture; no disk or bridge is touched.
+3. A miss calls `loadImage`, a `MultiFrameImageStreamCompleter` with `scale: sizePx / logicalSize`, whose codec is `cache.load(clip, key.sizePx)` decoded by Flutter.
+4. `ThumbnailCache.load(clip, sizePx)`: no key (same rule as step 1) gives null. Else `_inFlight[fileName]`: a load of the same key already running is joined; otherwise one starts.
+5. Disk: read `<dir>/<fileName>`. Missing file or folder: miss. 0 bytes: delete it, miss. Otherwise set its modified time to `clock.now()` and return the bytes (no bridge call).
+6. Bridge: `bridge.thumbnail(volume, mediaStoreId, sizePx, sizePx)` (Kotlin: `Thumbnails.load`, "Native bridge" above). Null, empty bytes, a `PlatformException` or any `Exception` give null (logged as `No thumbnail from volume <name>: <code or type>`, nothing written).
+7. Write: create the folder if missing, write `<fileName>.tmp`, rename it to `<fileName>`. If that fails with an `Exception`, log by volume and exception type, delete the temp file, and still return the bytes. The entry in `_inFlight` is removed when the load ends, whatever the result.
+8. Back in the provider: bytes are decoded; null bytes or a decode failure make the stream report an error (silent), and the provider schedules `ImageCache.evict(key)` so the failed key is not kept. The `Image` shows its `errorBuilder`, the placeholder.
+
+**Pruning** (`ThumbnailCache.prune()`, once at app start from Task 10; never during a session):
+
+1. List the folder (a missing folder: stop). For each file: a `.tmp` that this cache is not writing right now is deleted; a `.jpg` is collected with its size and modified time; everything else (other names, sub-folders) is left alone.
+2. Sort the `.jpg` files by modified time, oldest first (ties by path); `total` is their summed size.
+3. For each file in that order: stop when `total <= maxBytes` (64 MB by default), else delete it and subtract its size.
+
+**Providers:** `thumbnailCacheDirProvider` (kept alive): `getApplicationCacheDirectory()` + `/thumbs`. `thumbnailCacheProvider` (kept alive, a `Future<ThumbnailCache>`): `ThumbnailCache(ref.watch(mediaBridgeProvider), <that folder>, clock: ref.watch(clockProvider))`.
+
+**In tests:** `test/data/media/thumbnail_cache_test.dart` uses a real temporary folder and `FakeMediaBridge`; its `renameFile` constructor parameter (`@visibleForTesting`) stands for a kill between the write and the rename. `test/features/clips/widgets/clip_thumbnail_image_test.dart` resolves the provider with a 1x1 PNG at a pixel ratio of 3.
+
 ### Android unit tests (`tool/test_android`)
 
 Run by `tool/check` (step 9c) and so by CI, or by hand: `tool/test_android`, with any extra Gradle arguments (`tool/test_android --tests 'app.taketray.media.VideoQueriesTest'`). See D-67.

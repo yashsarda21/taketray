@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 6 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 8 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -840,7 +840,72 @@ and run the same command. It fails with ``Expected: <Instance of 'ScanDone'> wit
 
 ## 8. Thumbnails
 
-_Written in Task 8._
+**What we built:** a small picture for every clip, without asking the phone every time. `ThumbnailCache` keeps the pictures as files in the app's cache folder and asks Android (through the bridge from Section 3) only when a file is missing. `ClipThumbnailImage` is the piece Flutter's `Image` widget uses to show one. Nothing shows a thumbnail on screen yet; Section 10 does that.
+
+**Why TakeTray needs it:** To tag and the reel screens show a thumbnail for each clip, often a hundred at a time, and the user scrolls fast. Asking Android to cut a picture out of a video is slow, so it is done once per video and the answer is kept. The cache must also never show the *wrong* video. Android can renumber its videos (Review Focus 3 and 5), and a picture kept under "video 42" would then belong to some other video. So the file name carries the facts that identify the video, not just the number.
+
+**Key ideas:**
+
+- **The file name is the identity.** A cached picture is named after the volume, the MediaStore number, the video's size in bytes, the date it was taken (milliseconds) and the picture's size in pixels:
+
+  ```dart
+  return '${volume}_${mediaStoreId}_${sizeBytes}_${dateTakenMs}_$sizePx'
+      '$_picture';
+  ```
+
+  If Android hands number 42 to another video, that video has another size or date, so it gets another name and the old picture is simply never looked up again. (The old file stays until pruning removes it.) The row id of the clip in TakeTray's own database is *not* in the name: two rows for one video would share one picture. The same five facts are what `ClipThumbnailKey` compares in `==`, so Flutter's own image cache cannot mix two videos up either. In the volume name, every character that is not a letter, a digit, `_` or `-` becomes `_`, so a made-up name such as `../x` cannot write outside the folder; the bridge still gets the real name.
+
+- **Some clips have no thumbnail to ask for.** `load` returns `null` straight away, without calling the bridge, for a picked clip, for a *detached* clip (its MediaStore number is 0 or less, Section 6), for a clip without a volume, and for a size below 1 pixel. A size above 4096 counts as 4096, the longest side the Kotlin code accepts.
+
+- **Disk first, then the phone.** On a hit the bytes are returned and the file's modified time is set to now, so the file counts as recently used. A file of 0 bytes is not a picture: it is deleted and the phone is asked. On a miss the bridge is asked for a square of `sizePx` by `sizePx`. If the video is gone, access is refused, the SD card is out (a `PlatformException`), or the answer is empty, the result is `null` and *nothing is written*, so the next call asks again. The log line names the volume and the error code, never a path or a file name (D-10).
+
+- **A file appears whole or not at all.** The bytes are written to `<name>.jpg.tmp` and then renamed to `<name>.jpg`. Renaming is a single step on the phone's file system. If the app is killed in between, there is a `.tmp` file and no `.jpg`, so no half picture is ever read. The rename is the one step a test replaces:
+
+  ```dart
+  await temp.writeAsBytes(bytes, flush: true);
+  await _rename(temp, _fileOf(key).path);
+  ```
+
+  A test passes a `renameFile` that throws an `Error` (which the cache does not catch, like a kill) and checks that no `.jpg` exists afterwards, and that a new cache on the same folder recovers.
+
+- **One bridge call for many askers.** When a list is built, the same tile can ask for the same picture twice within a moment. `load` keeps the running load of each name in a map and hands it to the second caller:
+
+  ```dart
+  return _inFlight[key.fileName] ??= _loadShared(key);
+  ```
+
+  The entry is removed when the load ends, successful or not. A failure is therefore *not* remembered: every caller that shared the failed load gets `null`, and the next call tries again.
+
+- **Pruning.** `prune()` adds up the sizes of the `.jpg` files and, while the total is above `maxBytes` (64 MB), deletes the one with the oldest modified time. Exactly 64 MB deletes nothing. It also deletes every `.tmp` file left by a crash and does not count those, except a temp file that is being written right now (the cache remembers its paths), which it never touches. Other files and folders are left alone. Task 10 will call `prune()` once when the app starts; nothing prunes while the app runs. Android may also empty the cache folder by itself: the next `load` creates the folder again.
+
+- **The image provider.** Flutter's `Image` widget asks an `ImageProvider` for its picture. `ClipThumbnailImage` takes a clip, a *logical* size (the size in layout units, like 100) and a `ThumbnailCache`. Phones draw more pixels than layout units: at a device pixel ratio of 3, a 100-unit square is 300 pixels wide. So the provider multiplies:
+
+  ```dart
+  final dpr = configuration.devicePixelRatio ?? 1.0;
+  final key = ClipThumbnailKey.of(clip, (logicalSize * dpr).round());
+  ```
+
+  and tells Flutter the picture's `scale` is `sizePx / logicalSize`, so the 300-pixel picture fills 100 units. The same clip at ratio 3 and at ratio 2 therefore has different keys (300 and 200 pixels), and so is cached as two pictures.
+
+- **"No picture" is an image error.** When there are no bytes, or they do not decode, the image stream reports an error. `Image`'s `errorBuilder` then shows the tile's placeholder. The error is *silent*: it does not go to the log, so a hundred clips with a gone video do not write a hundred error reports. One more detail matters here: Flutter's image cache keeps a *failed* load under its key and replays the error to every later widget with the same key, which would stop a thumbnail from ever being asked for again. So the provider, on any failure, asks Flutter to forget the key (`ImageCache.evict`). A test (`a failed load is not kept`) fails without that line.
+
+**Where it lives:** `app/lib/data/media/thumbnail_cache.dart` (`ClipThumbnailKey`, `ThumbnailCache`, `thumbnailCacheDirProvider`, `thumbnailCacheProvider`, with the generated `thumbnail_cache.g.dart`) and `app/lib/features/clips/widgets/clip_thumbnail_image.dart` (`ClipThumbnailImage`). Tests: `app/test/data/media/thumbnail_cache_test.dart` (a real temporary folder and `FakeMediaBridge`), `thumbnail_cache_provider_test.dart` (the folder is `getApplicationCacheDirectory()/thumbs`) and `app/test/features/clips/widgets/clip_thumbnail_image_test.dart` (a 1x1 PNG, a pixel ratio of 3, the placeholder). The flow is in `docs/flow.md` ("Thumbnails").
+
+**Try it yourself:** see the rule "oldest first". From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/data/media/thumbnail_cache_test.dart --plain-name "removes oldest first down to the cap")
+```
+
+It ends with `All tests passed!`. The test makes four files of 40 bytes with different modified times, sets the cap to 100 bytes, calls `prune()`, and expects the two newest to stay. Now, in `app/lib/data/media/thumbnail_cache.dart`, swap the two sides of the comparison in `prune`:
+
+```dart
+      final byTime = b.$2.modified.compareTo(a.$2.modified);
+```
+
+(the real line has `a` and `b` the other way round). Run the same command. It fails with `Expected: ['c.jpg', 'd.jpg']` and `Actual: ['a.jpg', 'b.jpg']`: the cache threw away the newest pictures and kept the oldest. Put the file back with `git checkout -- app/lib/data/media/thumbnail_cache.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-74 (the key, the 64 MB cap, temp-and-rename, sharing, pruning at start, and the image provider's error and eviction), with D-10 (no names or paths in logs) and D-72 (the rules that detach a clip) as background.
 
 ---
 
