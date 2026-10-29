@@ -2,9 +2,10 @@
 # Builds the release APK and checks its merged manifest: no forbidden
 # permission (INTERNET and the media permissions TakeTray never asks for),
 # Google backup off (D-64) and exactly the media permissions TakeTray needs
-# (D-68). Slow (full release build), so it is not
-# part of tool/check; run it at the end of every phase. Steps are documented in
-# docs/flow.md ("Release permission check").
+# (D-68). It also checks that the on-device test code (the debug-only test
+# media channel, D-77) is not in the release dex. Slow (full release build), so
+# it is not part of tool/check; run it at the end of every phase. Steps are
+# documented in docs/flow.md ("Release permission check").
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -123,6 +124,40 @@ if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
   done
 fi
 
+# --- The on-device test code is not in the release build (D-77). ---
+# The test media channel (src/debug: TestMedia, its channel name test_media) is
+# debug-only. The strings are looked for in every classes*.dex of the APK, and
+# in R8's mapping file when there is one (the dex only holds the renamed class,
+# the mapping holds the real name). The scan itself is proved by finding a
+# class that must be there.
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media)
+MUST_FIND_IN_DEX="app/taketray/MainActivity"
+dex_dir="$(mktemp -d)"
+trap 'rm -rf "$dex_dir"' EXIT
+unzip -q -o "$APK" 'classes*.dex' -d "$dex_dir" || true
+dex_files=("$dex_dir"/classes*.dex)
+if [ ! -e "${dex_files[0]}" ]; then
+  problems+=("no classes*.dex found in the release APK, so the test-code check could not run")
+else
+  # No pipes: grep -q on a pipe can end early and make the pipeline fail.
+  if ! grep -aqF -- "$MUST_FIND_IN_DEX" "${dex_files[@]}"; then
+    problems+=("the dex scan could not find $MUST_FIND_IN_DEX, so it cannot be trusted")
+  fi
+  for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
+    if grep -aqF -- "$needle" "${dex_files[@]}"; then
+      problems+=("test-only code found in the release dex: '$needle' (the debug test media channel must not ship, D-77)")
+    fi
+  done
+fi
+MAPPING="app/build/app/outputs/mapping/release/mapping.txt"
+if [ -f "$MAPPING" ]; then
+  for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
+    if grep -qF -- "$needle" "$MAPPING"; then
+      problems+=("test-only code named in the release R8 mapping: '$needle'")
+    fi
+  done
+fi
+
 if [ "${#problems[@]}" -gt 0 ]; then
   echo "$permissions" >&2
   for problem in "${problems[@]}"; do
@@ -132,4 +167,5 @@ if [ "${#problems[@]}" -gt 0 ]; then
 fi
 
 echo "$permissions"
+echo "No test-only code in the release dex (${FORBIDDEN_DEX_STRINGS[*]})"
 echo "RELEASE PERMISSIONS OK"

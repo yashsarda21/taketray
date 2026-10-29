@@ -14,7 +14,7 @@ class MainActivity : FlutterActivity() {
         val impl = MediaHostApiImpl(this)
         media = impl
         MediaHostApi.setUp(flutterEngine.dartExecutor.binaryMessenger, impl)
-        DebugHooks.register(flutterEngine)
+        DebugHooks.register(flutterEngine, applicationContext)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {

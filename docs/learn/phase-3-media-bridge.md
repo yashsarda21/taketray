@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 10 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 11 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -487,7 +487,7 @@ The last lines should be `stale: app/lib/platform/media_api.g.dart` and `generat
 
   Each test was first run against missing code (red) and then passing (green), and the important ones were proven to bite: changing `generation_added > ?` to `>=`, or deleting the "limited" line above, makes a named test fail.
 
-**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/media/` (`MediaHostApiImpl.kt`, `MediaAccessChecker.kt`, `VideoQueries.kt`, `Volumes.kt`, `Thumbnails.kt`, `ZoneChangeStore.kt`, `TimeZoneChangedReceiver.kt`); `app/android/app/src/main/kotlin/app/taketray/MainActivity.kt` (registration and the permission result); `app/android/app/src/{debug,release,profile}/kotlin/app/taketray/DebugHooks.kt` (empty for now; Section 11 fills the debug one); `app/android/app/src/main/AndroidManifest.xml` (permissions and the receiver); tests in `app/android/app/src/test/kotlin/app/taketray/media/` and `app/android/app/src/test/resources/robolectric.properties`; `app/android/app/build.gradle.kts` (test libraries); `tool/test_android`; the `android unit tests` step in `tool/check`; Java and the Gradle cache in `.github/workflows/check.yml`.
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/media/` (`MediaHostApiImpl.kt`, `MediaAccessChecker.kt`, `VideoQueries.kt`, `Volumes.kt`, `Thumbnails.kt`, `ZoneChangeStore.kt`, `TimeZoneChangedReceiver.kt`); `app/android/app/src/main/kotlin/app/taketray/MainActivity.kt` (registration and the permission result); `app/android/app/src/{debug,release,profile}/kotlin/app/taketray/DebugHooks.kt` (the debug one is explained in Section 11); `app/android/app/src/main/AndroidManifest.xml` (permissions and the receiver); tests in `app/android/app/src/test/kotlin/app/taketray/media/` and `app/android/app/src/test/resources/robolectric.properties`; `app/android/app/build.gradle.kts` (test libraries); `tool/test_android`; the `android unit tests` step in `tool/check`; Java and the Gradle cache in `.github/workflows/check.yml`.
 
 **Try it yourself:** run the Android tests, then break the access rule on purpose. From the repo root:
 
@@ -1155,7 +1155,88 @@ Run the same command. It fails with `Expected: 'Oct 27, 11:59 PM'` and `Actual: 
 
 ## 11. Proving it on the phone
 
-_Written in Task 11._
+**What we built:** the tests that run on the real phone (the S24), and the small amount of debug-only code they need. Two new Patrol test files, `media_access_test.dart` and `media_scan_test.dart`, drive the real app on the phone: they give it access through the real system dialog, put a real video into the phone's media library, and watch it appear in To tag with its picture. Then they delete the video, and watch it leave. To put a video there, a debug-only channel (`app.taketray/test_media`) lets the tests insert a video into a folder of its own, `Movies/TakeTray Test/`, and delete it again. A script (`tool/make_test_video`) makes the video, and the release check now also fails if any of this test code is in the app that ships.
+
+**Why TakeTray needs it:** Sections 4 to 10 prove the rules with fakes and with Robolectric, which runs Android's *framework* code on a laptop. But some facts only the real Android answers: does `COLLATE NOCASE` really work in the real media database? Is the volume's generation really at least as high as a fresh row's? Does the permission dialog's answer really reach the app (or does `requestAccess` wait for ever)? Can a thumbnail really be made from a video that was just written? A wrong guess in any of these is the worst bug in this app: a clip silently not found, or a wrong video shown. So the same questions are asked once, on the phone, with a real video.
+
+**Key ideas:**
+
+- **Patrol: Dart tests that run inside the app on the phone.** A Patrol test is an ordinary Flutter test, but it runs in the app on the phone, so it can tap widgets *and* use the phone's native screen (system dialogs, the Home button) through a helper called the *native automator*. The permission dialog is not part of TakeTray, so only the automator can answer it:
+
+  ```dart
+  try {
+    await $.platform.mobile.grantPermissionWhenInUse();
+  } on Object {
+    await tapNativeView($, allowAllButton); // com.android.permissioncontroller:id/permission_allow_all_button
+  }
+  ```
+
+  Patrol's own call already knows the button's *resource id* (a name Android gives each view). If One UI used another, the second line taps the id directly, and a failure lists the ids that *were* on the screen (never their text), so the right one can be found.
+
+- **A test video, put in on purpose.** The tests need a real video in the real media library, and they must never touch the owner's own videos. So debug builds (and only debug builds) register a method channel with three calls: insert, delete, and "delete what an earlier crashed run left". It inserts the way a camera app does: first a *pending* row (a video still being written, which no gallery shows yet), then the bytes, then it clears the pending mark, which publishes the video:
+
+  ```kotlin
+  put(MediaColumns.RELATIVE_PATH, TestMediaGuard.FOLDER)   // "Movies/TakeTray Test/"
+  put(MediaColumns.IS_PENDING, 1)
+  // ... insert the row, write the bytes ...
+  resolver.update(uri, ContentValues().apply { put(MediaColumns.IS_PENDING, 0) }, null, null)
+  ```
+
+  If the write fails half-way, the half-made row is deleted. The whole sequence runs on `Dispatchers.IO` (a background thread), not on the screen's thread.
+
+- **Deleting only what is ours: two checks, not one.** MediaStore records, for every file, which app made it (`OWNER_PACKAGE_NAME`). An app may delete its own files without Android asking the user. `TestMediaGuard` allows a delete only when *both* are true: the file is in exactly `Movies/TakeTray Test/`, and its owner is exactly this app.
+
+  ```kotlin
+  fun allowsDelete(relativePath: String?, ownerPackage: String?, ownPackage: String): Boolean =
+      relativePath == FOLDER && ownerPackage != null && ownPackage.isNotEmpty() && ownerPackage == ownPackage
+  ```
+
+  Why both? A folder check alone would let the tests delete a file the owner dropped into that folder. An owner check alone would let a bug delete the app's own files elsewhere. Anything else is refused with an error, and nothing is deleted. `app.taketray` (the real app) and `app.taketray.dev` (the debug copy that Patrol installs) are different owners, so neither can delete the other's files. The rule is a pure function so a table of cases can test it, including a path in another case, a missing trailing slash, a sub-folder, and a missing owner.
+
+- **Cleaned up, even after a failure.** Each test starts with `TestMedia.start()`, which deletes whatever a crashed earlier run left (own rows only) and registers `addTearDown(cleanUp)`. A tear-down runs after the test, whether it passed or failed, and removes every video the test inserted. Deleting a video that is already gone (the test deleted it itself) is not an error.
+
+- **Four facts only the phone can show:**
+  1. *The dialog's answer reaches the app.* The test calls `requestAccess()` on the bridge, answers the dialog, and requires the call to come back in 20 seconds. If `MainActivity.onRequestPermissionsResult` did not pass the answer on (Section 4), the call would wait for ever and the test would fail with exactly that hint.
+  2. *The folder query ignores case, and only matches an exact folder.* The test asks for `movies/takeTray test` and gets the video; it asks for `Movies` or `Movies/TakeTray` and gets nothing. It also asks the "Add earlier videos" query the same questions.
+  3. *The generation covers a new row.* The scan finds new videos as "rows with a generation above the baseline" (Section 5). So a row added after the baseline must have a *higher* generation than the volume had before it, and the volume's generation afterwards must not be below the row's. If the phone ever disagreed, the scan would miss videos; this test is where we would find out.
+  4. *The thumbnail resolves.* The test takes the tile's image, which is a `ClipThumbnailImage`, asks Flutter to resolve it and waits for a picture of width and height above zero (an error would fail the test, naming only the error's type).
+
+- **Waiting without "settle".** The usual way to wait in a Flutter test, `pumpAndSettle`, waits until nothing animates. The Shooting mode card's record dot pulses for ever, so it would never finish. The tests use their own `waitFor`, which draws frames until a condition is true (or fails with what it waited for):
+
+  ```dart
+  await waitFor($, () => _tiles.evaluate().isNotEmpty, what: 'the new video as a tile on To tag');
+  ```
+
+- **A deleted video leaves the list.** The test deletes the video through the channel, presses Home and opens the app again, which is what a user does after deleting a clip in the gallery. The resume triggers the verify (Section 7), and the test expects To tag to show "All caught up".
+
+- **The test video is a program's output, not a file in git.** `tool/make_test_video` runs ffmpeg to make 2 seconds of a test pattern, 160x90 pixels, without audio. The result is stored in Dart as a base64 text constant. ffmpeg is told to leave out everything that varies (the encoder's version string, creation times, extra threads), so running the script again gives the same bytes (checked: the file's checksum is the same twice). A different ffmpeg build can give other bytes, which is harmless: the tests only need a valid video. Without ffmpeg the script stops and leaves the old file alone.
+
+- **The release app must not carry any of this.** The debug code sits in `src/debug`, which only debug builds compile; the release and profile builds have a `DebugHooks` that does nothing. The release check proves it by reading the finished APK:
+
+  ```bash
+  FORBIDDEN_DEX_STRINGS=(TestMedia test_media)
+  grep -aqF -- "$needle" "${dex_files[@]}"
+  ```
+
+  A subtle point: release builds run R8, which *renames* classes to short names, so a class called `TestMedia` appears in the dex as something like `lh`. The text `test_media` (the channel name) is a string, which R8 never renames, so the dex shows it. For the class name the check also reads R8's mapping file, which lists the original names. The check was proved to bite both ways: a release `DebugHooks` that mentions `test_media` fails it, and a release class called `TestMedia` fails it through the mapping file, while the dex alone did not show it.
+
+- **One test is written but switched off.** "Select photos and videos" (limited access, Section 4) opens a picture picker whose buttons are drawn by the phone maker's software, and nobody has run it on One UI yet. The test is written, but skipped unless it is started with `--dart-define=LIMITED_ACCESS=true`. Until someone runs it with the owner's go, the owner does the same steps by hand (`docs/dev-setup.md`, "Phase 3 check", step 10).
+
+**Where it lives:**
+- Debug Kotlin: `app/android/app/src/debug/kotlin/app/taketray/` (`DebugHooks.kt`, `TestMedia.kt`, `TestMediaHandler.kt`). The release and profile `DebugHooks.kt` are in the sibling `release` and `profile` folders, and `MainActivity.kt` calls `DebugHooks.register(flutterEngine, applicationContext)`.
+- Kotlin tests: `app/android/app/src/test/kotlin/app/taketray/` (`TestMediaGuardTest.kt`, `TestMediaTest.kt`, `TestMediaHandlerTest.kt`, and the stand-in `FakeVideoStore.kt`).
+- Patrol tests: `app/patrol_test/media_access_test.dart`, `media_scan_test.dart`, the helpers in `app/patrol_test/support/` (`test_media.dart`, `system_dialogs.dart`, `waiting.dart`) and the video in `app/patrol_test/fixtures/test_video.dart` (made by `tool/make_test_video`).
+- `tool/check_release_permissions` (the dex and mapping check), `docs/dev-setup.md` ("Phase 3 check") and `docs/flow.md` ("On-device test (Patrol)").
+
+**Try it yourself:** see the delete rule hold, and see what happens without it. From the repo root:
+
+```bash
+tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.TestMediaGuardTest'
+```
+
+It ends with `BUILD SUCCESSFUL` (8 tests). Now, in `app/android/app/src/debug/kotlin/app/taketray/TestMedia.kt`, find `allowsDelete` and delete the words `relativePath == FOLDER && ` from its last line (so it only checks the owner). Run the same command. It fails: `8 tests completed, 3 failed`, naming `an unknown folder is refused`, `this app's files in any other folder are refused` and `the folder must match exactly, case and trailing slash included`. With that line, TakeTray's test channel would delete this app's own files from any folder. Put the file back with `git checkout -- app/android/app/src/debug/kotlin/app/taketray/TestMedia.kt` and run the command again to see `BUILD SUCCESSFUL`.
+
+**Decisions:** D-77 (the debug-only test channel, the folder, the two-part delete rule, the tear-down, the release check and the test video), with D-67 (Android unit tests, which cannot show what only the real phone can) and D-10 (nothing private in logs or errors) as background.
 
 ---
 
