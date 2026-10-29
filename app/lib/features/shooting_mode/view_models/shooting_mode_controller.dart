@@ -21,7 +21,9 @@ final Logger _log = Logger('shootingMode');
 /// (`PhoneStateRepository.watchShooting`), so it is right at app start and
 /// follows every change, including one made by someone else.
 ///
-/// Kept alive, like the access controller it calls.
+/// Kept alive, like the access controller it calls. If the stored-state
+/// stream itself fails (a database error), the state is an `AsyncError` and
+/// stays one until the provider is invalidated: there is no retry (`noRetry`).
 @Riverpod(keepAlive: true, retry: noRetry)
 class ShootingModeController extends _$ShootingModeController {
   /// The last [setOn] call. Calls run one after another, in the order they

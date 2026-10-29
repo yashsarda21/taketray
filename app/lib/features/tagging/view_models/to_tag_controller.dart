@@ -40,12 +40,19 @@ class ToTagController extends _$ToTagController {
   /// and verifies again.
   Future<void> onResume() => _refresh();
 
+  /// The reads of `ref` are inside the guarded steps: after the provider was
+  /// disposed (the screen closed, then a late resume) `ref.read` throws, and
+  /// that must be logged like any other error, not leak out of an unawaited
+  /// call.
   Future<void> _refresh() async {
-    final scanner = ref.read(mediaScannerProvider);
-    final verifier = ref.read(mediaVerifierProvider);
-    final clips = ref.read(clipsRepositoryProvider);
-    await guarded(_log, 'The scan', scanner.scan);
+    await guarded(
+      _log,
+      'The scan',
+      () => ref.read(mediaScannerProvider).scan(),
+    );
     await guarded(_log, 'The verify', () async {
+      final clips = ref.read(clipsRepositoryProvider);
+      final verifier = ref.read(mediaVerifierProvider);
       final waiting = await clips.watchInbox(InboxState.pending).first;
       return await verifier.verify(waiting);
     });

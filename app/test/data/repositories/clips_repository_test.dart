@@ -1756,6 +1756,46 @@ void main() {
         expect(await clipIds(), [keep]);
       });
 
+      test(
+        'a pending inbox row beside a reel link is kept, with the link',
+        () async {
+          final [keep, both] = await detect([10, 20]);
+          final goa = (await reels.create('Goa')).id;
+          await repo.tagClip(both, {goa});
+          // The database allows an inbox row beside a link (a backup drops
+          // them, the repository never writes them): the clause "in no reel"
+          // is what keeps this clip's row.
+          await db
+              .into(db.inbox)
+              .insert(
+                InboxCompanion.insert(
+                  clipId: Value(both),
+                  state: InboxState.pending,
+                  addedAt: _t0,
+                ),
+              );
+
+          final removed = await repo.undoEarlierAdd({both});
+
+          expect(removed, 0);
+          expect(await clipIds(), [keep, both]);
+          expect(await reelIdsOf(both), {goa});
+          expect((await inboxRows()).map((r) => r.clipId), contains(both));
+        },
+      );
+
+      test('more ids than one batch (500) are all handled', () async {
+        final [keep] = await detect([5]);
+        final many = await detect([for (var i = 0; i < 1203; i++) 1000 + i]);
+        expect(many.length, greaterThan(ClipsRepository.idBatch * 2));
+
+        final removed = await repo.undoEarlierAdd(many.toSet());
+
+        expect(removed, 1203);
+        expect(await clipIds(), [keep]);
+        expect((await inboxRows()).map((r) => r.clipId), [keep]);
+      });
+
       test('unknown ids are ignored', () async {
         final [keep] = await detect([10]);
 

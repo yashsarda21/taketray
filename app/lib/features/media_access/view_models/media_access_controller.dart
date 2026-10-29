@@ -94,11 +94,23 @@ class MediaAccessController extends _$MediaAccessController {
   @override
   Future<MediaAccessView> build() async {
     final call = ++_latest;
-    final view = await _view(
-      await ref.read(mediaBridgeProvider).accessReport(),
-    );
-    final newer = _publishedView;
-    return _published > call && newer != null ? newer : view;
+    try {
+      final view = await _view(
+        await ref.read(mediaBridgeProvider).accessReport(),
+      );
+      final newer = _publishedView;
+      return _published > call && newer != null ? newer : view;
+    } on Object catch (error) {
+      // A refresh or an allow may have published a view while this first read
+      // was running. Riverpod would replace that view with this error, so
+      // hand the newer view back instead; otherwise the error is the state.
+      final newer = _publishedView;
+      if (_published > call && newer != null) {
+        _log.warning('The first access read failed: ${error.runtimeType}');
+        return newer;
+      }
+      rethrow;
+    }
   }
 
   /// Reads the access level again (app start, resume, after the settings

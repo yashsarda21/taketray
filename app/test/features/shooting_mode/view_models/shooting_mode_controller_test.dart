@@ -192,13 +192,34 @@ void main() {
       expect(shown()!.on, isFalse);
     });
 
-    test('off then on ends on, with one session', () async {
+    test('off then on ends on, with the same start and baselines', () async {
       await controller.setOn(true);
+      final first = await h.media.phoneState.loadShooting();
+
       await Future.wait([controller.setOn(false), controller.setOn(true)]);
       await settle();
 
-      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      final after = await h.media.phoneState.loadShooting();
+      expect(after.on, isTrue);
       expect(shown()!.on, isTrue);
+      // The clock and the volumes did not move, so the new session equals
+      // the first one.
+      expect(after.since, first.since);
+      expect(after.baselines, first.baselines);
+      expect(after.baselines, isNotEmpty);
+    });
+
+    test('off then on is a new session: the start time moves', () async {
+      await controller.setOn(true);
+      final first = await h.media.phoneState.loadShooting();
+      h.media.clock.advance(const Duration(hours: 1));
+
+      await Future.wait([controller.setOn(false), controller.setOn(true)]);
+      await settle();
+
+      final after = await h.media.phoneState.loadShooting();
+      expect(after.on, isTrue);
+      expect(after.since, first.since!.add(const Duration(hours: 1)));
     });
 
     test('on, off, on, off, on ends on', () async {

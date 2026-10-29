@@ -140,6 +140,28 @@ void main() {
     expect(logText(records), contains('The verify failed: PlatformException'));
   });
 
+  test('onResume after the controller was disposed fails nothing', () async {
+    final records = captureLogs();
+    final sub = open();
+    await h.container.read(toTagControllerProvider.future);
+    final controller = h.container.read(toTagControllerProvider.notifier);
+    await settle();
+    sub.close(); // nobody watches: the auto-dispose provider goes away
+    await h.container.pump();
+    await settle();
+
+    await controller.onResume(); // must complete, not throw
+
+    expect(
+      logText(records),
+      contains('The scan failed: UnmountedRefException'),
+    );
+    expect(
+      logText(records),
+      contains('The verify failed: UnmountedRefException'),
+    );
+  });
+
   test('no clips and no phone: an empty list, no error', () async {
     open();
 

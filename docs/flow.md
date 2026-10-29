@@ -340,7 +340,7 @@ A failing `accessReport` or `volumes()` throws before anything is written.
 
 6. **Opening the sheet:** `EarlierVideosController.build` calls `countEarlier()`; it works with Shooting mode off. A failure is logged by type (never the message) and becomes an `AsyncError` state, which is not retried by itself.
 7. **Add:** `EarlierVideosController.add(range)` calls `addEarlier(range)`, then `countEarlier()` again (the counts now leave out the added videos). A failure is logged by type and rethrown, so the sheet can say it did not work; if only the recount fails, the old counts stay.
-8. **Undo:** `EarlierVideosController.undo(ids)` runs `ClipsRepository.undoEarlierAdd(ids.toSet())` on `MediaWorkQueue` (so never beside a scan), then counts again. In one transaction `undoEarlierAdd` deletes the `inbox` row of each id that is still `pending` (not skipped) and in no reel, then runs the orphan sweep (D-56), and returns how many clips went. A clip tagged or skipped since it was added stays; an empty set or a second undo deletes nothing. (`removeMissingFromLists` is not used: it only removes clips flagged missing.)
+8. **Undo:** `EarlierVideosController.undo(ids)` runs `ClipsRepository.undoEarlierAdd(ids.toSet())` on `MediaWorkQueue` (so never beside a scan), then counts again. In one transaction `undoEarlierAdd` deletes the `inbox` row of each id that is still `pending` (not skipped) and in no reel, then runs the orphan sweep (D-56), and returns how many clips went (the ids are taken in batches of 500, all in the one transaction). A clip tagged or skipped since it was added stays; an empty set or a second undo deletes nothing. (`removeMissingFromLists` is not used: it only removes clips flagged missing.)
 
 No baseline is read or written.
 
@@ -350,9 +350,9 @@ No baseline is read or written.
 
 1. **First frame** (`addPostFrameCallback`): starts the prune (step 5) and a run (steps 2 to 4).
 2. **Run, step 1: zone sync.** `ZoneSync.sync()`.
-3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state.
+3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state. If the very first read fails the state is an `AsyncError` until a later `refresh()` or `allow()` succeeds; a first read that fails after one of those already published a view hands that view back instead of replacing it.
 4. **Run, step 3: scan.** `MediaScanner.scan()` (see "Finding new clips").
-5. **Prune, once per process:** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
+5. **Prune, once per app start (once per mount of `MediaLifecycle`):** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
 6. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
 7. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune.
 8. **Runs never overlap.** A start or resume while a run is going sets a flag; when the run ends, exactly one more run follows, however many triggers came. The scanner's own coalescing (D-72) and the media queue stay in force underneath.
@@ -364,7 +364,7 @@ No baseline is read or written.
 
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 
-Nothing shows a tile yet (Task 10); `MediaLifecycle` calls `ThumbnailCache.prune()` once per process ("App start and resume"). Paths are relative to `app/`.
+Nothing shows a tile yet (Task 10); `MediaLifecycle` calls `ThumbnailCache.prune()` once per app start ("App start and resume"). Paths are relative to `app/`.
 
 **Showing one tile** (`Image(image: ClipThumbnailImage(clip:, logicalSize:, cache:), errorBuilder: placeholder)`):
 

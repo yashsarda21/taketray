@@ -25,7 +25,7 @@ final Logger _log = Logger('mediaLifecycle');
 /// Each step runs even if the one before it failed. Nothing is waited for by
 /// the UI, and no error reaches it: every step is guarded and logs only the
 /// error's type. The first frame also prunes the thumbnail cache, once per
-/// process (not on resume).
+/// app start (once per mount of this widget; not on resume).
 ///
 /// Runs never overlap. A trigger that comes while a run is going (a resume
 /// during the start) costs exactly one more run after it, however many

@@ -513,8 +513,9 @@ class ClipsRepository {
   /// the user's work now, so it keeps its row, its link and its state. Unknown
   /// ids are ignored, an empty set writes nothing, and a second undo of the
   /// same ids deletes nothing. The sweep is global (as in every use of it), so
-  /// a clip that was already in no reel and no list goes too. The video files
-  /// are never touched.
+  /// a clip that was already in no reel and no list goes too. The ids are
+  /// handled in batches of [idBatch], all in the one transaction. The video
+  /// files are never touched.
   ///
   /// This is only the database step. The caller runs it on the media queue,
   /// so it cannot interleave with a scan.
@@ -523,13 +524,15 @@ class ClipsRepository {
     final deleted = await _db.transaction(() async {
       final inAReel = _db.selectOnly(_db.clipReels)
         ..addColumns([_db.clipReels.clipId]);
-      await (_db.delete(_db.inbox)..where(
-            (i) =>
-                i.clipId.isIn(clipIds) &
-                i.state.equalsValue(InboxState.pending) &
-                i.clipId.isNotInQuery(inAReel),
-          ))
-          .go();
+      for (final batch in _batches(clipIds)) {
+        await (_db.delete(_db.inbox)..where(
+              (i) =>
+                  i.clipId.isIn(batch) &
+                  i.state.equalsValue(InboxState.pending) &
+                  i.clipId.isNotInQuery(inAReel),
+            ))
+            .go();
+      }
       return await _db.deleteOrphanClips();
     });
     _log.info('Undid an earlier add: removed $deleted clips');

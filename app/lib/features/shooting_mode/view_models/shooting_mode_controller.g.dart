@@ -15,7 +15,9 @@ part of 'shooting_mode_controller.dart';
 /// (`PhoneStateRepository.watchShooting`), so it is right at app start and
 /// follows every change, including one made by someone else.
 ///
-/// Kept alive, like the access controller it calls.
+/// Kept alive, like the access controller it calls. If the stored-state
+/// stream itself fails (a database error), the state is an `AsyncError` and
+/// stays one until the provider is invalidated: there is no retry (`noRetry`).
 
 @ProviderFor(ShootingModeController)
 final shootingModeControllerProvider = ShootingModeControllerProvider._();
@@ -27,7 +29,9 @@ final shootingModeControllerProvider = ShootingModeControllerProvider._();
 /// (`PhoneStateRepository.watchShooting`), so it is right at app start and
 /// follows every change, including one made by someone else.
 ///
-/// Kept alive, like the access controller it calls.
+/// Kept alive, like the access controller it calls. If the stored-state
+/// stream itself fails (a database error), the state is an `AsyncError` and
+/// stays one until the provider is invalidated: there is no retry (`noRetry`).
 final class ShootingModeControllerProvider
     extends $StreamNotifierProvider<ShootingModeController, ShootingState> {
   /// Shooting mode for the card on the Reels screen: whether it is on, the
@@ -37,7 +41,9 @@ final class ShootingModeControllerProvider
   /// (`PhoneStateRepository.watchShooting`), so it is right at app start and
   /// follows every change, including one made by someone else.
   ///
-  /// Kept alive, like the access controller it calls.
+  /// Kept alive, like the access controller it calls. If the stored-state
+  /// stream itself fails (a database error), the state is an `AsyncError` and
+  /// stays one until the provider is invalidated: there is no retry (`noRetry`).
   ShootingModeControllerProvider._()
     : super(
         from: null,
@@ -67,7 +73,9 @@ String _$shootingModeControllerHash() =>
 /// (`PhoneStateRepository.watchShooting`), so it is right at app start and
 /// follows every change, including one made by someone else.
 ///
-/// Kept alive, like the access controller it calls.
+/// Kept alive, like the access controller it calls. If the stored-state
+/// stream itself fails (a database error), the state is an `AsyncError` and
+/// stays one until the provider is invalidated: there is no retry (`noRetry`).
 
 abstract class _$ShootingModeController extends $StreamNotifier<ShootingState> {
   Stream<ShootingState> build();
