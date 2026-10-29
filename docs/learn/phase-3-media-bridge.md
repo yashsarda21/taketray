@@ -1,8 +1,8 @@
 # Learning guide: Phase 3, the media bridge
 
-This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
+This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. It also lets you add earlier videos, from today or from days you pick. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 11 are done.
+Every code snippet in it is real code from this repository, and every "Try it yourself" command was run when the guide was finished. The exceptions are the phone commands (Patrol): they need the S24, so they were run during the on-device checks of the phase (Section 11).
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -10,8 +10,8 @@ You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming
 
 - **Order.** Read the big picture first. Then sections 1 to 11 follow the order the phase was built: the safety rules and checks (1, 2), the contract between Flutter and Android (3), the Android side (4), the rules for deciding which video is which (5), the database additions (6), the scan (7), thumbnails (8), the view models and app lifecycle (9), the screens (10) and the proof on the phone (11).
 - **Names you will meet.**
-  - `D-xx` is an entry in `docs/decisions.md`, where each decision is written down with its reasons.
-  - "Phase 4", "phase 5" and so on are the later stages of building TakeTray. Phase 4 builds the reel screens; phase 5 the tagging screen and player.
+  - `D-xx` is an entry in `docs/decisions.md`, where each decision is written down with its reasons. This phase's are D-63 to D-78.
+  - "Phase 4", "phase 5" and so on are the later stages of building TakeTray. Phase 4 builds the reel screens; phase 5 the tagging screen and player; phase 6 detection in the background; phase 10 onboarding and settings; phase 11 the Play Store release.
   - "Spec §4" means a section of the product spec, `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`.
   - "Review Focus 1" to "5" are the five risky situations this phase is reviewed against (for example, "an SD card removed" or "a video still being recorded when TakeTray scans").
 - **`tool/check`.** The one script that checks the whole project: generated files are fresh, then formatting, analysis and tests, and test coverage. `tool/check_release_permissions` is the slower check of the release build's manifest, run at the end of the phase.
@@ -50,16 +50,17 @@ Every section below uses the same shape:
 
 Flutter (Dart) cannot read Android's media library on its own. So the phase adds a small Kotlin program inside the app that can, and a typed contract that lets the two sides talk. Dart asks questions ("what videos are new since this number?"); Kotlin answers with plain data. Everything that *decides* something, such as "is this the same video as before?", is Dart code that can be tested on a laptop.
 
-This is the **planned** architecture; each section is written when its part is built.
+This is the architecture as built. The sections below take it from the bottom up.
 
 ```mermaid
 flowchart TD
     SCREENS["Screens<br/>To tag, Shooting mode card<br/><i>app/lib/features/</i>"]
     VM["View models<br/>(Riverpod)"]
-    REPOS["Repositories<br/>clips, settings, zones<br/><i>app/lib/data/repositories/</i>"]
-    SCAN["Scanner and verifier<br/>new videos in, missing videos out<br/><i>app/lib/platform/</i>"]
+    REPOS["Repositories<br/>clips, phone state, zones<br/><i>app/lib/data/repositories/</i>"]
+    SCAN["Scanner and verifier<br/>new videos in, missing videos out<br/><i>app/lib/data/media/</i>"]
     RULES["Media rules<br/>fingerprints, baselines, rebuild matching<br/><i>app/lib/domain/rules/</i>"]
-    BRIDGE["MediaBridge (Dart)<br/>typed calls to Android"]
+    THUMBS["Thumbnail cache<br/>pictures on disk<br/><i>app/lib/data/media/</i>"]
+    BRIDGE["MediaBridge (Dart)<br/>typed calls to Android<br/><i>app/lib/platform/</i>"]
     PIGEON["Pigeon contract<br/>generated Dart and Kotlin code"]
     KOTLIN["Kotlin MediaStore reader<br/><i>app/android/.../media/</i>"]
     MS["Android MediaStore<br/>the phone's media library"]
@@ -70,6 +71,8 @@ flowchart TD
     SCAN --> BRIDGE
     SCAN --> RULES
     SCAN --> REPOS
+    SCREENS --> THUMBS
+    THUMBS --> BRIDGE
     BRIDGE --> PIGEON
     PIGEON --> KOTLIN
     KOTLIN --> MS
@@ -174,7 +177,12 @@ The last line should be `RELEASE PERMISSIONS OK`. Now break it on purpose: delet
     } on Object {
       try {
         return formatRecord(
-          LogRecord(record.level, record.message, record.loggerName, record.error),
+          LogRecord(
+            record.level,
+            record.message,
+            record.loggerName,
+            record.error,
+          ),
         );
       } on Object {
         return formatRecord(
@@ -233,7 +241,7 @@ The last line should be `RELEASE PERMISSIONS OK`. Now break it on purpose: delet
 
   So `lib/features/a/view_models/x.dart` matches, and `lib/features/a/b/view_models/x.dart` does not. A `*` that is part of a longer name (`feat*`) or `**` is refused with the usage message.
 
-- **A prefix with no files yet passes, but not all of them.** `lib/platform/` and the view-model folders do not exist until Tasks 3 and 9, so a prefix that matches no file prints `no files` and passes. If *every* prefix matches nothing, the check fails: that means a typo, or the wrong lcov file. An enum (a list of named constants) has no executable lines at all; it is ignored by itself.
+- **A prefix with no files yet passes, but not all of them.** When this was built, `lib/platform/` and the view-model folders had no files yet (they arrived in Sections 3 and 9), so a prefix that matches no file prints `no files` and passes. If *every* prefix matches nothing, the check fails: that means a typo, or the wrong lcov file. An enum (a list of named constants) has no executable lines at all; it is ignored by itself.
 
 - **`TtBanner` rules.** A banner with `onTap` is one big button. An `action` is another button inside it, and two nested buttons confuse both the finger and the screen reader. A constructor `assert` now stops it while you develop (debug builds and tests):
 
@@ -266,13 +274,15 @@ tool/check        # the lib/data/ line drops
 rm app/lib/data/_probe.dart
 ```
 
+At the end of this phase the line reads `lib/data/  94.0%  1597/1699 lines`; with the probe file it read `lib/data/  92.4%  1597/1728 lines` (your numbers differ as the code grows, but the second is always lower). The probe file is already formatted and passes analysis, so the run reaches the coverage step.
+
 **Decisions:** D-65 (the coverage gate counts every file under its prefixes through a generated import test; a prefix with no files yet passes).
 
 ---
 
 ## 3. The Pigeon contract and the Dart bridge
 
-**What we built:** the list of questions Flutter may ask Android about your videos, written once in a single Dart file; a tool called Pigeon that turns that file into matching code for both sides; and a small Dart layer, `MediaBridge`, that the rest of the app uses to ask them. There is also a pretend version, `FakeMediaBridge`, that answers from a list inside a test. Nothing on the Android side answers yet (that is Section 4): the Kotlin file that exists today fails every question on purpose.
+**What we built:** the list of questions Flutter may ask Android about your videos, written once in a single Dart file; a tool called Pigeon that turns that file into matching code for both sides; and a small Dart layer, `MediaBridge`, that the rest of the app uses to ask them. There is also a pretend version, `FakeMediaBridge`, that answers from a list inside a test. The Android side that answers is Section 4. (At the point where this section was built, the Kotlin file was only a stub that failed every question on purpose, so the app still compiled.)
 
 **Why TakeTray needs it:** Flutter code cannot read Android's media library, so a Kotlin program has to do it, and the two sides have to agree exactly on every question and answer: which fields a video has, whether a number is milliseconds or seconds, what can be missing. If you write both sides by hand, they drift apart, and the first sign is a crash on the phone. Pigeon writes both sides from one file, so they cannot disagree. The pretend version matters just as much: the rules that decide "is this the same video?" (Sections 5 to 7) are the part that must never be wrong, and with a fake bridge they run in a test on a laptop in milliseconds, with no phone and no real videos.
 
@@ -356,9 +366,9 @@ rm app/lib/data/_probe.dart
   done
   ```
 
-  A difference prints `stale: <path>` and fails. In this task the Kotlin file `MediaHostApiImpl.kt` was only a placeholder whose every method threw `NotImplementedError`, not connected to the app, so that the Android build still compiled once the generated interface existed. Section 4 replaced it with the real implementation.
+  A difference prints `stale: <path>` and fails.
 
-**Where it lives:** `app/pigeons/media_api.dart` (the contract); `app/lib/platform/media_api.g.dart` and `app/android/app/src/main/kotlin/app/taketray/media/MediaApi.g.kt` (generated); `app/android/app/src/main/kotlin/app/taketray/media/MediaHostApiImpl.kt` (placeholder); `app/lib/domain/models/media.dart` (the models); `app/lib/platform/media_bridge.dart` (`MediaBridge`, `PigeonMediaBridge`, the provider); `app/test/support/fake_media_bridge.dart`; tests in `app/test/platform/` and `app/test/domain/models/media_test.dart`; `tool/check_generated` with `tool/test/check_generated_test.dart`.
+**Where it lives:** `app/pigeons/media_api.dart` (the contract); `app/lib/platform/media_api.g.dart` and `app/android/app/src/main/kotlin/app/taketray/media/MediaApi.g.kt` (generated); `app/lib/domain/models/media.dart` (the models); `app/lib/platform/media_bridge.dart` (`MediaBridge`, `PigeonMediaBridge`, the provider); `app/test/support/fake_media_bridge.dart`; tests in `app/test/platform/` and `app/test/domain/models/media_test.dart`; `tool/check_generated` with `tool/test/check_generated_test.dart`. The flow is in `docs/flow.md` ("Native bridge", "Generated-file freshness").
 
 **Try it yourself:** first see the real bridge pass its tests, then see the stale-file check catch a hand edit. From the repo root:
 
@@ -472,7 +482,7 @@ The last lines should be `stale: app/lib/platform/media_api.g.dart` and `generat
 
 - **Time zones while TakeTray is closed.** Clips are dated in the zone the phone was in when they were shot (spec §8.3a). A *broadcast receiver* is a small class Android starts when something happens; `ACTION_TIMEZONE_CHANGED` is one of the few broadcasts Android still delivers to an app that is not running. The receiver appends `(now, new zone)` to a JSON list in a private settings file, skipping a repeat of the same zone and keeping the newest 500. Dart reads the list on the next start (Section 7) and clears what it has stored.
 
-- **Android unit tests without a phone: Robolectric.** Kotlin that calls Android normally needs a phone or an emulator. *Robolectric* is a library that runs the real Android framework code on an ordinary computer (the JVM), so a test can make a real `MatrixCursor`, real settings files or a pretend `Activity`, in a second. Each test runs four times, as Android 11, 13, 14 and 15 (`robolectric.properties`). Two tricks fill the gaps:
+- **Android unit tests without a phone: Robolectric.** Kotlin that calls Android normally needs a phone or an emulator. *Robolectric* is a library that runs the real Android framework code on an ordinary computer (the JVM), so a test can make a real `MatrixCursor`, real settings files or a pretend `Activity`, in a second. Each Robolectric test runs four times, as Android 11, 13, 14 and 15 (`robolectric.properties`). (The permission rule's test, `MediaAccessCheckerTest`, is plain JUnit: it is handed the Android version as an argument.) Two tricks fill the gaps:
   - MediaStore itself does not exist there. So `VideoQueriesSqlTest` puts rows in a real SQLite table and runs TakeTray's selections through an `SQLiteQueryBuilder` in the same strict mode MediaProvider uses for other apps. A selection Android would refuse fails on the laptop, and the test checks which rows each one picks (`DCIM/Camera` stored without a slash is *not* the same folder; `Vidéos/` is not `VIDÉOS/`).
   - A stand-in media provider, `FakeMediaProvider`, records every query the real implementation sends (which table, which columns, which options) and answers with rows the test scripted. So a test can check, for example, that 1,201 ids with duplicates become exactly three queries of 500, 500 and 201 ids, and that a missing volume reaches Dart as an error rather than as "no videos".
   - `MediaStore.getVersion` has no Robolectric version, so `Volumes` is an interface, and the version read is passed in as a function that a test can make throw.
@@ -487,7 +497,7 @@ The last lines should be `stale: app/lib/platform/media_api.g.dart` and `generat
 
   Each test was first run against missing code (red) and then passing (green), and the important ones were proven to bite: changing `generation_added > ?` to `>=`, or deleting the "limited" line above, makes a named test fail.
 
-**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/media/` (`MediaHostApiImpl.kt`, `MediaAccessChecker.kt`, `VideoQueries.kt`, `Volumes.kt`, `Thumbnails.kt`, `ZoneChangeStore.kt`, `TimeZoneChangedReceiver.kt`); `app/android/app/src/main/kotlin/app/taketray/MainActivity.kt` (registration and the permission result); `app/android/app/src/{debug,release,profile}/kotlin/app/taketray/DebugHooks.kt` (the debug one is explained in Section 11); `app/android/app/src/main/AndroidManifest.xml` (permissions and the receiver); tests in `app/android/app/src/test/kotlin/app/taketray/media/` and `app/android/app/src/test/resources/robolectric.properties`; `app/android/app/build.gradle.kts` (test libraries); `tool/test_android`; the `android unit tests` step in `tool/check`; Java and the Gradle cache in `.github/workflows/check.yml`.
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/media/` (`MediaHostApiImpl.kt`, `MediaAccessChecker.kt`, `VideoQueries.kt`, `Volumes.kt`, `Thumbnails.kt`, `ZoneChangeStore.kt`, `TimeZoneChangedReceiver.kt`); `app/android/app/src/main/kotlin/app/taketray/MainActivity.kt` (registration and the permission result); `app/android/app/src/{debug,release,profile}/kotlin/app/taketray/DebugHooks.kt` (the debug one is explained in Section 11); `app/android/app/src/main/AndroidManifest.xml` (permissions and the receiver); tests in `app/android/app/src/test/kotlin/app/taketray/media/` and `app/android/app/src/test/resources/robolectric.properties`; `app/android/app/build.gradle.kts` (test libraries); `tool/test_android`; the `android unit tests` step in `tool/check`; Java and the Gradle cache in `.github/workflows/check.yml`. The flow is in `docs/flow.md` ("Native bridge", "Android unit tests").
 
 **Try it yourself:** run the Android tests, then break the access rule on purpose. From the repo root:
 
@@ -495,7 +505,7 @@ The last lines should be `stale: app/lib/platform/media_api.g.dart` and `generat
 tool/test_android --tests 'app.taketray.media.MediaAccessCheckerTest'
 ```
 
-It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolectric's Android files, which takes a few minutes). Now delete the line `granted(READ_MEDIA_VISUAL_USER_SELECTED) -> MediaAccessLevelMsg.LIMITED` from `app/android/app/src/main/kotlin/app/taketray/media/MediaAccessChecker.kt` and run the same command. It fails with `MediaAccessCheckerTest > 34 with only VISUAL_USER_SELECTED is limited FAILED` and `BUILD FAILED`. Open the test report, `app/build/app/reports/tests/testDebugUnitTest/index.html`, and click that test: the reason is `expected:<LIMITED> but was:<DENIED>`. Without that line, a user who shared only some videos would look like a user who shared none. Put the file back with `git checkout -- app/android/app/src/main/kotlin/app/taketray/media/MediaAccessChecker.kt` and run the command once more to see it pass.
+It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolectric's Android files, which takes a few minutes). Now delete the line `granted(READ_MEDIA_VISUAL_USER_SELECTED) -> MediaAccessLevelMsg.LIMITED` from `app/android/app/src/main/kotlin/app/taketray/media/MediaAccessChecker.kt` and run the same command. It fails with `MediaAccessCheckerTest > 34 with only VISUAL_USER_SELECTED is limited FAILED` (and a second test of the same rule), `15 tests completed, 2 failed` and `BUILD FAILED`. Open the test report, `app/build/app/reports/tests/testDebugUnitTest/index.html`, and click that test: the reason is `expected:<LIMITED> but was:<DENIED>`. Without that line, a user who shared only some videos would look like a user who shared none. Put the file back with `git checkout -- app/android/app/src/main/kotlin/app/taketray/media/MediaAccessChecker.kt` and run the command once more to see it pass.
 
 **Decisions:** D-66 (the thin pipe), D-67 (Android unit tests with Robolectric in `tool/check` and CI), D-68 (the permission model, asking for both permissions on 14+, and "can ask again").
 
@@ -513,15 +523,19 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
   1. 10:00, Shooting mode on. The volume is at generation 40 (version `v1`), so the baseline is `(v1, 40)`.
   2. 10:05, the creator presses record. The camera app inserts its row straight away, as id 501 with `generationAdded` 41, marked *pending* (`IS_PENDING`: "still being written"), with no duration yet.
-  3. 10:06, TakeTray comes to the front and scans. The plan for the volume is `ScanAfter(40)`. It reads the volume's generation first (41, the `captured` value), then asks for rows added after 40, and gets row 501, still pending. A pending row is not *usable*, so no clip is made. And the baseline does **not** move to 41:
+  3. 10:06, TakeTray comes to the front and scans. The plan for the volume is `ScanAfter(40)`. It reads the volume's generation first (41, the `captured` value), then asks for rows added after 40, and gets row 501, still pending. A pending row is not *usable*, so no clip is made. And the baseline does **not** move to 41. `advanceBaseline` first collects the rows that must *hold* the baseline (`holdsBaseline`: a pending row always does) and puts the baseline just below the oldest of them:
 
      ```dart
-     if (pending.isNotEmpty) {
-       return max(from, pending.reduce(min) - 1);
-     }
+     final holding = [
+       for (final v in seen)
+         if (holdsBaseline(v, now: now)) v.generationAdded,
+     ];
+     final hold = holding.isEmpty ? null : holding.reduce(min) - 1;
+     // ...
+     if (hold != null) return max(from, hold);
      ```
 
-     `advanceBaseline(from: 40, captured: 41, seen: [row 501])` gives `max(40, 41 - 1)`, which is 40.
+     `advanceBaseline(from: 40, captured: 41, seen: [row 501], now: ...)` holds at `41 - 1`, the generation just below row 501, and `max(40, 40)` is 40.
   4. 10:07, recording stops. The camera clears the pending flag. The row's `generationAdded` stays 41: it records when the row was *inserted*, and finishing the file does not change it.
   5. 10:10, the next scan asks again for rows after 40. Row 501 comes back, finished, 63 seconds long, so it becomes a clip in To tag. Now the baseline moves to the highest of the captured generation and the rows seen.
 
@@ -531,10 +545,10 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
   ```dart
   final cut = seen.map((v) => v.generationAdded).reduce(max) - 1;
-  return max(from, pendingHold == null ? cut : min(pendingHold, cut));
+  return max(from, hold == null ? cut : min(hold, cut));
   ```
 
-  If a scan stops early (`truncated: true`), the baseline only moves to one *below* the last generation it saw, 11 here, so the next scan asks for "after 11" and gets all of generation 12 again. And while paging, the next page starts from `nextPageCursor`, also one below the last generation. That means a row or two can arrive twice, so the scanner (Section 7) removes the doubles. If every row on a page has the same generation, starting one below it would return the very same page, so `nextPageCursor` answers `null`: "ask again with a bigger limit". The scan's cursor is kept apart from the baseline on purpose: a recording that stays pending for hours holds the baseline, but the cursor still moves on to the rows after it.
+  If a scan stops early (`truncated: true`), the baseline only moves to one *below* the highest generation it saw, 11 here, so the next scan asks for "after 11" and gets all of generation 12 again. And while paging, the next page starts from `nextPageCursor`, also one below the last generation. That means a row or two can arrive twice, so the scanner (Section 7) removes the doubles. If every row on a page has the same generation, starting one below it would return the very same page, so `nextPageCursor` answers `null`: "ask again with a bigger limit". The scan's cursor is kept apart from the baseline on purpose: a recording that stays pending for hours holds the baseline, but the cursor still moves on to the rows after it.
 
 - **A plan per volume, decided in a fixed order.** Before a scan, each volume gets one of four plans. The order matters, because the first check that applies wins:
 
@@ -613,19 +627,19 @@ Unless your computer is set to UK time, the first ends with `+23 ~5: All tests p
 
 and run both commands again. In a zone without daylight saving (India, or UTC as on GitHub's machines) the first still passes: the bug is invisible there. The second fails, for example `clocks go back (2026-10-25, a 25-hour day) [E]` with `Expected: DateTime:<2026-10-26 00:00:00.000Z>` and `Actual: DateTime:<2026-10-25 23:00:00.000Z>`: the window would end an hour early, at 23:00 on the 25th. Put the file back with `git checkout -- app/lib/domain/rules/earlier_window.dart`.
 
-**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-78 (from-to date ranges, both days included), D-70 (the plan per volume, the pending hold, and paging a scan without skipping a shared generation).
+**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-70 (the plan per volume, the pending hold, and paging a scan without skipping a shared generation) and D-78 (from-to date ranges, both days included, which replaced the fixed "last 2 days" and "last 7 days" windows of D-69).
 
 ---
 
 ## 6. Phone state and clip writes
 
-**What we built:** the database side of the bridge. A new `PhoneStateRepository` remembers whether Shooting mode is on, when it was switched on, and where each volume stood (its baseline). `ClipsRepository` learns four new writes: list the clips that still hold a MediaStore number, apply the result of a library rebuild, *detach* a clip from its number, and take missing clips out of the To tag and Skipped lists. `ZoneRepository` gets `recordAll`, which merges time zone entries in time order. Nothing calls them yet; the scanner and the verifier (Section 7) will.
+**What we built:** the database side of the bridge. A new `PhoneStateRepository` remembers whether Shooting mode is on, when it was switched on, and where each volume stood (its baseline). `ClipsRepository` learns four new writes: list the clips that still hold a MediaStore number, apply the result of a library rebuild, *detach* a clip from its number, and take missing clips out of the To tag and Skipped lists. `ZoneRepository` gets `recordAll`, which merges time zone entries in time order. The scanner and the verifier (Section 7) are what call them.
 
 **Why TakeTray needs it:** the rules in Section 5 only give *answers* ("this clip is video 77 now", "start the next scan after generation 40"). Something has to store the answers safely, and two of the five Review Focus situations are really about storing. A scan takes a while, and in that time the user can switch Shooting mode off and on, or a second scan can finish first. If the old scan then writes its baseline, a clip shot while Shooting mode was off could appear, or a baseline could move backwards (Review Focus 4). And when Android renumbers its videos, an old clip must never keep a number that now belongs to a different video (Review Focus 3).
 
 **Key ideas:**
 
-- **One key, one JSON value, one row.** Shooting mode, its start time and its baselines are stored together under the key `shootingMode` in the `settings` table (the same key/value table as the user's settings). Because it is one row, it is written or not written; there is no moment where Shooting mode is on but the baselines are missing. A missing row means "off". So does a row that cannot be read (not JSON, the wrong shape, or "on" with no start time); the repository then logs the *key name* and nothing else, because a stored value could hold a MediaStore version string, and the log must never carry those (D-10):
+- **One key, one JSON value, one row.** Shooting mode, its start time, its baselines and whether "Add earlier videos" was used this session (`earlierAdded`) are stored together under the key `shootingMode` in the `settings` table (the same key/value table as the user's settings). Because it is one row, it is written or not written; there is no moment where Shooting mode is on but the baselines are missing. A missing row means "off". So does a row that cannot be read (not JSON, the wrong shape, or "on" with no start time); the repository then logs the *key name* and nothing else, because a stored value could hold a MediaStore version string, and the log must never carry those (D-10):
 
   ```dart
   _log.warning('Setting $shootingModeKey is corrupt, reading it as off');
@@ -634,7 +648,7 @@ and run both commands again. In a zone without daylight saving (India, or UTC as
 
   `turnShootingOn` is also safe to call twice: if Shooting mode is already on it writes nothing and returns the state that is stored, so the first start time stays. A second boolean, `mediaAccessWasFull` ("did we ever have full access to the videos?"), has its own key and survives Shooting mode going off.
 
-- **These keys never leave the phone.** A backup file only exports the keys in `SettingsRepository.exportedKeys`, and the two phone-state keys are not in it. Importing a backup deletes every row of the `settings` table first, so after a restore Shooting mode is off and the baselines are gone. That is deliberate: a baseline is a position in *this phone's* media library, and means nothing in a restored one. Two tests guard it: one checks that an export contains neither key name, the other imports a backup over a database with Shooting mode on and checks it is off afterwards.
+- **These keys never leave the phone.** A backup file only exports the keys in `SettingsRepository.exportedKeys`, and the phone-state keys are not in it (`shootingMode` and `mediaAccessWasFull` here; Section 7 adds a third, `mediaVolumeVersions`). Importing a backup deletes every row of the `settings` table first, so after a restore Shooting mode is off and the baselines are gone. That is deliberate: a baseline is a position in *this phone's* media library, and means nothing in a restored one. Two tests guard it: one checks that an export contains neither key name, the other imports a backup over a database with Shooting mode on and checks it is off afterwards.
 
 - **Compare-and-set: "move the baseline only if nothing changed meanwhile".** Picture the race. At 10:00 scan A reads the state: session started at 09:00, baseline for the phone's storage `(v1, 40)`. It queries MediaStore for a few seconds. At 10:01 the user turns Shooting mode off and at 10:02 on again, which starts a new session with its own baselines. Then A finishes and wants to store `(v1, 45)`. `advanceBaseline` takes what A *saw* (`expectedSession` and `expected`) and what A *wants* (`next`), and checks everything inside one database transaction:
 
@@ -649,12 +663,12 @@ and run both commands again. In a zone without daylight saving (India, or UTC as
 
   The two checks above come after a first one: the method refuses unless Shooting mode is on with the same `since` (start time) as `expectedSession`. In the story, the new session has a different `since`, so A's write is refused (it returns `false`) and nothing changes. All three, in order: Shooting mode is on with the same start time; the stored baseline for that volume is exactly the one the caller saw (`null` means "none stored yet"); and, when the version is the same, the generation does not go down. A *different* version is a resync, where generations start over, so then a lower number is allowed. The transaction matters too: with two scans that saw the same state, both would pass the checks if they ran side by side, and both would write. Inside a transaction they run one after the other, so the second sees the first one's write and is refused. A test starts two calls together (`Future.wait`) and checks that exactly one returns `true`.
 
-- **A lost clip keeps its row but gives up its number.** Say Android rebuilds its library and a clip stored with MediaStore id 10 is not found again. The clip may be in a reel, so the row must stay. But id 10 may be given to a different video later, and if the clip still held 10, the detector would think the new video *is* the old clip: a wrong video in the user's reel, the worst bug (spec §4). So the clip gets the number `-clipId` (clip 7 gets `-7`), `missing = true`, and `lastVerifiedAt` = now. Two facts make `-7` safe. MediaStore ids are positive (and `applyRebuildMatch` refuses a new number below 1), so `-7` can never equal a real MediaStore id. And it is unique, because a clip's id is its table's primary key: no two clips share id 7, so no two share `-7`, and the `(volumeName, mediaStoreId)` unique key still holds. The rule to remember is "a negative `mediaStoreId` is always minus its own clip id"; importing a backup checks it, and refuses a file where it is not true. Later, `addDetectedClips` with id 10 finds no row and inserts a new clip. `detach` does the same for one clip whose verified number now points at a different video. (Since Task 7's second fix round, `applyRebuildMatch` also takes a lost clip that is *only* in To tag or Skipped out of that list, and the orphan sweep then deletes it; only a lost clip in a reel keeps its row. Section 7 explains why.)
+- **A lost clip keeps its row but gives up its number.** Say Android rebuilds its library and a clip stored with MediaStore id 10 is not found again. The clip may be in a reel, so the row must stay. But id 10 may be given to a different video later, and if the clip still held 10, the detector would think the new video *is* the old clip: a wrong video in the user's reel, the worst bug (spec §4). So the clip gets the number `-clipId` (clip 7 gets `-7`), `missing = true`, and `lastVerifiedAt` = now. Two facts make `-7` safe. MediaStore ids are positive (and `applyRebuildMatch` refuses a new number below 1), so `-7` can never equal a real MediaStore id. And it is unique, because a clip's id is its table's primary key: no two clips share id 7, so no two share `-7`, and the `(volumeName, mediaStoreId)` unique key still holds. The rule to remember is "a negative `mediaStoreId` is always minus its own clip id"; importing a backup checks it, and refuses a file where it is not true. Later, `addDetectedClips` with id 10 finds no row and inserts a new clip. `detach` does the same for one clip whose verified number now points at a different video. (`applyRebuildMatch` also takes a lost clip that is *only* in To tag or Skipped out of that list, and the orphan sweep then deletes it; only a lost clip in a reel keeps its row. Section 7 explains why.)
 
 - **Swapping numbers without a clash.** After a rebuild clip A may move from 10 to 20 while clip B moves from 20 to 10. The database refuses two rows with the same `(volumeName, mediaStoreId)` at any moment, so moving A first fails (B still holds 20), and so does moving B first. `applyRebuildMatch` first gives every clip in the match a free, negative number, and only then the real ones:
 
   ```dart
-  for (final clipId in {...match.remap.keys, ...match.lost}) {
+  for (final clipId in eligible) {
     await _setMediaStoreId(volumeName, clipId, -clipId);
   }
   ```
@@ -689,14 +703,14 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repos
 
 ## 7. Scanner, verifier and zone sync (and Add earlier videos)
 
-**What we built:** the code that turns the bridge (Section 3), the rules (Section 5) and the database writes (Section 6) into behaviour. Three classes in `app/lib/data/media/`:
+**What we built:** the code that turns the bridge (Section 3), the rules (Section 5) and the database writes (Section 6) into behaviour. Four classes in `app/lib/data/media/`:
 
 - `MediaScanner.scan()` looks for new videos on every volume while Shooting mode is on and puts them in To tag. It also notices when Android has rebuilt its media library and finds the stored clips again, and it holds "Add earlier videos" (`countEarlier` for today, `countEarlierIn` and `addEarlier` for any window of days).
 - `MediaVerifier.verify(clips)` / `verifyAll()` check that stored clips' videos still exist, and flag or remove the ones that do not.
 - `LibraryResync` holds the one "find the clips again after a rebuild" step, which the scanner and the verifier both use.
 - `ZoneSync.sync()` copies the time zone changes the Android side saw while the app was closed into the zone timeline.
 
-All media jobs share one `MediaWorkQueue`, which runs them one at a time. Section 9 wires the scan and the zone sync to app start, resume and opening To tag.
+The scan, the verifier, "Add earlier videos" and its Undo share one `MediaWorkQueue`, which runs them one at a time. (`ZoneSync` does not use it; it only touches the zone table.) Section 9 wires the scan and the zone sync to app start, resume and opening To tag.
 
 **Why TakeTray needs it:** this is where the two promises of the phase are kept: a video shot while Shooting mode is on always reaches To tag (never skipped forever), and a stored clip is never paired with the wrong video. Every one of the five Review Focus situations ends here: limited access, a video still being recorded, a rebuilt library, three triggers at once, a removed SD card or a deleted video.
 
@@ -776,7 +790,7 @@ All media jobs share one `MediaWorkQueue`, which runs them one at a time. Sectio
 
 - **Zone sync clears only what it has saved.** `ZoneSync.sync` merges the native list plus "the zone now" with `recordAll`, and only then tells Android to forget its entries, up to the newest *native* one (not "now", so an entry Android wrote a moment after the read survives). With an empty native list it clears nothing.
 
-- **Add earlier videos never touches a baseline.** Turning Shooting mode on starts from now, so videos shot just before are not detected. "Add earlier videos" works on a window of local calendar days (Section 5): today, or the from-to days the user picked. It asks the phone, on every volume, for the videos shot since the window's start, keeps the ones before its end (the phone is asked only for the start; the end is applied in Dart), drops the ones TakeTray already knows (in To tag, Skipped or a reel), and then either counts them (`countEarlierIn`) or adds them (`addEarlier`). The sheet counts first and asks "N videos found. Add them to To tag?" before anything is added, so a wrong range costs nothing. At 00:05 "today" does not include 23:59 last night; those tests, and a range that crosses a clock change, also run in London's daylight-saving step of `tool/check` (D-73, D-78).
+- **Add earlier videos never touches a baseline.** Turning Shooting mode on starts from now, so videos shot just before are not detected. "Add earlier videos" works on a window of local calendar days (Section 5): today, or the from-to days the user picked. It asks the phone, on every volume, for the videos shot since the window's start, keeps the ones before its end (the phone is asked only for the start; the end is applied in Dart), drops the ones TakeTray already knows (in To tag, Skipped or a reel), and then either counts them (`countEarlierIn`) or adds them (`addEarlier`), which also notes in the Shooting session that "Add earlier videos" was used (`earlierAdded`, so the card's row goes away for that session, Section 10). The sheet counts first and asks "N videos found. Add them to To tag?" before anything is added, so a wrong range costs nothing. At 00:05 "today" does not include 23:59 last night; those tests, and a range that crosses a clock change, also run in London's daylight-saving step of `tool/check` (D-73, D-78).
 
 One scan, as a sequence (one volume, `ScanAfter`):
 
@@ -798,6 +812,7 @@ sequenceDiagram
     S->>P: markAccessWasFull()
     S->>B: currentZoneId(), volumes()
     B-->>S: volume (version, generation = captured)
+    Note over S: also reads the watched folders and the zone timeline
     S->>P: loadShooting() again, volumeVersions()
     Note over S: same session, else stop. planVolume → ScanAfter(g); LibraryResync.catchUp; cursor = g, limit = 500
     loop until a short page, a row past captured, or stuck at 16000
@@ -813,7 +828,7 @@ sequenceDiagram
     S-->>C: ScanDone(added, resynced, failedVolumes)
 ```
 
-**Where it lives:** `app/lib/data/media/media_work_queue.dart` (`MediaWorkQueue`, `mediaWorkQueueProvider`), `media_scanner.dart` (`MediaScanner`, `ScanOutcome`, `mediaScannerProvider`), `media_verifier.dart` (`MediaVerifier`, `VerifyOutcome`, `mediaVerifierProvider`), `zone_sync.dart` (`ZoneSync`, `zoneSyncProvider`), `library_resync.dart` (`LibraryResync`); `holdsBaseline` in `app/lib/domain/rules/baseline.dart`; in `app/lib/data/repositories/clips_repository.dart` `addCheckedClips`, `mediaStoreClipsHolding`, `applyVerification`, `clipsByIds` and `allClipIds`; in `phone_state_repository.dart` the `rebuilt` flag and `volumeVersions` / `recordVolumeVersion`; and the import check for a clip's identity in `app/lib/data/backup/backup_format.dart`. Tests in `app/test/data/media/`: `media_scanner_test.dart`, `add_earlier_test.dart`, `media_verifier_test.dart`, `zone_sync_test.dart`, `media_work_queue_test.dart`, with the shared `media_harness.dart` (a fresh in-memory database, a `FakeMediaBridge` that also records the paging and batch arguments, and the repositories). The flows are in `docs/flow.md` ("Finding new clips", "Checking clips still exist", "Adding earlier videos").
+**Where it lives:** `app/lib/data/media/media_work_queue.dart` (`MediaWorkQueue`, `mediaWorkQueueProvider`), `media_scanner.dart` (`MediaScanner`, `ScanOutcome`, `mediaScannerProvider`), `media_verifier.dart` (`MediaVerifier`, `VerifyOutcome`, `mediaVerifierProvider`), `zone_sync.dart` (`ZoneSync`, `zoneSyncProvider`), `library_resync.dart` (`LibraryResync`); `holdsBaseline` in `app/lib/domain/rules/baseline.dart`; in `app/lib/data/repositories/clips_repository.dart` `addCheckedClips`, `mediaStoreClipsHolding`, `applyVerification`, `clipsByIds` and `allClipIds`; in `phone_state_repository.dart` the `rebuilt` flag, `volumeVersions` / `recordVolumeVersion` and `markEarlierAdded`; and the import check for a clip's identity in `app/lib/data/backup/backup_format.dart`. Tests in `app/test/data/media/`: `media_scanner_test.dart`, `add_earlier_test.dart`, `media_verifier_test.dart`, `zone_sync_test.dart`, `media_work_queue_test.dart`, with the shared `media_harness.dart` (a fresh in-memory database, a `FakeMediaBridge` that also records the paging and batch arguments, and the repositories). The flows are in `docs/flow.md` ("Finding new clips", "Checking clips still exist", "Adding earlier videos").
 
 **Try it yourself:** see the bug the paging rule prevents. From the repo root:
 
@@ -841,7 +856,7 @@ and run the same command. It fails with ``Expected: <Instance of 'ScanDone'> wit
 
 ## 8. Thumbnails
 
-**What we built:** a small picture for every clip, without asking the phone every time. `ThumbnailCache` keeps the pictures as files in the app's cache folder and asks Android (through the bridge from Section 3) only when a file is missing. `ClipThumbnailImage` is the piece Flutter's `Image` widget uses to show one. Nothing shows a thumbnail on screen yet; Section 10 does that.
+**What we built:** a small picture for every clip, without asking the phone every time. `ThumbnailCache` keeps the pictures as files in the app's cache folder and asks Android (through the bridge from Section 3) only when a file is missing. `ClipThumbnailImage` is the piece Flutter's `Image` widget uses to show one. The screens that show them are in Section 10.
 
 **Why TakeTray needs it:** To tag and the reel screens show a thumbnail for each clip, often a hundred at a time, and the user scrolls fast. Asking Android to cut a picture out of a video is slow, so it is done once per video and the answer is kept. The cache must also never show the *wrong* video. Android can renumber its videos (Review Focus 3 and 5), and a picture kept under "video 42" would then belong to some other video. So the file name carries the facts that identify the video, not just the number.
 
@@ -922,9 +937,9 @@ It ends with `All tests passed!`. The test makes four files of 40 bytes with dif
 - `EarlierVideosController`: the "Add earlier videos" sheet: Today's count, counting the videos of chosen dates, adding a range, and Undo.
 - `MediaLifecycle`: a widget around the whole app that runs the zone sync, the access check and the scan on start and on resume.
 
-There is still no screen. Section 10 only has to show these states and call these methods.
+None of them draws anything. Section 10's screens only show these states and call these methods.
 
-**Why TakeTray needs it:** the earlier sections are all *capabilities*; nothing yet decides *when* they run or what the user sees when they fail. Two of the five Review Focus situations are decided here. With limited or lost access (Focus 1) the banner must say the right thing. With Shooting mode turned off and on quickly, or the app start, a resume and opening To tag all asking for a scan at once (Focus 4), nothing may run twice side by side. On top of that, an error from Android or the database must never become an uncaught error in code that nobody waits for.
+**Why TakeTray needs it:** the earlier sections are all *capabilities*; nothing in them decides *when* they run or what the user sees when they fail. Two of the five Review Focus situations are decided here. With limited or lost access (Focus 1) the banner must say the right thing. With Shooting mode turned off and on quickly, or the app start, a resume and opening To tag all asking for a scan at once (Focus 4), nothing may run twice side by side. On top of that, an error from Android or the database must never become an uncaught error in code that nobody waits for.
 
 **Key ideas:**
 
@@ -996,34 +1011,48 @@ There is still no screen. Section 10 only has to show these states and call thes
 
   It catches everything (an `Error` too, because `ThumbnailCache.load` can let one through) and logs only `error.runtimeType`, for example `The scan failed: PlatformException`. The message is left out on purpose: an error message from Android or the file system can contain a path or a file name, and the logs must not (D-10, Section 2). Riverpod 3 also retries a provider whose `build` threw, with a growing delay; these view models turn that off (`retry: noRetry`), so a failed count stays failed until the sheet is opened again.
 
-- **To tag shows the database, and checks the phone behind it.** The state of `ToTagController` is `watchInbox(pending)` from Section 6: it updates by itself whenever a scan adds a clip or a verify removes one. When it is first built it also runs, without blocking the list, `scan()` and then `verify()` of the clips that are waiting. The two are independent: if the scan throws, the verify still runs, and the list still shows what is in the database. `onResume()` repeats both. Because the scan and the verifier share the one media queue and the scanner coalesces calls (Section 7), three triggers at once cost one more scan, not three.
+- **To tag shows the database, and checks the phone behind it.** The state of `ToTagController` is `ClipsRepository.watchInbox(pending)` (Phase 2's list of waiting clips, a stream): it updates by itself whenever a scan adds a clip or a verify removes one. When it is first built it also runs, without blocking the list, `scan()` and then `verify()` of the clips that are waiting. The two are independent: if the scan throws, the verify still runs, and the list still shows what is in the database. `onResume()` repeats both. Because the scan and the verifier share the one media queue and the scanner coalesces calls (Section 7), three triggers at once cost one more scan, not three.
 
 - **"Add earlier videos": count, add, Undo.** `EarlierVideosController` reads `countEarlier()` (Today's count, an `int`) when the sheet opens (it works even with Shooting mode off). `countIn(range)` counts the videos of chosen dates without touching that state. `add(range)` calls `addEarlier` and returns the new clips' ids; afterwards it counts Today again, so the number no longer includes what was just added. `countIn`, `add` and `undo` *rethrow* their errors (after logging the type), because here the sheet needs to tell the user that it did not work. Undo has a subtle rule. The obvious tool, `removeMissingFromLists`, only removes clips that are flagged *missing*, and the just-added clips are not, so Undo would do nothing and not complain. Instead Undo has its own repository method:
 
   ```dart
-  await (_db.delete(_db.inbox)..where(
-        (i) =>
-            i.clipId.isIn(clipIds) &
-            i.state.equalsValue(InboxState.pending) &
-            i.clipId.isNotInQuery(inAReel),
-      ))
-      .go();
+  for (final batch in _batches(clipIds)) {
+    await (_db.delete(_db.inbox)..where(
+          (i) =>
+              i.clipId.isIn(batch) &
+              i.state.equalsValue(InboxState.pending) &
+              i.clipId.isNotInQuery(inAReel),
+        ))
+        .go();
+  }
   return await _db.deleteOrphanClips();
   ```
 
-  It deletes the To tag entry only for ids that are still waiting (not skipped) and in no reel, and then the orphan sweep (Section 6) deletes the clip rows left in no place. If between "Add" and "Undo" the user tagged one of the clips into a reel or skipped it, that clip is the user's work now, and it stays. The call goes through the media queue so an Undo cannot run in the middle of a scan.
+  (The ids go in batches, all in one transaction, because a database call takes only so many values at once.) It deletes the To tag entry only for ids that are still waiting (not skipped) and in no reel, and then the orphan sweep (Section 6) deletes the clip rows left in no place. If between "Add" and "Undo" the user tagged one of the clips into a reel or skipped it, that clip is the user's work now, and it stays. The call goes through the media queue so an Undo cannot run in the middle of a scan.
 
 - **`MediaLifecycle`: the same three steps, in order, one run at a time.** It is a widget that shows its `child` unchanged and listens to the app's lifecycle. On the first frame and every time the app comes back to the front it runs:
 
   ```dart
-  await guarded(_log, 'The zone sync', () => ref.read(zoneSyncProvider).sync());
-  await guarded(_log, 'The access check', () => ref.read(mediaAccessControllerProvider.notifier).refresh());
-  await guarded(_log, 'The scan', () => ref.read(mediaScannerProvider).scan());
+  await guarded(
+    _log,
+    'The zone sync',
+    () => ref.read(zoneSyncProvider).sync(),
+  );
+  await guarded(
+    _log,
+    'The access check',
+    () => ref.read(mediaAccessControllerProvider.notifier).refresh(),
+  );
+  await guarded(
+    _log,
+    'The scan',
+    () => ref.read(mediaScannerProvider).scan(),
+  );
   ```
 
   The order has reasons. The zone sync first, because a new clip gets its time zone from the zone timeline (Section 6); the access check before the scan, because a scan without full access does nothing, and the access may have changed in the phone's settings meanwhile. Each step runs even if the one before it failed (every step is guarded). And a *resume while the start is still running* does not start a second run side by side: it sets a flag, and when the current run ends, exactly one more run follows, however many resumes came. The first frame also prunes the thumbnail cache (Section 8) once per app start, not on resume.
 
-**Where it lives:** `app/lib/features/media_access/view_models/media_access_controller.dart`, `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `app/lib/features/tagging/view_models/to_tag_controller.dart` and `earlier_videos_controller.dart`, `app/lib/app/media_lifecycle.dart` (wrapped around the router in `app/lib/app.dart`), `app/lib/core/guarded.dart`, and `ClipsRepository.undoEarlierAdd` in `app/lib/data/repositories/clips_repository.dart`, each with a generated `.g.dart`. Tests mirror these paths under `app/test/`. `app/test/support/vm_harness.dart` builds a fresh in-memory database, a `FakeMediaBridge` and a Riverpod container that use them, so a test can store a clip, call a method and look at the bridge's list of calls. The tests of the whole app (`app_test.dart`, `router/app_router_test.dart`) use the same overrides, so the lifecycle never reaches the real platform channels.
+**Where it lives:** `app/lib/features/media_access/view_models/media_access_controller.dart`, `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `app/lib/features/tagging/view_models/to_tag_controller.dart` and `earlier_videos_controller.dart`, `app/lib/app/media_lifecycle.dart` (wrapped around the router in `app/lib/app.dart`), `app/lib/core/guarded.dart`, and `ClipsRepository.undoEarlierAdd` in `app/lib/data/repositories/clips_repository.dart`. Each file with `@riverpod` code has a generated `.g.dart` beside it. Tests mirror these paths under `app/test/`. `app/test/support/vm_harness.dart` builds a fresh in-memory database, a `FakeMediaBridge` and a Riverpod container that use them, so a test can store a clip, call a method and look at the bridge's list of calls. The tests of the whole app (`app_test.dart`, `router/app_router_test.dart`) use the same overrides, so the lifecycle never reaches the real platform channels. The flow is in `docs/flow.md` ("App start and resume").
 
 **Try it yourself:** see the banner rule. From the repo root:
 
@@ -1135,7 +1164,7 @@ Every piece is made of components that already exist in the design package (`TtB
 
 - **Tests that look like the phone.** Flutter's tests normally draw every letter as a square, so a layout test would measure text about twice as wide as the real thing. `app/test/flutter_test_config.dart` loads the app's real font first, so "nothing overflows at 2x text on a 360 dp screen" really means that. Tests also turn on "remove animations", because the record dot on the card pulses for ever and `pumpAndSettle` would otherwise never finish; and `expectTtAccessible` (tap-target size, labels, contrast) runs on both screens in light and dark.
 
-**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart`, `shooting_time_text.dart` and `waiting_duration_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart` (the sheet, the picker call and the dialogs), `packages/taketray_ui/lib/src/theme/take_tray_theme.dart` (`datePickerTheme`), `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
+**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart`, `shooting_time_text.dart` and `waiting_duration_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart` (the sheet, the picker call and the dialogs), `packages/taketray_ui/lib/src/theme/take_tray_theme.dart` (`datePickerTheme`), `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`). The flow is in `docs/flow.md` ("To tag, the Shooting mode card and Add earlier videos").
 
 **Try it yourself:** see the "since" rule keep its promise. From the repo root:
 
@@ -1157,7 +1186,7 @@ Run the same command. It fails with `Expected: 'Oct 27, 11:59 PM'` and `Actual: 
 
 ## 11. Proving it on the phone
 
-**What we built:** the tests that run on the real phone (the S24), and the small amount of debug-only code they need. Two new Patrol test files, `media_access_test.dart` and `media_scan_test.dart`, drive the real app on the phone: they give it access through the real system dialog, put a real video into the phone's media library, and watch it appear in To tag with its picture. Then they delete the video, and watch it leave. To put a video there, a debug-only channel (`app.taketray/test_media`) lets the tests insert a video into a folder of its own, `Movies/TakeTray Test/`, and delete it again. A script (`tool/make_test_video`) makes the video, and the release check now also fails if any of this test code is in the app that ships.
+**What we built:** the tests that run on the real phone (the S24), and the small amount of debug-only code they need. Two new Patrol test files, `media_access_test.dart` and `media_scan_test.dart`, drive the real app on the phone: they give it access through the real system dialog, put a real video into the phone's media library, and watch it appear in To tag with its picture. Then they delete the video, and watch it leave. A last part switches Shooting mode off, puts in a second video and adds it with "Add earlier videos" (the Choose dates… calendar, today to today, then **Add**), then takes it back with **Undo**. To put a video there, a debug-only channel (`app.taketray/test_media`) lets the tests insert a video into a folder of its own, `Movies/TakeTray Test/`, and delete it again. A script (`tool/make_test_video`) makes the video, and the release check now also fails if any of this test code is in the app that ships.
 
 **Why TakeTray needs it:** Sections 4 to 10 prove the rules with fakes and with Robolectric, which runs Android's *framework* code on a laptop. But some facts only the real Android answers: does `COLLATE NOCASE` really work in the real media database? Is the volume's generation really at least as high as a fresh row's? Does the permission dialog's answer really reach the app (or does `requestAccess` wait for ever)? Can a thumbnail really be made from a video that was just written? A wrong guess in any of these is the worst bug in this app: a clip silently not found, or a wrong video shown. So the same questions are asked once, on the phone, with a real video.
 
@@ -1244,8 +1273,58 @@ It ends with `BUILD SUCCESSFUL` (8 tests). Now, in `app/android/app/src/debug/ko
 
 ## Glossary
 
-_To be filled in as the sections are written (Task 12 makes it one list)._
+Terms are in alphabetical order. The link takes you to the section where the idea is explained. Words that Phase 2's guide already explains (transaction, sealed class, JSON and others) are listed again here only where this phase adds something.
+
+- **aapt2.** A tool of the Android SDK that reads a finished app. The release check uses it to print the app's merged manifest. See [Section 1](#1-google-backup-off-and-the-release-checks).
+- **Access level (full, limited, denied).** How much of the video library the user lets TakeTray see. Under *limited* (Android 14 and later: "Select photos and videos") a query returns only the videos the user picked. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Add earlier videos.** The sheet that adds videos shot before Shooting mode was switched on: today, or the days the user picks in a calendar, after a confirmation. See [Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos) and [Section 10](#10-the-to-tag-screen-and-the-shooting-mode-card).
+- **Auto Backup.** Android's habit of copying an app's files to the user's Google account and putting them back on a new phone. TakeTray turns it off. See [Section 1](#1-google-backup-off-and-the-release-checks).
+- **Baseline.** For each volume, the position (version and generation) where the last scan stopped. "New videos" means rows added after it. See [Section 5](#5-the-media-rules).
+- **Broadcast receiver.** A small Android class that the system starts when something happens, such as a time zone change, even if the app is closed. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Coalescing.** Giving every caller that arrives while a job is queued the same future, so three triggers cost one run. See [Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos).
+- **Compare-and-set.** A write that says "change this from what I saw to this" and is refused if it has changed meanwhile. The baseline moves this way. See [Section 6](#6-phone-state-and-clip-writes).
+- **Coroutine (`suspend`).** Kotlin's way of writing "answer later": a `suspend fun` can wait without blocking its thread. Pigeon makes every `@async` question one. See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **Cursor.** Two meanings. In Android, the current row of a query result ([Section 4](#4-the-kotlin-side-and-android-unit-tests)). In the scan, the generation that the next page starts after, which is kept apart from the baseline ([Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos)).
+- **Detached clip.** A clip that keeps its row but gave up its MediaStore number (it holds minus its own clip id instead), because its video is lost or the number now belongs to another video. See [Section 6](#6-phone-state-and-clip-writes).
+- **Dex.** The compiled Android code inside an app. The release check searches it for debug-only test code. See [Section 11](#11-proving-it-on-the-phone).
+- **Fake (`FakeMediaBridge`).** A stand-in for the bridge that answers from lists in a test, with switches for failures and pauses. See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **Fingerprint.** A clip's size, duration, shooting date and file name, kept so that a video can be recognised if Android gives it a new number. The name only breaks a tie. See [Section 5](#5-the-media-rules).
+- **Fire and forget.** Starting work and not waiting for it. An error there has nowhere to go, so these calls are wrapped in `guarded`. See [Section 9](#9-view-models-and-app-lifecycle).
+- **Generation.** MediaStore's counter, kept per volume: every change to the library gets the next number, and each row remembers the one it was added with. See [Section 5](#5-the-media-rules).
+- **`guarded`.** A small function that runs a step, and if it throws anything, logs only the error's type and returns null. See [Section 9](#9-view-models-and-app-lifecycle).
+- **Host API.** In Pigeon, the calls Dart makes *to* the phone's side; written once as an abstract class (`MediaHostApi`). See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **`IS_PENDING` (pending row).** The MediaStore flag for a video that is still being written. The row exists, but the file is not finished. A pending row holds the baseline back. See [Section 5](#5-the-media-rules).
+- **Kotlin.** The language of the Android half of the bridge. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Main thread.** The thread that also draws the screen. Slow work must not run on it, so MediaStore reads move to a background pool. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Manual mode.** What TakeTray is called when it cannot see all videos (limited or denied access): new clips are not found automatically. A banner says so and offers "Allow full access". See [Section 9](#9-view-models-and-app-lifecycle) and [Section 10](#10-the-to-tag-screen-and-the-shooting-mode-card).
+- **`MediaBridge`.** The Dart interface the app uses to ask Android about videos, in the app's own types. See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **MediaStore.** Android's own catalogue of the videos and photos on the phone; a clip's number there is how TakeTray recognises it. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Mock messenger.** A stand-in for Android that Flutter's test tools provide, used to test the real generated channels without a phone. See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **Native automator.** Patrol's helper for the phone's own screen (system dialogs, the Home button), which Flutter cannot see. See [Section 11](#11-proving-it-on-the-phone).
+- **Patrol.** The tool that runs Flutter tests inside the app on the real phone. See [Section 11](#11-proving-it-on-the-phone).
+- **Pigeon.** A Flutter-team tool that writes matching Dart and Kotlin code from one description of the calls between them. See [Section 3](#3-the-pigeon-contract-and-the-dart-bridge).
+- **Plan (`VolumePlan`).** What a scan does with one volume: skip it, start from now, resync it, or scan after its baseline. See [Section 5](#5-the-media-rules).
+- **R8.** The tool that shrinks the release app and renames its classes to short names. See [Section 11](#11-proving-it-on-the-phone).
+- **Rebuild (resync).** Android renumbering its media library (after a restore or a database reset). TakeTray then finds its clips again by fingerprint. See [Section 5](#5-the-media-rules) and [Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos).
+- **Review Focus.** One of the five risky situations the phase is reviewed against (limited access, a pending video, a renumbered library, three triggers at once, a removed card or deleted video). See [How to read this guide](#how-to-read-this-guide).
+- **Robolectric.** A library that runs the real Android framework code on an ordinary computer, so Kotlin tests need no phone. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Selection.** The SQL `WHERE` part of a MediaStore query, with `?` placeholders for its values. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Shooting mode.** The switch that tells TakeTray to look for new videos. It stores when it was switched on and the baselines. See [Section 6](#6-phone-state-and-clip-writes).
+- **Thumbnail cache.** The folder of small JPEG pictures, one per video, named after the facts that identify the video. See [Section 8](#8-thumbnails).
+- **To tag (and Skipped).** The list of clips waiting to be tagged (`pending`), and the ones set aside. See [Section 10](#10-the-to-tag-screen-and-the-shooting-mode-card).
+- **Version (MediaStore).** A meaningless string per volume that changes when Android rebuilds the library. It is compared for equality only. See [Section 5](#5-the-media-rules).
+- **View model.** A small Riverpod class that holds what a screen shows and the actions it can take. See [Section 9](#9-view-models-and-app-lifecycle).
+- **Volume.** One storage area that MediaStore knows, such as the phone's own storage (`external_primary`) or an SD card. See [Section 4](#4-the-kotlin-side-and-android-unit-tests).
+- **Watched folders.** The camera folders TakeTray looks in; a setting that starts as `DCIM/Camera`. See [Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos).
+- **Work queue (`MediaWorkQueue`).** The one line that the scan, the verifier and Add earlier videos wait in, so no two overlap. See [Section 7](#7-scanner-verifier-and-zone-sync-and-add-earlier-videos).
 
 ## What's next
 
-_To be written when the phase is finished._
+Phase 3 gave TakeTray its eyes: it finds new videos while Shooting mode is on, shows their pictures in To tag, notices when one is deleted, and can add earlier ones. Nothing in it changes a video. The parts that later phases build on:
+
+- **Phase 4 (reel screens)** replaces the placeholder Reels tab that holds the Shooting mode card. The Phase 3 leftovers for it are in `docs/later.md` (a disabled state for list rows, a snack when the camera cannot open, a card that rebuilds at midnight, and how the "Add earlier videos" row shares the card with References).
+- **Phase 5 (tagging and the player)** turns the To tag grid, where a tap does nothing yet, into the tagging screen. It reuses `ClipThumbnailImage`, `ClipsRepository.tagClip` and `skip`, and the list the scan fills. It also owes To tag an error state and the clip's own time zone on its tiles.
+- **Phase 6 (background detection)** looks for new videos when the app is closed. It reuses the time zone receiver's storage (`ZoneChangeStore`) and the baselines, so a `BackgroundApi` has to hand the baselines to the native side, which cannot read the database today.
+- **Phases 7 to 9** add friends' videos by hand (picked clips, which the verifier and thumbnails already skip), the hand-off to the editors, and reference reels.
+- **Phase 10 (onboarding and settings)** asks for video access in its own step instead of when the switch is turned on, and adds Export / Import with "X of Y clips found" (`MediaVerifier.verifyAll`). An import must not run beside a scan or a verify.
+- **Phase 11 (release)** needs a Play Console declaration for video access. The case to make is continuous detection of new camera clips, which the system photo picker cannot do; Manual mode works without the permission.

@@ -2,7 +2,7 @@
 
 Items that reviews found and parked for a later phase. When a phase is planned, read its section and put each item into a task (or say in the plan why it is dropped). Delete an item once it is done.
 
-Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), and the Phase 2 task reviews and its final whole-branch review (2026-10-27).
+Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), the Phase 2 task reviews and its final whole-branch review (2026-10-27), and the Phase 3 learning guide (2026-10-29).
 
 ## Phase 4
 
@@ -62,6 +62,10 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The snack has no drop shadow. Add one or record why in D-48.
 - Add `expectTtAccessible` to `video_surface_test`. Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
 
+## Phase 6 (background detection)
+
+- Phase 3 left this (D-71, D-72): the background job reuses `ZoneChangeStore` (the native zone list) and the baselines. The baselines exist only in the database (the `shootingMode` setting), which native code cannot read, and nothing writes them to native state yet. `BackgroundApi` must write them there (with Shooting mode on or off and the watched folders, spec §8.2), and keep them in step whenever Dart moves a baseline (`PhoneStateRepository.advanceBaseline`, compare-and-set) or turns Shooting mode on or off.
+
 ## Before the first schema change (v2)
 
 - `tool/check_generated` must also hash `app/lib/data/database/app_database.steps.dart`, which `make-migrations` writes from v2. At v1 it also never regenerates `app/test/drift/.../generated/`.
@@ -80,6 +84,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 10 (onboarding and settings)
 
+- Phase 3 asks for video access when the user turns Shooting mode on (`ShootingModeController`, through `MediaAccessController.askIfDenied`, D-75) and from the banner's Allow button. Onboarding replaces the "Turn on, then ask for access" step: ask once, in its own step with its own words, and then decide whether the switch should still ask.
+- Backup import must run through `MediaWorkQueue`, or block the media jobs while it runs. It replaces the clips and the settings in one transaction, but a scan or a verify that is already running has read the old clips and baselines. The compare-and-set refuses the baseline write (an import turns Shooting mode off), yet the clips that job writes could still land in the freshly imported data. The same screen calls `MediaVerifier.verifyAll` for "X of Y clips found": like `verify` it throws on a bridge or database error, so wrap it in `guarded` (D-75).
+
 - The Export/Import buttons: decode and validate the backup JSON off the UI isolate (`compute`/`Isolate.run`) so a large file doesn't freeze the screen; show "X of Y clips found" after the media check.
 
 - When the Settings screen watches `SettingsRepository.watch()`, a corrupt stored value logs its "Setting … is corrupt" warning on every emission, not once. Log it once per key (or repair the row on first read).
@@ -91,6 +98,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The disabled-on `TtSwitch` tick is at full opacity.
 
 ## Phase 11 (polish and release)
+
+- The Play Console declaration for video access (`READ_MEDIA_VIDEO`). The Phase 3 research rates approval at about 50/50. The case to make: TakeTray's core feature is continuous detection of new camera clips as they are shot, which the one-off system photo picker cannot do. Say too that Manual mode (limited or denied access) already works without the permission, so a refusal costs the automatic detection and leaves the rest of the app working (spec: Play policy).
 
 - `design/tools/build_tokens.py --check` scans only `design/tokens/colour-options/` and `design/handoff/compose/` for orphans. Add `packages/taketray_ui/lib/src/tokens/` (it holds only `tokens.g.dart`) to `GENERATED_DIRS`.
 - Release as an app bundle or split per ABI (the APK is 48.9 MB for 3 ABIs).

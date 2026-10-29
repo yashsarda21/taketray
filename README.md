@@ -33,8 +33,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 0 | Foundation | ✅ Done |
 | 1 | Design system | ✅ Done |
 | 2 | Data layer | ✅ Done |
-| 3 | Finding your videos (Android media bridge) | Next |
-| 4 | Reels screens | Planned |
+| 3 | Finding your videos (Android media bridge) | ✅ Done |
+| 4 | Reels screens | Next |
 | 5 | Tagging (To tag and the tag player) | Planned |
 | 6 | Background detection and notifications | Planned |
 | 7 | Adding friends' videos | Planned |
@@ -72,6 +72,23 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Learning guide**: [docs/learn/phase-2-data-layer.md](docs/learn/phase-2-data-layer.md) explains the whole phase in plain English, with the real code.
 - **GitHub checks**: every push runs the full `tool/check` on GitHub's Linux machines. Screenshot tests keep a separate, exact set of pictures for Linux, and text readability (contrast) is measured from the real colours, so it gives the same result on every computer. How it all works: [docs/learn/github-automatic-checks.md](docs/learn/github-automatic-checks.md).
 
+### Phase 3: Finding your videos
+- **Shooting mode**: a switch on the Reels tab. Turn it on and film with your phone's normal camera; TakeTray looks for the videos you shoot from that moment on. The card shows since when it has been on and has an **Open camera** button.
+- **To tag**: the new videos land here, oldest first, as a grid with each video's picture, the time it was shot and its length. Open the tab and TakeTray checks for new videos first. When Shooting mode is off but videos are waiting, a banner on the Reels tab says how many and how much video that is. (Tagging itself comes in Phase 5.)
+- **Thumbnails**: a small picture for every video, made once and kept on the phone (up to 64 MB, tidied up each time the app starts). If Android ever gives a number to a different video, the old picture is never shown for it.
+- **Manual mode and the access banner**: TakeTray asks Android for permission to see your videos, and only videos. If you share only some of them ("Select photos and videos") or say no, a banner says **Manual mode** and offers **Allow full access**. If Android takes the permission away later, the banner says **TakeTray can't see your videos**. Either way, nothing is removed just because TakeTray cannot see it.
+- **Add earlier videos**: from the Shooting mode card or the ⋮ menu of To tag. **Today** adds at once; **Choose dates…** opens a calendar for any from-to range, counts the videos first and asks "N videos found. Add them to To tag?" before adding anything. A snack with **Undo** follows.
+- **Noticing deleted videos**: a video you delete in the Gallery leaves To tag when you come back to TakeTray. A clip that is already in a reel stays there, marked as missing. If Android rebuilds its media library, TakeTray finds your clips again by their size, length and date. When it is not sure, it calls the clip missing instead of showing the wrong video.
+- **Time zones**: a clip is dated in the zone you were in when you shot it, even if you changed zone while TakeTray was closed.
+- **No Google backup**: Android no longer copies TakeTray's data to Google or to a new phone, because its video numbers only mean something on the phone that made them. Export / Import (Phase 10) is the same-phone backup.
+- **Phone tests**: on-device tests on the S24 give TakeTray access through the real Android dialog, put a test video into a folder of its own (`Movies/TakeTray Test`), check that it appears in To tag with its picture and leaves when deleted, and try Add earlier videos and Undo. They never read or delete your own videos, and the release check fails if any of this test code ends up in the app that ships.
+- **Quality gates**:
+  - more than 100 tests of the Android side run on a laptop in every `tool/check` and on GitHub, the video ones as four Android versions
+  - the coverage check now counts files that no test loads
+  - the release check also confirms the app asks only for video access and has no internet permission
+  - the date logic is tested again with the clock set to London, where the clocks change
+- **Learning guide**: [docs/learn/phase-3-media-bridge.md](docs/learn/phase-3-media-bridge.md) explains the whole phase in plain English, with the real code.
+
 ## Running the checks
 
 Use the pinned Flutter through the wrappers in `tool/` (never a global `flutter`):
@@ -89,6 +106,8 @@ Set-up details: [docs/dev-setup.md](docs/dev-setup.md).
 | Path | What's there |
 |---|---|
 | `app/` | The TakeTray Android app |
+| `app/pigeons/` | The contract between Flutter and Android for reading videos (Pigeon writes the code on both sides from it) |
+| `app/android/app/src/main/kotlin/app/taketray/media/` | The Kotlin side: permissions, video queries, thumbnails, time zone changes |
 | `packages/taketray_ui/` | The design system (theme and components) |
 | `widgetbook/` | The "TakeTray UI" component catalogue |
 | `tool/` | Flutter wrappers and check scripts |
