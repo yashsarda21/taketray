@@ -29,6 +29,7 @@ const toTagRouteMarker = 'the To tag route';
 /// logical size (the pixel ratio is 1). The phone's "remove animations" is on
 /// unless [animations] is true: the record dot of the Shooting mode card and
 /// the skeleton tiles loop for ever, and `pumpAndSettle` would never settle.
+/// [use24Hour] is the phone's 24-hour setting.
 Future<ProviderContainer> pumpScreen(
   WidgetTester tester,
   Widget screen, {
@@ -38,6 +39,7 @@ Future<ProviderContainer> pumpScreen(
   Size size = const Size(360, 800),
   bool settle = true,
   bool animations = false,
+  bool use24Hour = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -72,6 +74,7 @@ Future<ProviderContainer> pumpScreen(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(textScale),
             disableAnimations: !animations,
+            alwaysUse24HourFormat: use24Hour,
           ),
           child: app!,
         ),

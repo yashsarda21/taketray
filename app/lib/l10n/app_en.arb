@@ -219,5 +219,58 @@
   "clipMissing": "Missing from phone",
   "@clipMissing": {
     "description": "Label of a clip tile whose video is gone from the phone."
+  },
+  "clipsWaitingTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
+  "@clipsWaitingTitle": {
+    "description": "Title of the banner on the Reels tab: how many clips wait in To tag while Shooting mode is off.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipsWaitingBody": "{duration} of video waiting",
+  "@clipsWaitingBody": {
+    "description": "Text of the banner on the Reels tab. {duration} is the total length of the waiting clips, such as \"45 s\", \"3 min\" or \"1 h 5 min\".",
+    "placeholders": {
+      "duration": {
+        "type": "String",
+        "example": "3 min"
+      }
+    }
+  },
+  "durationSeconds": "{count} s",
+  "@durationSeconds": {
+    "description": "A length under a minute, such as 45 s.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinutes": "{count} min",
+  "@durationMinutes": {
+    "description": "A length of minutes, such as 3 min.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationHoursMinutes": "{hours} h {minutes} min",
+  "@durationHoursMinutes": {
+    "description": "A length of an hour or more, such as 1 h 5 min.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "loading": "Loading",
+  "@loading": {
+    "description": "Screen-reader word for something that is still loading, after its name."
   }
 }

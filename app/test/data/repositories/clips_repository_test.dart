@@ -1834,6 +1834,61 @@ void main() {
   });
 
   group('watching', () {
+    test(
+      'watchFirstShowableClip is the lowest-id clip with a picture',
+      () async {
+        expect(await repo.watchFirstShowableClip().first, isNull);
+
+        final reel = await reels.create('Goa');
+        final picked = await repo.addNewClipsToReel(reel.id, [
+          pickerClip('content://p/1'),
+        ]);
+        // A picked clip has no thumbnail to ask for: it is not offered.
+        expect(await repo.watchFirstShowableClip().first, isNull);
+
+        final ids = await repo.addDetectedClips([
+          mediaStoreClip(10),
+          mediaStoreClip(11),
+        ]);
+        expect(picked, isNotEmpty);
+        expect((await repo.watchFirstShowableClip().first)!.id, ids[0]);
+      },
+    );
+
+    test('watchFirstShowableClip skips a clip that is missing', () async {
+      final ids = await repo.addDetectedClips([
+        mediaStoreClip(10),
+        mediaStoreClip(11),
+      ]);
+      await repo.recordVerification(found: {ids[1]}, missing: {ids[0]});
+
+      expect((await repo.watchFirstShowableClip().first)!.id, ids[1]);
+
+      await repo.recordVerification(found: {}, missing: {ids[1]});
+      expect(await repo.watchFirstShowableClip().first, isNull);
+    });
+
+    test(
+      'watchFirstShowableClip finds a clip that is in a reel, too',
+      () async {
+        final ids = await repo.addDetectedClips([mediaStoreClip(10)]);
+        await repo.tagClip(ids.single, {(await reels.create('Goa')).id});
+
+        expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
+      },
+    );
+
+    test('watchFirstShowableClip follows changes', () async {
+      final seen = <int?>[];
+      final sub = repo.watchFirstShowableClip().listen((c) => seen.add(c?.id));
+      addTearDown(sub.cancel);
+      await Future<void>.delayed(Duration.zero);
+      final ids = await repo.addDetectedClips([mediaStoreClip(10)]);
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen, [null, ids.single]);
+    });
+
     test('watchInbox is sorted by shooting time, ties by id', () async {
       final lateShot = _t0.add(const Duration(hours: 2));
       final earlyShot = _t0.subtract(const Duration(hours: 2));

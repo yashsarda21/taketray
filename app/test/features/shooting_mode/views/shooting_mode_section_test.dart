@@ -45,8 +45,10 @@ Future<Pumped> pump(
   ShootingState shooting = ShootingState.off,
   MediaAccessLevel? access = MediaAccessLevel.full,
   List<Clip> pending = const [],
+  Clip? fallback,
   Brightness brightness = Brightness.light,
   double textScale = 1,
+  bool use24Hour = false,
 }) async {
   final fakeShooting = FakeShooting(shooting);
   final fakeAccess = FakeAccess(access);
@@ -57,12 +59,14 @@ Future<Pumped> pump(
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       pendingClipsProvider.overrideWith((ref) => Stream.value(pending)),
+      firstShowableClipProvider.overrideWith((ref) => Stream.value(fallback)),
       clockProvider.overrideWithValue(FixedClock(_now)),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
     ],
     brightness: brightness,
     textScale: textScale,
+    use24Hour: use24Hour,
   );
   return Pumped(fakeShooting, fakeAccess, container);
 }
@@ -122,6 +126,63 @@ void main() {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 23, 59)));
 
       expect(findPlain('On since Oct 27, 11:59 PM'), findsOneWidget);
+    });
+  });
+
+  group('the phone set to 24-hour time', () {
+    testWidgets('today: On since 09:41', (tester) async {
+      await pump(tester, shooting: on(), use24Hour: true);
+
+      expect(findPlain('On since 09:41'), findsOneWidget);
+      expect(findPlain('On since 9:41 AM'), findsNothing);
+    });
+
+    testWidgets('an evening start today: On since 21:41', (tester) async {
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 28, 21, 41)),
+        use24Hour: true,
+      );
+
+      expect(findPlain('On since 21:41'), findsOneWidget);
+    });
+
+    testWidgets('not today: On since Oct 27, 21:41', (tester) async {
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 27, 21, 41)),
+        use24Hour: true,
+      );
+
+      expect(findPlain('On since Oct 27, 21:41'), findsOneWidget);
+    });
+
+    testWidgets('with the Manual mode suffix', (tester) async {
+      await pump(
+        tester,
+        shooting: on(),
+        access: MediaAccessLevel.limited,
+        use24Hour: true,
+      );
+
+      expect(
+        findPlain('On since 09:41 · Manual mode: add clips yourself'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('12-hour phone: still 9:41 AM', (tester) async {
+      await pump(tester, shooting: on());
+
+      expect(findPlain('On since 9:41 AM'), findsOneWidget);
+    });
+
+    testWidgets('12-hour phone, not today: still Oct 27, 9:41 PM', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 21, 41)));
+
+      expect(findPlain('On since Oct 27, 9:41 PM'), findsOneWidget);
     });
   });
 
@@ -296,10 +357,164 @@ void main() {
       expect((backdrop! as ClipThumbnailImage).clip.id, 9);
     });
 
-    testWidgets('is none without pending clips', (tester) async {
+    testWidgets('is none without pending clips and without any clip', (
+      tester,
+    ) async {
       await pump(tester, shooting: on());
 
       expect(card(tester).backdrop, isNull);
+    });
+
+    // screens.js: `latest = latestId ? clips[latestId] : the first clip that
+    // is not missing`.
+    testWidgets('with nothing pending falls back to the first clip', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on(), fallback: testClip(4));
+
+      final backdrop = card(tester).backdrop;
+      expect(backdrop, isA<ClipThumbnailImage>());
+      expect((backdrop! as ClipThumbnailImage).clip.id, 4);
+    });
+
+    testWidgets('a pending clip wins over the fallback', (tester) async {
+      await pump(
+        tester,
+        shooting: on(),
+        pending: [testClip(7)],
+        fallback: testClip(4),
+      );
+
+      expect((card(tester).backdrop! as ClipThumbnailImage).clip.id, 7);
+    });
+  });
+
+  group('the Reels attention banner (clips waiting, Shooting mode off)', () {
+    Finder waiting(String title) => find.widgetWithText(TtBanner, title);
+
+    testWidgets('off with clips: count and minutes, attention style', (
+      tester,
+    ) async {
+      await pump(tester, pending: [testClip(1), testClip(2), testClip(3)]);
+
+      // 3 x 32 s = 96 s, rounded to 2 min.
+      expect(waiting('3 clips to tag'), findsOneWidget);
+      expect(find.text('2 min of video waiting'), findsOneWidget);
+      final banner = tester.widget<TtBanner>(waiting('3 clips to tag'));
+      expect(banner.kind, TtBannerKind.attention);
+      expect(banner.icon, Symbols.sell_rounded);
+      expect(banner.iconFilled, isTrue);
+      expect(banner.onTap, isNotNull);
+      expect(banner.action, isNull);
+    });
+
+    testWidgets('one clip is singular', (tester) async {
+      await pump(tester, pending: [testClip(1, durationMs: 45000)]);
+
+      expect(waiting('1 clip to tag'), findsOneWidget);
+      expect(find.text('45 s of video waiting'), findsOneWidget);
+    });
+
+    testWidgets('an hour or more reads like 1 h 5 min', (tester) async {
+      await pump(tester, pending: [testClip(1, durationMs: 3900000)]);
+
+      expect(find.text('1 h 5 min of video waiting'), findsOneWidget);
+    });
+
+    testWidgets('hidden while Shooting mode is on', (tester) async {
+      await pump(tester, shooting: on(), pending: [testClip(1)]);
+
+      expect(find.textContaining('of video waiting'), findsNothing);
+      // The card's own strip says it.
+      expect(find.text('1 clip to tag'), findsOneWidget);
+      expect(find.byType(TtBanner), findsNothing);
+    });
+
+    testWidgets('hidden with no clips waiting', (tester) async {
+      await pump(tester);
+
+      expect(find.textContaining('of video waiting'), findsNothing);
+      expect(find.byType(TtBanner), findsNothing);
+    });
+
+    testWidgets('the card never shows the strip and the banner together', (
+      tester,
+    ) async {
+      final off = await pump(tester, pending: [testClip(1)]);
+      expect(find.byType(TtCardRow), findsNothing);
+      expect(waiting('1 clip to tag'), findsOneWidget);
+
+      off.shooting.states.add(on());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.textContaining('of video waiting'), findsNothing);
+      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsOneWidget);
+    });
+
+    testWidgets('sits below the card; the access banner is above it', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        access: MediaAccessLevel.limited,
+        pending: [testClip(1)],
+      );
+
+      final access = tester.getTopLeft(
+        find.widgetWithText(TtBanner, 'Manual mode'),
+      );
+      final cardTop = tester.getTopLeft(find.byType(TtShootingModeCard));
+      final attention = tester.getTopLeft(waiting('1 clip to tag'));
+      expect(access.dy, lessThan(cardTop.dy));
+      expect(cardTop.dy, lessThan(attention.dy));
+    });
+
+    testWidgets('tapping it opens To tag', (tester) async {
+      await pump(tester, pending: [testClip(1)]);
+
+      await tester.tap(waiting('1 clip to tag'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(toTagRouteMarker), findsOneWidget);
+    });
+
+    testWidgets('appears when Shooting mode is turned off', (tester) async {
+      final p = await pump(tester, shooting: on(), pending: [testClip(1)]);
+
+      p.shooting.states.add(ShootingState.off);
+      await tester.pump();
+      await tester.pump();
+
+      expect(waiting('1 clip to tag'), findsOneWidget);
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('${brightness.name}: accessible', (tester) async {
+        await pump(tester, pending: [testClip(1)], brightness: brightness);
+
+        await expectTtAccessible(tester);
+      });
+    }
+
+    testWidgets('at 2x text it fits 360 dp', (tester) async {
+      await pump(
+        tester,
+        access: MediaAccessLevel.limited,
+        pending: [testClip(1), testClip(2)],
+        textScale: 2,
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(waiting('2 clips to tag')).right,
+        lessThanOrEqualTo(360),
+      );
+      expect(
+        tester.getRect(waiting('2 clips to tag')).left,
+        greaterThanOrEqualTo(0),
+      );
+      await expectTtAccessible(tester);
     });
   });
 

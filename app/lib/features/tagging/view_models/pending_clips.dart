@@ -15,6 +15,13 @@ part 'pending_clips.g.dart';
 Stream<List<Clip>> pendingClips(Ref ref) =>
     ref.watch(clipsRepositoryProvider).watchInbox(InboxState.pending);
 
+/// The first stored clip that has a picture (`watchFirstShowableClip`): what
+/// the Shooting mode card's backdrop falls back to when no clip waits in To
+/// tag, as the prototype does (D-76). Null when there is none.
+@riverpod
+Stream<Clip?> firstShowableClip(Ref ref) =>
+    ref.watch(clipsRepositoryProvider).watchFirstShowableClip();
+
 /// [clips] in shooting order: oldest date taken first, then the lower id. A
 /// new list; [clips] is not changed.
 List<Clip> inShootingOrder(List<Clip> clips) => [...clips]

@@ -145,19 +145,25 @@ class _AddEarlierVideosSheetState
       final count = counts.value?[which];
       final usable = count != null && count > 0 && !_adding;
       final countText = count == null ? null : l10n.earlierRowCount(count);
+      // What a screen reader says: the count, or that it is loading.
+      final label = loading
+          ? '$title, ${l10n.loading}'
+          : countText == null
+          ? title
+          : '$title, $countText';
       final row = TtListRow(
         title: title,
         trailing: loading
-            ? SizedBox(
-                width: tt.sizes.touchTarget,
-                child: const TtSkeletonLine(widthFactor: 1),
+            ? const SizedBox(
+                width: TtMetrics.skeletonCountWidth,
+                child: TtSkeletonLine(widthFactor: 1),
               )
             : countText == null
             ? null
             : Text(countText),
         stackTrailingAtLargeText: true,
         onTap: usable ? () => _add(which) : null,
-        semanticLabel: countText == null ? title : '$title, $countText',
+        semanticLabel: label,
       );
       if (usable) return row;
       // proto.css: .li.dis { opacity: .45 }; a row that is only waiting for
@@ -169,7 +175,7 @@ class _AddEarlierVideosSheetState
           button: true,
           enabled: false,
           excludeSemantics: true,
-          label: countText == null ? title : '$title, $countText',
+          label: label,
           child: row,
         ),
       );

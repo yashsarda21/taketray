@@ -616,6 +616,25 @@ class ClipsRepository {
     return query.map((row) => row.read(count) ?? 0).watchSingle();
   }
 
+  /// The first stored clip that has a thumbnail to show (lowest id), again
+  /// after every change, or null: a MediaStore clip that is not missing. A
+  /// detached clip is `missing`, and a picked clip has no picture to ask for
+  /// (D-74), so neither is offered. It is where the Shooting mode card finds
+  /// its backdrop when no clip waits in To tag (D-76).
+  Stream<Clip?> watchFirstShowableClip() {
+    final query = _db.select(_db.clips)
+      ..where(
+        (c) =>
+            c.missing.equals(false) &
+            c.source.equalsValue(ClipSource.mediaStore),
+      )
+      ..orderBy([(c) => OrderingTerm.asc(c.id)])
+      ..limit(1);
+    return query.watchSingleOrNull().map(
+      (row) => row == null ? null : _toClip(row),
+    );
+  }
+
   /// The clips of reel [reelId], by shooting time, oldest first (ties: lowest
   /// id first; spec §8.4), again after every change.
   Stream<List<Clip>> watchReelClips(int reelId) {

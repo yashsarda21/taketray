@@ -2,7 +2,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
@@ -98,6 +97,8 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     final cache = ref.watch(thumbnailCacheProvider).value;
     final now = ref.watch(clockProvider).now();
     final locale = Localizations.localeOf(context).toString();
+    // The phone's 24-hour setting, read here so a change redraws the grid.
+    final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final controller = ref.read(shootingModeControllerProvider.notifier);
 
     // A shooting state that could not be read counts as off: its switch still
@@ -115,6 +116,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
             since: shooting.value?.since ?? now,
             now: now,
             locale: locale,
+            use24Hour: use24Hour,
           ),
         ),
         action: TtButton(
@@ -215,6 +217,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
                   waiting[index],
                   cache: cache,
                   locale: locale,
+                  use24Hour: use24Hour,
                 ),
               ),
             ),
@@ -250,6 +253,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     Clip clip, {
     required ThumbnailCache? cache,
     required String locale,
+    required bool use24Hour,
   }) {
     final l10n = AppLocalizations.of(context);
     // The prototype's `tile.miss`. The verifier takes a missing clip out of
@@ -258,8 +262,11 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     if (clip.missing) {
       return TtMissingClipTile(key: ValueKey(clip.id), label: l10n.clipMissing);
     }
-    final time = DateFormat.jm(locale)
-        .format(clip.fingerprint.dateTakenUtc.toLocal());
+    final time = timeOfDayText(
+      clip.fingerprint.dateTakenUtc,
+      locale: locale,
+      use24Hour: use24Hour,
+    );
     final length = formatClipDuration(clip.fingerprint.durationMs);
     // The picture is asked for at the tile's height, the longer side.
     final tileWidth =

@@ -212,6 +212,18 @@ void main() {
 
       expect(find.byType(TtSkeletonLine), findsNWidgets(3));
       expect(find.text('Today'), findsOneWidget);
+      // The bar for a count has its own width, not a touch-target size.
+      expect(
+        tester.getSize(find.byType(TtSkeletonLine).first).width,
+        TtMetrics.skeletonCountWidth,
+      );
+      // A screen reader hears that the count is loading, not just a dead row.
+      final semantics = tester.ensureSemantics();
+      for (final t in ['Today', 'Last 2 days', 'Last 7 days']) {
+        final node = tester.getSemantics(find.widgetWithText(TtListRow, t));
+        expect(node.label, '$t, Loading', reason: t);
+      }
+      semantics.dispose();
       for (final t in ['Today', 'Last 2 days', 'Last 7 days']) {
         expect(row(tester, t).onTap, isNull, reason: t);
       }

@@ -858,6 +858,12 @@ abstract final class TtMetrics {
 
   // ---- Skeleton ----
 
+  /// Width of the skeleton bar that stands in for a short value, such as the
+  /// count at the end of a list row. Not in the prototype, whose skeleton
+  /// lines are 90 to 140 px wide inline and are for titles; a count is a
+  /// short number or word ("none", "12 new").
+  static const double skeletonCountWidth = 56;
+
   /// Height of a skeleton line.
   // proto.css: .skel-line { height: 12px }
   static const double skeletonLineHeight = 12;

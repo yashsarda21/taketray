@@ -42,6 +42,7 @@ Future<Pumped> pump(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
+  bool use24Hour = false,
 }) async {
   final fakeShooting = FakeShooting(shooting);
   final fakeAccess = FakeAccess(access);
@@ -59,6 +60,7 @@ Future<Pumped> pump(
     brightness: brightness,
     textScale: textScale,
     settle: settle,
+    use24Hour: use24Hour,
   );
   return Pumped(fakeShooting, fakeAccess, fakeToTag);
 }
@@ -220,6 +222,69 @@ void main() {
         tester.getTopLeft(find.byType(TtStatStrip)).dy,
         lessThan(tester.getTopLeft(find.byType(TtEmptyState)).dy),
       );
+    });
+  });
+
+  group('the phone set to 24-hour time', () {
+    testWidgets('the strip today: Shooting since 09:41', (tester) async {
+      await pump(tester, shooting: on(), clips: [testClip(1)], use24Hour: true);
+
+      expect(findPlain('Shooting since 09:41'), findsOneWidget);
+    });
+
+    testWidgets('the strip not today: Shooting since Oct 27, 21:41', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 27, 21, 41)),
+        clips: [testClip(1)],
+        use24Hour: true,
+      );
+      expect(findPlain('Shooting since Oct 27, 21:41'), findsOneWidget);
+    });
+
+    testWidgets('a tile: 21:41 on the tile and in what it says aloud', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 21, 41))],
+        use24Hour: true,
+      );
+
+      final tile = tiles(tester).single;
+      expect(tile.timeText, '21:41');
+      expect(tile.semanticLabel, 'Clip, 21:41, 0:32');
+    });
+
+    testWidgets('a tile at 09:41 shows a leading zero', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 9, 41))],
+        use24Hour: true,
+      );
+
+      expect(tiles(tester).single.timeText, '09:41');
+    });
+
+    testWidgets('a tile just after midnight shows 00:05', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(3, shot: DateTime(2026, 10, 28, 0, 5))],
+        use24Hour: true,
+      );
+      expect(tiles(tester).single.timeText, '00:05');
+    });
+
+    testWidgets('a 12-hour phone keeps 9:41 PM on the tile', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 21, 41))],
+      );
+
+      expect(plain(tiles(tester).single.timeText!), '9:41 PM');
+      expect(plain(tiles(tester).single.semanticLabel), 'Clip, 9:41 PM, 0:32');
     });
   });
 

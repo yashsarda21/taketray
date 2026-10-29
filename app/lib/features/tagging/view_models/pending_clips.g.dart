@@ -65,3 +65,47 @@ final class PendingClipsProvider
 }
 
 String _$pendingClipsHash() => r'2ad7ae7aa6f19a44eb7baa14a3059bc24836c8a0';
+
+/// The first stored clip that has a picture (`watchFirstShowableClip`): what
+/// the Shooting mode card's backdrop falls back to when no clip waits in To
+/// tag, as the prototype does (D-76). Null when there is none.
+
+@ProviderFor(firstShowableClip)
+final firstShowableClipProvider = FirstShowableClipProvider._();
+
+/// The first stored clip that has a picture (`watchFirstShowableClip`): what
+/// the Shooting mode card's backdrop falls back to when no clip waits in To
+/// tag, as the prototype does (D-76). Null when there is none.
+
+final class FirstShowableClipProvider
+    extends $FunctionalProvider<AsyncValue<Clip?>, Clip?, Stream<Clip?>>
+    with $FutureModifier<Clip?>, $StreamProvider<Clip?> {
+  /// The first stored clip that has a picture (`watchFirstShowableClip`): what
+  /// the Shooting mode card's backdrop falls back to when no clip waits in To
+  /// tag, as the prototype does (D-76). Null when there is none.
+  FirstShowableClipProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'firstShowableClipProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$firstShowableClipHash();
+
+  @$internal
+  @override
+  $StreamProviderElement<Clip?> $createElement($ProviderPointer pointer) =>
+      $StreamProviderElement(pointer);
+
+  @override
+  Stream<Clip?> create(Ref ref) {
+    return firstShowableClip(ref);
+  }
+}
+
+String _$firstShowableClipHash() => r'627cb81530e7ba13fe37a75c2b9c3fa479efd473';

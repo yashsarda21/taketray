@@ -1048,7 +1048,7 @@ Run the same command. It fails with `Expected: AccessBanner:<AccessBanner.lost>`
 **What we built:** the first screens that show what Section 9's view models know:
 
 - the **access banner** ("Manual mode", or "TakeTray can't see your videos"),
-- the **Shooting mode card** at the top of the Reels tab,
+- the **Shooting mode card** at the top of the Reels tab, and under it, while Shooting mode is off and clips are waiting, an **attention banner** ("3 clips to tag · 2 min of video waiting") that opens To tag,
 - the first version of the **To tag** tab: a strip, a grid of the clips that wait to be tagged, and two "empty" pictures,
 - the **Add earlier videos** sheet, reached from a row on the card or from the ⋮ menu of To tag, with an **Undo** snack after it.
 
@@ -1078,12 +1078,29 @@ Every piece is made of components that already exist in the design package (`TtB
 
   ```dart
   final today = s.year == n.year && s.month == n.month && s.day == n.day;
-  return today
-      ? DateFormat.jm(locale).format(s)
-      : DateFormat.MMMd(locale).addPattern('jm', ', ').format(s);
+  if (today) return timeOfDayText(s, locale: locale, use24Hour: use24Hour);
+  return DateFormat.MMMd(locale).addPattern(use24Hour ? 'Hm' : 'jm', ', ').format(s);
   ```
 
-  `s` and `n` are `since` and `now` converted to the phone's local time first, because the database stores UTC. Local midnight today is still "today", 23:59 yesterday is not (both have a test). The locale is the app's own (`Localizations.localeOf`), not the raw phone setting, because the `intl` package only has date data for the languages the app supports and throws for others.
+  `s` and `n` are `since` and `now` converted to the phone's local time first, because the database stores UTC. Local midnight today is still "today", 23:59 yesterday is not (both have a test). The text is built when the widget is built, so it is not recomputed at the stroke of midnight; the next redraw fixes it.
+
+  **The phone's clock style.** A phone set to 24-hour time shows "21:41" everywhere, so TakeTray must not say "9:41 PM". Every screen reads `MediaQuery.alwaysUse24HourFormatOf(context)` and gives it to one helper, `timeOfDayText`, which writes "9:41 AM" (`DateFormat.jm`) or "09:41" (`DateFormat.Hm`). The card, both strips and the clip tiles (their time, and the sentence a screen reader speaks) all go through it, so they cannot disagree. Reading the flag in `build` also means a change of the phone setting redraws the screens.
+
+  **The locale.** The locale given to `DateFormat` is the app's own (`Localizations.localeOf`), not the raw phone setting. The `intl` package has date data for many locales, but Flutter's localization delegate loads that data only for the locales the app supports, and asking for a locale that was not loaded throws.
+
+- **The Reels banner for waiting clips.** With Shooting mode off and clips waiting, a banner under the card says "3 clips to tag" and "2 min of video waiting"; tapping it opens To tag. (With Shooting mode on, the card has its own "N clips to tag · Tag now" row, so the two never show together.) The length is the prototype's `fmt.mins`, rounded in the same way, including its edges:
+
+  ```dart
+  final seconds = totalMs / 1000;
+  if (seconds < 60) return l10n.durationSeconds(seconds.round());
+  final minutes = (seconds / 60).round();
+  if (minutes < 60) return l10n.durationMinutes(minutes);
+  return l10n.durationHoursMinutes(minutes ~/ 60, minutes % 60);
+  ```
+
+  So 45 s is "45 s", 96 s is "2 min", 3900 s is "1 h 5 min". Because seconds are rounded before the unit is chosen, 59.5 s reads "60 s" (and 59.5 min "1 h 0 min"); the prototype does this and so do we, and a test pins it.
+
+- **The card's backdrop.** The "on" card shows a picture behind its texts: the newest waiting clip. If nothing waits, it falls back, like the prototype, to the first stored clip that is not missing (`ClipsRepository.watchFirstShowableClip`: the lowest id; a picked or detached clip has no picture to ask for, so it is skipped). With no clip at all, the card is plain black.
 
 - **A long list must not build everything.** The To tag grid is a *lazy* grid: Flutter builds only the tiles that are on or near the screen.
 
@@ -1116,7 +1133,7 @@ Every piece is made of components that already exist in the design package (`TtB
 
 - **Tests that look like the phone.** Flutter's tests normally draw every letter as a square, so a layout test would measure text about twice as wide as the real thing. `app/test/flutter_test_config.dart` loads the app's real font first, so "nothing overflows at 2x text on a 360 dp screen" really means that. Tests also turn on "remove animations", because the record dot on the card pulses for ever and `pumpAndSettle` would otherwise never finish; and `expectTtAccessible` (tap-target size, labels, contrast) runs on both screens in light and dark.
 
-**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart` and `shooting_time_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart`, `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
+**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart`, `shooting_time_text.dart` and `waiting_duration_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart`, `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
 
 **Try it yourself:** see the "since" rule keep its promise. From the repo root:
 
@@ -1124,15 +1141,15 @@ Every piece is made of components that already exist in the design package (`TtB
 (cd app && ../tool/flutter test test/features/shooting_mode/views/shooting_time_text_test.dart)
 ```
 
-It ends with `All tests passed!`. Now, in `app/lib/features/shooting_mode/views/shooting_time_text.dart`, replace the `return today ? ... : ...;` statement with the always-the-time version:
+It ends with `All tests passed!`. Now, in `app/lib/features/shooting_mode/views/shooting_time_text.dart`, replace the line that starts `final today = ...` with a version where it is always today:
 
 ```dart
-  return DateFormat.jm(locale).format(s);
+  const today = true;
 ```
 
 Run the same command. It fails with `Expected: 'Oct 27, 11:59 PM'` and `Actual: '11:59 PM'` (among others): a Shooting session that began yesterday would be shown as if it began today. Put the file back with `git checkout -- app/lib/features/shooting_mode/views/shooting_time_text.dart`, and check with `git status` that nothing is left over.
 
-**Decisions:** D-76 (the screens, the banner above the card, the `{time}` rule, Add earlier videos as a row, a menu item and a sheet, the new error copy, and how the screens are tested), with D-73 (Add earlier videos), D-74 (thumbnails) and D-75 (the view models) as background.
+**Decisions:** D-76 (the screens, the banner above the card, the `{time}` rule and the phone's 24-hour setting, the Reels banner for waiting clips, Add earlier videos as a row, a menu item and a sheet, the new error copy, and how the screens are tested), with D-73 (Add earlier videos), D-74 (thumbnails) and D-75 (the view models) as background.
 
 ---
 

@@ -60,6 +60,11 @@ class TtShootingModeCard extends StatelessWidget {
   final VoidCallback? onOpenCamera;
 
   /// A [TtCardRow] for the references of the Recording reels (on only).
+  ///
+  /// In Phase 3 the app also puts its "Add earlier videos" row here, because
+  /// the prototype has no row for it and this is the slot above the to-tag
+  /// strip. Phase 4/5 References must share this slot with it (a [Column] of
+  /// rows) or move one of them, with the owner's design.
   final Widget? referencesRow;
 
   /// A [TtCardRow] with a trailing text, for clips waiting to be tagged (on
