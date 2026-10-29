@@ -134,5 +134,11 @@ void main() {
       expect(isUsable(fakeVideo(id: 1, durationMs: -5)), isFalse);
       expect(isUsable(fakeVideo(id: 1, durationMs: null)), isFalse);
     });
+
+    test('a zero or negative size is not usable (I-1)', () {
+      expect(isUsable(fakeVideo(id: 1, sizeBytes: 0)), isFalse);
+      expect(isUsable(fakeVideo(id: 1, sizeBytes: -1)), isFalse);
+      expect(isUsable(fakeVideo(id: 1, sizeBytes: 1)), isTrue);
+    });
   });
 }

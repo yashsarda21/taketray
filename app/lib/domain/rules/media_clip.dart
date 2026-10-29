@@ -29,8 +29,14 @@ NewClip newClipFrom(
   generationAdded: v.generationAdded,
 );
 
-/// Whether [v] can be a clip: it is finished (not pending) and has a length.
+/// Whether [v] can be a clip: it is finished (not pending) and has a length
+/// and a size.
 ///
-/// A video still being recorded, or one whose duration is unknown or zero,
-/// is not offered, not matched and not counted as shot.
-bool isUsable(MediaVideo v) => !v.isPending && (v.durationMs ?? 0) > 0;
+/// A video still being recorded, or one whose duration or size is unknown or
+/// zero, is not offered, not matched and not counted as shot. A size of 0
+/// matters because it never matches a fingerprint (`sameVideo`): a clip
+/// saved with it would be removed by the next verify while its video is
+/// still on the phone. The baseline holds for such a row, so it is picked up
+/// once Android fills the size in (`holdsBaseline`).
+bool isUsable(MediaVideo v) =>
+    !v.isPending && (v.durationMs ?? 0) > 0 && v.sizeBytes > 0;

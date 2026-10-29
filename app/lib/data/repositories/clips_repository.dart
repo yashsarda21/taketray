@@ -36,42 +36,32 @@ class ClipsRepository {
   final AppDatabase _db;
   final Clock _clock;
 
-  /// Saves clips found by the detector (Shooting mode, a rescan) and puts the
-  /// new ones in To tag as `pending`. Returns their ids, in input order.
+  /// Saves clips read from the phone's media library (Shooting mode, a
+  /// rescan, "Add earlier videos") and puts the new ones in To tag as
+  /// `pending`, with a check of every clip that is already known (D-72,
+  /// Ruling U). Returns the ids in input order, the ones that are new and the
+  /// ones detached.
   ///
-  /// This is idempotent: a clip whose identity is already known is not
-  /// inserted, not put in To tag again and keeps its `firstSeenAt`; its
-  /// existing id is returned. So a clip seen twice (a rescan, or a crash
-  /// between saving the clips and moving the baseline) is still one clip, and
-  /// a clip already tagged into a reel does not come back to To tag. A clip
-  /// that was skipped stays skipped.
-  ///
-  /// All of it is one transaction, and a new clip is inserted together with
-  /// its `inbox` row so a concurrent orphan sweep cannot delete it.
-  Future<List<int>> addDetectedClips(List<NewClip> clips) async =>
-      (await _addDetected(clips, null)).ids;
-
-  /// [addDetectedClips] for clips read from the phone's media library, with
-  /// a check of every clip that is already known (D-72, Ruling U).
+  /// It is idempotent: a clip whose identity is already known and is the
+  /// same video is not inserted, not put in To tag again and keeps its
+  /// `firstSeenAt`; its existing id is returned. So a clip seen twice (a
+  /// rescan, or a crash between saving the clips and moving the baseline) is
+  /// still one clip, a clip already tagged into a reel does not come back to
+  /// To tag, and a clip that was skipped stays skipped.
   ///
   /// A stored MediaStore clip holding a clip's (volume, number) is asked
-  /// [sameVideo]. When it is the same video it is found, as in
-  /// [addDetectedClips]. When it is not, it is provably not this video (an
-  /// imported clip holding a number this phone gave another video, say): it
-  /// is detached (`mediaStoreId = -clipId`, `missing`, `lastVerifiedAt` =
+  /// [sameVideo]. When it is not the same video, it is provably not this one
+  /// (an imported clip holding a number this phone gave another video, say):
+  /// it is detached (`mediaStoreId = -clipId`, `missing`, `lastVerifiedAt` =
   /// now) and the clip is inserted as new, into To tag. A detached clip in a
   /// reel stays there, flagged; one only in To tag or Skipped leaves it and is
   /// swept (Ruling Y). The detach, that removal and the insert are one
-  /// transaction.
+  /// transaction, and a new clip is inserted together with its `inbox` row so
+  /// a concurrent orphan sweep cannot delete it.
   Future<DetectedClips> addCheckedClips(
     List<NewClip> clips, {
     required bool Function(Clip stored, NewClip incoming) sameVideo,
-  }) => _addDetected(clips, sameVideo);
-
-  Future<DetectedClips> _addDetected(
-    List<NewClip> clips,
-    bool Function(Clip stored, NewClip incoming)? sameVideo,
-  ) async {
+  }) async {
     final result = await _db.transaction(() async {
       final now = _clock.now();
       final ids = <int>[];
@@ -83,7 +73,7 @@ class ClipsRepository {
           final row = await (_db.select(
             _db.clips,
           )..where((c) => c.id.equals(known))).getSingle();
-          if (sameVideo == null || sameVideo(_toClip(row), clip)) {
+          if (sameVideo(_toClip(row), clip)) {
             ids.add(known);
             continue;
           }
@@ -118,7 +108,7 @@ class ClipsRepository {
   /// Saves clips and adds them to reel [reelId] (phase 7: the user picks
   /// videos by hand). Returns their ids, in input order.
   ///
-  /// The same identity rule as [addDetectedClips], but a new clip gets a link
+  /// The same identity rule as [addCheckedClips], but a new clip gets a link
   /// to the reel instead of an `inbox` row. A known clip is found and linked,
   /// and leaves To tag or Skipped (its `inbox` row is deleted), as when it is
   /// tagged. A clip the reel already has keeps its `addedAt`. The reel's
@@ -264,31 +254,11 @@ class ClipsRepository {
     _log.info('Removed $removed clips from reel $reelId, swept $orphans');
   }
 
-  /// Records the result of checking the clips against the media library:
-  /// clips in [missing] are flagged missing, clips in [found] are flagged not
-  /// missing, and both get `lastVerifiedAt` = now. Other clips are untouched.
-  ///
-  /// Throws [ArgumentError] when a clip is in both sets.
-  Future<void> recordVerification({
-    required Set<int> found,
-    required Set<int> missing,
-  }) async {
-    if (found.intersection(missing).isNotEmpty) {
-      throw ArgumentError('A clip cannot be both found and missing');
-    }
-    final now = _clock.now();
-    await _db.transaction(() async {
-      await _markVerified(missing, isMissing: true, at: now);
-      await _markVerified(found, isMissing: false, at: now);
-    });
-    _log.info('Verified ${found.length} found, ${missing.length} missing');
-  }
-
   /// The MediaStore clips on volume [volumeName] that still hold a MediaStore
   /// id: the ones a verifier or a rebuild match can look for. Detached clips
-  /// (`mediaStoreId` below 1, see [detach]), picked clips (also one that has
-  /// a volume and an id) and clips of other volumes are not in it; a clip
-  /// flagged missing that kept its id is. By id.
+  /// (`mediaStoreId` below 1, see [applyVerification]), picked clips (also
+  /// one that has a volume and an id) and clips of other volumes are not in
+  /// it; a clip flagged missing that kept its id is. By id.
   Future<List<Clip>> mediaStoreClipsOn(String volumeName) async {
     final rows =
         await (_db.select(_db.clips)
@@ -471,38 +441,6 @@ class ClipsRepository {
     );
   }
 
-  /// Detaches clips: each gets `mediaStoreId = -clipId`, `missing = true` and
-  /// `lastVerifiedAt` = now, like a lost clip in [applyRebuildMatch]. It is
-  /// for a verified id that now holds a different video (D-71).
-  ///
-  /// The clip keeps its row and its place, but its old MediaStore number can
-  /// no longer be found by [addDetectedClips] or matched to a new video: a
-  /// video that later gets that number is a new clip. Unknown ids and clips
-  /// that are not MediaStore clips (picked ones) are ignored.
-  Future<void> detach(Set<int> clipIds) async {
-    if (clipIds.isEmpty) return;
-    final now = _clock.now();
-    await _db.transaction(() => _markDetached(clipIds, now));
-    _log.info('Detached ${clipIds.length} clips');
-  }
-
-  /// Takes clips that are missing out of To tag and Skipped: deletes the
-  /// `inbox` rows of those clips in [clipIds] that are flagged `missing`
-  /// (checked in the same transaction, so a stale set cannot take a clip that
-  /// has come back), then the clips left in no reel and no list (the orphan
-  /// rule, D-56). Returns how many clips were deleted.
-  ///
-  /// A clip in a reel is only ever flagged missing, never removed: its link
-  /// and its row stay, even if it also has an `inbox` row (only that row
-  /// goes). Ids that do not exist are ignored. The video file is never
-  /// touched, and neither is a `vn_copies` row (D-54).
-  Future<int> removeMissingFromLists(Set<int> clipIds) async {
-    if (clipIds.isEmpty) return 0;
-    final deleted = await _db.transaction(() => _removeMissing(clipIds));
-    _log.info('Removed $deleted missing clips from the lists');
-    return deleted;
-  }
-
   /// Undo for "Add earlier videos" (D-75): takes the just-added clips in
   /// [clipIds] back out of To tag. In one transaction it deletes the `inbox`
   /// row of each id that is still waiting in To tag ([InboxState.pending])
@@ -542,12 +480,22 @@ class ClipsRepository {
   /// Writes what one verify found, in one transaction (D-72), so a crash
   /// cannot leave a detached clip in To tag:
   ///
-  /// 1. [otherVideo] (their number now holds another video) are detached,
-  ///    as in [detach];
-  /// 2. [gone] are flagged missing and [found] not missing, as in
-  ///    [recordVerification] (`lastVerifiedAt` = now for both);
-  /// 3. [gone] and [otherVideo] leave To tag and Skipped, as in
-  ///    [removeMissingFromLists] (a clip in a reel stays, flagged).
+  /// 1. [otherVideo] (their number now holds another video) are detached:
+  ///    each gets `mediaStoreId = -clipId`, `missing = true` and
+  ///    `lastVerifiedAt` = now, like a lost clip in [applyRebuildMatch]. The
+  ///    clip keeps its row and its place, but its old number can no longer be
+  ///    found or matched to a new video: a video that later gets that number
+  ///    is a new clip. Unknown ids and clips that are not MediaStore clips
+  ///    (picked ones) are ignored;
+  /// 2. [gone] are flagged missing and [found] not missing, with
+  ///    `lastVerifiedAt` = now for both;
+  /// 3. [gone] and [otherVideo] leave To tag and Skipped: the `inbox` rows of
+  ///    those flagged `missing` (checked in the same transaction, so a clip
+  ///    that was not flagged, a picked one, keeps its row) go, then the clips
+  ///    left in no reel and no list (the orphan rule, D-56). A clip in a reel
+  ///    is only ever flagged, never removed: its link and its row stay, even
+  ///    if it also has an `inbox` row (only that row goes). The video file is
+  ///    never touched, and neither is a `vn_copies` row (D-54).
   ///
   /// Returns how many clips were deleted. Throws [ArgumentError], writing
   /// nothing, when a clip is in two of the sets. Empty sets write nothing.

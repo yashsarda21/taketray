@@ -215,14 +215,15 @@ void main() {
         1,
         reason: 'no second scan beside the held one',
       );
-      expect(h.bridge.count('pendingZoneChanges'), 1);
+      // The lifecycle's own sync, and the one the scan runs inside its job.
+      expect(h.bridge.count('pendingZoneChanges'), 2);
 
       gate.complete();
       await work(tester);
 
       // The three resumes cost exactly one more run.
       expect(h.bridge.count('videosAddedAfter'), 2);
-      expect(h.bridge.count('pendingZoneChanges'), 2);
+      expect(h.bridge.count('pendingZoneChanges'), 4);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
     },
   );

@@ -192,13 +192,15 @@ void main() {
       int? durationMs = 0,
       bool pending = false,
       int? dateAddedSec,
+      int sizeBytes = 1000000,
     }) => fakeVideo(
       id: 1,
       pending: pending,
       durationMs: durationMs,
+      sizeBytes: sizeBytes,
       dateAddedSec: dateAddedSec ?? at.millisecondsSinceEpoch ~/ 1000,
     );
-    const tenMinutes = Duration(minutes: 10);
+    const threeHours = Duration(hours: 3);
     const ms = Duration(milliseconds: 1);
 
     test('a pending row always holds', () {
@@ -215,18 +217,53 @@ void main() {
       );
     });
 
-    test('a finished row without a length holds for exactly ten minutes', () {
+    test('a finished row without a length holds for exactly three hours', () {
       expect(holdsBaseline(added(t), now: t), isTrue);
-      expect(holdsBaseline(added(t), now: t.add(tenMinutes)), isTrue);
-      expect(holdsBaseline(added(t), now: t.add(tenMinutes + ms)), isFalse);
+      expect(holdsBaseline(added(t), now: t.add(threeHours)), isTrue);
+      expect(holdsBaseline(added(t), now: t.add(threeHours + ms)), isFalse);
       expect(
-        holdsBaseline(added(t, durationMs: null), now: t.add(tenMinutes)),
+        holdsBaseline(added(t, durationMs: null), now: t.add(threeHours)),
         isTrue,
       );
       expect(
-        holdsBaseline(added(t, durationMs: null), now: t.add(tenMinutes + ms)),
+        holdsBaseline(added(t, durationMs: null), now: t.add(threeHours + ms)),
         isFalse,
       );
+    });
+
+    test('a long recording whose row has no length is still held after an '
+        'hour (I-4)', () {
+      expect(
+        holdsBaseline(added(t), now: t.add(const Duration(hours: 1))),
+        isTrue,
+      );
+    });
+
+    test('a finished row with an unknown size holds exactly like one without '
+        'a length (I-1)', () {
+      for (final size in [0, -1]) {
+        final row = added(t, durationMs: 5000, sizeBytes: size);
+        expect(holdsBaseline(row, now: t), isTrue, reason: 'size $size');
+        expect(holdsBaseline(row, now: t.add(threeHours)), isTrue);
+        expect(holdsBaseline(row, now: t.add(threeHours + ms)), isFalse);
+        expect(
+          holdsBaseline(row, now: t.subtract(const Duration(days: 1))),
+          isTrue,
+        );
+        expect(
+          holdsBaseline(
+            row,
+            now: t.subtract(const Duration(days: 1, seconds: 1)),
+          ),
+          isFalse,
+          reason: 'DATE_ADDED more than a day ahead is not plausible',
+        );
+      }
+    });
+
+    test('an unknown size with an unknown DATE_ADDED does not hold', () {
+      final row = fakeVideo(id: 1, sizeBytes: 0, dateAddedSec: null);
+      expect(holdsBaseline(row, now: t), isFalse);
     });
 
     test('a finished row with a length never holds', () {
@@ -273,7 +310,7 @@ void main() {
           from: 3,
           captured: 20,
           seen: [old, late],
-          now: t.add(tenMinutes + ms),
+          now: t.add(threeHours + ms),
         ),
         20,
       );
@@ -287,6 +324,29 @@ void main() {
           truncated: true,
         ),
         8,
+      );
+    });
+
+    test('advanceBaseline holds before a recent row of unknown size (I-1)', () {
+      final unknown = fakeVideo(
+        id: 2,
+        generation: 9,
+        sizeBytes: 0,
+        dateAddedSec: t.millisecondsSinceEpoch ~/ 1000,
+      );
+      final ok = fakeVideo(id: 3, generation: 12);
+      expect(
+        advanceBaseline(from: 3, captured: 20, seen: [unknown, ok], now: t),
+        8,
+      );
+      expect(
+        advanceBaseline(
+          from: 3,
+          captured: 20,
+          seen: [unknown, ok],
+          now: t.add(threeHours + ms),
+        ),
+        20,
       );
     });
   });

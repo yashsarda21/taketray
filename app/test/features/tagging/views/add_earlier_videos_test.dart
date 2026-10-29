@@ -370,7 +370,8 @@ void main() {
       await settleApp(tester);
       await tester.pumpAndSettle();
       expect(find.text('1 clip added to To tag'), findsOneWidget);
-      expect(h.bridge.count('currentZoneId'), 1);
+      // One add: the zone sync reads the zone, and the add reads it again.
+      expect(h.bridge.count('currentZoneId'), 2);
     });
 
     testWidgets('an add that finds nothing keeps the sheet open', (
@@ -704,7 +705,7 @@ void main() {
       expect((await pendingIds(tester)).length, 2);
       // One add and the recount after it; a second add would be two more.
       expect(h.bridge.count('accessReport') - before, 2);
-      expect(h.bridge.count('currentZoneId'), 1);
+      expect(h.bridge.count('currentZoneId'), 2, reason: 'one add, not two');
     });
 
     testWidgets('if the videos changed since the count, the snack shows the '
@@ -772,6 +773,63 @@ void main() {
 
       expect(find.text("Couldn't check your videos."), findsNothing);
       expect(find.text('3 videos found'), findsOneWidget, reason: 'same dates');
+    });
+
+    testWidgets('a double tap on Try again counts once and opens one dialog '
+        '(M-4)', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
+      await tester.tap(day(24));
+      await tester.pump();
+      await tester.tap(day(28));
+      await tester.pump();
+      h.bridge.failNext('accessReport');
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Try again'), findsOneWidget);
+      final before = h.bridge.count('accessReport');
+
+      // Two taps before the screen has redrawn.
+      await tester.tap(find.text('Try again'));
+      await tester.tap(find.text('Try again'), warnIfMissed: false);
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(dialog, findsOneWidget);
+      expect(find.text('3 videos found'), findsOneWidget);
+      expect(
+        h.bridge.count('accessReport') - before,
+        1,
+        reason: 'one count of the same dates, not two',
+      );
+
+      // And the one dialog closes cleanly: the sheet is still there.
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(dialog, findsNothing);
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testWidgets("a double tap on the dialog's Cancel closes the dialog "
+        'only, not the sheet (M-4)', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 24, 28);
+      expect(dialog, findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.text('Cancel'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(dialog, findsNothing);
+      expect(find.byType(TtSheet), findsOneWidget);
+      expect(find.byType(TtSnack), findsNothing);
+      expect(await pendingIds(tester), isEmpty);
+      expect(tester.takeException(), isNull);
     });
 
     testWidgets('an add that fails shows the error snack, nothing is added', (

@@ -4,6 +4,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
+import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
@@ -13,6 +14,7 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fake_media_bridge.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
@@ -100,6 +102,7 @@ class MediaHarness {
     phoneState = PhoneStateRepository(db, clock);
     settings = SettingsRepository(db, clock);
     this.zones = (zones ?? ZoneRepository.new)(db, clock);
+    zoneSync = ZoneSync(this.bridge, this.zones, clock);
     scanner = scannerWith(clips);
     verifier = MediaVerifier(this.bridge, clips, phoneState, queue, clock);
   }
@@ -112,13 +115,22 @@ class MediaHarness {
   late final PhoneStateRepository phoneState;
   late final SettingsRepository settings;
   late final ZoneRepository zones;
+  late final ZoneSync zoneSync;
   late final MediaScanner scanner;
   late final MediaVerifier verifier;
 
   /// A scanner on the same bridge, phone state and queue, with another clips
   /// repository (to inject a failure).
-  MediaScanner scannerWith(ClipsRepository clips) =>
-      MediaScanner(bridge, clips, phoneState, settings, zones, queue, clock);
+  MediaScanner scannerWith(ClipsRepository clips) => MediaScanner(
+    bridge,
+    clips,
+    phoneState,
+    settings,
+    zones,
+    zoneSync,
+    queue,
+    clock,
+  );
 
   /// Switches Shooting mode on with [baselines] (by volume name).
   Future<ShootingState> turnOn(Map<String, VolumeBaseline> baselines) =>
@@ -146,7 +158,7 @@ class MediaHarness {
 
   /// Saves [videos] as detected clips (in To tag), as an earlier scan would.
   Future<List<int>> store(List<MediaVideo> videos, {String? zoneId}) =>
-      clips.addDetectedClips([
+      clips.saveDetected([
         for (final v in videos)
           newClipFrom(v, now: clock.now(), zoneId: zoneId),
       ]);

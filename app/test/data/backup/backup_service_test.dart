@@ -22,6 +22,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
 
@@ -100,7 +101,7 @@ class _Seeded {
     await reels.setStatus(london, ReelStatus.ready);
     clock.advance(_minute);
 
-    final ids = await clips.addDetectedClips([
+    final ids = await clips.saveDetected([
       _detected(1, _t0.subtract(const Duration(hours: 2))),
       _detected(2, _t0.subtract(const Duration(hours: 1))),
       _detected(3, _t0.subtract(const Duration(minutes: 30))),
@@ -114,7 +115,8 @@ class _Seeded {
       _picked('content://media/picker/0/x/media/42'),
     ]);
     clock.advance(_minute);
-    await clips.recordVerification(found: {shared, pending}, missing: {picked});
+    await flagClips(db, {picked}, missing: true, at: clock.now());
+    await flagClips(db, {shared, pending}, missing: false, at: clock.now());
 
     clock.advance(_minute);
     await references.add(
@@ -308,15 +310,15 @@ void main() {
     test('a detached clip (negative mediaStoreId) round-trips', () async {
       final clips = ClipsRepository(db, clock);
       final reel = await ReelsRepository(db, clock).create('Goa');
-      final [kept, untouched, listed] = await clips.addDetectedClips([
+      final [kept, untouched, listed] = await clips.saveDetected([
         _detected(1, _t0),
         _detected(2, _t0),
         _detected(3, _t0),
       ]);
       await clips.tagClip(kept, {reel.id});
-      await clips.detach({kept, listed});
+      await detachClips(db, {kept, listed}, at: clock.now());
       // A new video can now take the old id 1: that is a different clip.
-      final [again] = await clips.addDetectedClips([_detected(1, _t0)]);
+      final [again] = await clips.saveDetected([_detected(1, _t0)]);
       final first = await backup.exportJson();
 
       final other = freshDatabase();
@@ -342,7 +344,7 @@ void main() {
       // `toIso8601String` writes such years as `+010001` or `-0001`; the file
       // must read them back, or one odd clip makes the backup unrestorable.
       final clips = ClipsRepository(db, clock);
-      final ids = await clips.addDetectedClips([
+      final ids = await clips.saveDetected([
         _detected(1, DateTime.utc(10001)),
         _detected(2, DateTime.utc(-1)),
         _detected(3, DateTime.utc(1904)),
@@ -353,12 +355,12 @@ void main() {
         ),
       ]);
       // The latest one, as a lastVerifiedAt (a nullable time).
-      await ClipsRepository(
+      await flagClips(
         db,
-        FixedClock(
-          DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
-        ),
-      ).recordVerification(found: {ids[0]}, missing: {});
+        {ids[0]},
+        missing: false,
+        at: DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
+      );
       final first = await backup.exportJson();
 
       expect(first, contains('"dateTakenUtc": "+010001-01-01T00:00:00.000Z"'));
@@ -901,7 +903,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
       final added = await ReferencesRepository(
         db,
         clock,
@@ -923,7 +925,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
 
       expect(await ClipsRepository(db, clock).watchReelIdsOf(1 << 53).first, {
         3,
@@ -944,7 +946,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
 
       expect(clip, greaterThan(500));
     });

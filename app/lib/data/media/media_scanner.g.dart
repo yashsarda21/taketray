@@ -55,4 +55,4 @@ final class MediaScannerProvider
   }
 }
 
-String _$mediaScannerHash() => r'6f31303225fde1e182f7377ab58614b5392b0330';
+String _$mediaScannerHash() => r'f0afa21f0b3fc0a5dd3383d45efd0d3d35d5c4f5';

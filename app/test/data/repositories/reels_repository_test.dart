@@ -10,6 +10,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
 
@@ -393,7 +394,7 @@ void main() {
         clip(2),
       ]);
       await references.add(goa.id, 'https://example.com/a');
-      await clips.addDetectedClips([clip(3)]);
+      await clips.saveDetected([clip(3)]);
 
       final counts = <Map<int, int>>[];
       final refs = <int>[];

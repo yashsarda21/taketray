@@ -12,6 +12,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
 
@@ -112,9 +113,13 @@ void main() {
   Future<DateTime> updatedAt(int reelId) async =>
       (await reels.getById(reelId))!.updatedAt;
 
-  group('addDetectedClips', () {
+  // `saveDetected` (test/support/clip_setup.dart) is `addCheckedClips` with a
+  // `sameVideo` that accepts every stored clip: the saving of new clips and
+  // the finding of known ones. (These tests were written for the removed
+  // `addDetectedClips`, which nothing in lib/ called.)
+  group('addCheckedClips saving new and known clips', () {
     test('saves new clips as pending, in input order', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
         pickerClip('content://picker/1'),
@@ -139,9 +144,9 @@ void main() {
     test(
       'the same clip detected twice is one clip, one inbox row, one id',
       () async {
-        final first = await repo.addDetectedClips([mediaStoreClip(10)]);
+        final first = await repo.saveDetected([mediaStoreClip(10)]);
         clock.advance(_minute);
-        final second = await repo.addDetectedClips([mediaStoreClip(10)]);
+        final second = await repo.saveDetected([mediaStoreClip(10)]);
 
         expect(second, first);
         expect(await clipIds(), first);
@@ -154,7 +159,7 @@ void main() {
     );
 
     test('the same clip twice in one call is one clip', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
         mediaStoreClip(10),
@@ -167,9 +172,9 @@ void main() {
     });
 
     test('a picked clip is recognised by its picker URI', () async {
-      final a = await repo.addDetectedClips([pickerClip('content://p/1')]);
-      final b = await repo.addDetectedClips([pickerClip('content://p/1')]);
-      final c = await repo.addDetectedClips([pickerClip('content://p/2')]);
+      final a = await repo.saveDetected([pickerClip('content://p/1')]);
+      final b = await repo.saveDetected([pickerClip('content://p/1')]);
+      final c = await repo.saveDetected([pickerClip('content://p/2')]);
 
       expect(b, a);
       expect(c.single, isNot(a.single));
@@ -177,7 +182,7 @@ void main() {
     });
 
     test('the same MediaStore id on another volume is another clip', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(10, volumeName: '1234-ABCD'),
       ]);
@@ -189,10 +194,10 @@ void main() {
       'a clip already tagged into a reel does not return to To tag',
       () async {
         final reel = await reels.create('Goa');
-        final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+        final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
         await repo.tagClip(id, {reel.id});
 
-        final again = await repo.addDetectedClips([mediaStoreClip(10)]);
+        final again = await repo.saveDetected([mediaStoreClip(10)]);
 
         expect(again.single, id);
         expect(await inboxRows(), isEmpty);
@@ -201,16 +206,16 @@ void main() {
     );
 
     test('a skipped clip detected again stays skipped', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       await repo.skip([id]);
 
-      await repo.addDetectedClips([mediaStoreClip(10)]);
+      await repo.saveDetected([mediaStoreClip(10)]);
 
       expect((await inboxRows()).single.state, InboxState.skipped);
     });
 
     test('a detected clip survives the orphan sweep', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       await db.deleteOrphanClips();
 
@@ -218,7 +223,7 @@ void main() {
     });
 
     test('an empty list does nothing', () async {
-      expect(await repo.addDetectedClips([]), isEmpty);
+      expect(await repo.saveDetected([]), isEmpty);
       expect(await clipIds(), isEmpty);
     });
   });
@@ -246,7 +251,7 @@ void main() {
 
     test('finds a clip that is already known and links it', () async {
       final goa = await reels.create('Goa');
-      final known = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final known = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       final ids = await repo.addNewClipsToReel(goa.id, [
         mediaStoreClip(10),
@@ -262,7 +267,7 @@ void main() {
 
     test('a pending or skipped clip added to a reel leaves To tag', () async {
       final reel = await reels.create('Goa');
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
         mediaStoreClip(12),
@@ -316,14 +321,14 @@ void main() {
       sweeping = _SweepingClock(_t0, db);
     });
 
-    test('addDetectedClips: a sweep started mid-transaction cannot delete the '
+    test('addCheckedClips: a sweep started mid-transaction cannot delete the '
         'new clip', () async {
       sweeping.arm();
 
       final [id] = await ClipsRepository(
         db,
         sweeping,
-      ).addDetectedClips([mediaStoreClip(10)]);
+      ).saveDetected([mediaStoreClip(10)]);
 
       expect(sweeping.sweep, isNotNull, reason: 'the sweep was started');
       expect(await sweeping.sweep, 0);
@@ -378,12 +383,12 @@ void main() {
       }
     });
 
-    test('addDetectedClips and a reel delete at once: the new clips stay, '
+    test('addCheckedClips and a reel delete at once: the new clips stay, '
         "the deleted reel's clip goes", () async {
       final paris = await reelWithAClipOnlyThere();
 
       final (ids, _) = await (
-        repo.addDetectedClips([mediaStoreClip(10), mediaStoreClip(11)]),
+        repo.saveDetected([mediaStoreClip(10), mediaStoreClip(11)]),
         reels.delete(paris),
       ).wait;
 
@@ -396,7 +401,7 @@ void main() {
     test('links the clip to its reels and leaves To tag', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       await repo.tagClip(id, {goa.id, paris.id});
 
@@ -409,7 +414,7 @@ void main() {
       () async {
         final goa = await reels.create('Goa');
         final paris = await reels.create('Paris');
-        final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+        final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
         await repo.tagClip(id, {goa.id, paris.id});
         clock.advance(_minute);
 
@@ -424,7 +429,7 @@ void main() {
     test('a link gained later gets the time it was added', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       await repo.tagClip(id, {goa.id});
       clock.advance(_minute);
 
@@ -441,7 +446,7 @@ void main() {
       final lost = await reels.create('Lost');
       final gained = await reels.create('Gained');
       final untouched = await reels.create('Untouched');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       await repo.tagClip(id, {kept.id, lost.id});
       clock.advance(_minute);
 
@@ -456,7 +461,7 @@ void main() {
 
     test('removes a skipped clip from Skipped too', () async {
       final reel = await reels.create('Goa');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       await repo.skip([id]);
 
       await repo.tagClip(id, {reel.id});
@@ -465,7 +470,7 @@ void main() {
     });
 
     test('an empty set of reels is an ArgumentError', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       expect(() => repo.tagClip(id, {}), throwsArgumentError);
       expect((await inboxRows()).single.state, InboxState.pending);
@@ -473,7 +478,7 @@ void main() {
 
     test('an unknown clip or reel throws and changes nothing', () async {
       final reel = await reels.create('Goa');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       await expectLater(repo.tagClip(99, {reel.id}), throwsStateError);
       await expectLater(repo.tagClip(id, {reel.id, 99}), throwsStateError);
@@ -487,7 +492,7 @@ void main() {
     test('removes every link and puts the clip back in To tag', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       await repo.tagClip(id, {goa.id, paris.id});
       clock.advance(_minute);
 
@@ -504,7 +509,7 @@ void main() {
     });
 
     test('a clip that is already pending stays one inbox row', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
       await repo.untagToInbox(id);
 
@@ -518,7 +523,7 @@ void main() {
 
   group('skip and restore', () {
     test('skip moves clips to Skipped and restore brings them back', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
         mediaStoreClip(12),
@@ -549,7 +554,7 @@ void main() {
   group('addClipsToReel and removeClipsFromReel', () {
     test('add links the clips, once, and bumps updatedAt', () async {
       final reel = await reels.create('Goa');
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
@@ -569,7 +574,7 @@ void main() {
 
     test('add takes pending and skipped clips out of To tag', () async {
       final reel = await reels.create('Goa');
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
         mediaStoreClip(12),
@@ -587,7 +592,7 @@ void main() {
       'add throws for an unknown reel or clip and changes nothing',
       () async {
         final reel = await reels.create('Goa');
-        final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+        final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
 
         await expectLater(repo.addClipsToReel(99, [id]), throwsStateError);
         await expectLater(
@@ -714,40 +719,7 @@ void main() {
     });
   });
 
-  group('recordVerification', () {
-    test('flags missing and found clips and stamps the time', () async {
-      final ids = await repo.addDetectedClips([
-        mediaStoreClip(10),
-        mediaStoreClip(11),
-        mediaStoreClip(12),
-      ]);
-      await repo.recordVerification(found: {ids[0]}, missing: {ids[1]});
-      clock.advance(_minute);
-
-      // The first one goes missing, the second comes back.
-      await repo.recordVerification(found: {ids[1]}, missing: {ids[0]});
-
-      final rows = {for (final c in await db.select(db.clips).get()) c.id: c};
-      expect(rows[ids[0]]!.missing, isTrue);
-      expect(rows[ids[0]]!.lastVerifiedAt, _t0.add(_minute));
-      expect(rows[ids[1]]!.missing, isFalse);
-      expect(rows[ids[1]]!.lastVerifiedAt, _t0.add(_minute));
-      // Not mentioned: untouched.
-      expect(rows[ids[2]]!.missing, isFalse);
-      expect(rows[ids[2]]!.lastVerifiedAt, isNull);
-    });
-
-    test('a clip in both sets is an ArgumentError', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
-
-      expect(
-        () => repo.recordVerification(found: {id}, missing: {id}),
-        throwsArgumentError,
-      );
-    });
-  });
-
-  group('phone queries, rebuild remap and detach', () {
+  group('phone queries, rebuild remap and verification', () {
     Future<ClipRow> rowOf(int id) =>
         (db.select(db.clips)..where((c) => c.id.equals(id))).getSingle();
 
@@ -758,7 +730,7 @@ void main() {
     ].join('\n');
 
     Future<List<int>> detect(List<int> mediaStoreIds, {String? volume}) =>
-        repo.addDetectedClips([
+        repo.saveDetected([
           for (final id in mediaStoreIds)
             mediaStoreClip(id, volumeName: volume ?? 'external_primary'),
         ]);
@@ -791,7 +763,7 @@ void main() {
           final [a, b] = await detect([10, 11]);
           await detect([12], volume: '1234-ABCD');
           await pickerWithVolume(13);
-          await repo.detach({b});
+          await detachClips(db, {b}, at: clock.now());
 
           final held = await repo.mediaStoreClipsHolding('external_primary', [
             10,
@@ -995,6 +967,226 @@ void main() {
         expect(ids, unorderedEquals([found, inReel]));
       });
 
+      // The tests below moved here from the removed `detach`,
+      // `recordVerification` and `removeMissingFromLists` (nothing in lib/
+      // called them; this is the one method that does what they did).
+      test('otherVideo clips are detached like lost ones: a negative id, '
+          'missing, the time, the volume; a reel keeps its clip', () async {
+        final [a, b] = await detect([10, 11]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(a, {goa});
+        clock.advance(_minute);
+
+        await repo.applyVerification(found: {}, gone: {}, otherVideo: {a, b});
+
+        final row = await rowOf(a);
+        expect(row.mediaStoreId, -a);
+        expect(row.missing, isTrue);
+        expect(row.lastVerifiedAt, _t0.add(_minute));
+        expect(row.volumeName, 'external_primary');
+        expect(await reelIdsOf(a), {goa});
+        // b was only in To tag: it left (detach alone used to keep it).
+        expect(await clipIds(), [a]);
+        expect(await inboxRows(), isEmpty);
+      });
+
+      test('an unknown id is ignored without an error, other clips stay '
+          'as they are', () async {
+        final [a, b] = await detect([10, 11]);
+        clock.advance(_minute);
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {9999},
+          otherVideo: {9998},
+        );
+
+        expect(removed, 0);
+        expect((await rowOf(a)).mediaStoreId, 10);
+        expect((await rowOf(b)).missing, isFalse);
+        expect(await inboxRows(), hasLength(2));
+      });
+
+      test('a picked clip in otherVideo has no MediaStore id to detach: it '
+          'is not flagged and keeps its place in To tag', () async {
+        // Also the "missing" guard of the list removal: only a clip that is
+        // flagged missing in the same transaction leaves the lists.
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+        final before = await snapshot();
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {picked},
+        );
+
+        expect(removed, 0);
+        expect(await snapshot(), before);
+        expect((await inboxRows()).single.clipId, picked);
+      });
+
+      test('a picked clip that carries a volume and an id is left '
+          'unchanged in otherVideo', () async {
+        await detect([10]);
+        final picked = await pickerWithVolume(55);
+        // In To tag, so the orphan sweep does not take it.
+        await db
+            .into(db.inbox)
+            .insert(
+              InboxCompanion.insert(
+                clipId: Value(picked),
+                state: InboxState.pending,
+                addedAt: _t0,
+              ),
+            );
+        final before = await snapshot();
+
+        await repo.applyVerification(found: {}, gone: {}, otherVideo: {picked});
+
+        expect(await snapshot(), before);
+      });
+
+      test('detaching twice keeps the negative id', () async {
+        final [a] = await detect([10]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(a, {goa});
+
+        await repo.applyVerification(found: {}, gone: {}, otherVideo: {a});
+        clock.advance(_minute);
+        await repo.applyVerification(found: {}, gone: {}, otherVideo: {a});
+
+        expect((await rowOf(a)).mediaStoreId, -a);
+      });
+
+      test('gone clips: inbox-only and skipped ones are deleted, one in a '
+          'reel stays flagged', () async {
+        final [pending, skipped, inReel] = await detect([10, 11, 12]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(inReel, {goa});
+        await repo.skip([skipped]);
+
+        final deleted = await repo.applyVerification(
+          found: {},
+          gone: {pending, skipped, inReel},
+          otherVideo: {},
+        );
+
+        expect(deleted, 2);
+        expect(await clipIds(), [inReel]);
+        expect(await inboxRows(), isEmpty);
+        expect(await reelIdsOf(inReel), {goa});
+        expect((await rowOf(inReel)).missing, isTrue);
+      });
+
+      test('a clip in both the inbox and a reel keeps its link and row; '
+          'only the inbox row goes', () async {
+        final [both, gone] = await detect([10, 11]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(both, {goa});
+        // The database allows an inbox row beside a link (a backup drops
+        // them, the repository never writes them).
+        await db
+            .into(db.inbox)
+            .insert(
+              InboxCompanion.insert(
+                clipId: Value(both),
+                state: InboxState.pending,
+                addedAt: _t0,
+              ),
+            );
+        final updatedBefore = await updatedAt(goa);
+
+        final deleted = await repo.applyVerification(
+          found: {},
+          gone: {both, gone},
+          otherVideo: {},
+        );
+
+        expect(deleted, 1);
+        expect(await clipIds(), [both]);
+        expect(await inboxRows(), isEmpty);
+        expect(await reelIdsOf(both), {goa});
+        expect(await updatedAt(goa), updatedBefore);
+      });
+
+      test('a found clip that was flagged missing is flagged back and keeps '
+          'its inbox row; the gone one leaves', () async {
+        // A stale picture: `stale` was missing, and is found now.
+        final [stale, gone] = await detect([10, 11]);
+        await flagClips(db, {stale, gone}, missing: true, at: clock.now());
+
+        final deleted = await repo.applyVerification(
+          found: {stale},
+          gone: {gone},
+          otherVideo: {},
+        );
+
+        expect(deleted, 1);
+        expect(await clipIds(), [stale]);
+        expect((await inboxRows()).single.clipId, stale);
+        expect((await rowOf(stale)).missing, isFalse);
+      });
+
+      test(
+        'a clip that was never missing keeps its inbox row when found',
+        () async {
+          final [a] = await detect([10]);
+
+          expect(
+            await repo.applyVerification(found: {a}, gone: {}, otherVideo: {}),
+            0,
+          );
+
+          expect(await clipIds(), [a]);
+          expect(await inboxRows(), hasLength(1));
+        },
+      );
+
+      test('gone is flagged and found is flagged back, with the time; a clip '
+          'not mentioned is untouched', () async {
+        final ids = await detect([10, 11, 12]);
+        final goa = (await reels.create('Goa')).id;
+        // In a reel, so the flagged ones keep their rows to look at.
+        await repo.addClipsToReel(goa, ids);
+        await repo.applyVerification(
+          found: {ids[0]},
+          gone: {ids[1]},
+          otherVideo: {},
+        );
+        clock.advance(_minute);
+
+        // The first one goes missing, the second comes back.
+        await repo.applyVerification(
+          found: {ids[1]},
+          gone: {ids[0]},
+          otherVideo: {},
+        );
+
+        final first = await rowOf(ids[0]);
+        expect((first.missing, first.lastVerifiedAt), (true, _t0.add(_minute)));
+        final second = await rowOf(ids[1]);
+        expect(
+          (second.missing, second.lastVerifiedAt),
+          (false, _t0.add(_minute)),
+        );
+        final third = await rowOf(ids[2]);
+        expect((third.missing, third.lastVerifiedAt), (false, null));
+      });
+
+      test('with nothing to apply an orphan clip is not swept', () async {
+        final [a] = await detect([10]);
+        await (db.delete(db.inbox)..where((i) => i.clipId.equals(a))).go();
+        final before = await snapshot();
+
+        expect(
+          await repo.applyVerification(found: {}, gone: {}, otherVideo: {}),
+          0,
+        );
+
+        expect(await snapshot(), before);
+        expect(await clipIds(), [a]);
+      });
+
       test('a failing step changes nothing', () async {
         final [_, gone, other] = await detect([10, 11, 12]);
         await db.customStatement(
@@ -1044,7 +1236,7 @@ void main() {
     group('clipsByIds and allClipIds', () {
       test('return the clips that exist, by id', () async {
         final [a, b] = await detect([10, 11]);
-        await repo.addDetectedClips([pickerClip('content://p/1')]);
+        await repo.saveDetected([pickerClip('content://p/1')]);
         final all = await repo.allClipIds();
 
         expect(all, hasLength(3));
@@ -1069,8 +1261,8 @@ void main() {
       test('excludes detached clips and other volumes', () async {
         final [a, b] = await detect([10, 11]);
         final [onCard] = await detect([10], volume: '1234-ABCD');
-        await repo.addDetectedClips([pickerClip('content://p/1')]);
-        await repo.detach({b});
+        await repo.saveDetected([pickerClip('content://p/1')]);
+        await detachClips(db, {b}, at: clock.now());
 
         final clips = await repo.mediaStoreClipsOn('external_primary');
 
@@ -1100,7 +1292,7 @@ void main() {
 
       test('keeps clips flagged missing that still hold their id', () async {
         final [a] = await detect([10]);
-        await repo.recordVerification(found: {}, missing: {a});
+        await flagClips(db, {a}, missing: true, at: clock.now());
 
         final clips = await repo.mediaStoreClipsOn('external_primary');
 
@@ -1163,7 +1355,7 @@ void main() {
 
       test('found clips are no longer missing', () async {
         final [a] = await detect([10]);
-        await repo.recordVerification(found: {}, missing: {a});
+        await flagClips(db, {a}, missing: true, at: clock.now());
 
         await repo.applyRebuildMatch(
           'external_primary',
@@ -1177,7 +1369,7 @@ void main() {
 
       test('a detached clip in remap stays detached and missing', () async {
         final [a, b] = await detect([10, 11]);
-        await repo.detach({a});
+        await detachClips(db, {a}, at: clock.now());
         clock.advance(_minute);
         final before = await snapshot();
 
@@ -1196,7 +1388,7 @@ void main() {
 
       test('a detached clip in lost is left as it is', () async {
         final [a] = await detect([10]);
-        await repo.detach({a});
+        await detachClips(db, {a}, at: clock.now());
         clock.advance(_minute);
         final before = await snapshot();
 
@@ -1391,7 +1583,7 @@ void main() {
         final [a, b, c, d] = await detect([10, 20, 21, 30]);
         final goa = (await reels.create('Goa')).id;
         await repo.tagClip(b, {goa});
-        await repo.recordVerification(found: {}, missing: {a});
+        await flagClips(db, {a}, missing: true, at: clock.now());
         clock.advance(_minute);
         final before = await snapshot();
 
@@ -1440,9 +1632,7 @@ void main() {
       test('clips on another volume or unknown ids are left alone', () async {
         final [a] = await detect([10]);
         final [onCard] = await detect([11], volume: '1234-ABCD');
-        final [picked] = await repo.addDetectedClips([
-          pickerClip('content://p/1'),
-        ]);
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
         final before = await snapshot();
 
         await repo.applyRebuildMatch(
@@ -1521,175 +1711,6 @@ void main() {
         expect(lines, contains('1 lost'));
         expect(lines, isNot(contains('VID_')));
         expect(lines, isNot(contains('external_primary')));
-      });
-    });
-
-    group('detach', () {
-      test('does the same as lost', () async {
-        final [a, b] = await detect([10, 11]);
-        final goa = (await reels.create('Goa')).id;
-        await repo.tagClip(a, {goa});
-        clock.advance(_minute);
-
-        await repo.detach({a, b});
-
-        for (final id in [a, b]) {
-          final row = await rowOf(id);
-          expect(row.mediaStoreId, -id);
-          expect(row.missing, isTrue);
-          expect(row.lastVerifiedAt, _t0.add(_minute));
-          expect(row.volumeName, 'external_primary');
-        }
-        expect(await reelIdsOf(a), {goa});
-        expect((await inboxRows()).single.clipId, b);
-      });
-
-      test('an empty set does nothing', () async {
-        await detect([10]);
-        clock.advance(_minute);
-        final before = await snapshot();
-
-        await repo.detach({});
-
-        expect(await snapshot(), before);
-      });
-
-      test('an unknown clip id is ignored without an error', () async {
-        final [a] = await detect([10]);
-        final before = await snapshot();
-
-        await repo.detach({9999});
-
-        expect(await snapshot(), before);
-        expect((await rowOf(a)).mediaStoreId, 10);
-      });
-
-      test('a picked clip has no MediaStore id to detach', () async {
-        final [picked] = await repo.addDetectedClips([
-          pickerClip('content://p/1'),
-        ]);
-        final before = await snapshot();
-
-        await repo.detach({picked});
-
-        expect(await snapshot(), before);
-      });
-
-      test('a picked clip with a volume and an id is left unchanged', () async {
-        await detect([10]);
-        final picked = await pickerWithVolume(55);
-        final before = await snapshot();
-
-        await repo.detach({picked});
-
-        expect(await snapshot(), before);
-      });
-
-      test('detaching twice keeps the negative id', () async {
-        final [a] = await detect([10]);
-
-        await repo.detach({a});
-        clock.advance(_minute);
-        await repo.detach({a});
-
-        expect((await rowOf(a)).mediaStoreId, -a);
-      });
-    });
-
-    group('removeMissingFromLists', () {
-      test('deletes an inbox-only clip and keeps one in a reel', () async {
-        final [pending, skipped, inReel] = await detect([10, 11, 12]);
-        final goa = (await reels.create('Goa')).id;
-        await repo.tagClip(inReel, {goa});
-        await repo.skip([skipped]);
-        await repo.detach({pending, skipped, inReel});
-
-        final deleted = await repo.removeMissingFromLists({
-          pending,
-          skipped,
-          inReel,
-        });
-
-        expect(deleted, 2);
-        expect(await clipIds(), [inReel]);
-        expect(await inboxRows(), isEmpty);
-        expect(await reelIdsOf(inReel), {goa});
-        expect((await rowOf(inReel)).missing, isTrue);
-      });
-
-      test(
-        'a clip in both the inbox and a reel keeps its link and row',
-        () async {
-          final [both, gone] = await detect([10, 11]);
-          final goa = (await reels.create('Goa')).id;
-          await repo.tagClip(both, {goa});
-          await repo.detach({both, gone});
-          // The database allows an inbox row beside a link (a backup drops
-          // them, the repository never writes them): only the inbox row goes.
-          await db
-              .into(db.inbox)
-              .insert(
-                InboxCompanion.insert(
-                  clipId: Value(both),
-                  state: InboxState.pending,
-                  addedAt: _t0,
-                ),
-              );
-          final updatedBefore = await updatedAt(goa);
-
-          final deleted = await repo.removeMissingFromLists({both, gone});
-
-          expect(deleted, 1);
-          expect(await clipIds(), [both]);
-          expect(await inboxRows(), isEmpty);
-          expect(await reelIdsOf(both), {goa});
-          expect(await updatedAt(goa), updatedBefore);
-        },
-      );
-
-      test('a clip that is no longer missing keeps its inbox row', () async {
-        // A stale set: the caller saw `stale` missing, then it came back.
-        final [stale, gone] = await detect([10, 11]);
-        await repo.detach({stale, gone});
-        await repo.recordVerification(found: {stale}, missing: {});
-        final before = await snapshot();
-
-        expect(await repo.removeMissingFromLists({stale}), 0);
-        expect(await snapshot(), before);
-
-        expect(await repo.removeMissingFromLists({stale, gone}), 1);
-        expect(await clipIds(), [stale]);
-        expect((await inboxRows()).single.clipId, stale);
-      });
-
-      test('a clip that was never missing keeps its inbox row', () async {
-        final [a] = await detect([10]);
-
-        expect(await repo.removeMissingFromLists({a}), 0);
-
-        expect(await clipIds(), [a]);
-        expect(await inboxRows(), hasLength(1));
-      });
-
-      test('an empty set returns 0 and leaves orphans alone', () async {
-        final [a] = await detect([10]);
-        final before = await snapshot();
-
-        expect(await repo.removeMissingFromLists({}), 0);
-
-        expect(await snapshot(), before);
-        expect(await clipIds(), [a]);
-      });
-
-      test('clips not in the set stay, unknown ids are ignored', () async {
-        final [a, b] = await detect([10, 11]);
-        await repo.detach({a, b});
-
-        final deleted = await repo.removeMissingFromLists({a, 9999});
-
-        expect(deleted, 1);
-        expect(await clipIds(), [b]);
-        expect((await inboxRows()).single.clipId, b);
       });
     });
 
@@ -1846,7 +1867,7 @@ void main() {
         // A picked clip has no thumbnail to ask for: it is not offered.
         expect(await repo.watchFirstShowableClip().first, isNull);
 
-        final ids = await repo.addDetectedClips([
+        final ids = await repo.saveDetected([
           mediaStoreClip(10),
           mediaStoreClip(11),
         ]);
@@ -1856,22 +1877,23 @@ void main() {
     );
 
     test('watchFirstShowableClip skips a clip that is missing', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
-      await repo.recordVerification(found: {ids[1]}, missing: {ids[0]});
+      await flagClips(db, {ids[0]}, missing: true, at: clock.now());
+      await flagClips(db, {ids[1]}, missing: false, at: clock.now());
 
       expect((await repo.watchFirstShowableClip().first)!.id, ids[1]);
 
-      await repo.recordVerification(found: {}, missing: {ids[1]});
+      await flagClips(db, {ids[1]}, missing: true, at: clock.now());
       expect(await repo.watchFirstShowableClip().first, isNull);
     });
 
     test(
       'watchFirstShowableClip finds a clip that is in a reel, too',
       () async {
-        final ids = await repo.addDetectedClips([mediaStoreClip(10)]);
+        final ids = await repo.saveDetected([mediaStoreClip(10)]);
         await repo.tagClip(ids.single, {(await reels.create('Goa')).id});
 
         expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
@@ -1883,7 +1905,7 @@ void main() {
       final sub = repo.watchFirstShowableClip().listen((c) => seen.add(c?.id));
       addTearDown(sub.cancel);
       await Future<void>.delayed(Duration.zero);
-      final ids = await repo.addDetectedClips([mediaStoreClip(10)]);
+      final ids = await repo.saveDetected([mediaStoreClip(10)]);
       await Future<void>.delayed(Duration.zero);
 
       expect(seen, [null, ids.single]);
@@ -1892,7 +1914,7 @@ void main() {
     test('watchInbox is sorted by shooting time, ties by id', () async {
       final lateShot = _t0.add(const Duration(hours: 2));
       final earlyShot = _t0.subtract(const Duration(hours: 2));
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10, shotAt: lateShot),
         mediaStoreClip(11, shotAt: _t0),
         mediaStoreClip(12, shotAt: earlyShot),
@@ -1905,8 +1927,8 @@ void main() {
     });
 
     test('watchInbox maps every field of the clip', () async {
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
-      await repo.recordVerification(found: {id}, missing: {});
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
+      await flagClips(db, {id}, missing: false, at: clock.now());
 
       final clip = (await repo.watchInbox(InboxState.pending).first).single;
 
@@ -1936,7 +1958,7 @@ void main() {
     });
 
     test('watchInbox lists pending and skipped clips apart', () async {
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
@@ -1959,7 +1981,7 @@ void main() {
       addTearDown(sub.cancel);
       await pumpEventQueue();
 
-      final ids = await repo.addDetectedClips([
+      final ids = await repo.saveDetected([
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
@@ -2011,7 +2033,7 @@ void main() {
     test('watchReelIdsOf follows tag and Undo', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
-      final id = (await repo.addDetectedClips([mediaStoreClip(10)])).single;
+      final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
       final seen = <Set<int>>[];
       final sub = repo.watchReelIdsOf(id).listen(seen.add);
       addTearDown(sub.cancel);

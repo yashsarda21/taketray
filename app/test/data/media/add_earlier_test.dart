@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/models/zone_entry.dart';
 import 'package:taketray/domain/rules/earlier_window.dart';
 
 import '../../support/fake_media_bridge.dart';
@@ -31,6 +32,7 @@ MediaVideo shot(
   String folder = 'DCIM/Camera/',
   bool pending = false,
   int? durationMs = 5000,
+  int? sizeBytes,
 }) => fakeVideo(
   id: id,
   generation: id,
@@ -38,7 +40,7 @@ MediaVideo shot(
   folder: folder,
   pending: pending,
   durationMs: durationMs,
-  sizeBytes: 1000000 + id,
+  sizeBytes: sizeBytes ?? 1000000 + id,
   dateTakenMs: when.millisecondsSinceEpoch,
   dateAddedSec: when.millisecondsSinceEpoch ~/ 1000,
   dateModifiedSec: when.millisecondsSinceEpoch ~/ 1000,
@@ -228,6 +230,18 @@ void main() {
       bridge.put([
         shot(7, DateTime(2026, 6, 9, 11), durationMs: 0),
         shot(8, DateTime(2026, 6, 9, 12), durationMs: null),
+      ]);
+
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+      await h.scanner.addEarlier(june(9, 9));
+      expect(await toTagIds(), [3]);
+    });
+
+    test('a video of unknown size in the range is not counted or added '
+        '(I-1)', () async {
+      bridge.put([
+        shot(7, DateTime(2026, 6, 9, 11), sizeBytes: 0),
+        shot(8, DateTime(2026, 6, 9, 12), sizeBytes: -1),
       ]);
 
       expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
@@ -483,6 +497,104 @@ void main() {
 
       expect(await h.scanner.countEarlierIn(june(9, 9)), 2);
       expect(bridge.count('videosShotSince'), 2);
+    });
+  });
+
+  group('zone sync before the timeline is read (I-2)', () {
+    // The timeline knows UTC; the phone changed to Paris before yesterday's
+    // video was shot, and only the native side knows.
+    Future<void> setUpTravel() async {
+      await h.zones.recordAll([
+        ZoneEntry(at: DateTime.utc(2026, 6), zoneId: 'UTC'),
+      ]);
+      bridge
+        ..zoneChanges = [
+          ZoneEntry(at: DateTime.utc(2026, 6, 9), zoneId: 'Europe/Paris'),
+        ]
+        ..currentZone = 'Europe/Paris';
+    }
+
+    test(
+      'addEarlier waits for the sync, and the clip gets the new zone',
+      () async {
+        await setUpTravel();
+        final gate = bridge.gate('pendingZoneChanges');
+
+        final add = h.scanner.addEarlier(june(9, 9));
+        await until(() => bridge.calls.contains('pendingZoneChanges'));
+        await settle();
+        expect(await h.allClips(), isEmpty, reason: 'waiting for the sync');
+        gate.complete();
+
+        expect(await add, hasLength(1));
+        expect((await h.toTag()).single.timeZoneId, 'Europe/Paris');
+      },
+    );
+
+    test('a sync that throws still lets addEarlier run', () async {
+      await setUpTravel();
+      bridge.failNext('pendingZoneChanges');
+
+      expect(await h.scanner.addEarlier(june(9, 9)), hasLength(1));
+
+      // The old timeline answers.
+      expect((await h.toTag()).single.timeZoneId, 'UTC');
+    });
+
+    test('counting does not sync', () async {
+      await setUpTravel();
+
+      await h.scanner.countEarlierIn(june(9, 9));
+
+      expect(bridge.calls, isNot(contains('pendingZoneChanges')));
+    });
+  });
+
+  group("the volume's library version is recorded (M-3)", () {
+    // Android renumbers every video and changes the volume's version.
+    void rebuild() {
+      bridge.videosByVolume[phone] = [
+        for (final v in bridge.videosByVolume[phone]!)
+          v.copyWith(
+            mediaStoreId: v.mediaStoreId + 100,
+            generationAdded: v.generationAdded + 100,
+          ),
+      ];
+      bridge.setVolume(phone, version: 'v2', generation: 200);
+    }
+
+    test('Add earlier on a fresh install records the version', () async {
+      expect(await h.phoneState.volumeVersions(), isEmpty);
+
+      await h.scanner.addEarlier(today);
+
+      expect(await h.phoneState.volumeVersions(), {phone: 'v1'});
+    });
+
+    test('Add earlier, then a rebuild, then verify: the clips are found '
+        'again, not marked missing', () async {
+      final ids = await h.scanner.addEarlier(today);
+      expect(ids, hasLength(2));
+      rebuild();
+
+      final outcome = await h.verifier.verifyAll();
+
+      expect(outcome.found, ids.toSet());
+      expect(outcome.missing, isEmpty);
+      expect(await toTagIds(), unorderedEquals([101, 102]));
+      expect((await h.allClips()).every((c) => !c.missing), isTrue);
+    });
+
+    test('a rebuild before the next Add earlier: the stored clips are '
+        'matched first, so nothing is added twice', () async {
+      await h.scanner.addEarlier(today);
+      rebuild();
+
+      expect(await h.scanner.addEarlier(today), isEmpty);
+
+      expect(await h.allClips(), hasLength(2));
+      expect(await toTagIds(), unorderedEquals([101, 102]));
+      expect(await h.phoneState.volumeVersions(), {phone: 'v2'});
     });
   });
 

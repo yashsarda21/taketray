@@ -6,6 +6,7 @@ import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/zone_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -61,7 +62,7 @@ const _v1 = 'v1';
 VolumeBaseline at(int generation, [String version = _v1]) =>
     VolumeBaseline(version: version, generation: generation);
 
-/// A clips repository whose `addDetectedClips` fails like a full disk.
+/// A clips repository whose `addCheckedClips` fails like a full disk.
 class _FailingClips extends ClipsRepository {
   _FailingClips(super._db, super._clock);
 
@@ -70,6 +71,15 @@ class _FailingClips extends ClipsRepository {
     List<NewClip> clips, {
     required bool Function(Clip stored, NewClip incoming) sameVideo,
   }) async => throw StateError('database is full');
+}
+
+/// A zone repository whose `recordAll` fails like a full disk.
+class _FailingZones extends ZoneRepository {
+  _FailingZones(super._db, super._);
+
+  @override
+  Future<void> recordAll(Iterable<ZoneEntry> entries) async =>
+      throw StateError('database is full');
 }
 
 /// A bridge whose `videosAddedAfter` fails with an error that is not a
@@ -325,7 +335,7 @@ void main() {
     });
 
     test(
-      'a zero-length video stops holding ten minutes after it was added',
+      'a zero-length video stops holding three hours after it was added',
       () async {
         final justNow = h.clock.now().millisecondsSinceEpoch ~/ 1000;
         bridge.put([video(1, 10)]);
@@ -335,12 +345,86 @@ void main() {
         await h.scanner.scan();
         expect(await h.baselineOf(phone), at(10));
 
-        h.clock.advance(const Duration(minutes: 10, seconds: 1));
+        // Still held just inside the window, passed just after it.
+        h.clock.advance(const Duration(hours: 3));
+        await h.scanner.scan();
+        expect(await h.baselineOf(phone), at(10), reason: 'exactly 3 h holds');
+
+        h.clock.advance(const Duration(seconds: 1));
         await h.scanner.scan();
         expect(await h.baselineOf(phone), at(11));
         expect(await h.allClips(), isEmpty);
       },
     );
+
+    test('a long recording whose row has no length yet is still caught two '
+        'hours later (I-4)', () async {
+      final justNow = h.clock.now().millisecondsSinceEpoch ~/ 1000;
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      // The camera inserted the row when the recording started, finished
+      // (not pending) but without a length.
+      bridge.put([video(2, 11, durationMs: 0, dateAddedSec: justNow)]);
+      await h.scanner.scan();
+      expect(await h.baselineOf(phone), at(10));
+
+      // Half an hour later the row still has no length: still held.
+      h.clock.advance(const Duration(minutes: 30));
+      await h.scanner.scan();
+      expect(await h.baselineOf(phone), at(10), reason: 'held past 10 min');
+
+      h.clock.advance(const Duration(hours: 1, minutes: 30));
+      bridge.videosByVolume[phone]!
+        ..removeWhere((v) => v.mediaStoreId == 2)
+        ..add(video(2, 11, dateAddedSec: justNow));
+      bridge.setVolume(phone, version: _v1, generation: 11);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+      expect([for (final c in await h.toTag()) c.mediaStoreId], [2]);
+    });
+
+    group('a video of unknown size (I-1)', () {
+      test('is not added while its size is 0; the baseline waits; once the '
+          'size is filled in it is added once and verify finds it', () async {
+        final justNow = h.clock.now().millisecondsSinceEpoch ~/ 1000 - 60;
+        bridge.put([video(1, 10)]);
+        await h.turnOnNow();
+        bridge.put([video(2, 11, sizeBytes: 0, dateAddedSec: justNow)]);
+
+        expect(await h.scanner.scan(), scanDone(added: 0));
+        expect(await h.allClips(), isEmpty);
+        expect(await h.baselineOf(phone), at(10), reason: 'held before 11');
+
+        // Android fills in the size; the row keeps its GENERATION_ADDED.
+        bridge.videosByVolume[phone]!
+          ..removeWhere((v) => v.mediaStoreId == 2)
+          ..add(video(2, 11, dateAddedSec: justNow));
+        bridge.setVolume(phone, version: _v1, generation: 12);
+
+        expect(await h.scanner.scan(), scanDone(added: 1));
+        expect(await h.scanner.scan(), scanDone(added: 0));
+        final clips = await h.toTag();
+        expect(clips.map((c) => c.mediaStoreId), [2]);
+        expect(await h.baselineOf(phone), at(12));
+
+        final outcome = await h.verifier.verify(clips);
+        expect(outcome.found, {clips.single.id});
+        expect(outcome.missing, isEmpty);
+        expect(await h.toTag(), hasLength(1), reason: 'verify removed nothing');
+      });
+
+      test('an old row of unknown size is passed, never added', () async {
+        bridge.put([video(1, 10)]);
+        await h.turnOnNow();
+        // Added on 2026-05-28, days before the scan.
+        bridge.put([video(2, 11, sizeBytes: 0)]);
+
+        expect(await h.scanner.scan(), scanDone(added: 0));
+
+        expect(await h.allClips(), isEmpty);
+        expect(await h.baselineOf(phone), at(11));
+      });
+    });
 
     test('a stored clip holding a number the phone gives a different video: '
         'the video lands in To tag, the old clip is detached and stays in '
@@ -532,6 +616,30 @@ void main() {
       // Still pending at the next scan: nothing new, nothing doubled.
       expect(await h.scanner.scan(), scanDone(added: 0));
       expect(await h.toTag(), hasLength(1200));
+    });
+
+    test('a row held for two hours does not hide the 1200 rows after it '
+        '(I-4)', () async {
+      final twoHoursAgo =
+          h.clock
+              .now()
+              .subtract(const Duration(hours: 2))
+              .millisecondsSinceEpoch ~/
+          1000;
+      bridge.put([video(1, 100)]);
+      await h.turnOnNow();
+      bridge.put([
+        video(5, 101, durationMs: 0, dateAddedSec: twoHoursAgo),
+        ...videos(1200, firstId: 1001, firstGeneration: 102),
+      ]);
+
+      expect(await h.scanner.scan(), scanDone(added: 1200));
+
+      expect(await h.toTag(), hasLength(1200));
+      expect(await h.baselineOf(phone), at(100), reason: 'held before 101');
+      expect(bridge.addedAfter.map((c) => c.$2), [100, 599, 1098]);
+      expect(await h.scanner.scan(), scanDone(added: 0));
+      expect(await h.toTag(), hasLength(1200), reason: 'saved once');
     });
 
     test(
@@ -772,6 +880,96 @@ void main() {
     });
   });
 
+  group('zone sync before the timeline is read (I-2)', () {
+    final shotAt = DateTime.fromMillisecondsSinceEpoch(
+      1780000000000,
+      isUtc: true,
+    );
+
+    // The timeline knows UTC since May; the phone changed zone to Paris
+    // before the video was shot, and only the native side knows.
+    Future<void> setUpTravel() async {
+      await h.zones.recordAll([
+        ZoneEntry(at: DateTime.utc(2026, 5), zoneId: 'UTC'),
+      ]);
+      bridge
+        ..zoneChanges = [
+          ZoneEntry(
+            at: shotAt.subtract(const Duration(hours: 5)),
+            zoneId: 'Europe/Paris',
+          ),
+        ]
+        ..currentZone = 'Europe/Paris';
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      bridge.put([video(2, 11)]);
+    }
+
+    test(
+      'the scan waits for the sync, and the clip gets the new zone',
+      () async {
+        await setUpTravel();
+        final gate = bridge.gate('pendingZoneChanges');
+
+        final scan = h.scanner.scan();
+        await until(() => bridge.calls.contains('pendingZoneChanges'));
+        await settle();
+        expect(bridge.calls, isNot(contains('videosAddedAfter')));
+        expect(bridge.calls, isNot(contains('volumes')));
+        gate.complete();
+
+        expect(await scan, scanDone(added: 1));
+        expect((await h.toTag()).single.timeZoneId, 'Europe/Paris');
+      },
+    );
+
+    test('a sync that throws still lets the scan run, and logs only the '
+        'type', () async {
+      await setUpTravel();
+      bridge.failNext('pendingZoneChanges');
+      final logs = captureLogs();
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+
+      // The old timeline answers: UTC.
+      expect((await h.toTag()).single.timeZoneId, 'UTC');
+      final warning = logs.singleWhere(
+        (r) => r.level >= Level.WARNING && r.message.contains('zone sync'),
+      );
+      expect(warning.message, contains('PlatformException'));
+      expect(logText(logs), isNot(contains('fake-failure')));
+      expect(logText(logs), isNot(contains('Paris')));
+    });
+
+    test('a sync that fails in the database (not the phone) still lets the '
+        'scan run', () async {
+      final failing = MediaHarness(zones: _FailingZones.new);
+      failing.bridge
+        ..zoneChanges = [
+          ZoneEntry(at: DateTime.utc(2026, 5, 27), zoneId: 'Europe/Paris'),
+        ]
+        ..put([video(1, 10)]);
+      await failing.turnOnNow();
+      failing.bridge.put([video(2, 11)]);
+
+      expect(await failing.scanner.scan(), scanDone(added: 1));
+    });
+
+    test('no sync when Shooting mode is off or access is not full', () async {
+      bridge.put([video(1, 10)]);
+      await h.scanner.scan();
+      await h.turnOnNow();
+      bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await h.scanner.scan();
+
+      expect(bridge.calls, isNot(contains('pendingZoneChanges')));
+    });
+  });
+
   group('failures', () {
     test('a failing volume keeps its baseline, others proceed', () async {
       bridge
@@ -801,7 +999,7 @@ void main() {
       expect(await h.baselineOf(phone), at(11));
     });
 
-    test('addDetectedClips failure leaves baseline unmoved', () async {
+    test('addCheckedClips failure leaves baseline unmoved', () async {
       bridge.put([video(1, 10)]);
       await h.turnOnNow();
       bridge.put([video(2, 11)]);
@@ -889,6 +1087,9 @@ void main() {
       expect(await third, scanDone(added: 1));
       const run = [
         'accessReport',
+        // The zone sync, then the scan's own read of the zone.
+        'pendingZoneChanges',
+        'currentZoneId',
         'currentZoneId',
         'volumes',
         'videosAddedAfter',

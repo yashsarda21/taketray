@@ -61,26 +61,28 @@ VolumePlan planVolume(VolumeBaseline? baseline, MediaVolume current) {
   return ScanAfter(baseline.generation);
 }
 
-/// How long a finished video without a length keeps holding the baseline
-/// after it was added (D-72, Ruling W).
-const lateMetadataWindow = Duration(minutes: 10);
+/// How long a finished video without a length or a size keeps holding the
+/// baseline after it was added (D-72, Ruling W). Three hours, so a long
+/// recording whose row was inserted when it started (finished, but with no
+/// length until it ends) is still caught.
+const lateMetadataWindow = Duration(hours: 3);
 
 /// Whether row [v] must hold the baseline before it, so the next scan sees
 /// it again:
 ///
 /// - a pending row (a video still being recorded) always holds;
-/// - a finished row whose duration is unknown or 0 holds while its
-///   DATE_ADDED is at most [lateMetadataWindow] before [now] (exactly ten
-///   minutes still holds) and not more than one day after it (the bound of
-///   a plausible date, D-69). Android can fill in the length a moment after
-///   the row is finished; an older row without a length is broken and is
-///   passed.
+/// - a finished row whose duration is unknown or 0, or whose size is unknown
+///   or 0 (Kotlin maps a missing SIZE to 0), holds while its DATE_ADDED is at
+///   most [lateMetadataWindow] before [now] (exactly three hours still
+///   holds) and not more than one day after it (the bound of a plausible
+///   date, D-69). Android can fill in the length or the size after the row
+///   is finished; an older row without them is broken and is passed.
 ///
 /// DATE_ADDED is compared in seconds before it is multiplied, so a huge
 /// value cannot overflow into a plausible one.
 bool holdsBaseline(MediaVideo v, {required DateTime now}) {
   if (v.isPending) return true;
-  if ((v.durationMs ?? 0) > 0) return false;
+  if ((v.durationMs ?? 0) > 0 && v.sizeBytes > 0) return false;
   final addedSec = v.dateAddedSec;
   if (addedSec == null || addedSec < 0) return false;
   final nowMs = now.millisecondsSinceEpoch;
@@ -98,9 +100,9 @@ bool holdsBaseline(MediaVideo v, {required DateTime now}) {
 /// [now] is the scan's time, for [holdsBaseline].
 ///
 /// A row that holds the baseline ([holdsBaseline]: a video still being
-/// recorded, or a just-finished one whose length Android has not filled in
-/// yet) holds it just before the oldest such row, so the next scan sees it
-/// again. A truncated scan ignores [captured] and holds one below the
+/// recorded, or a just-finished one whose length or size Android has not
+/// filled in yet) holds it just before the oldest such row, so the next scan
+/// sees it again. A truncated scan ignores [captured] and holds one below the
 /// highest generation seen: rows written in one transaction share a
 /// generation, so a full page can end in the middle of one. Otherwise the
 /// baseline moves to the highest of [captured] and the rows' generations.

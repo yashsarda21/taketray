@@ -17,7 +17,12 @@ final Logger _log = Logger('mediaLifecycle');
 /// [child] unchanged.
 ///
 /// On the first frame, and on every resume, in this order:
-/// 1. `ZoneSync.sync`: the time zone changes the phone saw meanwhile;
+/// 1. `ZoneSync.sync`: the time zone changes the phone saw meanwhile. The
+///    scan (and Add earlier videos) syncs again inside its own queued job,
+///    right before it reads the timeline, so it never depends on this step
+///    having finished; a second sync changes nothing that is stored. This one
+///    stays because with Shooting mode off the scan does nothing, and the
+///    timeline must still learn the zone;
 /// 2. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
 /// 3. `MediaScanner.scan`: new videos, when Shooting mode is on.

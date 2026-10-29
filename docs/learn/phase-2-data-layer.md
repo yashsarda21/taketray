@@ -85,7 +85,7 @@ stateDiagram-v2
     state "To tag" as ToTag
     state "In reels" as InReels
 
-    [*] --> ToTag: addDetectedClips (a new clip is detected)
+    [*] --> ToTag: addCheckedClips (a new clip is detected)
     [*] --> InReels: addNewClipsToReel (a new clip is picked by hand, phase 7)
     ToTag --> Skipped: skip
     Skipped --> ToTag: restore
@@ -97,7 +97,7 @@ stateDiagram-v2
 ```
 
 Things the arrows do not show:
-- **Seeing a known clip again changes nothing.** If `addDetectedClips` reports a video TakeTray already knows, it stays exactly where it is: in a reel, in To tag or in Skipped. It never comes back to To tag (D-57).
+- **Seeing a known clip again changes nothing.** If `addCheckedClips` reports a video TakeTray already knows, it stays exactly where it is: in a reel, in To tag or in Skipped. It never comes back to To tag (D-57).
 - **Moving into a reel always empties the lists.** `tagClip`, `addClipsToReel` and `addNewClipsToReel` delete the clip's To tag / Skipped entry, so a clip is never in a reel and in a list at once. This includes a clip that was waiting in To tag or Skipped and that you then pick by hand (`addNewClipsToReel`, D-57).
 - **`skip` and `restore` only move clips that are in a list.** A clip that is in a reel is left alone.
 - **`untagToInbox` is also safe on a clip already in a list**: it ends up in To tag with a fresh time.
@@ -535,7 +535,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
   | Step | Method | What is written |
   |---|---|---|
-  | The detector finds it | `addDetectedClips` | a `clips` row and an `inbox` row `pending`: it is in To tag |
+  | The detector finds it | `addCheckedClips` | a `clips` row and an `inbox` row `pending`: it is in To tag |
   | You tag it into Goa and Paris | `tagClip(id, {goa, paris})` | two `clip_reels` rows; the `inbox` row is deleted |
   | (By hand, phase 7) you pick a video for Goa | `addNewClipsToReel(goa, [clip])` | a new clip gets a `clips` row and a link, no `inbox` row; a clip TakeTray already knew is found by its identity, linked, and its `inbox` row (pending or skipped) is deleted |
   | You tap Undo | `untagToInbox(id)` | both `clip_reels` rows deleted; `inbox` row `pending` again |
@@ -545,7 +545,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
   A clip is always in at least one of two kinds of place: a list (an `inbox` row: To tag or Skipped) or one or more reels (`clip_reels` rows), and this repository never puts it in both kinds at once. The moment it is in none of them it is an *orphan* (Section 5) and is deleted. That is why each method that inserts a clip also gives it a place in the same database transaction (a group of changes that is saved all together): a clip with no place, even for a moment, could be swept away by another delete, because the sweep looks at the whole table.
 
-- **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addDetectedClips` first asks "do I already know this clip?", using its identity: the MediaStore id (Android's own catalogue number for the video) plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
+- **Idempotent: saving the same clip twice changes nothing.** The detector can report one video twice. Here is a real way it happens: it finds clip 10, TakeTray saves it, and the phone is switched off *before* TakeTray remembers "I have seen everything up to clip 10". After the restart the detector looks again from the old position and reports clip 10 again. If saving twice made two clips, the creator would see the same video twice in To tag. Instead `addCheckedClips` first asks "do I already know this clip?", using its identity: the MediaStore id (Android's own catalogue number for the video) plus the storage volume, or the picker URI for a clip chosen by hand (D-57):
 
   ```dart
   Future<int?> _findId(NewClip clip) {
@@ -629,7 +629,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
   }
   ```
 
-  Drift lets only one transaction or statement use the database at a time, so the sweep waits for the open transaction and then finds the clip already in its place: it deletes nothing. Two more tests run `addNewClipsToReel` or `addDetectedClips` together with a reel delete from `ReelsRepository`, whose transaction ends with the same sweep. When one method's transaction was split in two on purpose (clips in the first, links or `inbox` rows in the second), that method's two new tests failed with `FOREIGN KEY constraint failed`: the sweep ran between the two halves and deleted the new clip, so its link or `inbox` row had nothing to point at. The older "survives the orphan sweep" tests still passed.
+  Drift lets only one transaction or statement use the database at a time, so the sweep waits for the open transaction and then finds the clip already in its place: it deletes nothing. Two more tests run `addNewClipsToReel` or `addCheckedClips` together with a reel delete from `ReelsRepository`, whose transaction ends with the same sweep. When one method's transaction was split in two on purpose (clips in the first, links or `inbox` rows in the second), that method's two new tests failed with `FOREIGN KEY constraint failed`: the sweep ran between the two halves and deleted the new clip, so its link or `inbox` row had nothing to point at. The older "survives the orphan sweep" tests still passed.
 
 - **Tagging replaces the links but keeps `addedAt`.** `tagClip(id, {goa, paris})` does not mean "add these"; it means "the clip is in *exactly* these reels". So the method compares the reels it is in now with the ones you asked for, removes the difference one way, adds it the other way, and leaves the reels that are in both alone:
 
@@ -682,7 +682,7 @@ The same change also: made `tool/check` find the repo root once (`root="$(pwd)"`
 
 **Where it lives:** `app/lib/data/repositories/clips_repository.dart` (with its generated `clipsRepositoryProvider`), the models it accepts and returns in `app/lib/domain/models/clip.dart`, and the tests in `app/test/data/repositories/clips_repository_test.dart`. The steps of each change are in `docs/flow.md` ("Tagging data changes").
 
-**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+49: All tests passed!`. Then break idempotency on purpose: in `clips_repository.dart`, in `addDetectedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch five tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards with `git checkout -- app/lib/data/repositories/clips_repository.dart` (from the repo root).
+**Try it yourself:** from the repo root run `(cd app && ../tool/flutter test test/data/repositories/clips_repository_test.dart)`. You should see `+112: All tests passed!` (the file has grown since this phase). Then break idempotency on purpose: in `clips_repository.dart`, in `addCheckedClips`, replace the line `final known = await _findId(clip);` with `const int? known = null;` (pretend no clip is ever known), run the same command, and watch nine tests fail, among them `the same clip detected twice is one clip, one inbox row, one id` and `a clip already tagged into a reel does not return to To tag`. Put the line back afterwards with `git checkout -- app/lib/data/repositories/clips_repository.dart` (from the repo root).
 
 **Decisions:** D-57 (clip identity, idempotent detection, a place for every inserted clip), D-56 (the orphan rule), D-54 (`vn_copies` outlive their clip), D-10 (no names in logs).
 
@@ -1265,4 +1265,4 @@ Terms are in alphabetical order. The link takes you to the section where the ide
 
 ## What's next
 
-Phase 2 built the storage and proved it works on the phone, but nothing in the app uses it yet. Phase 3 connects it to the phone's real videos: it reads Android's media library, recognises new clips and saves them through `ClipsRepository.addDetectedClips`, the first step of the life of a clip above. Phase 4 then builds the reel screens on the repositories from Sections 5 to 7.
+Phase 2 built the storage and proved it works on the phone, but nothing in the app uses it yet. Phase 3 connects it to the phone's real videos: it reads Android's media library, recognises new clips and saves them through `ClipsRepository.addCheckedClips`, the first step of the life of a clip above. Phase 4 then builds the reel screens on the repositories from Sections 5 to 7.

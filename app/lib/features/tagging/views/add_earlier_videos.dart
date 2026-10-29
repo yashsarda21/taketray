@@ -177,7 +177,11 @@ class _AddEarlierVideosSheetState
   }
 
   /// Counts the new videos in [range] and asks whether to add them.
+  ///
+  /// Does nothing while a count already runs: a second tap on "Try again"
+  /// before the screen redraws must not count twice and stack two dialogs.
   Future<void> _find(EarlierCustom range) async {
+    if (_finding) return;
     final controller = ref.read(earlierVideosControllerProvider.notifier);
     setState(() {
       _choosing = true;
@@ -367,6 +371,8 @@ class _AddEarlierVideosSheetState
                     label: l10n.tryAgain,
                     kind: TtButtonKind.tonal,
                     onPressed: () {
+                      // A second tap before the redraw: the count runs.
+                      if (_finding) return;
                       final range = _failedRange;
                       if (range != null) {
                         unawaited(_find(range));

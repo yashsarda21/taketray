@@ -7,6 +7,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/media/library_resync.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
+import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
@@ -91,6 +92,7 @@ class MediaScanner {
     this._phone,
     this._settings,
     this._zones,
+    this._zoneSync,
     this._queue,
     this._clock,
   );
@@ -100,6 +102,7 @@ class MediaScanner {
   final PhoneStateRepository _phone;
   final SettingsRepository _settings;
   final ZoneRepository _zones;
+  final ZoneSync _zoneSync;
   final MediaWorkQueue _queue;
   final Clock _clock;
   late final LibraryResync _rebuilds = LibraryResync(_bridge, _clips, _phone);
@@ -141,6 +144,9 @@ class MediaScanner {
         return const ScanNoAccess();
       }
       await _phone.markAccessWasFull();
+      // The zone changes the phone saw while the app was away must be in the
+      // timeline before it is read, or a new clip gets the old zone for good.
+      await _syncZones();
       context = _ScanContext(
         session: session,
         folders: (await _settings.load()).watchedFolders,
@@ -410,6 +416,7 @@ class MediaScanner {
       _log.info('Earlier videos (${_kind(range)}): none to add');
       return const <int>[];
     }
+    await _syncZones();
     final timeline = await _zones.all();
     final currentZone = await _bridge.currentZoneId();
     final saved = await _save(videos, timeline, currentZone, now);
@@ -420,6 +427,23 @@ class MediaScanner {
     );
     return saved.inserted;
   });
+
+  /// Brings the phone's zone changes into the timeline, inside the queued
+  /// job, right before the timeline is read (D-72, I-2). `MediaLifecycle`
+  /// syncs too, and a second sync changes nothing that is stored, so the
+  /// scan does not depend on it having finished. A failure is logged (its
+  /// type only) and the job goes on with the timeline it has: a zone off by
+  /// a trip is better than no clips.
+  Future<void> _syncZones() async {
+    try {
+      await _zoneSync.sync();
+    } on Object catch (e) {
+      _log.warning(
+        'The zone sync failed with ${e.runtimeType}; going on with the '
+        'zones already known',
+      );
+    }
+  }
 
   /// Only the kind of range, never its dates, for the log (D-10).
   String _kind(EarlierRange range) => switch (range) {
@@ -436,16 +460,24 @@ class MediaScanner {
   ///
   /// The phone is asked for everything shot since the start; the end is
   /// applied here.
+  ///
+  /// Each mounted volume is first brought up to its current library version
+  /// (`LibraryResync.catchUp`, as the scan and the verifier do): the version
+  /// is recorded when none is (so a rebuild right after the first clips came
+  /// from here is detected, M-3), and clips stored under an older version
+  /// are matched again before their numbers are compared.
   Future<List<MediaVideo>> _earlierVideos(
     EarlierBounds bounds,
     DateTime now,
   ) async {
     final folders = (await _settings.load()).watchedFolders;
+    final recorded = await _phone.volumeVersions();
     final candidates = <MediaVideo>[];
     for (final volume in await _bridge.volumes()) {
       if (!volume.isMounted) continue;
       final List<MediaVideo> rows;
       try {
+        await _rebuilds.catchUp(volume, recorded, now: now);
         rows = await _bridge.videosShotSince(
           volume.name,
           folders,
@@ -528,6 +560,7 @@ MediaScanner mediaScanner(Ref ref) => MediaScanner(
   ref.watch(phoneStateRepositoryProvider),
   ref.watch(settingsRepositoryProvider),
   ref.watch(zoneRepositoryProvider),
+  ref.watch(zoneSyncProvider),
   ref.watch(mediaWorkQueueProvider),
   ref.watch(clockProvider),
 );

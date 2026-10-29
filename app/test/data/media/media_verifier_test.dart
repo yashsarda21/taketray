@@ -12,6 +12,7 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fake_media_bridge.dart';
 import '../../support/test_database.dart';
 import 'media_harness.dart';
@@ -80,7 +81,7 @@ void main() {
     await h.clips.addClipsToReel(reel.id, [for (final c in clips.values) c.id]);
     // 1 is there, 2 is gone, 3's number now holds a different video.
     bridge.put([video(1), video(3, sizeBytes: 42)]);
-    await h.clips.recordVerification(found: {}, missing: {clips[1]!.id});
+    await flagClips(h.db, {clips[1]!.id}, missing: true, at: h.clock.now());
     h.clock.advance(const Duration(hours: 1));
 
     final result = await h.verifier.verify(clips.values);
@@ -211,7 +212,7 @@ void main() {
 
   test('detached clips are skipped', () async {
     final clips = await stored([video(1), video(2)]);
-    await h.clips.detach({clips[2]!.id});
+    await detachClips(h.db, {clips[2]!.id}, at: h.clock.now());
     bridge.put([video(1), video(2)]);
 
     expect(
