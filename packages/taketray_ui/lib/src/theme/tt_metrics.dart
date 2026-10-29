@@ -1426,6 +1426,10 @@ abstract final class TtMetrics {
   // proto.css: .li .txt b { font-weight: 500 }
   static const double listRowTitleWeight = 500;
 
+  /// Opacity of a list row that cannot be used.
+  // proto.css: .li.dis { opacity: .45 }
+  static const double listRowDisabledOpacity = 0.45;
+
   /// Text scale from which a list row's trailing value or button moves
   /// under the text, because beside it the title would break inside words.
   /// Not in the prototype (it has no text scaling); the same threshold as

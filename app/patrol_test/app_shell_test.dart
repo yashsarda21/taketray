@@ -4,7 +4,7 @@ import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
-import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
+import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 void main() {
@@ -16,7 +16,7 @@ void main() {
     expect($(ReelsPlaceholderScreen).$('Reels'), findsOneWidget);
 
     await $(TtNavPill).$('To tag').tap();
-    expect($(ToTagPlaceholderScreen).$('To tag'), findsOneWidget);
+    expect($(ToTagScreen).$('To tag'), findsOneWidget);
 
     await $(TtNavPill).$('Settings').tap();
     expect($(SettingsPlaceholderScreen).$('Settings'), findsOneWidget);

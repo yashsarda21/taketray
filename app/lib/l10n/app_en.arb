@@ -24,5 +24,200 @@
         "type": "int"
       }
     }
+  },
+  "moreOptions": "More options",
+  "@moreOptions": {
+    "description": "Screen-reader label of the three-dot menu button in an app bar."
+  },
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Button that repeats something that failed."
+  },
+  "undo": "Undo",
+  "@undo": {
+    "description": "Snack bar button that takes back what was just done."
+  },
+  "accessManualTitle": "Manual mode",
+  "@accessManualTitle": {
+    "description": "Title of the banner shown when TakeTray cannot see all videos."
+  },
+  "accessManualBody": "New clips aren't found automatically.",
+  "@accessManualBody": {
+    "description": "Text of the Manual mode banner."
+  },
+  "accessManualAction": "Allow full access",
+  "@accessManualAction": {
+    "description": "Button on the Manual mode banner."
+  },
+  "accessLostTitle": "TakeTray can't see your videos",
+  "@accessLostTitle": {
+    "description": "Title of the banner shown when video access was lost."
+  },
+  "accessLostBody": "Allow access to find new clips.",
+  "@accessLostBody": {
+    "description": "Text of the access-lost banner."
+  },
+  "accessLostAction": "Allow",
+  "@accessLostAction": {
+    "description": "Button on the access-lost banner."
+  },
+  "shootingOffTitle": "Shooting mode",
+  "@shootingOffTitle": {
+    "description": "Title of the Shooting mode card when it is off."
+  },
+  "shootingOffSubtitle": "Off. Turn on before you start filming, and new videos wait in To tag.",
+  "@shootingOffSubtitle": {
+    "description": "Text of the Shooting mode card when it is off."
+  },
+  "shootingOnTitle": "Shooting mode on",
+  "@shootingOnTitle": {
+    "description": "Title of the Shooting mode card when it is on."
+  },
+  "shootingOnSubtitle": "On since {time}",
+  "@shootingOnSubtitle": {
+    "description": "Text of the Shooting mode card when it is on. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "shootingOnSubtitleManual": "On since {time} · Manual mode: add clips yourself",
+  "@shootingOnSubtitleManual": {
+    "description": "Text of the Shooting mode card when it is on but TakeTray does not have full access to videos. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "shootingSwitchLabel": "Shooting mode",
+  "@shootingSwitchLabel": {
+    "description": "Screen-reader label of the Shooting mode switch."
+  },
+  "shootingOpenCamera": "Open camera",
+  "@shootingOpenCamera": {
+    "description": "Button that opens the phone camera in video mode."
+  },
+  "shootingStripTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
+  "@shootingStripTitle": {
+    "description": "Row at the bottom of the Shooting mode card: how many clips wait in To tag.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingStripAction": "Tag now",
+  "@shootingStripAction": {
+    "description": "Trailing word of the clips-to-tag row on the Shooting mode card."
+  },
+  "toTagStripOn": "Shooting since {time}",
+  "@toTagStripOn": {
+    "description": "Strip at the top of To tag while Shooting mode is on. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "toTagStripOff": "Shooting mode off",
+  "@toTagStripOff": {
+    "description": "Strip at the top of To tag while Shooting mode is off and clips are waiting."
+  },
+  "toTagStripTurnOn": "Turn on",
+  "@toTagStripTurnOn": {
+    "description": "Button on the Shooting-mode-off strip of To tag."
+  },
+  "toTagEmptyOnTitle": "All caught up",
+  "@toTagEmptyOnTitle": {
+    "description": "Title of To tag when it is empty and Shooting mode is on."
+  },
+  "toTagEmptyOnBody": "New clips you shoot will show up here.",
+  "@toTagEmptyOnBody": {
+    "description": "Text of To tag when it is empty and Shooting mode is on."
+  },
+  "toTagEmptyOffTitle": "Nothing to tag",
+  "@toTagEmptyOffTitle": {
+    "description": "Title of To tag when it is empty and Shooting mode is off."
+  },
+  "toTagEmptyOffBody": "Turn on Shooting mode before you start filming. New videos will show up here.",
+  "@toTagEmptyOffBody": {
+    "description": "Text of To tag when it is empty and Shooting mode is off."
+  },
+  "toTagEmptyOffAction": "Turn on Shooting mode",
+  "@toTagEmptyOffAction": {
+    "description": "Button of To tag when it is empty and Shooting mode is off."
+  },
+  "clipTileSemantics": "Clip, {time}, {duration}",
+  "@clipTileSemantics": {
+    "description": "Screen-reader label of a clip tile. {time} is the time of day it was shot, {duration} its length such as 0:32.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      },
+      "duration": {
+        "type": "String",
+        "example": "0:32"
+      }
+    }
+  },
+  "addEarlierVideos": "Add earlier videos",
+  "@addEarlierVideos": {
+    "description": "Card link and To tag menu item that open the Add earlier videos sheet."
+  },
+  "earlierSheetSubtitle": "From your camera folders. Clips you already tagged or skipped stay where they are.",
+  "@earlierSheetSubtitle": {
+    "description": "Text under the title of the Add earlier videos sheet."
+  },
+  "earlierRangeToday": "Today",
+  "@earlierRangeToday": {
+    "description": "Row of the Add earlier videos sheet: videos shot today."
+  },
+  "earlierRangeLastTwoDays": "Last 2 days",
+  "@earlierRangeLastTwoDays": {
+    "description": "Row of the Add earlier videos sheet: videos shot yesterday and today."
+  },
+  "earlierRangeLastSevenDays": "Last 7 days",
+  "@earlierRangeLastSevenDays": {
+    "description": "Row of the Add earlier videos sheet: videos shot in the last seven days."
+  },
+  "earlierRowCount": "{count, plural, =0{none} one{1 new} other{{count} new}}",
+  "@earlierRowCount": {
+    "description": "Trailing text of a row of the Add earlier videos sheet: how many videos it would add.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierAddedSnack": "{count, plural, one{1 clip added to To tag} other{{count} clips added to To tag}}",
+  "@earlierAddedSnack": {
+    "description": "Snack shown after adding earlier videos.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierAddFailed": "Couldn't add videos. Try again.",
+  "@earlierAddFailed": {
+    "description": "Snack shown when adding earlier videos failed."
+  },
+  "earlierUndoFailed": "Couldn't undo. Try again.",
+  "@earlierUndoFailed": {
+    "description": "Snack shown when taking back the added earlier videos failed."
+  },
+  "earlierCountFailed": "Couldn't check your videos.",
+  "@earlierCountFailed": {
+    "description": "Text in the Add earlier videos sheet when the counts could not be read."
+  },
+  "clipMissing": "Missing from phone",
+  "@clipMissing": {
+    "description": "Label of a clip tile whose video is gone from the phone."
   }
 }

@@ -2,7 +2,7 @@
 
 This guide explains how TakeTray finds your videos. Phase 2 stored facts about clips; phase 3 builds the bridge to Android's media library, so the app can see new videos, show their thumbnails, notice when one is deleted, and put them in the To tag list. TakeTray still never copies or changes a video.
 
-**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 9 are done.
+**Status: skeleton.** The guide is written section by section, each one in the same commit as the code it explains. Sections that say "Written in Task N" are not written yet. Sections 1 to 10 are done.
 
 You don't need to know Kotlin, Android or Pigeon to follow it. Basic programming knowledge is enough. When a word is new, the section explains it, and the [Glossary](#glossary) at the end collects them all.
 
@@ -1045,7 +1045,94 @@ Run the same command. It fails with `Expected: AccessBanner:<AccessBanner.lost>`
 
 ## 10. The To tag screen and the Shooting mode card
 
-_Written in Task 10._
+**What we built:** the first screens that show what Section 9's view models know:
+
+- the **access banner** ("Manual mode", or "TakeTray can't see your videos"),
+- the **Shooting mode card** at the top of the Reels tab,
+- the first version of the **To tag** tab: a strip, a grid of the clips that wait to be tagged, and two "empty" pictures,
+- the **Add earlier videos** sheet, reached from a row on the card or from the ⋮ menu of To tag, with an **Undo** snack after it.
+
+Every piece is made of components that already exist in the design package (`TtBanner`, `TtShootingModeCard`, `TtClipTile`, `TtSheet`, `TtSnack` and so on). The screens contain no colours, sizes or durations of their own: they use the package's tokens, and `tool/check` fails if a raw one slips in.
+
+**Why TakeTray needs it:** until now the app could find videos, but nobody could see them. These screens are also where two of the five Review Focus situations become visible to a person. When access is lost (Focus 1) the banner has to say the right thing. When a video is deleted or Shooting mode is switched off while a scan runs (Focus 4), the screen must keep showing what is really stored, with no error. The Reels and tagging screens proper arrive in Phases 4 and 5; this section builds the parts that Phase 3 needs now, so the phone test in Section 11 has something to look at.
+
+**Key ideas:**
+
+- **A screen only shows state and calls methods.** Each widget watches a view model and draws what it finds. The banner is the smallest example:
+
+  ```dart
+  final banner = ref.watch(mediaAccessControllerProvider).value?.banner;
+  ...
+  return switch (banner) {
+    null || AccessBanner.none => const SizedBox.shrink(),
+    AccessBanner.manual => TtBanner(kind: TtBannerKind.info, ... ),
+    AccessBanner.lost => TtBanner(kind: TtBannerKind.warning, ... ),
+  };
+  ```
+
+  `.value` is `null` while the first read is running and also when it failed, so both show **no banner**: a missing banner is safer than a wrong one. The button calls `allow()`, and when access becomes full the state changes and the banner disappears by itself. One widget is used on both screens, so the two cannot disagree.
+
+- **The design wins for layout, the brief for words.** The brief said the banner goes under the card on the Reels tab. The prototype's `routes.home` puts `accessBanner(s)` *before* `shootingCard(s, u)`, so it is above. The text of every label comes from the brief's table, as keys in `app/lib/l10n/app_en.arb`; a test (`app_localizations_test.dart`) compares each one with the approved wording and checks that every key has a value and a description.
+
+- **"Since when?" needs a rule.** The card says "On since 9:41 AM". If Shooting mode has been on since yesterday evening, "9:41 PM" alone is ambiguous after midnight, so another day gets its date as well:
+
+  ```dart
+  final today = s.year == n.year && s.month == n.month && s.day == n.day;
+  return today
+      ? DateFormat.jm(locale).format(s)
+      : DateFormat.MMMd(locale).addPattern('jm', ', ').format(s);
+  ```
+
+  `s` and `n` are `since` and `now` converted to the phone's local time first, because the database stores UTC. Local midnight today is still "today", 23:59 yesterday is not (both have a test). The locale is the app's own (`Localizations.localeOf`), not the raw phone setting, because the `intl` package only has date data for the languages the app supports and throws for others.
+
+- **A long list must not build everything.** The To tag grid is a *lazy* grid: Flutter builds only the tiles that are on or near the screen.
+
+  ```dart
+  SliverGrid.builder(
+    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: _columns, mainAxisSpacing: tt.spacing.gridGap, ...),
+    itemCount: count,
+    itemBuilder: tile,
+  )
+  ```
+
+  A test gives it 500 clips and checks that fewer than 60 tiles exist, and that scrolling to the end builds the last clip. The clips are sorted oldest first by the date in their fingerprint, then by id (`inShootingOrder`), which is "shooting order".
+
+- **Two ways to read the same list, on purpose.** Opening To tag must scan and then check that the waiting clips still exist (Section 9). That is done by `ToTagController` when it is built. The Shooting mode card on the Reels tab also needs the waiting clips (their count, and the newest one's picture as a backdrop), but it must *not* start that scan and check, or the controller would already exist at app start and opening To tag would no longer start anything. So the card reads a plain `pendingClipsProvider` (the database list, nothing else), and To tag uses `ToTagController`.
+
+- **A tab stays built.** The app keeps each tab's screen alive after its first visit, so `ToTagScreen` cannot count on being built again when you come back to the tab. It watches `TickerMode`, which go_router turns off for a hidden tab, and asks for a new scan and check when the tab is shown again, and when the app comes back to the front while the tab is showing:
+
+  ```dart
+  final active = TickerMode.valuesOf(context).enabled;
+  if (active && !_wasActive) _checkAgain();
+  _wasActive = active;
+  ```
+
+- **Add earlier videos has one entry function and two doors.** `showAddEarlierVideos(context)` opens the sheet; the card's row and the menu item both call it, so they behave the same. The row is shown only while Shooting mode is on, access is full and the session has not used it; the menu item only with full access. The sheet shows three rows (Today, Last 2 days, Last 7 days) with their counts. Rules worth knowing:
+  - While the counts load, the rows show a grey bar instead of a number and cannot be tapped. If the count fails, the sheet says "Couldn't check your videos." with a **Try again** button.
+  - A row whose count is 0 is dimmed and cannot be tapped, and so are all rows while an add is running. A second tap is also ignored in code (`if (_adding) return;`), because a tap can arrive before the screen has redrawn the disabled row.
+  - On success the sheet closes and the **screen** shows "N clips added to To tag" with **Undo**, where N is the number of ids that `add` returned. The snack belongs to the screen, not to the sheet, so Undo still works after the sheet is gone. Undo takes back only the clips nobody has touched since (Section 9). After the snack has closed there is no button, so nothing can happen.
+  - If the add fails, the sheet closes and the snack says "Couldn't add videos. Try again.", because a snack under an open sheet would sit behind its blurred backdrop. If Undo fails: "Couldn't undo. Try again." Section 9 said these two methods *rethrow*; this is where they are caught.
+
+- **Tests that look like the phone.** Flutter's tests normally draw every letter as a square, so a layout test would measure text about twice as wide as the real thing. `app/test/flutter_test_config.dart` loads the app's real font first, so "nothing overflows at 2x text on a 360 dp screen" really means that. Tests also turn on "remove animations", because the record dot on the card pulses for ever and `pumpAndSettle` would otherwise never finish; and `expectTtAccessible` (tap-target size, labels, contrast) runs on both screens in light and dark.
+
+**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart` and `shooting_time_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart`, `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
+
+**Try it yourself:** see the "since" rule keep its promise. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/features/shooting_mode/views/shooting_time_text_test.dart)
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/features/shooting_mode/views/shooting_time_text.dart`, replace the `return today ? ... : ...;` statement with the always-the-time version:
+
+```dart
+  return DateFormat.jm(locale).format(s);
+```
+
+Run the same command. It fails with `Expected: 'Oct 27, 11:59 PM'` and `Actual: '11:59 PM'` (among others): a Shooting session that began yesterday would be shown as if it began today. Put the file back with `git checkout -- app/lib/features/shooting_mode/views/shooting_time_text.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-76 (the screens, the banner above the card, the `{time}` rule, Add earlier videos as a row, a menu item and a sheet, the new error copy, and how the screens are tested), with D-73 (Add earlier videos), D-74 (thumbnails) and D-75 (the view models) as background.
 
 ---
 

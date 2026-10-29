@@ -5,11 +5,12 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
-import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
+import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import '../support/test_app.dart';
 import '../support/vm_harness.dart';
 
 Future<(ProviderContainer, GoRouter)> _pumpApp(WidgetTester tester) async {
@@ -23,16 +24,16 @@ Future<(ProviderContainer, GoRouter)> _pumpApp(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('go to a known location shows that tab', (tester) async {
+  testApp('go to a known location shows that tab', (tester) async {
     final (_, router) = await _pumpApp(tester);
 
     router.go(Routes.toTag);
     await tester.pumpAndSettle();
 
-    expect(find.byType(ToTagPlaceholderScreen), findsOneWidget);
+    expect(find.byType(ToTagScreen), findsOneWidget);
   });
 
-  testWidgets('unknown location redirects to Reels', (tester) async {
+  testApp('unknown location redirects to Reels', (tester) async {
     final (_, router) = await _pumpApp(tester);
 
     router.go('/nope');
@@ -42,32 +43,31 @@ void main() {
   });
 
   for (final location in ['/reels/unknown', '/to-tag/a/b', '/settings/x']) {
-    testWidgets(
-      'unknown location below a tab root ($location) lands on Reels',
-      (tester) async {
-        final (_, router) = await _pumpApp(tester);
-        router.go(Routes.toTag);
-        await tester.pumpAndSettle();
+    testApp('unknown location below a tab root ($location) lands on Reels', (
+      tester,
+    ) async {
+      final (_, router) = await _pumpApp(tester);
+      router.go(Routes.toTag);
+      await tester.pumpAndSettle();
 
-        final logged = <LogRecord>[];
-        final sub = Logger.root.onRecord.listen(logged.add);
-        addTearDown(sub.cancel);
+      final logged = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(logged.add);
+      addTearDown(sub.cancel);
 
-        router.go(location);
-        await tester.pumpAndSettle();
+      router.go(location);
+      await tester.pumpAndSettle();
 
-        expect(logged.map((r) => r.loggerName), contains('router'));
-        expect(logged.map((r) => r.message).join(), isNot(contains(location)));
+      expect(logged.map((r) => r.loggerName), contains('router'));
+      expect(logged.map((r) => r.message).join(), isNot(contains(location)));
 
-        expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
-        expect(find.textContaining('Page Not Found'), findsNothing);
-        final bar = tester.widget<TtNavPill>(find.byType(TtNavPill));
-        expect(bar.currentIndex, 0);
-      },
-    );
+      expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
+      expect(find.textContaining('Page Not Found'), findsNothing);
+      final bar = tester.widget<TtNavPill>(find.byType(TtNavPill));
+      expect(bar.currentIndex, 0);
+    });
   }
 
-  testWidgets('system back on Reels is not intercepted', (tester) async {
+  testApp('system back on Reels is not intercepted', (tester) async {
     await _pumpApp(tester);
 
     final handled = await tester.binding.handlePopRoute();
@@ -76,7 +76,7 @@ void main() {
     expect(handled, isFalse);
   });
 
-  testWidgets('system back on To tag selects Reels and keeps the app open', (
+  testApp('system back on To tag selects Reels and keeps the app open', (
     tester,
   ) async {
     final (_, router) = await _pumpApp(tester);
@@ -92,7 +92,7 @@ void main() {
     expect(bar.currentIndex, 0);
   });
 
-  testWidgets('each tab keeps its own navigation stack', (tester) async {
+  testApp('each tab keeps its own navigation stack', (tester) async {
     final (_, router) = await _pumpApp(tester);
 
     Navigator.of(tester.element(find.byType(ReelsPlaceholderScreen))).push(
