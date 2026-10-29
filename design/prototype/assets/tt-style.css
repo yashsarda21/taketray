@@ -144,3 +144,10 @@
 .style-tt .wel .wel-body h1 { font: 800 30px/36px var(--font); letter-spacing: -1px; }
 .style-tt .ob .art.soft { border-radius: 0 0 32px 32px; }
 
+
+/* ---- 2× text preview (screens 38–40): the style's fixed sizes, doubled ---- */
+.style-tt .fs2 .appbar.big .title { font-size: 68px; line-height: 80px; }
+.style-tt .fs2 .appbar .title .t-tl { font-size: 40px; line-height: 52px; }
+.style-tt .fs2 .shoot.on .txt b { font-size: 38px; line-height: 48px; }
+.style-tt .fs2 .dlg h2 { font-size: 44px; line-height: 56px; }
+.style-tt .fs2 .dlg .acts { flex-wrap: wrap; }
