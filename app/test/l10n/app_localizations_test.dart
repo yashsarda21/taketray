@@ -97,8 +97,23 @@ void main() {
       'where they are.',
     );
     expect(l10n.earlierRangeToday, 'Today');
-    expect(l10n.earlierRangeLastTwoDays, 'Last 2 days');
-    expect(l10n.earlierRangeLastSevenDays, 'Last 7 days');
+    expect(l10n.earlierChooseDates, 'Choose dates…');
+    expect(l10n.earlierPickerHelp, 'Choose dates');
+    expect(l10n.earlierPickerConfirm, 'Find videos');
+    expect(l10n.earlierFoundTitle(1), '1 video found');
+    expect(l10n.earlierFoundTitle(2), '2 videos found');
+    expect(l10n.earlierFoundTitle(40), '40 videos found');
+    expect(l10n.earlierFoundBody(1), 'Add it to To tag?');
+    expect(l10n.earlierFoundBody(2), 'Add them to To tag?');
+    expect(l10n.earlierNoneTitle, 'No new videos');
+    expect(
+      l10n.earlierNoneBetween('Oct 20', 'Oct 24'),
+      'No new videos between Oct 20 and Oct 24.',
+    );
+    expect(l10n.earlierNoneOn('Oct 20'), 'No new videos on Oct 20.');
+    expect(l10n.earlierDialogCancel, 'Cancel');
+    expect(l10n.earlierDialogAdd, 'Add');
+    expect(l10n.earlierDialogOk, 'OK');
     expect(l10n.earlierRowCount(0), 'none');
     expect(l10n.earlierRowCount(1), '1 new');
     expect(l10n.earlierRowCount(5), '5 new');

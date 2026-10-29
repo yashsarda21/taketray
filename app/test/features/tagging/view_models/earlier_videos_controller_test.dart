@@ -23,11 +23,11 @@ MediaVideo shot(int id, DateTime when) => fakeVideo(
   dateModifiedSec: when.millisecondsSinceEpoch ~/ 1000,
 );
 
-Map<EarlierRange, int> counts(int today, int lastTwo, int lastSeven) => {
-  EarlierRange.today: today,
-  EarlierRange.lastTwoDays: lastTwo,
-  EarlierRange.lastSevenDays: lastSeven,
-};
+const EarlierRange today = EarlierToday();
+
+/// The days [from] to [to] of June 2026 (day numbers), both included.
+EarlierRange june(int from, int to) =>
+    EarlierCustom(DateTime(2026, 6, from), DateTime(2026, 6, to));
 
 /// A bridge whose `accessReport` fails from its [failFrom]th call on.
 class _FailsLater extends RecordingBridge {
@@ -56,11 +56,10 @@ void main() {
   });
 
   /// Listens like a sheet would, so the auto-dispose provider stays alive.
-  ProviderSubscription<AsyncValue<Map<EarlierRange, int>>> open() =>
+  ProviderSubscription<AsyncValue<int>> open() =>
       h.container.listen(earlierVideosControllerProvider, (_, _) {});
 
-  Map<EarlierRange, int>? shown() =>
-      h.container.read(earlierVideosControllerProvider).value;
+  int? shown() => h.container.read(earlierVideosControllerProvider).value;
 
   EarlierVideosController notifier() =>
       h.container.read(earlierVideosControllerProvider.notifier);
@@ -69,10 +68,7 @@ void main() {
     test('load when the sheet opens, with Shooting mode off', () async {
       open();
 
-      expect(
-        await h.container.read(earlierVideosControllerProvider.future),
-        counts(1, 2, 3),
-      );
+      expect(await h.container.read(earlierVideosControllerProvider.future), 1);
       expect((await h.media.phoneState.loadShooting()).on, isFalse);
     });
 
@@ -84,10 +80,7 @@ void main() {
       );
       open();
 
-      expect(
-        await h.container.read(earlierVideosControllerProvider.future),
-        counts(0, 0, 0),
-      );
+      expect(await h.container.read(earlierVideosControllerProvider.future), 0);
     });
 
     test('a failure is an error state, and only its type is logged', () async {
@@ -102,7 +95,7 @@ void main() {
 
       expect(
         h.container.read(earlierVideosControllerProvider),
-        isA<AsyncError<Map<EarlierRange, int>>>(),
+        isA<AsyncError<int>>(),
       );
       expect(logText(records), contains('PlatformException'));
       expect(logText(records), isNot(contains('failed on purpose')));
@@ -122,25 +115,88 @@ void main() {
     });
   });
 
+  group('countIn', () {
+    test('counts a chosen range and leaves the shown count alone', () async {
+      open();
+      await h.container.read(earlierVideosControllerProvider.future);
+
+      expect(await notifier().countIn(june(5, 9)), 2);
+      expect(await notifier().countIn(june(9, 9)), 1);
+      expect(await notifier().countIn(june(3, 4)), 0);
+
+      expect(shown(), 1, reason: "Today's count is what the state holds");
+      expect(await h.media.allClips(), isEmpty, reason: 'nothing is written');
+    });
+
+    test('is 0 without full access', () async {
+      open();
+      await h.container.read(earlierVideosControllerProvider.future);
+      h.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+
+      expect(await notifier().countIn(june(2, 10)), 0);
+    });
+
+    test('a failure is rethrown, and only its type is logged', () async {
+      final records = captureLogs();
+      open();
+      await h.container.read(earlierVideosControllerProvider.future);
+      h.bridge.failNext('accessReport');
+
+      await expectLater(
+        notifier().countIn(june(2, 10)),
+        throwsA(isA<PlatformException>()),
+      );
+
+      expect(logText(records), contains('PlatformException'));
+      expect(logText(records), isNot(contains('failed on purpose')));
+      expect(
+        h.container.read(earlierVideosControllerProvider),
+        isA<AsyncData<int>>(),
+        reason: 'a failed count of a range does not turn the sheet to error',
+      );
+    });
+
+    test('an impossible range is rethrown as an ArgumentError', () async {
+      open();
+      await h.container.read(earlierVideosControllerProvider.future);
+
+      await expectLater(notifier().countIn(june(9, 5)), throwsArgumentError);
+    });
+  });
+
   group('add', () {
+    test('a past range leaves Today count alone', () async {
+      open();
+      await h.container.read(earlierVideosControllerProvider.future);
+
+      final ids = await notifier().add(june(5, 9));
+
+      expect(ids, hasLength(2));
+      expect(shown(), 1);
+    });
+
     test('returns the new ids, puts them in To tag and recounts', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
 
-      final ids = await notifier().add(EarlierRange.lastTwoDays);
+      final ids = await notifier().add(june(9, 10));
 
       expect(ids, hasLength(2));
       expect({for (final c in await h.media.toTag()) c.id}, ids.toSet());
-      // The two are known now; only the five-day-old video is left.
-      expect(shown(), counts(0, 0, 1));
+      // Today's video is known now.
+      expect(shown(), 0);
     });
 
     test('with nothing to add returns no ids', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      await notifier().add(EarlierRange.lastSevenDays);
+      await notifier().add(june(2, 10));
 
-      expect(await notifier().add(EarlierRange.lastSevenDays), isEmpty);
+      expect(await notifier().add(june(2, 10)), isEmpty);
     });
 
     test('without full access it throws, and says so to the caller', () async {
@@ -153,13 +209,10 @@ void main() {
         sdkInt: 34,
       );
 
-      await expectLater(
-        notifier().add(EarlierRange.today),
-        throwsA(isA<StateError>()),
-      );
+      await expectLater(notifier().add(today), throwsA(isA<StateError>()));
 
       expect(await h.media.toTag(), isEmpty);
-      expect(shown(), counts(1, 2, 3), reason: 'the shown counts are kept');
+      expect(shown(), 1, reason: 'the shown count is kept');
       expect(logText(records), contains('StateError'));
     });
 
@@ -169,7 +222,7 @@ void main() {
       h.bridge.failNext('accessReport');
 
       await expectLater(
-        notifier().add(EarlierRange.today),
+        notifier().add(today),
         throwsA(isA<PlatformException>()),
       );
 
@@ -186,12 +239,12 @@ void main() {
 
       final ids = await local.container
           .read(earlierVideosControllerProvider.notifier)
-          .add(EarlierRange.today);
+          .add(today);
 
       expect(ids, hasLength(1));
       expect(
         local.container.read(earlierVideosControllerProvider).value,
-        counts(1, 1, 1),
+        1,
         reason: 'the old counts stay',
       );
     });
@@ -201,7 +254,7 @@ void main() {
       await h.container.read(earlierVideosControllerProvider.future);
       final gate = h.bridge.gate('videosShotSince');
 
-      final adding = notifier().add(EarlierRange.today);
+      final adding = notifier().add(today);
       await settle();
       sub.close(); // the auto-dispose provider goes away
       await settle();
@@ -229,7 +282,7 @@ void main() {
         final older = {for (final c in await h.media.toTag()) c.id};
         open();
         await h.container.read(earlierVideosControllerProvider.future);
-        final ids = await notifier().add(EarlierRange.lastSevenDays);
+        final ids = await notifier().add(june(2, 10));
         expect(ids, hasLength(3));
 
         await notifier().undo(ids);
@@ -242,18 +295,18 @@ void main() {
     test('counts those videos again afterwards', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.lastSevenDays);
-      expect(shown(), counts(0, 0, 0));
+      final ids = await notifier().add(june(2, 10));
+      expect(shown(), 0);
 
       await notifier().undo(ids);
 
-      expect(shown(), counts(1, 2, 3));
+      expect(shown(), 1);
     });
 
     test('a clip tagged in between survives with its reel', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.today);
+      final ids = await notifier().add(today);
       final goa = (await ReelsRepository(
         h.media.db,
         h.media.clock,
@@ -272,7 +325,7 @@ void main() {
     test('a clip skipped in between survives', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.today);
+      final ids = await notifier().add(today);
       await h.media.clips.skip(ids);
 
       await notifier().undo(ids);
@@ -293,7 +346,7 @@ void main() {
     test('undo twice is harmless', () async {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.today);
+      final ids = await notifier().add(today);
 
       await notifier().undo(ids);
       await notifier().undo(ids);
@@ -305,7 +358,7 @@ void main() {
       await h.media.turnOnNow();
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.today);
+      final ids = await notifier().add(today);
       h.bridge.put([fakeVideo(id: 50, generation: 50)]);
       final gate = h.bridge.gate('videosAddedAfter');
       final scan = h.container.read(mediaScannerProvider).scan();
@@ -334,7 +387,7 @@ void main() {
       final records = captureLogs();
       open();
       await h.container.read(earlierVideosControllerProvider.future);
-      final ids = await notifier().add(EarlierRange.today);
+      final ids = await notifier().add(today);
       await h.media.db.close();
 
       await expectLater(notifier().undo(ids), throwsA(anything));

@@ -377,36 +377,37 @@ class MediaScanner {
     return added;
   }
 
-  /// Counts the videos "Add earlier videos" would add, per range (D-73).
-  /// Without full access every count is 0 and nothing is read.
-  Future<Map<EarlierRange, int>> countEarlier() => _queue.run(() async {
-    if (!await _hasFullAccess()) {
-      return {for (final r in EarlierRange.values) r: 0};
-    }
+  /// Counts the videos "Add earlier videos" would add today (D-73). Without
+  /// full access it is 0 and nothing is read.
+  Future<int> countEarlier() => countEarlierIn(const EarlierToday());
+
+  /// Counts the videos [range] would add: the usable videos shot in it that
+  /// no stored clip holds (D-73, D-78). Without full access it is 0 and
+  /// nothing is read. Throws [ArgumentError] for a range whose "from" is
+  /// after its "to" or after today.
+  Future<int> countEarlierIn(EarlierRange range) => _queue.run(() async {
     final now = _clock.now();
-    final candidates = await _earlierCandidates(now);
-    final counts = {
-      for (final r in EarlierRange.values)
-        r: _inRange(candidates, r, now).length,
-    };
-    _log.info(
-      'Earlier videos: ${[for (final r in EarlierRange.values) counts[r]]}',
-    );
-    return counts;
+    final bounds = earlierWindowBounds(range, now);
+    if (!await _hasFullAccess()) return 0;
+    final count = (await _earlierVideos(bounds, now)).length;
+    _log.info('Earlier videos (${_kind(range)}): $count found');
+    return count;
   });
 
   /// Adds the videos shot in [range] that TakeTray does not know yet to To
   /// tag, and returns the ids of the new clips (for Undo). Notes the use in
   /// the Shooting session when something was added (D-73). Never reads or
-  /// moves a baseline. Throws [StateError] without full access.
+  /// moves a baseline. Throws [StateError] without full access and
+  /// [ArgumentError] for an impossible range (see [countEarlierIn]).
   Future<List<int>> addEarlier(EarlierRange range) => _queue.run(() async {
+    final now = _clock.now();
+    final bounds = earlierWindowBounds(range, now);
     if (!await _hasFullAccess()) {
       throw StateError('Adding earlier videos needs full access');
     }
-    final now = _clock.now();
-    final videos = _inRange(await _earlierCandidates(now), range, now);
+    final videos = await _earlierVideos(bounds, now);
     if (videos.isEmpty) {
-      _log.info('Earlier videos (${range.name}): none to add');
+      _log.info('Earlier videos (${_kind(range)}): none to add');
       return const <int>[];
     }
     final timeline = await _zones.all();
@@ -414,21 +415,32 @@ class MediaScanner {
     final saved = await _save(videos, timeline, currentZone, now);
     await _phone.markEarlierAdded();
     _log.info(
-      'Earlier videos (${range.name}): added ${saved.inserted.length}, '
+      'Earlier videos (${_kind(range)}): added ${saved.inserted.length}, '
       '${saved.detached.length} stored clips were other videos',
     );
     return saved.inserted;
   });
 
+  /// Only the kind of range, never its dates, for the log (D-10).
+  String _kind(EarlierRange range) => switch (range) {
+    EarlierToday() => 'today',
+    EarlierCustom() => 'dates',
+  };
+
   Future<bool> _hasFullAccess() async =>
       (await _bridge.accessReport()).level == MediaAccessLevel.full;
 
-  /// The usable videos shot in the widest window (the last seven days) on
-  /// every mounted volume, in the watched folders, that no stored clip holds.
-  /// A volume that does not answer is left out (and logged).
-  Future<List<MediaVideo>> _earlierCandidates(DateTime now) async {
+  /// The usable videos shot inside [bounds] on every mounted volume, in the
+  /// watched folders, that no stored clip holds. A volume that does not
+  /// answer is left out (and logged).
+  ///
+  /// The phone is asked for everything shot since the start; the end is
+  /// applied here.
+  Future<List<MediaVideo>> _earlierVideos(
+    EarlierBounds bounds,
+    DateTime now,
+  ) async {
     final folders = (await _settings.load()).watchedFolders;
-    final start = earlierWindowStart(EarlierRange.lastSevenDays, now);
     final candidates = <MediaVideo>[];
     for (final volume in await _bridge.volumes()) {
       if (!volume.isMounted) continue;
@@ -437,7 +449,7 @@ class MediaScanner {
         rows = await _bridge.videosShotSince(
           volume.name,
           folders,
-          start.millisecondsSinceEpoch,
+          bounds.startUtc.millisecondsSinceEpoch,
         );
       } on PlatformException catch (e) {
         _log.warning(
@@ -448,7 +460,8 @@ class MediaScanner {
       }
       final inWindow = {
         for (final v in rows)
-          if (shotInWindow(v, start, now: now)) v.mediaStoreId: v,
+          if (shotInWindow(v, bounds.startUtc, bounds.endUtc, now: now))
+            v.mediaStoreId: v,
       };
       final held = await _clips.mediaStoreClipsHolding(
         volume.name,
@@ -464,18 +477,6 @@ class MediaScanner {
       );
     }
     return candidates;
-  }
-
-  List<MediaVideo> _inRange(
-    List<MediaVideo> videos,
-    EarlierRange range,
-    DateTime now,
-  ) {
-    final start = earlierWindowStart(range, now);
-    return [
-      for (final v in videos)
-        if (shotInWindow(v, start, now: now)) v,
-    ];
   }
 
   /// Saves [videos] as clips with `addCheckedClips`: a stored clip that

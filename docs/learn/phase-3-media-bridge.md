@@ -503,7 +503,7 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
 ## 5. The media rules
 
-**What we built:** the small, pure functions that decide which video is which. They answer five questions: *when* was this video shot, which rows can become clips, where should the next scan of a volume start, has a stored clip's video come back under a new number, and does a video fall inside "today", "the last 2 days" or "the last 7 days". None of them talks to Android or the database; each takes plain values and returns a plain answer, so all of them run in fast tests on a laptop.
+**What we built:** the small, pure functions that decide which video is which. They answer five questions: *when* was this video shot, which rows can become clips, where should the next scan of a volume start, has a stored clip's video come back under a new number, and does a video fall inside a window of days: today, or the days the user chose. None of them talks to Android or the database; each takes plain values and returns a plain answer, so all of them run in fast tests on a laptop.
 
 **Why TakeTray needs it:** these rules carry the phase's two big risks. If a rule moves too far, a video the creator just shot never reaches To tag. If a rule guesses, a clip in a reel quietly points at somebody else's video, the worst bug TakeTray can have (spec §4). The scanner, the verifier and the screens (Sections 6 to 9) only *call* these rules; the judgment lives here, in one place, with a test for every edge.
 
@@ -587,15 +587,16 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 
   A clip with no candidate, with two equally good ones, or sharing its one candidate with another clip is lost. A missing clip can be fixed by the user; a wrong one silently swaps their take. The match runs for one volume at a time (`volumeName`) and only looks at that volume's rows, because the answer is only the new *id*: id 77 on the SD card is a different video from id 77 on the phone. Passing a clip from another volume is a mistake in the caller, so it throws an `ArgumentError` instead of quietly calling that clip lost (which would show a good clip as missing). A test runs 200 random cases and checks every time that each clip ends up in exactly one of "found" and "lost", that no row is ever given to two clips, and, against a separate step-by-step count of each clip's candidates, that every found clip had exactly one (or exactly one with its name) and every lost clip had a reason to be lost.
 
-- **"The last 2 days" means calendar days.** "Add earlier videos" (Section 7) offers today, the last 2 days and the last 7 days. A creator means "yesterday and today", not "the last 48 hours", so the window starts at local midnight:
+- **A date range means calendar days, with both ends included.** "Add earlier videos" (Section 7) offers today, or any from-to range the user picks in a calendar. A creator who picks "the 20th to the 24th" means every video from the start of the 20th to the end of the 24th, in the phone's own time, not "120 hours". So the window runs from local midnight of the first day up to, but not including, local midnight of the day after the last one:
 
   ```dart
-  return DateTime(local.year, local.month, local.day - daysBack).toUtc();
+  startUtc: DateTime(from.year, from.month, from.day).toUtc(),
+  endUtc: DateTime(last.year, last.month, last.day + 1).toUtc(),
   ```
 
-  Dart's `DateTime(year, month, day)` builds a local date, and a day number of 0 or less rolls back into the previous month (3 January minus 6 days is 28 December). Building the date this way, instead of subtracting `Duration(days: n)`, matters twice a year. On 25 October 2026 the UK's clocks go back and that day lasts 25 hours; on 28 March 2027 they go forward and it lasts 23. Subtracting 24-hour days from midnight on the 26th lands at 01:00 on the 25th, not at midnight. Those cases only show in a time zone that changes its clocks, so `tool/check` runs `earlier_window_test.dart` a second time with `TZ=Europe/London` and `--run-skipped`, so the London cases cannot skip there (step 9b of "Local checks" in `docs/flow.md`).
+  Dart's `DateTime(year, month, day)` builds a local date, and a day number past the end of the month rolls into the next one (31 October plus 1 is 1 November), so a range that crosses a month or a year needs no special case. Building the dates this way, instead of adding `Duration(days: 1)` to midnight, matters twice a year. On 25 October 2026 the UK's clocks go back and that day lasts 25 hours; on 28 March 2027 they go forward and it lasts 23. Adding 24 hours to midnight at the start of the 25th lands at 23:00 on the 25th, not at midnight; the last hour of the day would belong to the next day's window, and a video shot at 23:30 would be missing. Those cases only show in a time zone that changes its clocks, so `tool/check` runs `earlier_window_test.dart` a second time with `TZ=Europe/London` and `--run-skipped`, so the London cases cannot skip there (step 9b of "Local checks" in `docs/flow.md`). The end is *exclusive*: a video shot at exactly 00:00 on the day after is not in the window, and one at 23:59:59.999 is. A "to" day after today is clamped to today, and a "from" after "to" (or after today) throws an `ArgumentError`, because that is a mistake in the caller, not something to guess about.
 
-**Where it lives:** `app/lib/domain/rules/clip_date.dart` (`shotAt`), `media_clip.dart` (`newClipFrom`, `isUsable`), `baseline.dart` (`VolumePlan`, `planVolume`, `advanceBaseline`, `nextPageCursor`), `fingerprint_match.dart` (`sameVideo`, `RebuildMatch`, `matchAfterRebuild`), `earlier_window.dart` (`EarlierRange`, `earlierWindowStart`, `shotInWindow`); the tests beside them in `app/test/domain/rules/`; the London step (`daylight-saving tests`, with `DST_TESTS`) in `tool/check`.
+**Where it lives:** `app/lib/domain/rules/clip_date.dart` (`shotAt`), `media_clip.dart` (`newClipFrom`, `isUsable`), `baseline.dart` (`VolumePlan`, `planVolume`, `advanceBaseline`, `nextPageCursor`), `fingerprint_match.dart` (`sameVideo`, `RebuildMatch`, `matchAfterRebuild`), `earlier_window.dart` (`EarlierRange` with `EarlierToday` and `EarlierCustom`, `earlierWindowBounds`, `shotInWindow`); the tests beside them in `app/test/domain/rules/`; the London step (`daylight-saving tests`, with `DST_TESTS`) in `tool/check`.
 
 **Try it yourself:** see why the London run exists. From the repo root:
 
@@ -604,15 +605,15 @@ It ends with `BUILD SUCCESSFUL` (the first run also downloads Gradle and Robolec
 (cd app && TZ=Europe/London ../tool/flutter test --run-skipped test/domain/rules/earlier_window_test.dart)
 ```
 
-Unless your computer is set to UK time, the first ends with `+11 ~4: All tests passed!`: the four London cases were skipped (`~4`). The second ends with `+15: All tests passed!`. Now, in `app/lib/domain/rules/earlier_window.dart`, replace the `return` line of `earlierWindowStart` with
+Unless your computer is set to UK time, the first ends with `+23 ~5: All tests passed!`: the five London cases were skipped (`~5`). The second ends with `+28: All tests passed!`. Now, in `app/lib/domain/rules/earlier_window.dart`, replace the `endUtc:` line of `earlierWindowBounds` with
 
 ```dart
-  return DateTime(local.year, local.month, local.day).subtract(Duration(days: daysBack)).toUtc();
+    endUtc: DateTime(last.year, last.month, last.day).add(const Duration(days: 1)).toUtc(),
 ```
 
-and run both commands again. In a zone without daylight saving (India, or UTC as on GitHub's machines) the first still passes: the bug is invisible there. The second fails, for example `clocks go back (2026-10-25, a 25-hour day) [E]` with `Expected: DateTime:<2026-10-24 23:00:00.000Z>` and `Actual: DateTime:<2026-10-25 00:00:00.000Z>`: the window would start an hour late, at 01:00 on the 25th. Put the file back with `git checkout -- app/lib/domain/rules/earlier_window.dart`.
+and run both commands again. In a zone without daylight saving (India, or UTC as on GitHub's machines) the first still passes: the bug is invisible there. The second fails, for example `clocks go back (2026-10-25, a 25-hour day) [E]` with `Expected: DateTime:<2026-10-26 00:00:00.000Z>` and `Actual: DateTime:<2026-10-25 23:00:00.000Z>`: the window would end an hour early, at 23:00 on the 25th. Put the file back with `git checkout -- app/lib/domain/rules/earlier_window.dart`.
 
-**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-70 (the plan per volume, the pending hold, and paging a scan without skipping a shared generation).
+**Decisions:** D-69 (the shooting date, "the same video", "when unsure, missing", calendar-day windows and the London test run), D-78 (from-to date ranges, both days included), D-70 (the plan per volume, the pending hold, and paging a scan without skipping a shared generation).
 
 ---
 
@@ -690,7 +691,7 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repos
 
 **What we built:** the code that turns the bridge (Section 3), the rules (Section 5) and the database writes (Section 6) into behaviour. Three classes in `app/lib/data/media/`:
 
-- `MediaScanner.scan()` looks for new videos on every volume while Shooting mode is on and puts them in To tag. It also notices when Android has rebuilt its media library and finds the stored clips again, and it holds "Add earlier videos" (`countEarlier`, `addEarlier`).
+- `MediaScanner.scan()` looks for new videos on every volume while Shooting mode is on and puts them in To tag. It also notices when Android has rebuilt its media library and finds the stored clips again, and it holds "Add earlier videos" (`countEarlier` for today, `countEarlierIn` and `addEarlier` for any window of days).
 - `MediaVerifier.verify(clips)` / `verifyAll()` check that stored clips' videos still exist, and flag or remove the ones that do not.
 - `LibraryResync` holds the one "find the clips again after a rebuild" step, which the scanner and the verifier both use.
 - `ZoneSync.sync()` copies the time zone changes the Android side saw while the app was closed into the zone timeline.
@@ -775,7 +776,7 @@ All media jobs share one `MediaWorkQueue`, which runs them one at a time. Sectio
 
 - **Zone sync clears only what it has saved.** `ZoneSync.sync` merges the native list plus "the zone now" with `recordAll`, and only then tells Android to forget its entries, up to the newest *native* one (not "now", so an entry Android wrote a moment after the read survives). With an empty native list it clears nothing.
 
-- **Add earlier videos never touches a baseline.** Turning Shooting mode on starts from now, so videos shot just before are not detected. "Add earlier videos" asks the phone for the videos shot in the last seven calendar days, drops the ones TakeTray already knows (in To tag, Skipped or a reel), and counts or adds them per range: today, yesterday and today, the last seven days. The days are local calendar days (Section 5), so at 00:05 "today" does not include 23:59 last night; those tests also run in London's daylight-saving step of `tool/check` (D-73).
+- **Add earlier videos never touches a baseline.** Turning Shooting mode on starts from now, so videos shot just before are not detected. "Add earlier videos" works on a window of local calendar days (Section 5): today, or the from-to days the user picked. It asks the phone, on every volume, for the videos shot since the window's start, keeps the ones before its end (the phone is asked only for the start; the end is applied in Dart), drops the ones TakeTray already knows (in To tag, Skipped or a reel), and then either counts them (`countEarlierIn`) or adds them (`addEarlier`). The sheet counts first and asks "N videos found. Add them to To tag?" before anything is added, so a wrong range costs nothing. At 00:05 "today" does not include 23:59 last night; those tests, and a range that crosses a clock change, also run in London's daylight-saving step of `tool/check` (D-73, D-78).
 
 One scan, as a sequence (one volume, `ScanAfter`):
 
@@ -918,7 +919,7 @@ It ends with `All tests passed!`. The test makes four files of 40 bytes with dif
 - `MediaAccessController`: does TakeTray have access to the videos, which banner goes with that, and the "Allow" button.
 - `ShootingModeController`: the Shooting mode switch and the camera shortcut.
 - `ToTagController`: the list of clips waiting in To tag, and the scan and check that run when it opens.
-- `EarlierVideosController`: the "Add earlier videos" sheet: the counts, adding a range, and Undo.
+- `EarlierVideosController`: the "Add earlier videos" sheet: Today's count, counting the videos of chosen dates, adding a range, and Undo.
 - `MediaLifecycle`: a widget around the whole app that runs the zone sync, the access check and the scan on start and on resume.
 
 There is still no screen. Section 10 only has to show these states and call these methods.
@@ -997,7 +998,7 @@ There is still no screen. Section 10 only has to show these states and call thes
 
 - **To tag shows the database, and checks the phone behind it.** The state of `ToTagController` is `watchInbox(pending)` from Section 6: it updates by itself whenever a scan adds a clip or a verify removes one. When it is first built it also runs, without blocking the list, `scan()` and then `verify()` of the clips that are waiting. The two are independent: if the scan throws, the verify still runs, and the list still shows what is in the database. `onResume()` repeats both. Because the scan and the verifier share the one media queue and the scanner coalesces calls (Section 7), three triggers at once cost one more scan, not three.
 
-- **"Add earlier videos": count, add, Undo.** `EarlierVideosController` reads `countEarlier()` when the sheet opens (it works even with Shooting mode off). `add(range)` calls `addEarlier` and returns the new clips' ids; afterwards it counts again, so the numbers no longer include what was just added. `add` and `undo` *rethrow* their errors (after logging the type), because here the sheet needs to tell the user that it did not work. Undo has a subtle rule. The obvious tool, `removeMissingFromLists`, only removes clips that are flagged *missing*, and the just-added clips are not, so Undo would do nothing and not complain. Instead Undo has its own repository method:
+- **"Add earlier videos": count, add, Undo.** `EarlierVideosController` reads `countEarlier()` (Today's count, an `int`) when the sheet opens (it works even with Shooting mode off). `countIn(range)` counts the videos of chosen dates without touching that state. `add(range)` calls `addEarlier` and returns the new clips' ids; afterwards it counts Today again, so the number no longer includes what was just added. `countIn`, `add` and `undo` *rethrow* their errors (after logging the type), because here the sheet needs to tell the user that it did not work. Undo has a subtle rule. The obvious tool, `removeMissingFromLists`, only removes clips that are flagged *missing*, and the just-added clips are not, so Undo would do nothing and not complain. Instead Undo has its own repository method:
 
   ```dart
   await (_db.delete(_db.inbox)..where(
@@ -1050,7 +1051,7 @@ Run the same command. It fails with `Expected: AccessBanner:<AccessBanner.lost>`
 - the **access banner** ("Manual mode", or "TakeTray can't see your videos"),
 - the **Shooting mode card** at the top of the Reels tab, and under it, while Shooting mode is off and clips are waiting, an **attention banner** ("3 clips to tag · 2 min of video waiting") that opens To tag,
 - the first version of the **To tag** tab: a strip, a grid of the clips that wait to be tagged, and two "empty" pictures,
-- the **Add earlier videos** sheet, reached from a row on the card or from the ⋮ menu of To tag, with an **Undo** snack after it.
+- the **Add earlier videos** sheet, reached from a row on the card or from the ⋮ menu of To tag: a **Today** row, and **Choose dates…**, which opens a calendar, counts the videos in the days you pick and asks before adding them, with an **Undo** snack after it.
 
 Every piece is made of components that already exist in the design package (`TtBanner`, `TtShootingModeCard`, `TtClipTile`, `TtSheet`, `TtSnack` and so on). The screens contain no colours, sizes or durations of their own: they use the package's tokens, and `tool/check` fails if a raw one slips in.
 
@@ -1125,15 +1126,16 @@ Every piece is made of components that already exist in the design package (`TtB
   _wasActive = active;
   ```
 
-- **Add earlier videos has one entry function and two doors.** `showAddEarlierVideos(context)` opens the sheet; the card's row and the menu item both call it, so they behave the same. The row is shown only while Shooting mode is on, access is full and the session has not used it; the menu item only with full access. The sheet shows three rows (Today, Last 2 days, Last 7 days) with their counts. Rules worth knowing:
-  - While the counts load, the rows show a grey bar instead of a number and cannot be tapped. If the count fails, the sheet says "Couldn't check your videos." with a **Try again** button.
-  - A row whose count is 0 is dimmed and cannot be tapped, and so are all rows while an add is running. A second tap is also ignored in code (`if (_adding) return;`), because a tap can arrive before the screen has redrawn the disabled row.
-  - On success the sheet closes and the **screen** shows "N clips added to To tag" with **Undo**, where N is the number of ids that `add` returned. The snack belongs to the screen, not to the sheet, so Undo still works after the sheet is gone. Undo takes back only the clips nobody has touched since (Section 9). After the snack has closed there is no button, so nothing can happen.
-  - If the add fails, the sheet closes and the snack says "Couldn't add videos. Try again.", because a snack under an open sheet would sit behind its blurred backdrop. If Undo fails: "Couldn't undo. Try again." Section 9 said these two methods *rethrow*; this is where they are caught.
+- **Add earlier videos has one entry function and two doors.** `showAddEarlierVideos(context)` opens the sheet; the card's row and the menu item both call it, so they behave the same. The row is shown only while Shooting mode is on, access is full and the session has not used it; the menu item only with full access. The sheet shows two rows: **Today**, with its count, and **Choose dates…**, with a chevron. Rules worth knowing:
+  - While Today's count loads, its row shows a grey bar instead of a number, and neither row can be tapped. If the count fails, the sheet says "Couldn't check your videos." with a **Try again** button.
+  - Today with a count of 0 is dimmed and cannot be tapped, and so are both rows while the dates are being counted or an add is running. A second tap is also ignored in code (`if (_adding) return;`), because a tap can arrive before the screen has redrawn the disabled row.
+  - **Today** adds at once. **Choose dates…** opens Flutter's own date range picker, themed in `taketray_ui` (a `DatePickerThemeData` in `TakeTrayTheme`: the page on the app's surface, the days between your two taps in the brand's container colour): ten years back to today, no future days, nothing chosen at first, the help text "Choose dates" and the button "Find videos". Flutter's picker is accessible and translated, so we did not draw a calendar of our own. After "Find videos" the Choose dates… row shows a grey bar while the sheet counts, then a dialog (`TtDialog`) says "3 videos found" and asks "Add them to To tag?" with **Cancel** and **Add**; with nothing found it says "No new videos between Oct 20 and Oct 24." (or "on Oct 20." for one day) with **OK**. Cancel and OK leave the sheet open, so the user can pick other dates. If the count fails, the same "Couldn't check your videos." appears, and **Try again** counts the same dates again.
+  - On success the sheet closes and the **screen** shows "N clips added to To tag" with **Undo**, where N is the number of ids that `add` returned (so it is the real number even if a video came or went since the dialog counted). The snack belongs to the screen, not to the sheet, so Undo still works after the sheet is gone. Undo takes back only the clips nobody has touched since (Section 9). After the snack has closed there is no button, so nothing can happen.
+  - If the add fails, the sheet closes and the snack says "Couldn't add videos. Try again.", because a snack under an open sheet would sit behind its blurred backdrop. If Undo fails: "Couldn't undo. Try again." Section 9 said these methods *rethrow*; this is where they are caught.
 
 - **Tests that look like the phone.** Flutter's tests normally draw every letter as a square, so a layout test would measure text about twice as wide as the real thing. `app/test/flutter_test_config.dart` loads the app's real font first, so "nothing overflows at 2x text on a 360 dp screen" really means that. Tests also turn on "remove animations", because the record dot on the card pulses for ever and `pumpAndSettle` would otherwise never finish; and `expectTtAccessible` (tap-target size, labels, contrast) runs on both screens in light and dark.
 
-**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart`, `shooting_time_text.dart` and `waiting_duration_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart`, `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
+**Where it lives:** `app/lib/features/media_access/views/media_access_banner.dart`, `app/lib/features/shooting_mode/views/shooting_mode_section.dart`, `shooting_time_text.dart` and `waiting_duration_text.dart`, `app/lib/features/tagging/views/to_tag_screen.dart` and `add_earlier_videos.dart` (the sheet, the picker call and the dialogs), `packages/taketray_ui/lib/src/theme/take_tray_theme.dart` (`datePickerTheme`), `app/lib/features/tagging/view_models/pending_clips.dart`, `app/lib/features/clips/widgets/clip_thumbnail.dart`, and `ReelsPlaceholderScreen` (which now holds the Shooting mode section). The router uses `ToTagScreen`. Tests are under the same paths in `app/test/`, with helpers in `app/test/support/` (`pump_screen.dart`, `view_model_fakes.dart`, `test_app.dart`, `accessibility.dart`, `clips.dart`).
 
 **Try it yourself:** see the "since" rule keep its promise. From the repo root:
 
@@ -1149,7 +1151,7 @@ It ends with `All tests passed!`. Now, in `app/lib/features/shooting_mode/views/
 
 Run the same command. It fails with `Expected: 'Oct 27, 11:59 PM'` and `Actual: '11:59 PM'` (among others): a Shooting session that began yesterday would be shown as if it began today. Put the file back with `git checkout -- app/lib/features/shooting_mode/views/shooting_time_text.dart`, and check with `git status` that nothing is left over.
 
-**Decisions:** D-76 (the screens, the banner above the card, the `{time}` rule and the phone's 24-hour setting, the Reels banner for waiting clips, Add earlier videos as a row, a menu item and a sheet, the new error copy, and how the screens are tested), with D-73 (Add earlier videos), D-74 (thumbnails) and D-75 (the view models) as background.
+**Decisions:** D-76 (the screens, the banner above the card, the `{time}` rule and the phone's 24-hour setting, the Reels banner for waiting clips, Add earlier videos as a row, a menu item and a sheet, the new error copy, and how the screens are tested) and D-78 (the date range, the picker, the confirm dialog), with D-73 (Add earlier videos), D-74 (thumbnails) and D-75 (the view models) as background.
 
 ---
 

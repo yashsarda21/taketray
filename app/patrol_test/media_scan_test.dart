@@ -29,7 +29,8 @@ import 'support/waiting.dart';
 void main() {
   patrolTest(
     'Shooting mode: a new video shows in To tag with its picture and leaves '
-    'when deleted; Add earlier videos adds one, Undo takes it back',
+    'when deleted; Add earlier videos (Choose dates…, today) adds one, Undo '
+    'takes it back',
     config: _liveConfig,
     ($) async {
       final media = await TestMedia.start();
@@ -94,13 +95,38 @@ void main() {
 
       await toTag.$(Symbols.more_vert_rounded).tap();
       await $('Add earlier videos').tap();
+      // Today stays a one-tap row; the dates come from Choose dates… (D-78).
       final today = $(TtListRow).containing('Today');
       await waitFor(
         $,
         () => today.containing('1 new').exists,
         what: 'the Today row to say 1 new',
       );
-      await today.tap();
+      await $('Choose dates…').tap();
+      // The picker opens on this month, and the current month is its last, so
+      // the last "<day of the month>" in it is today. Today to today is one
+      // day.
+      final todayCell = find
+          .descendant(
+            of: find.byType(DateRangePickerDialog),
+            matching: find.text('${DateTime.now().day}'),
+          )
+          .last;
+      await waitFor(
+        $,
+        () => todayCell.evaluate().isNotEmpty,
+        what: "today's day in the date picker",
+      );
+      await $(todayCell).tap();
+      await $(todayCell).tap();
+      await $('Find videos').tap();
+      await waitFor(
+        $,
+        () => $('1 video found').exists,
+        what: 'the dialog to say 1 video found',
+      );
+      expect(_tiles, findsNothing, reason: 'nothing is added before Add');
+      await $('Add').tap();
       await waitFor(
         $,
         () => _tiles.evaluate().isNotEmpty,

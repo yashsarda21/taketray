@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/rules/earlier_window.dart';
 import 'package:taketray/features/tagging/view_models/earlier_videos_controller.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -28,9 +30,9 @@ class _AddFailed extends _Outcome {
   const _AddFailed();
 }
 
-/// Opens the "Add earlier videos" sheet (D-73, D-76) from the Shooting mode
-/// card's link or To tag's menu, and reports what happened with a snack on
-/// [context]'s screen:
+/// Opens the "Add earlier videos" sheet (D-73, D-76, D-78) from the Shooting
+/// mode card's link or To tag's menu, and reports what happened with a snack
+/// on [context]'s screen:
 ///
 /// - added: "N clips added to To tag" with **Undo**, which takes those clips
 ///   back out (only the ones nobody has touched since, D-75);
@@ -84,14 +86,22 @@ Future<void> showAddEarlierVideos(BuildContext context) {
   );
 }
 
-/// The sheet: a title and a line of explanation, then one row per range with
-/// how many videos it would add.
+/// The sheet: a title and a line of explanation, then two rows (D-78).
 ///
-/// - While the counts load, the rows are there with a skeleton for the count,
-///   and cannot be tapped.
-/// - A row with 0 says "none" and cannot be tapped; so do all the rows while
-///   an add is running, and a second tap on a row is ignored.
-/// - If the counts cannot be read, a short message and "Try again".
+/// - **Today** has how many videos it would add trailing, and adds them as
+///   soon as it is tapped.
+/// - **Choose dates…** has a chevron. It opens Flutter's date range picker
+///   (themed by the app theme): from ten years ago to today, no future days,
+///   nothing chosen at first. After "Find videos" the sheet counts the new
+///   videos in those days (a skeleton in the row meanwhile) and a dialog
+///   asks "N videos found. Add them to To tag?" with Cancel and Add, or says
+///   "No new videos…" with OK. Cancel and OK leave the sheet open.
+///
+/// While the count of Today loads, the rows are there with a skeleton and
+/// cannot be tapped. Today with 0 says "none" and cannot be tapped; neither
+/// row can while the dates are counted or an add is running, and a second tap
+/// is ignored. If a count cannot be read, a short message and "Try again"
+/// (for the dates, the same dates again).
 class _AddEarlierVideosSheet extends ConsumerStatefulWidget {
   const new({required this.onOutcome});
 
@@ -104,7 +114,17 @@ class _AddEarlierVideosSheet extends ConsumerStatefulWidget {
 
 class _AddEarlierVideosSheetState
     extends ConsumerState<_AddEarlierVideosSheet> {
+  /// An add is running.
   bool _adding = false;
+
+  /// The picker is open, or the videos in the chosen dates are being counted.
+  bool _choosing = false;
+
+  /// The count of the chosen dates runs (the picker is closed).
+  bool _finding = false;
+
+  /// The dates whose count failed, for "Try again".
+  EarlierCustom? _failedRange;
 
   Future<void> _add(EarlierRange range) async {
     if (_adding) return;
@@ -132,53 +152,164 @@ class _AddEarlierVideosSheetState
     }
   }
 
+  /// Choose dates…: the picker, then [_find] the picked days.
+  Future<void> _chooseDates() async {
+    if (_choosing || _adding) return;
+    setState(() => _choosing = true);
+    final l10n = AppLocalizations.of(context);
+    final today = DateUtils.dateOnly(ref.read(clockProvider).now().toLocal());
+    final picked = await showDateRangePicker(
+      context: context,
+      // Ten years back, and nothing in the future.
+      firstDate: DateTime(today.year - 10, today.month, today.day),
+      lastDate: today,
+      // Today on the app's clock (it opens on this month and marks the day).
+      currentDate: today,
+      helpText: l10n.earlierPickerHelp,
+      saveText: l10n.earlierPickerConfirm,
+    );
+    if (!mounted) return;
+    if (picked == null) {
+      setState(() => _choosing = false);
+      return;
+    }
+    await _find(EarlierCustom(picked.start, picked.end));
+  }
+
+  /// Counts the new videos in [range] and asks whether to add them.
+  Future<void> _find(EarlierCustom range) async {
+    final controller = ref.read(earlierVideosControllerProvider.notifier);
+    setState(() {
+      _choosing = true;
+      _finding = true;
+      _failedRange = null;
+    });
+    final int count;
+    try {
+      count = await controller.countIn(range);
+    } on Object {
+      // The controller logged the type.
+      if (mounted) {
+        setState(() {
+          _choosing = false;
+          _finding = false;
+          _failedRange = range;
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _finding = false);
+    final add = await _confirm(range, count);
+    if (!mounted) return;
+    setState(() => _choosing = false);
+    if (add) await _add(range);
+  }
+
+  /// The dialog after the count: true when the user chose Add.
+  Future<bool> _confirm(EarlierCustom range, int count) async {
+    final l10n = AppLocalizations.of(context);
+    if (count == 0) {
+      final format = DateFormat.MMMd(
+        Localizations.localeOf(context).toString(),
+      );
+      final from = format.format(range.from);
+      final to = format.format(range.to);
+      final oneDay = DateUtils.isSameDay(range.from, range.to);
+      await showTtDialog<void>(
+        context,
+        title: l10n.earlierNoneTitle,
+        body: oneDay
+            ? l10n.earlierNoneOn(from)
+            : l10n.earlierNoneBetween(from, to),
+        actions: [TtDialogAction(null, l10n.earlierDialogOk)],
+      );
+      return false;
+    }
+    final add = await showTtDialog<bool>(
+      context,
+      title: l10n.earlierFoundTitle(count),
+      body: l10n.earlierFoundBody(count),
+      actions: [
+        TtDialogAction(false, l10n.earlierDialogCancel),
+        TtDialogAction(true, l10n.earlierDialogAdd),
+      ],
+    );
+    return add ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final scheme = context.scheme;
-    final counts = ref.watch(earlierVideosControllerProvider);
-    final failed = counts.hasError && !counts.hasValue && !counts.isLoading;
-    final loading = !counts.hasValue && !failed;
+    final count = ref.watch(earlierVideosControllerProvider);
+    final failed =
+        _failedRange != null ||
+        (count.hasError && !count.hasValue && !count.isLoading);
+    final loading = !count.hasValue && !failed;
+    final busy = _adding || _choosing;
 
-    Widget range(String title, EarlierRange which) {
-      final count = counts.value?[which];
-      final usable = count != null && count > 0 && !_adding;
-      final countText = count == null ? null : l10n.earlierRowCount(count);
-      // What a screen reader says: the count, or that it is loading.
+    // What a screen reader says for a row that is waiting.
+    String waiting(String title) => '$title, ${l10n.loading}';
+
+    // proto.css: .li.dis { opacity: .45 }; a row that is only waiting for a
+    // count is not dimmed.
+    Widget disabled(TtListRow row, String label, {required bool dim}) =>
+        Opacity(
+          opacity: dim ? TtMetrics.listRowDisabledOpacity : 1,
+          child: Semantics(
+            container: true,
+            button: true,
+            enabled: false,
+            excludeSemantics: true,
+            label: label,
+            child: row,
+          ),
+        );
+
+    Widget skeleton() => const SizedBox(
+      width: TtMetrics.skeletonCountWidth,
+      child: TtSkeletonLine(widthFactor: 1),
+    );
+
+    Widget today() {
+      final title = l10n.earlierRangeToday;
+      final value = count.value;
+      final usable = value != null && value > 0 && !busy;
+      final countText = value == null ? null : l10n.earlierRowCount(value);
       final label = loading
-          ? '$title, ${l10n.loading}'
+          ? waiting(title)
           : countText == null
           ? title
           : '$title, $countText';
       final row = TtListRow(
         title: title,
         trailing: loading
-            ? const SizedBox(
-                width: TtMetrics.skeletonCountWidth,
-                child: TtSkeletonLine(widthFactor: 1),
-              )
+            ? skeleton()
             : countText == null
             ? null
             : Text(countText),
         stackTrailingAtLargeText: true,
-        onTap: usable ? () => _add(which) : null,
+        onTap: usable ? () => _add(const EarlierToday()) : null,
         semanticLabel: label,
       );
-      if (usable) return row;
-      // proto.css: .li.dis { opacity: .45 }; a row that is only waiting for
-      // its count is not dimmed.
-      return Opacity(
-        opacity: loading ? 1 : TtMetrics.listRowDisabledOpacity,
-        child: Semantics(
-          container: true,
-          button: true,
-          enabled: false,
-          excludeSemantics: true,
-          label: label,
-          child: row,
-        ),
+      return usable ? row : disabled(row, label, dim: !loading);
+    }
+
+    Widget chooseDates() {
+      final title = l10n.earlierChooseDates;
+      final usable = !loading && !busy;
+      final label = loading || _finding ? waiting(title) : title;
+      final row = TtListRow(
+        title: title,
+        trailing: _finding
+            ? skeleton()
+            : const Icon(Symbols.chevron_right_rounded),
+        onTap: usable ? _chooseDates : null,
+        semanticLabel: label,
       );
+      return usable ? row : disabled(row, label, dim: !(loading || _finding));
     }
 
     return TtSheet(
@@ -235,16 +366,21 @@ class _AddEarlierVideosSheetState
                   TtButton(
                     label: l10n.tryAgain,
                     kind: TtButtonKind.tonal,
-                    onPressed: () =>
-                        ref.invalidate(earlierVideosControllerProvider),
+                    onPressed: () {
+                      final range = _failedRange;
+                      if (range != null) {
+                        unawaited(_find(range));
+                      } else {
+                        ref.invalidate(earlierVideosControllerProvider);
+                      }
+                    },
                   ),
                 ],
               ),
             )
           else ...[
-            range(l10n.earlierRangeToday, EarlierRange.today),
-            range(l10n.earlierRangeLastTwoDays, EarlierRange.lastTwoDays),
-            range(l10n.earlierRangeLastSevenDays, EarlierRange.lastSevenDays),
+            today(),
+            chooseDates(),
           ],
         ],
       ),

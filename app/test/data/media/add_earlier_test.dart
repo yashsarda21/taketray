@@ -44,11 +44,11 @@ MediaVideo shot(
   dateModifiedSec: when.millisecondsSinceEpoch ~/ 1000,
 );
 
-Map<EarlierRange, int> counts(int today, int lastTwo, int lastSeven) => {
-  EarlierRange.today: today,
-  EarlierRange.lastTwoDays: lastTwo,
-  EarlierRange.lastSevenDays: lastSeven,
-};
+const EarlierRange today = EarlierToday();
+
+/// The days [from] to [to] of June 2026 (day numbers), both included.
+EarlierRange june(int from, int to) =>
+    EarlierCustom(DateTime(2026, 6, from), DateTime(2026, 6, to));
 
 // 15:00 local time on 2026-06-10.
 final DateTime _nowLocal = DateTime(2026, 6, 10, 15);
@@ -84,110 +84,303 @@ void main() {
       .singleWhere((c) => c.mediaStoreId == v.mediaStoreId)
       .id;
 
-  test('counts every range', () async {
-    expect(await h.scanner.countEarlier(), counts(2, 3, 4));
-    expect(bridge.count('videosShotSince'), 1, reason: 'one query per volume');
-    expect(await h.allClips(), isEmpty, reason: 'counting writes nothing');
-  });
-
-  test('counts per range exclude known clips', () async {
-    await h.store([today1, yesterday, fiveDaysAgo]);
-    // today1 waits in To tag, yesterday is skipped, fiveDaysAgo is tagged.
-    await h.clips.skip([await clipIdOf(yesterday)]);
-    final reel = await reels.create('Goa');
-    await h.clips.tagClip(await clipIdOf(fiveDaysAgo), {reel.id});
-
-    expect(await h.scanner.countEarlier(), counts(1, 1, 1));
-  });
-
-  test(
-    "addEarlier(today) adds only today's new videos and returns their ids",
-    () async {
-      bridge.currentZone = 'Asia/Kolkata';
-
-      final ids = await h.scanner.addEarlier(EarlierRange.today);
-
-      expect(ids, hasLength(2));
-      final added = await h.toTag();
-      expect({for (final c in added) c.id}, ids.toSet());
-      expect({for (final c in added) c.mediaStoreId}, {1, 2});
-      expect({for (final c in added) c.timeZoneId}, {'Asia/Kolkata'});
-      expect(await h.scanner.countEarlier(), counts(0, 1, 2));
-    },
-  );
-
-  test('a stored clip holding the number of a different video: counted, '
-      'added, and the old clip detached (Ruling U)', () async {
-    // An imported clip holds number 1, but this phone's video 1 is another
-    // one (another size).
-    final [oldClip] = await h.store([today1.copyWith(sizeBytes: 5)]);
-    final reel = await reels.create('Goa');
-    await h.clips.tagClip(oldClip, {reel.id});
-
-    expect(await h.scanner.countEarlier(), counts(2, 3, 4));
-    final ids = await h.scanner.addEarlier(EarlierRange.today);
-
-    expect(ids, hasLength(2));
-    expect(ids, isNot(contains(oldClip)));
-    expect(await toTagIds(), [1, 2]);
-    final old = await h.clip(oldClip);
-    expect((old.mediaStoreId, old.missing), (-oldClip, true));
-    expect(await h.clips.watchReelIdsOf(oldClip).first, {reel.id});
-    expect(await h.scanner.countEarlier(), counts(0, 1, 2));
-  });
-
-  test('an inbox-only stored clip that is another video leaves To tag when '
-      'the earlier video is added (Ruling Y)', () async {
-    final [oldClip] = await h.store([today1.copyWith(sizeBytes: 5)]);
-
-    final ids = await h.scanner.addEarlier(EarlierRange.today);
-
-    expect(ids, hasLength(2));
-    expect((await h.allClips()).map((c) => c.id), isNot(contains(oldClip)));
-    expect(await toTagIds(), [1, 2]);
-  });
-
-  test('a tagged clip in the window does not return to To tag', () async {
-    await h.store([today1]);
-    final clipId = await clipIdOf(today1);
-    final reel = await reels.create('Goa');
-    await h.clips.tagClip(clipId, {reel.id});
-
-    final ids = await h.scanner.addEarlier(EarlierRange.today);
-
-    expect(ids, hasLength(1));
-    expect(await toTagIds(), [2]);
-    expect(
-      [for (final c in await h.clips.watchReelClips(reel.id).first) c.id],
-      [clipId],
-    );
-  });
-
-  test('a skipped clip stays skipped', () async {
-    await h.store([today1]);
-    final clipId = await clipIdOf(today1);
-    await h.clips.skip([clipId]);
-
-    await h.scanner.addEarlier(EarlierRange.lastTwoDays);
-
-    expect([for (final c in await h.skipped()) c.id], [clipId]);
-    expect(await toTagIds(), [3, 2]);
-  });
-
-  test('addEarlier does not move any baseline', () async {
-    final session = await h.turnOn({
-      phone: const VolumeBaseline(version: 'v1', generation: 3),
+  group('Today', () {
+    test('counts only the videos shot today, and writes nothing', () async {
+      expect(await h.scanner.countEarlier(), 2);
+      expect(
+        bridge.count('videosShotSince'),
+        1,
+        reason: 'one query per volume',
+      );
+      expect(await h.allClips(), isEmpty, reason: 'counting writes nothing');
     });
 
-    await h.scanner.addEarlier(EarlierRange.lastSevenDays);
+    test('the count excludes known clips', () async {
+      await h.store([today1, yesterday, fiveDaysAgo]);
+      // today1 waits in To tag, yesterday is skipped, fiveDaysAgo is tagged.
+      await h.clips.skip([await clipIdOf(yesterday)]);
+      final reel = await reels.create('Goa');
+      await h.clips.tagClip(await clipIdOf(fiveDaysAgo), {reel.id});
 
-    expect((await h.phoneState.loadShooting()).baselines, session.baselines);
-    expect(bridge.calls, isNot(contains('videosAddedAfter')));
+      expect(await h.scanner.countEarlier(), 1);
+    });
+
+    test(
+      "addEarlier(today) adds only today's new videos and returns their ids",
+      () async {
+        bridge.currentZone = 'Asia/Kolkata';
+
+        final ids = await h.scanner.addEarlier(today);
+
+        expect(ids, hasLength(2));
+        final added = await h.toTag();
+        expect({for (final c in added) c.id}, ids.toSet());
+        expect({for (final c in added) c.mediaStoreId}, {1, 2});
+        expect({for (final c in added) c.timeZoneId}, {'Asia/Kolkata'});
+        expect(await h.scanner.countEarlier(), 0);
+      },
+    );
+
+    test('countEarlierIn(today) is the same as countEarlier', () async {
+      expect(await h.scanner.countEarlierIn(today), 2);
+    });
+
+    test("at 00:05, today does not include yesterday's 23:59", () async {
+      final h = MediaHarness(now: DateTime(2026, 6, 10, 0, 5).toUtc());
+      h.bridge.put([
+        shot(1, DateTime(2026, 6, 9, 23, 59)),
+        shot(2, DateTime(2026, 6, 10, 0, 1)),
+      ]);
+
+      expect(await h.scanner.countEarlier(), 1);
+      await h.scanner.addEarlier(today);
+      expect([for (final c in await h.toTag()) c.mediaStoreId], [2]);
+    });
   });
 
-  test(
-    'addEarlier while a scan runs waits for it, and the video is added once',
-    () async {
+  group('a chosen date range', () {
+    test('counts the videos shot on those days, both days included', () async {
+      // yesterday (9th) only; today and the older videos are outside.
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+      // the 5th to the 9th: yesterday and five days ago.
+      expect(await h.scanner.countEarlierIn(june(5, 9)), 2);
+      // the 5th to today.
+      expect(await h.scanner.countEarlierIn(june(5, 10)), 4);
+      // the 2nd to the 5th: the oldest two.
+      expect(await h.scanner.countEarlierIn(june(2, 5)), 2);
+      // nothing was shot on the 3rd or 4th.
+      expect(await h.scanner.countEarlierIn(june(3, 4)), 0);
+      expect(await h.allClips(), isEmpty, reason: 'counting writes nothing');
+    });
+
+    test('a video after the last day is not counted or added', () async {
+      expect(await h.scanner.countEarlierIn(june(5, 9)), 2);
+      final ids = await h.scanner.addEarlier(june(5, 9));
+
+      expect(ids, hasLength(2));
+      expect(await toTagIds(), unorderedEquals([3, 4]), reason: 'not today');
+    });
+
+    test(
+      'the last day ends at its midnight: 23:59:59.999 in, 00:00 out',
+      () async {
+        bridge.put([
+          shot(6, DateTime(2026, 6, 9, 23, 59, 59, 999)),
+          shot(7, DateTime(2026, 6, 10)),
+          shot(8, DateTime(2026, 6, 8, 23, 59, 59, 999)),
+        ]);
+
+        // The 9th only: yesterday, plus 6 (23:59:59.999 on the 9th); not 7
+        // (00:00 on the 10th) and not 8 (the 8th).
+        expect(await h.scanner.countEarlierIn(june(9, 9)), 2);
+        await h.scanner.addEarlier(june(9, 9));
+        expect(await toTagIds(), unorderedEquals([3, 6]));
+      },
+    );
+
+    test('the first day starts at its midnight: 00:00 in, the second before is '
+        'out', () async {
+      bridge.put([
+        shot(6, DateTime(2026, 6, 9)),
+        shot(7, DateTime(2026, 6, 8, 23, 59, 59, 999)),
+      ]);
+
+      await h.scanner.addEarlier(june(9, 9));
+
+      expect(await toTagIds(), unorderedEquals([3, 6]));
+    });
+
+    test('the count is what addEarlier adds, for every range', () async {
+      for (final range in [june(9, 9), june(5, 9), june(2, 10), june(3, 4)]) {
+        final count = await h.scanner.countEarlierIn(range);
+        final ids = await h.scanner.addEarlier(range);
+        expect(ids, hasLength(count), reason: '$range');
+        // The same range now finds nothing: those are known.
+        expect(await h.scanner.countEarlierIn(range), 0, reason: '$range');
+      }
+    });
+
+    test('known clips (to tag, skipped, tagged) are not counted', () async {
+      await h.store([yesterday, fiveDaysAgo, eightDaysAgo]);
+      // yesterday waits in To tag, fiveDaysAgo is skipped, eightDaysAgo is
+      // tagged.
+      await h.clips.skip([await clipIdOf(fiveDaysAgo)]);
+      final reel = await reels.create('Goa');
+      await h.clips.tagClip(await clipIdOf(eightDaysAgo), {reel.id});
+
+      expect(await h.scanner.countEarlierIn(june(2, 10)), 2, reason: 'today');
+      final ids = await h.scanner.addEarlier(june(2, 10));
+
+      expect(ids, hasLength(2));
+      expect({for (final c in await h.skipped()) c.mediaStoreId}, {4});
+      expect(await toTagIds(), unorderedEquals([3, 1, 2]));
+    });
+
+    test('a pending video in the range is not counted', () async {
+      bridge.put([shot(6, DateTime(2026, 6, 9, 11), pending: true)]);
+
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+      await h.scanner.addEarlier(june(9, 9));
+      expect(await toTagIds(), [3]);
+    });
+
+    test('a zero-length video in the range is not counted', () async {
+      bridge.put([
+        shot(7, DateTime(2026, 6, 9, 11), durationMs: 0),
+        shot(8, DateTime(2026, 6, 9, 12), durationMs: null),
+      ]);
+
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+      await h.scanner.addEarlier(june(9, 9));
+      expect(await toTagIds(), [3]);
+    });
+
+    test('videos outside the watched folders are not counted', () async {
+      bridge.put([shot(6, DateTime(2026, 6, 9, 11), folder: 'Download/')]);
+
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+    });
+
+    test('a stored clip holding the number of a different video: counted, '
+        'added, and the old clip detached (Ruling U)', () async {
+      final [oldClip] = await h.store([yesterday.copyWith(sizeBytes: 5)]);
+      final reel = await reels.create('Goa');
+      await h.clips.tagClip(oldClip, {reel.id});
+
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 1);
+      final ids = await h.scanner.addEarlier(june(9, 9));
+
+      expect(ids, hasLength(1));
+      expect(ids, isNot(contains(oldClip)));
+      expect(await toTagIds(), [3]);
+      final old = await h.clip(oldClip);
+      expect((old.mediaStoreId, old.missing), (-oldClip, true));
+      expect(await h.clips.watchReelIdsOf(oldClip).first, {reel.id});
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 0);
+    });
+
+    test('an inbox-only stored clip that is another video leaves To tag when '
+        'the earlier video is added (Ruling Y)', () async {
+      final [oldClip] = await h.store([yesterday.copyWith(sizeBytes: 5)]);
+
+      final ids = await h.scanner.addEarlier(june(9, 9));
+
+      expect(ids, hasLength(1));
+      expect((await h.allClips()).map((c) => c.id), isNot(contains(oldClip)));
+      expect(await toTagIds(), [3]);
+    });
+
+    test('a tagged clip in the range does not return to To tag', () async {
+      await h.store([yesterday]);
+      final clipId = await clipIdOf(yesterday);
+      final reel = await reels.create('Goa');
+      await h.clips.tagClip(clipId, {reel.id});
+
+      final ids = await h.scanner.addEarlier(june(5, 10));
+
+      expect(ids, hasLength(3));
+      expect(await toTagIds(), unorderedEquals([1, 2, 4]));
+      expect(
+        [for (final c in await h.clips.watchReelClips(reel.id).first) c.id],
+        [clipId],
+      );
+    });
+
+    test('a skipped clip stays skipped', () async {
+      await h.store([today1]);
+      final clipId = await clipIdOf(today1);
+      await h.clips.skip([clipId]);
+
+      await h.scanner.addEarlier(june(9, 10));
+
+      expect([for (final c in await h.skipped()) c.id], [clipId]);
+      expect(await toTagIds(), [3, 2]);
+    });
+
+    test(
+      'nothing in the range: 0, and add returns [] without writing',
+      () async {
+        await h.turnOnNow();
+
+        expect(await h.scanner.countEarlierIn(june(3, 4)), 0);
+        expect(await h.scanner.addEarlier(june(3, 4)), isEmpty);
+
+        expect(await h.allClips(), isEmpty);
+        expect((await h.phoneState.loadShooting()).earlierAdded, isFalse);
+      },
+    );
+
+    test(
+      'a range with from after to is rejected before anything is read',
+      () async {
+        await expectLater(
+          h.scanner.countEarlierIn(june(9, 5)),
+          throwsArgumentError,
+        );
+        await expectLater(
+          h.scanner.addEarlier(june(9, 5)),
+          throwsArgumentError,
+        );
+
+        expect(bridge.calls, isNot(contains('videosShotSince')));
+        expect(await h.allClips(), isEmpty);
+      },
+    );
+
+    test('a "to" in the future is clamped to today', () async {
+      final future = EarlierCustom(DateTime(2026, 6, 9), DateTime(2026, 7));
+
+      expect(await h.scanner.countEarlierIn(future), 3);
+    });
+
+    test('a range 10 years long still queries once per volume', () async {
+      final wide = EarlierCustom(DateTime(2016, 6, 10), DateTime(2026, 6, 10));
+
+      expect(await h.scanner.countEarlierIn(wide), 5);
+      expect(bridge.count('videosShotSince'), 1);
+    });
+  });
+
+  group('shared rules', () {
+    test('addEarlier does not move any baseline', () async {
+      final session = await h.turnOn({
+        phone: const VolumeBaseline(version: 'v1', generation: 3),
+      });
+
+      await h.scanner.addEarlier(june(2, 10));
+      await h.scanner.addEarlier(today);
+
+      expect((await h.phoneState.loadShooting()).baselines, session.baselines);
+      expect(bridge.calls, isNot(contains('videosAddedAfter')));
+    });
+
+    test(
+      'addEarlier while a scan runs waits for it, and the video is added once',
+      () async {
+        await h.turnOn({
+          phone: const VolumeBaseline(version: 'v1', generation: 1),
+        });
+        final gate = bridge.gate('videosAddedAfter');
+        final scan = h.scanner.scan();
+        await until(() => bridge.calls.contains('videosAddedAfter'));
+
+        final add = h.scanner.addEarlier(today);
+        await settle();
+        expect(bridge.calls, isNot(contains('videosShotSince')));
+        gate.complete();
+        await scan;
+        final ids = await add;
+
+        // The scan found 2 to 5; today1 (generation 1) was before its
+        // baseline.
+        expect(ids, [await clipIdOf(today1)]);
+        final inToTag = await toTagIds();
+        expect(inToTag, hasLength(5));
+        expect(inToTag.toSet(), hasLength(5));
+      },
+    );
+
+    test('countEarlierIn runs on the media queue too', () async {
       await h.turnOn({
         phone: const VolumeBaseline(version: 'v1', generation: 1),
       });
@@ -195,117 +388,102 @@ void main() {
       final scan = h.scanner.scan();
       await until(() => bridge.calls.contains('videosAddedAfter'));
 
-      final add = h.scanner.addEarlier(EarlierRange.today);
+      var counted = false;
+      final count = h.scanner.countEarlierIn(june(5, 10)).then((n) {
+        counted = true;
+        return n;
+      });
       await settle();
+      expect(counted, isFalse, reason: 'the scan holds the queue');
       expect(bridge.calls, isNot(contains('videosShotSince')));
       gate.complete();
       await scan;
-      final ids = await add;
 
-      // The scan found 2 to 5; today1 (generation 1) was before its baseline.
-      expect(ids, [await clipIdOf(today1)]);
-      final inToTag = await toTagIds();
-      expect(inToTag, hasLength(5));
-      expect(inToTag.toSet(), hasLength(5));
-    },
-  );
+      // The scan added 2 to 5; only today1 is still new.
+      expect(await count, 1);
+    });
 
-  test('without full access: count is zeros, add throws StateError', () async {
-    for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
-      bridge.access = MediaAccess(level: level, canAskAgain: true, sdkInt: 34);
+    test('without full access: counts are 0, add throws StateError', () async {
+      for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+        bridge.access = MediaAccess(
+          level: level,
+          canAskAgain: true,
+          sdkInt: 34,
+        );
 
-      expect(await h.scanner.countEarlier(), counts(0, 0, 0));
-      await expectLater(
-        h.scanner.addEarlier(EarlierRange.today),
-        throwsStateError,
+        expect(await h.scanner.countEarlier(), 0);
+        expect(await h.scanner.countEarlierIn(june(2, 10)), 0);
+        await expectLater(h.scanner.addEarlier(today), throwsStateError);
+        await expectLater(h.scanner.addEarlier(june(2, 10)), throwsStateError);
+      }
+
+      expect(bridge.calls.toSet(), {'accessReport'});
+      expect(await h.allClips(), isEmpty);
+    });
+
+    test(
+      'works with Shooting mode off and leaves earlierAdded false',
+      () async {
+        expect(await h.scanner.addEarlier(today), hasLength(2));
+
+        final state = await h.phoneState.loadShooting();
+        expect(state.on, isFalse);
+        expect(state.earlierAdded, isFalse);
+      },
+    );
+
+    test('with Shooting mode on, adding marks earlierAdded', () async {
+      await h.turnOnNow();
+
+      await h.scanner.addEarlier(june(9, 9));
+
+      expect((await h.phoneState.loadShooting()).earlierAdded, isTrue);
+    });
+
+    test('an empty result returns [] and does not set earlierAdded', () async {
+      await h.turnOnNow();
+      await h.store([today1, today2]);
+
+      expect(await h.scanner.addEarlier(today), isEmpty);
+
+      expect((await h.phoneState.loadShooting()).earlierAdded, isFalse);
+    });
+
+    test('a volume whose query fails is left out; the others count', () async {
+      bridge
+        ..put(
+          [shot(9, DateTime(2026, 6, 10, 9), volume: card)],
+          volume: card,
+          version: 'c1',
+        )
+        ..failNext('videosShotSince');
+
+      expect(await h.scanner.countEarlier(), 1);
+    });
+
+    test('an unmounted volume is not asked', () async {
+      bridge
+        ..put(
+          [shot(9, DateTime(2026, 6, 10, 9), volume: card)],
+          volume: card,
+          version: 'c1',
+        )
+        ..setVolume(card, version: null);
+
+      expect(await h.scanner.countEarlier(), 2);
+      expect(bridge.count('videosShotSince'), 1);
+    });
+
+    test('videos on a second volume are counted in the range', () async {
+      bridge.put(
+        [shot(9, DateTime(2026, 6, 9, 9), volume: card)],
+        volume: card,
+        version: 'c1',
       );
-    }
 
-    expect(bridge.calls.toSet(), {'accessReport'});
-    expect(await h.allClips(), isEmpty);
-  });
-
-  test(
-    'pending and zero-length videos in the window are not counted',
-    () async {
-      bridge.put([
-        shot(6, DateTime(2026, 6, 10, 11), pending: true),
-        shot(7, DateTime(2026, 6, 10, 11), durationMs: 0),
-        shot(8, DateTime(2026, 6, 10, 11), durationMs: null),
-      ]);
-
-      expect(await h.scanner.countEarlier(), counts(2, 3, 4));
-      await h.scanner.addEarlier(EarlierRange.today);
-      expect(await toTagIds(), [1, 2]);
-    },
-  );
-
-  test('videos outside the watched folders are not counted', () async {
-    bridge.put([shot(6, DateTime(2026, 6, 10, 11), folder: 'Download/')]);
-
-    expect(await h.scanner.countEarlier(), counts(2, 3, 4));
-  });
-
-  test('works with Shooting mode off and leaves earlierAdded false', () async {
-    expect(await h.scanner.addEarlier(EarlierRange.today), hasLength(2));
-
-    final state = await h.phoneState.loadShooting();
-    expect(state.on, isFalse);
-    expect(state.earlierAdded, isFalse);
-  });
-
-  test('with Shooting mode on, adding marks earlierAdded', () async {
-    await h.turnOnNow();
-
-    await h.scanner.addEarlier(EarlierRange.today);
-
-    expect((await h.phoneState.loadShooting()).earlierAdded, isTrue);
-  });
-
-  test('an empty result returns [] and does not set earlierAdded', () async {
-    await h.turnOnNow();
-    await h.store([today1, today2]);
-
-    expect(await h.scanner.addEarlier(EarlierRange.today), isEmpty);
-
-    expect((await h.phoneState.loadShooting()).earlierAdded, isFalse);
-  });
-
-  test('a volume whose query fails is left out; the others count', () async {
-    bridge
-      ..put(
-        [shot(9, DateTime(2026, 6, 10, 9), volume: card)],
-        volume: card,
-        version: 'c1',
-      )
-      ..failNext('videosShotSince');
-
-    expect(await h.scanner.countEarlier(), counts(1, 1, 1));
-  });
-
-  test('an unmounted volume is not asked', () async {
-    bridge
-      ..put(
-        [shot(9, DateTime(2026, 6, 10, 9), volume: card)],
-        volume: card,
-        version: 'c1',
-      )
-      ..setVolume(card, version: null);
-
-    expect(await h.scanner.countEarlier(), counts(2, 3, 4));
-    expect(bridge.count('videosShotSince'), 1);
-  });
-
-  test("at 00:05, today does not include yesterday's 23:59", () async {
-    final h = MediaHarness(now: DateTime(2026, 6, 10, 0, 5).toUtc());
-    h.bridge.put([
-      shot(1, DateTime(2026, 6, 9, 23, 59)),
-      shot(2, DateTime(2026, 6, 10, 0, 1)),
-    ]);
-
-    expect(await h.scanner.countEarlier(), counts(1, 2, 2));
-    await h.scanner.addEarlier(EarlierRange.today);
-    expect([for (final c in await h.toTag()) c.mediaStoreId], [2]);
+      expect(await h.scanner.countEarlierIn(june(9, 9)), 2);
+      expect(bridge.count('videosShotSince'), 2);
+    });
   });
 
   group('across a daylight-saving change (Europe/London)', () {
@@ -313,30 +491,72 @@ void main() {
       expect(_inLondon, isTrue, reason: 'run with TZ=Europe/London');
     }, skip: _londonOnly);
 
-    test('clocks went back yesterday (2026-10-25, 25 hours)', () async {
-      // 00:30 on the 26th (GMT); yesterday started at 00:00 BST, 23:00 UTC.
-      final h = MediaHarness(now: DateTime.utc(2026, 10, 26, 0, 30));
-      h.bridge.put([
-        shot(1, DateTime.utc(2026, 10, 24, 22, 59)), // 23:59 BST on the 24th
-        shot(2, DateTime.utc(2026, 10, 24, 23, 1)), // 00:01 BST on the 25th
-        shot(3, DateTime.utc(2026, 10, 26, 0, 10)), // 00:10 GMT on the 26th
-      ]);
+    test(
+      'the day the clocks went back (2026-10-25, 25 hours) is one day',
+      () async {
+        // 12:00 on the 31st. The 25th is 23:00 UTC on the 24th to 00:00 UTC on
+        // the 26th.
+        final h = MediaHarness(now: DateTime.utc(2026, 10, 31, 12));
+        h.bridge.put([
+          shot(1, DateTime.utc(2026, 10, 24, 22, 59)), // 23:59 BST on the 24th
+          shot(2, DateTime.utc(2026, 10, 24, 23, 1)), // 00:01 BST on the 25th
+          shot(3, DateTime.utc(2026, 10, 25, 23, 30)), // 23:30 GMT on the 25th
+          shot(4, DateTime.utc(2026, 10, 26)), // 00:00 GMT on the 26th
+          shot(5, DateTime.utc(2026, 10, 26, 0, 1)), // 00:01 GMT on the 26th
+        ]);
+        final day = EarlierCustom(
+          DateTime(2026, 10, 25),
+          DateTime(2026, 10, 25),
+        );
 
-      expect(await h.scanner.countEarlier(), counts(1, 2, 3));
-      await h.scanner.addEarlier(EarlierRange.lastTwoDays);
-      expect([for (final c in await h.toTag()) c.mediaStoreId], [2, 3]);
+        expect(await h.scanner.countEarlierIn(day), 2);
+        await h.scanner.addEarlier(day);
+        expect([
+          for (final c in await h.toTag()) c.mediaStoreId,
+        ], unorderedEquals([3, 2]));
+      },
+      skip: _londonOnly,
+    );
+
+    test('a range across the change takes in the whole 25-hour day', () async {
+      final h = MediaHarness(now: DateTime.utc(2026, 10, 31, 12));
+      h.bridge.put([
+        shot(1, DateTime.utc(2026, 10, 23, 22, 59)), // 23:59 BST on the 23rd
+        shot(2, DateTime.utc(2026, 10, 23, 23, 1)), // 00:01 BST on the 24th
+        shot(3, DateTime.utc(2026, 10, 25, 23, 30)), // 23:30 GMT on the 25th
+        shot(4, DateTime.utc(2026, 10, 26, 23, 59)), // 23:59 GMT on the 26th
+        shot(5, DateTime.utc(2026, 10, 27)), // 00:00 GMT on the 27th
+      ]);
+      final range = EarlierCustom(
+        DateTime(2026, 10, 24),
+        DateTime(2026, 10, 26),
+      );
+
+      expect(await h.scanner.countEarlierIn(range), 3);
     }, skip: _londonOnly);
 
-    test('clocks went forward yesterday (2027-03-28, 23 hours)', () async {
-      // 00:30 BST on the 29th; yesterday started at 00:00 GMT.
-      final h = MediaHarness(now: DateTime.utc(2027, 3, 28, 23, 30));
+    test('the day the clocks went forward (2027-03-28, 23 hours)', () async {
+      final h = MediaHarness(now: DateTime.utc(2027, 4, 3, 12));
       h.bridge.put([
         shot(1, DateTime.utc(2027, 3, 27, 23, 59)), // 23:59 GMT on the 27th
         shot(2, DateTime.utc(2027, 3, 28, 0, 1)), // 00:01 GMT on the 28th
-        shot(3, DateTime.utc(2027, 3, 28, 23, 10)), // 00:10 BST on the 29th
+        shot(3, DateTime.utc(2027, 3, 28, 22, 59)), // 22:59 GMT on the 28th
+        shot(4, DateTime.utc(2027, 3, 28, 23, 10)), // 00:10 BST on the 29th
+      ]);
+      final day = EarlierCustom(DateTime(2027, 3, 28), DateTime(2027, 3, 28));
+
+      expect(await h.scanner.countEarlierIn(day), 2);
+    }, skip: _londonOnly);
+
+    test('Today after the change: yesterday started at 00:00 BST', () async {
+      // 00:30 on the 26th (GMT).
+      final h = MediaHarness(now: DateTime.utc(2026, 10, 26, 0, 30));
+      h.bridge.put([
+        shot(1, DateTime.utc(2026, 10, 25, 23, 59)),
+        shot(2, DateTime.utc(2026, 10, 26, 0, 10)),
       ]);
 
-      expect(await h.scanner.countEarlier(), counts(1, 2, 3));
+      expect(await h.scanner.countEarlier(), 1);
     }, skip: _londonOnly);
   });
 }

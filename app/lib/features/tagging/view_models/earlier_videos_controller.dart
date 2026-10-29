@@ -11,26 +11,41 @@ part 'earlier_videos_controller.g.dart';
 // Error types and counts only, never a message (D-10).
 final Logger _log = Logger('earlierVideos');
 
-/// The "Add earlier videos" sheet (D-73, D-75): how many videos each range
-/// would add, adding a range, and Undo.
+/// The "Add earlier videos" sheet (D-73, D-75, D-78): how many videos Today
+/// would add, counting the videos of a chosen date range, adding a range, and
+/// Undo.
 ///
-/// The state is the count per [EarlierRange], read when the sheet opens
+/// The state is Today's count, read when the sheet opens
 /// (`MediaScanner.countEarlier`), so it works with Shooting mode off. It
 /// auto-disposes: closing the sheet drops it, and opening the sheet again
 /// counts again. A failed count is an `AsyncError` for the sheet to show; it
 /// is logged by type and not retried by itself.
 ///
-/// [add] and [undo] **rethrow** their errors, after logging the type, so the
-/// sheet can tell the user it did not work (a missing full access is a
-/// `StateError`). The caller must catch. After either one succeeds the counts
-/// are read again, and if that fails the old counts stay.
+/// [countIn], [add] and [undo] **rethrow** their errors, after logging the
+/// type, so the sheet can tell the user it did not work (a missing full
+/// access is a `StateError`). The caller must catch. After [add] or [undo]
+/// succeeds Today's count is read again, and if that fails the old count
+/// stays.
 @Riverpod(retry: noRetry)
 class EarlierVideosController extends _$EarlierVideosController {
   @override
-  Future<Map<EarlierRange, int>> build() async {
+  Future<int> build() async {
     final scanner = ref.read(mediaScannerProvider);
     try {
       return await scanner.countEarlier();
+    } on Object catch (error) {
+      _log.warning('Counting earlier videos failed: ${error.runtimeType}');
+      rethrow;
+    }
+  }
+
+  /// How many new videos [range] would add. Does not change the state: a
+  /// failure is for the caller to show, not the sheet's error state. Throws
+  /// when it could not (see the class comment).
+  Future<int> countIn(EarlierRange range) async {
+    final scanner = ref.read(mediaScannerProvider);
+    try {
+      return await scanner.countEarlierIn(range);
     } on Object catch (error) {
       _log.warning('Counting earlier videos failed: ${error.runtimeType}');
       rethrow;
@@ -72,14 +87,14 @@ class EarlierVideosController extends _$EarlierVideosController {
     await _recount(scanner);
   }
 
-  /// Reads the counts again after a change. A failure is logged and the old
-  /// counts stay; a sheet that was closed meanwhile is left alone.
+  /// Reads Today's count again after a change. A failure is logged and the
+  /// old count stays; a sheet that was closed meanwhile is left alone.
   Future<void> _recount(MediaScanner scanner) async {
-    final counts = await guarded(
+    final count = await guarded(
       _log,
       'Counting earlier videos',
       scanner.countEarlier,
     );
-    if (counts != null && ref.mounted) state = AsyncData(counts);
+    if (count != null && ref.mounted) state = AsyncData(count);
   }
 }

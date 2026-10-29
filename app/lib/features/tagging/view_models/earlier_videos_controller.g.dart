@@ -8,55 +8,57 @@ part of 'earlier_videos_controller.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The "Add earlier videos" sheet (D-73, D-75): how many videos each range
-/// would add, adding a range, and Undo.
+/// The "Add earlier videos" sheet (D-73, D-75, D-78): how many videos Today
+/// would add, counting the videos of a chosen date range, adding a range, and
+/// Undo.
 ///
-/// The state is the count per [EarlierRange], read when the sheet opens
+/// The state is Today's count, read when the sheet opens
 /// (`MediaScanner.countEarlier`), so it works with Shooting mode off. It
 /// auto-disposes: closing the sheet drops it, and opening the sheet again
 /// counts again. A failed count is an `AsyncError` for the sheet to show; it
 /// is logged by type and not retried by itself.
 ///
-/// [add] and [undo] **rethrow** their errors, after logging the type, so the
-/// sheet can tell the user it did not work (a missing full access is a
-/// `StateError`). The caller must catch. After either one succeeds the counts
-/// are read again, and if that fails the old counts stay.
+/// [countIn], [add] and [undo] **rethrow** their errors, after logging the
+/// type, so the sheet can tell the user it did not work (a missing full
+/// access is a `StateError`). The caller must catch. After [add] or [undo]
+/// succeeds Today's count is read again, and if that fails the old count
+/// stays.
 
 @ProviderFor(EarlierVideosController)
 final earlierVideosControllerProvider = EarlierVideosControllerProvider._();
 
-/// The "Add earlier videos" sheet (D-73, D-75): how many videos each range
-/// would add, adding a range, and Undo.
+/// The "Add earlier videos" sheet (D-73, D-75, D-78): how many videos Today
+/// would add, counting the videos of a chosen date range, adding a range, and
+/// Undo.
 ///
-/// The state is the count per [EarlierRange], read when the sheet opens
+/// The state is Today's count, read when the sheet opens
 /// (`MediaScanner.countEarlier`), so it works with Shooting mode off. It
 /// auto-disposes: closing the sheet drops it, and opening the sheet again
 /// counts again. A failed count is an `AsyncError` for the sheet to show; it
 /// is logged by type and not retried by itself.
 ///
-/// [add] and [undo] **rethrow** their errors, after logging the type, so the
-/// sheet can tell the user it did not work (a missing full access is a
-/// `StateError`). The caller must catch. After either one succeeds the counts
-/// are read again, and if that fails the old counts stay.
+/// [countIn], [add] and [undo] **rethrow** their errors, after logging the
+/// type, so the sheet can tell the user it did not work (a missing full
+/// access is a `StateError`). The caller must catch. After [add] or [undo]
+/// succeeds Today's count is read again, and if that fails the old count
+/// stays.
 final class EarlierVideosControllerProvider
-    extends
-        $AsyncNotifierProvider<
-          EarlierVideosController,
-          Map<EarlierRange, int>
-        > {
-  /// The "Add earlier videos" sheet (D-73, D-75): how many videos each range
-  /// would add, adding a range, and Undo.
+    extends $AsyncNotifierProvider<EarlierVideosController, int> {
+  /// The "Add earlier videos" sheet (D-73, D-75, D-78): how many videos Today
+  /// would add, counting the videos of a chosen date range, adding a range, and
+  /// Undo.
   ///
-  /// The state is the count per [EarlierRange], read when the sheet opens
+  /// The state is Today's count, read when the sheet opens
   /// (`MediaScanner.countEarlier`), so it works with Shooting mode off. It
   /// auto-disposes: closing the sheet drops it, and opening the sheet again
   /// counts again. A failed count is an `AsyncError` for the sheet to show; it
   /// is logged by type and not retried by itself.
   ///
-  /// [add] and [undo] **rethrow** their errors, after logging the type, so the
-  /// sheet can tell the user it did not work (a missing full access is a
-  /// `StateError`). The caller must catch. After either one succeeds the counts
-  /// are read again, and if that fails the old counts stay.
+  /// [countIn], [add] and [undo] **rethrow** their errors, after logging the
+  /// type, so the sheet can tell the user it did not work (a missing full
+  /// access is a `StateError`). The caller must catch. After [add] or [undo]
+  /// succeeds Today's count is read again, and if that fails the old count
+  /// stays.
   EarlierVideosControllerProvider._()
     : super(
         from: null,
@@ -77,39 +79,35 @@ final class EarlierVideosControllerProvider
 }
 
 String _$earlierVideosControllerHash() =>
-    r'a53336a65d3b8094d54441b769808d951c5578b6';
+    r'1852eab4220f18b8f5693d471ee4bdf059361d66';
 
-/// The "Add earlier videos" sheet (D-73, D-75): how many videos each range
-/// would add, adding a range, and Undo.
+/// The "Add earlier videos" sheet (D-73, D-75, D-78): how many videos Today
+/// would add, counting the videos of a chosen date range, adding a range, and
+/// Undo.
 ///
-/// The state is the count per [EarlierRange], read when the sheet opens
+/// The state is Today's count, read when the sheet opens
 /// (`MediaScanner.countEarlier`), so it works with Shooting mode off. It
 /// auto-disposes: closing the sheet drops it, and opening the sheet again
 /// counts again. A failed count is an `AsyncError` for the sheet to show; it
 /// is logged by type and not retried by itself.
 ///
-/// [add] and [undo] **rethrow** their errors, after logging the type, so the
-/// sheet can tell the user it did not work (a missing full access is a
-/// `StateError`). The caller must catch. After either one succeeds the counts
-/// are read again, and if that fails the old counts stay.
+/// [countIn], [add] and [undo] **rethrow** their errors, after logging the
+/// type, so the sheet can tell the user it did not work (a missing full
+/// access is a `StateError`). The caller must catch. After [add] or [undo]
+/// succeeds Today's count is read again, and if that fails the old count
+/// stays.
 
-abstract class _$EarlierVideosController
-    extends $AsyncNotifier<Map<EarlierRange, int>> {
-  FutureOr<Map<EarlierRange, int>> build();
+abstract class _$EarlierVideosController extends $AsyncNotifier<int> {
+  FutureOr<int> build();
   @$mustCallSuper
   @override
   WhenComplete runBuild() {
-    final ref =
-        this.ref
-            as $Ref<AsyncValue<Map<EarlierRange, int>>, Map<EarlierRange, int>>;
+    final ref = this.ref as $Ref<AsyncValue<int>, int>;
     final element =
         ref.element
             as $ClassProviderElement<
-              AnyNotifier<
-                AsyncValue<Map<EarlierRange, int>>,
-                Map<EarlierRange, int>
-              >,
-              AsyncValue<Map<EarlierRange, int>>,
+              AnyNotifier<AsyncValue<int>, int>,
+              AsyncValue<int>,
               Object?,
               Object?
             >;

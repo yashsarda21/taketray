@@ -178,13 +178,75 @@
   "@earlierRangeToday": {
     "description": "Row of the Add earlier videos sheet: videos shot today."
   },
-  "earlierRangeLastTwoDays": "Last 2 days",
-  "@earlierRangeLastTwoDays": {
-    "description": "Row of the Add earlier videos sheet: videos shot yesterday and today."
+  "earlierChooseDates": "Choose dates…",
+  "@earlierChooseDates": {
+    "description": "Row of the Add earlier videos sheet that opens the date range picker."
   },
-  "earlierRangeLastSevenDays": "Last 7 days",
-  "@earlierRangeLastSevenDays": {
-    "description": "Row of the Add earlier videos sheet: videos shot in the last seven days."
+  "earlierPickerHelp": "Choose dates",
+  "@earlierPickerHelp": {
+    "description": "Help text at the top of the date range picker of Add earlier videos."
+  },
+  "earlierPickerConfirm": "Find videos",
+  "@earlierPickerConfirm": {
+    "description": "Confirm button of the date range picker of Add earlier videos: counts the videos in the chosen dates."
+  },
+  "earlierFoundTitle": "{count, plural, one{1 video found} other{{count} videos found}}",
+  "@earlierFoundTitle": {
+    "description": "Title of the dialog that asks whether to add the videos found in the chosen dates.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierFoundBody": "{count, plural, one{Add it to To tag?} other{Add them to To tag?}}",
+  "@earlierFoundBody": {
+    "description": "Question in the dialog that asks whether to add the videos found in the chosen dates.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierNoneTitle": "No new videos",
+  "@earlierNoneTitle": {
+    "description": "Title of the dialog shown when the chosen dates hold no new videos."
+  },
+  "earlierNoneBetween": "No new videos between {from} and {to}.",
+  "@earlierNoneBetween": {
+    "description": "Body of the no-new-videos dialog for a range of several days. Both dates are short, like Oct 20.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "Oct 20"
+      },
+      "to": {
+        "type": "String",
+        "example": "Oct 24"
+      }
+    }
+  },
+  "earlierNoneOn": "No new videos on {day}.",
+  "@earlierNoneOn": {
+    "description": "Body of the no-new-videos dialog for a single day. The date is short, like Oct 20.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Oct 20"
+      }
+    }
+  },
+  "earlierDialogCancel": "Cancel",
+  "@earlierDialogCancel": {
+    "description": "Button of the found-videos dialog that adds nothing."
+  },
+  "earlierDialogAdd": "Add",
+  "@earlierDialogAdd": {
+    "description": "Button of the found-videos dialog that adds the videos to To tag."
+  },
+  "earlierDialogOk": "OK",
+  "@earlierDialogOk": {
+    "description": "Button of the no-new-videos dialog."
   },
   "earlierRowCount": "{count, plural, =0{none} one{1 new} other{{count} new}}",
   "@earlierRowCount": {

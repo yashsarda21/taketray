@@ -11,6 +11,22 @@ final WidgetbookComponent themeComponent = WidgetbookComponent(
     _useCase('TakeTray type', const _TakeTrayType()),
     _useCase('Scheme roles', const _SchemeRoles()),
     _useCase('TakeTray colours', const _TakeTrayColors()),
+    // The date range picker of Add earlier videos (D-78), as the phone shows
+    // it, mirroring `date_picker_golden_test.dart`.
+    WidgetbookUseCase(
+      name: 'Date range picker',
+      builder: (context) => DateRangePickerDialog(
+        firstDate: DateTime(2016, 10, 28),
+        lastDate: DateTime(2026, 10, 28),
+        currentDate: DateTime(2026, 10, 28),
+        initialDateRange: DateTimeRange(
+          start: DateTime(2026, 10, 20),
+          end: DateTime(2026, 10, 24),
+        ),
+        helpText: 'Choose dates',
+        saveText: 'Find videos',
+      ),
+    ),
   ],
 );
 
