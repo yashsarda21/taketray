@@ -13,8 +13,10 @@ import 'support/test_media.dart';
 import 'support/waiting.dart';
 
 /// The limited-access test drives One UI's "Select photos and videos" picker
-/// by resource id, which is unproven on the S24. It is written but skipped
-/// until it has been run once with the owner's go:
+/// by resource id, which is unproven on the S24, and it taps a tile in the
+/// system picker. It is written but skipped, and it must stay skipped until it
+/// verifies that the tile it picks is the inserted test video (see the note on
+/// the test). The `LIMITED_ACCESS` define is only for developing that check:
 ///
 ///     tool/patrol test -d RZCY80PHWCZ --dart-define=LIMITED_ACCESS=true \
 ///       -t patrol_test/media_access_test.dart
@@ -83,6 +85,10 @@ void main() {
     expect((await bridge.accessReport()).level, MediaAccessLevel.full);
   });
 
+  // DO NOT ENABLE (remove the skip) until this test verifies that the item it
+  // picks is the inserted test video: the first tile in the picker can be one
+  // of the owner's own videos, and tapping it would select (and so share with
+  // the app) something that is not ours.
   patrolTest(
     'limited access keeps Manual mode; Allow full access asks again',
     skip: !_driveLimitedAccess,

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -19,11 +20,16 @@ const String testFolder = 'Movies/TakeTray Test';
 /// The files belong to TakeTray Dev, so the phone asks nothing when they are
 /// deleted. A name or path is never printed: failures name the method only.
 class TestMedia {
-  TestMedia._();
+  TestMedia._(this._channel);
 
-  static const MethodChannel _channel = MethodChannel(
-    'app.taketray/test_media',
-  );
+  /// For the unit test of the clean-up loop: a [TestMedia] on another channel.
+  @visibleForTesting
+  TestMedia.withChannel(MethodChannel channel) : this._(channel);
+
+  /// The name of the debug-only channel (`DebugHooks.kt`).
+  static const String channelName = 'app.taketray/test_media';
+
+  final MethodChannel _channel;
 
   final List<InsertedVideo> _inserted = [];
   var _count = 0;
@@ -34,10 +40,12 @@ class TestMedia {
   /// Deletes what an earlier crashed run left in the test folder (only rows
   /// TakeTray Dev owns), fails if the folder holds a file it does not own, and
   /// registers the tear-down that deletes everything this test inserts.
-  static Future<TestMedia> start() async {
-    final media = TestMedia._();
+  static Future<TestMedia> start({
+    MethodChannel channel = const MethodChannel(channelName),
+  }) async {
+    final media = TestMedia._(channel);
     addTearDown(media.cleanUp);
-    final left = await _channel.invokeMapMethod<String, int>('deleteLeftovers');
+    final left = await channel.invokeMapMethod<String, int>('deleteLeftovers');
     final refused = left?['refused'] ?? -1;
     if (refused != 0) {
       throw TestFailure(
@@ -76,10 +84,32 @@ class TestMedia {
 
   /// Deletes every video this test inserted that is still there. Registered
   /// as a tear-down by [start]; safe to call twice.
+  ///
+  /// One failing delete does not stop the others: each is tried, then
+  /// `deleteLeftovers` is called as a fallback (it removes this app's own rows
+  /// in the test folder only), and the first error is rethrown at the end.
   Future<void> cleanUp() async {
-    for (final video in List.of(_inserted)) {
-      await delete(video);
+    Object? firstError;
+    StackTrace? firstStack;
+    void remember(Object error, StackTrace stack) {
+      firstError ??= error;
+      firstStack ??= stack;
     }
+
+    for (final video in List.of(_inserted)) {
+      try {
+        await delete(video);
+      } on Object catch (error, stack) {
+        remember(error, stack);
+      }
+    }
+    try {
+      await _channel.invokeMapMethod<String, int>('deleteLeftovers');
+    } on Object catch (error, stack) {
+      remember(error, stack);
+    }
+    final error = firstError;
+    if (error != null) Error.throwWithStackTrace(error, firstStack!);
   }
 }
 

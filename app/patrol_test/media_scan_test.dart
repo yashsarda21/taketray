@@ -38,7 +38,12 @@ void main() {
       final bridge = container.read(mediaBridgeProvider);
       final toTag = $(ToTagScreen);
 
-      // 1. Full access, the way a user gives it, and only our folder watched.
+      // 1. Only our folder watched (before access is given, so no query the
+      // app makes ever names another folder), then full access, the way a user
+      // gives it.
+      await container
+          .read(settingsRepositoryProvider)
+          .save(const AppSettings(watchedFolders: [testFolder]));
       await $(TtNavPill).$('To tag').tap();
       await waitFor(
         $,
@@ -52,9 +57,6 @@ void main() {
         () => !toTag.$('Manual mode').exists,
         what: 'the Manual mode banner to go after Allow all',
       );
-      await container
-          .read(settingsRepositoryProvider)
-          .save(const AppSettings(watchedFolders: [testFolder]));
 
       // 2. Shooting mode on (the switch on the Reels card), then a video.
       await $(TtNavPill).$('Reels').tap();
@@ -152,11 +154,9 @@ void main() {
       expect(await scan([folder]), [video.mediaStoreId], reason: folder);
       expect(await earlier([folder]), [video.mediaStoreId], reason: folder);
     }
-    for (final folder in [
-      'Movies',
-      'Movies/TakeTray',
-      'Movies/TakeTray Test/deeper',
-    ]) {
+    // Never `Movies` itself or any broad folder: with full access that would
+    // return the owner's own videos. These two cannot hold any.
+    for (final folder in ['Movies/TakeTray', 'Movies/TakeTray Test/deeper']) {
       expect(await scan([folder]), isEmpty, reason: folder);
       expect(await earlier([folder]), isEmpty, reason: folder);
     }

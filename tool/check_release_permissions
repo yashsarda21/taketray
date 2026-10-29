@@ -149,13 +149,22 @@ else
     fi
   done
 fi
+# Without R8's mapping file the class names can only be read from the dex, and
+# that works only if the dex keeps the real names. APP_CLASS_PROBE is an
+# ordinary app class that nothing in the manifest keeps: found by its real name
+# means the dex is not renamed; not found means R8 renamed it. A renamed dex
+# and no mapping cannot show a class called TestMedia, so that fails rather than
+# passes silently.
 MAPPING="app/build/app/outputs/mapping/release/mapping.txt"
+APP_CLASS_PROBE="app/taketray/media/MediaHostApiImpl"
 if [ -f "$MAPPING" ]; then
   for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
     if grep -qF -- "$needle" "$MAPPING"; then
       problems+=("test-only code named in the release R8 mapping: '$needle'")
     fi
   done
+elif [ -e "${dex_files[0]}" ] && ! grep -aqF -- "$APP_CLASS_PROBE" "${dex_files[@]}"; then
+  problems+=("no R8 mapping file ($MAPPING) and the dex has no unrenamed app class ($APP_CLASS_PROBE), so a class named TestMedia could not be seen; the class-name check cannot run")
 fi
 
 if [ "${#problems[@]}" -gt 0 ]; then
