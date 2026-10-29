@@ -784,41 +784,207 @@ void main() {
           ),
         );
 
-    group('knownMediaStoreIds', () {
+    group('mediaStoreClipsHolding', () {
       test(
-        'the ids held on that volume, as addDetectedClips finds them',
+        'the attached MediaStore clips holding those numbers, by number',
         () async {
-          final [_, b] = await detect([10, 11]);
+          final [a, b] = await detect([10, 11]);
           await detect([12], volume: '1234-ABCD');
           await pickerWithVolume(13);
           await repo.detach({b});
 
+          final held = await repo.mediaStoreClipsHolding('external_primary', [
+            10,
+            11,
+            12,
+            13,
+            99,
+          ]);
+
+          expect(held.keys, [10]);
+          expect(held[10]!.id, a);
           expect(
-            await repo.knownMediaStoreIds('external_primary', [
-              10,
-              11,
-              12,
-              13,
-              99,
-            ]),
-            {10, 13},
+            (await repo.mediaStoreClipsHolding('1234-ABCD', [10, 12])).keys,
+            [12],
           );
-          expect(await repo.knownMediaStoreIds('1234-ABCD', [10, 12]), {12});
           expect(
-            await repo.knownMediaStoreIds('external_primary', []),
+            await repo.mediaStoreClipsHolding('external_primary', []),
             isEmpty,
           );
         },
       );
 
-      test('works past one batch of ids', () async {
+      test('works past one batch of numbers', () async {
         await detect([for (var i = 1; i <= 1201; i++) i]);
 
-        final known = await repo.knownMediaStoreIds('external_primary', [
+        final held = await repo.mediaStoreClipsHolding('external_primary', [
           for (var i = 1; i <= 1300; i++) i,
         ]);
 
-        expect(known, {for (var i = 1; i <= 1201; i++) i});
+        expect(held.keys.toSet(), {for (var i = 1; i <= 1201; i++) i});
+      });
+    });
+
+    group('addCheckedClips (Ruling U)', () {
+      bool sameFingerprint(Clip stored, NewClip incoming) =>
+          stored.fingerprint == incoming.fingerprint;
+
+      /// Clip 10's number, now holding a different video (another size).
+      final otherVideo = mediaStoreClip(10).copyWith(
+        fingerprint: mediaStoreClip(10).fingerprint.copyWith(sizeBytes: 77),
+      );
+
+      test(
+        'a stored clip that is the same video is found, not inserted',
+        () async {
+          final [a] = await detect([10]);
+
+          final result = await repo.addCheckedClips([
+            mediaStoreClip(10),
+            mediaStoreClip(11),
+          ], sameVideo: sameFingerprint);
+
+          expect(result.ids.first, a);
+          expect(result.inserted, [result.ids.last]);
+          expect(result.detached, isEmpty);
+          expect((await rowOf(a)).mediaStoreId, 10);
+        },
+      );
+
+      test('a stored clip that is another video is detached and the video '
+          'saved as a new clip; the old one keeps its reel', () async {
+        final [a] = await detect([10]);
+        final reel = await reels.create('Goa');
+        await repo.tagClip(a, {reel.id});
+
+        final result = await repo.addCheckedClips([
+          otherVideo,
+        ], sameVideo: sameFingerprint);
+
+        expect(result.detached, {a});
+        expect(result.inserted, hasLength(1));
+        final fresh = result.inserted.single;
+        expect(fresh, isNot(a));
+        final old = await rowOf(a);
+        expect((old.mediaStoreId, old.missing), (-a, true));
+        expect(await repo.watchReelIdsOf(a).first, {reel.id});
+        final created = await rowOf(fresh);
+        expect((created.mediaStoreId, created.sizeBytes), (10, 77));
+        expect(
+          [
+            for (final c in await repo.watchInbox(InboxState.pending).first)
+              c.id,
+          ],
+          [fresh],
+        );
+      });
+
+      test('the detach and the insert are one transaction', () async {
+        await detect([10]);
+        await db.customStatement(
+          'CREATE TRIGGER no_inbox BEFORE INSERT ON inbox '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
+        final before = await snapshot();
+
+        await expectLater(
+          repo.addCheckedClips([otherVideo], sameVideo: sameFingerprint),
+          throwsA(anything),
+        );
+
+        expect(await snapshot(), before);
+      });
+
+      test(
+        'a picked clip holding the identity is never taken for the video',
+        () async {
+          await pickerWithVolume(55);
+          var asked = false;
+          final before = await snapshot();
+
+          // The unique key refuses a second holder of (volume, 55): the call
+          // fails and changes nothing, instead of "finding" the picked clip.
+          await expectLater(
+            repo.addCheckedClips([
+              mediaStoreClip(55),
+            ], sameVideo: (_, _) => asked = true),
+            throwsA(anything),
+          );
+
+          expect(asked, isFalse);
+          expect(await snapshot(), before);
+        },
+      );
+    });
+
+    group('applyVerification', () {
+      test('detaches, flags and takes missing clips out of the lists, in one '
+          'go', () async {
+        final [found, gone, other, inReel] = await detect([10, 11, 12, 13]);
+        final reel = await reels.create('Goa');
+        await repo.tagClip(inReel, {reel.id});
+        clock.advance(_minute);
+
+        final removed = await repo.applyVerification(
+          found: {found},
+          gone: {gone, inReel},
+          otherVideo: {other},
+        );
+
+        expect(removed, 2);
+        final kept = await rowOf(found);
+        expect((kept.missing, kept.lastVerifiedAt), (false, clock.now()));
+        final flagged = await rowOf(inReel);
+        expect((flagged.mediaStoreId, flagged.missing), (13, true));
+        expect(flagged.lastVerifiedAt, clock.now());
+        expect(await repo.watchReelIdsOf(inReel).first, {reel.id});
+        final ids = [for (final c in await db.select(db.clips).get()) c.id];
+        expect(ids, unorderedEquals([found, inReel]));
+      });
+
+      test('a failing step changes nothing', () async {
+        final [_, gone, other] = await detect([10, 11, 12]);
+        await db.customStatement(
+          'CREATE TRIGGER no_delete BEFORE DELETE ON inbox '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
+        final before = await snapshot();
+
+        await expectLater(
+          repo.applyVerification(found: {}, gone: {gone}, otherVideo: {other}),
+          throwsA(anything),
+        );
+
+        expect(await snapshot(), before);
+      });
+
+      test(
+        'a clip in two sets is refused before anything is written',
+        () async {
+          final [a] = await detect([10]);
+          final before = await snapshot();
+
+          expect(
+            () => repo.applyVerification(found: {a}, gone: {a}, otherVideo: {}),
+            throwsArgumentError,
+          );
+          expect(
+            () => repo.applyVerification(found: {}, gone: {a}, otherVideo: {a}),
+            throwsArgumentError,
+          );
+          expect(await snapshot(), before);
+        },
+      );
+
+      test('nothing to apply writes nothing', () async {
+        await detect([10]);
+        final before = await snapshot();
+
+        expect(
+          await repo.applyVerification(found: {}, gone: {}, otherVideo: {}),
+          0,
+        );
+        expect(await snapshot(), before);
       });
     });
 

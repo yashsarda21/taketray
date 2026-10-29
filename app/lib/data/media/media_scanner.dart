@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/media/library_resync.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
@@ -101,6 +102,7 @@ class MediaScanner {
   final ZoneRepository _zones;
   final MediaWorkQueue _queue;
   final Clock _clock;
+  late final LibraryResync _rebuilds = LibraryResync(_bridge, _clips, _phone);
 
   /// Rows asked for per page of `videosAddedAfter`.
   static const pageSize = 500;
@@ -152,27 +154,62 @@ class MediaScanner {
       rethrow;
     }
 
+    // Shooting mode may have gone off (and on) while the phone answered: then
+    // this scan belongs to no session and writes nothing at all (M6).
+    final still = await _phone.loadShooting();
+    final since = session.since;
+    if (!still.on ||
+        since == null ||
+        still.since == null ||
+        !still.since!.isAtSameMomentAs(since)) {
+      _log.info('Scan stopped: Shooting mode changed while it ran');
+      return const ScanShootingOff();
+    }
+    final recorded = await _phone.volumeVersions();
+
     var added = 0;
     final resynced = <String>{};
     final failed = <String>{};
     for (final volume in volumes) {
       final baseline = session.baselines[volume.name];
+      final plan = planVolume(baseline, volume);
+      if (plan is SkipVolume) {
+        _log.info('Volume ${volume.name}: not mounted, left alone');
+        continue;
+      }
       try {
-        switch (planVolume(baseline, volume)) {
-          case SkipVolume():
-            _log.info('Volume ${volume.name}: not mounted, left alone');
+        if (plan is Resync) {
+          await _resync(context, baseline!, volume);
+          resynced.add(volume.name);
+          continue;
+        }
+        // Rebuilt since the clips were last matched (while Shooting mode was
+        // off, say): match them again before anything else (Ruling V).
+        if (await _rebuilds.catchUp(volume, recorded, now: context.now) !=
+            null) {
+          resynced.add(volume.name);
+        }
+        switch (plan) {
           case StartFromNow():
             await _startFromNow(context, volume);
-          case Resync():
-            await _resync(context, baseline!, volume);
-            resynced.add(volume.name);
           case ScanAfter(:final generation):
             added += await _scanAfter(context, baseline!, volume, generation);
+          case SkipVolume():
+          case Resync():
+          // Handled above.
         }
       } on PlatformException catch (e) {
         failed.add(volume.name);
         _log.warning(
           'Volume ${volume.name}: the phone did not answer (${e.code}), '
+          'its baseline stays',
+        );
+      } on Object catch (e) {
+        // Anything else (a database surprise, a bug) must not stop the other
+        // volumes either (Ruling X); only its type is logged.
+        failed.add(volume.name);
+        _log.warning(
+          'Volume ${volume.name}: failed with ${e.runtimeType}, '
           'its baseline stays',
         );
       }
@@ -207,15 +244,7 @@ class MediaScanner {
     VolumeBaseline baseline,
     MediaVolume volume,
   ) async {
-    final current = await _bridge.allVideos(volume.name);
-    final stored = await _clips.mediaStoreClipsOn(volume.name);
-    final match = matchAfterRebuild(
-      stored,
-      current,
-      volumeName: volume.name,
-      now: context.now,
-    );
-    await _clips.applyRebuildMatch(volume.name, match);
+    final match = await _rebuilds.resync(volume, now: context.now);
     // If Shooting mode was switched off and on meanwhile this writes nothing;
     // the remap above stands, because it is true whatever the session.
     final wrote = await _phone.advanceBaseline(
@@ -230,8 +259,7 @@ class MediaScanner {
         : 'version changed';
     _log.info(
       'Volume ${volume.name}: library rebuilt ($why), '
-      '${stored.length} clips: ${match.remap.length} found, '
-      '${match.lost.length} lost; baseline '
+      '${match.remap.length} found, ${match.lost.length} lost; baseline '
       '${wrote ? 'moved' : 'left: it had changed'}',
     );
   }
@@ -299,16 +327,16 @@ class MediaScanner {
         if (isUsable(v)) v,
     ];
     var added = 0;
+    var detached = 0;
     if (usable.isNotEmpty) {
-      final known = await _clips.knownMediaStoreIds(
-        volume.name,
-        usable.map((v) => v.mediaStoreId),
+      final saved = await _save(
+        usable,
+        context.timeline,
+        context.currentZone,
+        context.now,
       );
-      await _clips.addDetectedClips([
-        for (final v in usable)
-          _clipFrom(v, context.timeline, context.currentZone, context.now),
-      ]);
-      added = usable.where((v) => !known.contains(v.mediaStoreId)).length;
+      added = saved.inserted.length;
+      detached = saved.detached.length;
     }
 
     // Only now that the clips are saved: a crash or a failure above leaves
@@ -317,9 +345,12 @@ class MediaScanner {
       from: from,
       captured: captured,
       seen: rows,
+      now: context.now,
       truncated: truncated,
     );
-    final pending = rows.where((v) => v.isPending).length;
+    final pending = rows
+        .where((v) => holdsBaseline(v, now: context.now))
+        .length;
     var moved = 'kept';
     if (generation != baseline.generation) {
       final wrote = await _phone.advanceBaseline(
@@ -332,7 +363,8 @@ class MediaScanner {
     }
     final summary =
         'Volume ${volume.name}: ${rows.length} rows on $pages pages, '
-        '${usable.length} usable, $added new, $pending pending; '
+        '${usable.length} usable, $added new, $pending held, '
+        '$detached stored clips were other videos; '
         'baseline $moved';
     if (truncated) {
       _log.warning(
@@ -379,12 +411,13 @@ class MediaScanner {
     }
     final timeline = await _zones.all();
     final currentZone = await _bridge.currentZoneId();
-    final ids = await _clips.addDetectedClips([
-      for (final v in videos) _clipFrom(v, timeline, currentZone, now),
-    ]);
+    final saved = await _save(videos, timeline, currentZone, now);
     await _phone.markEarlierAdded();
-    _log.info('Earlier videos (${range.name}): added ${ids.length}');
-    return ids;
+    _log.info(
+      'Earlier videos (${range.name}): added ${saved.inserted.length}, '
+      '${saved.detached.length} stored clips were other videos',
+    );
+    return saved.inserted;
   });
 
   Future<bool> _hasFullAccess() async =>
@@ -417,9 +450,17 @@ class MediaScanner {
         for (final v in rows)
           if (shotInWindow(v, start, now: now)) v.mediaStoreId: v,
       };
-      final known = await _clips.knownMediaStoreIds(volume.name, inWindow.keys);
+      final held = await _clips.mediaStoreClipsHolding(
+        volume.name,
+        inWindow.keys,
+      );
+      // Known only when the stored clip is this very video (Ruling U); a
+      // clip holding the number of another video does not hide it.
       candidates.addAll(
-        inWindow.values.where((v) => !known.contains(v.mediaStoreId)),
+        inWindow.values.where((v) {
+          final clip = held[v.mediaStoreId];
+          return clip == null || !sameVideo(clip.fingerprint, v, now: now);
+        }),
       );
     }
     return candidates;
@@ -435,6 +476,28 @@ class MediaScanner {
       for (final v in videos)
         if (shotInWindow(v, start, now: now)) v,
     ];
+  }
+
+  /// Saves [videos] as clips with `addCheckedClips`: a stored clip that
+  /// holds a video's number is kept only when it is `sameVideo`; otherwise it
+  /// is detached and the video saved as a new clip (Ruling U).
+  Future<DetectedClips> _save(
+    List<MediaVideo> videos,
+    List<ZoneEntry> timeline,
+    String currentZone,
+    DateTime now,
+  ) {
+    final byIdentity = {
+      for (final v in videos) (v.volumeName, v.mediaStoreId): v,
+    };
+    return _clips.addCheckedClips(
+      [for (final v in videos) _clipFrom(v, timeline, currentZone, now)],
+      sameVideo: (stored, incoming) => sameVideo(
+        stored.fingerprint,
+        byIdentity[(incoming.volumeName!, incoming.mediaStoreId!)]!,
+        now: now,
+      ),
+    );
   }
 
   /// The clip for [v], in the zone the phone was in when it was shot (the

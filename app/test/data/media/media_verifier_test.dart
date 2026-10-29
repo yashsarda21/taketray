@@ -350,6 +350,129 @@ void main() {
     expect((now.mediaStoreId, now.missing), (21, false));
   });
 
+  group('a rebuilt library (Ruling V)', () {
+    test('verify before scan after a version change finds clips by '
+        'fingerprint (Shooting mode off)', () async {
+      final a = video(1);
+      final clips = await stored([a]);
+      bridge.put([a]);
+      expect(
+        await h.verifier.verify(clips.values),
+        outcome(found: {clips[1]!.id}),
+      );
+      expect(await h.phoneState.volumeVersions(), {phone: 'v1'});
+
+      // Android rebuilds: A is number 21 now, and number 1 is another video.
+      bridge
+        ..videosByVolume[phone] = []
+        ..put([
+          a.copyWith(mediaStoreId: 21),
+          video(1, sizeBytes: 7),
+        ], version: 'v2');
+
+      final result = await h.verifier.verify(clips.values);
+
+      expect(result, outcome(found: {clips[1]!.id}));
+      expect(bridge.count('allVideos'), 1);
+      expect(bridge.byIds.last.$2, [21]);
+      final clip = await h.clip(clips[1]!.id);
+      expect((clip.mediaStoreId, clip.missing), (21, false));
+      expect(await h.toTag(), hasLength(1));
+      expect(await h.phoneState.volumeVersions(), {phone: 'v2'});
+    });
+
+    test(
+      "verify queued before a scan after a rebuild doesn't detach",
+      () async {
+        final a = video(1);
+        bridge.put([a], generation: 10);
+        final clips = await stored([a]);
+        await h.turnOnNow();
+        await h.scanner.scan(); // records v1
+        bridge
+          ..videosByVolume[phone] = []
+          ..put([
+            a.copyWith(mediaStoreId: 21),
+            video(1, sizeBytes: 7),
+          ], version: 'v2');
+
+        final verify = h.verifier.verify(clips.values);
+        final scan = h.scanner.scan();
+        final result = await verify;
+        await scan;
+
+        expect(result, outcome(found: {clips[1]!.id}));
+        final clip = await h.clip(clips[1]!.id);
+        expect((clip.mediaStoreId, clip.missing), (21, false));
+        expect(await h.toTag(), hasLength(1));
+      },
+    );
+
+    test(
+      'a clip the rebuild cannot find is missing and stays where it is',
+      () async {
+        final clips = await stored([video(1), video(2)]);
+        bridge.put([video(1), video(2)]);
+        await h.verifier.verify(clips.values);
+        bridge
+          ..videosByVolume[phone] = []
+          ..put([video(1).copyWith(mediaStoreId: 31)], version: 'v2');
+
+        final result = await h.verifier.verify(clips.values);
+
+        expect(result, outcome(found: {clips[1]!.id}, missing: {clips[2]!.id}));
+        final lost = await h.clip(clips[2]!.id);
+        expect((lost.mediaStoreId, lost.missing), (-lost.id, true));
+        expect(await h.toTag(), hasLength(2), reason: 'as after any rebuild');
+      },
+    );
+
+    test('no stored version → recorded, no resync', () async {
+      final clips = await stored([video(1)]);
+      bridge.put([video(1)]);
+
+      expect(
+        await h.verifier.verify(clips.values),
+        outcome(found: {clips[1]!.id}),
+      );
+
+      expect(bridge.calls, isNot(contains('allVideos')));
+      expect(await h.phoneState.volumeVersions(), {phone: 'v1'});
+    });
+
+    test('a version is only recorded for volumes it verified', () async {
+      final clips = await stored([video(1)]);
+      bridge
+        ..put([video(1)])
+        ..put([], volume: card, version: 'c1');
+
+      await h.verifier.verify(clips.values);
+
+      expect(await h.phoneState.volumeVersions(), {phone: 'v1'});
+    });
+  });
+
+  test('an unexpected error on one volume skips its clips; the others are '
+      'verified (Ruling X)', () async {
+    final h = MediaHarness(bridge: _BrokenCard());
+    final ids = await h.store([video(1), video(2, volume: card)]);
+    h.bridge
+      ..put([video(1)])
+      ..put(
+        [video(2, volume: card)],
+        volume: card,
+        version: 'c1',
+      );
+    final logs = captureLogs();
+
+    final result = await h.verifier.verifyAll();
+
+    expect(result, outcome(found: {ids[0]}, skipped: {ids[1]}));
+    final onCard = (await h.clips.clipsByIds({ids[1]})).single;
+    expect((onCard.missing, onCard.lastVerifiedAt), (false, null));
+    expect(logText(logs), allOf(contains('StateError'), contains(card)));
+  });
+
   test('mediaVerifierProvider builds one verifier', () {
     final db = testDatabase();
     addTearDown(db.close);
@@ -363,6 +486,16 @@ void main() {
     final verifier = container.read(mediaVerifierProvider);
     expect(container.read(mediaVerifierProvider), same(verifier));
   });
+}
+
+/// `videosByIds` fails on the card with an error that is not a
+/// `PlatformException`.
+class _BrokenCard extends RecordingBridge {
+  @override
+  Future<List<MediaVideo>> videosByIds(String volumeName, List<int> ids) async {
+    if (volumeName == card) throw StateError('unexpected');
+    return await super.videosByIds(volumeName, ids);
+  }
 }
 
 /// The second `videosByIds` call for the phone fails, like a phone that

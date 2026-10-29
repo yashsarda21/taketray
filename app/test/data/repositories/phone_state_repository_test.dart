@@ -273,6 +273,72 @@ void main() {
     });
   });
 
+  group('volume versions (Ruling V)', () {
+    test('none by default; recorded per volume', () async {
+      expect(await repo.volumeVersions(), isEmpty);
+
+      await repo.recordVolumeVersion('external_primary', 'v1');
+      await repo.recordVolumeVersion('ABCD-1234', 'c1');
+      await repo.recordVolumeVersion('external_primary', 'v2');
+
+      expect(await repo.volumeVersions(), {
+        'external_primary': 'v2',
+        'ABCD-1234': 'c1',
+      });
+    });
+
+    test('kept when Shooting mode goes off', () async {
+      await turnOn();
+      await repo.recordVolumeVersion('external_primary', 'v1');
+
+      await repo.turnShootingOff();
+
+      expect(await repo.volumeVersions(), {'external_primary': 'v1'});
+    });
+
+    test('never exported, and an import forgets them', () async {
+      expect(PhoneStateRepository.volumeVersionsKey, 'mediaVolumeVersions');
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.volumeVersionsKey)),
+      );
+      await repo.recordVolumeVersion('external_primary', 'secret-version');
+      final text = await BackupService(db, clock).exportJson();
+      expect(text, isNot(contains('mediaVolumeVersions')));
+      expect(text, isNot(contains('secret-version')));
+
+      await BackupService(db, clock).importJson(
+        File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
+      );
+
+      expect(await repo.volumeVersions(), isEmpty);
+    });
+
+    for (final (name, value) in [
+      ('not JSON', 'nope'),
+      ('a list', '["v1"]'),
+      ('a number as a version', '{"external_primary": 3}'),
+    ]) {
+      test('$name reads as none, logging only the key', () async {
+        final records = _record();
+        await _put('mediaVolumeVersions', value);
+
+        expect(await repo.volumeVersions(), isEmpty);
+
+        expect(
+          records.map((r) => r.message),
+          contains(contains('mediaVolumeVersions')),
+        );
+        for (final r in records) {
+          expect(r.message, isNot(contains(value)));
+        }
+        // Recording over a corrupt value starts a fresh map.
+        await repo.recordVolumeVersion('external_primary', 'v1');
+        expect(await repo.volumeVersions(), {'external_primary': 'v1'});
+      });
+    }
+  });
+
   group('markEarlierAdded', () {
     test('sets the flag, a new session clears it, off ignores it', () async {
       // Off: ignored, and nothing is written.

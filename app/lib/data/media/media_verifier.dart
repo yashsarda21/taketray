@@ -5,8 +5,10 @@ import 'package:logging/logging.dart';
 import 'package:meta/meta.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/media/library_resync.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -50,12 +52,14 @@ class VerifyOutcome {
 /// scan: a scan that remaps clips after a rebuild finishes first, and the
 /// verify then reads the clips' new numbers.
 class MediaVerifier {
-  new(this._bridge, this._clips, this._queue, this._clock);
+  new(this._bridge, this._clips, this._phone, this._queue, this._clock);
 
   final MediaBridge _bridge;
   final ClipsRepository _clips;
+  final PhoneStateRepository _phone;
   final MediaWorkQueue _queue;
   final Clock _clock;
+  late final LibraryResync _rebuilds = LibraryResync(_bridge, _clips, _phone);
 
   /// How many MediaStore ids one `videosByIds` call asks for.
   static const batchSize = 500;
@@ -77,13 +81,20 @@ class MediaVerifier {
   ///    would look gone (Review Focus 1).
   /// 2. Picked and detached clips, clips whose volume is not mounted, and ids
   ///    that no longer exist are skipped.
-  /// 3. The rest are asked for by volume, in batches of [batchSize]. A
-  ///    returned row that is [sameVideo] is found; one that is not is
-  ///    detached (its number holds another video now); a clip whose row is
-  ///    not returned is missing. When any batch of a volume fails, that whole
-  ///    volume is skipped: an error never means "missing".
-  /// 4. Writes: detach, `recordVerification`, then `removeMissingFromLists`
-  ///    for every missing clip (detached ones included).
+  /// 3. Per volume, first the library version (Ruling V): when the version
+  ///    recorded for it differs from the current one, Android rebuilt it, so
+  ///    the old numbers mean nothing. The volume's clips are matched again by
+  ///    fingerprint (`LibraryResync`, the scanner's own rule) before any
+  ///    number is looked up; a clip that match cannot find is missing (it is
+  ///    detached in place, as after any rebuild). No version recorded: the
+  ///    current one is recorded.
+  /// 4. The volume's clips (read again after a resync) are asked for in
+  ///    batches of [batchSize]. A returned row that is `sameVideo` is found;
+  ///    one that is not means the number holds another video; a clip whose
+  ///    row is not returned is gone. When anything about a volume fails, its
+  ///    unchecked clips are skipped: an error never means "missing".
+  /// 5. One write (`applyVerification`): detach the other-video clips, flag
+  ///    found and gone, take gone and detached clips out of the lists.
   Future<VerifyOutcome> _verify(Set<int> ids) async {
     if (ids.isEmpty) {
       return const VerifyOutcome(found: {}, missing: {}, skipped: {});
@@ -98,20 +109,16 @@ class MediaVerifier {
     final skipped = {...ids}..removeAll(clips.map((c) => c.id));
     final mounted = {
       for (final v in await _bridge.volumes())
-        if (v.isMounted) v.name,
+        if (v.isMounted) v.name: v,
     };
+    final recorded = await _phone.volumeVersions();
     final byVolume = <String, List<Clip>>{};
     for (final clip in clips) {
       final volume = clip.volumeName;
-      final number = clip.mediaStoreId;
-      if (clip.source != ClipSource.mediaStore ||
-          volume == null ||
-          number == null ||
-          number <= 0 ||
-          !mounted.contains(volume)) {
-        skipped.add(clip.id);
+      if (_checkable(clip) && mounted.containsKey(volume)) {
+        (byVolume[volume!] ??= []).add(clip);
       } else {
-        (byVolume[volume] ??= []).add(clip);
+        skipped.add(clip.id);
       }
     }
 
@@ -119,43 +126,92 @@ class MediaVerifier {
     final found = <int>{};
     final gone = <int>{};
     final otherVideo = <int>{};
+    final lost = <int>{};
     for (final MapEntry(key: volume, value: group) in byVolume.entries) {
-      final Map<int, MediaVideo> rows;
+      final lostHere = <int>{};
       try {
-        rows = await _rowsOf(volume, [for (final c in group) c.mediaStoreId!]);
-      } on PlatformException catch (e) {
-        skipped.addAll(group.map((c) => c.id));
-        _log.warning(
-          'Volume $volume did not answer (${e.code}): '
-          'skipped ${group.length} clips',
+        var current = group;
+        final match = await _rebuilds.catchUp(
+          mounted[volume]!,
+          recorded,
+          now: now,
         );
-        continue;
-      }
-      for (final clip in group) {
-        final row = rows[clip.mediaStoreId];
-        if (row == null) {
-          gone.add(clip.id);
-        } else if (sameVideo(clip.fingerprint, row, now: now)) {
-          found.add(clip.id);
-        } else {
-          otherVideo.add(clip.id);
+        if (match != null) {
+          final groupIds = {for (final c in group) c.id};
+          lostHere.addAll(match.lost.intersection(groupIds));
+          current = [
+            for (final c in await _clips.clipsByIds(
+              groupIds.difference(lostHere),
+            ))
+              if (_checkable(c)) c,
+          ];
         }
+        final rows = await _rowsOf(volume, [
+          for (final c in current) c.mediaStoreId!,
+        ]);
+        for (final clip in current) {
+          final row = rows[clip.mediaStoreId];
+          if (row == null) {
+            gone.add(clip.id);
+          } else if (sameVideo(clip.fingerprint, row, now: now)) {
+            found.add(clip.id);
+          } else {
+            otherVideo.add(clip.id);
+          }
+        }
+        skipped.addAll(
+          group
+              .map((c) => c.id)
+              .where(
+                (id) =>
+                    !lostHere.contains(id) &&
+                    !found.contains(id) &&
+                    !gone.contains(id) &&
+                    !otherVideo.contains(id),
+              ),
+        );
+      } on PlatformException catch (e) {
+        _skipRest(group, lostHere, skipped);
+        _log.warning(
+          'Volume $volume did not answer (${e.code}): skipped its clips',
+        );
+      } on Object catch (e) {
+        // Anything else must not stop the other volumes either (Ruling X);
+        // only its type is logged.
+        _skipRest(group, lostHere, skipped);
+        _log.warning(
+          'Volume $volume failed with ${e.runtimeType}: skipped its clips',
+        );
       }
+      lost.addAll(lostHere);
     }
 
-    await _clips.detach(otherVideo);
-    if (found.isNotEmpty || gone.isNotEmpty) {
-      await _clips.recordVerification(found: found, missing: gone);
-    }
-    final missing = {...gone, ...otherVideo};
-    final removed = await _clips.removeMissingFromLists(missing);
+    final removed = await _clips.applyVerification(
+      found: found,
+      gone: gone,
+      otherVideo: otherVideo,
+    );
+    final missing = {...gone, ...otherVideo, ...lost};
     _log.info(
       'Verified ${ids.length} clips: ${found.length} found, '
       '${gone.length} gone, ${otherVideo.length} now another video, '
-      '${skipped.length} skipped, $removed left the lists',
+      '${lost.length} lost in a rebuild, ${skipped.length} skipped, '
+      '$removed left the lists',
     );
     return VerifyOutcome(found: found, missing: missing, skipped: skipped);
   }
+
+  /// A MediaStore clip that still holds a number (not picked, not detached).
+  static bool _checkable(Clip clip) =>
+      clip.source == ClipSource.mediaStore &&
+      clip.volumeName != null &&
+      (clip.mediaStoreId ?? 0) > 0;
+
+  /// After a failure: every clip of [group] not already found lost in a
+  /// rebuild is skipped. Nothing of the volume was classified yet, because
+  /// the rows are only sorted once all of them have arrived.
+  static void _skipRest(List<Clip> group, Set<int> lost, Set<int> skipped) =>
+      skipped.addAll(group.map((c) => c.id).where((id) => !lost.contains(id)));
 
   /// The rows of [numbers] on [volume] that exist, by MediaStore id, asked
   /// in batches of [batchSize].
@@ -179,6 +235,7 @@ class MediaVerifier {
 MediaVerifier mediaVerifier(Ref ref) => MediaVerifier(
   ref.watch(mediaBridgeProvider),
   ref.watch(clipsRepositoryProvider),
+  ref.watch(phoneStateRepositoryProvider),
   ref.watch(mediaWorkQueueProvider),
   ref.watch(clockProvider),
 );

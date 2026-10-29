@@ -48,16 +48,45 @@ class ClipsRepository {
   ///
   /// All of it is one transaction, and a new clip is inserted together with
   /// its `inbox` row so a concurrent orphan sweep cannot delete it.
-  Future<List<int>> addDetectedClips(List<NewClip> clips) async {
-    final (ids, added) = await _db.transaction(() async {
+  Future<List<int>> addDetectedClips(List<NewClip> clips) async =>
+      (await _addDetected(clips, null)).ids;
+
+  /// [addDetectedClips] for clips read from the phone's media library, with
+  /// a check of every clip that is already known (D-72, Ruling U).
+  ///
+  /// A stored MediaStore clip holding a clip's (volume, number) is asked
+  /// [sameVideo]. When it is the same video it is found, as in
+  /// [addDetectedClips]. When it is not, it is provably not this video (an
+  /// imported clip holding a number this phone gave another video, say): it
+  /// is detached (`mediaStoreId = -clipId`, `missing`, `lastVerifiedAt` =
+  /// now; it keeps its place, like [detach]) and the clip is inserted as new,
+  /// into To tag. The detach and the insert are in the same transaction.
+  Future<DetectedClips> addCheckedClips(
+    List<NewClip> clips, {
+    required bool Function(Clip stored, NewClip incoming) sameVideo,
+  }) => _addDetected(clips, sameVideo);
+
+  Future<DetectedClips> _addDetected(
+    List<NewClip> clips,
+    bool Function(Clip stored, NewClip incoming)? sameVideo,
+  ) async {
+    final result = await _db.transaction(() async {
       final now = _clock.now();
-      var added = 0;
       final ids = <int>[];
+      final inserted = <int>[];
+      final detached = <int>{};
       for (final clip in clips) {
         final known = await _findId(clip);
         if (known != null) {
-          ids.add(known);
-          continue;
+          final row = await (_db.select(
+            _db.clips,
+          )..where((c) => c.id.equals(known))).getSingle();
+          if (sameVideo == null || sameVideo(_toClip(row), clip)) {
+            ids.add(known);
+            continue;
+          }
+          await _markDetached({known}, now);
+          detached.add(known);
         }
         final id = await _insertClip(clip, now);
         await _db
@@ -70,12 +99,15 @@ class ClipsRepository {
               ),
             );
         ids.add(id);
-        added++;
+        inserted.add(id);
       }
-      return (ids, added);
+      return DetectedClips(ids: ids, inserted: inserted, detached: detached);
     });
-    _log.info('Detected ${clips.length} clips, $added new');
-    return ids;
+    _log.info(
+      'Detected ${clips.length} clips, ${result.inserted.length} new, '
+      '${result.detached.length} detached',
+    );
+    return result;
   }
 
   /// Saves clips and adds them to reel [reelId] (phase 7: the user picks
@@ -266,30 +298,29 @@ class ClipsRepository {
     return [for (final row in rows) _toClip(row)];
   }
 
-  /// Which of [mediaStoreIds] a stored clip on volume [volumeName] holds: the
-  /// ones [addDetectedClips] would find instead of inserting. Like it, this
-  /// looks at every clip with that volume and number, whatever its source; a
-  /// detached clip holds `-clipId`, so its old number is not known.
-  ///
-  /// The scanner uses it to count new clips, and "Add earlier videos" to
-  /// leave known videos out. Asked in batches of [idBatch].
-  Future<Set<int>> knownMediaStoreIds(
+  /// The attached MediaStore clips on volume [volumeName] that hold one of
+  /// [mediaStoreIds], by number: the clips [addCheckedClips] would ask about.
+  /// Picked clips and detached ones (they hold `-clipId`) are not in it.
+  /// Asked in batches of [idBatch].
+  Future<Map<int, Clip>> mediaStoreClipsHolding(
     String volumeName,
     Iterable<int> mediaStoreIds,
   ) async {
-    final known = <int>{};
+    final held = <int, Clip>{};
     for (final batch in _batches(mediaStoreIds.toSet())) {
-      final query = _db.selectOnly(_db.clips)
-        ..addColumns([_db.clips.mediaStoreId])
-        ..where(
-          _db.clips.volumeName.equals(volumeName) &
-              _db.clips.mediaStoreId.isIn(batch),
-        );
-      known.addAll(
-        await query.map((row) => row.read(_db.clips.mediaStoreId)!).get(),
-      );
+      final rows =
+          await (_db.select(_db.clips)..where(
+                (c) =>
+                    c.source.equalsValue(ClipSource.mediaStore) &
+                    c.volumeName.equals(volumeName) &
+                    c.mediaStoreId.isIn(batch),
+              ))
+              .get();
+      for (final row in rows) {
+        held[row.mediaStoreId!] = _toClip(row);
+      }
     }
-    return known;
+    return held;
   }
 
   /// The clips with these ids that exist, by id. Unknown ids are left out.
@@ -454,18 +485,59 @@ class ClipsRepository {
   /// touched, and neither is a `vn_copies` row (D-54).
   Future<int> removeMissingFromLists(Set<int> clipIds) async {
     if (clipIds.isEmpty) return 0;
-    final deleted = await _db.transaction(() async {
-      final missing = _db.selectOnly(_db.clips)
-        ..addColumns([_db.clips.id])
-        ..where(_db.clips.missing.equals(true));
-      await (_db.delete(
-            _db.inbox,
-          )..where((i) => i.clipId.isIn(clipIds) & i.clipId.isInQuery(missing)))
-          .go();
-      return await _db.deleteOrphanClips();
-    });
+    final deleted = await _db.transaction(() => _removeMissing(clipIds));
     _log.info('Removed $deleted missing clips from the lists');
     return deleted;
+  }
+
+  /// Writes what one verify found, in one transaction (D-72), so a crash
+  /// cannot leave a detached clip in To tag:
+  ///
+  /// 1. [otherVideo] (their number now holds another video) are detached,
+  ///    as in [detach];
+  /// 2. [gone] are flagged missing and [found] not missing, as in
+  ///    [recordVerification] (`lastVerifiedAt` = now for both);
+  /// 3. [gone] and [otherVideo] leave To tag and Skipped, as in
+  ///    [removeMissingFromLists] (a clip in a reel stays, flagged).
+  ///
+  /// Returns how many clips were deleted. Throws [ArgumentError], writing
+  /// nothing, when a clip is in two of the sets. Empty sets write nothing.
+  Future<int> applyVerification({
+    required Set<int> found,
+    required Set<int> gone,
+    required Set<int> otherVideo,
+  }) async {
+    if (found.intersection(gone).isNotEmpty ||
+        found.intersection(otherVideo).isNotEmpty ||
+        gone.intersection(otherVideo).isNotEmpty) {
+      throw ArgumentError('A clip can be in only one verification set');
+    }
+    if (found.isEmpty && gone.isEmpty && otherVideo.isEmpty) return 0;
+    final deleted = await _db.transaction(() async {
+      final now = _clock.now();
+      await _markDetached(otherVideo, now);
+      await _markVerified(gone, isMissing: true, at: now);
+      await _markVerified(found, isMissing: false, at: now);
+      final missing = {...gone, ...otherVideo};
+      return missing.isEmpty ? 0 : await _removeMissing(missing);
+    });
+    _log.info(
+      'Applied a verification: ${found.length} found, ${gone.length} gone, '
+      '${otherVideo.length} detached, $deleted left the lists',
+    );
+    return deleted;
+  }
+
+  /// The inbox rows of the clips in [clipIds] that are flagged missing go,
+  /// then the orphan sweep. Run inside a transaction.
+  Future<int> _removeMissing(Set<int> clipIds) async {
+    final missing = _db.selectOnly(_db.clips)
+      ..addColumns([_db.clips.id])
+      ..where(_db.clips.missing.equals(true));
+    await (_db.delete(
+      _db.inbox,
+    )..where((i) => i.clipId.isIn(clipIds) & i.clipId.isInQuery(missing))).go();
+    return await _db.deleteOrphanClips();
   }
 
   /// The clips in To tag ([InboxState.pending]) or Skipped
@@ -523,8 +595,10 @@ class ClipsRepository {
     final query = _db.selectOnly(_db.clips)..addColumns([_db.clips.id]);
     switch (clip.source) {
       case ClipSource.mediaStore:
+        // Only a MediaStore clip is "this video" (Ruling X).
         query.where(
-          _db.clips.volumeName.equals(clip.volumeName!) &
+          _db.clips.source.equalsValue(ClipSource.mediaStore) &
+              _db.clips.volumeName.equals(clip.volumeName!) &
               _db.clips.mediaStoreId.equals(clip.mediaStoreId!),
         );
       case ClipSource.picker:
@@ -689,6 +763,21 @@ class ClipsRepository {
     missing: row.missing,
     lastVerifiedAt: row.lastVerifiedAt,
   );
+}
+
+/// What [ClipsRepository.addCheckedClips] did: [ids] has one clip id per
+/// clip passed in, in order (found or inserted); [inserted] the new ones, in
+/// order; [detached] the stored clips that turned out to be other videos.
+class DetectedClips {
+  const DetectedClips({
+    required this.ids,
+    required this.inserted,
+    required this.detached,
+  });
+
+  final List<int> ids;
+  final List<int> inserted;
+  final Set<int> detached;
 }
 
 @Riverpod(keepAlive: true)

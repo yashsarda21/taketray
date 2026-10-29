@@ -692,6 +692,7 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/clips_repos
 
 - `MediaScanner.scan()` looks for new videos on every volume while Shooting mode is on and puts them in To tag. It also notices when Android has rebuilt its media library and finds the stored clips again, and it holds "Add earlier videos" (`countEarlier`, `addEarlier`).
 - `MediaVerifier.verify(clips)` / `verifyAll()` check that stored clips' videos still exist, and flag or remove the ones that do not.
+- `LibraryResync` holds the one "find the clips again after a rebuild" step, which the scanner and the verifier both use.
 - `ZoneSync.sync()` copies the time zone changes the Android side saw while the app was closed into the zone timeline.
 
 All media jobs share one `MediaWorkQueue`, which runs them one at a time. Nothing calls any of this yet: Task 10 wires the scan and the zone sync to app start, resume and opening To tag.
@@ -747,11 +748,28 @@ All media jobs share one `MediaWorkQueue`, which runs them one at a time. Nothin
 
 - **Bounded by the generation read first.** Before paging, the scan reads the volume's generation (`captured`). A row added after that belongs to the *next* scan: it is not kept, and the page that holds it is the last. This matters in a race: a scan pauses between two pages, the user turns Shooting mode off, films something, and turns it on again. Without the bound, the old scan's next page would pick up the video shot while Shooting mode was off. The baseline never moves past `captured`, so those rows are not lost; the next scan returns them.
 
-- **The baseline moves last, and by compare-and-set.** The clips are saved with `addDetectedClips` first, and only after that succeeds does the baseline move, through Section 6's compare-and-set. If saving fails (a full disk, a crash), the baseline is where it was and the next scan sees the same videos again (saving a clip twice changes nothing). If Shooting mode went off and on meanwhile, the write is refused. A test injects a failing `addDetectedClips` and checks the baseline did not move; moving the baseline first makes that test fail.
+- **A late length holds the baseline too.** A video still being recorded holds the baseline just below it (Section 5). Android can also finish a row and fill in its duration a moment later. A row with no length is not a clip yet, so if the baseline passed it, the video would never be seen again once its length arrived. `holdsBaseline` (in `baseline.dart`) therefore also holds for a finished row without a length that was added at most ten minutes ago:
 
-- **A rebuilt library adds nothing.** When a volume's version changes, the scan does not look for "new" videos at all: every row would look new. It reads `allVideos`, finds each stored clip again with `matchAfterRebuild` (Section 5), applies the result with `applyRebuildMatch` (Section 6) and starts the volume from now. The one test with 50 videos in the "new" library checks that 0 are added and that every stored clip on that volume ends up either on its own video again or detached and missing. A rebuild noticed because the generation went *backwards* under the same version needs one extra permission: Section 6's compare-and-set refuses a lower generation within one version, so the scanner passes `rebuilt: true` for this one write (D-72).
+  ```dart
+  if (v.isPending) return true;
+  if ((v.durationMs ?? 0) > 0) return false;
+  ...
+  return nowMs - addedSec * 1000 <= lateMetadataWindow.inMilliseconds;
+  ```
 
-- **An error never means "missing".** If `videosByIds` fails for a volume, the verifier marks every clip of that volume `skipped`, never missing: a missing clip that is only in To tag is removed from the list, so treating an error as "gone" would throw away the user's clips. The same goes for a volume that is not mounted (a removed SD card): skipped, untouched (Review Focus 5).
+  An older row without a length is a broken file and is passed, so it cannot hold the baseline for ever. A test at exactly ten minutes holds, and one millisecond later does not.
+
+- **A known number must be the same video.** A MediaStore number is only unique within one phone's library. A clip restored from a backup of another phone can hold number 5 before this phone has a video 5. When the phone later gives 5 to a new video, finding "the clip" by number alone would keep the old clip, add nothing, and move the baseline past the real video: lost for good. So the scan (and "Add earlier videos") saves with `addCheckedClips`, which asks `sameVideo` about every stored clip it finds by number. If the fingerprint says it is another video, the old clip is detached (it keeps its reel, flagged missing, and its old number can never match again) and the video is saved as a new clip in To tag, both in one transaction.
+
+- **The baseline moves last, and by compare-and-set.** The clips are saved with `addCheckedClips` first, and only after that succeeds does the baseline move, through Section 6's compare-and-set. If saving fails (a full disk, a crash), the baseline is where it was and the next scan sees the same videos again (saving a clip twice changes nothing). If Shooting mode went off and on meanwhile, the write is refused. A test injects a failing `addCheckedClips` and checks the baseline did not move; moving the baseline first makes that test fail.
+
+- **A rebuilt library adds nothing.** When a volume's version changes, the scan does not look for "new" videos at all: every row would look new. `LibraryResync.resync` reads `allVideos`, finds each stored clip again with `matchAfterRebuild` (Section 5), applies the result with `applyRebuildMatch` (Section 6), and the volume starts from now. The one test with 50 videos in the "new" library checks that 0 are added and that every stored clip on that volume ends up either on its own video again or detached and missing. A rebuild noticed because the generation went *backwards* under the same version needs one extra permission: Section 6's compare-and-set refuses a lower generation within one version, so the scanner passes `rebuilt: true` for this one write (D-72).
+
+- **Both jobs know which library the numbers belong to.** The baselines exist only while Shooting mode is on, but Android can rebuild its library at any time. If it happens while Shooting mode is off, a verify would look up the clips' old numbers: they would miss (an inbox clip would be deleted) or hit other videos (the clip detached), and the fingerprints could never help again. So `PhoneStateRepository` also remembers, per volume, the version the stored numbers belong to (`mediaVolumeVersions`, never exported, kept when Shooting mode goes off). Before it looks up any number of a volume, the verifier calls `LibraryResync.catchUp`: same version → nothing; none known yet → remember this one; another one → match the clips by fingerprint first. The scan does the same before it pages, which also covers Shooting mode switched on after a rebuild (its new baseline already has the new version, so the plan alone would never resync).
+
+- **An error never means "missing", and one volume cannot stop the others.** If `videosByIds` fails for a volume, the verifier marks every clip of that volume `skipped`, never missing: a missing clip that is only in To tag is removed from the list, so treating an error as "gone" would throw away the user's clips. The same goes for a volume that is not mounted (a removed SD card): skipped, untouched (Review Focus 5). Any other error inside one volume's work (a database surprise, a bug) is caught for that volume only, in both jobs, and logged by its type: the volume is reported as failed, its baseline does not move, and the next volume runs. The verifier's writes (detach, flags, leaving the lists) are one transaction, `applyVerification`, so a crash cannot leave a detached clip in To tag.
+
+- **A scan whose session ended writes nothing.** After the phone has listed the volumes, the scan reads Shooting mode again. If it went off, or off and on, while the phone was answering, the scan stops there with `ScanShootingOff`. The compare-and-set would refuse its baselines anyway, but this way it does not even save clips or record versions for a session that is over.
 
 - **Zone sync clears only what it has saved.** `ZoneSync.sync` merges the native list plus "the zone now" with `recordAll`, and only then tells Android to forget its entries, up to the newest *native* one (not "now", so an entry Android wrote a moment after the read survives). With an empty native list it clears nothing.
 
@@ -777,21 +795,22 @@ sequenceDiagram
     S->>P: markAccessWasFull()
     S->>B: currentZoneId(), volumes()
     B-->>S: volume (version, generation = captured)
-    Note over S: planVolume → ScanAfter(g); cursor = g, limit = 500
+    S->>P: loadShooting() again, volumeVersions()
+    Note over S: same session, else stop. planVolume → ScanAfter(g); LibraryResync.catchUp; cursor = g, limit = 500
     loop until a short page, a row past captured, or stuck at 16000
         S->>B: videosAddedAfter(volume, cursor, folders, limit)
         B-->>S: page (oldest generation first)
         Note over S: keep rows ≤ captured, by id; full page → nextPageCursor, or double the limit
     end
-    S->>R: knownMediaStoreIds(), then addDetectedClips(usable rows)
-    R-->>S: ids (new ones in To tag)
-    Note over S: advanceBaseline(from: g, captured, seen, truncated)
+    S->>R: addCheckedClips(usable rows, sameVideo)
+    R-->>S: inserted ids (in To tag), detached ids
+    Note over S: advanceBaseline(from: g, captured, seen, now, truncated)
     S->>P: advanceBaseline(volume, expectedSession, expected, next)
     P-->>S: wrote, or refused (it had changed)
     S-->>C: ScanDone(added, resynced, failedVolumes)
 ```
 
-**Where it lives:** `app/lib/data/media/media_work_queue.dart` (`MediaWorkQueue`, `mediaWorkQueueProvider`), `media_scanner.dart` (`MediaScanner`, `ScanOutcome`, `mediaScannerProvider`), `media_verifier.dart` (`MediaVerifier`, `VerifyOutcome`, `mediaVerifierProvider`), `zone_sync.dart` (`ZoneSync`, `zoneSyncProvider`); new reads in `app/lib/data/repositories/clips_repository.dart` (`knownMediaStoreIds`, `clipsByIds`, `allClipIds`) and the `rebuilt` flag in `phone_state_repository.dart`. Tests in `app/test/data/media/`: `media_scanner_test.dart`, `add_earlier_test.dart`, `media_verifier_test.dart`, `zone_sync_test.dart`, `media_work_queue_test.dart`, with the shared `media_harness.dart` (a fresh in-memory database, a `FakeMediaBridge` that also records the paging and batch arguments, and the repositories). The flows are in `docs/flow.md` ("Finding new clips", "Checking clips still exist", "Adding earlier videos").
+**Where it lives:** `app/lib/data/media/media_work_queue.dart` (`MediaWorkQueue`, `mediaWorkQueueProvider`), `media_scanner.dart` (`MediaScanner`, `ScanOutcome`, `mediaScannerProvider`), `media_verifier.dart` (`MediaVerifier`, `VerifyOutcome`, `mediaVerifierProvider`), `zone_sync.dart` (`ZoneSync`, `zoneSyncProvider`), `library_resync.dart` (`LibraryResync`); `holdsBaseline` in `app/lib/domain/rules/baseline.dart`; in `app/lib/data/repositories/clips_repository.dart` `addCheckedClips`, `mediaStoreClipsHolding`, `applyVerification`, `clipsByIds` and `allClipIds`; in `phone_state_repository.dart` the `rebuilt` flag and `volumeVersions` / `recordVolumeVersion`; and the import check for a clip's identity in `app/lib/data/backup/backup_format.dart`. Tests in `app/test/data/media/`: `media_scanner_test.dart`, `add_earlier_test.dart`, `media_verifier_test.dart`, `zone_sync_test.dart`, `media_work_queue_test.dart`, with the shared `media_harness.dart` (a fresh in-memory database, a `FakeMediaBridge` that also records the paging and batch arguments, and the repositories). The flows are in `docs/flow.md` ("Finding new clips", "Checking clips still exist", "Adding earlier videos").
 
 **Try it yourself:** see the bug the paging rule prevents. From the repo root:
 
@@ -813,7 +832,7 @@ with the rule the plan first had, "the next page starts after the last row's gen
 
 and run the same command. It fails with ``Expected: <Instance of 'ScanDone'> with `added`: <1050> ...`` and `Actual: ScanDone:<ScanDone(500, resynced: {}, failed: {})>`: the first page held 450 videos plus 50 of generation 600, the second page asked for "after 600" and got nothing, and the other 550 videos of generation 600 were never added; the baseline then moved to 600, so they never would be. Put the file back with `git checkout -- app/lib/data/media/media_scanner.dart`, and check with `git status` that nothing is left over.
 
-**Decisions:** D-72 (the queue, coalescing, full access only, the paging and its bound, the baseline after the insert, an error never meaning missing, the zone sync, and the `rebuilt` flag), D-73 (Add earlier videos), with D-70 (the plan per volume and the pending hold) and D-71 (compare-and-set, detached clips) as background.
+**Decisions:** D-72 (the queue, coalescing, full access only, the paging and its bound, the late-length hold, the baseline after the insert, a known number having to be the same video, the rebuild-aware verifier, an error never meaning missing, the zone sync, and the `rebuilt` flag), D-73 (Add earlier videos), with D-70 (the plan per volume and the pending hold) and D-71 (compare-and-set, detached clips) as background.
 
 ---
 

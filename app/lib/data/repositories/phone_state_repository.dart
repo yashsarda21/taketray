@@ -17,10 +17,11 @@ final Logger _log = Logger('phoneState');
 /// where each volume stood when it was switched on, and whether the app ever
 /// had full access to the videos.
 ///
-/// It lives in the `settings` table under two keys, `shootingMode` and
-/// `mediaAccessWasFull`. Neither is in `SettingsRepository.exportedKeys`, so a
-/// backup never holds them, and an import deletes them (D-71): after a restore
-/// Shooting mode is off, because the baselines belong to the phone's own media
+/// It lives in the `settings` table under three keys, `shootingMode`,
+/// `mediaAccessWasFull` and `mediaVolumeVersions`. None is in
+/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
+/// import deletes them (D-71, D-72): after a restore Shooting mode is off, and
+/// no volume version is known, because both belong to the phone's own media
 /// library.
 ///
 /// `shootingMode` holds the whole [ShootingState] as one JSON value, so
@@ -35,6 +36,46 @@ class PhoneStateRepository {
 
   static const shootingModeKey = 'shootingMode';
   static const mediaAccessWasFullKey = 'mediaAccessWasFull';
+  static const volumeVersionsKey = 'mediaVolumeVersions';
+
+  /// The MediaStore version last seen for each volume, by volume name: the
+  /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
+  /// whether Shooting mode is on or off; a missing or unreadable value is
+  /// empty (only the key's name is logged, never a version).
+  Future<Map<String, String>> volumeVersions() async {
+    final text = await _rawValue(volumeVersionsKey);
+    if (text == null) return const {};
+    try {
+      final json = jsonDecode(text);
+      if (json is Map<String, dynamic> &&
+          json.values.every((v) => v is String)) {
+        return json.cast<String, String>();
+      }
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $volumeVersionsKey is corrupt, reading it as none');
+    return const {};
+  }
+
+  /// Remembers that the stored clips of [volume] now belong to [version].
+  /// Other volumes are kept; an unreadable value is replaced.
+  Future<void> recordVolumeVersion(String volume, String version) async {
+    final changed = await _db.transaction(() async {
+      final current = await volumeVersions();
+      if (current[volume] == version) return false;
+      await _db
+          .into(_db.settings)
+          .insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              key: volumeVersionsKey,
+              value: jsonEncode({...current, volume: version}),
+            ),
+          );
+      return true;
+    });
+    if (changed) _log.info('Recorded the version of volume $volume');
+  }
 
   /// Shooting mode now. A missing or corrupt value is [ShootingState.off].
   Future<ShootingState> loadShooting() async =>

@@ -116,6 +116,26 @@ void main() {
     },
   );
 
+  test('a stored clip holding the number of a different video: counted, '
+      'added, and the old clip detached (Ruling U)', () async {
+    // An imported clip holds number 1, but this phone's video 1 is another
+    // one (another size).
+    final [oldClip] = await h.store([today1.copyWith(sizeBytes: 5)]);
+    final reel = await reels.create('Goa');
+    await h.clips.tagClip(oldClip, {reel.id});
+
+    expect(await h.scanner.countEarlier(), counts(2, 3, 4));
+    final ids = await h.scanner.addEarlier(EarlierRange.today);
+
+    expect(ids, hasLength(2));
+    expect(ids, isNot(contains(oldClip)));
+    expect(await toTagIds(), [1, 2]);
+    final old = await h.clip(oldClip);
+    expect((old.mediaStoreId, old.missing), (-oldClip, true));
+    expect(await h.clips.watchReelIdsOf(oldClip).first, {reel.id});
+    expect(await h.scanner.countEarlier(), counts(0, 1, 2));
+  });
+
   test('a tagged clip in the window does not return to To tag', () async {
     await h.store([today1]);
     final clipId = await clipIdOf(today1);

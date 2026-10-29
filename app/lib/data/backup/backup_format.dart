@@ -275,11 +275,17 @@ BackupData _readV1(_Fields file) {
     // The rules of the `clips` CHECKs and unique keys (D-54, D-57): a clip's
     // identity is never half empty, and no two clips share one.
     switch (source) {
+      // Nor does it carry the other source's identity (Ruling X): a picked
+      // clip holding a volume and a number would be taken for a detected
+      // video, and could stop a rebuild resync.
       case ClipSource.mediaStore:
         if (volumeName == null) throw c.invalid('volumeName');
         if (mediaStoreId == null) throw c.invalid('mediaStoreId');
+        if (pickerUri != null) throw c.invalid('pickerUri');
       case ClipSource.picker:
         if (pickerUri == null) throw c.invalid('pickerUri');
+        if (volumeName != null) throw c.invalid('volumeName');
+        if (mediaStoreId != null) throw c.invalid('mediaStoreId');
     }
     // A detached clip (D-71) holds minus its own id; no other negative number
     // is a MediaStore id, and a wrong one could collide with a live clip's.

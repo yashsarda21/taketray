@@ -52,4 +52,4 @@ final class MediaVerifierProvider
   }
 }
 
-String _$mediaVerifierHash() => r'1b63c90572700bb8d6341fa519b6b7c0d6d258cf';
+String _$mediaVerifierHash() => r'9f8ea33a75897807eae0ef738f72d52ef8d1d328';

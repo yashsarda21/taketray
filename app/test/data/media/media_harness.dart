@@ -101,7 +101,7 @@ class MediaHarness {
     settings = SettingsRepository(db, clock);
     this.zones = (zones ?? ZoneRepository.new)(db, clock);
     scanner = scannerWith(clips);
-    verifier = MediaVerifier(this.bridge, clips, queue, clock);
+    verifier = MediaVerifier(this.bridge, clips, phoneState, queue, clock);
   }
 
   final AppDatabase db;

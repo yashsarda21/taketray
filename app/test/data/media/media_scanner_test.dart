@@ -5,6 +5,7 @@ import 'package:logging/logging.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -27,6 +28,7 @@ MediaVideo video(
   int? durationMs = 5000,
   int? sizeBytes,
   int dateTakenMs = 1780000000000,
+  int? dateAddedSec = 1780000000,
   String? name,
 }) => fakeVideo(
   id: id,
@@ -37,6 +39,7 @@ MediaVideo video(
   durationMs: durationMs,
   sizeBytes: sizeBytes ?? 1000000 + id,
   dateTakenMs: dateTakenMs,
+  dateAddedSec: dateAddedSec,
   name: name,
 );
 
@@ -63,8 +66,34 @@ class _FailingClips extends ClipsRepository {
   _FailingClips(super._db, super._clock);
 
   @override
-  Future<List<int>> addDetectedClips(List<NewClip> clips) async =>
-      throw StateError('database is full');
+  Future<DetectedClips> addCheckedClips(
+    List<NewClip> clips, {
+    required bool Function(Clip stored, NewClip incoming) sameVideo,
+  }) async => throw StateError('database is full');
+}
+
+/// A bridge whose `videosAddedAfter` fails with an error that is not a
+/// `PlatformException` for one volume (a bug, or a database surprise).
+class _BrokenVolume extends RecordingBridge {
+  _BrokenVolume(this.volume);
+
+  final String volume;
+
+  @override
+  Future<List<MediaVideo>> videosAddedAfter(
+    String volumeName,
+    int afterGeneration,
+    List<String> folders,
+    int limit,
+  ) async {
+    if (volumeName == volume) throw StateError('unexpected');
+    return await super.videosAddedAfter(
+      volumeName,
+      afterGeneration,
+      folders,
+      limit,
+    );
+  }
 }
 
 Matcher scanDone({
@@ -252,15 +281,107 @@ void main() {
       expect(await h.toTag(), hasLength(2));
     });
 
-    test('zero-duration video is never added', () async {
+    test(
+      'an old zero-duration video is never added; the baseline passes it',
+      () async {
+        // Added on 2026-05-28, days before the scan: its length is not coming.
+        bridge.put([video(1, 10)]);
+        await h.turnOnNow();
+        bridge.put([
+          video(2, 11, durationMs: 0),
+          video(3, 12, durationMs: null),
+        ]);
+
+        expect(await h.scanner.scan(), scanDone(added: 0));
+
+        expect(await h.allClips(), isEmpty);
+        expect(await h.baselineOf(phone), at(12));
+      },
+    );
+
+    test('a zero-length video whose length arrives later is added once '
+        '(Ruling W)', () async {
+      final justNow = h.clock.now().millisecondsSinceEpoch ~/ 1000 - 60;
       bridge.put([video(1, 10)]);
       await h.turnOnNow();
-      bridge.put([video(2, 11, durationMs: 0), video(3, 12, durationMs: null)]);
+      bridge.put([
+        video(2, 11, durationMs: 0, dateAddedSec: justNow),
+        video(3, 12),
+      ]);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+      expect(await h.baselineOf(phone), at(10), reason: 'held before 11');
+
+      // Android fills in the length; the row keeps its GENERATION_ADDED.
+      bridge.videosByVolume[phone]!
+        ..removeWhere((v) => v.mediaStoreId == 2)
+        ..add(video(2, 11, dateAddedSec: justNow));
+      bridge.setVolume(phone, version: _v1, generation: 13);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+      expect([for (final c in await h.toTag()) c.mediaStoreId]..sort(), [2, 3]);
+      expect(await h.baselineOf(phone), at(13));
+      expect(await h.scanner.scan(), scanDone(added: 0));
+    });
+
+    test(
+      'a zero-length video stops holding ten minutes after it was added',
+      () async {
+        final justNow = h.clock.now().millisecondsSinceEpoch ~/ 1000;
+        bridge.put([video(1, 10)]);
+        await h.turnOnNow();
+        bridge.put([video(2, 11, durationMs: 0, dateAddedSec: justNow)]);
+
+        await h.scanner.scan();
+        expect(await h.baselineOf(phone), at(10));
+
+        h.clock.advance(const Duration(minutes: 10, seconds: 1));
+        await h.scanner.scan();
+        expect(await h.baselineOf(phone), at(11));
+        expect(await h.allClips(), isEmpty);
+      },
+    );
+
+    test('a stored clip holding a number the phone gives a different video: '
+        'the video lands in To tag, the old clip is detached and stays in '
+        'its reel (Ruling U)', () async {
+      // Clip 5 came from a backup of another phone; this phone has not yet
+      // reached number 5.
+      final [oldClip] = await h.store([video(5, 3, sizeBytes: 42)]);
+      final reel = await ReelsRepository(h.db, h.clock).create('Goa');
+      await h.clips.tagClip(oldClip, {reel.id});
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      bridge.put([video(5, 11)]);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+
+      final inToTag = (await h.toTag()).single;
+      expect(inToTag.mediaStoreId, 5);
+      expect(inToTag.id, isNot(oldClip));
+      expect(
+        sameVideo(inToTag.fingerprint, video(5, 11), now: h.clock.now()),
+        isTrue,
+      );
+      final old = await h.clip(oldClip);
+      expect((old.mediaStoreId, old.missing), (-oldClip, true));
+      expect(await h.clips.watchReelIdsOf(oldClip).first, {reel.id});
+      expect(await h.baselineOf(phone), at(11));
+    });
+
+    test('a stored clip holding the same number and the same video: nothing '
+        'changes', () async {
+      final [stored] = await h.store([video(5, 11)]);
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      bridge.put([video(5, 11)]);
 
       expect(await h.scanner.scan(), scanDone(added: 0));
 
-      expect(await h.allClips(), isEmpty);
-      expect(await h.baselineOf(phone), at(12));
+      final clip = await h.clip(stored);
+      expect((clip.mediaStoreId, clip.missing), (5, false));
+      expect(await h.allClips(), hasLength(1));
+      expect(await h.baselineOf(phone), at(11));
     });
 
     test('after an import (no baseline) scan starts from now', () async {
@@ -554,6 +675,50 @@ void main() {
       expect((await h.allClips()).single.mediaStoreId, 21);
     });
 
+    test(
+      'a scan records the version of every mounted volume it plans',
+      () async {
+        bridge
+          ..put([video(1, 10)])
+          ..put(
+            [video(1, 5, volume: card)],
+            volume: card,
+            version: 'c1',
+          );
+        await h.turnOnNow();
+
+        await h.scanner.scan();
+
+        expect(await h.phoneState.volumeVersions(), {phone: _v1, card: 'c1'});
+        bridge.setVolume(card, version: null);
+        await h.scanner.scan();
+        expect(await h.phoneState.volumeVersions(), {phone: _v1, card: 'c1'});
+      },
+    );
+
+    test('a rebuild while Shooting mode was off is caught up by the next scan '
+        '(Ruling V)', () async {
+      final old = video(1, 1);
+      bridge.put([old], generation: 10);
+      final [clipId] = await h.store([old]);
+      await h.phoneState.recordVolumeVersion(phone, _v1);
+      // Rebuilt while Shooting mode was off; it is then switched on at v2.
+      bridge
+        ..videosByVolume[phone] = []
+        ..put([
+          old.copyWith(mediaStoreId: 21),
+          video(1, 2, sizeBytes: 9),
+        ], version: 'v2');
+      await h.turnOnNow();
+
+      expect(await h.scanner.scan(), scanDone(added: 0, resynced: {phone}));
+
+      final clip = await h.clip(clipId);
+      expect((clip.mediaStoreId, clip.missing), (21, false));
+      expect(await h.phoneState.volumeVersions(), {phone: 'v2'});
+      expect(await h.baselineOf(phone), at(2, 'v2'));
+    });
+
     test('a generation that went backwards resyncs too', () async {
       final old = [video(1, 1)];
       bridge.put(old, generation: 10);
@@ -603,9 +768,12 @@ void main() {
       await h.turnOnNow();
       bridge.put([video(2, 11)]);
       final failing = h.scannerWith(_FailingClips(h.db, h.clock));
+      final logs = captureLogs();
 
-      await expectLater(failing.scan(), throwsStateError);
+      // Caught for that volume only (Ruling X): logged by type, never moved.
+      expect(await failing.scan(), scanDone(added: 0, failed: {phone}));
 
+      expect(logText(logs), contains('StateError'));
       expect(await h.baselineOf(phone), at(10));
       expect(await h.allClips(), isEmpty);
 
@@ -613,7 +781,35 @@ void main() {
       expect(await h.baselineOf(phone), at(11));
     });
 
-    test('volumes() throws → nothing is written, the code is logged', () async {
+    test('one volume failing unexpectedly does not stop the others', () async {
+      final h = MediaHarness(bridge: _BrokenVolume(phone));
+      h.bridge
+        ..put([video(1, 10)])
+        ..put(
+          [video(1, 5, volume: card)],
+          volume: card,
+          version: 'c1',
+        );
+      await h.turnOnNow();
+      h.bridge
+        ..put([video(2, 11)])
+        ..put(
+          [video(2, 6, volume: card)],
+          volume: card,
+          version: 'c1',
+        );
+      final logs = captureLogs();
+
+      expect(await h.scanner.scan(), scanDone(added: 1, failed: {phone}));
+
+      expect(await h.baselineOf(phone), at(10));
+      expect(await h.baselineOf(card), at(6, 'c1'));
+      expect(logText(logs), allOf(contains('StateError'), contains(phone)));
+      expect(logText(logs), isNot(contains('unexpected')));
+    });
+
+    test('volumes() throws → no baseline or clip is written, the code is '
+        'logged', () async {
       bridge.put([video(1, 10)]);
       final session = await h.turnOnNow();
       bridge
@@ -666,6 +862,27 @@ void main() {
       // Idle again: the next call starts a new run.
       expect(await h.scanner.scan(), scanDone(added: 0));
       expect(bridge.count('volumes'), 3);
+    });
+
+    test('Shooting mode toggled while the volumes are read: the scan stops '
+        'without writing (M6)', () async {
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      bridge.put([video(2, 11)]);
+      final gate = bridge.gate('volumes');
+
+      final stale = h.scanner.scan();
+      await until(() => bridge.calls.contains('volumes'));
+      await h.phoneState.turnShootingOff();
+      h.clock.advance(const Duration(minutes: 1));
+      final session = await h.turnOn({phone: at(10)});
+      gate.complete();
+
+      expect(await stale, isA<ScanShootingOff>());
+      expect(bridge.calls, isNot(contains('videosAddedAfter')));
+      expect(await h.phoneState.loadShooting(), session);
+      expect(await h.allClips(), isEmpty);
+      expect(await h.phoneState.volumeVersions(), isEmpty);
     });
 
     test(

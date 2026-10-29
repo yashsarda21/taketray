@@ -61,16 +61,46 @@ VolumePlan planVolume(VolumeBaseline? baseline, MediaVolume current) {
   return ScanAfter(baseline.generation);
 }
 
+/// How long a finished video without a length keeps holding the baseline
+/// after it was added (D-72, Ruling W).
+const lateMetadataWindow = Duration(minutes: 10);
+
+/// Whether row [v] must hold the baseline before it, so the next scan sees
+/// it again:
+///
+/// - a pending row (a video still being recorded) always holds;
+/// - a finished row whose duration is unknown or 0 holds while its
+///   DATE_ADDED is at most [lateMetadataWindow] before [now] (exactly ten
+///   minutes still holds) and not more than one day after it (the bound of
+///   a plausible date, D-69). Android can fill in the length a moment after
+///   the row is finished; an older row without a length is broken and is
+///   passed.
+///
+/// DATE_ADDED is compared in seconds before it is multiplied, so a huge
+/// value cannot overflow into a plausible one.
+bool holdsBaseline(MediaVideo v, {required DateTime now}) {
+  if (v.isPending) return true;
+  if ((v.durationMs ?? 0) > 0) return false;
+  final addedSec = v.dateAddedSec;
+  if (addedSec == null || addedSec < 0) return false;
+  final nowMs = now.millisecondsSinceEpoch;
+  final latestSec = (nowMs + const Duration(days: 1).inMilliseconds) ~/ 1000;
+  if (addedSec > latestSec) return false;
+  return nowMs - addedSec * 1000 <= lateMetadataWindow.inMilliseconds;
+}
+
 /// The generation to store as the new baseline after a scan.
 ///
 /// [from] is the baseline the scan started from, [captured] the volume's
 /// generation read before the query, and [seen] every row the scan returned
 /// (pending ones included, all pages together). [truncated] is true when the
 /// scan stopped before the end: its last page was full and was not followed.
+/// [now] is the scan's time, for [holdsBaseline].
 ///
-/// A pending row (a video still being recorded) holds the baseline just
-/// before the oldest one, so the next scan sees it again once it is
-/// finished. A truncated scan ignores [captured] and holds one below the
+/// A row that holds the baseline ([holdsBaseline]: a video still being
+/// recorded, or a just-finished one whose length Android has not filled in
+/// yet) holds it just before the oldest such row, so the next scan sees it
+/// again. A truncated scan ignores [captured] and holds one below the
 /// highest generation seen: rows written in one transaction share a
 /// generation, so a full page can end in the middle of one. Otherwise the
 /// baseline moves to the highest of [captured] and the rows' generations.
@@ -79,19 +109,20 @@ int advanceBaseline({
   required int from,
   required int captured,
   required List<MediaVideo> seen,
+  required DateTime now,
   bool truncated = false,
 }) {
-  final pending = [
+  final holding = [
     for (final v in seen)
-      if (v.isPending) v.generationAdded,
+      if (holdsBaseline(v, now: now)) v.generationAdded,
   ];
-  final pendingHold = pending.isEmpty ? null : pending.reduce(min) - 1;
+  final hold = holding.isEmpty ? null : holding.reduce(min) - 1;
   if (truncated) {
     if (seen.isEmpty) return from;
     final cut = seen.map((v) => v.generationAdded).reduce(max) - 1;
-    return max(from, pendingHold == null ? cut : min(pendingHold, cut));
+    return max(from, hold == null ? cut : min(hold, cut));
   }
-  if (pendingHold != null) return max(from, pendingHold);
+  if (hold != null) return max(from, hold);
   return seen.fold(
     max(from, captured),
     (best, v) => max(best, v.generationAdded),

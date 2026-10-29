@@ -668,6 +668,19 @@ void main() {
             (f) => _section(f, 'clips').last['pickerUri'] = null,
             where: 'clips[3].pickerUri',
           ),
+          'a picked clip with a volume (Ruling X)': (
+            (f) => _section(f, 'clips').last['volumeName'] = 'external_primary',
+            where: 'clips[3].volumeName',
+          ),
+          'a picked clip with a MediaStore id (Ruling X)': (
+            (f) => _section(f, 'clips').last['mediaStoreId'] = 77,
+            where: 'clips[3].mediaStoreId',
+          ),
+          'a detected clip with a picker link (Ruling X)': (
+            (f) => _section(f, 'clips').first['pickerUri'] =
+                'content://media/picker/0/x/media/1',
+            where: 'clips[0].pickerUri',
+          ),
           'two clips with the same MediaStore identity': (
             (f) => _section(f, 'clips')[1]['mediaStoreId'] = 1001,
             where: 'clips[1].mediaStoreId',
