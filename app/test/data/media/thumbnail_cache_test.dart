@@ -72,8 +72,11 @@ final String baseFile =
     'external_primary_42_1000000_'
     '${DateTime.utc(2026, 5, 1, 12).millisecondsSinceEpoch}_300.jpg';
 
-Uint8List bytesOf(int length, [int fill = 7]) =>
-    Uint8List.fromList(List.filled(length, fill));
+/// [length] bytes that start like a JPEG (FF D8), then [fill].
+Uint8List bytesOf(int length, [int fill = 7]) => Uint8List.fromList([
+  for (var i = 0; i < length; i++)
+    if (i == 0) 0xFF else if (i == 1) 0xD8 else fill,
+]);
 
 void main() {
   late Directory root;
@@ -94,12 +97,16 @@ void main() {
     FakeMediaBridge? using,
     int maxBytes = 64 * 1024 * 1024,
     Future<void> Function(File temp, String finalPath)? renameFile,
+    Stream<FileSystemEntity> Function(Directory dir)? listDir,
+    Duration bridgeTimeout = const Duration(seconds: 15),
   }) => ThumbnailCache(
     using ?? bridge,
     dir,
     maxBytes: maxBytes,
     clock: clock,
     renameFile: renameFile,
+    listDir: listDir,
+    bridgeTimeout: bridgeTimeout,
   );
 
   List<String> names() {
@@ -413,6 +420,159 @@ void main() {
     });
   });
 
+  group('undecodable and foreign files', () {
+    test(
+      'a file that does not start with FF D8 is a miss: deleted, reloaded',
+      () async {
+        bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
+        dir.createSync(recursive: true);
+        final file = File('${dir.path}/$baseFile')
+          ..writeAsBytesSync([0x89, 0x50, 0x4E, 0x47, 1, 2, 3]);
+
+        final got = await cacheWith().load(clipOf(), 300);
+
+        expect(got, bytesOf(10));
+        expect(bridge.calls, ['thumbnail']);
+        expect(file.readAsBytesSync(), bytesOf(10), reason: 'rewritten whole');
+      },
+    );
+
+    test(
+      'a 1-byte file is a miss, and stays gone when the bridge has nothing',
+      () async {
+        dir.createSync(recursive: true);
+        final file = File('${dir.path}/$baseFile')..writeAsBytesSync([0xFF]);
+
+        expect(await cacheWith().load(clipOf(), 300), isNull);
+        expect(file.existsSync(), isFalse);
+      },
+    );
+
+    test('a file that starts with FF D8 is a hit', () async {
+      dir.createSync(recursive: true);
+      File('${dir.path}/$baseFile').writeAsBytesSync([0xFF, 0xD8]);
+
+      expect(await cacheWith().load(clipOf(), 300), [0xFF, 0xD8]);
+      expect(bridge.calls, isEmpty);
+    });
+
+    test('discard deletes the file of that key only', () async {
+      bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
+      final cache = cacheWith();
+      await cache.load(clipOf(), 300);
+      await cache.load(clipOf(), 200);
+      expect(names(), hasLength(2));
+
+      await cache.discard(clipOf(), 300);
+
+      expect(names(), [endsWith('_200.jpg')]);
+      bridge.calls.clear();
+      await cache.load(clipOf(), 300);
+      expect(bridge.calls, ['thumbnail'], reason: 'asked again after discard');
+    });
+
+    test('discard is a no-op: no file, no folder, no key', () async {
+      final cache = cacheWith();
+
+      await cache.discard(clipOf(), 300);
+      await cache.discard(clipOf(mediaStoreId: -1), 300);
+      await cache.discard(clipOf(), 0);
+      jpg('keep.jpg', 5, DateTime.utc(2026));
+      await cache.discard(clipOf(), 300);
+
+      expect(names(), ['keep.jpg']);
+    });
+
+    test(
+      'discard leaves the file of a load that is running right now',
+      () async {
+        bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
+        final renamed = Completer<void>();
+        final finish = Completer<void>();
+        final cache = cacheWith(
+          renameFile: (temp, finalPath) async {
+            await temp.rename(finalPath);
+            renamed.complete();
+            await finish.future; // written, but the load is still running
+          },
+        );
+        final loading = cache.load(clipOf(), 300);
+        await renamed.future;
+        expect(names(), [baseFile]);
+
+        await cache.discard(clipOf(), 300);
+        finish.complete();
+        await loading;
+
+        expect(names(), [baseFile], reason: 'the fresh file was kept');
+      },
+    );
+  });
+
+  group('bridge timeout', () {
+    test('a bridge that never answers gives null after the timeout', () async {
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final previous = Logger.root.level;
+      Logger.root.level = Level.ALL;
+      addTearDown(() => Logger.root.level = previous);
+      final stuck = _StuckBridge();
+      final cache = cacheWith(
+        using: stuck,
+        bridgeTimeout: const Duration(milliseconds: 30),
+      );
+
+      expect(await cache.load(clipOf(volume: '1234-5678'), 300), isNull);
+
+      expect(names(), isEmpty);
+      final text = records
+          .map((r) => '${r.message} ${r.error ?? ''}')
+          .join('\n');
+      expect(text, contains('1234-5678'));
+      expect(text, contains('timeout'));
+      expect(text, isNot(contains('/')));
+    });
+
+    test(
+      'shared loads all get null on a timeout, and the next call asks again',
+      () async {
+        final stuck = _StuckBridge();
+        final cache = cacheWith(
+          using: stuck,
+          bridgeTimeout: const Duration(milliseconds: 30),
+        );
+
+        final results = await Future.wait([
+          cache.load(clipOf(), 300),
+          cache.load(clipOf(), 300),
+        ]);
+
+        expect(results, [null, null]);
+        expect(stuck.calls, ['thumbnail'], reason: 'one call for both');
+        expect(await cache.load(clipOf(), 300), isNull);
+        expect(stuck.calls, [
+          'thumbnail',
+          'thumbnail',
+        ], reason: 'not remembered');
+      },
+    );
+
+    test('an answer that arrives after the timeout is not cached', () async {
+      final stuck = _StuckBridge();
+      final cache = cacheWith(
+        using: stuck,
+        bridgeTimeout: const Duration(milliseconds: 30),
+      );
+      expect(await cache.load(clipOf(), 300), isNull);
+
+      stuck.answer.complete(bytesOf(10));
+      await Future<void>.delayed(const Duration(milliseconds: 30));
+
+      expect(names(), isEmpty);
+    });
+  });
+
   group('sharing', () {
     test('two concurrent loads → one bridge call', () async {
       bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
@@ -549,6 +709,26 @@ void main() {
       },
     );
 
+    test(
+      'a file that vanishes while the folder is listed is skipped',
+      () async {
+        jpg('a.jpg', 50, base);
+        jpg('b.jpg', 51, base.add(const Duration(days: 1)));
+        final cache = cacheWith(
+          maxBytes: 100,
+          listDir: (d) async* {
+            // Listed, then gone before it is looked at.
+            yield File('${d.path}/ghost.jpg');
+            yield* d.list();
+          },
+        );
+
+        await cache.prune();
+
+        expect(names(), ['b.jpg'], reason: 'the ghost counted for nothing');
+      },
+    );
+
     test('files that are not thumbnails are left alone', () async {
       jpg('a.jpg', 500, base);
       jpg('notes.txt', 500, base);
@@ -580,16 +760,18 @@ void main() {
       bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
       jpg('old.jpg', 40, base);
       final renameGate = Completer<void>();
+      final atRename = Completer<void>();
       final cache = cacheWith(
         maxBytes: 1,
         renameFile: (temp, finalPath) async {
+          atRename.complete();
           await renameGate.future;
           await temp.rename(finalPath);
         },
       );
 
       final loading = cache.load(clipOf(), 300);
-      await Future<void>.delayed(const Duration(milliseconds: 50));
+      await atRename.future; // the temp file is complete, the rename waits
       expect(names().where((n) => n.endsWith('.tmp')), hasLength(1));
 
       await cache.prune();
@@ -664,6 +846,22 @@ void main() {
       expect(File('${dir.path}/$name').readAsBytesSync(), bytesOf(10));
     });
   });
+}
+
+/// A bridge whose thumbnail call waits until [answer] completes.
+class _StuckBridge extends FakeMediaBridge {
+  final Completer<Uint8List?> answer = Completer();
+
+  @override
+  Future<Uint8List?> thumbnail(
+    String volumeName,
+    int mediaStoreId,
+    int widthPx,
+    int heightPx,
+  ) {
+    calls.add('thumbnail');
+    return answer.future;
+  }
 }
 
 /// Stands for the process being killed: an [Error], so no `on Exception`

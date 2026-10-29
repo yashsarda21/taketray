@@ -20,6 +20,11 @@ final Logger _log = Logger('thumbnails');
 /// The longest side the bridge accepts (`Thumbnails.load` on the Kotlin side).
 const int maxThumbnailPx = 4096;
 
+/// How long one bridge call may take before the load gives up (D-74). Android
+/// answers in milliseconds; a call that never returns would otherwise keep
+/// the tile, and every load sharing it, waiting for ever.
+const Duration defaultBridgeTimeout = Duration(seconds: 15);
+
 /// The default size limit of the thumbnail folder (D-74).
 const int defaultThumbnailCacheBytes = 64 * 1024 * 1024;
 
@@ -122,12 +127,18 @@ class ThumbnailCache {
     this._clock = const Clock(),
     @visibleForTesting
     Future<void> Function(File temp, String finalPath)? renameFile,
-  }) : _rename = renameFile ?? _renameTo;
+    @visibleForTesting
+    Stream<FileSystemEntity> Function(Directory dir)? listDir,
+    @visibleForTesting this._bridgeTimeout = defaultBridgeTimeout,
+  }) : _rename = renameFile ?? _renameTo,
+       _list = listDir ?? _listOf;
 
   final MediaBridge _bridge;
   final Directory _dir;
   final Clock _clock;
   final Future<void> Function(File temp, String finalPath) _rename;
+  final Stream<FileSystemEntity> Function(Directory dir) _list;
+  final Duration _bridgeTimeout;
 
   /// The size [prune] keeps the folder under.
   final int maxBytes;
@@ -136,6 +147,8 @@ class ThumbnailCache {
 
   /// Temp files this cache is writing right now; [prune] leaves them alone.
   final Set<String> _writing = {};
+
+  static Stream<FileSystemEntity> _listOf(Directory dir) => dir.list();
 
   static Future<void> _renameTo(File temp, String finalPath) =>
       temp.rename(finalPath);
@@ -175,8 +188,8 @@ class ThumbnailCache {
     } on FileSystemException {
       return null; // not there (or the folder is gone, or prune took it)
     }
-    if (bytes.isEmpty) {
-      // A write that was cut short in some other way: not a picture.
+    if (!_looksLikeJpeg(bytes)) {
+      // Empty, cut short or foreign: not a picture (the bridge's are JPEG).
       await _tryDelete(file);
       return null;
     }
@@ -188,15 +201,18 @@ class ThumbnailCache {
     return bytes;
   }
 
+  static bool _looksLikeJpeg(Uint8List bytes) =>
+      bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8;
+
   Future<Uint8List?> _fromBridge(ClipThumbnailKey key) async {
     final Uint8List? bytes;
     try {
-      bytes = await _bridge.thumbnail(
-        key.volumeName,
-        key.mediaStoreId,
-        key.sizePx,
-        key.sizePx,
-      );
+      bytes = await _bridge
+          .thumbnail(key.volumeName, key.mediaStoreId, key.sizePx, key.sizePx)
+          .timeout(_bridgeTimeout);
+    } on TimeoutException {
+      _log.info('No thumbnail from volume ${key.volumeName}: timeout');
+      return null;
     } on PlatformException catch (e) {
       _log.info('No thumbnail from volume ${key.volumeName}: ${e.code}');
       return null;
@@ -228,6 +244,17 @@ class ThumbnailCache {
     }
   }
 
+  /// Deletes the file of [clip] at [sizePx], when its bytes turned out not to
+  /// be a picture (the decoder refused them). A no-op when there is no such
+  /// file, when the clip has no key, or when a load of that key is running
+  /// right now: that load may be writing a fresh file, and if what it returns
+  /// is bad too, its own tile discards it afterwards.
+  Future<void> discard(Clip clip, int sizePx) async {
+    final key = ClipThumbnailKey.of(clip, sizePx);
+    if (key == null || _inFlight.containsKey(key.fileName)) return;
+    await _tryDelete(_fileOf(key));
+  }
+
   /// Deletes the oldest thumbnails (by modified time) until the total is at
   /// most [maxBytes], and every `.tmp` file a crash left behind (those are
   /// not counted). A temp file this cache is writing right now is kept. Files
@@ -235,16 +262,19 @@ class ThumbnailCache {
   Future<void> prune() async {
     final pictures = <(File, FileStat)>[];
     try {
-      await for (final entity in _dir.list()) {
+      await for (final entity in _list(_dir)) {
         if (entity is! File) continue;
         final name = entity.uri.pathSegments.last;
         if (name.endsWith(_temp)) {
           if (!_writing.contains(entity.path)) await _tryDelete(entity);
         } else if (name.endsWith(_picture)) {
-          try {
-            pictures.add((entity, entity.statSync()));
-          } on FileSystemException {
-            // Deleted meanwhile.
+          // The lint prefers sync calls; this runs once at start, off the
+          // frame path, and a sync stat would block on every file.
+          // ignore: avoid_slow_async_io
+          final stat = await entity.stat();
+          // Deleted since the listing: nothing to count or delete.
+          if (stat.type != FileSystemEntityType.notFound) {
+            pictures.add((entity, stat));
           }
         }
       }

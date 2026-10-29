@@ -59,13 +59,17 @@ class ClipThumbnailImage extends ImageProvider<ClipThumbnailKey> {
     ClipThumbnailKey key,
     ImageDecoderCallback decode,
   ) async {
+    Uint8List? bytes;
     try {
-      final bytes = await cache.load(clip, key.sizePx);
+      bytes = await cache.load(clip, key.sizePx);
       if (bytes == null) {
         throw StateError('No thumbnail for ${key.fileName}');
       }
       return await decode(await ui.ImmutableBuffer.fromUint8List(bytes));
     } on Object {
+      // Bytes that do not decode would be read from the disk again by every
+      // tile, for ever: delete that file so the next tile asks the bridge.
+      if (bytes != null) await cache.discard(clip, key.sizePx);
       // Flutter's image cache would keep this failed load for the key and
       // replay the error to every later tile (as `NetworkImage` also avoids).
       scheduleMicrotask(() => PaintingBinding.instance.imageCache.evict(key));

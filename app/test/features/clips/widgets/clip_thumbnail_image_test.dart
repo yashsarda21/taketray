@@ -13,10 +13,10 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 
 import '../../../support/fake_media_bridge.dart';
 
-/// A real 1x1 PNG; the image codec recognises it by content.
+/// A real 1x1 JPEG, like the bridge returns; the codec recognises it by
+/// content.
 final Uint8List onePixel = base64Decode(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQ'
-  'DwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z',
 );
 
 class SizeRecordingBridge extends FakeMediaBridge {
@@ -142,11 +142,6 @@ void main() {
         isNotNull,
         reason: 'the frame was decoded and drawn',
       );
-      expect(
-        tester.widget<RawImage>(find.byType(RawImage)).image,
-        isNotNull,
-        reason: 'the frame was decoded and drawn',
-      );
       expect(bridge.sizes, [(200, 200)]);
     });
 
@@ -156,7 +151,7 @@ void main() {
       await tester.runAsync(() async {
         await expectLater(
           resolve(providerFor(clipOf()), 3),
-          throwsA(isA<Object>()),
+          throwsA(isA<StateError>()),
         );
       });
 
@@ -180,7 +175,7 @@ void main() {
       await tester.runAsync(() async {
         await expectLater(
           resolve(providerFor(clipOf()), 3),
-          throwsA(isA<Object>()),
+          throwsA(isA<StateError>()),
         );
         bridge.thumbnails[('external_primary', 42)] = onePixel;
 
@@ -200,8 +195,63 @@ void main() {
       await tester.runAsync(() async {
         await expectLater(
           resolve(providerFor(clipOf()), 3),
-          throwsA(isA<Object>()),
+          throwsA(isA<Exception>()),
         );
+      });
+    });
+
+    testWidgets(
+      'garbage on disk: first resolve errors, then the picture shows',
+      (tester) async {
+        final key = ClipThumbnailKey.of(clipOf(), 300)!;
+        final file = File('${root.path}/thumbs/${key.fileName}')
+          ..createSync(recursive: true)
+          ..writeAsBytesSync([0xFF, 0xD8, 1, 2, 3, 4]);
+        bridge.thumbnails[('external_primary', 42)] = onePixel;
+
+        await tester.runAsync(() async {
+          await expectLater(
+            resolve(providerFor(clipOf()), 3),
+            throwsA(isA<Exception>()),
+          );
+          expect(
+            bridge.calls,
+            isEmpty,
+            reason: 'the first answer came from disk',
+          );
+          expect(file.existsSync(), isFalse, reason: 'discarded');
+
+          final info = await resolve(providerFor(clipOf()), 3);
+
+          expect(info.image.width, 1);
+          expect(bridge.calls, ['thumbnail']);
+          expect(file.readAsBytesSync(), onePixel, reason: 'rewritten whole');
+        });
+      },
+    );
+
+    testWidgets('undecodable bridge bytes: the next resolve asks again', (
+      tester,
+    ) async {
+      bridge.thumbnails[('external_primary', 42)] = Uint8List.fromList([
+        0xFF,
+        0xD8,
+        1,
+        2,
+        3,
+      ]);
+
+      await tester.runAsync(() async {
+        await expectLater(
+          resolve(providerFor(clipOf()), 3),
+          throwsA(isA<Exception>()),
+        );
+        bridge.thumbnails[('external_primary', 42)] = onePixel;
+
+        final info = await resolve(providerFor(clipOf()), 3);
+
+        expect(info.image.width, 1);
+        expect(bridge.sizes, [(300, 300), (300, 300)]);
       });
     });
 
@@ -211,7 +261,7 @@ void main() {
       await tester.runAsync(() async {
         await expectLater(
           resolve(providerFor(clipOf(mediaStoreId: -3)), 3),
-          throwsA(isA<Object>()),
+          throwsA(isA<StateError>()),
         );
       });
 
