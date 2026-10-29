@@ -59,8 +59,10 @@ class ClipsRepository {
   /// [addDetectedClips]. When it is not, it is provably not this video (an
   /// imported clip holding a number this phone gave another video, say): it
   /// is detached (`mediaStoreId = -clipId`, `missing`, `lastVerifiedAt` =
-  /// now; it keeps its place, like [detach]) and the clip is inserted as new,
-  /// into To tag. The detach and the insert are in the same transaction.
+  /// now) and the clip is inserted as new, into To tag. A detached clip in a
+  /// reel stays there, flagged; one only in To tag or Skipped leaves it and is
+  /// swept (Ruling Y). The detach, that removal and the insert are one
+  /// transaction.
   Future<DetectedClips> addCheckedClips(
     List<NewClip> clips, {
     required bool Function(Clip stored, NewClip incoming) sameVideo,
@@ -101,6 +103,9 @@ class ClipsRepository {
         ids.add(id);
         inserted.add(id);
       }
+      // A detached clip that is only in To tag or Skipped leaves it (Ruling
+      // Y, the D-71 rule), in this transaction; one in a reel stays, flagged.
+      if (detached.isNotEmpty) await _removeMissing(detached);
       return DetectedClips(ids: ids, inserted: inserted, detached: detached);
     });
     _log.info(
@@ -363,8 +368,10 @@ class ClipsRepository {
   /// 2. A clip in `remap` gets its new id, `missing = false` and
   ///    `lastVerifiedAt` = now.
   /// 3. A clip in `lost` keeps `-clipId`, with `missing = true` and
-  ///    `lastVerifiedAt` = now: the clip stays where it is (To tag, Skipped,
-  ///    its reels), and its old number can never match a different video.
+  ///    `lastVerifiedAt` = now, so its old number can never match a
+  ///    different video. A lost clip in a reel stays there, flagged; one that
+  ///    is only in To tag or Skipped leaves it and, in no other place, is
+  ///    swept (Ruling Y, the D-71 rule), in this same transaction.
   ///
   /// Only attached MediaStore clips of this volume (source `mediaStore`,
   /// `mediaStoreId` above 0) are touched. A clip in the match that is already
@@ -453,9 +460,15 @@ class ClipsRepository {
         );
       }
       await _markDetached(lost, now, volumeName: volumeName);
-      return (remap.length, lost.length);
+      // A lost clip that is only in To tag or Skipped leaves it (Ruling Y,
+      // the D-71 rule); one in a reel stays there, flagged missing.
+      final swept = lost.isEmpty ? 0 : await _removeMissing(lost);
+      return (remap.length, lost.length, swept);
     });
-    _log.info('Applied a rebuild: ${applied.$1} found, ${applied.$2} lost');
+    _log.info(
+      'Applied a rebuild: ${applied.$1} found, ${applied.$2} lost, '
+      '${applied.$3} left the lists',
+    );
   }
 
   /// Detaches clips: each gets `mediaStoreId = -clipId`, `missing = true` and

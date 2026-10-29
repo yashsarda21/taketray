@@ -136,6 +136,17 @@ void main() {
     expect(await h.scanner.countEarlier(), counts(0, 1, 2));
   });
 
+  test('an inbox-only stored clip that is another video leaves To tag when '
+      'the earlier video is added (Ruling Y)', () async {
+    final [oldClip] = await h.store([today1.copyWith(sizeBytes: 5)]);
+
+    final ids = await h.scanner.addEarlier(EarlierRange.today);
+
+    expect(ids, hasLength(2));
+    expect((await h.allClips()).map((c) => c.id), isNot(contains(oldClip)));
+    expect(await toTagIds(), [1, 2]);
+  });
+
   test('a tagged clip in the window does not return to To tag', () async {
     await h.store([today1]);
     final clipId = await clipIdOf(today1);

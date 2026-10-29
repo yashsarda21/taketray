@@ -408,24 +408,23 @@ void main() {
       },
     );
 
-    test(
-      'a clip the rebuild cannot find is missing and stays where it is',
-      () async {
-        final clips = await stored([video(1), video(2)]);
-        bridge.put([video(1), video(2)]);
-        await h.verifier.verify(clips.values);
-        bridge
-          ..videosByVolume[phone] = []
-          ..put([video(1).copyWith(mediaStoreId: 31)], version: 'v2');
+    test('a clip the rebuild cannot find is missing and, inbox-only, leaves '
+        'To tag (Ruling Y)', () async {
+      final clips = await stored([video(1), video(2)]);
+      bridge.put([video(1), video(2)]);
+      await h.verifier.verify(clips.values);
+      bridge
+        ..videosByVolume[phone] = []
+        ..put([video(1).copyWith(mediaStoreId: 31)], version: 'v2');
 
-        final result = await h.verifier.verify(clips.values);
+      final result = await h.verifier.verify(clips.values);
 
-        expect(result, outcome(found: {clips[1]!.id}, missing: {clips[2]!.id}));
-        final lost = await h.clip(clips[2]!.id);
-        expect((lost.mediaStoreId, lost.missing), (-lost.id, true));
-        expect(await h.toTag(), hasLength(2), reason: 'as after any rebuild');
-      },
-    );
+      expect(result, outcome(found: {clips[1]!.id}, missing: {clips[2]!.id}));
+      expect((await h.allClips()).map((c) => c.id), [
+        clips[1]!.id,
+      ], reason: 'the lost inbox-only clip was swept');
+      expect(await h.toTag(), hasLength(1));
+    });
 
     test('no stored version → recorded, no resync', () async {
       final clips = await stored([video(1)]);

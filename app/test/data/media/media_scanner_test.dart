@@ -369,6 +369,21 @@ void main() {
       expect(await h.baselineOf(phone), at(11));
     });
 
+    test('an inbox-only stored clip that is another video leaves To tag; the '
+        'new video takes its place (Ruling Y)', () async {
+      final [oldClip] = await h.store([video(5, 3, sizeBytes: 42)]);
+      bridge.put([video(1, 10)]);
+      await h.turnOnNow();
+      bridge.put([video(5, 11)]);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+
+      final all = await h.allClips();
+      expect(all.map((c) => c.id), isNot(contains(oldClip)));
+      final inToTag = (await h.toTag()).single;
+      expect((inToTag.mediaStoreId, inToTag.missing), (5, false));
+    });
+
     test('a stored clip holding the same number and the same video: nothing '
         'changes', () async {
       final [stored] = await h.store([video(5, 11)]);
@@ -627,6 +642,9 @@ void main() {
         ],
       );
       final idOf = {for (final clip in before) clip.mediaStoreId!: clip.id};
+      // b is in a reel, so its lost row stays to be looked at (Ruling Y).
+      final reel = await ReelsRepository(h.db, h.clock).create('Goa');
+      await h.clips.addClipsToReel(reel.id, [idOf[2]!]);
 
       expect(await h.scanner.scan(), scanDone(added: 0, resynced: {phone}));
 
@@ -660,6 +678,26 @@ void main() {
         expect(await h.phoneState.loadShooting(), session);
       },
     );
+
+    test('a resync that loses an inbox-only clip takes it out of To tag; a '
+        'lost clip in a reel stays, flagged (Ruling Y)', () async {
+      final a = video(1, 1);
+      final b = video(2, 2);
+      final c = video(3, 3);
+      final before = await rebuild([a, b, c], [a.copyWith(mediaStoreId: 21)]);
+      final idOf = {for (final clip in before) clip.mediaStoreId!: clip.id};
+      final reel = await ReelsRepository(h.db, h.clock).create('Goa');
+      await h.clips.addClipsToReel(reel.id, [idOf[2]!]);
+
+      expect(await h.scanner.scan(), scanDone(added: 0, resynced: {phone}));
+
+      final ids = {for (final clip in await h.allClips()) clip.id};
+      expect(ids, {idOf[1], idOf[2]}, reason: 'clip 3 was inbox-only');
+      final kept = await h.clip(idOf[2]!);
+      expect((kept.mediaStoreId, kept.missing), (-idOf[2]!, true));
+      expect(await h.clips.watchReelIdsOf(idOf[2]!).first, {reel.id});
+      expect([for (final clip in await h.toTag()) clip.id], [idOf[1]]);
+    });
 
     test('a failing allVideos leaves the clips and the baseline', () async {
       final old = [video(1, 1)];

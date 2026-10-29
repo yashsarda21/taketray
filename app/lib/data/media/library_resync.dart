@@ -22,7 +22,8 @@ class LibraryResync {
   /// Matches every attached MediaStore clip of [volume] against its current
   /// rows by fingerprint (`matchAfterRebuild`), applies the result
   /// (`applyRebuildMatch`: found clips get their new numbers, lost ones are
-  /// detached and flagged missing, in place), then records the volume's
+  /// detached and flagged missing, and leave To tag and Skipped unless they
+  /// are in a reel), then records the volume's
   /// version. [volume] must be mounted.
   Future<RebuildMatch> resync(
     MediaVolume volume, {

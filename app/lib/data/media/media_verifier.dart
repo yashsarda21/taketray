@@ -86,7 +86,8 @@ class MediaVerifier {
   ///    the old numbers mean nothing. The volume's clips are matched again by
   ///    fingerprint (`LibraryResync`, the scanner's own rule) before any
   ///    number is looked up; a clip that match cannot find is missing (it is
-  ///    detached in place, as after any rebuild). No version recorded: the
+  ///    detached and, unless it is in a reel, leaves the lists, as after any
+  ///    rebuild). No version recorded: the
   ///    current one is recorded.
   /// 4. The volume's clips (read again after a resync) are asked for in
   ///    batches of [batchSize]. A returned row that is `sameVideo` is found;

@@ -879,6 +879,59 @@ void main() {
         );
       });
 
+      test('an inbox-only stored clip that is another video leaves To tag '
+          '(Ruling Y)', () async {
+        final [a] = await detect([10]);
+
+        final result = await repo.addCheckedClips([
+          otherVideo,
+        ], sameVideo: sameFingerprint);
+
+        expect(result.detached, {a});
+        final ids = [for (final c in await db.select(db.clips).get()) c.id];
+        expect(ids, [result.inserted.single], reason: 'the old row was swept');
+        expect(
+          [
+            for (final c in await repo.watchInbox(InboxState.pending).first)
+              c.id,
+          ],
+          [result.inserted.single],
+        );
+      });
+
+      test(
+        'a skipped stored clip that is another video leaves Skipped',
+        () async {
+          final [a] = await detect([10]);
+          await repo.skip([a]);
+
+          await repo.addCheckedClips([otherVideo], sameVideo: sameFingerprint);
+
+          expect(await repo.watchInbox(InboxState.skipped).first, isEmpty);
+          expect(
+            (await db.select(db.clips).get()).map((c) => c.id),
+            isNot(contains(a)),
+          );
+        },
+      );
+
+      test('the detach, the list removal and the insert are one transaction '
+          'when the removal fails', () async {
+        await detect([10]);
+        await db.customStatement(
+          'CREATE TRIGGER no_delete BEFORE DELETE ON inbox '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
+        final before = await snapshot();
+
+        await expectLater(
+          repo.addCheckedClips([otherVideo], sameVideo: sameFingerprint),
+          throwsA(anything),
+        );
+
+        expect(await snapshot(), before);
+      });
+
       test('the detach and the insert are one transaction', () async {
         await detect([10]);
         await db.customStatement(
@@ -1159,6 +1212,10 @@ void main() {
           'by remap and by lost', () async {
         final [a, b] = await detect([10, 11]);
         final picked = await pickerWithVolume(55);
+        // Give both a reel, so the orphan sweep that follows a loss (Ruling
+        // Y) keeps their rows to be looked at.
+        final goa = (await reels.create('Goa')).id;
+        await repo.addClipsToReel(goa, [picked, b]);
         clock.advance(_minute);
         final before = await snapshot();
 
@@ -1234,25 +1291,68 @@ void main() {
         );
 
         final rowA = await rowOf(a);
-        final rowC = await rowOf(c);
         expect(rowA.mediaStoreId, -a);
-        expect(rowC.mediaStoreId, -c);
         expect(rowA.missing, isTrue);
-        expect(rowC.missing, isTrue);
         expect(rowA.lastVerifiedAt, _t0.add(_minute));
         expect(rowA.volumeName, 'external_primary');
         expect(rowA.displayName, 'VID_10.mp4', reason: 'the fingerprint stays');
         expect((await rowOf(b)).mediaStoreId, 99);
-        // A lost clip stays where it was: in its reel, or in Skipped.
+        // A lost clip in a reel stays there; one only in Skipped leaves it
+        // and, in no other place, is swept (Ruling Y).
         expect(await reelIdsOf(a), {goa});
-        expect(
-          (await inboxRows()).map((r) => (r.clipId, r.state)),
-          containsAll([(b, InboxState.pending), (c, InboxState.skipped)]),
+        expect((await inboxRows()).map((r) => (r.clipId, r.state)), [
+          (b, InboxState.pending),
+        ]);
+        expect(await clipIds(), isNot(contains(c)));
+      });
+
+      test('a lost inbox-only clip leaves To tag and Skipped; a lost clip in a '
+          'reel stays there, flagged (Ruling Y)', () async {
+        final [inToTag, inSkipped, inReel, found] = await detect([
+          10,
+          11,
+          12,
+          13,
+        ]);
+        await repo.skip([inSkipped]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(inReel, {goa});
+
+        await repo.applyRebuildMatch(
+          'external_primary',
+          RebuildMatch(remap: {found: 99}, lost: {inToTag, inSkipped, inReel}),
         );
+
+        final ids = [for (final c in await db.select(db.clips).get()) c.id];
+        expect(ids, unorderedEquals([inReel, found]));
+        expect((await inboxRows()).map((r) => r.clipId), [found]);
+        final kept = await rowOf(inReel);
+        expect((kept.mediaStoreId, kept.missing), (-inReel, true));
+        expect(await reelIdsOf(inReel), {goa});
+      });
+
+      test('a failing list removal rolls the whole rebuild back', () async {
+        final [a, b] = await detect([10, 11]);
+        await db.customStatement(
+          'CREATE TRIGGER no_delete BEFORE DELETE ON inbox '
+          "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+        );
+        final before = await snapshot();
+
+        await expectLater(
+          repo.applyRebuildMatch(
+            'external_primary',
+            RebuildMatch(remap: {a: 20}, lost: {b}),
+          ),
+          throwsA(anything),
+        );
+
+        expect(await snapshot(), before);
       });
 
       test('a remap onto the old id of a lost clip works', () async {
         final [a, lost] = await detect([10, 20]);
+        await repo.tagClip(lost, {(await reels.create('Goa')).id});
 
         await repo.applyRebuildMatch(
           'external_primary',
@@ -1267,6 +1367,9 @@ void main() {
         "a detached clip's old id can be detected again as a new clip",
         () async {
           final [a] = await detect([10]);
+          // In a reel, so the lost clip keeps its row (Ruling Y).
+          final goa = (await reels.create('Goa')).id;
+          await repo.tagClip(a, {goa});
           await repo.applyRebuildMatch(
             'external_primary',
             RebuildMatch(remap: {}, lost: {a}),
@@ -1278,10 +1381,8 @@ void main() {
           expect(await clipIds(), [a, again.single]);
           expect((await rowOf(again.single)).mediaStoreId, 10);
           expect((await rowOf(a)).mediaStoreId, -a);
-          expect(
-            (await inboxRows()).map((r) => r.clipId),
-            containsAll([a, again.single]),
-          );
+          expect(await reelIdsOf(a), {goa});
+          expect((await inboxRows()).map((r) => r.clipId), [again.single]);
         },
       );
 
