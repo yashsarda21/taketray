@@ -201,7 +201,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                   child: TtDayHeader(
                     title: l10n.reelDayTitle(
                       day.number,
-                      ttDayText(context, day.date, today: today),
+                      ttDayWeekdayText(context, day.date, today: today),
                     ),
                     trailing: l10n.reelDayClips(day.clips.length),
                   ),

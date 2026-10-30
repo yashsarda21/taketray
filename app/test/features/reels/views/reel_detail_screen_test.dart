@@ -70,6 +70,7 @@ void main() {
     Brightness brightness = Brightness.light,
     bool settle = true,
     bool use24Hour = false,
+    Locale? locale,
     List<Override> overrides = const [],
     VoidCallback? onSelectClips,
     ValueChanged<int>? onClipLongPress,
@@ -85,6 +86,7 @@ void main() {
       textScale: textScale,
       brightness: brightness,
       use24Hour: use24Hour,
+      locale: locale,
       settle: false,
     );
     if (settle) await settleApp(tester);
@@ -184,8 +186,8 @@ void main() {
       await open(tester, goa.id);
 
       expect(dayHeaders(tester), [
-        ('Day 1 · Oct 25', '2 clips'),
-        ('Day 4 · Oct 28', '1 clip'),
+        ('Day 1 · Sun, Oct 25', '2 clips'),
+        ('Day 4 · Wed, Oct 28', '1 clip'),
       ]);
       expect(tiles(tester), hasLength(3));
       expect(find.text('3 clips · 0:12'), findsOneWidget);
@@ -204,10 +206,36 @@ void main() {
       await open(tester, goa.id);
 
       expect(dayHeaders(tester), [
-        ('Day 1 · Dec 30, 2025', '1 clip'),
-        ('Day 4 · Jan 2', '1 clip'),
+        ('Day 1 · Tue, Dec 30, 2025', '1 clip'),
+        ('Day 4 · Fri, Jan 2', '1 clip'),
       ]);
     });
+
+    testApp(
+      'the day header has the weekday, in the order of the phone locale',
+      (tester) async {
+        final goa = await newReel(tester, 'Goa');
+        await real(
+          tester,
+          () => putInReel(h, goa.id, [
+            reelVideo(1, shot: DateTime.utc(2025, 12, 30, 9)),
+            reelVideo(2, shot: DateTime.utc(2026, 10, 28, 9)),
+          ]),
+        );
+
+        await open(tester, goa.id, locale: const Locale('en', 'IN'));
+
+        expect(dayHeaders(tester), [
+          ('Day 1 · Tue, 30 Dec, 2025', '1 clip'),
+          ('Day 303 · Wed, 28 Oct', '1 clip'),
+        ]);
+        // The date itself has no ordinary space to break at.
+        final title = tester.widgetList<TtDayHeader>(find.byType(TtDayHeader));
+        for (final header in title) {
+          expect(header.title.split(' · ').last.contains(' '), isFalse);
+        }
+      },
+    );
 
     testApp('tile time uses the clip zone', (tester) async {
       final goa = await newReel(tester, 'Goa');
@@ -223,7 +251,7 @@ void main() {
 
       expect(tiles(tester).single.timeText?.replaceAll(' ', ' '), '12:30 AM');
       // The day is London's calendar day too.
-      expect(dayHeaders(tester), [('Day 1 · Jul 2', '1 clip')]);
+      expect(dayHeaders(tester), [('Day 1 · Thu, Jul 2', '1 clip')]);
       expect(
         tiles(tester).single.semanticLabel.replaceAll(' ', ' '),
         'Clip, 12:30 AM, 0:04',
@@ -279,7 +307,7 @@ void main() {
       await settleApp(tester);
 
       expect(tiles(tester).single.timeText?.replaceAll(' ', ' '), '12:30 AM');
-      expect(dayHeaders(tester), [('Day 1 · Jul 2', '1 clip')]);
+      expect(dayHeaders(tester), [('Day 1 · Thu, Jul 2', '1 clip')]);
     });
 
     testApp('in-2-reels badge and label', (tester) async {

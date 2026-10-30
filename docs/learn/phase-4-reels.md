@@ -545,7 +545,7 @@ It ends with `All tests passed!`. Now, in `app/lib/features/shell/views/root_mes
 
 - **The app bar** has **Back** and a ⋮ menu (**Reel details**, **Select clips**, **Delete reel**) and no title.
 - **The header** has the reel's name (wrapped over as many lines as it needs), the status pill that opens the status menu, "12 clips · 4:32" (or "No clips yet"), "2 missing" in red, and the **Shot ideas** block with **Show more** / **Show less**.
-- **The clips** are grouped by the day they were shot: "Day 2 · Oct 28" and "3 clips", then a three-column grid. A tile shows the time **where the clip was shot**, its length, a layers badge when the clip is in two reels or more, and a mark when it is horizontal.
+- **The clips** are grouped by the day they were shot: "Day 2 · Wed, Oct 28" and "3 clips", then a three-column grid. A tile shows the time **where the clip was shot**, its length, a layers badge when the clip is in two reels or more, and a mark when it is horizontal.
 - **A clip whose video is gone** is a grey dashed tile with **Remove**. Remove takes it out of the reel and shows "Missing clip removed" with **Undo**.
 - **Loading** is a skeleton day header and nine skeleton tiles. **No clips** is an illustration, "No clips yet" and a **Go to To tag** button.
 - Opening the page **checks that the videos still exist**. A reel that is deleted while you look at it (or a link to one that never existed) sends you back to Reels.
@@ -582,7 +582,7 @@ Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select cli
   final times = ref.watch(reelClipTimesProvider(reelId)).value ?? const {};
   ```
 
-  So the first state groups the days and shows the tiles with the phone's own time zone; when the answer comes, the state is built again with `times`, and the days are regrouped. `groupByShootingDay<ReelClip>` reads each clip's `wallClock` date, or the phone's local date for a clip with no time yet, so no clip is ever dropped. `wallClock` is a UTC-flagged `DateTime` whose fields are the clock where the clip was shot, so the code only reads its fields (`wallClockTimeText`, `ttDayText`) and never calls `toLocal()` on it.
+  So the first state groups the days and shows the tiles with the phone's own time zone; when the answer comes, the state is built again with `times`, and the days are regrouped. `groupByShootingDay<ReelClip>` reads each clip's `wallClock` date, or the phone's local date for a clip with no time yet, so no clip is ever dropped. `wallClock` is a UTC-flagged `DateTime` whose fields are the clock where the clip was shot, so the code only reads its fields (`wallClockTimeText`, `ttDayWeekdayText`) and never calls `toLocal()` on it.
 
 - **Do the thing only if it is still true.** The Remove button is on a tile that was drawn a moment ago. A verify might have found the video again since. `removeMissing` looks again (is the clip in this reel, and still flagged missing?) and returns an *empty* undo record if not; the screen shows no snack for an empty record. A double tap shares one future (single-flight, as in Task 7), so there is one removal and one record.
 
@@ -594,6 +594,17 @@ Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select cli
   ```
 
   A tile given an exact (tight) height fills it, so the missing tile is not shrunk, and the `Align` around the others loosens the constraint so they stay 3:4. At 1× text the number is smaller than 3:4, so nothing changes.
+
+- **A date with its weekday, and the year only when needed.** The day header reads "Day 2 · Wed, Oct 28". `ttDayWeekdayText` picks the format by comparing years, and keeps the date in one piece by turning every space into a no-break space:
+
+  ```dart
+  final format = day.year == today.year
+      ? DateFormat.MMMEd(locale)
+      : DateFormat.yMMMEd(locale);
+  return _keepTogether(format.format(day));
+  ```
+
+  The phone's language decides the order (en-IN: "Wed, 28 Oct"). Like `wallClock`, the date is only read, never converted.
 
 - **The name belongs in the body.** An app bar clamps its title to one line at large text. The page's app bar has no title; `TtReelHeader` shows the name with no line limit, so even 40 emoji can be read.
 

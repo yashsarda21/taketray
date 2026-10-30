@@ -913,7 +913,7 @@
   },
   "reelDayTitle": "Day {number} · {date}",
   "@reelDayTitle": {
-    "description": "Heading of a shooting day on a reel's page: the day's number counted from the reel's first day, and its date, such as \"Day 2 · Oct 28\".",
+    "description": "Heading of a shooting day on a reel's page: the day's number counted from the reel's first day, and its date, with its weekday (the year too when it is not this year), such as \"Day 2 · Wed, Oct 28\".",
     "placeholders": {
       "number": {
         "type": "int"
