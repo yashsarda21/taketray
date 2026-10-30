@@ -280,9 +280,9 @@
   "@earlierAddFailed": {
     "description": "Snack shown when adding earlier videos failed."
   },
-  "earlierUndoFailed": "Couldn't undo. Try again.",
-  "@earlierUndoFailed": {
-    "description": "Snack shown when taking back the added earlier videos failed."
+  "undoFailed": "Couldn't undo. Try again.",
+  "@undoFailed": {
+    "description": "Snack shown when Undo of a remove, move, add, delete or earlier-videos add failed."
   },
   "earlierCountFailed": "Couldn't check your videos.",
   "@earlierCountFailed": {
@@ -566,6 +566,169 @@
         "type": "int"
       }
     }
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Button that closes a sheet or dialog without doing anything."
+  },
+  "reelFormTitleNew": "New reel",
+  "@reelFormTitleNew": {
+    "description": "Title of the sheet that creates a reel."
+  },
+  "reelFormTitleEdit": "Reel details",
+  "@reelFormTitleEdit": {
+    "description": "Title of the sheet that edits a reel's name, shot ideas and status."
+  },
+  "reelNameLabel": "Reel name",
+  "@reelNameLabel": {
+    "description": "Label of the reel name field."
+  },
+  "reelNameHint": "For example: London Food",
+  "@reelNameHint": {
+    "description": "Hint inside the empty reel name field."
+  },
+  "reelNameEmpty": "Give this reel a name",
+  "@reelNameEmpty": {
+    "description": "Error under the reel name field when it is empty or blank."
+  },
+  "reelNameTooLong": "Use {max} characters or fewer",
+  "@reelNameTooLong": {
+    "description": "Error under the reel name field when it is too long.",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelNameDuplicate": "You already have a reel called {name}",
+  "@reelNameDuplicate": {
+    "description": "Error under the reel name field when another reel has that name (ignoring case). The name is the other reel's name as stored.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCounter": "{length}/{max}",
+  "@reelCounter": {
+    "description": "Character counter under a field: how many characters are typed out of the most allowed.",
+    "placeholders": {
+      "length": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelDescriptionLabel": "Shot ideas (optional)",
+  "@reelDescriptionLabel": {
+    "description": "Label of the field for a reel's concept, shots to get and songs to try."
+  },
+  "reelDescriptionHint": "Concept, shots to get, songs to try…",
+  "@reelDescriptionHint": {
+    "description": "Hint inside the empty Shot ideas field."
+  },
+  "reelDescriptionHelp": "Only you see this.",
+  "@reelDescriptionHelp": {
+    "description": "Help line under the Shot ideas field."
+  },
+  "reelDescriptionTooLong": "Use {max} characters or fewer",
+  "@reelDescriptionTooLong": {
+    "description": "Error under the Shot ideas field when it is too long (the field normally stops typing first).",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelStatusHeading": "Status",
+  "@reelStatusHeading": {
+    "description": "Heading above the status choices in the reel details sheet; also the name of the status menu."
+  },
+  "statusCollecting": "Collecting",
+  "@statusCollecting": {
+    "description": "A reel's status while the user is still shooting clips for it."
+  },
+  "statusCollectingDescription": "Still shooting clips for it",
+  "@statusCollectingDescription": {
+    "description": "Explains the Collecting status."
+  },
+  "statusReady": "Ready to edit",
+  "@statusReady": {
+    "description": "A reel's status once all its clips are in."
+  },
+  "statusReadyDescription": "All the clips are in",
+  "@statusReadyDescription": {
+    "description": "Explains the Ready to edit status."
+  },
+  "statusPublished": "Published",
+  "@statusPublished": {
+    "description": "A reel's status once it is posted."
+  },
+  "statusPublishedDescription": "Posted on Instagram",
+  "@statusPublishedDescription": {
+    "description": "Explains the Published status."
+  },
+  "reelCreateButton": "Create reel",
+  "@reelCreateButton": {
+    "description": "Button of the New reel sheet that creates the reel."
+  },
+  "reelSaveButton": "Save",
+  "@reelSaveButton": {
+    "description": "Button of the Reel details sheet that saves the changes."
+  },
+  "reelCreatedSnack": "{name} created",
+  "@reelCreatedSnack": {
+    "description": "Snack shown after a reel is created.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelSavedSnack": "Saved",
+  "@reelSavedSnack": {
+    "description": "Snack shown after a reel's details are saved."
+  },
+  "reelStatusChangedSnack": "Marked as {status}",
+  "@reelStatusChangedSnack": {
+    "description": "Snack shown after the status of a reel is changed. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDeletedSnack": "{name} deleted",
+  "@reelDeletedSnack": {
+    "description": "Snack shown after a reel is deleted, with an Undo button.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelActionFailed": "Something went wrong. Try again.",
+  "@reelActionFailed": {
+    "description": "Snack shown when saving, deleting or changing the status of a reel failed for a reason the user cannot fix."
+  },
+  "deleteReelTitle": "Delete {name}?",
+  "@deleteReelTitle": {
+    "description": "Title of the dialog that asks to delete a reel.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteReelSafe": "Your videos stay in your gallery. Only this reel and its tags are removed.",
+  "@deleteReelSafe": {
+    "description": "Reassurance in the delete reel dialog."
+  },
+  "deleteReelConfirm": "Delete reel",
+  "@deleteReelConfirm": {
+    "description": "Button of the delete reel dialog that deletes the reel."
   },
   "loading": "Loading",
   "@loading": {

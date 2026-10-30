@@ -349,7 +349,76 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
 
 ## 7. Create, edit, status and delete
 
-*To be written in Task 7.*
+**What we built:** the four things you can do to a single reel, plus the snack that lets you take a delete back:
+
+- **The New reel / Reel details sheet** (`showReelForm`): a name (up to 40 characters, a counter), "Shot ideas" (up to 1,000, a counter that appears from 900), and, when editing, three status radios. **Create reel** or **Save** closes the sheet and shows "{name} created" or "Saved".
+- **The status menu** (`reelStatusItems`, `changeReelStatus`): Collecting, Ready to edit, Published, each with its pill's icon and a line saying what it means, the current one checked. Choosing one shows "Marked as {status}".
+- **The delete dialog** (`showDeleteReelDialog`): "Delete {name}?", a green "Your videos stay in your gallery" line, **Cancel** and **Delete reel**. Confirming goes to Reels and shows "{name} deleted" with **Undo**.
+- **`showUndoSnack`**: one helper that every Undo snack in the phase uses (remove, move, add and delete).
+
+Home (Task 6) and the reel page (Task 8) call these; this task builds them and tests them without those screens.
+
+**Why TakeTray needs it:** a reel is the app's one real object, and a user must be able to name it, rename it, move it through its three stages and delete it. Deleting is the dangerous one: it also removes every clip that is in no other reel (D-56), so the owner asked for Undo (D-80). Undo is only worth having if it still works after the screen that deleted has gone, which is the part that needs care.
+
+**Key ideas:**
+
+- **A form that reports every problem in state, not exceptions.** `ReelsRepository.create` throws `InvalidInputException(ReelNameProblem.duplicate)`. That is right for a data layer, but a form wants "everything wrong, at once, in words". So `ReelFormController.save` checks first and puts the result in its state:
+
+  ```dart
+  final nameProblem = checkReelName(name) ??
+      (clash == null ? null : ReelNameProblem.duplicate);
+  final descriptionProblem = checkReelDescription(description);
+  if (nameProblem != null || descriptionProblem != null) {
+    _set(ReelFormState(nameError: nameProblem, descriptionError: descriptionProblem, clashingName: clash?.name));
+    return null;
+  }
+  ```
+
+  The view maps the enum to copy with a `switch`, which the compiler checks covers every case. The repository's own `duplicate` stays as a **backstop**: if another reel takes the name between this check and the write, the `catch` puts the same problem in the same state. The name in "You already have a reel called {name}" is the *other reel's stored name* (`clashingName`), because you typed "london food" and the reel is "London Food".
+
+- **Single-flight: a second call gets the first call's future.** A double tap on **Create reel** must make one reel.
+
+  ```dart
+  final running = _inFlight;
+  if (running != null) return running;
+  final run = _save(name, description, status);
+  _inFlight = run;
+  ```
+
+  The slot is cleared when the future ends, whether it returned or threw. `ReelActions.confirmDelete` does the same, per reel id (a map from id to the running delete). Two tricks keep it correct. The clearing goes through `run.then(ok, onError: ignore).then(clear)`, so a failed save does not make a second, unhandled copy of its error. And `_set` only touches the state `if (ref.mounted)`, because the sheet (the provider's only listener) can be dragged away while a save runs; the save still finishes.
+
+- **Write only what changed, the refusable write first.** An edit has up to three writes (`rename`, `setDescription`, `setStatus`). The name goes first because it is the one that can still be refused (a clash after the check). If it is refused, nothing else was written, so the reel is not half edited. Saving a reel under its own name in another case ("goa" to "GOA") is allowed, because the clash check skips the reel being edited (`except: id`) and `rename` allows its own name (D-84).
+
+- **A snack that outlives its screen has to be on the root messenger.** Every `Scaffold` registers with the nearest `ScaffoldMessenger`; the one `MaterialApp.router` makes is the root. A page that wraps itself in its own `ScaffoldMessenger` takes its snacks with it when it pops. So the app owns the key:
+
+  ```dart
+  // app.dart
+  scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
+  ```
+
+  and `ReelSnacks.of(context)` looks the messenger up **once, while the context is alive**, along with the `ProviderContainer` and the words, and afterwards needs no context. This is why `showDeleteReelDialog` captures everything before it awaits the delete: by the time the delete ends, the screen may be gone. Undo calls `container.read(reelsRepositoryProvider).undo(record)`, which does not depend on any widget either. `showTtSnackOn(messenger, ...)` is the half of the package's `showTtSnack` that takes a messenger instead of a context, so it can run late.
+
+- **Delete returns what Undo needs.** `ReelActions.confirmDelete` returns the `DeleteReelUndo` from Task 5. The snack holds that one object and hands it to `undo`. An empty record (`isEmpty`, the reel was already gone) shows no snack: there is nothing to take back.
+
+- **Radios are a group of rows with a checked flag.** There is no `SemanticsRole.radio`; a radio is a node with `checked`, `inMutuallyExclusiveGroup` and a tap action, and the rows sit in a node with `role: SemanticsRole.radioGroup` named "Status". `excludeSemantics: true` plus one `label: 'Collecting, Still shooting clips for it'` makes a screen reader say one radio instead of a mark, a pill and a sentence.
+
+**Where it lives:**
+
+- `app/lib/features/reels/view_models/reel_form_controller.dart` (state, validation, single-flight), `reel_actions.dart` (`setStatus`, `confirmDelete`).
+- `app/lib/features/reels/views/reel_form_sheet.dart`, `reel_status_menu.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart` (`ReelSnacks`, `showUndoSnack`).
+- `app/lib/features/shell/views/root_messenger.dart` (`rootMessengerKeyProvider`, `rootMessengerOf`), used by `app/lib/app.dart`.
+- `packages/taketray_ui/lib/src/components/snack.dart` (`showTtSnackOn`) and `dialog.dart` (`TtDialog.icon`, `TtDialogNote`).
+- Tests: `app/test/features/reels/view_models/reel_form_controller_test.dart`, `reel_actions_test.dart`, and `views/reel_forms_test.dart`, `views/delete_reel_test.dart`.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/features/reels)
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/features/shell/views/root_messenger.dart`, change the last line of `rootMessengerOf` to `return ScaffoldMessenger.of(context);` and run `test/features/reels/views/delete_reel_test.dart`. `the snack stays when a page that has its own messenger pops` fails with `Found 0 widgets with text "Goa deleted"`: the snack went to the page's own messenger and left with the page. Undo your edit with `git checkout -- app/lib/features/shell/views/root_messenger.dart`. Then delete the line `if (running != null) return running;` in `reel_form_controller.dart` and run `reel_form_controller_test.dart`: `double Save creates one reel` fails with `Expected: true  Actual: <false>`, because the second call is no longer the first call's future. Undo that edit too (`git checkout -- app/lib/features/reels/view_models/reel_form_controller.dart`).
+
+**Decisions:** D-85 (all of the above), which builds on D-80 (the owner's rules: no duplicate names, the 1,000 limit, Undo on every delete) and D-84 (the repository, `DeleteReelUndo` and `undo`); D-82 (`TtMenuItem.checked` and `subtitle`, which the status menu uses).
 
 ## 8. Reel detail
 

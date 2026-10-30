@@ -51,7 +51,7 @@ Future<void> showAddEarlierVideos(BuildContext context) {
     } on Object catch (error) {
       _log.warning('Undo failed: ${error.runtimeType}');
       if (context.mounted) {
-        showTtSnack(context, message: l10n.earlierUndoFailed);
+        showTtSnack(context, message: l10n.undoFailed);
       }
     }
   }());

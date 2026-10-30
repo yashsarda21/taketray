@@ -308,6 +308,18 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .dlg .acts { margin-top: 18px }
   static const double dialogActionsGap = 18;
 
+  /// Padding at the sides of a `TtDialogNote`.
+  // proto.css: .dlg .safe { padding: 10px 12px }
+  static const double dialogNotePaddingHorizontal = 12;
+
+  /// Padding above and below a `TtDialogNote`.
+  // proto.css: .dlg .safe { padding: 10px 12px }
+  static const double dialogNotePaddingVertical = 10;
+
+  /// Size of the icon of a `TtDialogNote` (grows with the text size).
+  // proto.css: .dlg .safe .ms { font-size: 20px }
+  static const double dialogNoteIconSize = 20;
+
   // ---- Overlays (sheet, dialog, menu) ----
 
   /// Opacity of the scrim (the page's scrim colour) behind a sheet or dialog.

@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/app.dart' show resolvePhoneLocale;
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -22,8 +23,12 @@ final Override thumbnailCacheForTests = thumbnailCacheProvider.overrideWith(
 /// What the To tag route shows in a test that only has one screen.
 const toTagRouteMarker = 'the To tag route';
 
+/// What the Reels route shows in a test that only has one screen.
+const reelsRouteMarker = 'the Reels route';
+
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
-/// [toTagRouteMarker]) inside a `ProviderScope` with [overrides], the TakeTray
+/// [toTagRouteMarker] and a `/reels` route that shows [reelsRouteMarker])
+/// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
 /// [textScale] and [brightness] are applied to the whole app; [size] is the
@@ -51,6 +56,11 @@ Future<ProviderContainer> pumpScreen(
     routes: [
       GoRoute(path: '/', builder: (context, state) => screen),
       GoRoute(
+        path: Routes.reels,
+        builder: (context, state) =>
+            const Scaffold(body: Text(reelsRouteMarker)),
+      ),
+      GoRoute(
         path: Routes.toTag,
         builder: (context, state) =>
             const Scaffold(body: Text(toTagRouteMarker)),
@@ -65,6 +75,7 @@ Future<ProviderContainer> pumpScreen(
       container: container,
       child: MaterialApp.router(
         routerConfig: router,
+        scaffoldMessengerKey: container.read(rootMessengerKeyProvider),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         locale: locale,

@@ -15,9 +15,11 @@ Widget ttTestApp(
   double textScale = 1.0,
   bool disableAnimations = false,
   Locale? locale,
+  GlobalKey<ScaffoldMessengerState>? messengerKey,
 }) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
+    scaffoldMessengerKey: messengerKey,
     locale: locale,
     localizationsDelegates: locale == null
         ? null

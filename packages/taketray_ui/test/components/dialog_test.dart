@@ -59,6 +59,39 @@ void main() {
       expect(find.text('Keep'), findsOneWidget);
     });
 
+    testWidgets('an icon sits above a centred title and is not announced', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialog<String>(
+              title: 'Delete Goa?',
+              icon: Symbols.delete_rounded,
+              actions: [TtDialogAction<String>('ok', 'OK')],
+            ),
+          ),
+        ),
+      );
+      final icon = tester.getRect(find.byIcon(Symbols.delete_rounded));
+      final title = tester.getRect(find.text('Delete Goa?'));
+      expect(icon.bottom + 16, title.top);
+      final panel = tester.getRect(find.byType(TtDialog<String>));
+      expect(title.center.dx, closeTo(panel.center.dx, 0.5));
+      expect(icon.center.dx, closeTo(panel.center.dx, 0.5));
+      expect(
+        tester.widget<Text>(find.text('Delete Goa?')).textAlign,
+        TextAlign.center,
+      );
+      expect(find.bySemanticsLabel('Delete Goa?'), findsWidgets);
+    });
+
+    testWidgets('without an icon the title stays at the start', (tester) async {
+      await tester.pumpWidget(ttTestApp(_dialog()));
+      expect(tester.widget<Text>(find.text('Delete reel?')).textAlign, isNull);
+      expect(find.byIcon(Symbols.delete_rounded), findsNothing);
+    });
+
     testWidgets('is 312 dp wide with 32 dp corners, in the high surface', (
       tester,
     ) async {
@@ -409,6 +442,57 @@ void main() {
       expect(tester.takeException(), isNull);
       final rect = tester.getRect(find.byType(TtDialog<String>));
       expect(rect.bottom, lessThanOrEqualTo(640 - 300 - 24));
+    });
+  });
+
+  group('TtDialogNote', () {
+    testWidgets('shows its sentence on the success colours', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialogNote(text: 'Your videos stay in your gallery.'),
+          ),
+        ),
+      );
+      final colors = tester.element(find.byType(TtDialogNote)).tt.colors;
+      final box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(TtDialogNote),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect((box.decoration as BoxDecoration).color, colors.successContainer);
+      final text = tester.widget<Text>(
+        find.text('Your videos stay in your gallery.'),
+      );
+      expect(text.style!.color, colors.onSuccessContainer);
+      // The icon is decoration: the sentence is the message.
+      expect(find.byIcon(Symbols.verified_user_rounded), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Your videos stay in your gallery.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a long sentence wraps at 2x text without overflow', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const SizedBox(
+            width: 264,
+            child: TtDialogNote(
+              text:
+                  'Your videos stay in your gallery. Only this reel and its '
+                  'tags are removed.',
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 }

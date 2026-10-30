@@ -121,7 +121,7 @@ void main() {
     expect(l10n.earlierAddedSnack(2), '2 clips added to To tag');
     expect(l10n.undo, 'Undo');
     expect(l10n.earlierAddFailed, "Couldn't add videos. Try again.");
-    expect(l10n.earlierUndoFailed, "Couldn't undo. Try again.");
+    expect(l10n.undoFailed, "Couldn't undo. Try again.");
     expect(l10n.earlierCountFailed, "Couldn't check your videos.");
     expect(l10n.tryAgain, 'Try again');
     expect(l10n.moreOptions, 'More options');

@@ -90,9 +90,9 @@ abstract final class TakeTrayTheme {
       // tt-style.css: .style-tt .snack
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: cs.inverseSurface.withValues(
-          alpha: TtMetrics.snackbarOpacity,
-        ),
+        // TtSnack draws its own inverse-surface panel (94 % opaque); the bar
+        // around it is clear, so showTtSnackOn needs no colour of its own.
+        backgroundColor: Colors.transparent,
         contentTextStyle: text.bodyMedium?.copyWith(color: cs.onInverseSurface),
         actionTextColor: cs.inversePrimary,
         elevation: 0,

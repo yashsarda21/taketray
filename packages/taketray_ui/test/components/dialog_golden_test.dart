@@ -73,6 +73,24 @@ void main() {
           ),
         ),
       ),
+      TtScenario(
+        'icon and note',
+        _placed(
+          const TtDialog<String>(
+            title: 'Delete London Food?',
+            icon: Symbols.delete_rounded,
+            content: TtDialogNote(
+              text:
+                  'Your videos stay in your gallery. Only this reel and its '
+                  'tags are removed.',
+            ),
+            actions: [
+              TtDialogAction('cancel', 'Cancel'),
+              TtDialogAction('delete', 'Delete reel', destructive: true),
+            ],
+          ),
+        ),
+      ),
     ],
   );
 }
