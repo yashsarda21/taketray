@@ -8,6 +8,7 @@ import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/reels/view_models/reel_form_controller.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
+import 'package:taketray/features/reels/views/sheet_failure.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -27,10 +28,12 @@ const int _descriptionCounterFrom = 900;
 ///
 /// A name that is empty, too long or another reel's is explained under the
 /// field and the sheet stays open. If the save fails for another reason,
-/// "Something went wrong. Try again." is shown and the sheet stays open.
+/// "Something went wrong. Try again." is shown **in the sheet**, above its
+/// buttons, and the sheet stays open with what was typed (a snack would lie
+/// behind the sheet and its scrim, D-85). It goes at the next Save or edit.
 ///
-/// The snacks are on the root messenger, so they show after the sheet has
-/// closed, even if the sheet was dragged away while it saved.
+/// The success snacks are on the root messenger, so they show after the sheet
+/// has closed, even if the sheet was dragged away while it saved.
 Future<void> showReelForm(BuildContext context, {Reel? reel}) {
   final l10n = AppLocalizations.of(context);
   final snacks = ReelSnacks.of(context);
@@ -41,7 +44,9 @@ Future<void> showReelForm(BuildContext context, {Reel? reel}) {
       onSaved: (saved) => snacks.show(
         reel == null ? l10n.reelCreatedSnack(saved.name) : l10n.reelSavedSnack,
       ),
-      onFailed: () => snacks.show(l10n.reelActionFailed, done: false),
+      // Only used when the sheet is gone: then nothing is modal, and a snack
+      // is seen.
+      onFailedAfterClose: () => snacks.show(l10n.reelActionFailed, done: false),
     ),
   );
 }
@@ -50,12 +55,12 @@ class _ReelFormSheet extends ConsumerStatefulWidget {
   const new({
     required this.reel,
     required this.onSaved,
-    required this.onFailed,
+    required this.onFailedAfterClose,
   });
 
   final Reel? reel;
   final ValueChanged<Reel> onSaved;
-  final VoidCallback onFailed;
+  final VoidCallback onFailedAfterClose;
 
   @override
   ConsumerState<_ReelFormSheet> createState() => _ReelFormSheetState();
@@ -70,6 +75,10 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
   );
   late ReelStatus _status = widget.reel?.status ?? ReelStatus.collecting;
 
+  /// The last save failed for a reason the user cannot fix; shown in the
+  /// sheet until the next attempt or edit.
+  bool _failed = false;
+
   @override
   void dispose() {
     _name.dispose();
@@ -82,6 +91,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
     // twice while the buttons redraw.
     final provider = reelFormControllerProvider(widget.reel?.id);
     if (ref.read(provider).saving) return;
+    if (_failed) setState(() => _failed = false);
     final controller = ref.read(provider.notifier);
     final navigator = Navigator.of(context);
     try {
@@ -94,8 +104,14 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
       if (mounted) navigator.pop();
       widget.onSaved(reel);
     } on Object {
-      // The controller logged the type.
-      widget.onFailed();
+      // The controller logged the type. The sheet stays open with the text,
+      // and says so itself: a snack would be behind it. If it was dragged
+      // away meanwhile, nothing is modal any more and a snack is seen.
+      if (mounted) {
+        setState(() => _failed = true);
+      } else {
+        widget.onFailedAfterClose();
+      }
     }
   }
 
@@ -119,24 +135,30 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
         reelDescriptionMaxLength,
       ),
     };
-    void typing(String _) => ref
-        .read(reelFormControllerProvider(widget.reel?.id).notifier)
-        .clearErrors();
+    void typing(String _) {
+      ref
+          .read(reelFormControllerProvider(widget.reel?.id).notifier)
+          .clearErrors();
+      if (_failed) setState(() => _failed = false);
+    }
 
     return TtSheet(
       title: edit ? l10n.reelFormTitleEdit : l10n.reelFormTitleNew,
-      footer: TtButtonRow(
-        children: [
-          TtButton(
-            label: l10n.cancel,
-            kind: TtButtonKind.text,
-            onPressed: () => Navigator.of(context).maybePop(),
-          ),
-          TtButton(
-            label: edit ? l10n.reelSaveButton : l10n.reelCreateButton,
-            onPressed: form.saving ? null : () => unawaited(_save()),
-          ),
-        ],
+      footer: SheetFooter(
+        failure: _failed ? l10n.reelActionFailed : null,
+        buttons: TtButtonRow(
+          children: [
+            TtButton(
+              label: l10n.cancel,
+              kind: TtButtonKind.text,
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+            TtButton(
+              label: edit ? l10n.reelSaveButton : l10n.reelCreateButton,
+              onPressed: form.saving ? null : () => unawaited(_save()),
+            ),
+          ],
+        ),
       ),
       child: ListView(
         shrinkWrap: true,
@@ -194,7 +216,10 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
                     _StatusRadioRow(
                       status: status,
                       selected: status == _status,
-                      onTap: () => setState(() => _status = status),
+                      onTap: () => setState(() {
+                        _status = status;
+                        _failed = false;
+                      }),
                     ),
                 ],
               ),

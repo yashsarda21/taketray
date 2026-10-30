@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -30,9 +31,13 @@ class _FlakyReels extends ReelsRepository {
   Error? failWith;
   int creates = 0;
 
+  /// Holds a create until it completes (a slow database).
+  Completer<void>? hold;
+
   @override
   Future<Reel> create(String name, {String? description}) async {
     creates++;
+    await hold?.future;
     final failure = failWith;
     if (failure != null) throw failure;
     return await super.create(name, description: description);
@@ -248,25 +253,134 @@ void main() {
       expect(await storedReels(tester), isEmpty);
     });
 
-    testApp('a failed save says so and keeps what was typed', (tester) async {
+    testApp('a failed save says so in the sheet and keeps what was typed', (
+      tester,
+    ) async {
       reels.failWith = StateError('disk full');
       await pumpHost(tester);
       await openForm(tester);
       await typeName(tester, 'Goa');
       await tapAndSettle(tester, find.text('Create reel'));
 
-      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      // Visible: `find.text` alone also finds widgets behind the scrim, so
+      // the line must be hit-testable, and inside the sheet.
+      final message = find.text('Something went wrong. Try again.');
+      expect(message.hitTestable(), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(TtSheet), matching: message),
+        findsOneWidget,
+      );
+      // Above the buttons, not under them.
+      expect(
+        tester.getRect(message).bottom,
+        lessThanOrEqualTo(
+          tester.getRect(find.widgetWithText(TtButton, 'Create reel')).top,
+        ),
+      );
+      // Not a snack: that would be behind the sheet.
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.byType(TtSnack), findsNothing);
+      // The sheet stays, with what was typed.
       expect(find.byType(TtSheet), findsOneWidget);
       expect(
         tester.widget<TextField>(input('Reel name')).controller!.text,
         'Goa',
       );
+      // The error icon and a live region: not colour alone, and announced.
+      expect(
+        find.descendant(
+          of: find.byType(TtBanner),
+          matching: find.byIcon(Symbols.error_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.widget<TtBanner>(find.byType(TtBanner)).kind,
+        TtBannerKind.warning,
+      );
 
-      // Try again works.
+      // Try again works, and the line goes with the sheet.
       reels.failWith = null;
       await tapAndSettle(tester, find.text('Create reel'));
       expect(find.byType(TtSheet), findsNothing);
+      expect(message, findsNothing);
       expect(find.text('Goa created'), findsOneWidget);
+    });
+
+    testApp(
+      'a save that fails after the sheet was dragged away shows a snack',
+      (tester) async {
+        reels
+          ..failWith = StateError('disk full')
+          ..hold = Completer<void>();
+        await pumpHost(tester);
+        await openForm(tester);
+        await typeName(tester, 'Goa');
+        await tester.tap(find.text('Create reel'));
+        await tester.pump();
+        // The sheet is dismissed (a tap on the scrim) while the save runs.
+        await tester.tapAt(const Offset(180, 20));
+        await tester.pumpAndSettle();
+        expect(find.byType(TtSheet), findsNothing);
+
+        reels.hold!.complete();
+        await settleApp(tester);
+        // Nothing is modal now, so the snack can be seen.
+        expect(
+          find.text('Something went wrong. Try again.').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.byType(TtSnack), findsOneWidget);
+      },
+    );
+
+    testApp('the failure line goes at the next edit', (tester) async {
+      reels.failWith = StateError('disk full');
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeName(tester, 'Goa');
+      await tapAndSettle(tester, find.text('Create reel'));
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+
+      await typeName(tester, 'Goa 2');
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+    });
+
+    testApp('the failure line goes at the next Save and returns if it fails', (
+      tester,
+    ) async {
+      reels.failWith = StateError('disk full');
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeName(tester, 'Goa');
+      await tapAndSettle(tester, find.text('Create reel'));
+      final first = reels.creates;
+      // While the second save runs the line is gone; it returns when that
+      // one fails too.
+      await tester.tap(find.text('Create reel'));
+      await tester.pump();
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      await settleApp(tester);
+      expect(reels.creates, first + 1);
+      expect(
+        find.text('Something went wrong. Try again.').hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testApp('the failure line is accessible at 2x text, light and dark', (
+      tester,
+    ) async {
+      reels.failWith = StateError('disk full');
+      for (final brightness in Brightness.values) {
+        await pumpHost(tester, brightness: brightness, textScale: 2);
+        await openForm(tester);
+        await typeName(tester, 'Goa');
+        await tapAndSettle(tester, find.text('Create reel'));
+        expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+        await expectTtAccessible(tester);
+        expect(tester.takeException(), isNull);
+      }
     });
 
     testApp('keyboard does not cover the name field at 2x text, 360 dp', (
@@ -432,6 +546,29 @@ void main() {
 
       expect(find.text('You already have a reel called Paris'), findsOneWidget);
       expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('a failed edit says so in the sheet and keeps the choices', (
+      tester,
+    ) async {
+      await openEdit(tester);
+      await tester.tap(find.text('Published'));
+      await tester.pump();
+      reels.failWith = StateError('disk full');
+      await tapAndSettle(tester, find.text('Save'));
+
+      expect(
+        find.text('Something went wrong. Try again.').hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.byType(TtSheet), findsOneWidget);
+      expect(find.text('Saved'), findsNothing);
+
+      // Choosing another status is an edit: the line goes.
+      await tester.tap(find.text('Ready to edit'));
+      await tester.pump();
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
     });
 
     testApp('the edit sheet is accessible at 2x text', (tester) async {

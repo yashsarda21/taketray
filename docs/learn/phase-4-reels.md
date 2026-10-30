@@ -400,12 +400,14 @@ Home (Task 6) and the reel page (Task 8) call these; this task builds them and t
 
 - **Delete returns what Undo needs.** `ReelActions.confirmDelete` returns the `DeleteReelUndo` from Task 5. The snack holds that one object and hands it to `undo`. An empty record (`isEmpty`, the reel was already gone) shows no snack: there is nothing to take back.
 
+- **A modal sheet tells its own failure inside itself.** A snack is drawn by the `Scaffold`'s messenger, which sits *behind* a modal sheet and its scrim. A first version showed "Something went wrong" as a snack: the test passed, because `find.text` also finds widgets that are covered, but nobody could see it. The rule is: while a sheet is open, its failure goes in the sheet (`SheetFooter(failure: ...)`, a warning `TtBanner` above the buttons with an icon and a live region); snacks come after it has closed. A test for "the user can see this" must use `.hitTestable()`.
+
 - **Radios are a group of rows with a checked flag.** There is no `SemanticsRole.radio`; a radio is a node with `checked`, `inMutuallyExclusiveGroup` and a tap action, and the rows sit in a node with `role: SemanticsRole.radioGroup` named "Status". `excludeSemantics: true` plus one `label: 'Collecting, Still shooting clips for it'` makes a screen reader say one radio instead of a mark, a pill and a sentence.
 
 **Where it lives:**
 
 - `app/lib/features/reels/view_models/reel_form_controller.dart` (state, validation, single-flight), `reel_actions.dart` (`setStatus`, `confirmDelete`).
-- `app/lib/features/reels/views/reel_form_sheet.dart`, `reel_status_menu.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart` (`ReelSnacks`, `showUndoSnack`).
+- `app/lib/features/reels/views/reel_form_sheet.dart`, `reel_status_menu.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart` (`ReelSnacks`, `showUndoSnack`), `sheet_failure.dart` (`SheetFailure`, `SheetFooter`).
 - `app/lib/features/shell/views/root_messenger.dart` (`rootMessengerKeyProvider`, `rootMessengerOf`), used by `app/lib/app.dart`.
 - `packages/taketray_ui/lib/src/components/snack.dart` (`showTtSnackOn`) and `dialog.dart` (`TtDialog.icon`, `TtDialogNote`).
 - Tests: `app/test/features/reels/view_models/reel_form_controller_test.dart`, `reel_actions_test.dart`, and `views/reel_forms_test.dart`, `views/delete_reel_test.dart`.
