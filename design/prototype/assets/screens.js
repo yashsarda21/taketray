@@ -38,6 +38,7 @@
     return `<section class="shoot on" aria-label="Shooting mode, on">${latest ? `<span class="shoot-media" aria-hidden="true">${h.img(latest)}</span>` : ''}<div class="top"><span class="ico">${icon('videocam', 'fill')}<span class="recdot live"></span></span><div class="txt"><b>Shooting mode on</b><span>On since ${fmt.time(s.shooting.since)}${manual ? ' · Manual mode: add clips yourself' : ''}</span></div>${h.sw(true, { a: 'toggleShoot', label: 'Shooting mode', inv: true })}</div>
       <div class="acts">${h.btn({ label: 'Open camera', ic: 'videocam', kind: 'filled', cls: 'camb', a: 'openCamera' })}</div>
       ${refN ? `<button class="refrow tap" data-a="openRefsSheet" aria-label="References, ${refN}, from your Recording reels">${icon('link')}<span class="grow"><b>References · ${refN}</b><span>From ${RH.fmt.n(RH.recRefs(s).length, 'Recording reel')}</span></span>${icon('chevron_right')}</button>` : ''}
+      ${s.access === 'full' && !s.earlierUsed ? `<button class="refrow tap" data-a="openEarlier" data-from="card" aria-label="Add earlier videos, shot before Shooting mode was on">${icon('history')}<span class="grow"><b>Add earlier videos</b><span>Shot before Shooting mode was on</span></span>${icon('chevron_right')}</button>` : ''}
       ${n ? `<button class="strip tap" data-a="tab" data-tab="totag">${icon('sell', 'fill')}<span class="grow">${fmt.n(n, 'clip')} to tag</span><span>Tag now</span>${icon('arrow_forward')}</button>` : ''}</section>`;
   }
 
@@ -593,7 +594,7 @@
     <div class="sh-foot" style="flex-direction:column">${h.btn({ label: 'Open photo picker', kind: 'filled', size: 'block', a: 'closeSheet' })}${h.btn({ label: 'Allow full access instead', kind: 'text', size: 'block', a: 'allowAccess' })}</div></div>`;
 
   const dialogs = (RH.dialogs = {});
-  const dlg = (ic, title, body, acts) => `<div class="dlg-wrap"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">${ic ? `<span class="dico">${icon(ic)}</span>` : ''}<h2 id="dlg-t">${title}</h2>${body}<div class="acts">${acts}</div></div></div>`;
+  const dlg = (RH.dlg = (ic, title, body, acts) => `<div class="dlg-wrap"><div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">${ic ? `<span class="dico">${icon(ic)}</span>` : ''}<h2 id="dlg-t">${title}</h2>${body}<div class="acts">${acts}</div></div></div>`);
   dialogs.deleteReel = (s, u) => {
     const r = q.reel(s, u.dialog.id);
     const vn = r.vn ? `<p>The ${fmt.n(r.vn.copied.length, 'VN copy', 'VN copies')} (${fmt.size(q.vnMB(s, r))}) will also be deleted, and the VN project can't be edited after that.</p>` : '';
@@ -623,7 +624,7 @@
   };
   menus.reelMore = () => `<div class="menu" role="menu" style="right:8px;top:52px"><button class="mi tap" role="menuitem" data-a="editDetails">${icon('edit')}Reel details</button><button class="mi tap" role="menuitem" data-a="startSelBtn" data-ctx="reel">${icon('checklist')}Select clips</button><button class="mi tap danger" role="menuitem" data-a="askDelete">${icon('delete')}Delete reel</button></div>`;
   menus.reelSel = () => `<div class="menu" role="menu" style="right:8px;top:52px"><button class="mi tap" role="menuitem" data-a="selEdit">${icon('movie_edit')}Edit video</button><button class="mi tap" role="menuitem" data-a="selAll">${icon('select_all')}Select all</button><button class="mi tap" role="menuitem" data-a="share">${icon('share')}Share</button></div>`;
-  menus.totagMore = (s) => `<div class="menu" role="menu" style="right:8px;top:60px"><button class="mi tap" role="menuitem" data-a="startSelBtn" data-ctx="totag">${icon('checklist')}Select clips</button><button class="mi tap" role="menuitem" data-a="go" data-r="skipped">${icon('redo')}Skipped (${s.skipped.length})</button><button class="mi tap" role="menuitem" data-a="askSkipAll">${icon('clear_all')}Skip all</button></div>`;
+  menus.totagMore = (s) => `<div class="menu" role="menu" style="right:8px;top:60px">${s.access === 'full' ? `<button class="mi tap" role="menuitem" data-a="openEarlier" data-from="totag">${icon('history')}Add earlier videos</button>` : ''}<button class="mi tap" role="menuitem" data-a="startSelBtn" data-ctx="totag">${icon('checklist')}Select clips</button><button class="mi tap" role="menuitem" data-a="go" data-r="skipped">${icon('redo')}Skipped (${s.skipped.length})</button><button class="mi tap" role="menuitem" data-a="askSkipAll">${icon('clear_all')}Skip all</button></div>`;
 
   function sysDialog(s, u) {
     const t = u.sys.type;
@@ -681,6 +682,6 @@
       ov += h.snack({ ...u.snack, bottom });
     }
     if (u.shade) ov += shade(s, u);
-    return { html: `${h.statusbar(r.video)}<div class="vp">${r.html}${ov}</div><div class="gbar ${r.video ? 'on-video' : ''}"></div>`, video: !!r.video, splash: !!r.splash };
+    return { html: `${h.statusbar(r.video)}<div class="vp${u.fs2 ? ' fs2' : ''}">${r.html}${ov}</div><div class="gbar ${r.video ? 'on-video' : ''}"></div>`, video: !!r.video, splash: !!r.splash };
   };
 })();

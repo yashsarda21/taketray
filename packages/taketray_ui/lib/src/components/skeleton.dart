@@ -35,6 +35,31 @@ class TtSkeletonLine extends StatelessWidget {
   }
 }
 
+/// A grey bar, 48 x 16 dp with 8 dp corners, that stands in for the count at
+/// the end of a list row while it loads. Hidden from a screen reader (the row
+/// says it is loading).
+class TtSkeletonCount extends StatelessWidget {
+  /// A skeleton count.
+  const new({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    // handoff: Loading, a skeleton bar (48 x 16 dp, 8 dp radius)
+    return ExcludeSemantics(
+      child: SizedBox(
+        width: TtMetrics.skeletonCountWidth,
+        height: TtMetrics.skeletonCountHeight,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: context.scheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(context.tt.radii.s),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// A clip tile that is still loading: a 3:4 grey tile with a light band that
 /// sweeps across it.
 ///

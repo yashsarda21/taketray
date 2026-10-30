@@ -128,6 +128,46 @@ String formatRecord(LogRecord r) {
   return _truncate(buffer.toString());
 }
 
+const String _unprintableError = '<unprintable error>';
+
+/// [formatRecord], for the log listener, which must never throw.
+///
+/// The `logging` package calls listeners synchronously, but an exception from
+/// one does not reach the code that logged: the zone gets it as an uncaught
+/// error. The log line would be lost, and the uncaught error would go to the
+/// app's own error handler, which logs again.
+///
+/// Only the error's and the stack's `toString` run code that is not ours. When
+/// printing fails, the line is written without the stack; when the error
+/// itself cannot be printed, it is written as `<unprintable error>`. The
+/// message and logger name are always kept.
+String _formatRecordSafely(LogRecord record) {
+  try {
+    return formatRecord(record);
+  } on Object {
+    // The stack may be the one that cannot be printed.
+    try {
+      return formatRecord(
+        LogRecord(
+          record.level,
+          record.message,
+          record.loggerName,
+          record.error,
+        ),
+      );
+    } on Object {
+      return formatRecord(
+        LogRecord(
+          record.level,
+          record.message,
+          record.loggerName,
+          record.error == null ? null : _unprintableError,
+        ),
+      );
+    }
+  }
+}
+
 /// Message object of framework error records; its `toString` is the logged
 /// message, its identity tells the console echo to skip the record.
 const _FrameworkErrorTag _frameworkErrorTag = _FrameworkErrorTag();
@@ -189,7 +229,7 @@ Future<void> runAppWithLogging(
   final state = _state = _LogState();
   unawaited(_subscription?.cancel());
   _subscription = Logger.root.onRecord.listen((record) {
-    final line = formatRecord(record);
+    final line = _formatRecordSafely(record);
     // Debug builds also show every record on the console (uncaught async
     // errors would otherwise only reach the device file). Framework errors
     // are skipped: `presentError` below already printed them. Release builds

@@ -2,29 +2,14 @@
 
 Items that reviews found and parked for a later phase. When a phase is planned, read its section and put each item into a task (or say in the plan why it is dropped). Delete an item once it is done.
 
-Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), and the Phase 2 task reviews and its final whole-branch review (2026-10-27).
-
-## Phase 3
-
-- Logging hardening (Phase 2 final re-review): make the log-privacy test check the raw `LogRecord.message`, not `formatRecord` output (which already masks `scheme://` text); guard `formatRecord` in the Logger listener so an error whose `toString()` throws can't escape; reset `driftRuntimeOptions.dontWarnAboutMultipleDatabases` after the logging test.
-
-- Coverage gate (`tool/check`, step 10 of "Local checks"): `flutter test --coverage` only lists files that a test loads, so a new file under `lib/data/` or `lib/domain/` that no test imports is not counted (new `lib/data` code lands in this phase). Preferred fix: at check time, generate a temporary test that imports every non-generated `lib/domain/**` and `lib/data/**` file, so unloaded files show up with 0 hits (enum-only files have no executable lines and stay absent by themselves). Fallback: compare the lcov file list with the `.dart` files on disk and fail on a missing one, with a one-entry allowlist for `domain/models/enums.dart`. Do the same for `view_models/` when phase 4 adds it to the prefixes.
-
-- The media bridge supplies the `NOT NULL` clip fields with a fallback (R4g, D-57): when MediaStore has no `DATE_TAKEN`, use `DATE_ADDED`, then `DATE_MODIFIED`; an unknown width or height is `0`. The repository stores what it is given; the rule is written only in the doc comments of `NewClip` and `ClipFingerprint`.
-
-- The media bridge treats a MediaStore `DATE_TAKEN` before 1970 or more than a day in the future as missing and uses the R4g fallback (`DATE_ADDED`, then `DATE_MODIFIED`), because container metadata holds garbage (QuickTime epochs, wrong units). The backup round-trips any date a `DateTime` can hold (years such as `+010001` or `-0001` included), but a clip dated 1904 or the year 10001 would sort to the far end of To tag and of its reels.
-
-- After a backup import, Shooting mode is off and its MediaStore baselines are gone (D-59). The scan must treat a missing baseline as "start from now", never as "everything is new".
-
-- Merge the native zone timeline into `zone_timeline` in time order (or rebuild from the full list). `ZoneRepository.record` prunes redundant rows, and two out-of-order records can drop a later observation (D-58).
-
-- **Owner decision: Android Auto Backup.** The manifest sets no `allowBackup`, so Android may back up `taketray.sqlite` to the owner's Google account and restore it on a new phone, where MediaStore ids point at other videos. Options: exclude the database with `dataExtractionRules` (export/import stays the only backup), or keep it and rely on the version-change fingerprint resync. Explain both plainly and let the owner choose.
-
-- `TtBanner`: assert that `onTap` and an action are not both set, since the action would nest a button.
-- Banner and callout icons are always filled. Match each banner's prototype icon.
+Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), the Phase 2 task reviews and its final whole-branch review (2026-10-27), and the Phase 3 learning guide (2026-10-29).
 
 ## Phase 4
 
+- Phase 3 left these (D-76):
+  - `openCamera()` returning false (no camera app, or the call failed) shows nothing. Needs copy for a snack; the owner approves it.
+  - "On since {time}" and "Shooting since {time}" are built once per build, so they do not change at midnight until something redraws the screen. Rebuild the card at the next local midnight (a timer, or a clock provider that ticks).
+  - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
 
 - Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.
@@ -57,6 +42,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 5 (tagging and the player)
 
+- Phase 3 left these (D-76):
+  - The time on a To tag tile is in the phone's time zone. Show it in the zone the clip was shot in (`Clip.timeZoneId`, D-58).
+  - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
 - Scrub bar:
   - it reads `position / duration` as "slash"
   - its semantics lack `value` and `increasedValue`
@@ -72,6 +60,16 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The nav badge's spoken label drops the tab name ("7 clips to tag" instead of "To tag, 7 clips").
 - The snack has no drop shadow. Add one or record why in D-48.
 - Add `expectTtAccessible` to `video_surface_test`. Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
+
+## Phase 6 (background detection)
+
+- Phase 3 left this (D-71, D-72): the background job reuses `ZoneChangeStore` (the native zone list) and the baselines. The baselines exist only in the database (the `shootingMode` setting), which native code cannot read, and nothing writes them to native state yet. `BackgroundApi` must write them there (with Shooting mode on or off and the watched folders, spec §8.2), and keep them in step whenever Dart moves a baseline (`PhoneStateRepository.advanceBaseline`, compare-and-set) or turns Shooting mode on or off.
+
+- Phase 3's final review left these (D-72). Phase 6 reworks when scans run (background, after a reboot or a system update), which is when all four matter more:
+  - **A rebuild resync that runs while Android is still re-indexing detaches clips it cannot see yet (I-3).** After a library reset `getVersion` changes at once, but `allVideos` returns only what the media scanner has indexed so far. `matchAfterRebuild` loses every clip it cannot find, `applyRebuildMatch` detaches it (`-id`, missing; inbox-only clips are deleted), and nothing looks at a detached clip again (`mediaStoreClipsOn` needs id > 0). When the videos appear a minute later they come in as new clips past the baseline: reel clips stay "missing" and the same videos return to To tag as duplicates. No file is touched. Why Phase 6: a background job that wakes up after a reboot or an update is the likeliest time to meet a half-built index. The idea for the fix: let a later resync or verify re-match detached, missing clips by fingerprint when the match is unique, and un-flag them (the new id replaces `-id`). The design problem is the duplicate: by then the same video may already be a new clip in To tag (or tagged into a reel), so re-matching must decide which row survives (probably keep the old clip, because it holds the user's reel links and order, and remove the new one when it is still untouched in To tag). It would also repair a clip whose original was edited in place.
+  - **A clip trashed in a gallery and restored does not come back (M-6).** The queries leave out `IS_TRASHED` rows, so the verifier takes a trashed video for gone and removes an inbox-only clip. Restoring it does not give the row a newer generation, so the scan never adds it again. A clip in a reel recovers (the next verify un-flags it).
+  - **Undo plus a stuck pending row can add the videos again (M-7).** A crashed recording's pending row can hold the baseline below it for days. `undoEarlierAdd` deletes the clips, and a later scan sees the same rows again past the held baseline. Only videos shot after the stuck row are affected. Fix idea: Undo records a "do not add again" marker, or the scan skips clips that Undo removed.
+  - **A volume read that fails when Shooting mode is turned on leaves that volume without a baseline (M-8).** It then starts from "now" at the first scan, so videos shot between the switch and that scan are skipped. Very rare.
 
 ## Before the first schema change (v2)
 
@@ -91,6 +89,11 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 10 (onboarding and settings)
 
+- Phase 3 asks for video access when the user turns Shooting mode on (`ShootingModeController`, through `MediaAccessController.askIfDenied`, D-75) and from the banner's Allow button. Onboarding replaces the "Turn on, then ask for access" step: ask once, in its own step with its own words, and then decide whether the switch should still ask.
+- Backup import must run through `MediaWorkQueue`, or block the media jobs while it runs. It replaces the clips and the settings in one transaction, but a scan or a verify that is already running has read the old clips and baselines. The compare-and-set refuses the baseline write (an import turns Shooting mode off), yet the clips that job writes could still land in the freshly imported data. The same screen calls `MediaVerifier.verifyAll` for "X of Y clips found": like `verify` it throws on a bridge or database error, so wrap it in `guarded` (D-75).
+
+- A backup import resets `mediaAccessWasFull` (M-9): an import deletes every `settings` row (D-59), including this one, so a user whose video access was removed sees "Manual mode" instead of "TakeTray can't see your videos" until access is full again. Cosmetic. Keep the key through an import, or re-read it after.
+
 - The Export/Import buttons: decode and validate the backup JSON off the UI isolate (`compute`/`Isolate.run`) so a large file doesn't freeze the screen; show "X of Y clips found" after the media check.
 
 - When the Settings screen watches `SettingsRepository.watch()`, a corrupt stored value logs its "Setting … is corrupt" warning on every emission, not once. Log it once per key (or repair the row on first read).
@@ -102,6 +105,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The disabled-on `TtSwitch` tick is at full opacity.
 
 ## Phase 11 (polish and release)
+
+- The Play Console declaration for video access (`READ_MEDIA_VIDEO`). The Phase 3 research rates approval at about 50/50. The case to make: TakeTray's core feature is continuous detection of new camera clips as they are shot, which the one-off system photo picker cannot do. Say too that Manual mode (limited or denied access) already works without the permission, so a refusal costs the automatic detection and leaves the rest of the app working (spec: Play policy).
 
 - `design/tools/build_tokens.py --check` scans only `design/tokens/colour-options/` and `design/handoff/compose/` for orphans. Add `packages/taketray_ui/lib/src/tokens/` (it holds only `tokens.g.dart`) to `GENERATED_DIRS`.
 - Release as an app bundle or split per ABI (the APK is 48.9 MB for 3 ABIs).

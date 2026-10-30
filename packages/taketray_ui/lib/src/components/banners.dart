@@ -45,14 +45,26 @@ class TtBanner extends StatelessWidget {
     this.body,
     this.action,
     this.onTap,
+    this.iconFilled = true,
     super.key,
-  });
+  }) : assert(
+         onTap == null || action == null,
+         'A banner with onTap is one button; give it onTap or an action, '
+         'not both',
+       );
 
   /// The look of the banner.
   final TtBannerKind kind;
 
-  /// The glyph before the text, drawn filled.
+  /// The glyph before the text.
   final IconData icon;
+
+  /// Whether [icon] is drawn filled (the default) or outlined.
+  ///
+  /// The prototype fills the icon of a banner that stands for something to do
+  /// (the "clips to tag" banner) and leaves the icon of a status banner
+  /// (Manual mode, "can't see your videos") outlined.
+  final bool iconFilled;
 
   /// What the banner says, in a line or more.
   final String title;
@@ -65,7 +77,8 @@ class TtBanner extends StatelessWidget {
   final Widget? action;
 
   /// Called when the banner is tapped; makes it a button with a chevron.
-  /// Use it without an [action].
+  /// Not allowed together with an [action] (an assertion fails): a button
+  /// inside a button would be two nested tap targets.
   final VoidCallback? onTap;
 
   @override
@@ -118,7 +131,12 @@ class TtBanner extends StatelessWidget {
       spacing: tt.spacing.s,
       children: [
         ExcludeSemantics(
-          child: Icon(icon, fill: 1, size: tt.sizes.icon, color: content),
+          child: Icon(
+            icon,
+            fill: iconFilled ? 1 : 0,
+            size: tt.sizes.icon,
+            color: content,
+          ),
         ),
         Expanded(
           child: Column(

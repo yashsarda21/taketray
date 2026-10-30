@@ -4,8 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
-import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
+import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
+import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
+
+import 'support/fake_media_bridge.dart';
+import 'support/test_app.dart';
+import 'support/view_model_fakes.dart';
+import 'support/vm_harness.dart';
 
 Finder _inScreen(Type screen, String text) =>
     find.descendant(of: find.byType(screen), matching: find.text(text));
@@ -13,15 +19,19 @@ Finder _inScreen(Type screen, String text) =>
 Finder _inPill(String text) =>
     find.descendant(of: find.byType(TtNavPill), matching: find.text(text));
 
-Future<void> _pumpApp(WidgetTester tester) async {
-  await tester.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+/// The app on an in-memory database and a `FakeMediaBridge`:
+/// `MediaLifecycle` runs at start, and must not reach the phone's channels.
+Future<VmHarness> _pumpApp(WidgetTester tester) async {
+  final harness = VmHarness();
+  await tester.pumpWidget(
+    ProviderScope(overrides: harness.appOverrides, child: const TakeTrayApp()),
+  );
   await tester.pumpAndSettle();
+  return harness;
 }
 
 void main() {
-  testWidgets('shows the TakeTray nav pill, not the Material bar', (
-    tester,
-  ) async {
+  testApp('shows the TakeTray nav pill, not the Material bar', (tester) async {
     await _pumpApp(tester);
 
     expect(find.byType(TtNavPill), findsOneWidget);
@@ -32,14 +42,30 @@ void main() {
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
   });
 
-  testWidgets('uses the TakeTray theme', (tester) async {
+  testApp('starts the media work through the bridge on the first frame', (
+    tester,
+  ) async {
+    final harness = await _pumpApp(tester);
+    await tester.runAsync(settle);
+
+    expect(
+      harness.bridge.calls,
+      containsAllInOrder([
+        'pendingZoneChanges',
+        'currentZoneId',
+        'accessReport',
+      ]),
+    );
+  });
+
+  testApp('uses the TakeTray theme', (tester) async {
     await _pumpApp(tester);
 
     final context = tester.element(find.byType(TtNavPill));
     expect(Theme.of(context).extension<TtThemeData>(), isNotNull);
   });
 
-  testWidgets('the Reels placeholder has a large TtAppBar titled Reels', (
+  testApp('the Reels placeholder has a large TtAppBar titled Reels', (
     tester,
   ) async {
     await _pumpApp(tester);
@@ -53,14 +79,14 @@ void main() {
     expect(tester.widget<TtAppBar>(bar).large, isTrue);
   });
 
-  testWidgets('opens on Reels and switches tabs', (tester) async {
+  testApp('opens on Reels and switches tabs', (tester) async {
     await _pumpApp(tester);
 
     expect(_inScreen(ReelsPlaceholderScreen, 'Reels'), findsOneWidget);
 
     await tester.tap(_inPill('To tag'));
     await tester.pumpAndSettle();
-    expect(_inScreen(ToTagPlaceholderScreen, 'To tag'), findsOneWidget);
+    expect(_inScreen(ToTagScreen, 'To tag'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 1);
 
     await tester.tap(_inPill('Settings'));
@@ -69,7 +95,7 @@ void main() {
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
   });
 
-  testWidgets('system back from another tab returns to Reels', (tester) async {
+  testApp('system back from another tab returns to Reels', (tester) async {
     await _pumpApp(tester);
 
     await tester.tap(_inPill('Settings'));
@@ -82,7 +108,7 @@ void main() {
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
   });
 
-  testWidgets('the To tag item has no badge until phase 5', (tester) async {
+  testApp('the To tag item has no badge until phase 5', (tester) async {
     await _pumpApp(tester);
 
     final item = tester.widget<TtNavPill>(find.byType(TtNavPill)).items[1];
@@ -90,9 +116,7 @@ void main() {
     expect(item.badgeCount, 0);
   });
 
-  testWidgets('a tab screen can reserve the room the pill takes', (
-    tester,
-  ) async {
+  testApp('a tab screen can reserve the room the pill takes', (tester) async {
     tester.view.physicalSize = const Size(360, 780);
     tester.view.devicePixelRatio = 1;
     tester.view.padding = const FakeViewPadding(bottom: 24);
@@ -103,5 +127,123 @@ void main() {
     final context = tester.element(find.byType(ReelsPlaceholderScreen));
     final pillTop = tester.getRect(find.byType(TtGlass)).top;
     expect(TtNavPill.reservedHeight(context), 780 - pillTop);
+  });
+
+  testApp('the Reels tab shows the Shooting mode card, off at first', (
+    tester,
+  ) async {
+    await _pumpApp(tester);
+
+    expect(find.byType(TtShootingModeCard), findsOneWidget);
+    expect(
+      tester.widget<TtShootingModeCard>(find.byType(TtShootingModeCard)).on,
+      isFalse,
+    );
+    expect(_inScreen(ReelsPlaceholderScreen, 'Shooting mode'), findsOneWidget);
+  });
+
+  testApp('the To tag tab shows the To tag screen, empty', (tester) async {
+    await _pumpApp(tester);
+
+    await tester.tap(_inPill('To tag'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ToTagScreen), findsOneWidget);
+    expect(find.text('Nothing to tag'), findsOneWidget);
+  });
+
+  testApp('turning on Shooting mode on Reels shows it on To tag', (
+    tester,
+  ) async {
+    final harness = await _pumpApp(tester);
+
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    await tester.tap(find.byType(TtSwitch));
+    await tester.runAsync(settle);
+    await tester.pump();
+    expect(find.text('Shooting mode on'), findsOneWidget);
+    expect(
+      (await tester.runAsync(harness.media.phoneState.loadShooting))!.on,
+      isTrue,
+    );
+
+    await tester.tap(_inPill('To tag'));
+    await tester.pump();
+    await tester.runAsync(settle);
+    await tester.pump();
+    expect(find.text('All caught up'), findsOneWidget);
+  });
+
+  testApp('selecting To tag again checks the clips again', (tester) async {
+    final harness = VmHarness();
+    final toTag = FakeToTag(const []);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ...harness.appOverrides,
+          toTagControllerProvider.overrideWith(() => toTag),
+        ],
+        child: const TakeTrayApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(_inPill('To tag'));
+    await tester.pumpAndSettle();
+    expect(toTag.resumes, 0);
+
+    await tester.tap(_inPill('Reels'));
+    await tester.pumpAndSettle();
+    expect(toTag.resumes, 0);
+
+    await tester.tap(_inPill('To tag'));
+    await tester.pumpAndSettle();
+    expect(toTag.resumes, 1);
+  });
+
+  testApp('the Undo snack sits above the nav pill', (tester) async {
+    // The record dot of the "on" card would pulse for ever, and
+    // pumpAndSettle would never settle: the phone says "remove animations".
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    // 12:00 local; one video shot at 09:41 today.
+    final harness = VmHarness(now: DateTime(2026, 10, 28, 12).toUtc());
+    final shot = DateTime(2026, 10, 28, 9, 41).millisecondsSinceEpoch;
+    harness.bridge.put([
+      fakeVideo(
+        id: 1,
+        dateTakenMs: shot,
+        dateAddedSec: shot ~/ 1000,
+        dateModifiedSec: shot ~/ 1000,
+      ),
+    ]);
+    await tester.runAsync(harness.media.turnOnNow);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: harness.appOverrides,
+        child: const TakeTrayApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.runAsync(settle);
+    await tester.pump();
+
+    await tester.tap(find.text('Add earlier videos'));
+    await tester.pump();
+    await tester.runAsync(settle);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Today'));
+    await tester.pump();
+    await tester.runAsync(settle);
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 clip added to To tag'), findsOneWidget);
+    expect(find.byType(TtSnack), findsOneWidget);
+    final snack = tester.getRect(find.byType(TtSnack));
+    final pill = tester.getRect(find.byType(TtNavPill));
+    expect(snack.bottom, lessThanOrEqualTo(pill.top));
   });
 }

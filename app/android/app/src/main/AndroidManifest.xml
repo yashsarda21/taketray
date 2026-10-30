@@ -6,10 +6,29 @@
          tool/check_release_permissions. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
 
+    <!-- Reading videos (D-68). Android 11-12 read through READ_EXTERNAL_STORAGE
+         (so it stops at maxSdkVersion 32); 13 has READ_MEDIA_VIDEO; 14+ adds
+         READ_MEDIA_VISUAL_USER_SELECTED ("Select photos and videos", limited
+         access), asked for together with READ_MEDIA_VIDEO. Nothing else
+         media-related: no READ_MEDIA_IMAGES, MANAGE_EXTERNAL_STORAGE or
+         ACCESS_MEDIA_LOCATION. Checked by tool/check_release_permissions. -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+
+    <!-- No Google backup or phone-to-phone transfer of app data (D-64): the
+         database holds MediaStore ids that would point at other videos on
+         another phone, so a new phone starts with an empty TakeTray. The two XML files exclude every domain; allowBackup is
+         off as well. Checked by tool/check_release_permissions. -->
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -32,6 +51,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Records time-zone changes while the app is closed (spec §8.3a).
+             ACTION_TIMEZONE_CHANGED is exempt from the implicit-broadcast
+             limits; the system delivers it to a receiver that is not exported. -->
+        <receiver
+            android:name=".media.TimeZoneChangedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
+            </intent-filter>
+        </receiver>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

@@ -7,9 +7,12 @@ part 'clip_fingerprint.g.dart';
 /// (spec §8.1). Never the video itself.
 ///
 /// None of the fields is null: [dateTakenUtc] is required by the database
-/// (`NOT NULL`). Whoever builds a fingerprint supplies the values as given.
-/// Phase 3's bridge falls back to MediaStore's DATE_ADDED, then DATE_MODIFIED,
-/// when a video has no date taken (D-57); the repository never guesses.
+/// (`NOT NULL`). Whoever builds a fingerprint supplies the values as given;
+/// the repository never guesses (D-57). For a video from MediaStore,
+/// [dateTakenUtc] is `shotAt` (`domain/rules/clip_date.dart`, D-69): the
+/// first plausible one of DATE_TAKEN, DATE_ADDED and DATE_MODIFIED, else
+/// "now". `sameVideo` (`domain/rules/fingerprint_match.dart`) compares the
+/// size, the duration and this date, never [displayName].
 @freezed
 abstract class ClipFingerprint with _$ClipFingerprint {
   const factory ClipFingerprint({

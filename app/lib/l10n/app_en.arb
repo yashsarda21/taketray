@@ -24,5 +24,541 @@
         "type": "int"
       }
     }
+  },
+  "moreOptions": "More options",
+  "@moreOptions": {
+    "description": "Screen-reader label of the three-dot menu button in an app bar."
+  },
+  "tryAgain": "Try again",
+  "@tryAgain": {
+    "description": "Button that repeats something that failed."
+  },
+  "undo": "Undo",
+  "@undo": {
+    "description": "Snack bar button that takes back what was just done."
+  },
+  "accessManualTitle": "Manual mode",
+  "@accessManualTitle": {
+    "description": "Title of the banner shown when TakeTray cannot see all videos."
+  },
+  "accessManualBody": "New clips aren't found automatically.",
+  "@accessManualBody": {
+    "description": "Text of the Manual mode banner."
+  },
+  "accessManualAction": "Allow full access",
+  "@accessManualAction": {
+    "description": "Button on the Manual mode banner."
+  },
+  "accessLostTitle": "TakeTray can't see your videos",
+  "@accessLostTitle": {
+    "description": "Title of the banner shown when video access was lost."
+  },
+  "accessLostBody": "Allow access to find new clips.",
+  "@accessLostBody": {
+    "description": "Text of the access-lost banner."
+  },
+  "accessLostAction": "Allow",
+  "@accessLostAction": {
+    "description": "Button on the access-lost banner."
+  },
+  "shootingOffTitle": "Shooting mode",
+  "@shootingOffTitle": {
+    "description": "Title of the Shooting mode card when it is off."
+  },
+  "shootingOffSubtitle": "Off. Turn on before you start filming, and new videos wait in To tag.",
+  "@shootingOffSubtitle": {
+    "description": "Text of the Shooting mode card when it is off."
+  },
+  "shootingOnTitle": "Shooting mode on",
+  "@shootingOnTitle": {
+    "description": "Title of the Shooting mode card when it is on."
+  },
+  "shootingOnSubtitle": "On since {time}",
+  "@shootingOnSubtitle": {
+    "description": "Text of the Shooting mode card when it is on. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "shootingOnSubtitleManual": "On since {time} · Manual mode: add clips yourself",
+  "@shootingOnSubtitleManual": {
+    "description": "Text of the Shooting mode card when it is on but TakeTray does not have full access to videos. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "shootingSwitchLabel": "Shooting mode",
+  "@shootingSwitchLabel": {
+    "description": "Screen-reader label of the Shooting mode switch."
+  },
+  "shootingOpenCamera": "Open camera",
+  "@shootingOpenCamera": {
+    "description": "Button that opens the phone camera in video mode."
+  },
+  "shootingStripTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
+  "@shootingStripTitle": {
+    "description": "Row at the bottom of the Shooting mode card: how many clips wait in To tag.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingStripAction": "Tag now",
+  "@shootingStripAction": {
+    "description": "Trailing word of the clips-to-tag row on the Shooting mode card."
+  },
+  "toTagStripOn": "Shooting since {time}",
+  "@toTagStripOn": {
+    "description": "Strip at the top of To tag while Shooting mode is on. {time} is when it was turned on.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      }
+    }
+  },
+  "toTagStripOff": "Shooting mode off",
+  "@toTagStripOff": {
+    "description": "Strip at the top of To tag while Shooting mode is off and clips are waiting."
+  },
+  "toTagStripTurnOn": "Turn on",
+  "@toTagStripTurnOn": {
+    "description": "Button on the Shooting-mode-off strip of To tag."
+  },
+  "toTagEmptyOnTitle": "All caught up",
+  "@toTagEmptyOnTitle": {
+    "description": "Title of To tag when it is empty and Shooting mode is on."
+  },
+  "toTagEmptyOnBody": "New clips you shoot will show up here.",
+  "@toTagEmptyOnBody": {
+    "description": "Text of To tag when it is empty and Shooting mode is on."
+  },
+  "toTagEmptyOffTitle": "Nothing to tag",
+  "@toTagEmptyOffTitle": {
+    "description": "Title of To tag when it is empty and Shooting mode is off."
+  },
+  "toTagEmptyOffBody": "Turn on Shooting mode before you start filming. New videos will show up here.",
+  "@toTagEmptyOffBody": {
+    "description": "Text of To tag when it is empty and Shooting mode is off."
+  },
+  "toTagEmptyOffAction": "Turn on Shooting mode",
+  "@toTagEmptyOffAction": {
+    "description": "Button of To tag when it is empty and Shooting mode is off."
+  },
+  "clipTileSemantics": "Clip, {time}, {duration}",
+  "@clipTileSemantics": {
+    "description": "Screen-reader label of a clip tile. {time} is the time of day it was shot, {duration} its length such as 0:32.",
+    "placeholders": {
+      "time": {
+        "type": "String",
+        "example": "9:41 AM"
+      },
+      "duration": {
+        "type": "String",
+        "example": "0:32"
+      }
+    }
+  },
+  "addEarlierVideos": "Add earlier videos",
+  "@addEarlierVideos": {
+    "description": "Card link and To tag menu item that open the Add earlier videos sheet."
+  },
+  "earlierSheetSubtitle": "From your camera folders. Clips you already tagged or skipped stay where they are.",
+  "@earlierSheetSubtitle": {
+    "description": "Text under the title of the Add earlier videos sheet."
+  },
+  "earlierRangeToday": "Today",
+  "@earlierRangeToday": {
+    "description": "Row of the Add earlier videos sheet: videos shot today."
+  },
+  "earlierChooseDates": "Choose dates…",
+  "@earlierChooseDates": {
+    "description": "Row of the Add earlier videos sheet that opens the date range picker."
+  },
+  "earlierPickerTitle": "Choose dates",
+  "@earlierPickerTitle": {
+    "description": "Title of the date range picker of Add earlier videos. A screen reader starts there."
+  },
+  "earlierPickerConfirm": "Find videos",
+  "@earlierPickerConfirm": {
+    "description": "Confirm button of the date range picker of Add earlier videos: counts the videos in the chosen dates."
+  },
+  "earlierFoundTitle": "{count, plural, one{1 video found} other{{count} videos found}}",
+  "@earlierFoundTitle": {
+    "description": "Title of the dialog that asks whether to add the videos found in the chosen dates.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierFoundBody": "{count, plural, one{Add it to To tag?} other{Add them to To tag?}}",
+  "@earlierFoundBody": {
+    "description": "Question in the dialog that asks whether to add the videos found in the chosen dates.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierNoneTitle": "No new videos",
+  "@earlierNoneTitle": {
+    "description": "Title of the dialog shown when the chosen dates hold no new videos."
+  },
+  "earlierNoneBetween": "No new videos between {from} and {to}.",
+  "@earlierNoneBetween": {
+    "description": "Body of the no-new-videos dialog for a range of several days. Both dates are short, like Oct 20.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "Oct 20"
+      },
+      "to": {
+        "type": "String",
+        "example": "Oct 24"
+      }
+    }
+  },
+  "earlierNoneOn": "No new videos on {day}.",
+  "@earlierNoneOn": {
+    "description": "Body of the no-new-videos dialog for a single day. The date is short, like Oct 20.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "Oct 20"
+      }
+    }
+  },
+  "earlierDialogCancel": "Cancel",
+  "@earlierDialogCancel": {
+    "description": "Button of the found-videos dialog that adds nothing."
+  },
+  "earlierDialogAdd": "Add",
+  "@earlierDialogAdd": {
+    "description": "Button of the found-videos dialog that adds the videos to To tag."
+  },
+  "earlierDialogOk": "OK",
+  "@earlierDialogOk": {
+    "description": "Button of the no-new-videos dialog."
+  },
+  "earlierRowCount": "{count, plural, =0{none} one{1 new} other{{count} new}}",
+  "@earlierRowCount": {
+    "description": "Trailing text of a row of the Add earlier videos sheet: how many videos it would add.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierAddedSnack": "{count, plural, one{1 clip added to To tag} other{{count} clips added to To tag}}",
+  "@earlierAddedSnack": {
+    "description": "Snack shown after adding earlier videos.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierAddFailed": "Couldn't add videos. Try again.",
+  "@earlierAddFailed": {
+    "description": "Snack shown when adding earlier videos failed."
+  },
+  "earlierUndoFailed": "Couldn't undo. Try again.",
+  "@earlierUndoFailed": {
+    "description": "Snack shown when taking back the added earlier videos failed."
+  },
+  "earlierCountFailed": "Couldn't check your videos.",
+  "@earlierCountFailed": {
+    "description": "Text in the Add earlier videos sheet when the counts could not be read."
+  },
+  "earlierCardRowSubtitle": "Shot before Shooting mode was on",
+  "@earlierCardRowSubtitle": {
+    "description": "Line under the Add earlier videos row on the Shooting mode card."
+  },
+  "earlierCardRowLabel": "Add earlier videos, shot before Shooting mode was on",
+  "@earlierCardRowLabel": {
+    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
+  },
+  "earlierChooseSubtitle": "Up to 10 years back",
+  "@earlierChooseSubtitle": {
+    "description": "Line under Choose dates… in the Add earlier videos sheet."
+  },
+  "earlierChecking": "{range} · Checking…",
+  "@earlierChecking": {
+    "description": "Line under Choose dates… while the videos of the chosen dates are counted. The range is short dates, like 8 Oct – 10 Oct.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingRange": "{range} · Adding…",
+  "@earlierAddingRange": {
+    "description": "Line under Choose dates… while the videos of the chosen dates are added.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingToday": "Adding…",
+  "@earlierAddingToday": {
+    "description": "At the end of the Today row while Today's videos are added."
+  },
+  "earlierTodayLabelNew": "Today, {count, plural, one{1 new video} other{{count} new videos}}. Adds them to To tag",
+  "@earlierTodayLabelNew": {
+    "description": "What a screen reader says for the Today row when it has new videos.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierTodayLabelNone": "Today, no new videos",
+  "@earlierTodayLabelNone": {
+    "description": "What a screen reader says for the Today row with no new videos."
+  },
+  "earlierTodayLabelLoading": "Today, checking for new videos",
+  "@earlierTodayLabelLoading": {
+    "description": "What a screen reader says for the Today row while its count loads."
+  },
+  "earlierTodayLabelNotChecked": "Today, not checked",
+  "@earlierTodayLabelNotChecked": {
+    "description": "What a screen reader says for the Today row when its count could not be read."
+  },
+  "earlierChooseLabel": "Choose dates, up to 10 years back",
+  "@earlierChooseLabel": {
+    "description": "What a screen reader says for the Choose dates… row."
+  },
+  "earlierChooseLabelBusy": "Choose dates. {status}",
+  "@earlierChooseLabelBusy": {
+    "description": "What a screen reader says for the Choose dates… row while it works. The status is the line under it, like 8 Oct – 10 Oct · Checking….",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct · Checking…"
+      }
+    }
+  },
+  "earlierCheckingSpinner": "Checking your videos from {range}",
+  "@earlierCheckingSpinner": {
+    "description": "What a screen reader says for the spinner while the videos of the chosen dates are counted.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingSpinner": "Adding the videos",
+  "@earlierAddingSpinner": {
+    "description": "What a screen reader says for the spinner while the videos of the chosen dates are added."
+  },
+  "earlierAddingTodaySpinner": "Adding today's videos",
+  "@earlierAddingTodaySpinner": {
+    "description": "What a screen reader says for the spinner while Today's videos are added."
+  },
+  "pickerClose": "Close",
+  "@pickerClose": {
+    "description": "Close button (✕) of the date range picker."
+  },
+  "pickerClear": "Clear",
+  "@pickerClear": {
+    "description": "Action of the date range picker that removes the chosen days."
+  },
+  "pickerQuickYesterday": "Yesterday",
+  "@pickerQuickYesterday": {
+    "description": "Quick range of the date range picker: the day before today."
+  },
+  "pickerQuickLastWeek": "Last week",
+  "@pickerQuickLastWeek": {
+    "description": "Quick range of the date range picker: the whole week before this one."
+  },
+  "pickerQuickThisMonth": "This month",
+  "@pickerQuickThisMonth": {
+    "description": "Quick range of the date range picker: the 1st of this month to today."
+  },
+  "pickerQuickLastMonth": "Last month",
+  "@pickerQuickLastMonth": {
+    "description": "Quick range of the date range picker: the whole month before this one."
+  },
+  "pickerSummaryNothingTitle": "Tap the first day",
+  "@pickerSummaryNothingTitle": {
+    "description": "Summary of the date range picker when nothing is chosen: its big line."
+  },
+  "pickerSummaryNothingSubtitle": "Then tap the last day.",
+  "@pickerSummaryNothingSubtitle": {
+    "description": "Summary of the date range picker when nothing is chosen: the line under it."
+  },
+  "pickerSummaryFirstTitle": "{day} – …",
+  "@pickerSummaryFirstTitle": {
+    "description": "Summary when only the first day is chosen: its big line.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "8 Oct"
+      }
+    }
+  },
+  "pickerSummaryFirstSubtitle": "Tap the last day, or Find videos for {day} only.",
+  "@pickerSummaryFirstSubtitle": {
+    "description": "Summary when only the first day is chosen: the line under it. Find videos is the name of the button.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "8 Oct"
+      }
+    }
+  },
+  "pickerSummaryRangeTitle": "{from} – {to}",
+  "@pickerSummaryRangeTitle": {
+    "description": "Summary of a chosen range: its big line.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "8 Oct"
+      },
+      "to": {
+        "type": "String",
+        "example": "10 Oct"
+      }
+    }
+  },
+  "pickerSummaryRangeSubtitle": "{count, plural, one{1 day} other{{count} days}}",
+  "@pickerSummaryRangeSubtitle": {
+    "description": "Summary of a chosen range: how many days it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSummaryOneDay": "1 day",
+  "@pickerSummaryOneDay": {
+    "description": "Summary of one chosen day: the line under the day."
+  },
+  "calendarPreviousMonth": "Previous month",
+  "@calendarPreviousMonth": {
+    "description": "What a screen reader says for the button that shows the month before."
+  },
+  "calendarNextMonth": "Next month",
+  "@calendarNextMonth": {
+    "description": "What a screen reader says for the button that shows the next month."
+  },
+  "calendarBackToDays": "Back to the days",
+  "@calendarBackToDays": {
+    "description": "What a screen reader says for the month button while the year and month grid is open."
+  },
+  "calendarChooseMonthYear": "Choose month and year. Now {monthYear}",
+  "@calendarChooseMonthYear": {
+    "description": "What a screen reader says for the month button that opens the year and month grid.",
+    "placeholders": {
+      "monthYear": {
+        "type": "String",
+        "example": "October 2026"
+      }
+    }
+  },
+  "calendarYear": "Year",
+  "@calendarYear": {
+    "description": "Heading over the years of the year and month grid."
+  },
+  "calendarMonth": "Month",
+  "@calendarMonth": {
+    "description": "Heading over the months of the year and month grid."
+  },
+  "calendarFirstDay": "first day",
+  "@calendarFirstDay": {
+    "description": "Said after a day's date when it is the first chosen day."
+  },
+  "calendarLastDay": "last day",
+  "@calendarLastDay": {
+    "description": "Said after a day's date when it is the last chosen day."
+  },
+  "calendarOnlyDay": "the only day",
+  "@calendarOnlyDay": {
+    "description": "Said after a day's date when it is the first and the last chosen day."
+  },
+  "calendarInRange": "in the range",
+  "@calendarInRange": {
+    "description": "Said after a day's date when it is between the first and last chosen day."
+  },
+  "calendarToday": "today",
+  "@calendarToday": {
+    "description": "Said after a day's date when it is today."
+  },
+  "calendarNotAvailable": "not available",
+  "@calendarNotAvailable": {
+    "description": "Said after a day's or month's name when it cannot be chosen."
+  },
+  "calendarHasChosenDays": "has chosen days",
+  "@calendarHasChosenDays": {
+    "description": "Said after a month's name when it holds chosen days."
+  },
+  "clipMissing": "Missing from phone",
+  "@clipMissing": {
+    "description": "Label of a clip tile whose video is gone from the phone."
+  },
+  "clipsWaitingTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
+  "@clipsWaitingTitle": {
+    "description": "Title of the banner on the Reels tab: how many clips wait in To tag while Shooting mode is off.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipsWaitingBody": "{duration} of video waiting",
+  "@clipsWaitingBody": {
+    "description": "Text of the banner on the Reels tab. {duration} is the total length of the waiting clips, such as \"45 s\", \"3 min\" or \"1 h 5 min\".",
+    "placeholders": {
+      "duration": {
+        "type": "String",
+        "example": "3 min"
+      }
+    }
+  },
+  "durationSeconds": "{count} s",
+  "@durationSeconds": {
+    "description": "A length under a minute, such as 45 s.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationMinutes": "{count} min",
+  "@durationMinutes": {
+    "description": "A length of minutes, such as 3 min.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "durationHoursMinutes": "{hours} h {minutes} min",
+  "@durationHoursMinutes": {
+    "description": "A length of an hour or more, such as 1 h 5 min.",
+    "placeholders": {
+      "hours": {
+        "type": "int"
+      },
+      "minutes": {
+        "type": "int"
+      }
+    }
+  },
+  "loading": "Loading",
+  "@loading": {
+    "description": "Screen-reader word for something that is still loading, after its name."
   }
 }

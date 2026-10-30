@@ -29,11 +29,11 @@
       <section class="view" id="v-overview" hidden>
         <p class="eyebrow">TakeTray · Android · version 1</p>
         <h1>Every clip you shoot, sorted into the right reel</h1>
-        <p class="lede">The complete version 1 interface for TakeTray: all 37 screens with every state from the brief and add-on 1, in light and dark at 360 dp, a clickable prototype of the key flows, and Material 3 design tokens that map straight onto a Jetpack Compose theme.</p>
+        <p class="lede">The complete version 1 interface for TakeTray: all 40 screens with every state from the brief, add-on 1 and the Add earlier videos change, in light and dark at 360 dp, a clickable prototype of the key flows, and Material 3 design tokens that map straight onto a Jetpack Compose theme.</p>
         <div class="pair" id="ov-phones" style="margin:28px 0 8px"></div>
         <div class="cards">
           <a class="card link" href="#prototype"><span class="ms" style="color:var(--page-accent)">touch_app</span><span class="big">Try the prototype</span><span class="muted">Tag a day's clips, send a reel to VN, or run first launch. It all works, Undo included.</span></a>
-          <a class="card link" href="#screen-01"><span class="ms" style="color:var(--page-accent)">smartphone</span><span class="big">37 screens, every state</span><span class="muted">Each screen page shows its states side by side in light and dark, with notes and interactions.</span></a>
+          <a class="card link" href="#screen-01"><span class="ms" style="color:var(--page-accent)">smartphone</span><span class="big">40 screens, every state</span><span class="muted">Each screen page shows its states side by side in light and dark, with notes and interactions.</span></a>
           <a class="card link" href="#system"><span class="ms" style="color:var(--page-accent)">palette</span><span class="big">Design system</span><span class="muted">Colour roles with contrast ratios, type scale, shapes, elevation and the component library.</span></a>
           <a class="card link" href="#handoff"><span class="ms" style="color:var(--page-accent)">code</span><span class="big">Developer handoff</span><span class="muted">Specs in dp and sp, Compose mapping, assets, notification channels, TalkBack labels.</span></a>
         </div>
@@ -77,6 +77,7 @@
                   <option value="onboarding">First launch (onboarding)</option>
                   <option value="reference">Save a reference from Instagram</option>
                   <option value="reference-first">Save a reference on first launch</option>
+                  <option value="earlier">Add earlier videos</option>
                   <option value="explore">Free explore</option>
                 </select>
               </label>
@@ -357,6 +358,16 @@
           <li><b>Data.</b> <code>Reference(id, reelId, url, label ≤ 60, source, addedAt)</code>. Included in export/import. Deleting a reel deletes its references.</li>
           <li><b>First launch.</b> A reel created from a share is marked as created before onboarding; it is listed (ticked) in "Create your reels", and Open reel deep-links to it after onboarding.</li>
         </ul>
+        <h2 id="handoff-earlier">Add earlier videos (change, 29 Oct 2026)</h2>
+        <p class="muted">Screens 38–40. The full note, with every string and label, is <code>design/handoff/add-earlier-videos.md</code>.</p>
+        <ul class="notes">
+          <li><b>New: <code>showTtDateRangePicker</code></b> (full-screen dialog route) built on <b><code>TtDateRangeCalendar</code></b>. It replaces <code>showDateRangePicker</code> and the <code>DatePickerThemeData</code> in <code>TakeTrayTheme</code>, whose day cells are under 48 dp. Same contract: <code>firstDate</code> (10 years back), <code>lastDate</code> today, <code>currentDate</code>, <code>initialDateRange</code>, help text "Choose dates" (now the title), confirm "Find videos"; it returns a <code>DateTimeRange</code>, with <code>end == start</code> for one day.</li>
+          <li><b>Calendar sizes.</b> Day cell 48 × 48 dp (<code>touchTarget</code>); 7 columns of at least 48 dp, so 12 dp sides (<code>space3</code>) at 360 dp; weekday row 40 dp; month header 48 dp; month and year pills at least 48 dp tall, columns at least 5 em wide (fewer columns at large text). The grid scrolls with the summary and chips; the Find videos bar is fixed (large button, 56 dp, 12 / 16 / 16 padding, 9 % hairline above).</li>
+          <li><b>Day states.</b> Default onSurface 600; other month onSurfaceVariant 500 (still tappable); first and last day: primary circle, onPrimary 700; days between: primaryContainer band, onPrimaryContainer; today: 1 dp primary ring and primary text; off (future or older than 10 years): onSurfaceVariant 400 with a line through. All AA in both themes (lowest 6.1:1).</li>
+          <li><b>Variants.</b> <code>TtShootingModeCard</code>: <code>referencesRow</code> becomes <code>rows</code> (References, then Add earlier videos, both <code>TtCardRow</code>). <code>TtListRow</code>: a count trailing (secondaryContainer pill, 28 dp, 12 dp sides) and an off state that keeps AA (onSurfaceVariant text, outlined pill) instead of 38 % opacity; Today stacks its count at large text, Choose dates… keeps its chevron. The error is <code>TtBanner(kind: warning)</code> with "Try again".</li>
+          <li><b>No new tokens.</b> Every colour, size, radius and duration above is an existing token.</li>
+          <li><b>Motion.</b> The picker rises 24 dp and fades in (<code>medium2</code>, emphasized decelerate); a month change slides 24 dp (<code>medium1</code>). Reduced motion: no travel.</li>
+        </ul>
         <h2>Notes on the skill's data</h2>
         <p class="muted">The UI/UX Pro Max searches returned Compose guidance on lazy lists (use keys), content descriptions and semantics, and AnimatedVisibility. Searches for Compose theming, touch targets and image loading returned no database match, so those notes above follow general Material 3 guidance.</p>
       </section>
@@ -411,6 +422,19 @@
           <tr><td><b>First launch</b>: the shared reel is listed and ticked in "Create your reels"; the button says "Continue" if nothing new is added.</td><td>The user sees what they already made and doesn't create it twice.</td></tr>
           <tr><td><b>Instagram is never drawn.</b> The share flow starts in a plain video app labelled "Instagram, shown as a plain video app".</td><td>Respects the branding rule while keeping the flow clear.</td></tr>
         </tbody></table></div>
+        <h2>Add earlier videos (change, 29 Oct 2026)</h2>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Decision</th><th>Why</th></tr></thead><tbody>
+          <tr><td><b>TakeTray's own calendar</b> instead of Android's date range picker.</td><td>The stock picker's day cells are under 48 dp. Ours keeps 48 × 48 dp days at 360 dp and the TakeTray look.</td></tr>
+          <tr><td><b>One month at a time</b>, with arrows (or a swipe) and a month-name button for a year and month grid.</td><td>Ten years is 120 months: a long scrolling list is slow to cross, a jump is two taps.</td></tr>
+          <tr><td><b>Other months' days fill the first and last rows</b>, and can be tapped.</td><td>A range across two months (28 Sep – 3 Oct) reads in one view.</td></tr>
+          <tr><td><b>Off days: a line through</b>, at full AA contrast.</td><td>The brief asks for AA on disabled days; the line, not faint grey, says "not available".</td></tr>
+          <tr><td><b>The line under the range says what the next tap does</b> ("Tap the last day, or Find videos for 8 Oct only").</td><td>Teaches from-to and the one-day case without a tutorial.</td></tr>
+          <tr><td><b>Quick ranges</b>: Yesterday, Last week, This month, Last month. They only fill the calendar.</td><td>Common picks in one tap, and still confirmed with a count. "Last 2 days" and "Last 7 days" stay gone.</td></tr>
+          <tr><td><b>The picker reopens on the last dates chosen</b> in the sheet.</td><td>After "No new videos", widening the range is one tap.</td></tr>
+          <tr><td><b>The card row is the same row as References</b>, under it, with the line "Shot before Shooting mode was on".</td><td>Not squeezed into a spare slot, and it says why it is there.</td></tr>
+          <tr><td><b>Counts in a pill; an off row keeps AA text</b> instead of fading.</td><td>"3 new" reads as something to tap; "none" still reads.</td></tr>
+          <tr><td><b>The error reuses the warning banner</b> (as for lost access).</td><td>No new component.</td></tr>
+        </tbody></table></div>
         <h2>Questions for you</h2>
         <div class="q"><b>1. Which app icon?</b>Tray of takes (recommended), Clapper take or Sorted takes (Name and icon).</div>
         <div class="q"><b>2. Tagline</b>"Shoot now. Sort later." (recommended), "Every take, in the right reel." or the current draft?</div>
@@ -423,6 +447,7 @@
         <div class="q"><b>9. CapCut in India</b>Show it whenever it's installed (sideloaded or outside India), or hide it entirely for Indian users?</div>
         <div class="q"><b>10. VN folder name clashes</b>If two reels end up with the same name (for example, after a rename), should the second folder get "(2)"?</div>
         <div class="q"><b>11. Thumbnails in the "new clips" notification</b>Custom notification layouts look different on Samsung, Xiaomi and others. Is a single big picture acceptable as the fallback?</div>
+        <div class="q"><b>12. A year in Add earlier videos dates?</b>The picker reaches 10 years back, so the design shows the year when a date isn't in this year ("No new videos between 30 Dec 2025 and 2 Jan 2026"). The current build leaves the year out, as you asked. Keep the year (recommended), or leave it out?</div>
       </section>
 
     </main>
@@ -438,6 +463,7 @@
 <script src="assets/states.js"></script>
 <script src="assets/app.js"></script>
 <script src="assets/refs.js"></script>
+<script src="assets/earlier.js"></script>
 <script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
 </body>
 </html>

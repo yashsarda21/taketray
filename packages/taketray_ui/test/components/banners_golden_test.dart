@@ -38,6 +38,9 @@ TtBanner _banner(TtBannerKind kind, {bool action = false}) {
     icon: icon,
     title: title,
     body: body,
+    // The prototype fills the icon of "clips to tag" and leaves the icons of
+    // Manual mode and "can't see your videos" outlined (screens.js, app.js).
+    iconFilled: kind == TtBannerKind.attention || kind == TtBannerKind.vn,
     onTap: kind == TtBannerKind.attention && !action ? () {} : null,
     action: action
         ? kind == TtBannerKind.vn

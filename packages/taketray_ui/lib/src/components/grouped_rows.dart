@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -136,6 +138,15 @@ class TtRowIcon extends StatelessWidget {
 ///
 /// [semanticLabel] replaces what a screen reader says for a tappable row
 /// (the title and subtitle by default).
+///
+/// Variants (D-79):
+/// - [tall] makes the row at least 72 dp high (two lines and a count).
+/// - [off] is a row that cannot be used now: it has no [onTap], reads as a
+///   disabled button named [semanticLabel], and is drawn with AA contrast, not
+///   faded: the title is `onSurfaceVariant` at weight 400, and a [TtRowCount]
+///   in it turns outlined.
+/// - [TtRowCount] and [TtRowSpinner] are the trailing parts of a row that
+///   counts, or is busy.
 class TtListRow extends StatelessWidget {
   /// A row titled [title].
   const new({
@@ -146,8 +157,22 @@ class TtListRow extends StatelessWidget {
     this.onTap,
     this.semanticLabel,
     this.stackTrailingAtLargeText = false,
+    this.tall = false,
+    this.off = false,
+    this.focusNode,
     super.key,
-  });
+  }) : assert(!off || onTap == null, 'An off row cannot be tapped');
+
+  /// The focus of a tappable row, so a screen can give it back the focus
+  /// (after a page it opened closes), or null.
+  final FocusNode? focusNode;
+
+  /// Whether the row is at least 72 dp high instead of 56 dp.
+  final bool tall;
+
+  /// Whether the row cannot be used now (see the class comment). Needs a null
+  /// [onTap].
+  final bool off;
 
   /// The main text.
   final String title;
@@ -194,16 +219,23 @@ class TtListRow extends StatelessWidget {
             TtMetrics.listRowStackTrailingTextScale;
     final trailingBox = trailing == null
         ? null
-        : DefaultTextStyle.merge(
-            style: text.labelMedium!.copyWith(color: quiet),
-            child: IconTheme.merge(
-              data: IconThemeData(color: quiet),
-              child: trailing,
+        : _RowOff(
+            off: off,
+            child: DefaultTextStyle.merge(
+              style: text.labelMedium!.copyWith(color: quiet),
+              child: IconTheme.merge(
+                data: IconThemeData(color: quiet),
+                child: trailing,
+              ),
             ),
           );
     // proto.css: .li, .li .txt b / span, .li .trail
     final content = ConstrainedBox(
-      constraints: const BoxConstraints(minHeight: TtMetrics.listRowMinHeight),
+      constraints: BoxConstraints(
+        minHeight: tall
+            ? TtMetrics.listRowTallMinHeight
+            : TtMetrics.listRowMinHeight,
+      ),
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: tt.spacing.m,
@@ -220,11 +252,17 @@ class TtListRow extends StatelessWidget {
                 children: [
                   Text(
                     title,
+                    // An off row: onSurfaceVariant at weight 400, no fade.
                     style: text.bodyLarge!.copyWith(
-                      color: scheme.onSurface,
-                      fontWeight: FontWeight.w500,
-                      fontVariations: const [
-                        FontVariation('wght', TtMetrics.listRowTitleWeight),
+                      color: off ? quiet : scheme.onSurface,
+                      fontWeight: off ? FontWeight.w400 : FontWeight.w500,
+                      fontVariations: [
+                        FontVariation(
+                          'wght',
+                          off
+                              ? TtMetrics.listRowOffTitleWeight
+                              : TtMetrics.listRowTitleWeight,
+                        ),
                       ],
                     ),
                   ),
@@ -247,7 +285,16 @@ class TtListRow extends StatelessWidget {
       ),
     );
     if (onTap == null) {
-      return content;
+      if (!off) return content;
+      // Off: a disabled button that still says what it is.
+      return Semantics(
+        container: true,
+        button: true,
+        enabled: false,
+        excludeSemantics: semanticLabel != null,
+        label: semanticLabel,
+        child: content,
+      );
     }
     return Semantics(
       button: true,
@@ -255,7 +302,112 @@ class TtListRow extends StatelessWidget {
       excludeSemantics: semanticLabel != null,
       // The ink well supplies the tap action, unless it is excluded.
       onTap: semanticLabel == null ? null : onTap,
-      child: InkWell(onTap: onTap, child: content),
+      child: InkWell(focusNode: focusNode, onTap: onTap, child: content),
+    );
+  }
+}
+
+/// Tells a [TtRowCount] inside a row whether the row is off.
+class _RowOff extends InheritedWidget {
+  const new({required this.off, required super.child});
+
+  final bool off;
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_RowOff>()?.off ?? false;
+
+  @override
+  bool updateShouldNotify(_RowOff oldWidget) => off != oldWidget.off;
+}
+
+/// How many videos a row would add, at the end of a [TtListRow].
+///
+/// With [pill] (the default) it is "N new" in a `secondaryContainer` pill, at
+/// least 28 dp high with 12 dp sides; without it, a plain word such as
+/// "none" or "Adding…" in `onSurfaceVariant`. Both are `labelLarge`. In an
+/// [TtListRow.off] row the pill has no fill and a 1 dp `outlineVariant`
+/// outline, and the text is `onSurfaceVariant`, so it stays readable
+/// (AA contrast) with no fade.
+class TtRowCount extends StatelessWidget {
+  /// A count showing [text].
+  const new(this.text, {this.pill = true, super.key});
+
+  /// What it says, such as "3 new" or "none".
+  final String text;
+
+  /// Whether it sits in a pill.
+  final bool pill;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    final off = _RowOff.of(context);
+    final label = tt.text.material.labelLarge!;
+    if (!pill) {
+      return Text(text, style: label.copyWith(color: scheme.onSurfaceVariant));
+    }
+    // proto.css: .ev-row .ev-trail .n, and the same when the row is off
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: off ? null : scheme.secondaryContainer,
+        shape: StadiumBorder(
+          side: off
+              ? BorderSide(color: scheme.outlineVariant)
+              : BorderSide.none,
+        ),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(
+          minHeight: TtMetrics.rowCountMinHeight,
+        ),
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: tt.spacing.s),
+          child: Center(
+            widthFactor: 1,
+            child: Text(
+              text,
+              style: label.copyWith(
+                color: off
+                    ? scheme.onSurfaceVariant
+                    : scheme.onSecondaryContainer,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A 20 dp spinner (2 dp stroke, `primary`) that takes the place of a row's
+/// chevron while it works. A screen reader hears [semanticLabel].
+///
+/// Without animations it stands still as a quarter arc.
+class TtRowSpinner extends StatelessWidget {
+  /// A spinner a screen reader calls [semanticLabel].
+  const new({required this.semanticLabel, super.key});
+
+  /// What a screen reader says, such as "Checking your videos from Oct 8".
+  final String semanticLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final still = context.tt.motion.isReduced;
+    // proto.css: .ev-spin
+    return Semantics(
+      label: semanticLabel,
+      role: ui.SemanticsRole.loadingSpinner,
+      child: SizedBox.square(
+        dimension: TtMetrics.rowSpinnerSize,
+        child: ExcludeSemantics(
+          child: CircularProgressIndicator(
+            strokeWidth: TtMetrics.rowSpinnerStroke,
+            color: context.scheme.primary,
+            value: still ? TtMetrics.rowSpinnerStillValue : null,
+          ),
+        ),
+      ),
     );
   }
 }

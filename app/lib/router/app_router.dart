@@ -4,7 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
-import 'package:taketray/features/tagging/views/to_tag_placeholder_screen.dart';
+import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/routes.dart';
 
 part 'app_router.g.dart';
@@ -43,7 +43,7 @@ GoRouter appRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: Routes.toTag,
-                builder: (context, state) => const ToTagPlaceholderScreen(),
+                builder: (context, state) => const ToTagScreen(),
               ),
             ],
           ),

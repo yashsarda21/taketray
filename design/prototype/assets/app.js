@@ -228,13 +228,15 @@
       player: [2, 0, 12, 'Tag player'], picker: [2, 1, 13, 'Reel picker', 'sheet'], skipall: [2, 2, 14, 'Skip all', 'sheet'], skipped: [2, 3, 15, 'Skipped'],
       camera: [2, 4.2, null, 'Phone camera (system)', 'sheet'], form: [2, 5.2, 7, 'Create / edit reel', 'sheet'], reel: [2, 6.4, 8, 'Reel detail'],
       watched: [2, 9, 25, 'Watched folders'], vnst: [2, 10, 26, 'VN copies storage'], help: [2, 11, 27, 'Notifications help'], backup: [2, 12, 28, 'Export / import'],
+      evsheet: [3, 1, 38, 'Add earlier videos', 'sheet'], evpick: [4, 0.5, 39, 'Date range picker'], evres: [4, 1.6, 40, 'Found / no new videos', 'sheet'],
       add: [3, 3, 17, 'Add videos'], viewer: [3, 5, 16, 'Clip viewer'], status: [3, 6, 10, 'Status menu', 'sheet'], del: [3, 7, 9, 'Delete reel', 'sheet'], edit: [3, 8, 18, 'Pick clips to edit'],
       editor: [4, 8, 19, 'Choose editor', 'sheet'], space: [4, 9, 20, 'VN space check'], copy: [4, 10, 21, 'VN copying'], ready: [4, 11, 22, 'VN ready'], done: [4, 6.6, 23, 'Done editing', 'sheet'],
     };
     const E = [['share', 'saveref'], ['saveref', 'reel'], ['home', 'refsheet'], ['refsheet', 'reel'], ['reel', 'addref'], ['n30', 'totag'], ['n31', 'totag'], ['splash', 'welcome'], ['welcome', 'video'], ['video', 'notif'], ['notif', 'create'], ['create', 'home'], ['perm', 'home'], ['n32', 'reel'], ['n33', 'home'],
       ['totag', 'player'], ['totag', 'picker'], ['totag', 'skipall'], ['totag', 'skipped'], ['totag', 'add'], ['home', 'camera'], ['home', 'form'], ['home', 'reel'], ['home', 'totag'],
       ['reel', 'viewer'], ['reel', 'status'], ['reel', 'del'], ['reel', 'edit'], ['reel', 'add'], ['reel', 'done'], ['edit', 'editor'], ['editor', 'space'], ['space', 'copy'], ['copy', 'ready'],
-      ['settings', 'watched'], ['settings', 'vnst'], ['settings', 'help'], ['settings', 'backup'], ['vnst', 'done'], ['player', 'picker']];
+      ['settings', 'watched'], ['settings', 'vnst'], ['settings', 'help'], ['settings', 'backup'], ['vnst', 'done'], ['player', 'picker'],
+      ['totag', 'evsheet'], ['home', 'evsheet'], ['evsheet', 'evpick'], ['evpick', 'evres']];
     const W = 178, H = 38, CX = 214, RY = 52, X0 = 10, Y0 = 34;
     const pos = (k) => { const [c, r] = N[k]; return { x: X0 + c * CX, y: Y0 + r * RY }; };
     const edges = E.map(([a, b]) => {
@@ -266,6 +268,7 @@
     onboarding: { label: 'First launch (onboarding)', steps: ['Get started, then Allow access. Try "Select photos and videos" to see Manual mode.', 'Allow notifications or tap Not now.', 'Add a few reels (press Enter after each), then Create.', 'Home shows a tip pointing at Shooting mode.'] },
     reference: { label: 'Save a reference from Instagram', steps: ['You start in Instagram (shown as a plain video app). Tap Share.', "In Android's share menu, pick TakeTray.", 'Choose an existing reel (or New reel), add an optional label, and Save.', 'Done returns to Instagram; Open reel shows the References section.', 'Try other shared content in the panel: a post, a YouTube Short, a duplicate, or plain text.'] },
     'reference-first': { label: 'Save a reference on first launch', steps: ['TakeTray is freshly installed and never opened. Share a reel to it from Instagram.', 'There are no reels yet, so the sheet asks for a new reel name. Save.', 'Done returns to Instagram. Open reel runs onboarding first.', 'In "Create your reels" the new reel is already listed, then you land on it.'] },
+    earlier: { label: 'Add earlier videos', steps: ['On Reels, the Shooting mode card has an Add earlier videos row (it is also in To tag\'s ⋮ menu).', 'Today adds this morning\'s 3 videos at once. Or tap Choose dates….', 'Tap the first day, then the last (try 8 to 10 Oct, or 10 to 11 Oct for "No new videos"). Try the month name, the arrows and the quick ranges.', 'Find videos counts them; Add puts them in To tag. Undo on the snack takes them back.'] },
     explore: { label: 'Free explore', steps: ['Everything works: reels, To tag, settings, the camera, notifications.', 'Use the simulator buttons to shoot clips or jump in time.'] },
   };
 

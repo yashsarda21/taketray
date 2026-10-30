@@ -554,6 +554,86 @@ void main() {
     });
   });
 
+  group('includeDisabled', () {
+    Widget faintDisabled() => _page(
+      Semantics(
+        enabled: false,
+        child: const Text(
+          'faint',
+          style: TextStyle(color: Color(0xFFCCCCCC), fontSize: 14),
+        ),
+      ),
+    );
+
+    Future<List<TtTextContrastSample>> measureAll(WidgetTester tester) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        return await measureTtTextContrast(tester, includeDisabled: true);
+      } finally {
+        semantics.dispose();
+      }
+    }
+
+    testWidgets('measures text whose semantics are disabled, when asked', (
+      tester,
+    ) async {
+      await tester.pumpWidget(faintDisabled());
+
+      expect((await measureAll(tester)).map((s) => s.text), ['faint']);
+      final semantics = tester.ensureSemantics();
+      await expectLater(
+        tester,
+        doesNotMeetGuideline(ttTextContrastIncludingDisabledGuideline),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('still passes disabled text that is readable', (tester) async {
+      await tester.pumpWidget(
+        _page(
+          Semantics(
+            enabled: false,
+            child: const Text(
+              'clear',
+              style: TextStyle(color: _black, fontSize: 14),
+            ),
+          ),
+        ),
+      );
+
+      final semantics = tester.ensureSemantics();
+      await expectLater(
+        tester,
+        meetsGuideline(ttTextContrastIncludingDisabledGuideline),
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('a text with a faded ancestor is caught', (tester) async {
+      await tester.pumpWidget(
+        _page(
+          Opacity(
+            opacity: 0.45,
+            child: Semantics(
+              enabled: false,
+              child: const Text(
+                'faded',
+                style: TextStyle(color: _black, fontSize: 14),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final semantics = tester.ensureSemantics();
+      await expectLater(
+        tester,
+        doesNotMeetGuideline(ttTextContrastIncludingDisabledGuideline),
+      );
+      semantics.dispose();
+    });
+  });
+
   group('unsupported styles', () {
     for (final (name, style) in [
       ('a foreground paint', TextStyle(foreground: Paint()..color = _black)),

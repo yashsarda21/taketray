@@ -6,7 +6,6 @@ import 'package:drift/isolate.dart' show DriftRemoteException;
 import 'package:drift/native.dart' show NativeDatabase, SqliteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
-import 'package:taketray/core/logging/logging_setup.dart';
 import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -23,6 +22,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
 
+import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
 
@@ -101,7 +101,7 @@ class _Seeded {
     await reels.setStatus(london, ReelStatus.ready);
     clock.advance(_minute);
 
-    final ids = await clips.addDetectedClips([
+    final ids = await clips.saveDetected([
       _detected(1, _t0.subtract(const Duration(hours: 2))),
       _detected(2, _t0.subtract(const Duration(hours: 1))),
       _detected(3, _t0.subtract(const Duration(minutes: 30))),
@@ -115,7 +115,8 @@ class _Seeded {
       _picked('content://media/picker/0/x/media/42'),
     ]);
     clock.advance(_minute);
-    await clips.recordVerification(found: {shared, pending}, missing: {picked});
+    await flagClips(db, {picked}, missing: true, at: clock.now());
+    await flagClips(db, {shared, pending}, missing: false, at: clock.now());
 
     clock.advance(_minute);
     await references.add(
@@ -306,12 +307,44 @@ void main() {
       },
     );
 
+    test('a detached clip (negative mediaStoreId) round-trips', () async {
+      final clips = ClipsRepository(db, clock);
+      final reel = await ReelsRepository(db, clock).create('Goa');
+      final [kept, untouched, listed] = await clips.saveDetected([
+        _detected(1, _t0),
+        _detected(2, _t0),
+        _detected(3, _t0),
+      ]);
+      await clips.tagClip(kept, {reel.id});
+      await detachClips(db, {kept, listed}, at: clock.now());
+      // A new video can now take the old id 1: that is a different clip.
+      final [again] = await clips.saveDetected([_detected(1, _t0)]);
+      final first = await backup.exportJson();
+
+      final other = freshDatabase();
+      await BackupService(other, clock).importJson(first);
+
+      final rows = {
+        for (final c in await other.select(other.clips).get()) c.id: c,
+      };
+      expect(rows[kept]!.mediaStoreId, -kept);
+      expect(rows[kept]!.missing, isTrue);
+      expect(rows[kept]!.volumeName, 'external_primary');
+      expect(rows[listed]!.mediaStoreId, -listed);
+      expect(rows[untouched]!.mediaStoreId, 2);
+      expect(rows[again]!.mediaStoreId, 1);
+      expect(
+        _withoutExportedAt(await BackupService(other, clock).exportJson()),
+        _withoutExportedAt(first),
+      );
+    });
+
     test('dates outside 0000–9999 survive export and import', () async {
       // MediaStore dates come from file metadata, and garbage exists there.
       // `toIso8601String` writes such years as `+010001` or `-0001`; the file
       // must read them back, or one odd clip makes the backup unrestorable.
       final clips = ClipsRepository(db, clock);
-      final ids = await clips.addDetectedClips([
+      final ids = await clips.saveDetected([
         _detected(1, DateTime.utc(10001)),
         _detected(2, DateTime.utc(-1)),
         _detected(3, DateTime.utc(1904)),
@@ -322,12 +355,12 @@ void main() {
         ),
       ]);
       // The latest one, as a lastVerifiedAt (a nullable time).
-      await ClipsRepository(
+      await flagClips(
         db,
-        FixedClock(
-          DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
-        ),
-      ).recordVerification(found: {ids[0]}, missing: {});
+        {ids[0]},
+        missing: false,
+        at: DateTime.fromMillisecondsSinceEpoch(8640000000000000, isUtc: true),
+      );
       final first = await backup.exportJson();
 
       expect(first, contains('"dateTakenUtc": "+010001-01-01T00:00:00.000Z"'));
@@ -637,6 +670,19 @@ void main() {
             (f) => _section(f, 'clips').last['pickerUri'] = null,
             where: 'clips[3].pickerUri',
           ),
+          'a picked clip with a volume (Ruling X)': (
+            (f) => _section(f, 'clips').last['volumeName'] = 'external_primary',
+            where: 'clips[3].volumeName',
+          ),
+          'a picked clip with a MediaStore id (Ruling X)': (
+            (f) => _section(f, 'clips').last['mediaStoreId'] = 77,
+            where: 'clips[3].mediaStoreId',
+          ),
+          'a detected clip with a picker link (Ruling X)': (
+            (f) => _section(f, 'clips').first['pickerUri'] =
+                'content://media/picker/0/x/media/1',
+            where: 'clips[0].pickerUri',
+          ),
           'two clips with the same MediaStore identity': (
             (f) => _section(f, 'clips')[1]['mediaStoreId'] = 1001,
             where: 'clips[1].mediaStoreId',
@@ -730,6 +776,14 @@ void main() {
               'zoneId': 'Asia/Kolkata',
             }),
             where: 'zoneTimeline[2].at',
+          ),
+          'a negative mediaStoreId that is not minus its own clip id': (
+            (f) => _section(f, 'clips').first['mediaStoreId'] = -5,
+            where: 'clips[0].mediaStoreId',
+          ),
+          "a negative mediaStoreId that is minus another clip's id": (
+            (f) => _section(f, 'clips').first['mediaStoreId'] = -11,
+            where: 'clips[0].mediaStoreId',
           ),
           'a negative size': (
             (f) => _section(f, 'clips').first['sizeBytes'] = -1,
@@ -849,7 +903,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
       final added = await ReferencesRepository(
         db,
         clock,
@@ -871,7 +925,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
 
       expect(await ClipsRepository(db, clock).watchReelIdsOf(1 << 53).first, {
         3,
@@ -892,7 +946,7 @@ void main() {
       final [clip] = await ClipsRepository(
         db,
         clock,
-      ).addDetectedClips([_detected(5000, _t0)]);
+      ).saveDetected([_detected(5000, _t0)]);
 
       expect(clip, greaterThan(500));
     });
@@ -1186,7 +1240,9 @@ void main() {
       containsAll(['reels', 'clips', 'references', 'vn', 'zones', 'settings']),
       reason: 'every repository logged something',
     );
-    final lines = records.map(formatRecord).join('\n');
+    // The raw message, not `formatRecord`: that redacts paths and URIs, which
+    // would hide a leak instead of catching it.
+    final lines = records.map((r) => r.message).join('\n');
     for (final secret in [
       'Goa',
       'London',

@@ -32,6 +32,8 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+# Written by tool/check for the coverage run only (D-65)
+/test/_coverage_imports_test.dart
 
 # Symbolication related
 app.*.symbols

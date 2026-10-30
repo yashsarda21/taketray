@@ -15,7 +15,7 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// [subtitle], and a switch. On, it is a black "media hero": the [backdrop]
 /// (the latest clip) at 62 % under a brand tint, the tile with a pulsing
 /// record dot, the same texts in white, the inverted switch, a white
-/// [cameraLabel] button, and below them the optional [referencesRow] and
+/// [cameraLabel] button, and below them up to two [rows] and the optional
 /// [toTagStrip] (use [TtCardRow]).
 ///
 /// A [backdrop] that fails to load leaves the plain black card.
@@ -30,10 +30,10 @@ class TtShootingModeCard extends StatelessWidget {
     this.backdrop,
     this.cameraLabel,
     this.onOpenCamera,
-    this.referencesRow,
+    this.rows = const [],
     this.toTagStrip,
     super.key,
-  });
+  }) : assert(rows.length <= 2, 'The card has room for two rows');
 
   /// Whether shooting mode is on.
   final bool on;
@@ -59,8 +59,10 @@ class TtShootingModeCard extends StatelessWidget {
   /// Called when the camera button is tapped.
   final VoidCallback? onOpenCamera;
 
-  /// A [TtCardRow] for the references of the Recording reels (on only).
-  final Widget? referencesRow;
+  /// Up to two [TtCardRow]s above the to-tag strip (on only), top to bottom:
+  /// References, then Add earlier videos. Each is a frosted band with a
+  /// hairline above it.
+  final List<TtCardRow> rows;
 
   /// A [TtCardRow] with a trailing text, for clips waiting to be tagged (on
   /// only).
@@ -72,7 +74,6 @@ class TtShootingModeCard extends StatelessWidget {
     final scheme = context.scheme;
     final corners = BorderRadius.circular(tt.radii.xxl);
     final label = cameraLabel;
-    final references = referencesRow;
     final strip = toTagStrip;
 
     final top = Padding(
@@ -185,7 +186,7 @@ class TtShootingModeCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ?references,
+                ...rows,
                 ?strip,
               ],
             ),

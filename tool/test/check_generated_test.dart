@@ -3,9 +3,9 @@ import 'dart:io';
 import 'package:test/test.dart';
 
 // tool/check_generated runs against a throwaway repo whose tool/dart is a
-// stand-in for build_runner (and drift_dev): it rewrites the generated files
-// to a fixed "canonical" content, like a real regeneration would. That makes
-// the hash comparison the thing under test, not build_runner itself.
+// stand-in for build_runner, drift_dev and pigeon: it rewrites the generated
+// files to a fixed "canonical" content, like a real regeneration would. That
+// makes the hash comparison the thing under test, not build_runner itself.
 const _fakeDart = r'''
 #!/usr/bin/env bash
 set -euo pipefail
@@ -16,6 +16,12 @@ case "$1 $2" in
     [ -f ../fail_generator ] && exit 3
     printf 'canonical\n' > lib/a.g.dart
     printf 'canonical\n' > lib/b.freezed.dart
+    ;;
+  "run pigeon")
+    [ -f ../fail_pigeon ] && exit 4
+    mkdir -p lib/platform android/app/src/main/kotlin/app/media
+    printf 'canonical\n' > lib/platform/media_api.g.dart
+    printf 'canonical\n' > android/app/src/main/kotlin/app/media/MediaApi.g.kt
     ;;
   "run drift_dev")
     mkdir -p drift_schemas test/drift
@@ -149,10 +155,134 @@ void main() {
     expect(result.stderr, contains('no member with build_runner'));
   });
 
+  test('does not run pigeon without pigeon in dev_dependencies', () async {
+    _write('app/pigeons/media_api.dart', '// contract\n');
+    await _run();
+    expect(_log(), isNot(contains('pigeon')));
+  });
+
   test('does not run drift_dev without databases in build.yaml', () async {
     await _run();
     expect(_log(), contains('run build_runner build'));
     expect(_log(), isNot(contains('drift_dev')));
+  });
+
+  group('with pigeon in dev_dependencies', () {
+    const dartOut = 'app/lib/platform/media_api.g.dart';
+    const kotlinOut = 'app/android/app/src/main/kotlin/app/media/MediaApi.g.kt';
+
+    setUp(() {
+      _write(
+        'app/pubspec.yaml',
+        'name: app\ndev_dependencies:\n  build_runner: ^2.0.0\n'
+            '  pigeon: 29.0.11\n',
+      );
+      _write('app/pigeons/media_api.dart', '// contract\n');
+      _write(dartOut, 'canonical\n');
+      _write(kotlinOut, 'canonical\n');
+    });
+
+    test(
+      'runs pigeon for the contract before build_runner, and passes',
+      () async {
+        final result = await _run();
+        expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+        expect(result.stdout, contains('generated files fresh'));
+        final log = _log();
+        expect(log, contains('run pigeon --input pigeons/media_api.dart'));
+        expect(
+          log.indexOf('run pigeon'),
+          lessThan(log.indexOf('run build_runner')),
+        );
+      },
+    );
+
+    test('formats the Dart output Pigeon wrote, before build_runner', () async {
+      await _run();
+      final log = _log();
+      expect(log, contains('format $dartOut'));
+      expect(log.indexOf('run pigeon'), lessThan(log.indexOf('format ')));
+      expect(log.indexOf('format '), lessThan(log.indexOf('run build_runner')));
+    });
+
+    test('runs pigeon for every file in pigeons/', () async {
+      _write('app/pigeons/other_api.dart', '// another contract\n');
+      await _run();
+      expect(_log(), contains('--input pigeons/media_api.dart'));
+      expect(_log(), contains('--input pigeons/other_api.dart'));
+    });
+
+    test('fails on an edited Dart output, and regenerates it', () async {
+      _write(dartOut, 'edited by hand\n');
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $dartOut'));
+      expect(File('${repo.path}/$dartOut').readAsStringSync(), 'canonical\n');
+    });
+
+    test('fails on an edited Kotlin output', () async {
+      _write(kotlinOut, 'edited by hand\n');
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $kotlinOut'));
+      expect(result.stdout, isNot(contains('media_api.g.dart')));
+    });
+
+    test('fails on a Kotlin output that was never committed', () async {
+      File('${repo.path}/$kotlinOut').deleteSync();
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $kotlinOut'));
+    });
+
+    test(
+      'fails on a leftover Kotlin file that is no longer produced',
+      () async {
+        const orphan = 'app/android/app/src/main/kotlin/app/media/Old.g.kt';
+        _write(orphan, 'old\n');
+        final result = await _run();
+        expect(result.exitCode, 1);
+        expect(result.stdout, contains('stale: $orphan'));
+        expect(File('${repo.path}/$orphan').existsSync(), isFalse);
+      },
+    );
+
+    test('ignores hand-written Kotlin files', () async {
+      _write('app/android/app/src/main/kotlin/app/media/Impl.kt', 'class A\n');
+      final result = await _run();
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+    });
+
+    test('fails, and never says fresh, when pigeon fails', () async {
+      _write('fail_pigeon', '');
+      final result = await _run();
+      expect(result.exitCode, isNot(0));
+      expect(result.stdout, isNot(contains('generated files fresh')));
+    });
+
+    test('finds a member that has pigeon but not build_runner', () async {
+      // No build_runner here, so its outputs are not expected either.
+      File('${repo.path}/app/lib/a.g.dart').deleteSync();
+      File('${repo.path}/app/lib/b.freezed.dart').deleteSync();
+      _write(
+        'app/pubspec.yaml',
+        'name: app\ndev_dependencies:\n  pigeon: 29.0.11\n',
+      );
+      final result = await _run();
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(_log(), contains('run pigeon'));
+      expect(_log(), isNot(contains('build_runner')));
+    });
+
+    test('ignores pigeon outside dev_dependencies', () async {
+      _write(
+        'app/pubspec.yaml',
+        'name: app\ndependencies:\n  pigeon: 29.0.11\n',
+      );
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stderr, contains('no member with build_runner'));
+    });
   });
 
   group('with drift databases in build.yaml', () {

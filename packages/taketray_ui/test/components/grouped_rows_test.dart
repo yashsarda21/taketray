@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -469,6 +471,342 @@ void main() {
           ),
         );
         await expectTtAccessible(tester);
+      }
+    });
+
+    group('the Add earlier videos variants (D-79)', () {
+      testWidgets('focusNode lets a screen give a tappable row the focus', (
+        tester,
+      ) async {
+        final node = FocusNode();
+        addTearDown(node.dispose);
+        await tester.pumpWidget(
+          ttTestApp(
+            TtGroupedRows(
+              children: [
+                TtListRow(
+                  title: 'Choose dates…',
+                  focusNode: node,
+                  onTap: () {},
+                ),
+              ],
+            ),
+          ),
+        );
+
+        node.requestFocus();
+        await tester.pump();
+
+        expect(node.hasPrimaryFocus, isTrue);
+      });
+
+      testWidgets('tall is at least 72 dp high', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Align(
+              alignment: Alignment.topLeft,
+              child: TtListRow(title: 'Today', tall: true),
+            ),
+          ),
+        );
+        expect(tester.getSize(find.byType(TtListRow)).height, 72);
+      });
+
+      testWidgets('off keeps full opacity: the title is onSurfaceVariant at '
+          'weight 400', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const TtGroupedRows(
+              children: [
+                TtListRow(
+                  title: 'Today',
+                  subtitle: 'Wed, Oct 28',
+                  off: true,
+                  trailing: TtRowCount('none', pill: false),
+                ),
+              ],
+            ),
+          ),
+        );
+        final scheme = tester.element(find.byType(TtListRow)).scheme;
+
+        final title = tester.widget<Text>(find.text('Today')).style!;
+        expect(title.color, scheme.onSurfaceVariant);
+        expect(title.fontWeight, FontWeight.w400);
+        expect(
+          title.fontVariations,
+          contains(const ui.FontVariation('wght', 400)),
+        );
+        expect(find.byType(Opacity), findsNothing, reason: 'no 38/45 % fade');
+        expect(
+          tester.widget<Text>(find.text('Wed, Oct 28')).style!.color,
+          scheme.onSurfaceVariant,
+        );
+      });
+
+      testWidgets('an on row keeps weight 500 and onSurface', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(TtListRow(title: 'Today', onTap: () {})),
+        );
+        final scheme = tester.element(find.byType(TtListRow)).scheme;
+        final title = tester.widget<Text>(find.text('Today')).style!;
+        expect(title.color, scheme.onSurface);
+        expect(title.fontWeight, FontWeight.w500);
+      });
+
+      testWidgets('an off row is a disabled button named by semanticLabel, '
+          'and ignores taps', (tester) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(
+          ttTestApp(
+            const TtGroupedRows(
+              children: [
+                TtListRow(
+                  title: 'Today',
+                  off: true,
+                  semanticLabel: 'Today, no new videos',
+                  trailing: TtRowCount('none', pill: false),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        final data = tester
+            .getSemantics(find.bySemanticsLabel('Today, no new videos'))
+            .getSemanticsData();
+        expect(data.flagsCollection.isButton, isTrue);
+        expect(data.flagsCollection.isEnabled, ui.Tristate.isFalse);
+        expect(data.hasAction(ui.SemanticsAction.tap), isFalse);
+        handle.dispose();
+      });
+
+      testWidgets('off needs onTap to be null', (tester) async {
+        expect(
+          () => TtListRow(title: 'x', off: true, onTap: () {}),
+          throwsAssertionError,
+        );
+      });
+
+      testWidgets('the count pill: 28 dp high, 12 dp sides, full radius, '
+          'secondaryContainer, labelLarge', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Align(
+              alignment: Alignment.topLeft,
+              child: TtRowCount('3 new'),
+            ),
+          ),
+        );
+        final scheme = tester.element(find.byType(TtRowCount)).scheme;
+
+        final size = tester.getSize(find.byType(TtRowCount));
+        expect(size.height, greaterThanOrEqualTo(28));
+        final text = tester.getSize(find.text('3 new'));
+        expect(size.width, text.width + 24);
+        final decoration =
+            tester
+                    .widget<DecoratedBox>(
+                      find.descendant(
+                        of: find.byType(TtRowCount),
+                        matching: find.byType(DecoratedBox),
+                      ),
+                    )
+                    .decoration
+                as ShapeDecoration;
+        expect(decoration.color, scheme.secondaryContainer);
+        expect(decoration.shape, const StadiumBorder());
+        final style = tester.widget<Text>(find.text('3 new')).style!;
+        expect(style.color, scheme.onSecondaryContainer);
+        expect(style.fontSize, 14);
+        expect(style.fontWeight, FontWeight.w600);
+      });
+
+      testWidgets('"none" is plain onSurfaceVariant labelLarge text', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ttTestApp(const Align(child: TtRowCount('none', pill: false))),
+        );
+        final scheme = tester.element(find.byType(TtRowCount)).scheme;
+
+        final style = tester.widget<Text>(find.text('none')).style!;
+        expect(style.color, scheme.onSurfaceVariant);
+        expect(style.fontSize, 14);
+        expect(
+          find.descendant(
+            of: find.byType(TtRowCount),
+            matching: find.byType(DecoratedBox),
+          ),
+          findsNothing,
+        );
+      });
+
+      testWidgets('in an off row the pill is outlined 1 dp outlineVariant, '
+          'with onSurfaceVariant text', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const TtGroupedRows(
+              children: [
+                TtListRow(
+                  title: 'Today',
+                  off: true,
+                  trailing: TtRowCount('3 new'),
+                ),
+              ],
+            ),
+          ),
+        );
+        final scheme = tester.element(find.byType(TtRowCount)).scheme;
+
+        final decoration =
+            tester
+                    .widget<DecoratedBox>(
+                      find.descendant(
+                        of: find.byType(TtRowCount),
+                        matching: find.byType(DecoratedBox),
+                      ),
+                    )
+                    .decoration
+                as ShapeDecoration;
+        expect(decoration.color, isNull);
+        expect(
+          decoration.shape,
+          StadiumBorder(side: BorderSide(color: scheme.outlineVariant)),
+        );
+        expect(
+          tester.widget<Text>(find.text('3 new')).style!.color,
+          scheme.onSurfaceVariant,
+        );
+      });
+
+      testWidgets('the spinner is 20 dp, 2 dp stroke, primary, and labelled', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        await tester.pumpWidget(
+          ttTestApp(
+            const Align(
+              child: TtRowSpinner(semanticLabel: 'Checking your videos'),
+            ),
+            disableAnimations: true,
+          ),
+        );
+        final scheme = tester.element(find.byType(TtRowSpinner)).scheme;
+
+        expect(tester.getSize(find.byType(TtRowSpinner)), const Size(20, 20));
+        final indicator = tester.widget<CircularProgressIndicator>(
+          find.byType(CircularProgressIndicator),
+        );
+        expect(indicator.strokeWidth, 2);
+        expect(indicator.color, scheme.primary);
+        expect(find.bySemanticsLabel('Checking your videos'), findsOneWidget);
+        handle.dispose();
+      });
+
+      testWidgets('with animations removed the spinner stands still as an '
+          'arc', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Align(child: TtRowSpinner(semanticLabel: 'Checking')),
+            disableAnimations: true,
+          ),
+        );
+        final indicator = tester.widget<CircularProgressIndicator>(
+          find.byType(CircularProgressIndicator),
+        );
+        expect(indicator.value, 0.25);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('with animations it turns', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Align(child: TtRowSpinner(semanticLabel: 'Checking')),
+          ),
+        );
+        expect(
+          tester
+              .widget<CircularProgressIndicator>(
+                find.byType(CircularProgressIndicator),
+              )
+              .value,
+          isNull,
+        );
+      });
+
+      testWidgets('a count with stackTrailingAtLargeText goes under the '
+          'subtitle at 2x', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const TtGroupedRows(
+              children: [
+                TtListRow(
+                  title: 'Today',
+                  subtitle: 'Wed, Oct 28',
+                  tall: true,
+                  trailing: TtRowCount('3 new'),
+                  stackTrailingAtLargeText: true,
+                ),
+              ],
+            ),
+            textScale: 2,
+          ),
+        );
+        final subtitle = tester.getRect(find.text('Wed, Oct 28'));
+        final count = tester.getRect(find.byType(TtRowCount));
+        expect(count.top, greaterThanOrEqualTo(subtitle.bottom));
+        expect(count.left, subtitle.left);
+        expect(tester.takeException(), isNull);
+      });
+
+      for (final brightness in Brightness.values) {
+        testWidgets('${brightness.name}: off rows, a pill and a spinner pass '
+            'the accessibility guidelines', (tester) async {
+          await tester.pumpWidget(
+            ttTestApp(
+              brightness: brightness,
+              disableAnimations: true,
+              TtGroupedRows(
+                children: [
+                  const TtListRow(
+                    title: 'Today',
+                    subtitle: 'Wed, Oct 28',
+                    tall: true,
+                    off: true,
+                    semanticLabel: 'Today, no new videos',
+                    trailing: TtRowCount('none', pill: false),
+                  ),
+                  const TtListRow(
+                    title: 'Today',
+                    subtitle: 'Wed, Oct 28',
+                    tall: true,
+                    off: true,
+                    semanticLabel: 'Today, 3 new videos',
+                    trailing: TtRowCount('3 new'),
+                  ),
+                  const TtListRow(
+                    title: 'Choose dates…',
+                    subtitle: 'Oct 8 – Oct 10 · Checking…',
+                    tall: true,
+                    off: true,
+                    semanticLabel: 'Choose dates',
+                    trailing: TtRowSpinner(semanticLabel: 'Checking'),
+                  ),
+                  TtListRow(
+                    title: 'Today',
+                    tall: true,
+                    trailing: const TtRowCount('3 new'),
+                    onTap: () {},
+                  ),
+                ],
+              ),
+            ),
+          );
+          // Off rows are disabled to a screen reader, which exempts them from
+          // the usual contrast check; measure them too, so a fade fails.
+          await expectTtAccessible(tester, includeDisabledText: true);
+        });
       }
     });
   });

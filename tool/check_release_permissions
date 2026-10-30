@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Builds the release APK and fails if it requests android.permission.INTERNET.
-# Slow (full release build), so it is not part of tool/check; run it at the end
-# of every phase. Steps are documented in docs/flow.md ("Release permission check").
+# Builds the release APK and checks its merged manifest: no forbidden
+# permission (INTERNET and the media permissions TakeTray never asks for),
+# Google backup off (D-64) and exactly the media permissions TakeTray needs
+# (D-68). It also checks that the on-device test code (the debug-only test
+# media channel, D-77) is not in the release dex. Slow (full release build), so
+# it is not part of tool/check; run it at the end of every phase. Steps are
+# documented in docs/flow.md ("Release permission check").
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -32,12 +36,145 @@ if [ ! -f "$APK" ]; then
 fi
 
 permissions="$("$AAPT2" dump permissions "$APK")"
+manifest="$("$AAPT2" dump xmltree --file AndroidManifest.xml "$APK")"
 
-if grep -qF 'android.permission.INTERNET' <<<"$permissions"; then
+# Reduce the manifest dump to the lines this check needs:
+#   application <attribute> <value>      for each attribute of <application>
+#   permission <name> <maxSdkVersion|->  for each <uses-permission>
+facts="$(awk '
+  /^ *E: / { element = $2; perm = ""; next }
+  /^ *A: / {
+    line = $0
+    sub(/^ *A: /, "", line)
+    attr = line
+    sub(/\(0x[0-9a-f]+\).*$/, "", attr)
+    sub(/^.*\/android:/, "", attr)
+    value = line
+    sub(/^[^=]*=/, "", value)
+    sub(/ \(Raw: .*$/, "", value)
+    gsub(/"/, "", value)
+    if (element == "application") print "application", attr, value
+    if (element == "uses-permission" || element == "uses-permission-sdk-23") {
+      if (attr == "name") { perm = value; names[perm] = 1; max[perm] = "-" }
+      if (attr == "maxSdkVersion" && perm != "") max[perm] = value
+    }
+  }
+  END { for (n in names) print "permission", n, max[n] }
+' <<<"$manifest")"
+
+problems=()
+
+# A parse that found nothing must not look like "nothing forbidden". The release
+# manifest always has at least one uses-permission (the plugins add some), so
+# zero facts means the xmltree format changed or the awk pass broke.
+if ! grep -q '^permission ' <<<"$facts"; then
+  problems+=("no permissions were parsed from the manifest dump (aapt2 xmltree format changed?)")
+fi
+if ! grep -q '^application ' <<<"$facts"; then
+  problems+=("no <application> attributes were parsed from the manifest dump (aapt2 xmltree format changed?)")
+fi
+
+# --- Google backup is off (D-64). ---
+app_attr() { awk -v a="$1" '$1 == "application" && $2 == a { print $3 }' <<<"$facts"; }
+if [ "$(app_attr allowBackup)" != "false" ]; then
+  problems+=("allowBackup is not false (found: '$(app_attr allowBackup)')")
+fi
+if [ -z "$(app_attr dataExtractionRules)" ]; then
+  problems+=("dataExtractionRules is not set")
+fi
+if [ -z "$(app_attr fullBackupContent)" ]; then
+  problems+=("fullBackupContent is not set")
+fi
+
+# --- Permissions that must never be in the release build. ---
+FORBIDDEN_PERMISSIONS=(
+  android.permission.INTERNET
+  android.permission.READ_MEDIA_IMAGES
+  android.permission.MANAGE_EXTERNAL_STORAGE
+  android.permission.ACCESS_MEDIA_LOCATION
+)
+for p in "${FORBIDDEN_PERMISSIONS[@]}"; do
+  if awk -v p="$p" '$1 == "permission" && $2 == p { found = 1 } END { exit !found }' <<<"$facts"; then
+    problems+=("$p permission found in release build")
+  elif grep -qF "name='$p'" <<<"$permissions"; then
+    # Second opinion: aapt2's own permission list, in case the xmltree parse missed it.
+    problems+=("$p permission found in release build (aapt2 dump permissions)")
+  fi
+done
+
+# --- Media permissions that must be there (name:maxSdkVersion, '-' = no max). ---
+# On by default since phase 3, Task 4 added them to the manifest (D-68).
+# ENFORCE_MEDIA_PERMISSIONS=0 switches this part off for a one-off experiment.
+ENFORCE_MEDIA_PERMISSIONS="${ENFORCE_MEDIA_PERMISSIONS:-1}"
+REQUIRED_PERMISSIONS=(
+  android.permission.READ_MEDIA_VIDEO:-
+  android.permission.READ_MEDIA_VISUAL_USER_SELECTED:-
+  android.permission.READ_EXTERNAL_STORAGE:32
+)
+if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
+  for entry in "${REQUIRED_PERMISSIONS[@]}"; do
+    name="${entry%%:*}"
+    want="${entry##*:}"
+    have="$(awk -v p="$name" '$1 == "permission" && $2 == p { print $3 }' <<<"$facts")"
+    if [ -z "$have" ]; then
+      problems+=("$name permission is missing")
+    elif [ "$have" != "$want" ]; then
+      problems+=("$name has maxSdkVersion '$have', expected '$want'")
+    fi
+  done
+fi
+
+# --- The on-device test code is not in the release build (D-77). ---
+# The test media channel (src/debug: TestMedia, its channel name test_media) is
+# debug-only. The strings are looked for in every classes*.dex of the APK, and
+# in R8's mapping file when there is one (the dex only holds the renamed class,
+# the mapping holds the real name). The scan itself is proved by finding a
+# class that must be there.
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media)
+MUST_FIND_IN_DEX="app/taketray/MainActivity"
+dex_dir="$(mktemp -d)"
+trap 'rm -rf "$dex_dir"' EXIT
+unzip -q -o "$APK" 'classes*.dex' -d "$dex_dir" || true
+dex_files=("$dex_dir"/classes*.dex)
+if [ ! -e "${dex_files[0]}" ]; then
+  problems+=("no classes*.dex found in the release APK, so the test-code check could not run")
+else
+  # No pipes: grep -q on a pipe can end early and make the pipeline fail.
+  if ! grep -aqF -- "$MUST_FIND_IN_DEX" "${dex_files[@]}"; then
+    problems+=("the dex scan could not find $MUST_FIND_IN_DEX, so it cannot be trusted")
+  fi
+  for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
+    if grep -aqF -- "$needle" "${dex_files[@]}"; then
+      problems+=("test-only code found in the release dex: '$needle' (the debug test media channel must not ship, D-77)")
+    fi
+  done
+fi
+# Without R8's mapping file the class names can only be read from the dex, and
+# that works only if the dex keeps the real names. APP_CLASS_PROBE is an
+# ordinary app class that nothing in the manifest keeps: found by its real name
+# means the dex is not renamed; not found means R8 renamed it. A renamed dex
+# and no mapping cannot show a class called TestMedia, so that fails rather than
+# passes silently.
+MAPPING="app/build/app/outputs/mapping/release/mapping.txt"
+APP_CLASS_PROBE="app/taketray/media/MediaHostApiImpl"
+if [ -f "$MAPPING" ]; then
+  for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
+    if grep -qF -- "$needle" "$MAPPING"; then
+      problems+=("test-only code named in the release R8 mapping: '$needle'")
+    fi
+  done
+elif [ -e "${dex_files[0]}" ] && ! grep -aqF -- "$APP_CLASS_PROBE" "${dex_files[@]}"; then
+  problems+=("no R8 mapping file ($MAPPING) and the dex has no unrenamed app class ($APP_CLASS_PROBE), so a class named TestMedia could not be seen; the class-name check cannot run")
+fi
+
+if [ "${#problems[@]}" -gt 0 ]; then
   echo "$permissions" >&2
-  echo "INTERNET permission found in release build" >&2
+  for problem in "${problems[@]}"; do
+    echo "RELEASE CHECK FAILED: $problem" >&2
+  done
   exit 1
 fi
 
 echo "$permissions"
+echo "No test-only code in the release dex (${FORBIDDEN_DEX_STRINGS[*]})"
 echo "RELEASE PERMISSIONS OK"

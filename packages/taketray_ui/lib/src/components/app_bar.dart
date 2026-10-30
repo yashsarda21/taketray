@@ -31,8 +31,22 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.large = false,
     this.selection = false,
+    this.titleFocusNode,
+    this.wrapTitle = false,
     super.key,
   });
+
+  /// Whether a long title wraps onto more lines, and the bar grows to hold
+  /// it (at least 64 dp), instead of ending in an ellipsis inside a fixed
+  /// bar. The title is then drawn at the phone's text scale, not clamped to
+  /// [TtMetrics.appBarMaxTextScale]. For a screen whose title must be read in
+  /// full at large text (the date range picker, D-79); the prototype's
+  /// `.fs2 .appbar { height: auto; min-height: 64px }`.
+  final bool wrapTitle;
+
+  /// A focus node for the title, so a screen can move focus to it when it
+  /// opens (a screen reader then starts at the title). Null for none.
+  final FocusNode? titleFocusNode;
 
   /// The screen's name; one line, with an ellipsis if too long.
   final String title;
@@ -73,34 +87,40 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
         ? tt.text.pageTitle
         : tt.text.screenTitle;
     final subtitle = this.subtitle;
+    final focusNode = titleFocusNode;
+    final titleText = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: wrapTitle ? null : 1,
+          overflow: wrapTitle ? TextOverflow.visible : TextOverflow.ellipsis,
+          style: titleStyle.copyWith(color: onBar),
+        ),
+        if (subtitle != null && !single)
+          Text(
+            subtitle,
+            maxLines: wrapTitle ? null : 1,
+            overflow: wrapTitle ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: tt.text.material.bodySmall!.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
     final titleBlock = Semantics(
       header: true,
       container: true,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: titleStyle.copyWith(color: onBar),
-          ),
-          if (subtitle != null && !single)
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: tt.text.material.bodySmall!.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-        ],
-      ),
+      child: focusNode == null
+          ? titleText
+          : Focus(focusNode: focusNode, child: titleText),
     );
 
-    final bar = SizedBox(
-      height: preferredSize.height,
+    final bar = ConstrainedBox(
+      constraints: wrapTitle
+          ? BoxConstraints(minHeight: preferredSize.height)
+          : BoxConstraints.tightFor(height: preferredSize.height),
       child: Padding(
         // tt-style.css: .appbar.big { padding-top: 10px }; proto.css:
         // .appbar { padding: 0 4px }, .appbar.big { padding-left: 16px }
@@ -118,10 +138,12 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
                 padding: large
                     ? EdgeInsets.zero
                     : EdgeInsets.symmetric(horizontal: tt.spacing.s),
-                child: MediaQuery.withClampedTextScaling(
-                  maxScaleFactor: TtMetrics.appBarMaxTextScale,
-                  child: titleBlock,
-                ),
+                child: wrapTitle
+                    ? titleBlock
+                    : MediaQuery.withClampedTextScaling(
+                        maxScaleFactor: TtMetrics.appBarMaxTextScale,
+                        child: titleBlock,
+                      ),
               ),
             ),
             ...actions,
