@@ -75,6 +75,20 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - `tool/check_generated` must also hash `app/lib/data/database/app_database.steps.dart`, which `make-migrations` writes from v2. At v1 it also never regenerates `app/test/drift/.../generated/`.
 
+## Phase 7 (add videos and Manual mode)
+
+Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
+
+- **Friends' videos.** Pick up videos the owner didn't shoot, such as WhatsApp downloads and Quick Share, behind a Settings switch. Today only `DCIM/Camera` is watched, so these never reach To tag. This may be done through Phase 10's editable watched folders. Open risks:
+  - busy groups and forwards could flood To tag;
+  - WhatsApp's "Sent" copies would duplicate the owner's own camera clips;
+  - WhatsApp strips the original shooting date, so a clip would be dated when it was received.
+- **Action cameras (GoPro, Insta360).** Open points:
+  - their phone apps save to their own folders;
+  - Insta360's raw 360° files must be reframed and exported first, so only the exported clip is useful;
+  - a whole day of clips is often copied at once;
+  - camera clocks and time zones are often wrong, which would put clips on the wrong day.
+
 ## Phase 8 (editor handoff)
 
 - Sanitise a reel name before using it as a VN folder name (`/`, `:` and other characters Android storage rejects); `uniqueFolderName` only handles clashes.
