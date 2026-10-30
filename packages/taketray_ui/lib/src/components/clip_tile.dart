@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/internal/fit_height.dart';
+import 'package:taketray_ui/src/components/internal/fit_or_fallback.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -585,8 +586,9 @@ class _SelectCircle extends StatelessWidget {
 /// icon, [label], and, when [removeLabel] is given, a small Remove button.
 ///
 /// The tile keeps its 3:4 shape. The label wraps over as many lines as it
-/// needs, between words only. From a text scale of 1.5 the Remove button is
-/// just an icon (named by [removeLabel]), because the word would not fit. As
+/// needs, between words only. From a text scale of 1.5, or when the word
+/// [removeLabel] does not fit the tile on one line, the Remove button is just
+/// an icon (named by [removeLabel]), so it is never cut short. As
 /// a last resort, when the content is still too big for the tile it shrinks to
 /// fit, so nothing is cut off and the tile never overflows.
 class TtMissingClipTile extends StatelessWidget {
@@ -609,6 +611,17 @@ class TtMissingClipTile extends StatelessWidget {
     final removeLabel = this.removeLabel;
     final iconOnly =
         MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    final iconButton = removeLabel == null
+        ? null
+        : Tooltip(
+            message: removeLabel,
+            excludeFromSemantics: true,
+            child: TtIconButton(
+              icon: Symbols.playlist_remove_rounded,
+              semanticLabel: removeLabel,
+              onPressed: onRemove,
+            ),
+          );
     // proto.css: .tile.miss
     return AspectRatio(
       aspectRatio: tt.sizes.clipTileAspect,
@@ -651,30 +664,22 @@ class TtMissingClipTile extends StatelessWidget {
                           top: TtMetrics.clipTileMissingButtonGap,
                         ),
                         // The word "Remove" does not fit a narrow tile at
-                        // large text without breaking in the middle, so from
-                        // the large-text scale the button is just its icon,
-                        // still named "Remove".
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(
-                            maxWidth: TtMetrics.clipTileMissingButtonMaxWidth,
-                          ),
-                          child: iconOnly
-                              ? Tooltip(
-                                  message: removeLabel,
-                                  excludeFromSemantics: true,
-                                  child: TtIconButton(
-                                    icon: Symbols.playlist_remove_rounded,
-                                    semanticLabel: removeLabel,
-                                    onPressed: onRemove,
-                                  ),
-                                )
-                              : TtButton(
+                        // large text without breaking in the middle, nor a
+                        // long translation of it at normal text without an
+                        // ellipsis, so the button is just its icon, still
+                        // named "Remove", from the large-text scale and
+                        // whenever the word does not fit.
+                        child: iconOnly
+                            ? iconButton!
+                            : FitOrFallback(
+                                preferred: TtButton(
                                   label: removeLabel,
                                   kind: TtButtonKind.tonal,
                                   size: TtButtonSize.small,
                                   onPressed: onRemove,
                                 ),
-                        ),
+                                fallback: iconButton!,
+                              ),
                       ),
                   ],
                 ),

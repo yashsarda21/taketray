@@ -851,12 +851,6 @@ abstract final class TtMetrics {
   // proto.css: .tile.miss .btn { margin-top: 2px }
   static const double clipTileMissingButtonGap = 2;
 
-  /// Widest the Remove button of the missing tile gets, so that its own text
-  /// never makes the tile's content look too wide to fit (the label of a long
-  /// "Remove from reel" ends in an ellipsis instead).
-  // (not in the prototype: the tile at 108 dp less its 6 dp padding sides)
-  static const double clipTileMissingButtonMaxWidth = 96;
-
   // ---- Skeleton ----
 
   /// Width of the skeleton bar that stands in for a short value, such as the

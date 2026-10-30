@@ -434,22 +434,28 @@ void main() {
       textScale: scale,
     );
 
-    testWidgets('a long Remove label at 1x ends in an ellipsis and does not '
-        'shrink the tile content', (tester) async {
-      await tester.pumpWidget(
-        ttTestApp(
-          Center(
-            child: SizedBox(
-              width: 108,
-              child: TtMissingClipTile(
-                label: 'Missing from phone',
-                removeLabel: 'Remove from reel',
-                onRemove: () {},
-              ),
-            ),
+    Widget longRemoveTile(double width) => ttTestApp(
+      Center(
+        child: SizedBox(
+          width: width,
+          child: TtMissingClipTile(
+            label: 'Missing from phone',
+            removeLabel: 'Remove from reel',
+            onRemove: () {},
           ),
         ),
+      ),
+    );
+
+    testWidgets('a Remove label that does not fit at 1x becomes the icon, '
+        'never an ellipsis', (tester) async {
+      await tester.pumpWidget(longRemoveTile(108));
+      expect(find.text('Remove from reel').hitTestable(), findsNothing);
+      expect(
+        find.byIcon(Symbols.playlist_remove_rounded).hitTestable(),
+        findsOneWidget,
       );
+      // The label is at its real size: nothing shrank.
       final label = tester.renderObject<RenderParagraph>(
         find.text('Missing from phone'),
       );
@@ -457,11 +463,36 @@ void main() {
         tester.getRect(find.text('Missing from phone')).height,
         closeTo(label.size.height, 0.01),
       );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('long text tile at 1x: a Remove label is never cut short', (
+      tester,
+    ) async {
+      // The golden's "long text" tile, with its long Remove label.
+      for (final width in [108.0, 130.0, 160.0, 220.0]) {
+        await tester.pumpWidget(longRemoveTile(width));
+        final text = find.text('Remove from reel').hitTestable();
+        if (text.evaluate().isEmpty) {
+          // Too narrow: the icon takes over.
+          expect(
+            find.byType(TtIconButton).hitTestable(),
+            findsOneWidget,
+            reason: '$width',
+          );
+        } else {
+          final remove = tester.renderObject<RenderParagraph>(text);
+          expect(remove.didExceedMaxLines, isFalse, reason: '$width');
+          expect(_lineCount(remove), 1, reason: '$width');
+        }
+      }
+      // And with room, the word itself shows, whole and on one line.
+      await tester.pumpWidget(longRemoveTile(220));
       final remove = tester.renderObject<RenderParagraph>(
         find.text('Remove from reel'),
       );
-      expect(remove.didExceedMaxLines, isTrue);
-      expect(tester.takeException(), isNull);
+      expect(remove.didExceedMaxLines, isFalse);
+      expect(_lineCount(remove), 1);
     });
 
     testWidgets('the Remove label is one line at 1x', (tester) async {
@@ -469,17 +500,17 @@ void main() {
       final remove = tester.renderObject<RenderParagraph>(find.text('Remove'));
       expect(_lineCount(remove), 1);
       expect(remove.didExceedMaxLines, isFalse);
-      expect(find.byType(TtIconButton), findsNothing);
+      expect(find.byType(TtIconButton).hitTestable(), findsNothing);
     });
 
     testWidgets('Remove is a text button below 1.5x and an icon button from '
-        '1.5x', (tester) async {
-      await tester.pumpWidget(tileAt(scale: 1.4));
-      expect(find.text('Remove'), findsOneWidget);
-      expect(find.byType(TtIconButton), findsNothing);
-      await tester.pumpWidget(tileAt(scale: 1.5));
-      expect(find.text('Remove'), findsNothing);
-      expect(find.byType(TtIconButton), findsOneWidget);
+        '1.5x, when the room is wide', (tester) async {
+      await tester.pumpWidget(tileAt(scale: 1.4, width: 200));
+      expect(find.text('Remove').hitTestable(), findsOneWidget);
+      expect(find.byType(TtIconButton).hitTestable(), findsNothing);
+      await tester.pumpWidget(tileAt(scale: 1.5, width: 200));
+      expect(find.text('Remove').hitTestable(), findsNothing);
+      expect(find.byType(TtIconButton).hitTestable(), findsOneWidget);
     });
 
     testWidgets('missing tile at 2x: Remove is an icon-only button named '
@@ -488,7 +519,10 @@ void main() {
       try {
         var removed = 0;
         await tester.pumpWidget(tileAt(scale: 2, onRemove: () => removed++));
-        expect(find.byIcon(Symbols.playlist_remove_rounded), findsOneWidget);
+        expect(
+          find.byIcon(Symbols.playlist_remove_rounded).hitTestable(),
+          findsOneWidget,
+        );
         expect(find.text('Remove'), findsNothing);
         expect(find.byTooltip('Remove'), findsOneWidget);
         final node = tester.getSemantics(find.byType(TtIconButton));
