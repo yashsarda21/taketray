@@ -1,7 +1,8 @@
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:taketray/features/reels/views/reel_detail_placeholder.dart';
+import 'package:taketray/features/reels/views/clip_viewer_placeholder.dart';
+import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
@@ -12,12 +13,16 @@ part 'app_router.g.dart';
 
 final Logger _log = Logger('router');
 
-/// The reel id of a reel location, or null when it is not a positive whole
-/// number.
-int? _reelId(GoRouterState state) {
-  final id = int.tryParse(state.pathParameters[Routes.reelIdParameter] ?? '');
+/// The id in the path parameter [name], or null when it is not a positive
+/// whole number.
+int? _id(GoRouterState state, String name) {
+  final id = int.tryParse(state.pathParameters[name] ?? '');
   return id != null && id > 0 ? id : null;
 }
+
+/// The reel id of a reel location, or null when it is not a positive whole
+/// number.
+int? _reelId(GoRouterState state) => _id(state, Routes.reelIdParameter);
 
 /// The app's router: three tabs, each with its own navigation stack.
 ///
@@ -55,7 +60,25 @@ GoRouter appRouter(Ref ref) {
                       return Routes.reels;
                     },
                     builder: (context, state) =>
-                        ReelDetailPlaceholder(reelId: _reelId(state)!),
+                        ReelDetailScreen(reelId: _reelId(state)!),
+                    routes: [
+                      GoRoute(
+                        path: 'clip/:${Routes.clipIdParameter}',
+                        // Like a reel's id, a clip's is a positive whole
+                        // number; anything else is unknown.
+                        redirect: (context, state) {
+                          if (_id(state, Routes.clipIdParameter) != null) {
+                            return null;
+                          }
+                          _log.warning('Unknown location; showing Reels');
+                          return Routes.reels;
+                        },
+                        builder: (context, state) => ClipViewerPlaceholder(
+                          reelId: _reelId(state)!,
+                          clipId: _id(state, Routes.clipIdParameter)!,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),

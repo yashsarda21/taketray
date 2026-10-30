@@ -113,12 +113,25 @@ final WidgetbookComponent ttMissingClipTileComponent = WidgetbookComponent(
           min: 60,
           max: 240,
         );
+        final grown = context.knobs.boolean(
+          label: 'height grown for the text (TtMissingClipTile.heightFor)',
+        );
+        final natural = width / context.tt.sizes.clipTileAspect;
+        final needed = grown
+            ? TtMissingClipTile.heightFor(
+                context,
+                width: width,
+                label: label,
+                removeLabel: withRemove ? removeLabel : null,
+              )
+            : natural;
         return Padding(
           padding: EdgeInsets.all(context.tt.spacing.m),
           child: Align(
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: width,
+              height: grown && needed > natural ? needed : null,
               child: TtMissingClipTile(
                 label: label,
                 removeLabel: withRemove ? removeLabel : null,

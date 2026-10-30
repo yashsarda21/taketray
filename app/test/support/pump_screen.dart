@@ -32,9 +32,15 @@ const reelsRouteMarker = 'the Reels route';
 /// What the route of reel [id] shows in a test that only has one screen.
 String reelRouteMarker(Object id) => 'the route of reel $id';
 
+/// What the viewer's route on clip [clipId] of reel [reelId] shows in a test
+/// that only has one screen.
+String clipRouteMarker(Object reelId, Object clipId) =>
+    'the viewer of clip $clipId of reel $reelId';
+
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
 /// [toTagRouteMarker], a `/reels` route that shows [reelsRouteMarker] and a
-/// `/reels/<id>` route that shows [reelRouteMarker])
+/// `/reels/<id>` route that shows [reelRouteMarker], and a
+/// `/reels/<id>/clip/<clipId>` route that shows [clipRouteMarker])
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -81,6 +87,19 @@ Future<ProviderContainer> pumpScreen(
                 reelRouteMarker(state.pathParameters[Routes.reelIdParameter]!),
               ),
             ),
+            routes: [
+              GoRoute(
+                path: 'clip/:${Routes.clipIdParameter}',
+                builder: (context, state) => Scaffold(
+                  body: Text(
+                    clipRouteMarker(
+                      state.pathParameters[Routes.reelIdParameter]!,
+                      state.pathParameters[Routes.clipIdParameter]!,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),

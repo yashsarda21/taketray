@@ -6,7 +6,7 @@ import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
-import 'package:taketray/features/reels/views/reel_detail_placeholder.dart';
+import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -133,11 +133,9 @@ void main() {
     await tester.tap(find.byType(TtReelCard));
     await tester.pumpAndSettle();
 
-    expect(find.byType(ReelDetailPlaceholder), findsOneWidget);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
     expect(
-      tester
-          .widget<ReelDetailPlaceholder>(find.byType(ReelDetailPlaceholder))
-          .reelId,
+      tester.widget<ReelDetailScreen>(find.byType(ReelDetailScreen)).reelId,
       goa.id,
     );
 
@@ -145,7 +143,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(ReelsScreen), findsOneWidget);
-    expect(find.byType(ReelDetailPlaceholder), findsNothing);
+    expect(find.byType(ReelDetailScreen), findsNothing);
   });
 
   testApp('the tab keeps its scroll position', (tester) async {

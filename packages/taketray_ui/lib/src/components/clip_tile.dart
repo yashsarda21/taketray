@@ -604,6 +604,57 @@ class TtMissingClipTile extends StatelessWidget {
   /// Called when Remove is tapped.
   final VoidCallback? onRemove;
 
+  /// How tall a tile [width] dp wide must be to show its content at its real
+  /// size: the icon, [label] over as many lines as it takes at the phone's
+  /// text scale, and the Remove button when [removeLabel] is given.
+  ///
+  /// The tile keeps a 3:4 shape when the cell is that tall, and shrinks its
+  /// content when the cell is shorter (see the class comment). A grid whose
+  /// text may be large gives a row with a missing tile at least this height
+  /// (`mainAxisExtent`), and the larger of the two is the row height. At the
+  /// normal text size this is less than the 3:4 height, so nothing grows.
+  ///
+  /// Measured the way the tile lays itself out: the same paddings, gaps and
+  /// text style, the label wrapped at the tile's inner width and scaled by
+  /// `MediaQuery.textScalerOf`, and the button 48 dp high (its tap target)
+  /// or, at normal text, as high as its label needs.
+  static double heightFor(
+    BuildContext context, {
+    required double width,
+    required String label,
+    String? removeLabel,
+  }) {
+    final tt = context.tt;
+    final scaler = MediaQuery.textScalerOf(context);
+    final text = TextPainter(
+      text: TextSpan(
+        text: label,
+        // The style the label is drawn in (the colour does not change a
+        // measure).
+        style: tt.text.material.labelMedium,
+      ),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      locale: Localizations.maybeLocaleOf(context),
+    )..layout(maxWidth: width - 2 * TtMetrics.clipTileMissingPaddingHorizontal);
+    final labelHeight = text.height;
+    text.dispose();
+
+    var height = 2 * tt.spacing.xs + TtMetrics.clipTileMissingIconSize;
+    height += tt.spacing.xxs + labelHeight;
+    if (removeLabel != null) {
+      final button = scaler.scale(1) >= TtMetrics.largeTextScale
+          ? tt.sizes.touchTarget
+          : math.max(
+              tt.sizes.touchTarget,
+              scaler.scale(TtMetrics.buttonMinHeightSmall),
+            );
+      height += tt.spacing.xxs + TtMetrics.clipTileMissingButtonGap + button;
+    }
+    return height;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;

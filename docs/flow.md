@@ -456,7 +456,7 @@ No baseline is read or written.
 5. **A chip** calls `HomeController.setFilter(f)`: the notifier stores `f` and, if it has a state, composes a new one from the last list at once (no read). **Show all reels** is `setFilter(ReelFilter.all)`.
 6. **A card** is `TtReelCard(name, status: statusKindOf(status), statusLabel: statusName(l10n, status), meta, missingText, emptyLabel: "No clips yet", cover, semanticLabel)`. `meta` is `reelCardClips(n)` for a reel with no clips ("0 clips") and else `reelCardMeta(clips, formatClipDuration(liveDurationMs))` ("3 clips · 1:05"; the length leaves out missing clips). `missingText` is "{n} missing" when `missingCount > 0`. The label is `reelCardSemantics(name, status, n)` or `reelCardSemanticsMissing(...)`. Tapping calls `context.push(Routes.reel(id))`.
 7. **New reel** (the FAB and the empty-state button) calls `showReelForm(context)`; see "Creating and editing a reel". When the sheet saves, the list stream emits and the card appears behind the closing sheet.
-8. **The reel location** `/reels/:id` is a child of `/reels`. Its `redirect` accepts a positive whole number and sends anything else to `/reels` (logging "Unknown location; showing Reels", never the location). A good id builds `ReelDetailPlaceholder` (a stand-in, Task 8 replaces it). System back pops it and Home is as it was.
+8. **The reel location** `/reels/:id` is a child of `/reels`. Its `redirect` accepts a positive whole number and sends anything else to `/reels` (logging "Unknown location; showing Reels", never the location). A good id builds `ReelDetailScreen` (see "Opening a reel"). System back pops it and Home is as it was.
 
 **The midnight tick** (`core/midnight_tick.dart › localDayProvider`):
 1. `ShootingModeSection.build` and `ToTagScreen.build` call `ref.watch(localDayProvider)` (the value is not used). The first watch starts the provider: `tick()` reads `clockProvider.now().toLocal()`, emits `DateTime(y, m, d)` (local midnight of today) and sets `Timer(DateTime(y, m, d + 1) - now, tick)`.
@@ -487,6 +487,37 @@ No baseline is read or written.
 3. `ReelActions.confirmDelete(id)` is single-flight per reel id: a second call while one runs returns the first call's future. It calls `ReelsRepository.delete(id)` (one transaction: the reel, its links, references and VN session go; the orphan sweep reads then deletes the clips left in no reel and no list) and returns the `DeleteReelUndo` record. A failure is logged by type and rethrown.
 4. Back in the dialog function: a record that is not empty (`reel != null`) goes to `ReelSnacks.showUndo("{name} deleted", record)`, an **Undo** snack on the root messenger; then `router.go(Routes.reels)`. A failure shows `reelActionFailed` and leaves the app where it is.
 5. **Undo** (`ReelSnacks._undo`): `ReelsRepository.undo(record)` (`data/repositories/undo_writer.dart`, see "Undo") puts the reel, its links and the swept clips back with the same ids. The snack runs the action once however often it is tapped (`showTtSnackOn` guards it). If it throws, the type is logged and "Couldn't undo. Try again." (`undoFailed`) is shown. Because the messenger, container and words were captured in step 1, Undo works after the dialog's screen has gone, until the snack closes. `showUndoSnack(context, message, record)` is the same call for the remove, move and add snacks of Tasks 8 to 10.
+
+### Opening a reel (`lib/features/reels/`, `lib/router/`, D-87)
+
+**Getting there:** a card on Home does `context.push(Routes.reel(id))` (`/reels/:id`, a child of the Reels branch, so the nav pill stays and the Reels tab stays selected). `app_router.dart` accepts only a positive whole number for the id; anything else goes to `/reels`. A tile on the page does `context.push(Routes.clip(reelId, clipId))` (`/reels/:id/clip/:clipId`, `ClipViewerPlaceholder` until Task 10), with the same rule for the clip id.
+
+**Building the page** (`views/reel_detail_screen.dart › ReelDetailScreen`, `view_models/reel_detail_controller.dart`):
+1. `build` watches `reelDetailControllerProvider(reelId)`, `thumbnailCacheProvider`, `localDayProvider` (so a day's year follows the calendar) and the phone's 24-hour setting.
+2. `ReelDetailController.build(reelId)` starts three watches: `reelByIdProvider` (`ReelsRepository.watchById`), `reelClipsProvider` (`ClipsRepository.watchReelClips`: the clips oldest first, each with its reel count and `addedAt`) and `reelClipTimesProvider` (`ClipTimeService.localTimes` over those clips, D-83). It awaits the first two and **reads the third without awaiting it** (`.value ?? {}`).
+3. The reel is `null` (no such reel, or it was deleted) → the state is `null`. Else the first time it has clips, **it starts the verify**: `unawaited(guarded(... MediaVerifier.verify(clips)))`, once per open (a notifier field), never for a reel with no clips. Without full access the verifier skips every clip and writes nothing; an error is logged and nothing is flagged (D-72).
+4. It returns `ReelDetailState`: `days` from `groupByShootingDay<ReelClip>(clips, (c) => c.clip, times)` (the date of each clip's `wallClock`, or Dart's local date for a clip with no time yet; day numbers count calendar days), `clipCount`, `missingCount`, `liveDurationMs` (the clips that are not missing) and `times`.
+5. The verify flags a gone clip → the list stream emits → the controller is built again (no second verify). The times arrive (or a new list needs new ones) → built again with `times`, so the days are regrouped and the tiles switch from the phone's time to the time where the clip was shot. Both are quiet redraws: the old state stays on screen until the new one is ready.
+
+**What the screen shows,** top to bottom:
+1. The app bar: **Back** (`pop`, or `go(/reels)` when nothing can pop) and, once the reel is known, the ⋮ menu. It has no title.
+2. While there is no state: a skeleton day header (read as "Loading") and 9 skeleton tiles. A first read that fails stays here (no error state is designed).
+3. `TtReelHeader<ReelStatus>` (name wrapped fully; the status pill opens the status menu, `reelStatusItems` and `changeReelStatus`; "{n} clips · {m:ss}" or "No clips yet"; "{m} missing"; Shot ideas with Show more / Show less).
+4. No clips: `TtEmptyState(emptyReel)` "No clips yet", "Tag clips from To tag, or add videos from your phone." and **Go to To tag** (`context.go(Routes.toTag)`).
+5. Else for each `ShootingDay`: `TtDayHeader("Day {n} · {ttDayText(date)}", "{k} clips")`, then a lazy three-column `SliverGrid` inside a `SliverLayoutBuilder` (the real width). A clip → `TtClipTile` (time, length, reel count, horizontal, label "Clip, {time}, {duration}[, in {k} reels]"; tap → viewer; long press → `onClipLongPress`). A clip flagged missing → `TtMissingClipTile` with **Remove**.
+6. **Rows that hold a missing tile:** the day's grid uses `mainAxisExtent = max(3:4 height, TtMissingClipTile.heightFor(...))`, so the tile is at its real size at the phone's text scale; its neighbours are `Align`ed to the top of their cell at 3:4. A day with no missing tile uses the 3:4 grid.
+7. Room under the grid for the floating nav pill.
+
+**The ⋮ menu:** **Reel details** → `showReelForm(context, reel:)`; **Select clips** → `onSelectClips` (nothing until Task 9); **Delete reel** → `showDeleteReelDialog` ("The delete dialog and its Undo": it deletes, shows "{name} deleted" with Undo and goes to `/reels`).
+
+**Remove on a missing tile:**
+1. The screen looks up `ReelSnacks.of(context)`, the words and the notifier **before** awaiting.
+2. `ReelDetailController.removeMissing(clipId)`: a second call for the same clip while one runs returns the same future. It reads the reel's clips; if the clip is not in the reel, or is no longer flagged missing (a verify found the video again), it returns an empty `RemoveUndo` and changes nothing. Else `ClipsRepository.removeClipsFromReel(reelId, [clipId])` (one transaction; the orphan sweep may delete the clip row, and the record keeps it, D-84).
+3. A record that is not empty → "Missing clip removed" with **Undo** on the root messenger. Undo (`ReelsRepository.undo`) puts back the link with its `addedAt` and, if it was swept, the same clip with its id; it still works after the page has been left. An empty record shows nothing. A thrown error shows "Something went wrong. Try again." and the tile stays.
+
+**A reel that is gone** (deleted here, deleted elsewhere, or an id that names none): `detail.hasValue && detail.value == null` → after the frame, once, `context.go(Routes.reels)`.
+
+**In tests:** `test/support/pump_screen.dart › pumpScreen` (with a `/reels` marker, a `/reels/:id` marker and a `/reels/:id/clip/:clipId` marker), `test/support/reel_videos.dart` (`reelHarness`, `reelVideo`, `putInReel`: videos on the fake phone and in a reel, or in a reel and gone from the phone), `testApp`, and `h.bridge.gate('zoneOffsetsMs')` to hold the times back.
 
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 

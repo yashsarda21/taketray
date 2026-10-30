@@ -541,7 +541,79 @@ It ends with `All tests passed!`. Now, in `app/lib/features/shell/views/root_mes
 
 ## 8. Reel detail
 
-*To be written in Task 8.*
+**What we built:** the reel's own page, `/reels/:id`, which replaces Task 6's stand-in. From the top:
+
+- **The app bar** has **Back** and a ⋮ menu (**Reel details**, **Select clips**, **Delete reel**) and no title.
+- **The header** has the reel's name (wrapped over as many lines as it needs), the status pill that opens the status menu, "12 clips · 4:32" (or "No clips yet"), "2 missing" in red, and the **Shot ideas** block with **Show more** / **Show less**.
+- **The clips** are grouped by the day they were shot: "Day 2 · Oct 28" and "3 clips", then a three-column grid. A tile shows the time **where the clip was shot**, its length, a layers badge when the clip is in two reels or more, and a mark when it is horizontal.
+- **A clip whose video is gone** is a grey dashed tile with **Remove**. Remove takes it out of the reel and shows "Missing clip removed" with **Undo**.
+- **Loading** is a skeleton day header and nine skeleton tiles. **No clips** is an illustration, "No clips yet" and a **Go to To tag** button.
+- Opening the page **checks that the videos still exist**. A reel that is deleted while you look at it (or a link to one that never existed) sends you back to Reels.
+
+Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select clips** and a long press do nothing yet: Task 9 fills them in.
+
+**Why TakeTray needs it:** this is where a creator decides whether a reel is ready. If a video was deleted from the gallery, the page must say so instead of showing a tile that cannot play (spec §4: a wrong or missing video is the worst bug). If a clip was filmed in London and tagged in India, it has to sit on its London day at its London time (spec §8.3a). And a long reel name or a big text size must never cut anything off.
+
+**Key ideas:**
+
+- **A state that can be "gone".** The page shows one reel, and that reel can disappear while it is open. `ReelDetailController.build` returns `Future<ReelDetailState?>`: `null` means "no such reel". A loading controller and a gone one are told apart with `detail.hasValue && detail.value == null`. The screen reacts in `build`, once, after the frame (the router must not be told during a build):
+
+  ```dart
+  final gone = detail.hasValue && state == null;
+  if (gone) _leave();   // context.go(Routes.reels), after the frame, once
+  ```
+
+  A `ref.listen` would miss a value that is already there when the page first builds.
+
+- **Verify once per open, without holding the page up.** The spec says clips are checked "when a reel is shown". `build` runs again for every change (a new list, the times arriving), and a verify itself changes the list, so a verify inside `build` would loop. The notifier keeps a flag, and a Riverpod notifier keeps its fields across rebuilds:
+
+  ```dart
+  if (!_verifyStarted && clips.isNotEmpty) {
+    _verifyStarted = true;
+    unawaited(_verify([for (final c in clips) c.clip]));
+  }
+  ```
+
+  `_verify` goes through `guarded` and the existing `MediaVerifier`, so it needs full access, never calls an error "missing" (D-72), and runs on the same queue as scans. When it flags a clip the list stream emits again and the tile turns into the missing tile by itself.
+
+- **Show first, refine later.** The clip times need a call to Android (`ClipTimeService.localTimes`). The controller does not wait for it:
+
+  ```dart
+  final times = ref.watch(reelClipTimesProvider(reelId)).value ?? const {};
+  ```
+
+  So the first state groups the days and shows the tiles with the phone's own time zone; when the answer comes, the state is built again with `times`, and the days are regrouped. `groupByShootingDay<ReelClip>` reads each clip's `wallClock` date, or the phone's local date for a clip with no time yet, so no clip is ever dropped. `wallClock` is a UTC-flagged `DateTime` whose fields are the clock where the clip was shot, so the code only reads its fields (`wallClockTimeText`, `ttDayText`) and never calls `toLocal()` on it.
+
+- **Do the thing only if it is still true.** The Remove button is on a tile that was drawn a moment ago. A verify might have found the video again since. `removeMissing` looks again (is the clip in this reel, and still flagged missing?) and returns an *empty* undo record if not; the screen shows no snack for an empty record. A double tap shares one future (single-flight, as in Task 7), so there is one removal and one record.
+
+- **A grid whose rows follow the text size.** `TtMissingClipTile` holds an icon, a label that wraps to three lines at 2× text, and a 48 dp button. That needs about 192 dp, but a 3:4 cell on a 360 dp phone is 142 dp, so the tile used to shrink to 0.7 of its size. `TtMissingClipTile.heightFor(...)` measures what the tile needs with a `TextPainter` at the phone's text scale. A day with a missing tile gets that as its row height; the picture tiles beside it keep their 3:4 shape at the top of the cell:
+
+  ```dart
+  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+    crossAxisCount: 3, mainAxisExtent: max(natural, needed), ...
+  ```
+
+  A tile given an exact (tight) height fills it, so the missing tile is not shrunk, and the `Align` around the others loosens the constraint so they stay 3:4. At 1× text the number is smaller than 3:4, so nothing changes.
+
+- **The name belongs in the body.** An app bar clamps its title to one line at large text. The page's app bar has no title; `TtReelHeader` shows the name with no line limit, so even 40 emoji can be read.
+
+**Where it lives:**
+
+- `app/lib/features/reels/view_models/reel_detail_controller.dart` (`ReelDetailController`, `ReelDetailState`, `reelByIdProvider`, `reelClipsProvider`, `reelClipTimesProvider`).
+- `app/lib/features/reels/views/reel_detail_screen.dart` (the page) and `clip_viewer_placeholder.dart` (the stand-in for Task 10).
+- `app/lib/router/app_router.dart` and `routes.dart` (`Routes.clip`).
+- `packages/taketray_ui/lib/src/components/clip_tile.dart` (`TtMissingClipTile.heightFor`).
+- Tests: `app/test/features/reels/view_models/reel_detail_controller_test.dart`, `views/reel_detail_screen_test.dart`, `app/test/router/app_router_test.dart`, and `packages/taketray_ui/test/components/clip_tile_test.dart` (group `heightFor`). Helpers: `app/test/support/reel_videos.dart`.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/features/reels/view_models/reel_detail_controller_test.dart)
+```
+
+It ends with `All tests passed!`. Now in `reel_detail_controller.dart` comment out the line `unawaited(_verify([for (final c in clips) c.clip]));` and run it again: `opening a reel verifies its clips` fails with `Expected: [Set:[1, 2]] Actual: []`, and `a video that is gone from the phone is shown as missing` fails too, because nothing flags the clip. Put the line back. Then open `reel_detail_screen.dart`, change `needed` in `_dayGrid` to `0.0` and run `reel_detail_screen_test.dart`: `the missing tile at 2x shows at its real size` fails because the text is drawn at a fraction of its height again.
+
+**Decisions:** D-87 (all of the above); D-86 (the route, the stand-in and `localDayProvider`), D-85 (the status menu, the delete dialog, `ReelSnacks` and `SheetFailure`), D-84 (`ReelClip`, `RemoveUndo`, `undo`), D-83 (`ClipTimeService`, `groupByShootingDay`, `wallClock`), D-81 (the first shrinking missing tile) and D-72 (the verifier).
 
 ## 9. Multi-select and the reel picker
 

@@ -625,6 +625,138 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    group('heightFor', () {
+      /// A 107 dp wide missing tile (a cell of a three-column grid on a
+      /// 360 dp phone) in a cell as tall as the larger of its 3:4 shape and
+      /// [TtMissingClipTile.heightFor], at [scale].
+      Widget grownCell({
+        double scale = 1,
+        String? removeLabel = 'Remove',
+        String label = 'Missing from phone',
+      }) => ttTestApp(
+        Align(
+          alignment: Alignment.topLeft,
+          child: Builder(
+            builder: (context) {
+              final natural = 107 / context.tt.sizes.clipTileAspect;
+              final needed = TtMissingClipTile.heightFor(
+                context,
+                width: 107,
+                label: label,
+                removeLabel: removeLabel,
+              );
+              return SizedBox(
+                width: 107,
+                height: needed > natural ? needed : natural,
+                child: TtMissingClipTile(
+                  label: label,
+                  removeLabel: removeLabel,
+                  onRemove: () {},
+                ),
+              );
+            },
+          ),
+        ),
+        textScale: scale,
+      );
+
+      double shown(WidgetTester tester) {
+        final label = tester.renderObject<RenderParagraph>(
+          find.text('Missing from phone'),
+        );
+        return tester.getRect(find.text('Missing from phone')).height /
+            label.size.height;
+      }
+
+      testWidgets('at 2x the cell is tall enough to show the tile at its '
+          'real size', (tester) async {
+        await tester.pumpWidget(grownCell(scale: 2));
+        expect(shown(tester), closeTo(1, 0.001));
+        // Taller than the 3:4 cell it would otherwise get.
+        expect(
+          tester.getSize(find.byType(TtMissingClipTile)).height,
+          greaterThan(107 * 4 / 3),
+        );
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('at 1.75x too, and it grows with the text', (tester) async {
+        await tester.pumpWidget(grownCell(scale: 1.75));
+        expect(shown(tester), closeTo(1, 0.001));
+        final at175 = tester.getSize(find.byType(TtMissingClipTile)).height;
+        await tester.pumpWidget(grownCell(scale: 2));
+        expect(
+          tester.getSize(find.byType(TtMissingClipTile)).height,
+          greaterThan(at175),
+        );
+      });
+
+      testWidgets('at 1x it asks for no more than the 3:4 shape', (
+        tester,
+      ) async {
+        await tester.pumpWidget(grownCell());
+        expect(shown(tester), closeTo(1, 0.001));
+        final size = tester.getSize(find.byType(TtMissingClipTile));
+        expect(size.height, closeTo(107 * 4 / 3, 0.5));
+      });
+
+      testWidgets('is not more than the tile needs: no empty band at 2x', (
+        tester,
+      ) async {
+        await tester.pumpWidget(grownCell(scale: 2));
+        final tile = tester.getRect(find.byType(TtMissingClipTile));
+        final button = tester.getRect(find.byType(TtIconButton));
+        // The last thing in the tile ends within the tile's bottom padding.
+        expect(tile.bottom - button.bottom, lessThan(24));
+      });
+
+      testWidgets('without a Remove button it needs less', (tester) async {
+        late double with_;
+        late double without;
+        await tester.pumpWidget(
+          ttTestApp(
+            Builder(
+              builder: (context) {
+                with_ = TtMissingClipTile.heightFor(
+                  context,
+                  width: 107,
+                  label: 'Missing from phone',
+                  removeLabel: 'Remove',
+                );
+                without = TtMissingClipTile.heightFor(
+                  context,
+                  width: 107,
+                  label: 'Missing from phone',
+                );
+                return const SizedBox();
+              },
+            ),
+            textScale: 2,
+          ),
+        );
+        expect(without, lessThan(with_));
+        expect(without, greaterThan(0));
+      });
+
+      testWidgets('a long label wraps to more lines and needs more height', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          grownCell(
+            scale: 2,
+            label: 'Missing from phone, deleted in the gallery app',
+          ),
+        );
+        final label = tester.renderObject<RenderParagraph>(
+          find.text('Missing from phone, deleted in the gallery app'),
+        );
+        final drawn = tester.getRect(
+          find.text('Missing from phone, deleted in the gallery app'),
+        );
+        expect(drawn.height / label.size.height, closeTo(1, 0.001));
+      });
+    });
+
     testWidgets('missing tile answers intrinsic size queries', (tester) async {
       await tester.pumpWidget(
         ttTestApp(

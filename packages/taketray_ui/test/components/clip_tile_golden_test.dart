@@ -94,6 +94,32 @@ void main() {
         ),
         width: _tileWidth,
       ),
+      // What a reel's grid does: the row is as tall as the 3:4 shape or as the
+      // content needs at this text size, whichever is more, so the tile is at
+      // its real size at 2x.
+      TtScenario(
+        'in a cell grown for the text',
+        Builder(
+          builder: (context) {
+            final natural = _tileWidth / context.tt.sizes.clipTileAspect;
+            final needed = TtMissingClipTile.heightFor(
+              context,
+              width: _tileWidth,
+              label: 'Missing from phone',
+              removeLabel: 'Remove',
+            );
+            return SizedBox(
+              height: needed > natural ? needed : natural,
+              child: TtMissingClipTile(
+                label: 'Missing from phone',
+                removeLabel: 'Remove',
+                onRemove: () {},
+              ),
+            );
+          },
+        ),
+        width: _tileWidth,
+      ),
     ],
   );
 }

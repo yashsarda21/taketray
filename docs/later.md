@@ -8,9 +8,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - Phase 3 left these (D-76):
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
-
-- App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.
-- Missing tile at 2× text in a three-column grid on 360 dp: the content (icon, three label lines and the 48 dp Remove icon) needs about 180 dp and the cell is about 142 dp, so it is shrunk to about 0.7 of real size (D-81). Let the reel detail grid's rows grow with the text scale (a `mainAxisExtent` that follows `TextScaler`) so the tile shows at its real size. Do it in Task 8, with the grid.
+- The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
 ## Phase 5 (tagging and the player)
 

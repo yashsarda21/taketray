@@ -862,6 +862,99 @@
       }
     }
   },
+  "navBack": "Back",
+  "@navBack": {
+    "description": "What a screen reader says for the back button of a screen's top bar."
+  },
+  "reelMenuDetails": "Reel details",
+  "@reelMenuDetails": {
+    "description": "Item of the menu on a reel's page that opens the sheet with the reel's name, shot ideas and status."
+  },
+  "reelMenuSelectClips": "Select clips",
+  "@reelMenuSelectClips": {
+    "description": "Item of the menu on a reel's page that starts choosing clips to move, add or remove."
+  },
+  "reelMenuDelete": "Delete reel",
+  "@reelMenuDelete": {
+    "description": "Item of the menu on a reel's page that asks to delete the reel."
+  },
+  "reelStatusSemantics": "Status: {status}. Change",
+  "@reelStatusSemantics": {
+    "description": "What a screen reader says for the status pill on a reel's page, which opens the status menu. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNoClips": "No clips yet",
+  "@reelNoClips": {
+    "description": "A reel's page: the facts line and the title of the empty state when the reel has no clips."
+  },
+  "reelEmptyBody": "Tag clips from To tag, or add videos from your phone.",
+  "@reelEmptyBody": {
+    "description": "Text of a reel's page when the reel has no clips."
+  },
+  "reelEmptyAction": "Go to To tag",
+  "@reelEmptyAction": {
+    "description": "Button of the empty reel page that opens the To tag tab."
+  },
+  "shotIdeasTitle": "Shot ideas",
+  "@shotIdeasTitle": {
+    "description": "Title of the block on a reel's page that shows the reel's notes: concept, shots to get, songs to try."
+  },
+  "showMore": "Show more",
+  "@showMore": {
+    "description": "Button that opens a long text that is cut short."
+  },
+  "showLess": "Show less",
+  "@showLess": {
+    "description": "Button that folds a long text that was opened."
+  },
+  "reelDayTitle": "Day {number} · {date}",
+  "@reelDayTitle": {
+    "description": "Heading of a shooting day on a reel's page: the day's number counted from the reel's first day, and its date, such as \"Day 2 · Oct 28\".",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDayClips": "{count, plural, one{1 clip} other{{count} clips}}",
+  "@reelDayClips": {
+    "description": "After a shooting day's heading on a reel's page: how many clips were shot that day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipTileSemanticsInReels": "Clip, {time}, {duration}, in {count} reels",
+  "@clipTileSemanticsInReels": {
+    "description": "Screen-reader label of a clip tile for a clip that is in two or more reels. {time} is the time of day it was shot, {duration} its length such as 0:32, {count} how many reels it is in.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipRemove": "Remove",
+  "@clipRemove": {
+    "description": "Button on the tile of a missing clip that takes the clip out of the reel."
+  },
+  "missingClipRemovedSnack": "Missing clip removed",
+  "@missingClipRemovedSnack": {
+    "description": "Snack shown after a missing clip is taken out of a reel, with an Undo button."
+  },
   "cameraFailedSnack": "Couldn't open the camera.",
   "@cameraFailedSnack": {
     "description": "Snack shown when the phone has no camera app that opens, or the call failed."
