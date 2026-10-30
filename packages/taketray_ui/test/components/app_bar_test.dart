@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -384,6 +385,77 @@ void main() {
       expect(data.flagsCollection.isFocused, ui.Tristate.isTrue);
       expect(data.flagsCollection.isHeader, isTrue, reason: 'still a heading');
       semantics.dispose();
+    });
+
+    group('wrapTitle', () {
+      const long = 'Choose dates for the videos you shot long ago';
+
+      testWidgets('at 2x the whole title shows over several lines, no cut', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          _bar(
+            TtAppBar(
+              title: long,
+              wrapTitle: true,
+              leading: _action('Close'),
+              actions: [_action('More')],
+            ),
+            textScale: 2,
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        final paragraph = tester.renderObject<RenderParagraph>(find.text(long));
+        expect(paragraph.didExceedMaxLines, isFalse);
+        final text = tester.widget<Text>(find.text(long));
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        expect(text.maxLines, isNull);
+        // More than one line, so the bar grew past its 64 dp.
+        expect(paragraph.size.height, greaterThan(64));
+        expect(tester.getSize(find.byType(TtAppBar)).height, greaterThan(64));
+        // At 2x, not clamped to 1.5x.
+        expect(
+          paragraph.textScaler.scale(1),
+          2,
+          reason: "the title is drawn at the phone's text scale",
+        );
+      });
+
+      testWidgets('at 1x it is still 64 dp high, one line', (tester) async {
+        await tester.pumpWidget(
+          _bar(const TtAppBar(title: 'Choose dates', wrapTitle: true)),
+        );
+
+        expect(tester.getSize(find.byType(TtAppBar)).height, 64);
+        expect(tester.getSize(find.text('Choose dates')).height, lessThan(30));
+      });
+
+      testWidgets('without it, the title still ends in an ellipsis at 2x', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(360, 800);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          _bar(
+            TtAppBar(
+              title: long,
+              leading: _action('Close'),
+              actions: [_action('More')],
+            ),
+            textScale: 2,
+          ),
+        );
+
+        final text = tester.widget<Text>(find.text(long));
+        expect(text.overflow, TextOverflow.ellipsis);
+        expect(text.maxLines, 1);
+        expect(tester.getSize(find.byType(TtAppBar)).height, 64);
+      });
     });
   });
 }

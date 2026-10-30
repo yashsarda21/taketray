@@ -327,6 +327,8 @@ class _TtDateRangePickerPageState extends State<TtDateRangePickerPage> {
     final bar = TtAppBar(
       title: labels.title,
       titleFocusNode: _titleFocus,
+      // Nothing is cut at 2x text: the title wraps and the bar grows.
+      wrapTitle: true,
       leading: TtIconButton(
         icon: Symbols.close_rounded,
         semanticLabel: labels.close,

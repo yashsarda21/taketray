@@ -5,10 +5,12 @@ import 'package:intl/intl.dart';
 /// set to 24-hour time ([use24Hour], read from
 /// `MediaQuery.alwaysUse24HourFormatOf`), "09:41" (`DateFormat.Hm`).
 ///
-/// [locale] is the app's locale (`Localizations.localeOf`): Flutter's
-/// localization delegate loads the `intl` date data for the app's supported
-/// locales only, and an unloaded locale throws. The app has English only for
-/// now. [time] may be UTC (as the database stores it).
+/// [locale] is the app's locale (`Localizations.localeOf`). It is the phone's
+/// own locale when the app has its language (`resolvePhoneLocale`, D-79), so
+/// an English (India) phone gives `en_IN`; Flutter's localization delegates
+/// load the `intl` date data for that locale, and a locale they did not load
+/// throws. The app has English only for now. [time] may be UTC (as the
+/// database stores it).
 String timeOfDayText(
   DateTime time, {
   required String locale,

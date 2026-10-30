@@ -143,6 +143,18 @@ class _AddEarlierVideosSheetState
     super.dispose();
   }
 
+  /// Gives the Choose dates… row the focus back once it can be used again.
+  ///
+  /// The row is off (it has no ink well, so no focus) while the dates are
+  /// counted or an add runs, and loses the focus then; a screen reader would
+  /// start again from the top of the sheet. After the next frame the row is
+  /// back and takes it.
+  void _restoreFocus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _chooseFocus.requestFocus();
+    });
+  }
+
   DateTime get _today =>
       DateUtils.dateOnly(ref.read(clockProvider).now().toLocal());
 
@@ -169,6 +181,7 @@ class _AddEarlierVideosSheetState
       // Nothing was left to add (the videos went away since the count): the
       // controller counted again, so the rows show the truth.
       setState(() => _adding = _Adding.none);
+      _restoreFocus();
     } else {
       navigator.pop();
     }
@@ -227,6 +240,7 @@ class _AddEarlierVideosSheetState
           _finding = false;
           _failedRange = range;
         });
+        _restoreFocus();
       }
       return;
     }
@@ -235,6 +249,8 @@ class _AddEarlierVideosSheetState
     final add = await _confirm(range, count);
     if (!mounted) return;
     setState(() => _choosing = false);
+    // Cancel, OK or a tap outside: the row has the focus again.
+    if (!add) _restoreFocus();
     if (add) await _add(range);
   }
 

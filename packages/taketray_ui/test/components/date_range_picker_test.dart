@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -363,8 +364,6 @@ void main() {
   });
 
   group('quick ranges', () {
-    Finder chip(String label) => find.widgetWithText(Material, label);
-
     testWidgets('are Yesterday, Last week, This month and Last month', (
       tester,
     ) async {
@@ -500,8 +499,6 @@ void main() {
       await _tapDay(tester, _d(2026, 10, 20));
       expect(selected('Yesterday'), isFalse);
       semantics.dispose();
-      // Clear keeps `chip` used for the compiler.
-      expect(chip('Yesterday'), findsWidgets);
     });
 
     testWidgets('a chip works after a range was chosen by hand', (
@@ -659,6 +656,33 @@ void main() {
       await tester.tap(_cell(_d(2026, 10, 20)));
       await tester.pump();
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('at 2x text the whole title "Choose dates" shows, wrapped', (
+      tester,
+    ) async {
+      await _open(
+        tester,
+        textScale: 2,
+        initial: DateTimeRange(start: _d(2026, 10, 8), end: _d(2026, 10, 10)),
+      );
+
+      expect(tester.takeException(), isNull);
+      final title = tester.widget<Text>(find.text('Choose dates'));
+      expect(title.overflow, isNot(TextOverflow.ellipsis));
+      expect(title.maxLines, isNull);
+      expect(
+        tester
+            .renderObject<RenderParagraph>(find.text('Choose dates'))
+            .didExceedMaxLines,
+        isFalse,
+      );
+      // Clear is still there, and the title keeps clear of it.
+      expect(find.text('Clear'), findsOneWidget);
+      expect(
+        tester.getRect(find.text('Choose dates')).right,
+        lessThanOrEqualTo(tester.getRect(find.text('Clear')).left),
+      );
     });
 
     testWidgets('at 2x text the year and month grid fits', (tester) async {

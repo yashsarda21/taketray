@@ -714,6 +714,81 @@ void main() {
     });
   });
 
+  group('focus returns to Choose dates… after counting (M1)', () {
+    /// The primary focus is inside the Choose dates… row.
+    void expectFocusOnChoose(WidgetTester tester) {
+      final focus = FocusManager.instance.primaryFocus;
+      expect(focus, isNotNull);
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Choose dates…'),
+          matching: find.byElementPredicate((e) => e == focus!.context),
+        ),
+        findsOneWidget,
+        reason: 'the Choose dates… row has the focus',
+      );
+    }
+
+    testWidgets('after Find videos and Cancel', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 24, 28);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expectFocusOnChoose(tester);
+    });
+
+    testWidgets('after Find videos and OK (no new videos)', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 20, 22);
+
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      expectFocusOnChoose(tester);
+    });
+
+    testWidgets('after Add when nothing was left to add and the sheet stays', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      // 24 to 27 holds two videos; Today's one (28th) stays on the phone, so
+      // Today is still a usable row that could take the focus instead.
+      await pickRange(tester, 24, 27);
+      expect(find.text('2 videos found'), findsOneWidget);
+      h.bridge.videosByVolume.clear();
+      h.bridge.put([shot(1, DateTime(2026, 10, 28, 9, 41))]);
+
+      await tapAdd(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget, reason: 'the sheet stays');
+      expect(row(tester, 'Today').onTap, isNotNull);
+      expectFocusOnChoose(tester);
+    });
+
+    testWidgets('after a failed count (no dialog at all)', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
+      await tester.tap(day(24));
+      await tester.pump();
+      h.bridge.failNext('accessReport');
+
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't check your videos."), findsOneWidget);
+      expect(row(tester, 'Today').onTap, isNotNull);
+      expectFocusOnChoose(tester);
+    });
+  });
+
   group('after the dates are picked', () {
     testWidgets('a progress state shows while the videos are counted', (
       tester,
