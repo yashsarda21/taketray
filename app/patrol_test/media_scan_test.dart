@@ -9,7 +9,7 @@ import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
-import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/media_bridge.dart';
@@ -251,7 +251,7 @@ Future<void> _setShootingMode(
     what: 'the stored Shooting mode to be read',
   );
   if (stored() != on) {
-    await $(ReelsPlaceholderScreen).$(TtSwitch).tap();
+    await $(ReelsScreen).$(TtSwitch).tap();
   }
   await waitFor(
     $,

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/app.dart' show resolvePhoneLocale;
+import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -20,14 +21,20 @@ final Override thumbnailCacheForTests = thumbnailCacheProvider.overrideWith(
   (ref) async => ThumbnailCache(FakeMediaBridge(), Directory('/nonexistent')),
 );
 
+Stream<DateTime> _noTick(Ref ref) => const Stream.empty();
+
 /// What the To tag route shows in a test that only has one screen.
 const toTagRouteMarker = 'the To tag route';
 
 /// What the Reels route shows in a test that only has one screen.
 const reelsRouteMarker = 'the Reels route';
 
+/// What the route of reel [id] shows in a test that only has one screen.
+String reelRouteMarker(Object id) => 'the route of reel $id';
+
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
-/// [toTagRouteMarker] and a `/reels` route that shows [reelsRouteMarker])
+/// [toTagRouteMarker], a `/reels` route that shows [reelsRouteMarker] and a
+/// `/reels/<id>` route that shows [reelRouteMarker])
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -37,6 +44,12 @@ const reelsRouteMarker = 'the Reels route';
 /// the skeleton tiles loop for ever, and `pumpAndSettle` would never settle.
 /// [use24Hour] is the phone's 24-hour setting. [locale] is the phone's
 /// language and region (English, United States, when null).
+///
+/// The midnight tick (`localDayProvider`) never fires, unless [midnightTick]
+/// is true. Then the container is disposed as soon as the tree is taken down,
+/// so the tick's timer is cancelled before the test binding looks for pending
+/// timers; use it only with fake view models (a real database needs
+/// `testApp`).
 Future<ProviderContainer> pumpScreen(
   WidgetTester tester,
   Widget screen, {
@@ -48,6 +61,7 @@ Future<ProviderContainer> pumpScreen(
   bool animations = false,
   bool use24Hour = false,
   Locale? locale,
+  bool midnightTick = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -59,6 +73,16 @@ Future<ProviderContainer> pumpScreen(
         path: Routes.reels,
         builder: (context, state) =>
             const Scaffold(body: Text(reelsRouteMarker)),
+        routes: [
+          GoRoute(
+            path: ':${Routes.reelIdParameter}',
+            builder: (context, state) => Scaffold(
+              body: Text(
+                reelRouteMarker(state.pathParameters[Routes.reelIdParameter]!),
+              ),
+            ),
+          ),
+        ],
       ),
       GoRoute(
         path: Routes.toTag,
@@ -68,37 +92,75 @@ Future<ProviderContainer> pumpScreen(
     ],
   );
   addTearDown(router.dispose);
-  final container = ProviderContainer(overrides: overrides);
+  final container = ProviderContainer(
+    overrides: [
+      // The midnight tick owns a timer, and the test binding fails a test that
+      // ends with one pending before any tear-down runs. Screens that watch it
+      // get a tick that never comes, unless the test is about the tick.
+      if (!midnightTick) localDayProvider.overrideWith(_noTick),
+      ...overrides,
+    ],
+  );
   addTearDown(container.dispose);
   await tester.pumpWidget(
-    UncontrolledProviderScope(
-      container: container,
-      child: MaterialApp.router(
-        routerConfig: router,
-        scaffoldMessengerKey: container.read(rootMessengerKeyProvider),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: locale,
-        localeListResolutionCallback: resolvePhoneLocale,
-        theme: TakeTrayTheme.light(),
-        darkTheme: TakeTrayTheme.dark(),
-        themeMode: brightness == Brightness.dark
-            ? ThemeMode.dark
-            : ThemeMode.light,
-        debugShowCheckedModeBanner: false,
-        builder: (context, app) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(
-            textScaler: TextScaler.linear(textScale),
-            disableAnimations: !animations,
-            alwaysUse24HourFormat: use24Hour,
+    _DisposeOnUnmount(
+      container: midnightTick ? container : null,
+      child: UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp.router(
+          routerConfig: router,
+          scaffoldMessengerKey: container.read(rootMessengerKeyProvider),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: locale,
+          localeListResolutionCallback: resolvePhoneLocale,
+          theme: TakeTrayTheme.light(),
+          darkTheme: TakeTrayTheme.dark(),
+          themeMode: brightness == Brightness.dark
+              ? ThemeMode.dark
+              : ThemeMode.light,
+          debugShowCheckedModeBanner: false,
+          builder: (context, app) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(textScale),
+              disableAnimations: !animations,
+              alwaysUse24HourFormat: use24Hour,
+            ),
+            child: app!,
           ),
-          child: app!,
         ),
       ),
     ),
   );
   if (settle) await tester.pumpAndSettle();
   return container;
+}
+
+/// Disposes [container], when there is one, as the tree is taken down.
+///
+/// The test binding fails a test that ends with a timer pending, and checks
+/// right after it unmounts the tree, before any `addTearDown` runs. Riverpod
+/// disposes an unused provider only later, so the midnight tick (which owns a
+/// timer) would still be there. The children are unmounted first, then this.
+class _DisposeOnUnmount extends StatefulWidget {
+  const _DisposeOnUnmount({required this.container, required this.child});
+
+  final ProviderContainer? container;
+  final Widget child;
+
+  @override
+  State<_DisposeOnUnmount> createState() => _DisposeOnUnmountState();
+}
+
+class _DisposeOnUnmountState extends State<_DisposeOnUnmount> {
+  @override
+  void dispose() {
+    widget.container?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 /// A [Text] showing [text], where the narrow no-break space that intl 0.20

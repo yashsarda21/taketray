@@ -55,8 +55,11 @@ Future<Pumped> pump(
   double textScale = 1,
   bool settle = true,
   bool use24Hour = false,
+  FixedClock? clock,
+  bool cameraOpens = true,
+  bool midnightTick = false,
 }) async {
-  final fakeShooting = FakeShooting(shooting);
+  final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
   final fakeToTag = FakeToTag(clips);
   await pumpScreen(
@@ -73,13 +76,14 @@ Future<Pumped> pump(
         }
         return Future.value(times);
       }),
-      clockProvider.overrideWithValue(FixedClock(_now)),
+      clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
       thumbnailCacheForTests,
     ],
     brightness: brightness,
     textScale: textScale,
     settle: settle,
     use24Hour: use24Hour,
+    midnightTick: midnightTick,
   );
   return Pumped(fakeShooting, fakeAccess, fakeToTag);
 }
@@ -198,6 +202,78 @@ void main() {
       );
       await tester.pump();
       expect(p.shooting.cameraOpened, 1);
+    });
+
+    testWidgets('camera failure shows the snack (To tag strip)', (
+      tester,
+    ) async {
+      final p = await pump(
+        tester,
+        shooting: on(),
+        clips: [testClip(1)],
+        cameraOpens: false,
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtStatStrip),
+          matching: find.text('Open camera'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('camera failure shows the snack (All caught up)', (
+      tester,
+    ) async {
+      final p = await pump(tester, shooting: on(), cameraOpens: false);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtEmptyState),
+          matching: find.text('Open camera'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a camera that opens shows no snack', (tester) async {
+      final p = await pump(tester, shooting: on(), clips: [testClip(1)]);
+
+      await tester.tap(find.text('Open camera'));
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(find.text("Couldn't open the camera."), findsNothing);
+    });
+
+    testWidgets('Shooting since changes at midnight', (tester) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 50));
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 28, 22)),
+        clips: [testClip(1)],
+        clock: clock,
+        midnightTick: true,
+      );
+      expect(findPlain('Shooting since 10:00 PM'), findsOneWidget);
+
+      clock.advance(const Duration(minutes: 11));
+      await tester.pump(const Duration(minutes: 11));
+
+      expect(findPlain('Shooting since Oct 28, 10:00 PM'), findsOneWidget);
     });
 
     testWidgets('on since yesterday: with the date', (tester) async {

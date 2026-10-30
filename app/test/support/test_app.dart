@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'vm_harness.dart';
@@ -40,8 +41,21 @@ void testApp(
 }
 
 /// Takes the tree down and lets the timers it left run (see [testApp]).
+///
+/// The provider containers the tree used are disposed too. Riverpod disposes
+/// an unused provider through the scope that held it, which is gone by then,
+/// so a provider that owns a timer (the midnight tick, D-86) would otherwise
+/// leave it pending.
 Future<void> tearDownApp(WidgetTester tester) async {
+  final containers = [
+    for (final element in find.byType(UncontrolledProviderScope).evaluate())
+      (element.widget as UncontrolledProviderScope).container,
+  ];
   await tester.pumpWidget(const SizedBox.shrink());
+  // Disposing twice is fine; a test that made its container disposes it too.
+  for (final container in containers) {
+    container.dispose();
+  }
   // The timers run on the test clock, which only a pump moves.
   await tester.pump(Duration.zero);
   await tester.runAsync(settle);

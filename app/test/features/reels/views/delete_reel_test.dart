@@ -14,7 +14,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/views/delete_reel_dialog.dart';
-import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -238,7 +238,7 @@ void main() {
         ProviderScope(overrides: overrides(), child: const TakeTrayApp()),
       );
       await tester.pumpAndSettle();
-      final context = tester.element(find.byType(ReelsPlaceholderScreen));
+      final context = tester.element(find.byType(ReelsScreen));
 
       unawaited(showDeleteReelDialog(context, goa));
       await tester.pumpAndSettle();

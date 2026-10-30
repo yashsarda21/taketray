@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -9,6 +12,7 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
+import 'package:taketray/features/shooting_mode/views/open_camera.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/shooting_mode/views/waiting_duration_text.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
@@ -39,6 +43,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// never flashes "off" first. If that read fails it shows "off", and the
 /// switch still works.
 ///
+/// **Open camera** tells the user when the camera cannot open
+/// (`openCameraOrSay`, D-86). The card watches `localDayProvider`, so "On
+/// since {time}" gains its date at midnight.
+///
 /// This tab only reads the waiting clips (`pendingClipsProvider`); it does
 /// not scan or verify them, which opening To tag does.
 class ShootingModeSection extends ConsumerWidget {
@@ -54,6 +62,8 @@ class ShootingModeSection extends ConsumerWidget {
     final pending = ref.watch(pendingClipsProvider).value ?? const [];
     final fallback = ref.watch(firstShowableClipProvider).value;
     final cache = ref.watch(thumbnailCacheProvider).value;
+    // Rebuilt at each local midnight, so "On since" gets its date then.
+    ref.watch(localDayProvider);
     final now = ref.watch(clockProvider).now();
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
@@ -103,7 +113,7 @@ class ShootingModeSection extends ConsumerWidget {
                 cache: cache,
               ),
         cameraLabel: l10n.shootingOpenCamera,
-        onOpenCamera: controller.openCamera,
+        onOpenCamera: () => unawaited(openCameraOrSay(context, ref)),
         // References (Phase 4/5) will come first in this list.
         rows: [
           if (full && !shooting.earlierAdded)

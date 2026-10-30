@@ -7,8 +7,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 4
 
 - Phase 3 left these (D-76):
-  - `openCamera()` returning false (no camera app, or the call failed) shows nothing. Needs copy for a snack; the owner approves it.
-  - "On since {time}" and "Shooting since {time}" are built once per build, so they do not change at midnight until something redraws the screen. Rebuild the card at the next local midnight (a timer, or a clock provider that ticks).
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 
 - App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.

@@ -730,6 +730,142 @@
   "@deleteReelConfirm": {
     "description": "Button of the delete reel dialog that deletes the reel."
   },
+  "reelsEmptyTitle": "Plan your first reel",
+  "@reelsEmptyTitle": {
+    "description": "Title of the Reels tab when there are no reels yet."
+  },
+  "reelsEmptyBody": "A reel is a video you're planning, like London Food or Day 1 Vlog. Clips you tag go into it.",
+  "@reelsEmptyBody": {
+    "description": "Text of the Reels tab when there are no reels yet."
+  },
+  "reelsNewReel": "New reel",
+  "@reelsNewReel": {
+    "description": "Label of the button and of the floating button that open the New reel sheet."
+  },
+  "reelFilterAll": "All",
+  "@reelFilterAll": {
+    "description": "Filter chip on the Reels tab that shows every reel."
+  },
+  "reelFilterChip": "{label} {count}",
+  "@reelFilterChip": {
+    "description": "Filter chip on the Reels tab: the filter name and how many reels it shows, such as \"Published 3\".",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelFilterChipSemantics": "{label}, {count, plural, =0{no reels} one{1 reel} other{{count} reels}}",
+  "@reelFilterChipSemantics": {
+    "description": "What a screen reader says for a filter chip on the Reels tab.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelFilterEmptyTitle": "No reels marked {status}",
+  "@reelFilterEmptyTitle": {
+    "description": "Title shown on the Reels tab when the chosen filter has no reels. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelFilterEmptyCollecting": "New reels start as Collecting.",
+  "@reelFilterEmptyCollecting": {
+    "description": "Text shown on the Reels tab when no reel is marked Collecting."
+  },
+  "reelFilterEmptyReady": "When a reel has all its clips, mark it as Ready to edit.",
+  "@reelFilterEmptyReady": {
+    "description": "Text shown on the Reels tab when no reel is marked Ready to edit."
+  },
+  "reelFilterEmptyPublished": "When you post a reel, mark it as Published from its page.",
+  "@reelFilterEmptyPublished": {
+    "description": "Text shown on the Reels tab when no reel is marked Published."
+  },
+  "reelsShowAll": "Show all reels",
+  "@reelsShowAll": {
+    "description": "Button shown when a filter has no reels; it goes back to showing every reel."
+  },
+  "reelCardClips": "{count, plural, one{1 clip} other{{count} clips}}",
+  "@reelCardClips": {
+    "description": "How many clips a reel has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardMeta": "{clips} · {duration}",
+  "@reelCardMeta": {
+    "description": "Line under a reel card name: the number of clips and their total length, such as \"3 clips · 1:05\".",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardMissing": "{count} missing",
+  "@reelCardMissing": {
+    "description": "Mark on a reel card: how many of its clips are gone from the phone.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardEmptyArt": "No clips yet",
+  "@reelCardEmptyArt": {
+    "description": "Words on the picture of a reel card that has no cover."
+  },
+  "reelCardSemantics": "{name}. {status}. {count, plural, one{1 clip} other{{count} clips}}",
+  "@reelCardSemantics": {
+    "description": "What a screen reader says for a reel card: its name, its status and its clip count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardSemanticsMissing": "{name}. {status}. {count, plural, one{1 clip} other{{count} clips}}, {missing} missing",
+  "@reelCardSemanticsMissing": {
+    "description": "What a screen reader says for a reel card with clips missing from the phone.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "missing": {
+        "type": "int"
+      }
+    }
+  },
+  "cameraFailedSnack": "Couldn't open the camera.",
+  "@cameraFailedSnack": {
+    "description": "Snack shown when the phone has no camera app that opens, or the call failed."
+  },
   "loading": "Loading",
   "@loading": {
     "description": "Screen-reader word for something that is still loading, after its name."

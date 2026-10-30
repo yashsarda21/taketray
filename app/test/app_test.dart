@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
-import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -65,13 +65,11 @@ void main() {
     expect(Theme.of(context).extension<TtThemeData>(), isNotNull);
   });
 
-  testApp('the Reels placeholder has a large TtAppBar titled Reels', (
-    tester,
-  ) async {
+  testApp('the Reels tab has a large TtAppBar titled Reels', (tester) async {
     await _pumpApp(tester);
 
     final bar = find.descendant(
-      of: find.byType(ReelsPlaceholderScreen),
+      of: find.byType(ReelsScreen),
       matching: find.byType(TtAppBar),
     );
     expect(bar, findsOneWidget);
@@ -82,7 +80,7 @@ void main() {
   testApp('opens on Reels and switches tabs', (tester) async {
     await _pumpApp(tester);
 
-    expect(_inScreen(ReelsPlaceholderScreen, 'Reels'), findsOneWidget);
+    expect(_inScreen(ReelsScreen, 'Reels'), findsOneWidget);
 
     await tester.tap(_inPill('To tag'));
     await tester.pumpAndSettle();
@@ -104,7 +102,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(handled, isTrue);
-    expect(find.byType(ReelsPlaceholderScreen), findsOneWidget);
+    expect(find.byType(ReelsScreen), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
   });
 
@@ -124,7 +122,7 @@ void main() {
     addTearDown(tester.view.reset);
     await _pumpApp(tester);
 
-    final context = tester.element(find.byType(ReelsPlaceholderScreen));
+    final context = tester.element(find.byType(ReelsScreen));
     final pillTop = tester.getRect(find.byType(TtGlass)).top;
     expect(TtNavPill.reservedHeight(context), 780 - pillTop);
   });
@@ -139,7 +137,7 @@ void main() {
       tester.widget<TtShootingModeCard>(find.byType(TtShootingModeCard)).on,
       isFalse,
     );
-    expect(_inScreen(ReelsPlaceholderScreen, 'Shooting mode'), findsOneWidget);
+    expect(_inScreen(ReelsScreen, 'Shooting mode'), findsOneWidget);
   });
 
   testApp('the To tag tab shows the To tag screen, empty', (tester) async {

@@ -345,7 +345,124 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
 
 ## 6. Home
 
-*To be written in Task 6.*
+**What we built:** the Reels tab, which was a placeholder with only the Shooting mode card:
+
+- **The Shooting mode section** on top, reused as it was (D-76): the access banner, the card, the clips-waiting banner.
+- **Filter chips**: All, Collecting, Ready to edit, Published, each with a count. They appear once at least one reel exists.
+- **The reel cards**, two to a row, newest first: a cover, the status pill, "3 clips · 1:05" and, when clips are gone from the phone, "2 missing". Tapping one opens that reel's page (still a stand-in until Task 8).
+- **Two empty states**: "Plan your first reel" with a **New reel** button (no reels at all), and "No reels marked Published" with **Show all reels** (reels exist, but none with that status).
+- **The New reel button** (a floating button, only while reels exist) that opens the sheet from Task 7.
+- **A midnight tick**, so "On since 9:41 AM" turns into "On since Oct 27, 9:41 PM" when midnight passes while the screen is open.
+- **A snack** "Couldn't open the camera." when the phone has no camera app that opens.
+
+**Why TakeTray needs it:** Home is the first screen a person sees, and it has to tell the truth about three things at a glance: how many reels there are, what stage each is at, and whether any clip has gone missing. The two empty states matter as much as the full one: a first-time user must be told what a reel is, and a person looking at "Published" with none must be told how to get one, not shown a blank. The midnight tick and the camera snack are two small lies Phase 3 left behind: a date that stays wrong until something else redraws the screen, and a button that does nothing.
+
+**Key ideas:**
+
+- **The rules are two pure functions, so they can be tested without a screen.** A chip's count is over *all* reels, whatever filter is chosen; the cards are the reels that pass the filter, in the order they came.
+
+  ```dart
+  Map<ReelFilter, int> filterCounts(List<ReelSummary> reels) => {
+    for (final filter in ReelFilter.values)
+      filter: applyFilter(reels, filter).length,
+  };
+
+  List<ReelSummary> applyFilter(List<ReelSummary> reels, ReelFilter filter) {
+    final status = filter.status; // null for "All"
+    return [
+      for (final summary in reels)
+        if (status == null || summary.reel.status == status) summary,
+    ];
+  }
+  ```
+
+  Because the count *is* `applyFilter(...).length`, a chip can never say "Ready to edit 1" and then show two cards: both numbers come from one rule. The order is never changed here: the repository already sorts (newest created first, then the higher id, D-84).
+
+- **The filter lives in the controller, and a new list does not reset it.** `HomeController` is an `AsyncNotifier`. Its `build` runs again every time the database list changes (a reel was added, a clip went missing) or the thumbnail cache becomes ready, so anything stored only in `build`'s local variables would be lost. The filter is a *field of the notifier object*, which Riverpod keeps across rebuilds:
+
+  ```dart
+  ReelFilter _filter = ReelFilter.all;
+  List<ReelSummary> _all = const [];
+
+  Future<HomeState> build() async {
+    _cache = ref.watch(thumbnailCacheProvider).value;
+    _all = await ref.watch(reelSummariesProvider.future);
+    return _compose();
+  }
+
+  void setFilter(ReelFilter filter) {
+    _filter = filter;
+    if (state.hasValue) state = AsyncData(_compose());
+  }
+  ```
+
+  `setFilter` composes a new state from the last list at once; it does not read the database again.
+
+- **Nothing is shown until the first list has arrived.** If the screen drew "Plan your first reel" while the database was still being read, every phone with reels would flash the first-time screen for a few frames. So while `home` is null the screen has the app bar and the Shooting mode card and nothing else. The same goes for the FAB: `if (hasReels)`, never `if (home != null)`. (A mutation test changes exactly that and `FAB only with reels: none without` fails.)
+
+- **Cards are built on demand.** `SliverGrid.builder` asks for a card only when it scrolls near the screen, so 25 reels build a screenful of cards, not 25. The test counts `TtReelCard` widgets and expects "more than zero and fewer than 25".
+
+  ```dart
+  SliverGrid.builder(
+    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+      crossAxisCount: 2,
+      mainAxisSpacing: tt.spacing.s,
+      crossAxisSpacing: tt.spacing.s,
+      childAspectRatio: TtMetrics.reelCardAspect, // 4:5
+    ),
+    itemCount: home.reels.length,
+    itemBuilder: (context, index) => _ReelCard(...),
+  )
+  ```
+
+- **One thumbnail size for every card.** To tag asks for each picture at the tile's real height, which depends on the screen width. Home asks for all covers at `homeCoverSize` (240 logical pixels): a card is 4:5 and 160 to 190 dp wide, so it is never taller than about 240. The thumbnail cache stores one file per size, so one size means one file per video, on every phone. Until the cache is ready (`thumbnailCacheProvider` is a `Future`) `clipThumbnail` returns a picture that fails at once, which the card shows as its empty art; the controller watches the cache, so when it arrives the covers are replaced.
+
+- **A timer that ends at midnight, not 24 hours later.** "On since" needs the date once midnight has passed, so the card must be built again then. `localDayProvider` is a stream that emits the local date now and at every following local midnight:
+
+  ```dart
+  void tick() {
+    final now = clock.now().toLocal();
+    final today = DateTime(now.year, now.month, now.day);
+    if (today != lastDay) {
+      lastDay = today;
+      days.add(today);
+    }
+    final nextMidnight = DateTime(now.year, now.month, now.day + 1);
+    timer = Timer(nextMidnight.difference(now), tick);
+  }
+  ```
+
+  Two details carry the weight. `DateTime(y, m, d + 1)` is how Dart asks for "the start of tomorrow": it normalises the day number, so `d + 1` on the 31st is the 1st of the next month, and it lands on *local* midnight even when the day was 23 or 25 hours long (the night the clocks change in London). A timer of `Duration(hours: 24)` would be an hour out on those two nights a year. And when the timer fires but the clock still shows the same day (a timer can fire a moment early, or the clock was set back), nothing is emitted and the timer is set again, so a day is never announced twice. `ref.onDispose` cancels the timer when nothing watches the provider.
+
+  `ShootingModeSection` and `ToTagScreen` just `ref.watch(localDayProvider)` and ignore the value: the watch is what makes them rebuild at midnight, and the rebuild reads the clock again.
+
+- **Testing a timer: fake time, and a clock that follows it.** `fakeAsync` runs a block with a fake clock for `Timer`s: `async.elapse(Duration(hours: 8, minutes: 29, seconds: 59))` moves time forward and fires the timers due. But `Clock.now()` in the app is `DateTime.now()`, which fake time does not move. So the test makes a `Clock` that adds `async.elapsed` to a start time. The two London cases (`the London night in October is 25 hours long`, `... in March is 23 hours long`) only mean something when the computer's zone is London, so `tool/check` runs this file a second time with `TZ=Europe/London` (it is in `DST_TESTS`); in UTC they are skipped.
+
+- **A snack that three buttons share.** `openCameraOrSay(context, ref)` is one function, used by the Shooting mode card, To tag's strip and To tag's "All caught up" button. It looks up the messenger *before* it awaits the camera, as in Task 7, so it can still speak if the screen has changed by the time the answer comes. The FAB moves up over the snack by itself: `TtFab` listens to `TtSnackHeight` (D-82) and Home does nothing for it. The test measures the drawn button (`Material` inside the `TtFab`, because the lift moves the paint, not the layout) and checks that it clears the snack by 12 dp and comes back down.
+
+- **A stand-in page, kept very small.** A card must go somewhere, and the reel page is Task 8. `/reels/:id` is a child of `/reels`, and a bad id (`abc`, `0`, `1.5`, a number too big for an int) is sent back to Reels with the same log line as any unknown location, so a stale link cannot build a page for reel 0. `ReelDetailPlaceholder` is a `Scaffold` with an app bar; Task 8 replaces it.
+
+- **Why a test timer needs care.** The test binding fails a test that ends with a `Timer` pending, and it checks *before* the tear-downs run. Riverpod disposes an unused provider later, through a scope that is already gone. So `pumpScreen` gives widget tests an inert `localDayProvider` (a stream that never emits), and a test about the midnight tick passes `midnightTick: true`, which disposes the container as the tree comes down. Whole-app tests (`tearDownApp`) dispose the containers they find. If you add a provider that owns a timer and a test fails with "A Timer is still pending even after the widget tree was disposed", this is why.
+
+**Where it lives:**
+
+- `app/lib/features/reels/view_models/reel_filters.dart` (`ReelFilter`, `filterCounts`, `applyFilter`) and `home_controller.dart` (`HomeState`, `reelSummariesProvider`, `HomeController`, `homeCoverSize`).
+- `app/lib/features/reels/views/reels_screen.dart` (`ReelsScreen`, the chips, the cards) and `reel_detail_placeholder.dart`.
+- `app/lib/core/midnight_tick.dart` (`localDayProvider`).
+- `app/lib/features/shooting_mode/views/open_camera.dart` (`openCameraOrSay`).
+- `app/lib/router/routes.dart` (`Routes.reel`) and `app_router.dart` (the `:id` child route and its redirect).
+- Tests: `app/test/features/reels/view_models/reel_filters_test.dart`, `home_controller_test.dart`, `views/reels_screen_test.dart` (fake view models), `views/reels_tab_test.dart` (the whole app on a database), `app/test/core/midnight_tick_test.dart`, and the midnight and camera cases in `shooting_mode_section_test.dart`, `to_tag_screen_test.dart` and `app/test/router/app_router_test.dart`.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/features/reels test/core/midnight_tick_test.dart)
+(cd app && TZ=Europe/London ../tool/flutter test --run-skipped test/core/midnight_tick_test.dart)
+```
+
+Both end with `All tests passed!`. Now, in `app/lib/features/reels/view_models/reel_filters.dart`, change the condition in `applyFilter` to `if (status == null || filter == ReelFilter.ready || summary.reel.status == status) summary` and run `test/features/reels` again. `filter keeps order` fails with `Expected: [7]  Actual: [9, 8, 7, 5, 4, 2]`: the "Ready to edit" chip now shows every reel. Undo your edit with `git checkout -- app/lib/features/reels/view_models/reel_filters.dart`. Then in `app/lib/core/midnight_tick.dart` change the timer line to `timer = Timer(const Duration(hours: 24), tick);` and run the London command: `the London night in October is 25 hours long` fails with `Expected: DateTime:<2026-10-25 00:00:00.000>  Actual: DateTime:<2026-10-24 00:00:00.000>`. Run it in your normal zone and those two tests are skipped. This is why `tool/check` runs the file in London. Undo that edit too (`git checkout -- app/lib/core/midnight_tick.dart`).
+
+**Decisions:** D-86 (all of the above); D-80 (Collecting, Home newest first, what waits for later phases); D-82 (`TtNavPill.fabBottom`, the FAB that follows a snack); D-84 (`watchReelSummaries`, the order); D-85 (`showReelForm`, the root messenger); D-76 (the Shooting mode section and the `m:ss` helper).
 
 ## 7. Create, edit, status and delete
 

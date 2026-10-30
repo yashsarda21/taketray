@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/domain/models/media.dart';
-import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -55,7 +55,7 @@ void main() {
       );
       expect(toTag.$('Allow full access').exists, isFalse);
       await $(TtNavPill).$('Reels').tap();
-      expect($(ReelsPlaceholderScreen).$('Manual mode').exists, isFalse);
+      expect($(ReelsScreen).$('Manual mode').exists, isFalse);
     },
   );
 

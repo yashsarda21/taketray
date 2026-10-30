@@ -43,9 +43,11 @@ class FakeAccess extends MediaAccessController {
 /// A [ShootingModeController] that starts at [initial], shows what a test
 /// pushes into [states], and records the switch and the camera button.
 class FakeShooting extends ShootingModeController {
-  FakeShooting(this.initial);
+  /// [cameraOpens] false: no camera app can open, as on a phone without one.
+  FakeShooting(this.initial, {this.cameraOpens = true});
 
   final ShootingState initial;
+  final bool cameraOpens;
   final StreamController<ShootingState> states = StreamController.broadcast();
   final List<bool> switched = [];
   int cameraOpened = 0;
@@ -62,7 +64,7 @@ class FakeShooting extends ShootingModeController {
   @override
   Future<bool> openCamera() async {
     cameraOpened++;
-    return true;
+    return cameraOpens;
   }
 }
 

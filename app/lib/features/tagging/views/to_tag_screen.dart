@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
@@ -11,6 +13,7 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
+import 'package:taketray/features/shooting_mode/views/open_camera.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
@@ -45,6 +48,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///
 /// **Not built here:** scenes, the summary row, "Start tagging" and Skipped
 /// (Phase 5), and "Add videos" and picking clips yourself (Phase 7).
+///
+/// **Open camera** (the strip and "All caught up") tells the user when the
+/// camera cannot open (`openCameraOrSay`, D-86), and the screen watches
+/// `localDayProvider`, so "Shooting since {time}" gains its date at midnight.
 ///
 /// Opening this screen starts a scan and a check of the waiting clips (the
 /// `ToTagController`'s `build`). The same two run again when the app comes
@@ -102,6 +109,8 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     final shooting = ref.watch(shootingModeControllerProvider);
     final access = ref.watch(mediaAccessControllerProvider).value;
     final cache = ref.watch(thumbnailCacheProvider).value;
+    // Rebuilt at each local midnight, so "Shooting since" gets its date then.
+    ref.watch(localDayProvider);
     final now = ref.watch(clockProvider).now();
     final locale = Localizations.localeOf(context).toString();
     // The phone's 24-hour setting, read here so a change redraws the grid.
@@ -134,7 +143,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
           label: l10n.shootingOpenCamera,
           icon: Symbols.videocam_rounded,
           kind: TtButtonKind.text,
-          onPressed: controller.openCamera,
+          onPressed: () => unawaited(openCameraOrSay(context, ref)),
         ),
       );
     } else if (waiting.isNotEmpty) {
@@ -200,7 +209,8 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
                           label: l10n.shootingOpenCamera,
                           icon: Symbols.videocam_rounded,
                           kind: TtButtonKind.tonal,
-                          onPressed: controller.openCamera,
+                          onPressed: () =>
+                              unawaited(openCameraOrSay(context, ref)),
                         ),
                       ],
                     )

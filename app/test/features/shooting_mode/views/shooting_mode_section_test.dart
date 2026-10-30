@@ -49,8 +49,11 @@ Future<Pumped> pump(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool use24Hour = false,
+  FixedClock? clock,
+  bool cameraOpens = true,
+  bool midnightTick = false,
 }) async {
-  final fakeShooting = FakeShooting(shooting);
+  final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
   final container = await pumpScreen(
     tester,
@@ -60,13 +63,14 @@ Future<Pumped> pump(
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       pendingClipsProvider.overrideWith((ref) => Stream.value(pending)),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(fallback)),
-      clockProvider.overrideWithValue(FixedClock(_now)),
+      clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
     ],
     brightness: brightness,
     textScale: textScale,
     use24Hour: use24Hour,
+    midnightTick: midnightTick,
   );
   return Pumped(fakeShooting, fakeAccess, container);
 }
@@ -186,6 +190,40 @@ void main() {
     });
   });
 
+  group('at midnight', () {
+    testWidgets('on-since text changes at midnight', (tester) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 50));
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 28, 22)),
+        clock: clock,
+        midnightTick: true,
+      );
+      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+
+      // Nine minutes on, still the same day.
+      clock.advance(const Duration(minutes: 9));
+      await tester.pump(const Duration(minutes: 9));
+      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+
+      clock.advance(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+      expect(findPlain('On since Oct 28, 10:00 PM'), findsOneWidget);
+      expect(findPlain('On since 10:00 PM'), findsNothing);
+    });
+
+    testWidgets('a card that is off has nothing to change', (tester) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 59));
+      await pump(tester, clock: clock, midnightTick: true);
+
+      clock.advance(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+
+      expect(find.text('Shooting mode'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('on with limited access adds the Manual mode suffix', () {
     for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
       testWidgets('${level.name}: suffix', (tester) async {
@@ -279,6 +317,19 @@ void main() {
       await tester.pump();
 
       expect(p.shooting.cameraOpened, 1);
+    });
+
+    testWidgets('Open camera failing shows the snack', (tester) async {
+      final p = await pump(tester, shooting: on(), cameraOpens: false);
+
+      await tester.tap(find.text('Open camera'));
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the switch is named Shooting mode', (tester) async {
