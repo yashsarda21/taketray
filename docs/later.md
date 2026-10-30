@@ -10,7 +10,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - `openCamera()` returning false (no camera app, or the call failed) shows nothing. Needs copy for a snack; the owner approves it.
   - "On since {time}" and "Shooting since {time}" are built once per build, so they do not change at midnight until something redraws the screen. Rebuild the card at the next local midnight (a timer, or a clock provider that ticks).
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
-- Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
+- The repository caps a reel description at 1,000 characters (D-84). The create/edit form still needs the cap and its counter (Task 7).
 
 - App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.
 - Missing tile at 2× text in a three-column grid on 360 dp: the content (icon, three label lines and the 48 dp Remove icon) needs about 180 dp and the cell is about 142 dp, so it is shrunk to about 0.7 of real size (D-81). Let the reel detail grid's rows grow with the text scale (a `mainAxisExtent` that follows `TextScaler`) so the tile shows at its real size. Do it in Task 8, with the grid.

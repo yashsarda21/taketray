@@ -5,11 +5,14 @@ import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/database/clip_rules.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/database/housekeeping.dart';
+import 'package:taketray/data/repositories/undo_writer.dart';
 import 'package:taketray/domain/models/clip.dart';
-import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/reel_clip.dart';
+import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 
 part 'clips_repository.g.dart';
@@ -31,10 +34,11 @@ final Logger _log = Logger('clips');
 /// Every `Iterable<int>` / `Set<int>` of ids is treated as a set: duplicates
 /// are ignored.
 class ClipsRepository {
-  new(this._db, this._clock);
+  new(this._db, this._clock) : _undo = UndoWriter(_db);
 
   final AppDatabase _db;
   final Clock _clock;
+  final UndoWriter _undo;
 
   /// Saves clips read from the phone's media library (Shooting mode, a
   /// rescan, "Add earlier videos") and puts the new ones in To tag as
@@ -219,18 +223,51 @@ class ClipsRepository {
   /// deleted, whatever their state), as when they are tagged: adding a clip to
   /// a reel by hand is a stronger choice than leaving it for later.
   ///
+  /// Returns what [undo] needs (D-84): the links it created (not the ones
+  /// that were there), the `inbox` rows it deleted, and the reel's
+  /// `updatedAt` before.
+  ///
   /// Throws [StateError], changing nothing, when the reel or a clip does not
   /// exist.
-  Future<void> addClipsToReel(int reelId, Iterable<int> clipIds) async {
+  Future<AddUndo> addClipsToReel(int reelId, Iterable<int> clipIds) async {
     final ids = clipIds.toSet();
-    await _db.transaction(() async {
+    final record = await _db.transaction(() async {
       await _requireReel(reelId);
       for (final id in ids) {
         await _requireClip(id);
       }
-      await _link(reelId, ids, _clock.now());
+      final before = (await _undo.updatedAtOf(reelId))!;
+      final inbox = ids.isEmpty
+          ? const <InboxRow>[]
+          : await (_db.select(
+              _db.inbox,
+            )..where((i) => i.clipId.isIn(ids))).get();
+      final now = _clock.now();
+      final created = await _link(reelId, ids, now);
+      return AddUndo(
+        reelId: reelId,
+        createdLinks: [
+          for (final clipId in created)
+            ClipLink(clipId: clipId, reelId: reelId, addedAt: now),
+        ],
+        removedInbox: [
+          for (final row in inbox)
+            InboxEntry(
+              clipId: row.clipId,
+              state: row.state,
+              addedAt: row.addedAt,
+            ),
+        ],
+        touch: created.isEmpty
+            ? null
+            : ReelTouch(reelId: reelId, before: before, after: now),
+      );
     });
-    _log.info('Added ${ids.length} clips to reel $reelId');
+    _log.info(
+      'Added ${ids.length} clips to reel $reelId, '
+      '${record.createdLinks.length} new',
+    );
+    return record;
   }
 
   /// Removes clips from reel [reelId], sets the reel's `updatedAt` to now when
@@ -241,18 +278,109 @@ class ClipsRepository {
   /// a deleted clip stays too (D-54). Clips the reel does not have are ignored.
   /// The caller deletes the clip's VN copy file first when there is a VN
   /// session (phase 8). Throws [StateError] when there is no such reel.
-  Future<void> removeClipsFromReel(int reelId, Iterable<int> clipIds) async {
+  ///
+  /// Returns what [undo] needs (D-84): the removed links with their
+  /// `addedAt`, every field of the clips the sweep deleted (read in this
+  /// transaction, before they go), and the reel's `updatedAt` before.
+  Future<RemoveUndo> removeClipsFromReel(
+    int reelId,
+    Iterable<int> clipIds,
+  ) async {
     final ids = clipIds.toSet();
-    final (removed, orphans) = await _db.transaction(() async {
+    final record = await _db.transaction(() async {
       await _requireReel(reelId);
-      final removed = await (_db.delete(
-        _db.clipReels,
-      )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(ids))).go();
-      if (removed > 0) await _touchReels({reelId}, _clock.now());
-      return (removed, await _db.deleteOrphanClips());
+      final before = (await _undo.updatedAtOf(reelId))!;
+      final now = _clock.now();
+      final (removed, swept) = await _unlinkAndSweep(reelId, ids, now);
+      return RemoveUndo(
+        reelId: reelId,
+        removedLinks: removed,
+        sweptClips: swept,
+        touch: removed.isEmpty
+            ? null
+            : ReelTouch(reelId: reelId, before: before, after: now),
+      );
     });
-    _log.info('Removed $removed clips from reel $reelId, swept $orphans');
+    _log.info(
+      'Removed ${record.removedLinks.length} clips from reel $reelId, '
+      'swept ${record.sweptClips.length}',
+    );
+    return record;
   }
+
+  /// Moves clips from reel [fromReelId] to reel [toReelId], in one
+  /// transaction: each clip that is in the source gets a link to the target
+  /// (`addedAt` now; a clip the target already has keeps its link), and only
+  /// then loses its source link, so the orphan sweep that follows never sees
+  /// it without a place. Clips the source does not have are ignored. Each
+  /// reel's `updatedAt` is set to now when it gained or lost a link.
+  ///
+  /// Returns what [undo] needs (D-84): the links created in the target (not
+  /// the ones that were there), the removed source links with their
+  /// `addedAt`, and both reels' `updatedAt` before.
+  ///
+  /// Throws [ArgumentError] when the two reels are the same, and
+  /// [StateError], changing nothing, when either reel does not exist.
+  Future<MoveUndo> moveClips(
+    int fromReelId,
+    int toReelId,
+    Iterable<int> clipIds,
+  ) async {
+    if (fromReelId == toReelId) {
+      throw ArgumentError.value(toReelId, 'toReelId', 'is the source reel');
+    }
+    final ids = clipIds.toSet();
+    final record = await _db.transaction(() async {
+      await _requireReels({fromReelId, toReelId});
+      final beforeFrom = (await _undo.updatedAtOf(fromReelId))!;
+      final beforeTo = (await _undo.updatedAtOf(toReelId))!;
+      final now = _clock.now();
+      final inSource = ids.isEmpty
+          ? const <int>{}
+          : {
+              for (final link
+                  in await (_db.select(_db.clipReels)..where(
+                        (l) => l.reelId.equals(fromReelId) & l.clipId.isIn(ids),
+                      ))
+                      .get())
+                link.clipId,
+            };
+      // Add first, then remove: the removal runs the orphan sweep, and a clip
+      // only in the source must already have its target link by then.
+      final created = await _link(toReelId, inSource, now);
+      final (removed, swept) = await _unlinkAndSweep(fromReelId, inSource, now);
+      if (swept.isNotEmpty) {
+        // Only clips that were orphans before the move: every moved clip has
+        // its target link.
+        _log.warning('Move swept ${swept.length} clips that had no place');
+      }
+      return MoveUndo(
+        fromReelId: fromReelId,
+        toReelId: toReelId,
+        createdLinks: [
+          for (final clipId in created)
+            ClipLink(clipId: clipId, reelId: toReelId, addedAt: now),
+        ],
+        removedLinks: removed,
+        touches: [
+          if (removed.isNotEmpty)
+            ReelTouch(reelId: fromReelId, before: beforeFrom, after: now),
+          if (created.isNotEmpty)
+            ReelTouch(reelId: toReelId, before: beforeTo, after: now),
+        ],
+      );
+    });
+    _log.info(
+      'Moved ${record.removedLinks.length} clips from reel $fromReelId to '
+      '$toReelId, ${record.createdLinks.length} new links',
+    );
+    return record;
+  }
+
+  /// Puts back what a remove, move, add or reel delete changed, with the same
+  /// ids, in one transaction (D-84). Idempotent; a reel that is gone gets
+  /// nothing back. See `UndoWriter.undo`.
+  Future<void> undo(UndoRecord record) => _undo.undo(record);
 
   /// The MediaStore clips on volume [volumeName] that still hold a MediaStore
   /// id: the ones a verifier or a rebuild match can look for. Detached clips
@@ -565,17 +693,14 @@ class ClipsRepository {
   }
 
   /// The first stored clip that has a thumbnail to show (lowest id), again
-  /// after every change, or null: a MediaStore clip that is not missing. A
-  /// detached clip is `missing`, and a picked clip has no picture to ask for
-  /// (D-74), so neither is offered. It is where the Shooting mode card finds
-  /// its backdrop when no clip waits in To tag (D-76).
+  /// after every change, or null: a MediaStore clip that is not missing and
+  /// holds a number above 0 ([hasPicture]). A detached clip is `missing`, and
+  /// a picked clip has no picture to ask for (D-74), so neither is offered.
+  /// It is where the Shooting mode card finds its backdrop when no clip waits
+  /// in To tag (D-76). A reel card's cover uses the same rule.
   Stream<Clip?> watchFirstShowableClip() {
     final query = _db.select(_db.clips)
-      ..where(
-        (c) =>
-            c.missing.equals(false) &
-            c.source.equalsValue(ClipSource.mediaStore),
-      )
+      ..where(hasPicture)
       ..orderBy([(c) => OrderingTerm.asc(c.id)])
       ..limit(1);
     return query.watchSingleOrNull().map(
@@ -584,19 +709,34 @@ class ClipsRepository {
   }
 
   /// The clips of reel [reelId], by shooting time, oldest first (ties: lowest
-  /// id first; spec §8.4), again after every change.
-  Stream<List<Clip>> watchReelClips(int reelId) {
+  /// id first; spec §8.4), again after every change. Each comes with how many
+  /// reels it is in and when it joined this one.
+  Stream<List<ReelClip>> watchReelClips(int reelId) {
+    final others = _db.alias(_db.clipReels, 'others');
+    final reelCount = subqueryExpression<int>(
+      _db.selectOnly(others)
+        ..addColumns([countAll()])
+        ..where(others.clipId.equalsExp(_db.clips.id)),
+    );
     final query =
         _db.select(_db.clipReels).join([
             innerJoin(_db.clips, _db.clips.id.equalsExp(_db.clipReels.clipId)),
           ])
+          ..addColumns([reelCount])
           ..where(_db.clipReels.reelId.equals(reelId))
           ..orderBy([
             OrderingTerm.asc(_db.clips.dateTakenUtc),
             OrderingTerm.asc(_db.clips.id),
           ]);
     return query.watch().map(
-      (rows) => [for (final row in rows) _toClip(row.readTable(_db.clips))],
+      (rows) => [
+        for (final row in rows)
+          ReelClip(
+            clip: clipFromRow(row.readTable(_db.clips)),
+            reelCount: row.read(reelCount)!,
+            addedAt: row.readTable(_db.clipReels).addedAt,
+          ),
+      ],
     );
   }
 
@@ -646,9 +786,9 @@ class ClipsRepository {
 
   /// Links [clipIds] to [reelId], skipping links that exist, deletes their
   /// `inbox` rows, and sets the reel's `updatedAt` when at least one link was
-  /// added. Run inside a transaction.
-  Future<void> _link(int reelId, Set<int> clipIds, DateTime now) async {
-    if (clipIds.isEmpty) return;
+  /// added. Returns the ids it linked. Run inside a transaction.
+  Future<Set<int>> _link(int reelId, Set<int> clipIds, DateTime now) async {
+    if (clipIds.isEmpty) return const {};
     final existing = await (_db.select(
       _db.clipReels,
     )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(clipIds))).get();
@@ -658,6 +798,34 @@ class ClipsRepository {
     }
     await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(clipIds))).go();
     if (missing.isNotEmpty) await _touchReels({reelId}, now);
+    return missing;
+  }
+
+  /// Deletes the links of [clipIds] to [reelId], sets the reel's `updatedAt`
+  /// when one went, then runs the orphan sweep (D-56). Returns the deleted
+  /// links and every field of the clips the sweep deleted. Run inside a
+  /// transaction.
+  Future<(List<ClipLink>, List<Clip>)> _unlinkAndSweep(
+    int reelId,
+    Set<int> clipIds,
+    DateTime now,
+  ) async {
+    final links = clipIds.isEmpty
+        ? const <ClipReelRow>[]
+        : await (_db.select(
+                _db.clipReels,
+              )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(clipIds)))
+              .get();
+    if (links.isNotEmpty) {
+      await (_db.delete(
+        _db.clipReels,
+      )..where((l) => l.reelId.equals(reelId) & l.clipId.isIn(clipIds))).go();
+      await _touchReels({reelId}, now);
+    }
+    return (
+      [for (final link in links) linkFromRow(link)],
+      await _undo.sweepOrphans(),
+    );
   }
 
   Future<void> _insertLink(int clipId, int reelId, DateTime now) => _db
@@ -758,27 +926,7 @@ class ClipsRepository {
     if (row == null) throw StateError('No clip with id $clipId');
   }
 
-  Clip _toClip(ClipRow row) => Clip(
-    id: row.id,
-    source: row.source,
-    mediaStoreId: row.mediaStoreId,
-    volumeName: row.volumeName,
-    pickerUri: row.pickerUri,
-    fingerprint: ClipFingerprint(
-      sizeBytes: row.sizeBytes,
-      durationMs: row.durationMs,
-      dateTakenUtc: row.dateTakenUtc,
-      displayName: row.displayName,
-    ),
-    width: row.width,
-    height: row.height,
-    mimeType: row.mimeType,
-    timeZoneId: row.timeZoneId,
-    generationAdded: row.generationAdded,
-    firstSeenAt: row.firstSeenAt,
-    missing: row.missing,
-    lastVerifiedAt: row.lastVerifiedAt,
-  );
+  Clip _toClip(ClipRow row) => clipFromRow(row);
 }
 
 /// What [ClipsRepository.addCheckedClips] did: [ids] has one clip id per

@@ -274,7 +274,69 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
 
 ## 5. Reel data and undo
 
-*To be written in Task 5.*
+**What we built:** the data the reel screens read, and Undo for every action that changes a reel's clips:
+
+- **`watchReelSummaries()`** gives every reel with its clip count, missing count, the length of its playable clips and a cover clip, for Home's cards, newest first.
+- **`watchReelClips(reelId)`** now gives `ReelClip`s: the clip, how many reels it is in (the "in 2 reels" badge) and when it joined this reel.
+- **`moveClips(from, to, ids)`** moves clips between reels.
+- **No duplicate names.** "Goa" and " GOA " cannot both be reels; a description is at most 1,000 characters.
+- **Undo records.** `removeClipsFromReel`, `moveClips`, `addClipsToReel` and `ReelsRepository.delete` each return an `UndoRecord`, and `undo(record)` puts back exactly what that action changed, with the same ids.
+
+**Why TakeTray needs it:** every remove, move, add and delete shows a snack with Undo (D-80). Undo is easy to get wrong here, because removing a clip from its only reel deletes the clip's row (the orphan rule, D-56). If Undo inserted it again with a new id, its "in N reels" count, its thumbnail key and any VN copy row pointing at it would break, or a second row for the same video could appear. The owner also ruled that two reels can't share a name, because they'd be confused in the picker.
+
+**Key ideas:**
+
+- **Snapshot inside the same transaction.** The record is read in the action's own transaction, just before the change. For the orphan sweep that means reading the rows it is about to delete with the very same rule, then deleting them:
+
+  ```dart
+  final rows = await _db.selectOrphanClips();
+  final deleted = await _db.deleteOrphanClips();
+  ```
+
+  Both use one private predicate in `housekeeping.dart`, so "which clips are orphans" is still written once. Inside a transaction nothing can change between the two statements.
+
+- **Plain records, not database rows.** `UndoRecord` is a `sealed` class in `domain/models/`: `RemoveUndo`, `MoveUndo`, `AddUndo`, `DeleteReelUndo`. They hold domain models (`Clip`, `Reel`, …) and small value classes (`ClipLink`, `InboxEntry`, `ReelTouch`), never Drift's `ClipRow`. A `switch` over a sealed class must cover every case, so adding a fifth record later will not compile until `undo` handles it.
+
+- **Same id, unless the video came back.** Putting a swept clip back follows a fixed order:
+
+  ```dart
+  if (atId != null && _sameClip(atId, clip)) return clip.id;
+  final holder = await _identityHolder(clip);
+  if (holder != null) return holder;
+  ```
+
+  If "Add earlier videos" found the same video again in the meantime, it already has a new row with the same volume and MediaStore number. That row is linked and nothing is inserted: two rows for one video is the bug this avoids. Otherwise the clip is inserted with its old id (`id: Value(clip.id)`). Ids are `AUTOINCREMENT`, so an old id is never given to another clip; only a backup import could, and then the clip is skipped with a warning rather than linking the wrong video.
+
+- **Idempotent, twice over.** Every restore step is "insert if it is not there", so running it again changes nothing. On top of that, an `Expando` (a side table keyed by object identity that does not keep the object alive) marks a record once its undo commits. That matters for "delete, Undo, delete again, then the first Undo once more": without the mark, the first record would bring the reel back a second time.
+
+- **Move adds before it removes.** The removal step runs the global orphan sweep, so the target link must exist first:
+
+  ```dart
+  final created = await _link(toReelId, inSource, now);
+  final (removed, swept) = await _unlinkAndSweep(fromReelId, inSource, now);
+  ```
+
+  Swap the two lines and a clip that was only in the source is deleted before it can be linked (the test fails with a `FOREIGN KEY constraint failed`).
+
+- **One query for Home, not one per reel.** `watchReelSummaries` is a single SQL statement: one CTE (a named sub-query in a `WITH`) counts each reel's clips, another uses `ROW_NUMBER() OVER (PARTITION BY reel ORDER BY date taken, id)` to pick each reel's oldest clip with a picture. The "has a picture" rule (`hasPicture`) is a Drift expression shared with the Shooting card's backdrop and written into the SQL with Drift's `GenerationContext`, so it exists once.
+
+- **Case-insensitive names in Dart, not SQL.** SQLite's `lower()` only folds A–Z, so "CAFÉ" and "Café" would look different to it. The check reads the names and compares `normalizeName(name).toLowerCase()` in Dart, inside the same transaction as the insert, so two Saves at once can't both take the name.
+
+**Where it lives:**
+
+- `app/lib/domain/models/undo_record.dart`, `reel_summary.dart`, `reel_clip.dart`; `app/lib/domain/rules/text_limits.dart` (`reelNameKey`, `checkReelDescription`).
+- `app/lib/data/repositories/undo_writer.dart` (`UndoWriter`: snapshots and `undo`), `reels_repository.dart` (`watchReelSummaries`, the name and description checks, `delete`), `clips_repository.dart` (`moveClips`, `watchReelClips`, the records), `app/lib/data/database/housekeeping.dart` (`selectOrphanClips`), `app/lib/data/database/clip_rules.dart` (`hasPicture`).
+- Tests: `app/test/data/repositories/undo_test.dart`, new groups in `reels_repository_test.dart` and `clips_repository_test.dart`, and `import with duplicate names still loads` in `backup_service_test.dart`. `app/test/support/statement_log.dart` counts statements and injects failures.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/data/repositories/undo_test.dart)
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer.dart`, delete the line `id: Value(clip.id),` in `_clipCompanion` and run it again. `undo remove restores an orphan-swept clip with its id and every field` fails with `Bad state: No element`: the clip came back under a new id, so nothing is found under the old one, and its link (which still names the old id) is not restored either. Undo your edit with `git checkout -- app/lib/data/repositories/undo_writer.dart`.
+
+**Decisions:** D-84 (all of the above), which amends D-56 (names, the description, delete) and D-57 (the record-returning actions and `ReelClip`); D-80 (the owner's rules for names, the cap and Undo); D-71 (why a detached clip holds `-id` and has no identity to match).
 
 ## 6. Home
 

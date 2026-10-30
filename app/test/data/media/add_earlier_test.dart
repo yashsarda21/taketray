@@ -295,7 +295,10 @@ void main() {
       expect(ids, hasLength(3));
       expect(await toTagIds(), unorderedEquals([1, 2, 4]));
       expect(
-        [for (final c in await h.clips.watchReelClips(reel.id).first) c.id],
+        [
+          for (final c in await h.clips.watchReelClips(reel.id).first)
+            c.clip.id,
+        ],
         [clipId],
       );
     });

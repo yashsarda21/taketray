@@ -2007,7 +2007,7 @@ void main() {
 
       final clips = await repo.watchReelClips(reel.id).first;
 
-      expect(clips.map((c) => c.id), [ids[1], ids[2], ids[0]]);
+      expect(clips.map((c) => c.clip.id), [ids[1], ids[2], ids[0]]);
     });
 
     test(
@@ -2017,7 +2017,7 @@ void main() {
         final seen = <List<int>>[];
         final sub = repo
             .watchReelClips(reel.id)
-            .listen((clips) => seen.add([for (final c in clips) c.id]));
+            .listen((clips) => seen.add([for (final c in clips) c.clip.id]));
         addTearDown(sub.cancel);
         await pumpEventQueue();
 
@@ -2029,6 +2029,58 @@ void main() {
         expect(seen, [<int>[], ids, <int>[]]);
       },
     );
+
+    test('reel clips carry reelCount and addedAt', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final lisbon = await reels.create('Lisbon');
+      final ids = await repo.addNewClipsToReel(goa.id, [
+        mediaStoreClip(10, shotAt: _t0.add(_minute)),
+        mediaStoreClip(11, shotAt: _t0),
+      ]);
+      clock.advance(_minute * 5);
+      await repo.addClipsToReel(paris.id, [ids[0]]);
+      clock.advance(_minute * 5);
+      await repo.addClipsToReel(lisbon.id, [ids[0]]);
+
+      final inGoa = await repo.watchReelClips(goa.id).first;
+      final inParis = await repo.watchReelClips(paris.id).first;
+
+      expect(
+        [for (final c in inGoa) (c.clip.id, c.reelCount, c.addedAt)],
+        [(ids[1], 1, _t0), (ids[0], 3, _t0)],
+      );
+      expect(
+        [for (final c in inParis) (c.clip.id, c.reelCount, c.addedAt)],
+        [(ids[0], 3, _t0.add(_minute * 5))],
+      );
+      expect(inGoa.last.clip, (await repo.clipsByIds([ids[0]])).single);
+    });
+
+    test('reelCount follows a link change', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final id = (await repo.addNewClipsToReel(goa.id, [
+        mediaStoreClip(10),
+      ])).single;
+      final counts = <List<int>>[];
+      final sub = repo
+          .watchReelClips(goa.id)
+          .listen((all) => counts.add([for (final c in all) c.reelCount]));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repo.addClipsToReel(paris.id, [id]);
+      await pumpEventQueue();
+      await repo.removeClipsFromReel(paris.id, [id]);
+      await pumpEventQueue();
+
+      expect(counts, [
+        [1],
+        [2],
+        [1],
+      ]);
+    });
 
     test('watchReelIdsOf follows tag and Undo', () async {
       final goa = await reels.create('Goa');

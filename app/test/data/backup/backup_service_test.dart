@@ -21,6 +21,7 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
+import 'package:taketray/domain/rules/text_limits.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
@@ -461,7 +462,7 @@ void main() {
       ).watchInbox(InboxState.pending).first;
       expect([for (final c in pending) c.id], [11]);
       final inLondon = await ClipsRepository(db, clock).watchReelClips(7).first;
-      expect([for (final c in inLondon) c.id], [14, 10]);
+      expect([for (final c in inLondon) c.clip.id], [14, 10]);
     });
   });
 
@@ -849,6 +850,32 @@ void main() {
       expect(
         [for (final z in zones) z.zoneId],
         ['Europe/London', 'Asia/Kolkata'],
+      );
+    });
+
+    test('import with duplicate names still loads', () async {
+      final file = _fixtureMap();
+      final reels = _section(file, 'reels');
+      // Reel names are unique ignoring case since D-84, but a restore must
+      // not lose a reel over it.
+      reels[1]['name'] = 'GOA 🌴';
+      reels[2]['name'] = '  goa 🌴 ';
+
+      final summary = await backup.importJson(jsonEncode(file));
+
+      expect(summary.reels, 3);
+      // Import trims names, as `create` does.
+      expect(await _reelNames(db), ['Goa 🌴', 'GOA 🌴', 'goa 🌴']);
+      // The rule still holds for a new reel.
+      await expectLater(
+        ReelsRepository(db, clock).create('goa 🌴'),
+        throwsA(
+          isA<InvalidInputException>().having(
+            (e) => e.problem,
+            'problem',
+            ReelNameProblem.duplicate,
+          ),
+        ),
       );
     });
 

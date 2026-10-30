@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/vn_repository.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
 
 import '../../support/fixed_clock.dart';
@@ -21,6 +22,19 @@ VnCopy _copy(int reelId, int clipId, {String? fileName}) => VnCopy(
   fileName: fileName ?? '2026-10-2${clipId}_10-00-00.mp4',
   sizeBytes: 1000 * clipId,
 );
+
+/// A reel saved straight into the table, the way a backup import can bring
+/// two reels with one name (`create` refuses a duplicate since D-84).
+Future<ReelRow> sameNameReel(String name) => db
+    .into(db.reels)
+    .insertReturning(
+      ReelsCompanion.insert(
+        name: name,
+        status: ReelStatus.collecting,
+        createdAt: _t0,
+        updatedAt: _t0,
+      ),
+    );
 
 void main() {
   setUp(() {
@@ -47,8 +61,8 @@ void main() {
       'a second reel with the same name gets "Goa (2)", then "Goa (3)"',
       () async {
         final first = await reels.create('Goa');
-        final second = await reels.create('Goa');
-        final third = await reels.create('Goa');
+        final second = await sameNameReel('Goa');
+        final third = await sameNameReel('Goa');
 
         expect((await repo.startSession(first.id, 'Goa')).folderName, 'Goa');
         expect(
@@ -64,7 +78,7 @@ void main() {
 
     test('compares folder names without regard to case', () async {
       final first = await reels.create('Goa');
-      final second = await reels.create('goa');
+      final second = await sameNameReel('goa');
       await repo.startSession(first.id, 'Goa');
 
       expect((await repo.startSession(second.id, 'goa')).folderName, 'goa (2)');
@@ -72,7 +86,7 @@ void main() {
 
     test('a folder name is free again after its session ends', () async {
       final first = await reels.create('Goa');
-      final second = await reels.create('Goa');
+      final second = await sameNameReel('Goa');
       await repo.startSession(first.id, 'Goa');
       await repo.endSession(first.id);
 

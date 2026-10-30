@@ -141,7 +141,7 @@ void main() {
       expect(await h.skipped(), isEmpty);
       final inReel = await h.clips.watchReelClips(reel.id).first;
       expect(
-        [for (final c in inReel) (c.id, c.missing)],
+        [for (final c in inReel) (c.clip.id, c.clip.missing)],
         [(clips[3]!.id, true)],
       );
       expect([for (final c in await h.allClips()) c.id], [clips[3]!.id]);
@@ -171,7 +171,7 @@ void main() {
 
     expect(await h.toTag(), isEmpty);
     final inReel = await h.clips.watchReelClips(reel.id).first;
-    expect([for (final c in inReel) (c.id, c.missing)], [(id, true)]);
+    expect([for (final c in inReel) (c.clip.id, c.clip.missing)], [(id, true)]);
   });
 
   test('1201 ids → 3 batches', () async {

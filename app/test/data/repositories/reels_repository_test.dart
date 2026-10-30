@@ -1,4 +1,4 @@
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
@@ -8,10 +8,12 @@ import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/statement_log.dart';
 import '../../support/test_database.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 26, 9);
@@ -109,12 +111,119 @@ void main() {
       expect(await db.select(db.reels).get(), isEmpty);
     });
 
-    test('allows two reels with the same name (D-56)', () async {
-      final a = await repo.create('Goa');
-      final b = await repo.create('Goa');
+    test('duplicate name is rejected ignoring case and edge spaces', () async {
+      final goa = await repo.create('Goa');
+      final cafe = await repo.create('Café');
+      final paris = await repo.create('Paris');
+      clock.advance(const Duration(minutes: 1));
 
-      expect(a.id, isNot(b.id));
-      expect(await repo.watchAll().first, hasLength(2));
+      for (final name in ['Goa', 'GOA', '  goa ', '\u200Bgoa\uFEFF', 'CAFÉ']) {
+        await expectLater(
+          repo.create(name),
+          throwsA(
+            isA<InvalidInputException>().having(
+              (e) => e.problem,
+              'problem',
+              ReelNameProblem.duplicate,
+            ),
+          ),
+          reason: name,
+        );
+        await expectLater(
+          repo.rename(paris.id, name),
+          throwsA(
+            isA<InvalidInputException>().having(
+              (e) => e.problem,
+              'problem',
+              ReelNameProblem.duplicate,
+            ),
+          ),
+          reason: name,
+        );
+      }
+
+      // Nothing was saved: still three reels, Paris unchanged.
+      expect(await repo.watchAll().first, hasLength(3));
+      expect((await repo.getById(paris.id))!.name, 'Paris');
+      expect((await repo.getById(paris.id))!.updatedAt, _t0);
+      // Different names, also ones that only look alike, are fine.
+      expect((await repo.create('Goa 2')).name, 'Goa 2');
+      expect((await repo.create('Cafe')).name, 'Cafe');
+      expect(await repo.getById(goa.id), goa);
+      expect(await repo.getById(cafe.id), cafe);
+    });
+
+    test('rename to its own name in another case is fine', () async {
+      final reel = await repo.create('Goa');
+      await repo.create('Paris');
+      clock.advance(const Duration(minutes: 1));
+
+      await repo.rename(reel.id, '  GOA ');
+
+      final after = (await repo.getById(reel.id))!;
+      expect(after.name, 'GOA');
+      expect(after.updatedAt, _t0.add(const Duration(minutes: 1)));
+    });
+
+    test('description over 1000 is rejected and saves nothing', () async {
+      await expectLater(
+        repo.create('Goa', description: 'a' * 1001),
+        throwsA(
+          isA<InvalidInputException>().having(
+            (e) => e.problem,
+            'problem',
+            ReelDescriptionProblem.tooLong,
+          ),
+        ),
+      );
+      expect(await db.select(db.reels).get(), isEmpty);
+
+      final reel = await repo.create('Goa', description: 'Beach');
+      clock.advance(const Duration(minutes: 1));
+      await expectLater(
+        repo.setDescription(reel.id, 'b' * 1001),
+        throwsA(
+          isA<InvalidInputException>().having(
+            (e) => e.problem,
+            'problem',
+            ReelDescriptionProblem.tooLong,
+          ),
+        ),
+      );
+      expect(await repo.getById(reel.id), reel);
+
+      // Exactly 1,000 is fine, and the spaces around it do not count.
+      await repo.setDescription(reel.id, ' ${'c' * 1000} ');
+      expect((await repo.getById(reel.id))!.description, 'c' * 1000);
+      expect(
+        (await repo.create('Paris', description: 'd' * 1000)).description,
+        'd' * 1000,
+      );
+    });
+
+    test('1000 emoji description is accepted', () async {
+      // 2,000 UTF-16 units, 1,000 characters.
+      final reel = await repo.create('Goa', description: '🌴' * 1000);
+      expect(reel.description, '🌴' * 1000);
+
+      await repo.setDescription(reel.id, '🇮🇳' * 1000);
+      expect((await repo.getById(reel.id))!.description, '🇮🇳' * 1000);
+
+      await expectLater(
+        repo.setDescription(reel.id, '🌴' * 1001),
+        throwsA(isA<InvalidInputException>()),
+      );
+    });
+
+    test('two saves of one name at once create one reel', () async {
+      final results = await Future.wait([
+        repo.create('Goa').then<Object>((r) => r, onError: (Object e) => e),
+        repo.create('goa').then<Object>((r) => r, onError: (Object e) => e),
+      ]);
+
+      expect(results.whereType<Reel>(), hasLength(1));
+      expect(results.whereType<InvalidInputException>(), hasLength(1));
+      expect(await db.select(db.reels).get(), hasLength(1));
     });
   });
 
@@ -464,6 +573,220 @@ void main() {
       expect(deleted, 1);
       expect(await clipIds(), [inReel, inInbox]);
       expect(await db.deleteOrphanClips(), 0);
+    });
+  });
+
+  group('watchReelSummaries', () {
+    late ClipsRepository clips;
+
+    setUp(() => clips = ClipsRepository(db, clock));
+
+    NewClip shot(int mediaStoreId, {DateTime? at, int durationMs = 5000}) =>
+        NewClip.mediaStore(
+          mediaStoreId: mediaStoreId,
+          volumeName: 'external_primary',
+          fingerprint: ClipFingerprint(
+            sizeBytes: 1000 + mediaStoreId,
+            durationMs: durationMs,
+            dateTakenUtc: at ?? _t0,
+            displayName: 'VID_$mediaStoreId.mp4',
+          ),
+          width: 1080,
+          height: 1920,
+          mimeType: 'video/mp4',
+          timeZoneId: 'Europe/London',
+          generationAdded: 3,
+        );
+
+    NewClip picked(String uri, DateTime at) => NewClip.picker(
+      pickerUri: uri,
+      fingerprint: ClipFingerprint(
+        sizeBytes: 2000,
+        durationMs: 8000,
+        dateTakenUtc: at,
+        displayName: 'picked.mp4',
+      ),
+      width: 0,
+      height: 0,
+      mimeType: 'video/mp4',
+    );
+
+    test('summaries count clips, missing and live duration', () async {
+      final goa = await repo.create('Goa');
+      final paris = await repo.create('Paris');
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        shot(10),
+        shot(11, durationMs: 7000),
+        shot(12, durationMs: 9000),
+      ]);
+      await clips.addClipsToReel(paris.id, [ids[2]]);
+      await flagClips(db, {ids[1]}, missing: true, at: _t0);
+
+      final summaries = {
+        for (final s in await repo.watchReelSummaries().first) s.reel.id: s,
+      };
+
+      expect(summaries[goa.id]!.clipCount, 3);
+      expect(summaries[goa.id]!.missingCount, 1);
+      expect(summaries[goa.id]!.liveDurationMs, 14000);
+      expect(summaries[paris.id]!.clipCount, 1);
+      expect(summaries[paris.id]!.missingCount, 0);
+      expect(summaries[paris.id]!.liveDurationMs, 9000);
+      expect(summaries[goa.id]!.reel, await repo.getById(goa.id));
+    });
+
+    test('cover is the oldest showable clip', () async {
+      final goa = await repo.create('Goa');
+      final other = await repo.create('Other');
+      const hour = Duration(hours: 1);
+      // Older than every Goa clip, but in another reel.
+      await clips.addNewClipsToReel(other.id, [
+        shot(1, at: _t0.subtract(hour * 9)),
+      ]);
+      // Saved newest first, so a lower id does not mean an older clip.
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        shot(12, at: _t0), // the newest, lowest id
+        shot(10, at: _t0.subtract(hour * 6)), // missing
+        shot(11, at: _t0.subtract(hour * 5)), // detached
+        shot(15, at: _t0.subtract(hour * 4)), // number below 1, not missing
+        picked('content://picked/1', _t0.subtract(hour * 3)), // no picture
+        shot(13, at: _t0.subtract(hour * 2)), // the cover: oldest left
+        shot(14, at: _t0.subtract(hour * 2)), // the same time, higher id
+      ]);
+      await flagClips(db, {ids[1]}, missing: true, at: _t0);
+      await detachClips(db, {ids[2]}, at: _t0);
+      // A state the app never makes (a detached clip that is not missing),
+      // written by hand: it still has no picture to ask for.
+      await detachClips(db, {ids[3]}, at: _t0);
+      await flagClips(db, {ids[3]}, missing: false, at: _t0);
+
+      final cover = (await repo.watchReelSummaries().first)
+          .singleWhere((s) => s.reel.id == goa.id)
+          .cover;
+
+      expect(cover, (await clips.clipsByIds([ids[5]])).single);
+      expect(ids[6], greaterThan(ids[5]));
+    });
+
+    test('a reel with no clips has a null cover and zeros', () async {
+      final goa = await repo.create('Goa');
+      final missingOnly = await repo.create('Gone');
+      final id = (await clips.addNewClipsToReel(missingOnly.id, [
+        shot(10),
+      ])).single;
+      await flagClips(db, {id}, missing: true, at: _t0);
+
+      final summaries = await repo.watchReelSummaries().first;
+      final empty = summaries.singleWhere((s) => s.reel.id == goa.id);
+      final gone = summaries.singleWhere((s) => s.reel.id == missingOnly.id);
+
+      expect(empty.clipCount, 0);
+      expect(empty.missingCount, 0);
+      expect(empty.liveDurationMs, 0);
+      expect(empty.cover, isNull);
+      expect(
+        (gone.clipCount, gone.missingCount, gone.liveDurationMs),
+        (1, 1, 0),
+      );
+      expect(gone.cover, isNull);
+    });
+
+    test('summaries order by createdAt desc then id desc', () async {
+      final oldest = await repo.create('Oldest');
+      clock.advance(const Duration(minutes: 1));
+      final twinA = await repo.create('Twin A');
+      final twinB = await repo.create('Twin B');
+      clock.advance(const Duration(minutes: 1));
+      final newest = await repo.create('Newest');
+      // Edited last: the order is by creation, not by the last update.
+      clock.advance(const Duration(minutes: 1));
+      await repo.rename(oldest.id, 'Oldest, renamed');
+
+      final order = [
+        for (final s in await repo.watchReelSummaries().first) s.reel.id,
+      ];
+
+      expect(order, [newest.id, twinB.id, twinA.id, oldest.id]);
+    });
+
+    test('summaries update after a link change', () async {
+      final goa = await repo.create('Goa');
+      final paris = await repo.create('Paris');
+      final seen = <(int, int, int?)>[];
+      final sub = repo.watchReelSummaries().listen((all) {
+        final s = all.singleWhere((s) => s.reel.id == goa.id);
+        seen.add((s.clipCount, s.liveDurationMs, s.cover?.mediaStoreId));
+      });
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      final ids = await clips.addNewClipsToReel(paris.id, [
+        shot(10, durationMs: 4000),
+      ]);
+      await pumpEventQueue();
+      await clips.addClipsToReel(goa.id, ids);
+      await pumpEventQueue();
+      await flagClips(db, {ids.single}, missing: true, at: _t0);
+      await pumpEventQueue();
+      await clips.removeClipsFromReel(goa.id, ids);
+      await pumpEventQueue();
+
+      expect(seen.first, (0, 0, null));
+      expect(seen, contains((1, 4000, 10)));
+      expect(seen, contains((1, 0, null)));
+      expect(seen.last, (0, 0, null));
+    });
+
+    test('one query per emission', () async {
+      final log = StatementLog();
+      // A second database next to setUp's, on purpose: its own executor.
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      addTearDown(
+        () => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false,
+      );
+      final logged = loggedTestDatabase(log);
+      addTearDown(logged.close);
+      final reels = ReelsRepository(logged, clock);
+      final loggedClips = ClipsRepository(logged, clock);
+
+      /// The SELECTs one emission costs, with [count] reels of 3 clips each.
+      Future<int> selectsPerEmission(int count) async {
+        for (var i = 0; i < count; i++) {
+          final reel = await reels.create('Reel $count.$i');
+          await loggedClips.addNewClipsToReel(reel.id, [
+            shot(100 * count + 3 * i),
+            shot(100 * count + 3 * i + 1),
+            shot(100 * count + 3 * i + 2),
+          ]);
+        }
+        final emissions = <int>[];
+        final sub = reels.watchReelSummaries().listen(
+          (all) => emissions.add(all.length),
+        );
+        await pumpEventQueue();
+        log.clear();
+        // A change straight in the table: no repository reads in between.
+        await logged
+            .into(logged.reels)
+            .insert(
+              ReelsCompanion.insert(
+                name: 'Trigger $count',
+                status: ReelStatus.collecting,
+                createdAt: _t0,
+                updatedAt: _t0,
+              ),
+            );
+        await pumpEventQueue();
+        await sub.cancel();
+        expect(emissions, hasLength(2));
+        return log.selects.length;
+      }
+
+      final withOne = await selectsPerEmission(1);
+      final withTwelve = await selectsPerEmission(12);
+
+      expect(withOne, 1);
+      expect(withTwelve, withOne);
     });
   });
 }
