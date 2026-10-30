@@ -19,6 +19,7 @@ class _StubApi extends MediaHostApi {
   List<VideoFolderMsg> folderList = [];
   Uint8List? thumbnailBytes;
   String zoneId = 'UTC';
+  List<int?> zoneOffsets = [];
   List<ZoneChangeMsg> zoneChanges = [];
   bool cameraResult = true;
   Exception? error;
@@ -111,6 +112,15 @@ class _StubApi extends MediaHostApi {
   Future<String> currentZoneId() async {
     _record('currentZoneId');
     return zoneId;
+  }
+
+  @override
+  Future<List<int?>> zoneOffsetsMs(
+    List<String> zoneIds,
+    List<int> instantsMs,
+  ) async {
+    _record('zoneOffsetsMs', [zoneIds, instantsMs]);
+    return zoneOffsets;
   }
 
   @override
@@ -297,6 +307,18 @@ void main() {
     expect(api.args, ['vol', 5, 320, 240]);
     await bridge.clearZoneChangesUpTo(1760000000123);
     expect(api.args, [1760000000123]);
+    api.zoneOffsets = [3600000, null];
+    expect(
+      await bridge.zoneOffsetsMs(
+        ['Europe/London', 'Not/AZone'],
+        [1782907200000, 0],
+      ),
+      [3600000, null],
+    );
+    expect(api.args, [
+      ['Europe/London', 'Not/AZone'],
+      [1782907200000, 0],
+    ]);
 
     // Calls with no arguments and plain results.
     api.zoneId = 'Europe/London';
@@ -365,7 +387,7 @@ void main() {
     const codec = MediaHostApi.pigeonChannelCodec;
 
     tearDown(() {
-      for (final name in ['videosByIds', 'accessReport']) {
+      for (final name in ['videosByIds', 'accessReport', 'zoneOffsetsMs']) {
         messenger.setMockMessageHandler('$prefix.$name', null);
       }
     });
@@ -389,6 +411,27 @@ void main() {
       expect(videos[0].durationMs, 9500);
       expect(videos[1].durationMs, isNull);
       expect(videos[1].mimeType, 'video/*');
+    });
+
+    test('zone offsets with an unknown zone survive the wire', () async {
+      List<Object?>? received;
+      messenger.setMockMessageHandler('$prefix.zoneOffsetsMs', (message) async {
+        received = codec.decodeMessage(message)! as List<Object?>;
+        return codec.encodeMessage(<Object?>[
+          <Object?>[19800000, null],
+        ]);
+      });
+
+      final offsets = await PigeonMediaBridge().zoneOffsetsMs(
+        ['Asia/Kolkata', 'Not/AZone'],
+        [1782907200000, 1782907200000],
+      );
+
+      expect(received, [
+        ['Asia/Kolkata', 'Not/AZone'],
+        [1782907200000, 1782907200000],
+      ]);
+      expect(offsets, [19800000, null]);
     });
 
     test('a channel nobody answers is a channel-error PlatformException', () {

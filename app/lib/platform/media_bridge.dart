@@ -69,6 +69,13 @@ abstract interface class MediaBridge {
   /// The phone's current IANA time zone, e.g. `Europe/London`.
   Future<String> currentZoneId();
 
+  /// The UTC offset in milliseconds of `zoneIds[i]` at `instantsMs[i]` (UTC
+  /// milliseconds since the epoch), from the phone's own time-zone rules, for
+  /// every i, in order; null for an id the phone does not know. The two lists
+  /// must be the same length (otherwise it throws). One call for a whole
+  /// batch (D-83).
+  Future<List<int?>> zoneOffsetsMs(List<String> zoneIds, List<int> instantsMs);
+
   /// Zone changes that the native side saw while the app was not running.
   Future<List<ZoneEntry>> pendingZoneChanges();
 
@@ -156,6 +163,12 @@ class PigeonMediaBridge implements MediaBridge {
 
   @override
   Future<String> currentZoneId() => _api.currentZoneId();
+
+  @override
+  Future<List<int?>> zoneOffsetsMs(
+    List<String> zoneIds,
+    List<int> instantsMs,
+  ) => _api.zoneOffsetsMs(zoneIds, instantsMs);
 
   @override
   Future<List<ZoneEntry>> pendingZoneChanges() async => [

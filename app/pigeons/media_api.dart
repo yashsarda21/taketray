@@ -166,6 +166,16 @@ abstract class MediaHostApi {
 
   String currentZoneId();
 
+  /// The UTC offset, in milliseconds, of `zoneIds[i]` at `instantsMs[i]` (UTC
+  /// milliseconds since the epoch), from the phone's own time-zone rules
+  /// (`ZoneId.of(id).rules.getOffset(Instant.ofEpochMilli(ms))`), so it
+  /// follows the phone's time-zone updates. An entry is null when its id is
+  /// not a zone the phone knows (`DateTimeException`). The two lists must be
+  /// the same length (otherwise the call fails). Async: Kotlin answers off the
+  /// main thread, since a batch can hold hundreds of clips.
+  @async
+  List<int?> zoneOffsetsMs(List<String> zoneIds, List<int> instantsMs);
+
   List<ZoneChangeMsg> pendingZoneChanges();
 
   void clearZoneChangesUpTo(int atMs);

@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
+import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -34,11 +38,17 @@ class Pumped {
 }
 
 /// To tag with fake view models. [clips] null: the list is still loading.
+///
+/// [times] are the clips' local times (`toTagTimesProvider`); null: they are
+/// still loading. By default none, so each tile shows the phone's time.
+/// [timesFail]: reading them fails.
 Future<Pumped> pump(
   WidgetTester tester, {
   ShootingState shooting = ShootingState.off,
   MediaAccessLevel? access = MediaAccessLevel.full,
   List<Clip>? clips = const [],
+  Map<int, ClipLocalTime>? times = const {},
+  bool timesFail = false,
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
@@ -54,6 +64,11 @@ Future<Pumped> pump(
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       toTagControllerProvider.overrideWith(() => fakeToTag),
+      toTagTimesProvider.overrideWith((ref) {
+        if (timesFail) return Future.error(StateError('no times'));
+        if (times == null) return Completer<Map<int, ClipLocalTime>>().future;
+        return Future.value(times);
+      }),
       clockProvider.overrideWithValue(FixedClock(_now)),
       thumbnailCacheForTests,
     ],
@@ -285,6 +300,83 @@ void main() {
 
       expect(plain(tiles(tester).single.timeText!), '9:41 PM');
       expect(plain(tiles(tester).single.semanticLabel), 'Clip, 9:41 PM, 0:32');
+    });
+  });
+
+  group('the time where a clip was shot (D-83)', () {
+    testWidgets('a clip shot in another zone shows the time where it was '
+        'shot', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 9, 41))],
+        times: {
+          1: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 11),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+      );
+
+      final tile = tiles(tester).single;
+      expect(plain(tile.timeText!), '4:11 AM');
+      expect(plain(tile.semanticLabel), 'Clip, 4:11 AM, 0:32');
+    });
+
+    testWidgets('the clip zone keeps the 24-hour rule', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 21, 41))],
+        times: {
+          1: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 16, 11),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+        use24Hour: true,
+      );
+
+      expect(tiles(tester).single.timeText, '16:11');
+    });
+
+    testWidgets('while the times load, skeletons; no tile with a wrong time', (
+      tester,
+    ) async {
+      await pump(tester, clips: [testClip(1)], times: null, settle: false);
+      await tester.pump();
+
+      expect(find.byType(TtClipTileSkeleton), findsWidgets);
+      expect(find.byType(TtClipTile), findsNothing);
+    });
+
+    testWidgets("times that fail show the phone's time", (tester) async {
+      await pump(tester, clips: [testClip(1)], timesFail: true);
+
+      expect(plain(tiles(tester).single.timeText!), '9:41 AM');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a clip the times miss shows the phone's time", (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1),
+          testClip(2, shot: DateTime(2026, 10, 28, 10)),
+        ],
+        times: {
+          2: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 30),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+      );
+
+      expect(tiles(tester).map((t) => plain(t.timeText!)), [
+        '9:41 AM',
+        '4:30 AM',
+      ]);
     });
   });
 

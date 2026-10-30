@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
@@ -13,6 +14,7 @@ import 'package:taketray/features/shooting_mode/view_models/shooting_mode_contro
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
+import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -27,11 +29,14 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   mode is on; "Shooting mode off" with **Turn on** when it is off and
 ///   clips are waiting;
 /// - the clips, three to a row, oldest first (by date taken, then id), each a
-///   `TtClipTile` with the time it was shot and its length; or, when nothing
+///   `TtClipTile` with the time it was shot, as the clock read where it was
+///   shot (`toTagTimesProvider`, D-83), and its length; or, when nothing
 ///   waits, "All caught up" (Shooting mode on) or "Nothing to tag" (off).
 ///
-/// While the list loads it shows skeleton tiles. Tapping a tile does nothing
-/// yet.
+/// While the list, or the first answer of its times, loads it shows skeleton
+/// tiles, so no tile shows a wrong time first. Later lists keep the times
+/// they have while new ones are read; a clip without one yet, or times that
+/// failed, show the phone's time. Tapping a tile does nothing yet.
 ///
 /// A clip flagged missing shows as the "Missing from phone" tile, with no
 /// Remove button; the verifier already takes missing clips that are only in
@@ -92,6 +97,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final clips = ref.watch(toTagControllerProvider);
+    final times = ref.watch(toTagTimesProvider);
     final shooting = ref.watch(shootingModeControllerProvider);
     final access = ref.watch(mediaAccessControllerProvider).value;
     final cache = ref.watch(thumbnailCacheProvider).value;
@@ -104,7 +110,12 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     // A shooting state that could not be read counts as off: its switch still
     // works, and "off" is the safe thing to show.
     final shootingOn = shooting.value?.on ?? false;
-    final ready = !clips.isLoading && !clips.hasError && !shooting.isLoading;
+    final ready =
+        !clips.isLoading &&
+        !clips.hasError &&
+        !shooting.isLoading &&
+        (times.hasValue || times.hasError);
+    final localTimes = times.value ?? const <int, ClipLocalTime>{};
     final waiting = inShootingOrder(clips.value ?? const []);
 
     Widget? strip;
@@ -215,6 +226,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
                 tile: (context, index) => _tile(
                   context,
                   waiting[index],
+                  localTime: localTimes[waiting[index].id],
                   cache: cache,
                   locale: locale,
                   use24Hour: use24Hour,
@@ -251,6 +263,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   Widget _tile(
     BuildContext context,
     Clip clip, {
+    required ClipLocalTime? localTime,
     required ThumbnailCache? cache,
     required String locale,
     required bool use24Hour,
@@ -262,11 +275,18 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     if (clip.missing) {
       return TtMissingClipTile(key: ValueKey(clip.id), label: l10n.clipMissing);
     }
-    final time = timeOfDayText(
-      clip.fingerprint.dateTakenUtc,
-      locale: locale,
-      use24Hour: use24Hour,
-    );
+    // Where it was shot (D-83); the phone's time until that is known.
+    final time = localTime != null
+        ? wallClockTimeText(
+            localTime.wallClock,
+            locale: locale,
+            use24Hour: use24Hour,
+          )
+        : timeOfDayText(
+            clip.fingerprint.dateTakenUtc,
+            locale: locale,
+            use24Hour: use24Hour,
+          );
     final length = formatClipDuration(clip.fingerprint.durationMs);
     // The picture is asked for at the tile's height, the longer side.
     final tileWidth =

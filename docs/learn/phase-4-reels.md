@@ -201,7 +201,76 @@ To see the pieces, run the catalogue (`docs/dev-setup.md`) and open `TtReelHeade
 
 ## 4. The time where a clip was shot
 
-*To be written in Task 4.*
+**What we built:** every clip's time and shooting day, in the zone where it was shot:
+
+- **A native question.** `zoneOffsetsMs(zoneIds, instantsMs)` asks Android, in one call, "how far ahead of UTC was this zone at this moment?" for a whole list of clips.
+- **`ClipTimeService`.** It turns clips into `ClipLocalTime`s (the clock time where each was shot, which zone that is, and whether it is the phone's zone), and remembers the answers.
+- **Shooting days.** `groupByShootingDay` puts a reel's clips under their local calendar dates and numbers them "Day 1", "Day 2"…; `dayNumber` counts calendar days.
+- **`zoneCity`.** "Europe/Isle_of_Man" becomes "Isle of Man", for the viewer's "London time".
+- **To tag** now shows each tile's time where the clip was shot.
+
+**Why TakeTray needs it:** a creator shoots in London, flies to India and tags there. A clip shot at 23:30 in London must say 23:30 and sit on its London day, not 05:00 the next day. Videos do not record their zone, so Phase 3 gave each clip one from the zone timeline (D-71, D-72); this task turns that zone into a time.
+
+**Key ideas:**
+
+- **An offset depends on the zone *and* the moment.** London is UTC+1 in summer and UTC+0 in winter, and the switch happens at an exact instant (01:00 UTC on 25 October 2026). So we never store "London is +1"; we ask for each `(zone, instant)` pair. The phone already knows every zone's rules, kept current by Android's own updates, so Kotlin just asks it:
+
+  ```kotlin
+  rules?.getOffset(Instant.ofEpochMilli(instantsMs[i]))?.totalSeconds?.times(MS_PER_SECOND)
+  ```
+
+  An id the phone does not know (`ZoneId.of` throws a `DateTimeException`) answers null at its own index, so the list still lines up with the clips.
+
+- **One call for a whole screen, and a cache.** A platform call costs a round trip, so `localTimes` collects every `(zone, instant)` it has not seen and asks once. The answers go in an LRU cache (least recently used goes first) of 4,096 entries. A `LinkedHashMap` keeps keys in insertion order, so "use" means take it out and put it back at the end:
+
+  ```dart
+  if (_cache.containsKey(key)) {
+    final offset = _cache.remove(key);
+    known[key] = _cache[key] = offset;
+  }
+  ```
+
+  The key is the pair, never the zone alone: with only the zone, a winter clip would reuse a summer clip's +1 hour.
+
+- **When something is missing, use the phone's zone.** No zone on the clip, a zone the phone does not know, or a bridge call that fails: the clip is shown in the phone's zone, and if even the bridge is broken, Dart's own `toLocal()` gives that. A warning is logged with counts and error codes only. A zone id is never logged: "Asia/Kolkata" says where someone was (D-10).
+
+- **A wall clock is not an instant.** `ClipLocalTime.wallClock` is a UTC `DateTime` whose *fields* are the local time: 13:00 in London is `DateTime.utc(2026, 7, 1, 13)`. Why not a local `DateTime`? A local one is read in the phone's zone, and some clock times do not exist there: 01:30 on 28 March 2027 never happened in London (clocks jumped from 01:00 to 02:00), so `DateTime(2027, 3, 28, 1, 30)` on a London phone becomes 02:30. UTC has no such gaps. The rule that follows: format its fields as they are, and never call `toLocal()` on it.
+
+  ```dart
+  String wallClockTimeText(DateTime wallClock, {...}) =>
+      _timeOfDay(wallClock, locale: locale, use24Hour: use24Hour);
+  ```
+
+  `timeOfDayText` (the phone's time) is the same with `time.toLocal()` first; the 24-hour rule (D-76) is in the shared `_timeOfDay`.
+
+- **Days are calendar days, not 24-hour periods.** On a clock-change day a local day is 23 or 25 hours long. Counting between local midnights with `Duration.inDays` rounds 23 hours down to 0, so the day after the spring change would be "Day 1" again. Counting between UTC dates, which are always 24 hours apart, cannot go wrong:
+
+  ```dart
+  final from = DateTime.utc(firstDay.year, firstDay.month, firstDay.day);
+  final to = DateTime.utc(day.year, day.month, day.day);
+  return to.difference(from).inDays + 1;
+  ```
+
+  Clips are grouped by their *own* local date, so a reel shot in two zones can have a clip with an earlier date after one with a later date (a later moment further west). The groups are sorted by date, and Day 1 is the earliest one.
+
+- **One function for any kind of row.** `groupByShootingDay<T>(items, clipOf, times)` takes a function that finds the clip in an item. The tests pass plain clips with `(c) => c`; the reel page (Task 8) will pass its own rows.
+
+**Where it lives:**
+
+- Kotlin: `app/android/app/src/main/kotlin/app/taketray/media/ZoneOffsets.kt`, wired in `MediaHostApiImpl.zoneOffsetsMs`; the contract in `app/pigeons/media_api.dart`.
+- Dart: `app/lib/platform/media_bridge.dart` (`zoneOffsetsMs`), `app/lib/data/media/clip_time.dart` (`ClipTimeService`, `clipTimeServiceProvider`), `app/lib/domain/models/clip_local_time.dart`, `app/lib/domain/rules/shooting_days.dart`, `app/lib/domain/rules/zone_city.dart`.
+- To tag: `app/lib/features/tagging/view_models/to_tag_times.dart` and `app/lib/features/shooting_mode/views/shooting_time_text.dart` (`wallClockTimeText`).
+- Tests: `ZoneOffsetsTest.kt`, `app/test/data/media/clip_time_test.dart`, `app/test/domain/rules/shooting_days_test.dart`, `app/test/domain/rules/zone_city_test.dart`, and new cases in `to_tag_screen_test.dart` and `shooting_time_text_test.dart`. `tool/check` runs the three time files again with `TZ=Europe/London`.
+
+**Try it yourself:**
+
+```bash
+(cd app && TZ=Europe/London ../tool/flutter test --run-skipped test/domain/rules/shooting_days_test.dart)
+```
+
+It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.dart`, change the two `DateTime.utc(` in `dayNumber` to `DateTime(` (local dates) and run it again. `day numbers across the London spring change (a 23-hour day)` fails with `at location [2] is (DateTime, int, String):<(2027-03-29 00:00:00.000Z, 2, 3)> instead of (DateTime, int, String):<(2027-03-29 00:00:00.000Z, 3, 3)>`: 29 March became Day 2, like 28 March. Run it without `TZ=Europe/London` (on a machine in a zone with no clock change, such as CI's UTC) and it passes, which is why `tool/check` runs it in London too. Undo your edit with `git checkout -- app/lib/domain/rules/shooting_days.dart`.
+
+**Decisions:** D-83 (native offsets, the cache, the fallback, the wall clock, shooting days), which amends D-76 (the To tag tile's time); D-71 and D-72 (the zone timeline that gives each clip its zone) as background.
 
 ## 5. Reel data and undo
 

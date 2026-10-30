@@ -18,7 +18,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 5 (tagging and the player)
 
 - Phase 3 left these (D-76):
-  - The time on a To tag tile is in the phone's time zone. Show it in the zone the clip was shot in (`Clip.timeZoneId`, D-58).
   - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
 - Scrub bar:
   - it reads `position / duration` as "slash"

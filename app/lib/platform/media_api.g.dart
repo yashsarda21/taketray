@@ -788,6 +788,37 @@ class MediaHostApi {
     return pigeonVar_replyValue! as String;
   }
 
+  /// The UTC offset, in milliseconds, of `zoneIds[i]` at `instantsMs[i]` (UTC
+  /// milliseconds since the epoch), from the phone's own time-zone rules
+  /// (`ZoneId.of(id).rules.getOffset(Instant.ofEpochMilli(ms))`), so it
+  /// follows the phone's time-zone updates. An entry is null when its id is
+  /// not a zone the phone knows (`DateTimeException`). The two lists must be
+  /// the same length (otherwise the call fails). Async: Kotlin answers off the
+  /// main thread, since a batch can hold hundreds of clips.
+  Future<List<int?>> zoneOffsetsMs(
+    List<String> zoneIds,
+    List<int> instantsMs,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.zoneOffsetsMs$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[zoneIds, instantsMs],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<int?>();
+  }
+
   Future<List<ZoneChangeMsg>> pendingZoneChanges() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.taketray.MediaHostApi.pendingZoneChanges$pigeonVar_messageChannelSuffix';
