@@ -585,9 +585,10 @@ class _SelectCircle extends StatelessWidget {
 /// icon, [label], and, when [removeLabel] is given, a small Remove button.
 ///
 /// The tile keeps its 3:4 shape. The label wraps over as many lines as it
-/// needs, and when the text is large the whole content (icon, label and
-/// button) shrinks to fit the tile, so the label is never cut off and the
-/// tile never overflows.
+/// needs, between words only. From a text scale of 1.5 the Remove button is
+/// just an icon (named by [removeLabel]), because the word would not fit. As
+/// a last resort, when the content is still too big for the tile it shrinks to
+/// fit, so nothing is cut off and the tile never overflows.
 class TtMissingClipTile extends StatelessWidget {
   /// A missing-clip tile saying [label].
   const new({required this.label, this.removeLabel, this.onRemove, super.key});
@@ -606,6 +607,8 @@ class TtMissingClipTile extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     final removeLabel = this.removeLabel;
+    final iconOnly =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     // proto.css: .tile.miss
     return AspectRatio(
       aspectRatio: tt.sizes.clipTileAspect,
@@ -647,11 +650,30 @@ class TtMissingClipTile extends StatelessWidget {
                         padding: const EdgeInsets.only(
                           top: TtMetrics.clipTileMissingButtonGap,
                         ),
-                        child: TtButton(
-                          label: removeLabel,
-                          kind: TtButtonKind.tonal,
-                          size: TtButtonSize.small,
-                          onPressed: onRemove,
+                        // The word "Remove" does not fit a narrow tile at
+                        // large text without breaking in the middle, so from
+                        // the large-text scale the button is just its icon,
+                        // still named "Remove".
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(
+                            maxWidth: TtMetrics.clipTileMissingButtonMaxWidth,
+                          ),
+                          child: iconOnly
+                              ? Tooltip(
+                                  message: removeLabel,
+                                  excludeFromSemantics: true,
+                                  child: TtIconButton(
+                                    icon: Symbols.playlist_remove_rounded,
+                                    semanticLabel: removeLabel,
+                                    onPressed: onRemove,
+                                  ),
+                                )
+                              : TtButton(
+                                  label: removeLabel,
+                                  kind: TtButtonKind.tonal,
+                                  size: TtButtonSize.small,
+                                  onPressed: onRemove,
+                                ),
                         ),
                       ),
                   ],

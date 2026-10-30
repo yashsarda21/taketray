@@ -134,6 +134,33 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testWidgets('at 1.3x on 360 dp the action stays beside the text and '
+        'nothing is cut', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(_strip(), textScale: 1.3, disableAnimations: true),
+      );
+      await tester.pumpAndSettle();
+      final text = tester.renderObject<RenderParagraph>(
+        find.text('Shooting since 9:41 AM'),
+      );
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Open camera'),
+      );
+      expect(text.didExceedMaxLines, isFalse);
+      expect(label.didExceedMaxLines, isFalse);
+      expect(
+        tester.getRect(find.byType(TtButton)).left,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('Shooting since 9:41 AM')).right,
+        ),
+      );
+      expect(
+        tester.getRect(find.byType(TtButton)).right,
+        lessThanOrEqualTo(tester.getRect(find.byType(TtStatStrip)).right),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
     testWidgets('the action stays beside the text at 1x', (tester) async {
       await tester.pumpWidget(ttTestApp(_strip()));
       expect(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -89,12 +90,18 @@ class _TtTextFieldState extends State<TtTextField> {
     final given = widget.controller;
     if (old == null && given != null) {
       // From the field's own controller to the caller's: the caller's text
-      // wins, unless it is empty, in which case the typed text moves over.
-      final own = _own;
-      if (own != null && given.text.isEmpty && own.text.isNotEmpty) {
-        given.value = own.value;
+      // wins, unless it is empty, in which case the typed text moves over. The
+      // move waits for the end of the frame: the caller's listeners must not
+      // be told of a change in the middle of a build.
+      final typed = _own?.value;
+      if (typed != null && typed.text.isNotEmpty && given.text.isEmpty) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted && widget.controller == given && given.text.isEmpty) {
+            given.value = typed;
+          }
+        });
       }
-      own?.dispose();
+      _own?.dispose();
       _own = null;
     } else if (old != null && given == null) {
       // From the caller's controller to the field's own: keep what showed.

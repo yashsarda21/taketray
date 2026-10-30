@@ -156,8 +156,55 @@ void main() {
         final given = TextEditingController();
         addTearDown(given.dispose);
         await pumpWith(tester, given);
+        await tester.pump();
         expect(given.text, 'typed');
         expect(shown(tester), 'typed');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('copying the typed text does not notify listeners during a '
+          'build', (tester) async {
+        final given = TextEditingController();
+        addTearDown(given.dispose);
+        // A listener of the caller's controller above the field, as a
+        // ListenableBuilder or a view model around a form would be: it
+        // throws if told of a change in the middle of a build.
+        Widget app({required bool useGiven}) => _field(
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: given,
+            builder: (context, value, _) => Column(
+              children: [
+                Text('seen: ${value.text}', key: const Key('seen')),
+                TtTextField(
+                  label: 'Reel name',
+                  controller: useGiven ? given : null,
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpWidget(app(useGiven: false));
+        await tester.enterText(find.byType(TextField), 'typed');
+        await tester.pumpWidget(app(useGiven: true));
+        expect(tester.takeException(), isNull);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(given.text, 'typed');
+        expect(find.text('seen: typed'), findsOneWidget);
+      });
+
+      testWidgets('the deferred copy is dropped if the controller changed '
+          'again', (tester) async {
+        final a = TextEditingController();
+        final b = TextEditingController();
+        addTearDown(a.dispose);
+        addTearDown(b.dispose);
+        await pumpWith(tester, null);
+        await tester.enterText(find.byType(TextField), 'typed');
+        await pumpWith(tester, a);
+        await pumpWith(tester, b);
+        await tester.pump();
+        expect(b.text, '');
         expect(tester.takeException(), isNull);
       });
 
@@ -212,6 +259,7 @@ void main() {
         final given = TextEditingController();
         addTearDown(given.dispose);
         await tester.pumpWidget(field(given));
+        await tester.pump();
         expect(find.text('3/40'), findsOneWidget);
         given.text = 'abcde';
         await tester.pump();
