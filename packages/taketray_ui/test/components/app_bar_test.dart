@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -359,6 +361,29 @@ void main() {
           expect(style.systemNavigationBarIconBrightness, expected);
         });
       }
+    });
+
+    testWidgets('titleFocusNode lets a screen put focus on the title', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final node = FocusNode();
+      addTearDown(node.dispose);
+      await tester.pumpWidget(
+        _bar(TtAppBar(title: 'Choose dates', titleFocusNode: node)),
+      );
+      expect(node.hasFocus, isFalse);
+
+      node.requestFocus();
+      await tester.pump();
+
+      expect(node.hasPrimaryFocus, isTrue);
+      final data = tester
+          .getSemantics(find.text('Choose dates'))
+          .getSemanticsData();
+      expect(data.flagsCollection.isFocused, ui.Tristate.isTrue);
+      expect(data.flagsCollection.isHeader, isTrue, reason: 'still a heading');
+      semantics.dispose();
     });
   });
 }

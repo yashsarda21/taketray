@@ -129,15 +129,9 @@ void main() {
     for (final c in (await tester.runAsync(h.media.toTag))!) c.id,
   ];
 
-  /// Day [d] of October 2026 in the open date picker. The picker lists the
-  /// months one under another, ending with October (today's month), so the
-  /// last "d" in the tree is October's.
-  Finder day(int d) => find
-      .descendant(
-        of: find.byType(DateRangePickerDialog),
-        matching: find.text('$d'),
-      )
-      .last;
+  /// Day [d] of October 2026 in the open date picker (the calendar keys
+  /// every day it shows by its date).
+  Finder day(int d) => find.byKey(ValueKey<DateTime>(DateTime(2026, 10, d)));
 
   Future<void> openPicker(WidgetTester tester) async {
     await tester.tap(find.text('Choose dates…'));
@@ -145,12 +139,15 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// Picks October [from] to [to] in the picker and confirms; returns with
-  /// the count done and the dialog open (or the failure state shown).
+  /// Picks October [from] to [to] in the picker and taps Find videos; returns
+  /// with the count done and the dialog open (or the failure state shown).
   Future<void> pickRange(WidgetTester tester, int from, int to) async {
     await openPicker(tester);
+    // At large text the days are further down the page.
+    await tester.ensureVisible(day(from));
     await tester.tap(day(from));
     await tester.pump();
+    await tester.ensureVisible(day(to));
     await tester.tap(day(to));
     await tester.pump();
     await tester.tap(find.text('Find videos'));
@@ -187,8 +184,18 @@ void main() {
       // The fixed windows are gone.
       expect(find.text('Last 2 days'), findsNothing);
       expect(find.text('Last 7 days'), findsNothing);
-      // Today keeps its count; Choose dates… has a chevron and no count.
+      // Today: its date under it and its count in a pill; Choose dates…: how
+      // far back it goes, and a chevron.
+      expect(find.text('Wed, Oct 28'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Today'),
+          matching: find.byType(TtRowCount),
+        ),
+        findsOneWidget,
+      );
       expect(trailing('Today', '1 new'), findsOneWidget);
+      expect(find.text('Up to 10 years back'), findsOneWidget);
       expect(
         find.descendant(
           of: find.widgetWithText(TtListRow, 'Choose dates…'),
@@ -196,18 +203,13 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(
-        find.descendant(
-          of: find.widgetWithText(TtListRow, 'Choose dates…'),
-          matching: find.byType(Text),
-        ),
-        findsOneWidget,
-        reason: 'only the title, no count',
-      );
+      expect(row(tester, 'Today').tall, isTrue);
+      expect(row(tester, 'Choose dates…').tall, isTrue);
+      expect(row(tester, 'Today').stackTrailingAtLargeText, isTrue);
       expect(row(tester, 'Today').onTap, isNotNull);
       expect(row(tester, 'Choose dates…').onTap, isNotNull);
 
-      // Enabled buttons to a screen reader, Today named with its count.
+      // Enabled buttons to a screen reader, named as the handoff says.
       final semantics = tester.ensureSemantics();
       final today = tester.getSemantics(
         find.widgetWithText(TtListRow, 'Today'),
@@ -217,7 +219,7 @@ void main() {
         today.getSemanticsData().hasAction(ui.SemanticsAction.tap),
         isTrue,
       );
-      expect(today.label, 'Today, 1 new');
+      expect(today.label, 'Today, 1 new video. Adds them to To tag');
       final choose = tester.getSemantics(
         find.widgetWithText(TtListRow, 'Choose dates…'),
       );
@@ -226,10 +228,11 @@ void main() {
         choose.getSemanticsData().hasAction(ui.SemanticsAction.tap),
         isTrue,
       );
+      expect(choose.label, 'Choose dates, up to 10 years back');
       semantics.dispose();
     });
 
-    testWidgets('Today with 0 says none and is disabled; Choose dates is not', (
+    testWidgets('Today with 0 says none and is off; Choose dates is not', (
       tester,
     ) async {
       only(shot(3, DateTime(2026, 10, 24, 10)));
@@ -237,18 +240,45 @@ void main() {
       await openSheet(tester);
 
       expect(trailing('Today', 'none'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Today'),
+          matching: find.byType(DecoratedBox),
+        ),
+        findsNothing,
+        reason: '"none" is plain text, not a pill',
+      );
       expect(row(tester, 'Today').onTap, isNull);
+      expect(row(tester, 'Today').off, isTrue);
       expect(row(tester, 'Choose dates…').onTap, isNotNull);
+      expect(row(tester, 'Choose dates…').off, isFalse);
 
       // Disabled to a screen reader as well, and a tap does nothing.
       final semantics = tester.ensureSemantics();
       final node = tester.getSemantics(find.widgetWithText(TtListRow, 'Today'));
       expect(node.flagsCollection.isEnabled, ui.Tristate.isFalse);
+      expect(node.label, 'Today, no new videos');
       semantics.dispose();
       await tester.tap(find.text('Today'));
       await settleApp(tester);
       expect(find.byType(TtSnack), findsNothing);
       expect(find.text('Add earlier videos'), findsOneWidget);
+    });
+
+    testWidgets('an off row is not faded: no Opacity in the sheet', (
+      tester,
+    ) async {
+      only(shot(3, DateTime(2026, 10, 24, 10)));
+      await pumpHost(tester);
+      await openSheet(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(TtSheet),
+          matching: find.byType(Opacity),
+        ),
+        findsNothing,
+      );
     });
 
     testWidgets('1 new is singular and N new is plural', (tester) async {
@@ -257,11 +287,17 @@ void main() {
       await openSheet(tester);
 
       expect(find.text('2 new'), findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(find.widgetWithText(TtListRow, 'Today')).label,
+        'Today, 2 new videos. Adds them to To tag',
+      );
+      semantics.dispose();
     });
   });
 
   group('while the count loads or fails', () {
-    testWidgets('a skeleton stands in for the count, both rows are disabled', (
+    testWidgets('a skeleton stands in for the count, both rows are off', (
       tester,
     ) async {
       final gate = h.bridge.gate('videosShotSince');
@@ -271,44 +307,71 @@ void main() {
       await tester.runAsync(settle);
       await tester.pump(const Duration(milliseconds: 500));
 
-      expect(find.byType(TtSkeletonLine), findsOneWidget);
+      expect(find.byType(TtSkeletonCount), findsOneWidget);
       expect(find.text('Today'), findsOneWidget);
-      expect(
-        tester.getSize(find.byType(TtSkeletonLine)).width,
-        TtMetrics.skeletonCountWidth,
-      );
+      expect(tester.getSize(find.byType(TtSkeletonCount)), const Size(48, 16));
       final semantics = tester.ensureSemantics();
       final node = tester.getSemantics(find.widgetWithText(TtListRow, 'Today'));
-      expect(node.label, 'Today, Loading');
+      expect(node.label, 'Today, checking for new videos');
       semantics.dispose();
       expect(row(tester, 'Today').onTap, isNull);
       expect(row(tester, 'Choose dates…').onTap, isNull);
+      expect(row(tester, 'Choose dates…').off, isTrue);
 
       gate.complete();
       await settleApp(tester);
       await tester.pumpAndSettle();
-      expect(find.byType(TtSkeletonLine), findsNothing);
+      expect(find.byType(TtSkeletonCount), findsNothing);
       expect(trailing('Today', '1 new'), findsOneWidget);
       expect(row(tester, 'Choose dates…').onTap, isNotNull);
     });
 
-    testWidgets('a failed count shows a short retry that counts again', (
-      tester,
-    ) async {
+    testWidgets('a failed count shows a warning banner and keeps the rows; '
+        'Try again counts again', (tester) async {
       h.bridge.failNext('accessReport');
       await pumpHost(tester);
       await openSheet(tester);
 
+      // The banner of the lost-access kind, under the sheet's subtitle.
+      final banner = tester.widget<TtBanner>(find.byType(TtBanner));
+      expect(banner.kind, TtBannerKind.warning);
       expect(find.text("Couldn't check your videos."), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
-      expect(find.byType(TtListRow), findsNothing);
+      expect(
+        tester.getTopLeft(find.byType(TtBanner)).dy,
+        greaterThan(
+          tester
+              .getBottomLeft(
+                find.text(
+                  'From your camera folders. Clips you already tagged or '
+                  'skipped stay where they are.',
+                ),
+              )
+              .dy,
+        ),
+      );
+      expect(
+        tester.getTopLeft(find.widgetWithText(TtListRow, 'Today')).dy,
+        greaterThan(tester.getBottomLeft(find.byType(TtBanner)).dy - 1),
+      );
+      // Both rows are there: Today is off and not checked, Choose dates… can
+      // still be used.
+      expect(find.byType(TtListRow), findsNWidgets(2));
+      expect(row(tester, 'Today').onTap, isNull);
+      expect(row(tester, 'Choose dates…').onTap, isNotNull);
+      final semantics = tester.ensureSemantics();
+      expect(
+        tester.getSemantics(find.widgetWithText(TtListRow, 'Today')).label,
+        'Today, not checked',
+      );
+      semantics.dispose();
 
       await tester.tap(find.text('Try again'));
       await tester.pump();
       await settleApp(tester);
       await tester.pumpAndSettle();
 
-      expect(find.text("Couldn't check your videos."), findsNothing);
+      expect(find.byType(TtBanner), findsNothing);
       expect(trailing('Today', '1 new'), findsOneWidget);
     });
   });
@@ -362,9 +425,18 @@ void main() {
 
       expect(row(tester, 'Today').onTap, isNull);
       expect(row(tester, 'Choose dates…').onTap, isNull);
+      // Today says it is adding, with a spinner; neither row is faded.
+      expect(trailing('Today', 'Adding…'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Today'),
+          matching: find.byType(TtRowSpinner),
+        ),
+        findsOneWidget,
+      );
       await tester.tap(find.text('Choose dates…'), warnIfMissed: false);
       await tester.pump();
-      expect(find.byType(DateRangePickerDialog), findsNothing);
+      expect(find.byType(TtDateRangePickerPage), findsNothing);
 
       gate.complete();
       await settleApp(tester);
@@ -392,60 +464,58 @@ void main() {
     });
   });
 
-  group('Choose dates… opens the date range picker', () {
-    testWidgets('with the right limits and copy', (tester) async {
+  group('Choose dates… opens the TakeTray date range picker', () {
+    testWidgets('with the right limits and copy, and nothing chosen at first', (
+      tester,
+    ) async {
       await pumpHost(tester);
       await openSheet(tester);
 
       await openPicker(tester);
 
-      final picker = tester.widget<DateRangePickerDialog>(
-        find.byType(DateRangePickerDialog),
+      final picker = tester.widget<TtDateRangePickerPage>(
+        find.byType(TtDateRangePickerPage),
       );
       // Today is the last day; the first is ten years before it.
       expect(picker.lastDate, DateTime(2026, 10, 28));
       expect(picker.firstDate, DateTime(2016, 10, 28));
-      expect(picker.initialDateRange, isNull);
-      expect(picker.helpText, 'Choose dates');
-      expect(picker.saveText, 'Find videos');
+      expect(picker.today, DateTime(2026, 10, 28));
+      expect(picker.initialRange, isNull);
       expect(find.text('Choose dates'), findsOneWidget);
       expect(find.text('Find videos'), findsOneWidget);
+      expect(find.text('Tap the first day'), findsOneWidget);
     });
 
-    testWidgets(
-      'future days cannot be picked; Find videos waits for two days',
-      (tester) async {
-        await pumpHost(tester);
-        await openSheet(tester);
-        await openPicker(tester);
+    testWidgets('future days cannot be picked; Find videos waits for a day', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
 
-        bool enabled() {
-          final button = tester.widget<ButtonStyleButton>(
-            find.ancestor(
-              of: find.text('Find videos'),
-              matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
-            ),
-          );
-          return button.onPressed != null;
-        }
+      bool enabled() {
+        final button = tester.widget<ButtonStyleButton>(
+          find.ancestor(
+            of: find.text('Find videos'),
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton),
+          ),
+        );
+        return button.onPressed != null;
+      }
 
-        expect(enabled(), isFalse, reason: 'nothing picked yet');
-        // Tomorrow and the day after: nothing happens.
-        await tester.tap(day(29), warnIfMissed: false);
-        await tester.pump();
-        await tester.tap(day(30), warnIfMissed: false);
-        await tester.pump();
-        expect(enabled(), isFalse, reason: 'future days cannot be picked');
+      expect(enabled(), isFalse, reason: 'nothing picked yet');
+      // Tomorrow and the day after: nothing happens.
+      await tester.tap(day(29), warnIfMissed: false);
+      await tester.pump();
+      await tester.tap(day(30), warnIfMissed: false);
+      await tester.pump();
+      expect(enabled(), isFalse, reason: 'future days cannot be picked');
 
-        // The first pick alone is not a range yet; with the second it is.
-        await tester.tap(day(26));
-        await tester.pump();
-        expect(enabled(), isFalse);
-        await tester.tap(day(28));
-        await tester.pump();
-        expect(enabled(), isTrue);
-      },
-    );
+      // The first day alone is enough: Find videos counts that one day.
+      await tester.tap(day(26));
+      await tester.pump();
+      expect(enabled(), isTrue);
+    });
 
     testWidgets('a one-day range is allowed', (tester) async {
       await pumpHost(tester);
@@ -456,19 +526,191 @@ void main() {
       expect(find.text('1 video found'), findsOneWidget);
     });
 
-    testWidgets('closing the picker with Cancel does nothing', (tester) async {
+    testWidgets('Find videos with only the first day counts that day', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
+
+      await tester.tap(day(27));
+      await tester.pump();
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 video found'), findsOneWidget);
+    });
+
+    testWidgets('closing the picker with Close does nothing', (tester) async {
       await pumpHost(tester);
       await openSheet(tester);
       final before = h.bridge.count('accessReport');
       await openPicker(tester);
 
-      await tester.tap(find.byType(CloseButton));
+      await tester.tap(find.byIcon(Symbols.close_rounded));
       await tester.pumpAndSettle();
 
-      expect(find.byType(DateRangePickerDialog), findsNothing);
+      expect(find.byType(TtDateRangePickerPage), findsNothing);
       expect(find.byType(TtSheet), findsOneWidget);
       expect(h.bridge.count('accessReport'), before, reason: 'nothing counted');
       expect(row(tester, 'Choose dates…').onTap, isNotNull);
+    });
+
+    testWidgets('a quick range only fills the calendar: nothing is counted', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      final before = h.bridge.count('accessReport');
+      await openPicker(tester);
+
+      await tester.tap(find.text('Yesterday'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TtDateRangePickerPage), findsOneWidget);
+      expect(dialog, findsNothing);
+      expect(h.bridge.count('accessReport'), before);
+      // Find videos then counts that day.
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('1 video found'), findsOneWidget);
+    });
+
+    testWidgets('opens on the last dates chosen in this sheet', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 20, 22);
+      expect(find.text('No new videos'), findsOneWidget);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      await openPicker(tester);
+
+      final picker = tester.widget<TtDateRangePickerPage>(
+        find.byType(TtDateRangePickerPage),
+      );
+      expect(
+        picker.initialRange,
+        DateTimeRange(
+          start: DateTime(2026, 10, 20),
+          end: DateTime(2026, 10, 22),
+        ),
+      );
+      expect(find.text('Oct\u00a020 – Oct\u00a022'), findsOneWidget);
+      expect(find.text('3 days'), findsOneWidget);
+      // A tap after a full range starts a new one: 24 to 26.
+      await tester.tap(day(24));
+      await tester.pump();
+      await tester.tap(day(26));
+      await tester.pump();
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('1 video found'), findsOneWidget);
+    });
+
+    testWidgets('after Cancel in the found dialog it opens on the same dates', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 24, 28);
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      await openPicker(tester);
+
+      expect(
+        tester
+            .widget<TtDateRangePickerPage>(find.byType(TtDateRangePickerPage))
+            .initialRange,
+        DateTimeRange(
+          start: DateTime(2026, 10, 24),
+          end: DateTime(2026, 10, 28),
+        ),
+      );
+    });
+
+    testWidgets('a closed picker does not become the last dates', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
+      await tester.tap(day(10));
+      await tester.pump();
+      await tester.tap(find.byIcon(Symbols.close_rounded));
+      await tester.pumpAndSettle();
+
+      await openPicker(tester);
+
+      expect(
+        tester
+            .widget<TtDateRangePickerPage>(find.byType(TtDateRangePickerPage))
+            .initialRange,
+        isNull,
+      );
+    });
+
+    testWidgets('the next sheet starts with nothing chosen again', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await pickRange(tester, 20, 22);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      await tester.tapAt(const Offset(180, 20));
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSheet), findsNothing);
+
+      await openSheet(tester);
+      await openPicker(tester);
+
+      expect(
+        tester
+            .widget<TtDateRangePickerPage>(find.byType(TtDateRangePickerPage))
+            .initialRange,
+        isNull,
+        reason: 'the last dates belong to one sheet',
+      );
+    });
+
+    testWidgets("focus goes to the picker's title, and back to the row", (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpHost(tester);
+      await openSheet(tester);
+
+      await openPicker(tester);
+      expect(
+        tester
+            .getSemantics(find.text('Choose dates'))
+            .getSemanticsData()
+            .flagsCollection
+            .isFocused,
+        ui.Tristate.isTrue,
+      );
+
+      await tester.tap(find.byIcon(Symbols.close_rounded));
+      await tester.pumpAndSettle();
+
+      final focus = FocusManager.instance.primaryFocus!;
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Choose dates…'),
+          matching: find.byElementPredicate((e) => e == focus.context),
+        ),
+        findsOneWidget,
+        reason: 'the Choose dates… row has the focus again',
+      );
+      semantics.dispose();
     });
   });
 
@@ -490,32 +732,52 @@ void main() {
       await tester.runAsync(settle);
       await tester.pump(const Duration(milliseconds: 500));
 
-      // Skeleton for Choose dates…, no dialog yet, and nothing can be tapped.
-      expect(find.byType(DateRangePickerDialog), findsNothing);
+      // The range with "Checking…" under Choose dates…, a spinner for its
+      // chevron, no dialog yet, and nothing can be tapped.
+      expect(find.byType(TtDateRangePickerPage), findsNothing);
       expect(dialog, findsNothing);
+      expect(
+        find.text('Oct\u00a024 – Oct\u00a028 · Checking…'),
+        findsOneWidget,
+      );
       expect(
         find.descendant(
           of: find.widgetWithText(TtListRow, 'Choose dates…'),
-          matching: find.byType(TtSkeletonLine),
+          matching: find.byType(TtRowSpinner),
         ),
         findsOneWidget,
       );
+      expect(
+        find.descendant(
+          of: find.widgetWithText(TtListRow, 'Choose dates…'),
+          matching: find.byIcon(Symbols.chevron_right_rounded),
+        ),
+        findsNothing,
+      );
+      expect(find.byType(TtSkeletonCount), findsNothing);
       final semantics = tester.ensureSemantics();
       expect(
         tester
             .getSemantics(find.widgetWithText(TtListRow, 'Choose dates…'))
             .label,
-        'Choose dates…, Loading',
+        'Choose dates. Oct\u00a024 – Oct\u00a028 · Checking…',
+      );
+      // The spinner carries its own label (the row's label speaks for it).
+      expect(
+        tester.widget<TtRowSpinner>(find.byType(TtRowSpinner)).semanticLabel,
+        'Checking your videos from Oct\u00a024 – Oct\u00a028',
       );
       semantics.dispose();
       expect(row(tester, 'Today').onTap, isNull);
+      expect(row(tester, 'Today').off, isTrue);
       expect(row(tester, 'Choose dates…').onTap, isNull);
+      expect(row(tester, 'Choose dates…').off, isTrue);
 
       gate.complete();
       await settleApp(tester);
       await tester.pumpAndSettle();
 
-      expect(find.byType(TtSkeletonLine), findsNothing);
+      expect(find.byType(TtRowSpinner), findsNothing);
       expect(find.text('3 videos found'), findsOneWidget);
     });
 
@@ -565,7 +827,7 @@ void main() {
 
       expect(find.text('No new videos'), findsOneWidget);
       expect(
-        find.text('No new videos between Oct 20 and Oct 22.'),
+        find.text('No new videos between Oct\u00a020 and Oct\u00a022.'),
         findsOneWidget,
       );
       expect(find.text('OK'), findsOneWidget);
@@ -587,7 +849,7 @@ void main() {
 
       await pickRange(tester, 20, 20);
 
-      expect(find.text('No new videos on Oct 20.'), findsOneWidget);
+      expect(find.text('No new videos on Oct\u00a020.'), findsOneWidget);
       expect(find.textContaining('between'), findsNothing);
     });
 
@@ -602,7 +864,7 @@ void main() {
 
       await pickRange(tester, 24, 24);
 
-      expect(find.text('No new videos on Oct 24.'), findsOneWidget);
+      expect(find.text('No new videos on Oct\u00a024.'), findsOneWidget);
     });
 
     testWidgets('Cancel adds nothing, the sheet stays, other dates can be '
@@ -743,6 +1005,89 @@ void main() {
     });
   });
 
+  group('the year in a date (D-79)', () {
+    testWidgets('a date in another year shows its year in the dialog', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+      await openPicker(tester);
+      // Back to December 2025 through the year and month grid.
+      await tester.tap(find.text('October 2026'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('2025'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Dec'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(ValueKey<DateTime>(DateTime(2025, 12, 30))));
+      await tester.pump();
+      await tester.tap(find.byKey(ValueKey<DateTime>(DateTime(2025, 12, 31))));
+      await tester.pump();
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          'No new videos between Dec\u00a030,\u00a02025 and '
+          'Dec\u00a031,\u00a02025.',
+        ),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      // The row says it too, in the "Checking…" line only while it counts, so
+      // here the picker's summary shows it again on reopening.
+      await openPicker(tester);
+      expect(
+        find.text('Dec\u00a030,\u00a02025 – Dec\u00a031,\u00a02025'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('dates follow the phone: 20 Oct on en-IN, Oct 20 on en-US', (
+      tester,
+    ) async {
+      for (final (locale, expected) in [
+        (const Locale('en', 'IN'), 'No new videos on 20\u00a0Oct.'),
+        (const Locale('en', 'US'), 'No new videos on Oct\u00a020.'),
+      ]) {
+        await pumpScreen(
+          tester,
+          Scaffold(
+            body: Builder(
+              builder: (context) => TtButton(
+                label: 'open the sheet',
+                onPressed: () => showAddEarlierVideos(context),
+              ),
+            ),
+          ),
+          overrides: h.appOverrides,
+          locale: locale,
+        );
+        await openSheet(tester);
+        await pickRange(tester, 20, 20);
+
+        expect(find.text(expected), findsOneWidget, reason: '$locale');
+
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+        await tester.tapAt(const Offset(180, 20));
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('a date of this year has no year', (tester) async {
+      await pumpHost(tester);
+      await openSheet(tester);
+
+      await pickRange(tester, 20, 22);
+
+      expect(find.textContaining('2026'), findsNothing);
+    });
+  });
+
   group('errors', () {
     testWidgets('a failed count shows the count-failure state; Try again '
         'counts the same dates again', (tester) async {
@@ -762,7 +1107,11 @@ void main() {
 
       expect(find.text("Couldn't check your videos."), findsOneWidget);
       expect(find.text('Try again'), findsOneWidget);
-      expect(find.byType(TtListRow), findsNothing);
+      // The rows stay: Today still has its count, and both can be used.
+      expect(find.byType(TtListRow), findsNWidgets(2));
+      expect(trailing('Today', '1 new'), findsOneWidget);
+      expect(row(tester, 'Today').onTap, isNotNull);
+      expect(row(tester, 'Choose dates…').onTap, isNotNull);
       expect(dialog, findsNothing);
       expect(tester.takeException(), isNull);
 
@@ -985,7 +1334,7 @@ void main() {
         await pumpHost(tester, brightness: brightness);
         await openSheet(tester);
 
-        await expectTtAccessible(tester);
+        await expectTtAccessible(tester, includeDisabledText: true);
       });
 
       testWidgets('${brightness.name}: the retry state is accessible', (
@@ -995,7 +1344,7 @@ void main() {
         await pumpHost(tester, brightness: brightness);
         await openSheet(tester);
 
-        await expectTtAccessible(tester);
+        await expectTtAccessible(tester, includeDisabledText: true);
       });
 
       testWidgets('${brightness.name}: the date picker is accessible', (
@@ -1009,11 +1358,67 @@ void main() {
         await tester.tap(day(28));
         await tester.pumpAndSettle();
 
-        // Tomorrow and after cannot be picked: 29, 30 and 31 are inactive.
-        await expectDatePickerAccessible(
-          tester,
-          inactiveTexts: {'29', '30', '31'},
-        );
+        // The full check: 48 dp targets, labels, WCAG AA text contrast, with
+        // the off days (29 to 31) at AA too, not exempt.
+        await expectTtAccessible(tester, includeDisabledText: true);
+      });
+
+      testWidgets('${brightness.name}: the busy rows are accessible', (
+        tester,
+      ) async {
+        await pumpHost(tester, brightness: brightness);
+        await openSheet(tester);
+        await openPicker(tester);
+        await tester.tap(day(24));
+        await tester.pump();
+        await tester.tap(find.text('Find videos'));
+        await tester.pump();
+        final gate = h.bridge.gate('videosShotSince');
+        await tester.runAsync(settle);
+        await tester.pump(const Duration(milliseconds: 500));
+
+        // Both rows are off, the count is an outlined pill, a spinner turns:
+        // all at AA contrast, with no fade.
+        await expectTtAccessible(tester, includeDisabledText: true);
+
+        gate.complete();
+        await settleApp(tester);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('${brightness.name}: the loading rows are accessible', (
+        tester,
+      ) async {
+        final gate = h.bridge.gate('videosShotSince');
+        await pumpHost(tester, brightness: brightness);
+        await tester.tap(find.text('open the sheet'));
+        await tester.pump();
+        await tester.runAsync(settle);
+        await tester.pump(const Duration(milliseconds: 500));
+
+        await expectTtAccessible(tester, includeDisabledText: true);
+
+        gate.complete();
+        await settleApp(tester);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('${brightness.name}: the adding rows are accessible', (
+        tester,
+      ) async {
+        await pumpHost(tester, brightness: brightness);
+        await openSheet(tester);
+        final gate = h.bridge.gate('currentZoneId');
+        await tester.tap(find.text('Today'));
+        await tester.pump();
+        await tester.runAsync(settle);
+        await tester.pump();
+
+        await expectTtAccessible(tester, includeDisabledText: true);
+
+        gate.complete();
+        await settleApp(tester);
+        await tester.pumpAndSettle();
       });
 
       testWidgets('${brightness.name}: the found dialog is accessible', (
@@ -1052,7 +1457,7 @@ void main() {
         await tester.runAsync(settle);
         await tester.pump(const Duration(milliseconds: 500));
 
-        await expectTtAccessible(tester);
+        await expectTtAccessible(tester, includeDisabledText: true);
 
         gate.complete();
         await settleApp(tester);
@@ -1089,15 +1494,48 @@ void main() {
 
       await openPicker(tester);
 
-      expect(find.byType(DateRangePickerDialog), findsOneWidget);
+      expect(find.byType(TtDateRangePickerPage), findsOneWidget);
       expect(tester.takeException(), isNull);
       // Still reaches the buttons and the days.
+      await tester.scrollUntilVisible(
+        day(24),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
       await tester.tap(day(24));
       await tester.pump();
       await tester.tap(day(28));
       await tester.pump();
       expect(find.text('Find videos'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('at 2x text the busy sheet and the picked-dates rows fit', (
+      tester,
+    ) async {
+      await pumpHost(tester, textScale: 2);
+      await openSheet(tester);
+      await openPicker(tester);
+      await tester.scrollUntilVisible(
+        day(24),
+        100,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(day(24));
+      await tester.pump();
+      final gate = h.bridge.gate('videosShotSince');
+      await tester.tap(find.text('Find videos'));
+      await tester.pump();
+      await tester.runAsync(settle);
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(TtRowSpinner), findsOneWidget);
+      await expectTtAccessible(tester, includeDisabledText: true);
+
+      gate.complete();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('at 2x text and 360 dp both dialogs fit', (tester) async {

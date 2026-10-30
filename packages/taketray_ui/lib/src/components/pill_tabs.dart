@@ -23,7 +23,12 @@ class TtPillTab<T> {
 ///
 /// The selected tab is `inverseSurface`, the others `surfaceContainerHigh`.
 /// Each tab is 36 dp tall (more at large text) with a 48 dp tap target, and
-/// only the selected one is announced as selected.
+/// only the selected one is announced as selected. A [value] that no tab has
+/// selects none.
+///
+/// With [wrapAtLargeText] the tabs wrap onto more rows from a text scale of
+/// 1.5 instead of scrolling sideways, for a short fixed set (the date range
+/// picker's quick ranges) that must all stay in view.
 class TtPillTabs<T> extends StatelessWidget {
   /// Tabs for [tabs] with [value] selected, calling [onChanged] with the
   /// tapped tab's value.
@@ -31,8 +36,13 @@ class TtPillTabs<T> extends StatelessWidget {
     required this.tabs,
     required this.value,
     required this.onChanged,
+    this.wrapAtLargeText = false,
     super.key,
   });
+
+  /// Whether the tabs wrap instead of scrolling from a text scale of
+  /// [TtMetrics.largeTextScale].
+  final bool wrapAtLargeText;
 
   /// The tabs, in order.
   final List<TtPillTab<T>> tabs;
@@ -49,6 +59,35 @@ class TtPillTabs<T> extends StatelessWidget {
     final scheme = context.scheme;
     // tt-style.css: .style-tt .fchip, .style-tt .fchip.on
     final label = tt.text.numeric(tt.text.material.labelLarge!);
+    Widget tab(int i) => _PillTab(
+      label: tabs[i].label,
+      semanticLabel: tabs[i].semanticLabel,
+      selected: tabs[i].value == value,
+      fill: tabs[i].value == value
+          ? scheme.inverseSurface
+          : scheme.surfaceContainerHigh,
+      textStyle: label.copyWith(
+        color: tabs[i].value == value
+            ? scheme.onInverseSurface
+            : scheme.onSurfaceVariant,
+      ),
+      onPressed: () => onChanged(tabs[i].value),
+    );
+    final wrap =
+        wrapAtLargeText &&
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    if (wrap) {
+      return Padding(
+        padding: EdgeInsets.symmetric(
+          horizontal: tt.spacing.gutter,
+          vertical: tt.spacing.xxs,
+        ),
+        child: Wrap(
+          spacing: tt.spacing.xs,
+          children: [for (var i = 0; i < tabs.length; i++) tab(i)],
+        ),
+      );
+    }
     // Align: shrink to the tabs' height even where the parent is tight.
     return Align(
       heightFactor: 1,
@@ -62,20 +101,7 @@ class TtPillTabs<T> extends StatelessWidget {
           children: [
             for (var i = 0; i < tabs.length; i++) ...[
               if (i > 0) SizedBox(width: tt.spacing.xs),
-              _PillTab(
-                label: tabs[i].label,
-                semanticLabel: tabs[i].semanticLabel,
-                selected: tabs[i].value == value,
-                fill: tabs[i].value == value
-                    ? scheme.inverseSurface
-                    : scheme.surfaceContainerHigh,
-                textStyle: label.copyWith(
-                  color: tabs[i].value == value
-                      ? scheme.onInverseSurface
-                      : scheme.onSurfaceVariant,
-                ),
-                onPressed: () => onChanged(tabs[i].value),
-              ),
+              tab(i),
             ],
           ],
         ),

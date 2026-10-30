@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:taketray/app.dart' show resolvePhoneLocale;
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
@@ -29,7 +30,8 @@ const toTagRouteMarker = 'the To tag route';
 /// logical size (the pixel ratio is 1). The phone's "remove animations" is on
 /// unless [animations] is true: the record dot of the Shooting mode card and
 /// the skeleton tiles loop for ever, and `pumpAndSettle` would never settle.
-/// [use24Hour] is the phone's 24-hour setting.
+/// [use24Hour] is the phone's 24-hour setting. [locale] is the phone's
+/// language and region (English, United States, when null).
 Future<ProviderContainer> pumpScreen(
   WidgetTester tester,
   Widget screen, {
@@ -40,6 +42,7 @@ Future<ProviderContainer> pumpScreen(
   bool settle = true,
   bool animations = false,
   bool use24Hour = false,
+  Locale? locale,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -64,6 +67,8 @@ Future<ProviderContainer> pumpScreen(
         routerConfig: router,
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
+        locale: locale,
+        localeListResolutionCallback: resolvePhoneLocale,
         theme: TakeTrayTheme.light(),
         darkTheme: TakeTrayTheme.dark(),
         themeMode: brightness == Brightness.dark

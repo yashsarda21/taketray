@@ -371,7 +371,11 @@ void main() {
       // Half an hour later the row still has no length: still held.
       h.clock.advance(const Duration(minutes: 30));
       await h.scanner.scan();
-      expect(await h.baselineOf(phone), at(10), reason: 'held past 10 min');
+      expect(
+        await h.baselineOf(phone),
+        at(10),
+        reason: 'still held 30 min in (the hold lasts 3 h)',
+      );
 
       h.clock.advance(const Duration(hours: 1, minutes: 30));
       bridge.videosByVolume[phone]!

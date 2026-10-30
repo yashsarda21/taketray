@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/rules/earlier_window.dart';
@@ -86,22 +85,27 @@ Future<void> showAddEarlierVideos(BuildContext context) {
   );
 }
 
-/// The sheet: a title and a line of explanation, then two rows (D-78).
+/// What the sheet is doing besides waiting for the user.
+enum _Adding { none, today, dates }
+
+/// The sheet: a title and a line of explanation, then two rows (D-78, D-79).
 ///
-/// - **Today** has how many videos it would add trailing, and adds them as
-///   soon as it is tapped.
-/// - **Choose dates…** has a chevron. It opens Flutter's date range picker
-///   (themed by the app theme): from ten years ago to today, no future days,
-///   nothing chosen at first. After "Find videos" the sheet counts the new
-///   videos in those days (a skeleton in the row meanwhile) and a dialog
-///   asks "N videos found. Add them to To tag?" with Cancel and Add, or says
-///   "No new videos…" with OK. Cancel and OK leave the sheet open.
+/// - **Today** (its date under it) has how many videos it would add trailing,
+///   in a pill, and adds them as soon as it is tapped.
+/// - **Choose dates…** ("Up to 10 years back", a chevron) opens TakeTray's
+///   date range picker (`showTtDateRangePicker`): from ten years ago to
+///   today, no future days. It opens on the **last dates chosen in this
+///   sheet**, and on nothing the first time. After "Find videos" the sheet
+///   counts the new videos in those days ("{dates} · Checking…" and a
+///   spinner meanwhile) and a dialog asks "N videos found. Add them to To
+///   tag?" with Cancel and Add, or says "No new videos…" with OK. Cancel and
+///   OK leave the sheet open.
 ///
-/// While the count of Today loads, the rows are there with a skeleton and
-/// cannot be tapped. Today with 0 says "none" and cannot be tapped; neither
-/// row can while the dates are counted or an add is running, and a second tap
-/// is ignored. If a count cannot be read, a short message and "Try again"
-/// (for the dates, the same dates again).
+/// Every row is **off** (AA contrast, no fade, announced disabled) while the
+/// count of Today loads, the dates are counted or an add runs, and a second
+/// tap is ignored. Today with 0 says "none" and is off too. If a count cannot
+/// be read, a warning banner under the subtitle says so with "Try again" (for
+/// the dates, the same dates again), and the rows stay.
 class _AddEarlierVideosSheet extends ConsumerStatefulWidget {
   const new({required this.onOutcome});
 
@@ -114,10 +118,10 @@ class _AddEarlierVideosSheet extends ConsumerStatefulWidget {
 
 class _AddEarlierVideosSheetState
     extends ConsumerState<_AddEarlierVideosSheet> {
-  /// An add is running.
-  bool _adding = false;
+  /// An add is running, and for what.
+  _Adding _adding = _Adding.none;
 
-  /// The picker is open, or the videos in the chosen dates are being counted.
+  /// The picker is open, the dates are being counted, or the dialog asks.
   bool _choosing = false;
 
   /// The count of the chosen dates runs (the picker is closed).
@@ -126,9 +130,27 @@ class _AddEarlierVideosSheetState
   /// The dates whose count failed, for "Try again".
   EarlierCustom? _failedRange;
 
+  /// The last dates chosen with "Find videos" in this sheet, which the picker
+  /// opens on next time. Null until then.
+  DateTimeRange? _lastRange;
+
+  /// Gives the Choose dates… row its focus back when the picker closes.
+  final FocusNode _chooseFocus = FocusNode(debugLabel: 'Choose dates');
+
+  @override
+  void dispose() {
+    _chooseFocus.dispose();
+    super.dispose();
+  }
+
+  DateTime get _today =>
+      DateUtils.dateOnly(ref.read(clockProvider).now().toLocal());
+
   Future<void> _add(EarlierRange range) async {
-    if (_adding) return;
-    setState(() => _adding = true);
+    if (_adding != _Adding.none) return;
+    setState(
+      () => _adding = range is EarlierToday ? _Adding.today : _Adding.dates,
+    );
     // Read before waiting: the sheet may be gone when the add ends.
     final controller = ref.read(earlierVideosControllerProvider.notifier);
     final report = widget.onOutcome;
@@ -146,7 +168,7 @@ class _AddEarlierVideosSheetState
     if (outcome == null) {
       // Nothing was left to add (the videos went away since the count): the
       // controller counted again, so the rows show the truth.
-      setState(() => _adding = false);
+      setState(() => _adding = _Adding.none);
     } else {
       navigator.pop();
     }
@@ -154,25 +176,30 @@ class _AddEarlierVideosSheetState
 
   /// Choose dates…: the picker, then [_find] the picked days.
   Future<void> _chooseDates() async {
-    if (_choosing || _adding) return;
+    if (_choosing || _adding != _Adding.none) return;
     setState(() => _choosing = true);
     final l10n = AppLocalizations.of(context);
-    final today = DateUtils.dateOnly(ref.read(clockProvider).now().toLocal());
-    final picked = await showDateRangePicker(
-      context: context,
+    final today = _today;
+    // The row has the focus while the picker is open, so the picker gives it
+    // back when it closes.
+    _chooseFocus.requestFocus();
+    final picked = await showTtDateRangePicker(
+      context,
       // Ten years back, and nothing in the future.
       firstDate: DateTime(today.year - 10, today.month, today.day),
       lastDate: today,
       // Today on the app's clock (it opens on this month and marks the day).
       currentDate: today,
-      helpText: l10n.earlierPickerHelp,
-      saveText: l10n.earlierPickerConfirm,
+      // The last dates chosen in this sheet, or nothing the first time.
+      initialDateRange: _lastRange,
+      labels: _pickerLabels(l10n),
     );
     if (!mounted) return;
     if (picked == null) {
       setState(() => _choosing = false);
       return;
     }
+    _lastRange = picked;
     await _find(EarlierCustom(picked.start, picked.end));
   }
 
@@ -187,6 +214,7 @@ class _AddEarlierVideosSheetState
       _choosing = true;
       _finding = true;
       _failedRange = null;
+      _lastRange = DateTimeRange(start: range.from, end: range.to);
     });
     final int count;
     try {
@@ -214,11 +242,9 @@ class _AddEarlierVideosSheetState
   Future<bool> _confirm(EarlierCustom range, int count) async {
     final l10n = AppLocalizations.of(context);
     if (count == 0) {
-      final format = DateFormat.MMMd(
-        Localizations.localeOf(context).toString(),
-      );
-      final from = format.format(range.from);
-      final to = format.format(range.to);
+      final today = _today;
+      final from = ttDayText(context, range.from, today: today);
+      final to = ttDayText(context, range.to, today: today);
       final oneDay = DateUtils.isSameDay(range.from, range.to);
       await showTtDialog<void>(
         context,
@@ -242,78 +268,141 @@ class _AddEarlierVideosSheetState
     return add ?? false;
   }
 
+  /// "8 Oct – 10 Oct", or "8 Oct" for one day (the dates of the phone's
+  /// language, with the year only when it is not this year).
+  String _rangeText(DateTimeRange range) {
+    final today = _today;
+    final from = ttDayText(context, range.start, today: today);
+    if (DateUtils.isSameDay(range.start, range.end)) return from;
+    return '$from – ${ttDayText(context, range.end, today: today)}';
+  }
+
+  TtDateRangePickerLabels _pickerLabels(AppLocalizations l10n) =>
+      TtDateRangePickerLabels(
+        title: l10n.earlierPickerTitle,
+        close: l10n.pickerClose,
+        clear: l10n.pickerClear,
+        findVideos: l10n.earlierPickerConfirm,
+        yesterday: l10n.pickerQuickYesterday,
+        lastWeek: l10n.pickerQuickLastWeek,
+        thisMonth: l10n.pickerQuickThisMonth,
+        lastMonth: l10n.pickerQuickLastMonth,
+        nothingTitle: l10n.pickerSummaryNothingTitle,
+        nothingSubtitle: l10n.pickerSummaryNothingSubtitle,
+        firstTitle: l10n.pickerSummaryFirstTitle,
+        firstSubtitle: l10n.pickerSummaryFirstSubtitle,
+        rangeTitle: l10n.pickerSummaryRangeTitle,
+        rangeSubtitle: l10n.pickerSummaryRangeSubtitle,
+        oneDaySubtitle: l10n.pickerSummaryOneDay,
+        calendar: TtDateRangeCalendarLabels(
+          previousMonth: l10n.calendarPreviousMonth,
+          nextMonth: l10n.calendarNextMonth,
+          backToDays: l10n.calendarBackToDays,
+          chooseMonthAndYear: l10n.calendarChooseMonthYear,
+          yearHeading: l10n.calendarYear,
+          monthHeading: l10n.calendarMonth,
+          firstDay: l10n.calendarFirstDay,
+          lastDay: l10n.calendarLastDay,
+          onlyDay: l10n.calendarOnlyDay,
+          inRange: l10n.calendarInRange,
+          today: l10n.calendarToday,
+          notAvailable: l10n.calendarNotAvailable,
+          hasChosenDays: l10n.calendarHasChosenDays,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final scheme = context.scheme;
     final count = ref.watch(earlierVideosControllerProvider);
-    final failed =
-        _failedRange != null ||
-        (count.hasError && !count.hasValue && !count.isLoading);
-    final loading = !count.hasValue && !failed;
-    final busy = _adding || _choosing;
-
-    // What a screen reader says for a row that is waiting.
-    String waiting(String title) => '$title, ${l10n.loading}';
-
-    // proto.css: .li.dis { opacity: .45 }; a row that is only waiting for a
-    // count is not dimmed.
-    Widget disabled(TtListRow row, String label, {required bool dim}) =>
-        Opacity(
-          opacity: dim ? TtMetrics.listRowDisabledOpacity : 1,
-          child: Semantics(
-            container: true,
-            button: true,
-            enabled: false,
-            excludeSemantics: true,
-            label: label,
-            child: row,
-          ),
-        );
-
-    Widget skeleton() => const SizedBox(
-      width: TtMetrics.skeletonCountWidth,
-      child: TtSkeletonLine(widthFactor: 1),
-    );
+    final countFailed = count.hasError && !count.hasValue && !count.isLoading;
+    final failed = _failedRange != null || countFailed;
+    final loading = !count.hasValue && !countFailed;
+    // Every row is off while it loads, counts the dates or adds.
+    final busy = loading || _finding || _adding != _Adding.none;
+    final countingDates = _finding || _adding == _Adding.dates;
+    final range = _lastRange;
+    final value = count.value;
 
     Widget today() {
-      final title = l10n.earlierRangeToday;
-      final value = count.value;
+      final adding = _adding == _Adding.today;
       final usable = value != null && value > 0 && !busy;
-      final countText = value == null ? null : l10n.earlierRowCount(value);
+      final Widget? trailing;
+      if (loading) {
+        trailing = const TtSkeletonCount();
+      } else if (adding) {
+        trailing = Row(
+          mainAxisSize: MainAxisSize.min,
+          spacing: tt.spacing.xs,
+          children: [
+            TtRowCount(l10n.earlierAddingToday, pill: false),
+            TtRowSpinner(semanticLabel: l10n.earlierAddingTodaySpinner),
+          ],
+        );
+      } else if (value == null) {
+        // The count could not be read: no number to show.
+        trailing = null;
+      } else if (value == 0) {
+        trailing = TtRowCount(l10n.earlierRowCount(0), pill: false);
+      } else {
+        trailing = TtRowCount(l10n.earlierRowCount(value));
+      }
       final label = loading
-          ? waiting(title)
-          : countText == null
-          ? title
-          : '$title, $countText';
-      final row = TtListRow(
-        title: title,
-        trailing: loading
-            ? skeleton()
-            : countText == null
-            ? null
-            : Text(countText),
+          ? l10n.earlierTodayLabelLoading
+          : value == null
+          ? l10n.earlierTodayLabelNotChecked
+          : value == 0
+          ? l10n.earlierTodayLabelNone
+          : l10n.earlierTodayLabelNew(value);
+      return TtListRow(
+        title: l10n.earlierRangeToday,
+        subtitle: MaterialLocalizations.of(context).formatMediumDate(_today),
+        leading: const TtRowIcon(icon: Symbols.today_rounded, boxed: false),
+        trailing: trailing,
+        tall: true,
         stackTrailingAtLargeText: true,
+        off: !usable,
         onTap: usable ? () => _add(const EarlierToday()) : null,
         semanticLabel: label,
       );
-      return usable ? row : disabled(row, label, dim: !loading);
     }
 
     Widget chooseDates() {
-      final title = l10n.earlierChooseDates;
-      final usable = !loading && !busy;
-      final label = loading || _finding ? waiting(title) : title;
-      final row = TtListRow(
-        title: title,
-        trailing: _finding
-            ? skeleton()
-            : const Icon(Symbols.chevron_right_rounded),
-        onTap: usable ? _chooseDates : null,
-        semanticLabel: label,
+      final adding = _adding == _Adding.dates;
+      final String subtitle;
+      final Widget trailing;
+      if (countingDates && range != null) {
+        final text = _rangeText(range);
+        subtitle = adding
+            ? l10n.earlierAddingRange(text)
+            : l10n.earlierChecking(text);
+        trailing = TtRowSpinner(
+          semanticLabel: adding
+              ? l10n.earlierAddingSpinner
+              : l10n.earlierCheckingSpinner(text),
+        );
+      } else {
+        subtitle = l10n.earlierChooseSubtitle;
+        trailing = const Icon(Symbols.chevron_right_rounded);
+      }
+      return TtListRow(
+        title: l10n.earlierChooseDates,
+        subtitle: subtitle,
+        leading: const TtRowIcon(
+          icon: Symbols.edit_calendar_rounded,
+          boxed: false,
+        ),
+        trailing: trailing,
+        tall: true,
+        focusNode: _chooseFocus,
+        off: busy,
+        onTap: busy ? null : _chooseDates,
+        semanticLabel: countingDates && range != null
+            ? l10n.earlierChooseLabelBusy(subtitle)
+            : l10n.earlierChooseLabel,
       );
-      return usable ? row : disabled(row, label, dim: !(loading || _finding));
     }
 
     return TtSheet(
@@ -355,39 +444,27 @@ class _AddEarlierVideosSheetState
             ),
           ),
           if (failed)
-            Padding(
-              padding: EdgeInsets.symmetric(horizontal: tt.spacing.xl),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                spacing: tt.spacing.xs,
-                children: [
-                  Text(
-                    l10n.earlierCountFailed,
-                    style: tt.text.material.bodyLarge!.copyWith(
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                  TtButton(
-                    label: l10n.tryAgain,
-                    kind: TtButtonKind.tonal,
-                    onPressed: () {
-                      // A second tap before the redraw: the count runs.
-                      if (_finding) return;
-                      final range = _failedRange;
-                      if (range != null) {
-                        unawaited(_find(range));
-                      } else {
-                        ref.invalidate(earlierVideosControllerProvider);
-                      }
-                    },
-                  ),
-                ],
+            TtBanner(
+              kind: TtBannerKind.warning,
+              icon: Symbols.error_rounded,
+              title: l10n.earlierCountFailed,
+              action: TtButton(
+                label: l10n.tryAgain,
+                kind: TtButtonKind.text,
+                onPressed: () {
+                  // A second tap before the redraw: the count runs.
+                  if (_finding) return;
+                  final range = _failedRange;
+                  if (range != null) {
+                    unawaited(_find(range));
+                  } else {
+                    ref.invalidate(earlierVideosControllerProvider);
+                  }
+                },
               ),
-            )
-          else ...[
-            today(),
-            chooseDates(),
-          ],
+            ),
+          today(),
+          chooseDates(),
         ],
       ),
     );

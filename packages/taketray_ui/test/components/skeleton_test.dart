@@ -102,4 +102,37 @@ void main() {
       semantics.dispose();
     });
   });
+
+  group('TtSkeletonCount', () {
+    testWidgets('is a 48 x 16 dp bar with 8 dp corners, hidden from readers', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(ttTestApp(const Align(child: TtSkeletonCount())));
+
+      expect(tester.getSize(find.byType(TtSkeletonCount)), const Size(48, 16));
+      final decoration =
+          tester
+                  .widget<DecoratedBox>(
+                    find.descendant(
+                      of: find.byType(TtSkeletonCount),
+                      matching: find.byType(DecoratedBox),
+                    ),
+                  )
+                  .decoration
+              as BoxDecoration;
+      final scheme = tester.element(find.byType(TtSkeletonCount)).scheme;
+      expect(decoration.borderRadius, BorderRadius.circular(8));
+      expect(decoration.color, scheme.surfaceContainerHighest);
+      expect(
+        find.descendant(
+          of: find.byType(TtSkeletonCount),
+          matching: find.byType(ExcludeSemantics),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSemantics(find.byType(TtSkeletonCount)).label, '');
+      semantics.dispose();
+    });
+  });
 }

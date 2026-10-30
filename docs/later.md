@@ -7,10 +7,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 4
 
 - Phase 3 left these (D-76):
-  - `TtListRow` has no disabled state: the "Add earlier videos" sheet fakes it with an `Opacity` and a disabled semantics node. Add one to `taketray_ui` (`.li.dis`, opacity 0.45, announced disabled) and use it there.
   - `openCamera()` returning false (no camera app, or the call failed) shows nothing. Needs copy for a snack; the owner approves it.
   - "On since {time}" and "Shooting since {time}" are built once per build, so they do not change at midnight until something redraws the screen. Rebuild the card at the next local midnight (a timer, or a clock provider that ticks).
-  - `TtShootingModeCard.referencesRow` also holds the "Add earlier videos" row. When References land, decide how the two rows share the card (the owner's design).
+  - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
 
 - Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.

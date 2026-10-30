@@ -19,6 +19,8 @@ Widget _card({
   ValueChanged<bool>? onChanged,
   VoidCallback? onOpenCamera,
   bool rows = false,
+  bool earlier = false,
+  VoidCallback? onEarlier,
   bool camera = true,
 }) => Center(
   child: SizedBox(
@@ -32,15 +34,25 @@ Widget _card({
       backdrop: backdrop,
       cameraLabel: camera ? 'Open camera' : null,
       onOpenCamera: camera ? (onOpenCamera ?? () {}) : null,
-      referencesRow: rows
-          ? TtCardRow(
-              icon: Symbols.link_rounded,
-              title: 'References · 4',
-              subtitle: 'From 2 Recording reels',
-              semanticLabel: 'References, 4, from your Recording reels',
-              onPressed: () {},
-            )
-          : null,
+      rows: [
+        if (rows)
+          TtCardRow(
+            icon: Symbols.link_rounded,
+            title: 'References · 4',
+            subtitle: 'From 2 Recording reels',
+            semanticLabel: 'References, 4, from your Recording reels',
+            onPressed: () {},
+          ),
+        if (earlier)
+          TtCardRow(
+            icon: Symbols.history_rounded,
+            title: 'Add earlier videos',
+            subtitle: 'Shot before Shooting mode was on',
+            semanticLabel:
+                'Add earlier videos, shot before Shooting mode was on',
+            onPressed: onEarlier ?? () {},
+          ),
+      ],
       toTagStrip: rows
           ? TtCardRow(
               icon: Symbols.sell_rounded,
@@ -235,6 +247,97 @@ void main() {
       expect(find.text('References · 4'), findsOneWidget);
       expect(find.text('3 clips to tag'), findsOneWidget);
       expect(find.text('Tag now'), findsOneWidget);
+    });
+
+    testWidgets('rows: none, one or two, in order, above the strip', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_card()));
+      expect(find.byType(TtCardRow), findsNothing);
+
+      await tester.pumpWidget(ttTestApp(_card(earlier: true)));
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.text('Shot before Shooting mode was on'), findsOneWidget);
+      expect(find.byIcon(Symbols.history_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+
+      await tester.pumpWidget(ttTestApp(_card(rows: true, earlier: true)));
+      double top(String text) => tester.getTopLeft(find.text(text)).dy;
+      expect(top('References · 4'), lessThan(top('Add earlier videos')));
+      expect(top('Add earlier videos'), lessThan(top('3 clips to tag')));
+      // Three bands, all the card's width, one under the other.
+      final rects = [
+        for (final title in [
+          'References · 4',
+          'Add earlier videos',
+          '3 clips to tag',
+        ])
+          tester.getRect(
+            find
+                .ancestor(
+                  of: find.text(title),
+                  matching: find.byType(Semantics),
+                )
+                .first,
+          ),
+      ];
+      expect(rects[0].bottom, lessThanOrEqualTo(rects[1].top));
+      expect(rects[1].bottom, lessThanOrEqualTo(rects[2].top));
+    });
+
+    testWidgets('the Add earlier videos row is a button with its label and '
+        'calls back', (tester) async {
+      final semantics = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(
+        ttTestApp(_card(earlier: true, onEarlier: () => taps++)),
+      );
+
+      final node = tester.getSemantics(
+        find.bySemanticsLabel(
+          'Add earlier videos, shot before Shooting mode was on',
+        ),
+      );
+      expect(node.getSemanticsData().flagsCollection.isButton, isTrue);
+      await tester.tap(find.text('Add earlier videos'));
+      expect(taps, 1);
+      semantics.dispose();
+    });
+
+    testWidgets('three rows are refused', (tester) async {
+      expect(
+        () => TtShootingModeCard(
+          on: true,
+          title: 't',
+          subtitle: 's',
+          switchSemanticLabel: 'x',
+          onChanged: (_) {},
+          rows: [
+            for (var i = 0; i < 3; i++)
+              TtCardRow(
+                icon: Symbols.link_rounded,
+                title: '$i',
+                onPressed: () {},
+              ),
+          ],
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    testWidgets('the card with two rows and a strip passes accessibility', (
+      tester,
+    ) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(rows: true, earlier: true, backdrop: fixtureThumb(2)),
+            brightness: brightness,
+            disableAnimations: true,
+          ),
+        );
+        await expectTtAccessible(tester);
+      }
     });
 
     testWidgets('a long subtitle wraps and does not overflow at 2x', (

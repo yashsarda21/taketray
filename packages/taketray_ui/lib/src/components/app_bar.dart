@@ -31,8 +31,13 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.large = false,
     this.selection = false,
+    this.titleFocusNode,
     super.key,
   });
+
+  /// A focus node for the title, so a screen can move focus to it when it
+  /// opens (a screen reader then starts at the title). Null for none.
+  final FocusNode? titleFocusNode;
 
   /// The screen's name; one line, with an ellipsis if too long.
   final String title;
@@ -73,30 +78,34 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
         ? tt.text.pageTitle
         : tt.text.screenTitle;
     final subtitle = this.subtitle;
+    final focusNode = titleFocusNode;
+    final titleText = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: titleStyle.copyWith(color: onBar),
+        ),
+        if (subtitle != null && !single)
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: tt.text.material.bodySmall!.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
     final titleBlock = Semantics(
       header: true,
       container: true,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: titleStyle.copyWith(color: onBar),
-          ),
-          if (subtitle != null && !single)
-            Text(
-              subtitle,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: tt.text.material.bodySmall!.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-            ),
-        ],
-      ),
+      child: focusNode == null
+          ? titleText
+          : Focus(focusNode: focusNode, child: titleText),
     );
 
     final bar = SizedBox(

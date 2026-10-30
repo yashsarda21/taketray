@@ -182,9 +182,9 @@
   "@earlierChooseDates": {
     "description": "Row of the Add earlier videos sheet that opens the date range picker."
   },
-  "earlierPickerHelp": "Choose dates",
-  "@earlierPickerHelp": {
-    "description": "Help text at the top of the date range picker of Add earlier videos."
+  "earlierPickerTitle": "Choose dates",
+  "@earlierPickerTitle": {
+    "description": "Title of the date range picker of Add earlier videos. A screen reader starts there."
   },
   "earlierPickerConfirm": "Find videos",
   "@earlierPickerConfirm": {
@@ -277,6 +277,232 @@
   "earlierCountFailed": "Couldn't check your videos.",
   "@earlierCountFailed": {
     "description": "Text in the Add earlier videos sheet when the counts could not be read."
+  },
+  "earlierCardRowSubtitle": "Shot before Shooting mode was on",
+  "@earlierCardRowSubtitle": {
+    "description": "Line under the Add earlier videos row on the Shooting mode card."
+  },
+  "earlierCardRowLabel": "Add earlier videos, shot before Shooting mode was on",
+  "@earlierCardRowLabel": {
+    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
+  },
+  "earlierChooseSubtitle": "Up to 10 years back",
+  "@earlierChooseSubtitle": {
+    "description": "Line under Choose dates… in the Add earlier videos sheet."
+  },
+  "earlierChecking": "{range} · Checking…",
+  "@earlierChecking": {
+    "description": "Line under Choose dates… while the videos of the chosen dates are counted. The range is short dates, like 8 Oct – 10 Oct.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingRange": "{range} · Adding…",
+  "@earlierAddingRange": {
+    "description": "Line under Choose dates… while the videos of the chosen dates are added.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingToday": "Adding…",
+  "@earlierAddingToday": {
+    "description": "At the end of the Today row while Today's videos are added."
+  },
+  "earlierTodayLabelNew": "Today, {count, plural, one{1 new video} other{{count} new videos}}. Adds them to To tag",
+  "@earlierTodayLabelNew": {
+    "description": "What a screen reader says for the Today row when it has new videos.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "earlierTodayLabelNone": "Today, no new videos",
+  "@earlierTodayLabelNone": {
+    "description": "What a screen reader says for the Today row with no new videos."
+  },
+  "earlierTodayLabelLoading": "Today, checking for new videos",
+  "@earlierTodayLabelLoading": {
+    "description": "What a screen reader says for the Today row while its count loads."
+  },
+  "earlierTodayLabelNotChecked": "Today, not checked",
+  "@earlierTodayLabelNotChecked": {
+    "description": "What a screen reader says for the Today row when its count could not be read."
+  },
+  "earlierChooseLabel": "Choose dates, up to 10 years back",
+  "@earlierChooseLabel": {
+    "description": "What a screen reader says for the Choose dates… row."
+  },
+  "earlierChooseLabelBusy": "Choose dates. {status}",
+  "@earlierChooseLabelBusy": {
+    "description": "What a screen reader says for the Choose dates… row while it works. The status is the line under it, like 8 Oct – 10 Oct · Checking….",
+    "placeholders": {
+      "status": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct · Checking…"
+      }
+    }
+  },
+  "earlierCheckingSpinner": "Checking your videos from {range}",
+  "@earlierCheckingSpinner": {
+    "description": "What a screen reader says for the spinner while the videos of the chosen dates are counted.",
+    "placeholders": {
+      "range": {
+        "type": "String",
+        "example": "8 Oct – 10 Oct"
+      }
+    }
+  },
+  "earlierAddingSpinner": "Adding the videos",
+  "@earlierAddingSpinner": {
+    "description": "What a screen reader says for the spinner while the videos of the chosen dates are added."
+  },
+  "earlierAddingTodaySpinner": "Adding today's videos",
+  "@earlierAddingTodaySpinner": {
+    "description": "What a screen reader says for the spinner while Today's videos are added."
+  },
+  "pickerClose": "Close",
+  "@pickerClose": {
+    "description": "Close button (✕) of the date range picker."
+  },
+  "pickerClear": "Clear",
+  "@pickerClear": {
+    "description": "Action of the date range picker that removes the chosen days."
+  },
+  "pickerQuickYesterday": "Yesterday",
+  "@pickerQuickYesterday": {
+    "description": "Quick range of the date range picker: the day before today."
+  },
+  "pickerQuickLastWeek": "Last week",
+  "@pickerQuickLastWeek": {
+    "description": "Quick range of the date range picker: the whole week before this one."
+  },
+  "pickerQuickThisMonth": "This month",
+  "@pickerQuickThisMonth": {
+    "description": "Quick range of the date range picker: the 1st of this month to today."
+  },
+  "pickerQuickLastMonth": "Last month",
+  "@pickerQuickLastMonth": {
+    "description": "Quick range of the date range picker: the whole month before this one."
+  },
+  "pickerSummaryNothingTitle": "Tap the first day",
+  "@pickerSummaryNothingTitle": {
+    "description": "Summary of the date range picker when nothing is chosen: its big line."
+  },
+  "pickerSummaryNothingSubtitle": "Then tap the last day.",
+  "@pickerSummaryNothingSubtitle": {
+    "description": "Summary of the date range picker when nothing is chosen: the line under it."
+  },
+  "pickerSummaryFirstTitle": "{day} – …",
+  "@pickerSummaryFirstTitle": {
+    "description": "Summary when only the first day is chosen: its big line.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "8 Oct"
+      }
+    }
+  },
+  "pickerSummaryFirstSubtitle": "Tap the last day, or Find videos for {day} only.",
+  "@pickerSummaryFirstSubtitle": {
+    "description": "Summary when only the first day is chosen: the line under it. Find videos is the name of the button.",
+    "placeholders": {
+      "day": {
+        "type": "String",
+        "example": "8 Oct"
+      }
+    }
+  },
+  "pickerSummaryRangeTitle": "{from} – {to}",
+  "@pickerSummaryRangeTitle": {
+    "description": "Summary of a chosen range: its big line.",
+    "placeholders": {
+      "from": {
+        "type": "String",
+        "example": "8 Oct"
+      },
+      "to": {
+        "type": "String",
+        "example": "10 Oct"
+      }
+    }
+  },
+  "pickerSummaryRangeSubtitle": "{count, plural, one{1 day} other{{count} days}}",
+  "@pickerSummaryRangeSubtitle": {
+    "description": "Summary of a chosen range: how many days it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSummaryOneDay": "1 day",
+  "@pickerSummaryOneDay": {
+    "description": "Summary of one chosen day: the line under the day."
+  },
+  "calendarPreviousMonth": "Previous month",
+  "@calendarPreviousMonth": {
+    "description": "What a screen reader says for the button that shows the month before."
+  },
+  "calendarNextMonth": "Next month",
+  "@calendarNextMonth": {
+    "description": "What a screen reader says for the button that shows the next month."
+  },
+  "calendarBackToDays": "Back to the days",
+  "@calendarBackToDays": {
+    "description": "What a screen reader says for the month button while the year and month grid is open."
+  },
+  "calendarChooseMonthYear": "Choose month and year. Now {monthYear}",
+  "@calendarChooseMonthYear": {
+    "description": "What a screen reader says for the month button that opens the year and month grid.",
+    "placeholders": {
+      "monthYear": {
+        "type": "String",
+        "example": "October 2026"
+      }
+    }
+  },
+  "calendarYear": "Year",
+  "@calendarYear": {
+    "description": "Heading over the years of the year and month grid."
+  },
+  "calendarMonth": "Month",
+  "@calendarMonth": {
+    "description": "Heading over the months of the year and month grid."
+  },
+  "calendarFirstDay": "first day",
+  "@calendarFirstDay": {
+    "description": "Said after a day's date when it is the first chosen day."
+  },
+  "calendarLastDay": "last day",
+  "@calendarLastDay": {
+    "description": "Said after a day's date when it is the last chosen day."
+  },
+  "calendarOnlyDay": "the only day",
+  "@calendarOnlyDay": {
+    "description": "Said after a day's date when it is the first and the last chosen day."
+  },
+  "calendarInRange": "in the range",
+  "@calendarInRange": {
+    "description": "Said after a day's date when it is between the first and last chosen day."
+  },
+  "calendarToday": "today",
+  "@calendarToday": {
+    "description": "Said after a day's date when it is today."
+  },
+  "calendarNotAvailable": "not available",
+  "@calendarNotAvailable": {
+    "description": "Said after a day's or month's name when it cannot be chosen."
+  },
+  "calendarHasChosenDays": "has chosen days",
+  "@calendarHasChosenDays": {
+    "description": "Said after a month's name when it holds chosen days."
   },
   "clipMissing": "Missing from phone",
   "@clipMissing": {

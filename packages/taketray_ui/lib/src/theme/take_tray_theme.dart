@@ -119,29 +119,6 @@ abstract final class TakeTrayTheme {
         modalElevation: 0,
         showDragHandle: false,
       ),
-      // The date range picker (D-78). The prototype has none, so it is built
-      // from the same tokens: Material 3 already draws it in the scheme's
-      // colours and the text theme; this puts it on the surface a TakeTray
-      // screen has (not a tinted container), draws the days between the two
-      // chosen ones in the brand's container, and gives the tablet layout
-      // the dialog's panel and corners.
-      datePickerTheme: DatePickerThemeData(
-        backgroundColor: cs.surfaceContainerHigh,
-        surfaceTintColor: Colors.transparent,
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(
-            Radius.circular(TtMetrics.dialogRadius),
-          ),
-        ),
-        rangePickerBackgroundColor: cs.surface,
-        rangePickerSurfaceTintColor: Colors.transparent,
-        rangePickerHeaderBackgroundColor: cs.surface,
-        rangePickerHeaderForegroundColor: cs.onSurface,
-        // One size down from Material's, so "Start Date – End Date" fits a
-        // 360 dp phone instead of ending in an ellipsis.
-        rangePickerHeaderHeadlineStyle: text.titleMedium,
-        rangeSelectionBackgroundColor: cs.primaryContainer,
-      ),
       // tt-style.css: .style-tt .dlg; proto.css: .dlg (surface-container-high).
       dialogTheme: DialogThemeData(
         backgroundColor: cs.surfaceContainerHigh,

@@ -52,3 +52,20 @@ final WidgetbookComponent ttSkeletonLineComponent = WidgetbookComponent(
     ),
   ],
 );
+
+/// `TtSkeletonCount`: the 48 x 16 dp bar standing in for a row's count.
+final WidgetbookComponent ttSkeletonCountComponent = WidgetbookComponent(
+  name: 'TtSkeletonCount',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) => Padding(
+        padding: EdgeInsets.all(context.tt.spacing.m),
+        child: const Align(
+          alignment: Alignment.topLeft,
+          child: TtSkeletonCount(),
+        ),
+      ),
+    ),
+  ],
+);

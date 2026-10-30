@@ -3,6 +3,8 @@ import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/banners.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
 import 'package:taketray_widgetbook/components/clip_tile.dart';
+import 'package:taketray_widgetbook/components/date_range_calendar.dart';
+import 'package:taketray_widgetbook/components/date_range_picker.dart';
 import 'package:taketray_widgetbook/components/dialog.dart';
 import 'package:taketray_widgetbook/components/empty_state.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
@@ -62,6 +64,7 @@ final List<WidgetbookNode> ttCatalog = [
       ttMissingClipTileComponent,
       ttClipTileSkeletonComponent,
       ttSkeletonLineComponent,
+      ttSkeletonCountComponent,
       ttSceneHeaderComponent,
       ttDayHeaderComponent,
     ],
@@ -93,11 +96,21 @@ final List<WidgetbookNode> ttCatalog = [
       ttSameAsPreviousButtonComponent,
     ],
   ),
-  WidgetbookFolder(name: 'Inputs', children: [ttTextFieldComponent]),
+  WidgetbookFolder(
+    name: 'Inputs',
+    children: [
+      ttTextFieldComponent,
+      ttDateRangeCalendarComponent,
+      ttDateRangePickerComponent,
+    ],
+  ),
   WidgetbookFolder(
     name: 'Lists',
     children: [
       ttGroupedRowsComponent,
+      ttListRowComponent,
+      ttRowCountComponent,
+      ttRowSpinnerComponent,
       ttBannerComponent,
       ttCalloutComponent,
       ttInfoBarComponent,

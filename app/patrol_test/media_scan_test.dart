@@ -103,21 +103,17 @@ void main() {
         what: 'the Today row to say 1 new',
       );
       await $('Choose dates…').tap();
-      // The picker opens on this month, and the current month is its last, so
-      // the last "<day of the month>" in it is today. Today to today is one
-      // day.
-      final todayCell = find
-          .descendant(
-            of: find.byType(DateRangePickerDialog),
-            matching: find.text('${DateTime.now().day}'),
-          )
-          .last;
+      // TakeTray's own picker (D-79) opens on this month. Today to today is
+      // one day: tap it, then Find videos. The query stays in the test folder
+      // (the watched folders were set to it above).
+      final todayCell = find.byKey(
+        ValueKey<DateTime>(DateUtils.dateOnly(DateTime.now())),
+      );
       await waitFor(
         $,
         () => todayCell.evaluate().isNotEmpty,
         what: "today's day in the date picker",
       );
-      await $(todayCell).tap();
       await $(todayCell).tap();
       await $('Find videos').tap();
       await waitFor(

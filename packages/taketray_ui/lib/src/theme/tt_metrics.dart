@@ -859,10 +859,13 @@ abstract final class TtMetrics {
   // ---- Skeleton ----
 
   /// Width of the skeleton bar that stands in for a short value, such as the
-  /// count at the end of a list row. Not in the prototype, whose skeleton
-  /// lines are 90 to 140 px wide inline and are for titles; a count is a
-  /// short number or word ("none", "12 new").
-  static const double skeletonCountWidth = 56;
+  /// count at the end of a list row ("none", "12 new").
+  // handoff: Loading, "a skeleton bar (48 x 16 dp, 8 dp radius)"
+  static const double skeletonCountWidth = 48;
+
+  /// Height of that bar.
+  // handoff: Loading, "a skeleton bar (48 x 16 dp, 8 dp radius)"
+  static const double skeletonCountHeight = 16;
 
   /// Height of a skeleton line.
   // proto.css: .skel-line { height: 12px }
@@ -1432,9 +1435,30 @@ abstract final class TtMetrics {
   // proto.css: .li .txt b { font-weight: 500 }
   static const double listRowTitleWeight = 500;
 
-  /// Opacity of a list row that cannot be used.
-  // proto.css: .li.dis { opacity: .45 }
-  static const double listRowDisabledOpacity = 0.45;
+  /// Minimum height of a tall list row (two lines and a trailing part).
+  // proto.css: .li.tall { min-height: 72px }
+  static const double listRowTallMinHeight = 72;
+
+  /// Weight of the title of a list row that is off.
+  // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
+  static const double listRowOffTitleWeight = 400;
+
+  /// Minimum height of the count pill at the end of a list row.
+  // proto.css: .ev-row .ev-trail .n { min-height: 28px }
+  static const double rowCountMinHeight = 28;
+
+  /// Side of the spinner that replaces a row's chevron while it works.
+  // proto.css: .ev-spin { width: 20px; height: 20px }
+  static const double rowSpinnerSize = 20;
+
+  /// Stroke of that spinner.
+  // proto.css: .ev-spin { border-width: 2px }
+  static const double rowSpinnerStroke = 2;
+
+  /// The arc a spinner shows while animations are removed (a quarter turn).
+  // Not in the prototype: its spinner always turns. Without animations the
+  // spinner stands still, and an arc tells it from a full ring.
+  static const double rowSpinnerStillValue = 0.25;
 
   /// Text scale from which a list row's trailing value or button moves
   /// under the text, because beside it the title would break inside words.
@@ -1588,4 +1612,46 @@ abstract final class TtMetrics {
   // 64 dp, so a label at 2x (28 dp of text under a 24 dp icon) would not fit
   // in the 52 dp inside the padding; at 1.5 it does.
   static const double navPillMaxTextScale = 1.5;
+
+  // ---- Date range calendar and picker (D-79) ----
+
+  /// Height of the row of weekday letters above the days.
+  // proto.css: .evp-wd { min-height: 40px }
+  static const double calendarWeekdayHeight = 40;
+
+  /// Gap between a month button's name and its arrow.
+  // proto.css: .evp-mbtn { gap: 2px }
+  static const double calendarMonthButtonGap = 2;
+
+  /// Weight of a day's number.
+  // proto.css: .evd { font-weight: 600 }
+  static const double calendarDayWeight = 600;
+
+  /// Weight of the number of a day of another month.
+  // proto.css: .evd-c.out .evd { font-weight: 500 }
+  static const double calendarDayOutWeight = 500;
+
+  /// Weight of the number of the first and the last chosen day.
+  // proto.css: .evd-c.sel .evd { font-weight: 700 }
+  static const double calendarDaySelectedWeight = 700;
+
+  /// Weight of the number of a day that is off.
+  // proto.css: .evd[disabled] { font-weight: 400 }
+  static const double calendarDayOffWeight = 400;
+
+  /// Width of a pill in the year and month grid, in ems of its label (the
+  /// grid has fewer columns at large text).
+  // proto.css: .evp-pills { grid-template-columns: repeat(auto-fill,
+  // minmax(5em, 1fr)) }
+  static const double calendarPillMinWidthEms = 5;
+
+  /// How far a new month slides in, and how far the picker rises.
+  // proto.css: @keyframes evpNext { from { transform: translateX(24px) } },
+  // @keyframes evpIn { from { transform: translateY(24px) } }
+  static const double calendarSlideTravel = 24;
+
+  /// How far a horizontal drag on the days must go to change the month when
+  /// it is too slow to count as a fling.
+  // Not in the prototype (it has no swipe): the width of a day.
+  static const double calendarSwipeDistance = 48;
 }

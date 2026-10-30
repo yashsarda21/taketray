@@ -98,7 +98,7 @@ void main() {
     );
     expect(l10n.earlierRangeToday, 'Today');
     expect(l10n.earlierChooseDates, 'Choose dates…');
-    expect(l10n.earlierPickerHelp, 'Choose dates');
+    expect(l10n.earlierPickerTitle, 'Choose dates');
     expect(l10n.earlierPickerConfirm, 'Find videos');
     expect(l10n.earlierFoundTitle(1), '1 video found');
     expect(l10n.earlierFoundTitle(2), '2 videos found');
@@ -148,5 +148,87 @@ void main() {
         reason: '$key has no description for translators',
       );
     }
+  });
+
+  testWidgets('the redesigned Add earlier videos strings (D-79)', (
+    tester,
+  ) async {
+    late AppLocalizations l10n;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            l10n = AppLocalizations.of(context);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(l10n.earlierCardRowSubtitle, 'Shot before Shooting mode was on');
+    expect(
+      l10n.earlierCardRowLabel,
+      'Add earlier videos, shot before Shooting mode was on',
+    );
+    expect(l10n.earlierChooseSubtitle, 'Up to 10 years back');
+    expect(
+      l10n.earlierChecking('8 Oct – 10 Oct'),
+      '8 Oct – 10 Oct · Checking…',
+    );
+    expect(
+      l10n.earlierAddingRange('8 Oct – 10 Oct'),
+      '8 Oct – 10 Oct · Adding…',
+    );
+    expect(l10n.earlierAddingToday, 'Adding…');
+    expect(
+      l10n.earlierTodayLabelNew(1),
+      'Today, 1 new video. Adds them to To tag',
+    );
+    expect(
+      l10n.earlierTodayLabelNew(3),
+      'Today, 3 new videos. Adds them to To tag',
+    );
+    expect(l10n.earlierTodayLabelNone, 'Today, no new videos');
+    expect(l10n.earlierTodayLabelLoading, 'Today, checking for new videos');
+    expect(l10n.earlierTodayLabelNotChecked, 'Today, not checked');
+    expect(l10n.earlierChooseLabel, 'Choose dates, up to 10 years back');
+    expect(
+      l10n.earlierChooseLabelBusy('8 Oct – 10 Oct · Checking…'),
+      'Choose dates. 8 Oct – 10 Oct · Checking…',
+    );
+    expect(
+      l10n.earlierCheckingSpinner('8 Oct – 10 Oct'),
+      'Checking your videos from 8 Oct – 10 Oct',
+    );
+    expect(l10n.earlierPickerTitle, 'Choose dates');
+    expect(l10n.pickerClear, 'Clear');
+    expect(l10n.pickerSummaryNothingTitle, 'Tap the first day');
+    expect(l10n.pickerSummaryNothingSubtitle, 'Then tap the last day.');
+    expect(l10n.pickerSummaryFirstTitle('8 Oct'), '8 Oct – …');
+    expect(
+      l10n.pickerSummaryFirstSubtitle('8 Oct'),
+      'Tap the last day, or Find videos for 8 Oct only.',
+    );
+    expect(l10n.pickerSummaryRangeTitle('8 Oct', '10 Oct'), '8 Oct – 10 Oct');
+    expect(l10n.pickerSummaryRangeSubtitle(3), '3 days');
+    expect(l10n.pickerSummaryOneDay, '1 day');
+    expect(
+      [
+        l10n.pickerQuickYesterday,
+        l10n.pickerQuickLastWeek,
+        l10n.pickerQuickThisMonth,
+        l10n.pickerQuickLastMonth,
+      ],
+      ['Yesterday', 'Last week', 'This month', 'Last month'],
+    );
+    expect(l10n.calendarYear, 'Year');
+    expect(l10n.calendarMonth, 'Month');
+    expect(
+      l10n.calendarChooseMonthYear('October 2026'),
+      'Choose month and year. Now October 2026',
+    );
+    expect(l10n.calendarBackToDays, 'Back to the days');
   });
 }

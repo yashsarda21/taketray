@@ -33,6 +33,10 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
           label: 'references row',
           initialValue: true,
         );
+        final earlier = context.knobs.boolean(
+          label: 'add earlier videos row',
+          initialValue: true,
+        );
         final toTag = context.knobs.boolean(
           label: 'to-tag strip',
           initialValue: true,
@@ -52,15 +56,25 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
             },
             cameraLabel: camera ? 'Open camera' : null,
             onOpenCamera: () {},
-            referencesRow: references
-                ? TtCardRow(
-                    icon: Symbols.link_rounded,
-                    title: 'References · 4',
-                    subtitle: 'From 2 Recording reels',
-                    semanticLabel: 'References, 4, from your Recording reels',
-                    onPressed: () {},
-                  )
-                : null,
+            rows: [
+              if (references)
+                TtCardRow(
+                  icon: Symbols.link_rounded,
+                  title: 'References · 4',
+                  subtitle: 'From 2 Recording reels',
+                  semanticLabel: 'References, 4, from your Recording reels',
+                  onPressed: () {},
+                ),
+              if (earlier)
+                TtCardRow(
+                  icon: Symbols.history_rounded,
+                  title: 'Add earlier videos',
+                  subtitle: 'Shot before Shooting mode was on',
+                  semanticLabel:
+                      'Add earlier videos, shot before Shooting mode was on',
+                  onPressed: () {},
+                ),
+            ],
             toTagStrip: toTag
                 ? TtCardRow(
                     icon: Symbols.sell_rounded,

@@ -46,8 +46,14 @@ import 'package:flutter_test/flutter_test.dart';
 /// Every text render object is restored, and the frame repainted, before
 /// this returns.
 class TtTextContrastGuideline extends AccessibilityGuideline {
-  /// The guideline; use [ttTextContrastGuideline].
-  const new();
+  /// The guideline; use [ttTextContrastGuideline], or
+  /// [ttTextContrastIncludingDisabledGuideline] to measure disabled text too.
+  const new({this.includeDisabled = false});
+
+  /// Whether text whose semantics are disabled is measured as well (it is
+  /// exempt in Flutter's guideline, as WCAG exempts inactive controls). A
+  /// row that is "off" but must keep AA contrast (D-79) is checked this way.
+  final bool includeDisabled;
 
   /// The thresholds and text selection of Flutter's guideline.
   static const _flutter = MinimumTextContrastGuideline();
@@ -67,7 +73,10 @@ class TtTextContrastGuideline extends AccessibilityGuideline {
   @override
   Future<Evaluation> evaluate(WidgetTester tester) async {
     var result = const Evaluation.pass();
-    final samples = await measureTtTextContrast(tester);
+    final samples = await measureTtTextContrast(
+      tester,
+      includeDisabled: includeDisabled,
+    );
     for (final sample in samples) {
       if (sample.ratio - sample.required >= _tolerance) continue;
       result += Evaluation.fail(
@@ -86,6 +95,11 @@ class TtTextContrastGuideline extends AccessibilityGuideline {
 /// The text contrast check of `expectTtAccessible` on every platform (D-62).
 const AccessibilityGuideline ttTextContrastGuideline =
     TtTextContrastGuideline();
+
+/// [ttTextContrastGuideline] that also measures text whose semantics are
+/// disabled, for rows and days that are off but must stay readable (D-79).
+const AccessibilityGuideline ttTextContrastIncludingDisabledGuideline =
+    TtTextContrastGuideline(includeDisabled: true);
 
 /// One text checked by [TtTextContrastGuideline].
 @immutable
@@ -136,8 +150,9 @@ class TtTextContrastSample {
 /// Measures every text that [TtTextContrastGuideline] checks, in the order
 /// of the semantics tree; see the guideline for how.
 Future<List<TtTextContrastSample>> measureTtTextContrast(
-  WidgetTester tester,
-) async {
+  WidgetTester tester, {
+  bool includeDisabled = false,
+}) async {
   final samples = <TtTextContrastSample>[];
   for (final renderView in tester.binding.renderViews) {
     final targets = <_Target>[];
@@ -145,8 +160,14 @@ Future<List<TtTextContrastSample>> measureTtTextContrast(
       renderView.owner!.semanticsOwner!.rootSemanticsNode!,
       renderView,
       targets,
+      includeDisabled: includeDisabled,
     );
-    _collectShownTexts(tester, renderView, targets);
+    _collectShownTexts(
+      tester,
+      renderView,
+      targets,
+      includeDisabled: includeDisabled,
+    );
     if (targets.isEmpty) continue;
 
     final texts = <RenderBox>[];
@@ -210,9 +231,11 @@ class _Target {
 void _collectTargets(
   SemanticsNode node,
   RenderView renderView,
-  List<_Target> out,
-) {
-  final disabled = node.flagsCollection.isEnabled == ui.Tristate.isFalse;
+  List<_Target> out, {
+  required bool includeDisabled,
+}) {
+  final disabled =
+      !includeDisabled && node.flagsCollection.isEnabled == ui.Tristate.isFalse;
   if (node.isInvisible ||
       node.isMergedIntoParent ||
       node.flagsCollection.isHidden ||
@@ -225,7 +248,7 @@ void _collectTargets(
     return true;
   });
   for (final child in children) {
-    _collectTargets(child, renderView, out);
+    _collectTargets(child, renderView, out, includeDisabled: includeDisabled);
   }
   final data = node.getSemanticsData();
   if (data.flagsCollection.scopesRoute ||
@@ -348,8 +371,9 @@ void _setTextOf(RenderBox box, InlineSpan span) {
 void _collectShownTexts(
   WidgetTester tester,
   RenderView renderView,
-  List<_Target> targets,
-) {
+  List<_Target> targets, {
+  required bool includeDisabled,
+}) {
   final reached = {for (final t in targets) t.text};
   for (final element
       in find
@@ -370,7 +394,8 @@ void _collectShownTexts(
     if (node != null &&
         (node.isInvisible ||
             node.flagsCollection.isHidden ||
-            node.flagsCollection.isEnabled == ui.Tristate.isFalse)) {
+            (!includeDisabled &&
+                node.flagsCollection.isEnabled == ui.Tristate.isFalse))) {
       continue;
     }
     final target = _textTarget(element, label, renderView);

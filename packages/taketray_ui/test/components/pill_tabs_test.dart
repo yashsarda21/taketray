@@ -16,6 +16,76 @@ const _tabs = [
 
 void main() {
   group('TtPillTabs', () {
+    testWidgets('wrapAtLargeText: at 2x the tabs wrap in rows and do not '
+        'scroll', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(
+          TtPillTabs<String>(
+            tabs: _tabs,
+            value: 'all',
+            onChanged: (_) {},
+            wrapAtLargeText: true,
+          ),
+          textScale: 2,
+        ),
+      );
+
+      expect(find.byType(SingleChildScrollView), findsNothing);
+      final rights = [
+        for (final label in ['All', 'Waiting 3', 'Ready', 'Published'])
+          tester.getRect(find.text(label)).right,
+      ];
+      expect(rights.every((r) => r <= 360 - 16), isTrue, reason: 'none cut');
+      final tops = {
+        for (final label in ['All', 'Waiting 3', 'Ready', 'Published'])
+          tester.getRect(find.text(label)).top,
+      };
+      expect(tops.length, greaterThan(1), reason: 'more than one row');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('wrapAtLargeText: at 1x the tabs still scroll sideways', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          TtPillTabs<String>(
+            tabs: _tabs,
+            value: 'all',
+            onChanged: (_) {},
+            wrapAtLargeText: true,
+          ),
+        ),
+      );
+
+      expect(find.byType(SingleChildScrollView), findsOneWidget);
+    });
+
+    testWidgets('a null value selects no tab', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(
+          TtPillTabs<String?>(tabs: _tabs, value: null, onChanged: (_) {}),
+        ),
+      );
+
+      for (final label in ['All', 'Waiting 3', 'Ready', 'Published reels']) {
+        expect(
+          tester
+              .getSemantics(find.bySemanticsLabel(label))
+              .getSemanticsData()
+              .flagsCollection
+              .isSelected,
+          isNot(ui.Tristate.isTrue),
+          reason: label,
+        );
+      }
+      semantics.dispose();
+    });
+
     testWidgets('calls onChanged with the tapped value', (tester) async {
       final values = <String>[];
       await tester.pumpWidget(

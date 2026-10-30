@@ -28,9 +28,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   full, " · Manual mode: add clips yourself"), the **Open camera** button,
 ///   the latest waiting clip's thumbnail behind it (when nothing waits, the
 ///   first stored clip that is not missing, as the prototype does; none if
-///   there is no such clip), and two rows at the bottom:
-///   - **Add earlier videos**, only while access is full and the session
-///     has not used it yet (`earlierAdded`, D-73); it opens the sheet;
+///   there is no such clip), and rows at the bottom (D-79: the card's `rows`
+///   slot holds References first, then Add earlier videos, then the strip):
+///   - **Add earlier videos** (history icon, "Shot before Shooting mode was
+///     on", a chevron), only while access is full and the session has not
+///     used it yet (`earlierAdded`, D-73); it opens the sheet;
 ///   - "N clips to tag · Tag now", when any wait; it opens To tag.
 ///
 /// The card is not drawn until the stored Shooting mode has been read, so it
@@ -100,13 +102,17 @@ class ShootingModeSection extends ConsumerWidget {
               ),
         cameraLabel: l10n.shootingOpenCamera,
         onOpenCamera: controller.openCamera,
-        referencesRow: full && !shooting.earlierAdded
-            ? TtCardRow(
-                icon: Symbols.history_rounded,
-                title: l10n.addEarlierVideos,
-                onPressed: () => showAddEarlierVideos(context),
-              )
-            : null,
+        // References (Phase 4/5) will come first in this list.
+        rows: [
+          if (full && !shooting.earlierAdded)
+            TtCardRow(
+              icon: Symbols.history_rounded,
+              title: l10n.addEarlierVideos,
+              subtitle: l10n.earlierCardRowSubtitle,
+              semanticLabel: l10n.earlierCardRowLabel,
+              onPressed: () => showAddEarlierVideos(context),
+            ),
+        ],
         toTagStrip: pending.isEmpty
             ? null
             : TtCardRow(

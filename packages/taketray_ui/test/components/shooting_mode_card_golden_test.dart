@@ -30,33 +30,53 @@ void main() {
         _Card(on: false, subtitle: _longSubtitle),
       ),
       TtScenario(
-        'on, backdrop, references and to-tag',
-        _Card(backdrop: fixtureThumb(2), rows: true),
+        'on, backdrop, references, earlier and to-tag',
+        _Card(backdrop: fixtureThumb(2), references: true, earlier: true),
       ),
       const TtScenario('on, no backdrop', _Card()),
       const TtScenario(
         'on, no backdrop, references and to-tag',
-        _Card(rows: true),
+        _Card(references: true),
+      ),
+      const TtScenario(
+        'on, no backdrop, earlier and to-tag',
+        _Card(earlier: true),
+      ),
+      const TtScenario(
+        'on, no backdrop, references, earlier and to-tag',
+        _Card(references: true, earlier: true),
       ),
       TtScenario(
         'on, long subtitle',
-        _Card(backdrop: fixtureThumb(4), subtitle: _longSubtitle, rows: true),
+        _Card(
+          backdrop: fixtureThumb(4),
+          subtitle: _longSubtitle,
+          references: true,
+          earlier: true,
+        ),
       ),
       TtScenario(
         'on, backdrop fails to load',
-        _Card(backdrop: brokenImage, rows: true),
+        _Card(backdrop: brokenImage, references: true, earlier: true),
       ),
     ],
   );
 }
 
 class _Card extends StatelessWidget {
-  const new({this.on = true, this.subtitle, this.backdrop, this.rows = false});
+  const new({
+    this.on = true,
+    this.subtitle,
+    this.backdrop,
+    this.references = false,
+    this.earlier = false,
+  });
 
   final bool on;
   final String? subtitle;
   final ImageProvider? backdrop;
-  final bool rows;
+  final bool references;
+  final bool earlier;
 
   @override
   Widget build(BuildContext context) => TtShootingModeCard(
@@ -73,15 +93,23 @@ class _Card extends StatelessWidget {
     backdrop: backdrop,
     cameraLabel: 'Open camera',
     onOpenCamera: () {},
-    referencesRow: rows
-        ? TtCardRow(
-            icon: Symbols.link_rounded,
-            title: 'References · 4',
-            subtitle: 'From 2 Recording reels',
-            onPressed: () {},
-          )
-        : null,
-    toTagStrip: rows
+    rows: [
+      if (references)
+        TtCardRow(
+          icon: Symbols.link_rounded,
+          title: 'References · 4',
+          subtitle: 'From 2 Recording reels',
+          onPressed: () {},
+        ),
+      if (earlier)
+        TtCardRow(
+          icon: Symbols.history_rounded,
+          title: 'Add earlier videos',
+          subtitle: 'Shot before Shooting mode was on',
+          onPressed: () {},
+        ),
+    ],
+    toTagStrip: references || earlier
         ? TtCardRow(
             icon: Symbols.sell_rounded,
             title: '3 clips to tag',

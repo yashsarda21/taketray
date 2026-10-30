@@ -536,6 +536,56 @@ void main() {
       await expectLink(tester, shown: true);
     });
 
+    testWidgets('the row has the history icon, its line and a chevron', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on());
+
+      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
+      expect(row, findsOneWidget);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Symbols.history_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('Shot before Shooting mode was on'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Symbols.chevron_right_rounded),
+        ),
+        findsOneWidget,
+      );
+      final semantics = tester.ensureSemantics();
+      expect(
+        find.bySemanticsLabel(
+          'Add earlier videos, shot before Shooting mode was on',
+        ),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('the card gets it in its rows slot, above the strip', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on());
+
+      final card = tester.widget<TtShootingModeCard>(
+        find.byType(TtShootingModeCard),
+      );
+      expect(card.rows, hasLength(1));
+      expect(card.rows.single.title, 'Add earlier videos');
+    });
+
     testWidgets('hidden once it was used this session', (tester) async {
       await expectLink(tester, shown: false, shooting: on(earlierAdded: true));
     });
