@@ -33,10 +33,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   shot (`toTagTimesProvider`, D-83), and its length; or, when nothing
 ///   waits, "All caught up" (Shooting mode on) or "Nothing to tag" (off).
 ///
-/// While the list, or the first answer of its times, loads it shows skeleton
-/// tiles, so no tile shows a wrong time first. Later lists keep the times
-/// they have while new ones are read; a clip without one yet, or times that
-/// failed, show the phone's time. Tapping a tile does nothing yet.
+/// While the list loads it shows skeleton tiles. The times do not hold the
+/// grid back: a clip whose time is not known yet (the first answer, or a new
+/// clip while a new list's times are read), or times that failed, shows the
+/// phone's time, then switches to the time where it was shot when the answer
+/// arrives. Tapping a tile does nothing yet.
 ///
 /// A clip flagged missing shows as the "Missing from phone" tile, with no
 /// Remove button; the verifier already takes missing clips that are only in
@@ -110,11 +111,10 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     // A shooting state that could not be read counts as off: its switch still
     // works, and "off" is the safe thing to show.
     final shootingOn = shooting.value?.on ?? false;
-    final ready =
-        !clips.isLoading &&
-        !clips.hasError &&
-        !shooting.isLoading &&
-        (times.hasValue || times.hasError);
+    // The times never hold the grid back: a tile shows the phone's time until
+    // they arrive (a hung channel would otherwise keep skeletons up for its
+    // timeouts).
+    final ready = !clips.isLoading && !clips.hasError && !shooting.isLoading;
     final localTimes = times.value ?? const <int, ClipLocalTime>{};
     final waiting = inShootingOrder(clips.value ?? const []);
 

@@ -39,9 +39,10 @@ class Pumped {
 
 /// To tag with fake view models. [clips] null: the list is still loading.
 ///
-/// [times] are the clips' local times (`toTagTimesProvider`); null: they are
-/// still loading. By default none, so each tile shows the phone's time.
-/// [timesFail]: reading them fails.
+/// [times] are the clips' local times (`toTagTimesProvider`); null: they
+/// come from [timesLater] (still loading until the test completes it). By
+/// default none, so each tile shows the phone's time. [timesFail]: reading
+/// them fails.
 Future<Pumped> pump(
   WidgetTester tester, {
   ShootingState shooting = ShootingState.off,
@@ -49,6 +50,7 @@ Future<Pumped> pump(
   List<Clip>? clips = const [],
   Map<int, ClipLocalTime>? times = const {},
   bool timesFail = false,
+  Completer<Map<int, ClipLocalTime>>? timesLater,
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
@@ -66,7 +68,9 @@ Future<Pumped> pump(
       toTagControllerProvider.overrideWith(() => fakeToTag),
       toTagTimesProvider.overrideWith((ref) {
         if (timesFail) return Future.error(StateError('no times'));
-        if (times == null) return Completer<Map<int, ClipLocalTime>>().future;
+        if (times == null) {
+          return (timesLater ?? Completer<Map<int, ClipLocalTime>>()).future;
+        }
         return Future.value(times);
       }),
       clockProvider.overrideWithValue(FixedClock(_now)),
@@ -340,14 +344,32 @@ void main() {
       expect(tiles(tester).single.timeText, '16:11');
     });
 
-    testWidgets('while the times load, skeletons; no tile with a wrong time', (
-      tester,
-    ) async {
-      await pump(tester, clips: [testClip(1)], times: null, settle: false);
-      await tester.pump();
+    testWidgets("while the times load, tiles show the phone's time; then the "
+        'time where it was shot', (tester) async {
+      final later = Completer<Map<int, ClipLocalTime>>();
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 9, 41))],
+        times: null,
+        timesLater: later,
+      );
 
-      expect(find.byType(TtClipTileSkeleton), findsWidgets);
-      expect(find.byType(TtClipTile), findsNothing);
+      // No skeletons waiting on the bridge (a hung channel would keep them
+      // for its timeouts): the tile is there at once, in the phone's time.
+      expect(find.byType(TtClipTileSkeleton), findsNothing);
+      expect(plain(tiles(tester).single.timeText!), '9:41 AM');
+
+      later.complete({
+        1: ClipLocalTime(
+          wallClock: DateTime.utc(2026, 10, 28, 4, 11),
+          zoneId: 'Europe/London',
+          isPhoneZone: false,
+        ),
+      });
+      await tester.pumpAndSettle();
+
+      expect(plain(tiles(tester).single.timeText!), '4:11 AM');
+      expect(plain(tiles(tester).single.semanticLabel), 'Clip, 4:11 AM, 0:32');
     });
 
     testWidgets("times that fail show the phone's time", (tester) async {

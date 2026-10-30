@@ -104,4 +104,5 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 - `TtGlass`: the shadow bleeds through the translucent fill.
 - Wrapped two-line buttons need more vertical padding. The `TtSwitch` focus highlight is taller than the track.
 - `TtThemeData` value equality; badge `TextPainter` re-measures on every build.
+- Zone-id aliases after a tz data rename (D-83). `Europe/Kiev` and `Europe/Kyiv` are the same zone but compare unequal as strings. So a clip stored with the old id on a phone that now reports the new one gets `isPhoneZone` false, and the viewer would say "Kiev time". Fix it by canonicalising both ids on the native side in a batch like `zoneOffsetsMs` (`android.icu.util.TimeZone.getCanonicalID(id)`, which follows the tz data's links; `ZoneId.normalized()` only turns a fixed-offset id into a `ZoneOffset` and does not resolve aliases), or by comparing the zones' offset rules (`ZoneId.of(a).rules == ZoneId.of(b).rules`) instead of their ids.
 - The theme doc should steer feature code to `Tt*` widgets, since stock Switch, Checkbox, TextField and AlertDialog are not themed.

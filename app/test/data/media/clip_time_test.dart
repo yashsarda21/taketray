@@ -170,6 +170,73 @@ void main() {
     expect(bridge.calls, ['currentZoneId']);
   });
 
+  test('a cached unknown zone is not logged again', () async {
+    bridge.currentZone = 'Europe/London';
+    final clip = clipAt(1, summer, zone: 'Mars/Olympus_Mons');
+    final first = captureLogs();
+    await service.localTimes([clip]);
+    expect(logText(first), contains('1 clips'));
+
+    final second = captureLogs();
+    final again = await service.localTimes([clip]);
+
+    // Same answer, from the cache, and no second line about it.
+    expect(again[1]!.wallClock, wall(2026, 7, 1, 13));
+    expect(second.where((r) => r.loggerName == 'clipTime'), isEmpty);
+  });
+
+  test('a failing phone-zone batch after an unknown zone falls back', () async {
+    final failing = _FailSecondBridge()..currentZone = 'Europe/London';
+    final svc = ClipTimeService(failing);
+    final records = captureLogs();
+    final clip = clipAt(1, summer, zone: 'Mars/Olympus_Mons');
+
+    final times = await svc.localTimes([clip]);
+
+    // The phone's zone through Dart's local time; nothing thrown.
+    expect(
+      times[1],
+      ClipLocalTime(
+        wallClock: dartLocalWall(summer),
+        zoneId: 'Europe/London',
+        isPhoneZone: true,
+      ),
+    );
+    expect(
+      records.where((r) => r.level == Level.WARNING).single.message,
+      contains('fake-failure'),
+    );
+
+    // The failed batch cached nothing: the phone's zone is asked again (and
+    // only that: the unknown answer itself was cached).
+    final again = await svc.localTimes([clip]);
+    expect(again[1]!.wallClock, wall(2026, 7, 1, 13));
+    expect(requests(failing).last, [
+      ['Europe/London'],
+      [summer.millisecondsSinceEpoch],
+    ]);
+    expect(failing.calls.where((c) => c == 'zoneOffsetsMs'), hasLength(3));
+  });
+
+  test('a London clip on a phone in India shows London time '
+      '(Review Focus 2)', () async {
+    bridge.currentZone = 'Asia/Kolkata';
+
+    final times = await service.localTimes([
+      clipAt(1, DateTime.utc(2026, 10, 24, 22, 30), zone: 'Europe/London'),
+    ]);
+
+    // 23:30 BST on 24 Oct in London (04:00 on 25 Oct in Kolkata).
+    expect(
+      times[1],
+      ClipLocalTime(
+        wallClock: wall(2026, 10, 24, 23, 30),
+        zoneId: 'Europe/London',
+        isPhoneZone: false,
+      ),
+    );
+  });
+
   test('one bridge call for many clips', () async {
     bridge.currentZone = 'Europe/London';
     final zones = [null, 'Europe/London', 'Asia/Kolkata', 'UTC'];
@@ -442,4 +509,16 @@ class _ShortBridge extends FakeMediaBridge {
     List<String> zoneIds,
     List<int> instantsMs,
   ) async => (await super.zoneOffsetsMs(zoneIds, instantsMs)).sublist(1);
+}
+
+/// Fails its second `zoneOffsetsMs` call (the phone-zone batch that follows
+/// an unknown zone), as the phone could.
+class _FailSecondBridge extends FakeMediaBridge {
+  int _offsetCalls = 0;
+
+  @override
+  Future<List<int?>> zoneOffsetsMs(List<String> zoneIds, List<int> instantsMs) {
+    if (++_offsetCalls == 2) failNext('zoneOffsetsMs');
+    return super.zoneOffsetsMs(zoneIds, instantsMs);
+  }
 }

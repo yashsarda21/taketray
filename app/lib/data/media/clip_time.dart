@@ -57,7 +57,9 @@ class ClipTimeService {
   /// 3. A clip whose zone the phone does not know (the answer is null) uses
   ///    the phone's zone instead; only then, and only for the instants not
   ///    already cached, a second batch asks for the phone's zone. The unknown
-  ///    answer is cached, so next time that takes no call.
+  ///    answer is cached, so next time that takes no call. An info line counts
+  ///    the unknown zones the bridge reported in this call (not the cached
+  ///    ones, so a redraw logs nothing).
   /// 4. If a bridge call fails, times out or answers with the wrong length,
   ///    the clips it was for use the phone's zone through Dart's own local
   ///    time (`DateTime.toLocal`). The same happens when the phone's zone
@@ -69,8 +71,9 @@ class ClipTimeService {
     if (clips.isEmpty) return {};
     final phone = await _phoneZone();
     final known = <_Key, int?>{};
+    final asked = <_Key>{};
 
-    await _fill({
+    await _fill(asked: asked, {
       for (final c in clips)
         if (c.timeZoneId ?? phone case final zone?) (zone, _ms(c)),
     }, known);
@@ -82,10 +85,17 @@ class ClipTimeService {
             c,
     ];
     if (unknown.isNotEmpty) {
-      _log.info(
-        '${unknown.length} clips have a time zone the phone does not know; '
-        "using the phone's",
+      // Logged once, when the phone first says so: a cached answer is not
+      // news, and To tag asks again on every list change.
+      final news = unknown.where(
+        (c) => asked.contains((c.timeZoneId!, _ms(c))),
       );
+      if (news.isNotEmpty) {
+        _log.info(
+          '${news.length} clips have a time zone the phone does not know; '
+          "using the phone's",
+        );
+      }
       if (phone != null) {
         await _fill({for (final c in unknown) (phone, _ms(c))}, known);
       }
@@ -143,9 +153,13 @@ class ClipTimeService {
 
   /// Puts the offset of every key of [keys] into [known]: from the cache
   /// (which counts as a use), else from one bridge call for all the rest,
-  /// whose answers go into the cache too. On a failure the rest stay out of
-  /// [known] and out of the cache.
-  Future<void> _fill(Set<_Key> keys, Map<_Key, int?> known) async {
+  /// whose answers go into the cache too (and their keys into [asked]). On a
+  /// failure the rest stay out of [known] and out of the cache.
+  Future<void> _fill(
+    Set<_Key> keys,
+    Map<_Key, int?> known, {
+    Set<_Key>? asked,
+  }) async {
     final misses = <_Key>[];
     for (final key in keys) {
       if (_cache.containsKey(key)) {
@@ -178,6 +192,7 @@ class ClipTimeService {
       );
       return;
     }
+    asked?.addAll(misses);
     for (var i = 0; i < misses.length; i++) {
       known[misses[i]] = answers[i];
       _remember(misses[i], answers[i]);
