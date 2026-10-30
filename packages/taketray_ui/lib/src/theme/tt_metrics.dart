@@ -134,11 +134,6 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .fab { height: 52px }
   static const double fabHeight = 52;
 
-  /// How far the FAB rises while a snack with an action is showing: the
-  /// snack's 56 dp and an 8 dp gap.
-  // screens.js: fab() { bottom: … + (snack ? 64 : 0) }
-  static const double fabSnackLift = 64;
-
   /// Blur radius of the FAB's primary-tinted shadow.
   // tt-style.css: .style-tt .fab { box-shadow: 0 12px 26px -8px … }
   static const double fabShadowBlur = 26;

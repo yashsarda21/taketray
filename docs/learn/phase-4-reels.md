@@ -115,7 +115,7 @@ It ends with `All tests passed!`. Now, in `widgetbook/test/catalog_coverage_test
 **What we built:** the pieces the reel screens and the clip viewer are made of, in `packages/taketray_ui`, so that each screen only arranges them:
 
 - **A status menu item.** `TtMenuItem` can have a second line (`subtitle`), a filled icon and a `checked` state. This is the "Collecting / Ready to edit / Published" menu.
-- **A rule for the floating button.** `TtNavPill.fabBottom(context)` says where a FAB sits above the nav pill, and `TtFab(liftBy: ...)` lets it rise out of the way of a snack.
+- **A rule for the floating button.** `TtNavPill.fabBottom(context)` says where a FAB sits above the nav pill, and `TtFab` rises out of the way of a snack by itself.
 - **`TtReelHeader`.** The reel's name, status pill, "12 clips · 4:32", "2 missing", and the Shot ideas with "Show more".
 - **The viewer's dark pieces.** `TtReelTag` (and `TtReelTagRow`) and `TtViewerActions`.
 - **`TtReelPickRow` and `TtReelPickNewRow`.** The rows of the "add to reel" sheet.
@@ -137,27 +137,26 @@ It ends with `All tests passed!`. Now, in `widgetbook/test/catalog_coverage_test
 
   `checked` is a `bool?`: `null` is an ordinary entry, `false` and `true` are choices. That also keeps every older `TtMenuItem` working with no change.
 
-- **A floating button has a fixed place, and a lift.** The place is a function, so every tab uses the same number:
+- **A floating button has a fixed place, and it gets out of a snack's way.** The place is a function, so every tab uses the same number:
 
   ```dart
   static double fabBottom(BuildContext context) =>
       reservedHeight(context) + context.tt.spacing.m;
   ```
 
-  The lift is a paint-time shift that animates with the theme's motion (so "remove animations" makes it a jump):
+  The snack's height is not fixed: it depends on the message, the width and the text size. So `TtSnack` measures itself and reports it, once for each `ScaffoldMessenger`, and `TtFab` listens:
 
   ```dart
-  TweenAnimationBuilder<double>(
-    tween: Tween<double>(end: liftBy),
-    duration: tt.motion.medium1,
-    curve: tt.motion.emphasizedDecelerate,
-    builder: (context, lift, child) =>
-        Transform.translate(offset: Offset(0, -lift), child: child),
-    child: _buildButton(context),
-  )
+  final gap = context.tt.spacing.s;
+  return ValueListenableBuilder<double>(
+    valueListenable: TtSnackHeight.of(context),
+    child: button,
+    builder: (context, snack, child) =>
+        _Lift(lift: snack > 0 ? snack + gap : 0, child: child!),
+  );
   ```
 
-  A `Transform` moves how the button is drawn and touched but not the space it takes. That is why a test finds the lifted button by its label and not with `getRect(find.byType(TtFab))`.
+  The lift itself is a paint-time shift that animates with the theme's motion (so "remove animations" makes it a jump): `Transform.translate(offset: Offset(0, -value), child: child)` inside a `TweenAnimationBuilder`. A `Transform` moves how the button is drawn and touched but not the space it takes. That is why a test finds the lifted button by its label and not with `getRect(find.byType(TtFab))`. `liftBy` is only an override for a fixed number.
 
 - **"Show more" is a measurement, not a character count.** Whether a text needs more than two lines depends on the font, the width and the text size. `TextPainter` can lay the text out the way `Text` will and say `didExceedMaxLines`:
 
@@ -173,7 +172,7 @@ It ends with `All tests passed!`. Now, in `widgetbook/test/catalog_coverage_test
 
   The width is only known during layout, so a small render object (`TextOverflowSwitch`) asks this question there and shows one of two layouts: the text alone, or the clamped text with the button. A `LayoutBuilder` would be the usual tool, but it cannot answer an `IntrinsicHeight`'s questions, which the golden harness asks.
 
-- **The viewer is always dark.** The viewer's pieces use the video colours (`tt.colors.onVideo`, white) instead of the theme's, so the same screen looks the same in light and dark mode. A bar of three actions is `Expanded` columns of at least 64 dp, so every action is a 48 dp target at any text size; `TtViewerActions` has an `assert` that there are three or four of them.
+- **The viewer is always dark.** The viewer's pieces use the video colours (`tt.colors.onVideo`, white) instead of the theme's, so the same screen looks the same in light and dark mode. A bar of three actions is equal columns of at least 64 dp, so every action is a 48 dp target at any text size; `TtViewerActions` has an `assert` that there are three or four of them. If the widest word still does not fit its column (four actions at 2× text), `EqualColumns` shrinks all the actions by one scale, so no label is smaller than another.
 
 - **A row that can be one of several, or the only one.** `TtReelPickRow` shows `TtCheckMark` when `multi` and `TtRadioMark` when not, and sets the matching semantics from the same two booleans:
 
@@ -184,7 +183,7 @@ It ends with `All tests passed!`. Now, in `widgetbook/test/catalog_coverage_test
 
 **Where it lives:**
 
-- `packages/taketray_ui/lib/src/components/`: `menu.dart` and `internal/menu_panel.dart` (the menu items), `buttons.dart` (`TtFab`), `nav_pill.dart`, `reel_header.dart`, `viewer_chrome.dart`, `reel_pick_row.dart`, `internal/text_overflow_switch.dart`.
+- `packages/taketray_ui/lib/src/components/`: `menu.dart` and `internal/menu_panel.dart` (the menu items), `buttons.dart` (`TtFab`), `nav_pill.dart`, `reel_header.dart`, `viewer_chrome.dart`, `reel_pick_row.dart`, `internal/text_overflow_switch.dart`, `internal/snack_height.dart`, `internal/equal_columns.dart`.
 - Their tests and goldens: `packages/taketray_ui/test/components/` (the `*_test.dart` and `*_golden_test.dart` files with the same names).
 - The Widgetbook use cases: `widgetbook/lib/components/` (`reel_header.dart`, `viewer_chrome.dart`, `reel_pick_row.dart`, and the new "Status menu" use case in `menu.dart`).
 
@@ -196,7 +195,7 @@ It ends with `All tests passed!`. Now, in `widgetbook/test/catalog_coverage_test
 
 It ends with `All tests passed!`. Now in `packages/taketray_ui/lib/src/components/internal/text_overflow_switch.dart`, make `exceeds` return `true` always (replace its first line, `if (!width.isFinite || ...) return false;`, with `return true;`) and run the same command. `shot ideas shows Show more only when clamped` fails with `Expected: no matching candidates`, `Actual: _TextWidgetFinder:<Found 1 widget with text "Show more"`: the button shows for text that fits. Put the file back with `git checkout -- packages/taketray_ui/lib/src/components/internal/text_overflow_switch.dart`; this works once the task is committed, and until then undo your edit by hand.
 
-To see the pieces, run the catalogue (`docs/dev-setup.md`) and open `TtReelHeader` (try a long text, then a narrow phone and a big text size), `TtMenuButton / Status menu`, `TtFab` (the "snack showing" switch) and `TtViewerActions`.
+To see the pieces, run the catalogue (`docs/dev-setup.md`) and open `TtReelHeader` (try a long text, then a narrow phone and a big text size), `TtMenuButton / Status menu`, `TtFab` (the "lift by" slider) and `TtViewerActions` (switch on four actions and raise the text size).
 
 **Decisions:** D-82 (the FAB contract and these components), with D-81 (the weight helper and the caller's words), D-80 (what Phase 4 shows and hides) and D-79 (the nav pill) as background.
 

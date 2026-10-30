@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:taketray_ui/src/components/internal/fit_height.dart';
+import 'package:taketray_ui/src/components/internal/equal_columns.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -133,7 +133,9 @@ class TtViewerAction {
 /// is a button at least 64 dp high and as wide as its column (a 48 dp target
 /// at every text size), with 16 dp corners and white content; a label that
 /// does not fit wraps, and at large text the bar grows taller rather than cut
-/// anything. The bar is 8 dp from the screen's sides.
+/// anything. When even the widest single word does not fit its column, every
+/// action shrinks by the same amount (`EqualColumns`), so no label is smaller
+/// than another. The bar is 8 dp from the screen's sides.
 class TtViewerActions extends StatelessWidget {
   /// A bar of [actions], three or four of them.
   const new({required this.actions, super.key})
@@ -152,14 +154,9 @@ class TtViewerActions extends StatelessWidget {
     // proto.css: .viewer .vacts
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            for (final action in actions)
-              Expanded(child: _ActionButton(action: action)),
-          ],
-        ),
+      child: EqualColumns(
+        minHeight: TtMetrics.viewerActionMinHeight,
+        children: [for (final action in actions) _ActionButton(action: action)],
       ),
     );
   }
@@ -189,35 +186,26 @@ class _ActionButton extends StatelessWidget {
         child: InkWell(
           onTap: action.onPressed,
           borderRadius: radius,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: TtMetrics.viewerActionMinHeight,
-            ),
-            child: Padding(
-              padding: EdgeInsets.all(tt.spacing.xxs),
-              // A word wider than its column shrinks the action instead of
-              // breaking in the middle.
-              child: FitHeight(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  spacing: tt.spacing.xxs,
-                  children: [
-                    Icon(
-                      action.icon,
-                      size: tt.sizes.icon,
-                      color: tt.colors.onVideo,
-                    ),
-                    Text(
-                      action.label,
-                      textAlign: TextAlign.center,
-                      style: tt.text.material.labelMedium!.copyWith(
-                        color: tt.colors.onVideo,
-                      ),
-                    ),
-                  ],
+          child: Padding(
+            padding: EdgeInsets.all(tt.spacing.xxs),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              spacing: tt.spacing.xxs,
+              children: [
+                Icon(
+                  action.icon,
+                  size: tt.sizes.icon,
+                  color: tt.colors.onVideo,
                 ),
-              ),
+                Text(
+                  action.label,
+                  textAlign: TextAlign.center,
+                  style: tt.text.material.labelMedium!.copyWith(
+                    color: tt.colors.onVideo,
+                  ),
+                ),
+              ],
             ),
           ),
         ),

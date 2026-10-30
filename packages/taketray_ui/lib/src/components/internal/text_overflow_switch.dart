@@ -1,4 +1,5 @@
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 /// A text, and how many lines of it fit: the question [TextOverflowSwitch]
@@ -74,37 +75,84 @@ class TextClamp {
 /// For a text that shows a "Show more" button only when it is cut short. The
 /// width is known during layout, like a `LayoutBuilder`, but this answers
 /// intrinsic size queries (inside an `IntrinsicHeight`), which a
-/// `LayoutBuilder` cannot. Both children are built and laid out; only the
-/// chosen one is drawn, hit tested and seen by a screen reader.
-class TextOverflowSwitch extends MultiChildRenderObjectWidget {
+/// `LayoutBuilder` cannot. Both children are built, but only the chosen one
+/// is laid out, drawn, hit tested, seen by a screen reader and reachable by
+/// keyboard focus (the other is under an `ExcludeFocus`, switched one frame
+/// after the choice changes).
+class TextOverflowSwitch extends StatefulWidget {
   /// Shows [whole] if [clamp] fits its lines, else [clamped].
-  new({
+  const new({
     required this.clamp,
-    required Widget whole,
-    required Widget clamped,
+    required this.whole,
+    required this.clamped,
     super.key,
-  }) : super(children: [whole, clamped]);
+  });
 
   /// The text and lines to measure.
   final TextClamp clamp;
+
+  /// What shows when the text fits.
+  final Widget whole;
+
+  /// What shows when the text is cut short.
+  final Widget clamped;
+
+  @override
+  State<TextOverflowSwitch> createState() => _TextOverflowSwitchState();
+}
+
+class _TextOverflowSwitchState extends State<TextOverflowSwitch> {
+  bool _clampedShown = false;
+
+  /// Layout chose [clamped]; the focus follows in the next frame.
+  void _chose({required bool clamped}) {
+    if (clamped == _clampedShown) return;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _clampedShown != clamped) {
+        setState(() => _clampedShown = clamped);
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => _RawSwitch(
+    clamp: widget.clamp,
+    onChose: _chose,
+    whole: ExcludeFocus(excluding: _clampedShown, child: widget.whole),
+    clamped: ExcludeFocus(excluding: !_clampedShown, child: widget.clamped),
+  );
+}
+
+class _RawSwitch extends MultiChildRenderObjectWidget {
+  new({
+    required this.clamp,
+    required this.onChose,
+    required Widget whole,
+    required Widget clamped,
+  }) : super(children: [whole, clamped]);
+
+  final TextClamp clamp;
+  final void Function({required bool clamped}) onChose;
 
   @override
   MultiChildRenderObjectElement createElement() => _SwitchElement(this);
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderTextOverflowSwitch(clamp);
+      _RenderTextOverflowSwitch(clamp, onChose);
 
   @override
   void updateRenderObject(BuildContext context, RenderObject renderObject) {
-    (renderObject as _RenderTextOverflowSwitch).clamp = clamp;
+    (renderObject as _RenderTextOverflowSwitch)
+      ..clamp = clamp
+      ..onChose = onChose;
   }
 }
 
 /// Tells the widget tree which child is shown, so `find` (which skips what is
 /// offstage) and the inspector see one text, not two.
 class _SwitchElement extends MultiChildRenderObjectElement {
-  new(TextOverflowSwitch super.widget);
+  new(_RawSwitch super.widget);
 
   @override
   void debugVisitOnstageChildren(ElementVisitor visitor) {
@@ -123,9 +171,10 @@ class _RenderTextOverflowSwitch extends RenderBox
     with
         ContainerRenderObjectMixin<RenderBox, _Data>,
         RenderBoxContainerDefaultsMixin<RenderBox, _Data> {
-  new(this._clamp);
+  new(this._clamp, this.onChose);
 
   TextClamp _clamp;
+  void Function({required bool clamped}) onChose;
   RenderBox? _showing;
 
   TextClamp get clamp => _clamp;
@@ -174,18 +223,21 @@ class _RenderTextOverflowSwitch extends RenderBox
     _choose(constraints.maxWidth).getDryLayout(constraints.loosen()),
   );
 
+  void _show(RenderBox chosen, {required bool clamped}) {
+    _showing = chosen;
+    markNeedsSemanticsUpdate();
+    onChose(clamped: clamped);
+  }
+
   @override
   void performLayout() {
-    final chosen = _choose(constraints.maxWidth);
-    final other = identical(chosen, _whole) ? _clamped : _whole;
-    chosen.layout(constraints.loosen(), parentUsesSize: true);
-    // The other one is not shown, but is still laid out so that it is never
-    // left waiting for a layout.
-    other.layout(BoxConstraints.tight(Size.zero));
+    final clamped = _clamp.exceeds(constraints.maxWidth);
+    final chosen = clamped ? _clamped : _whole;
     if (!identical(_showing, chosen)) {
-      _showing = chosen;
-      markNeedsSemanticsUpdate();
+      _show(chosen, clamped: clamped);
     }
+    // The other one is not shown and not laid out.
+    chosen.layout(constraints.loosen(), parentUsesSize: true);
     size = constraints.constrain(chosen.size);
   }
 

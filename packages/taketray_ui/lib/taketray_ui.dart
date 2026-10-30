@@ -19,6 +19,7 @@ export 'src/components/glass.dart';
 export 'src/components/grouped_rows.dart';
 export 'src/components/headers.dart';
 export 'src/components/internal/day_text.dart';
+export 'src/components/internal/snack_height.dart' show TtSnackHeight;
 export 'src/components/menu.dart';
 export 'src/components/nav_pill.dart';
 export 'src/components/pill_tabs.dart';

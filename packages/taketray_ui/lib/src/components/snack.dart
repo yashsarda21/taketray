@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/snack_height.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -57,60 +58,62 @@ class TtSnack extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       container: true,
-      child: DecoratedBox(
-        // tt-style.css: .style-tt .snack
-        decoration: BoxDecoration(
-          color: scheme.inverseSurface.withValues(
-            alpha: TtMetrics.snackbarOpacity,
-          ),
-          borderRadius: radius,
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minHeight: minHeight),
-          child: Padding(
-            padding: EdgeInsetsDirectional.fromSTEB(
-              TtMetrics.snackPaddingStart,
-              vertical,
-              TtMetrics.snackPaddingEnd,
-              vertical,
+      child: SnackHeightReporter(
+        child: DecoratedBox(
+          // tt-style.css: .style-tt .snack
+          decoration: BoxDecoration(
+            color: scheme.inverseSurface.withValues(
+              alpha: TtMetrics.snackbarOpacity,
             ),
-            child: DefaultTextStyle.merge(
-              style: messageStyle,
-              child: Row(
-                children: [
-                  if (icon != null) ...[
-                    Icon(
-                      icon,
-                      size: TtMetrics.snackIconSize,
-                      fill: 1,
-                      color: scheme.inversePrimary,
+            borderRadius: radius,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: minHeight),
+            child: Padding(
+              padding: EdgeInsetsDirectional.fromSTEB(
+                TtMetrics.snackPaddingStart,
+                vertical,
+                TtMetrics.snackPaddingEnd,
+                vertical,
+              ),
+              child: DefaultTextStyle.merge(
+                style: messageStyle,
+                child: Row(
+                  children: [
+                    if (icon != null) ...[
+                      Icon(
+                        icon,
+                        size: TtMetrics.snackIconSize,
+                        fill: 1,
+                        color: scheme.inversePrimary,
+                      ),
+                      const SizedBox(width: TtMetrics.snackGap),
+                    ],
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: TtMetrics.snackMessagePadding,
+                        ),
+                        child: Text(message),
+                      ),
                     ),
-                    const SizedBox(width: TtMetrics.snackGap),
+                    if (actionLabel != null) ...[
+                      const SizedBox(width: TtMetrics.snackGap),
+                      // proto.css: .snack .btn.text (inverse-primary), nudged
+                      // for contrast over the translucent fill.
+                      Theme(
+                        data: Theme.of(context).copyWith(
+                          colorScheme: scheme.copyWith(primary: actionColor),
+                        ),
+                        child: TtButton(
+                          label: actionLabel!,
+                          kind: TtButtonKind.text,
+                          onPressed: onAction,
+                        ),
+                      ),
+                    ],
                   ],
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        vertical: TtMetrics.snackMessagePadding,
-                      ),
-                      child: Text(message),
-                    ),
-                  ),
-                  if (actionLabel != null) ...[
-                    const SizedBox(width: TtMetrics.snackGap),
-                    // proto.css: .snack .btn.text (inverse-primary), nudged
-                    // for contrast over the translucent fill.
-                    Theme(
-                      data: Theme.of(context).copyWith(
-                        colorScheme: scheme.copyWith(primary: actionColor),
-                      ),
-                      child: TtButton(
-                        label: actionLabel!,
-                        kind: TtButtonKind.text,
-                        onPressed: onAction,
-                      ),
-                    ),
-                  ],
-                ],
+                ),
               ),
             ),
           ),

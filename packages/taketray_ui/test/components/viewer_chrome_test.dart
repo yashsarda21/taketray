@@ -280,6 +280,57 @@ void main() {
       });
     }
 
+    testWidgets('at 2x with four actions every label is drawn at one size', (
+      tester,
+    ) async {
+      _phone(tester, height: 900);
+      await tester.pumpWidget(ttTestApp(_viewer(count: 4), textScale: 2));
+      expect(tester.takeException(), isNull);
+      // The rects are on the screen, scale included: an icon is 24 dp wide
+      // before any shrink.
+      final icons = [
+        for (final icon in [
+          Symbols.library_add_rounded,
+          Symbols.drive_file_move_rounded,
+          Symbols.playlist_remove_rounded,
+          Symbols.share_rounded,
+        ])
+          tester.getRect(find.byIcon(icon)),
+      ];
+      expect({for (final r in icons) r.width.toStringAsFixed(2)}.length, 1);
+      expect(icons.first.width, lessThan(24), reason: 'the row did shrink');
+      // The same shrink for the labels: every word is as wide as it would be
+      // at that scale, and inside its column.
+      final scale = icons.first.width / 24;
+      for (final label in ['Add to reel', 'Move', 'Remove', 'Share']) {
+        final rect = tester.getRect(find.text(label));
+        final column = tester.getRect(
+          find.ancestor(of: find.text(label), matching: find.byType(InkWell)),
+        );
+        expect(rect.left, greaterThanOrEqualTo(column.left - 0.01));
+        expect(rect.right, lessThanOrEqualTo(column.right + 0.01));
+      }
+      // One line each: the same drawn height, so the same size.
+      final heights = {
+        for (final label in ['Move', 'Remove', 'Share'])
+          tester.getRect(find.text(label)).height.toStringAsFixed(2),
+      };
+      expect(heights.length, 1, reason: 'one size for all labels: $heights');
+      expect(
+        tester.getRect(find.text('Move')).height,
+        closeTo(scale * 2 * 12 * 16 / 12, 4),
+      );
+    });
+
+    testWidgets('three actions at 2x do not shrink at all', (tester) async {
+      _phone(tester, height: 900);
+      await tester.pumpWidget(ttTestApp(_viewer(), textScale: 2));
+      expect(
+        tester.getRect(find.byIcon(Symbols.drive_file_move_rounded)).width,
+        24,
+      );
+    });
+
     for (final brightness in Brightness.values) {
       for (final scale in [1.0, 2.0]) {
         testWidgets('passes the accessibility guidelines '

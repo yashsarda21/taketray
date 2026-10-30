@@ -760,19 +760,21 @@ void main() {
         ),
       );
       expect(tester.getSize(find.byType(TtFab)).height, 52);
-      // The button's root is the lift (a Transform), so the semantics node is
-      // found by its label.
-      expect(
-        tester
-            .getSemantics(find.bySemanticsLabel('Shoot'))
-            .getSemanticsData()
-            .label,
-        'Shoot',
+      // The button's root is the lift (a Transform), so the node is looked
+      // up inside the FAB, not by the FAB itself.
+      final node = find.descendant(
+        of: find.byType(TtFab),
+        matching: find.bySemanticsLabel('Shoot'),
       );
+      expect(node, findsOneWidget);
+      final data = tester.getSemantics(node).getSemanticsData();
+      expect(data.label, 'Shoot');
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.hasAction(SemanticsAction.tap), isTrue);
       semantics.dispose();
     });
 
-    group('lift over a snack', () {
+    group('lift by a fixed number', () {
       Widget fab(double liftBy) => Align(
         alignment: Alignment.bottomRight,
         child: TtFab(
@@ -814,21 +816,20 @@ void main() {
 
         // With animations: it starts where it was, moves over the medium1
         // time, and ends exactly liftBy higher.
-        await tester.pumpWidget(ttTestApp(fab(TtMetrics.fabSnackLift)));
+        await tester.pumpWidget(ttTestApp(fab(64)));
         expect(bottomOf(tester), rest);
         await tester.pump(); // the animation's first frame
         await tester.pump(const Duration(milliseconds: 125));
         final mid = bottomOf(tester);
         expect(mid, lessThan(rest));
-        expect(mid, greaterThan(rest - TtMetrics.fabSnackLift));
+        expect(mid, greaterThan(rest - 64));
         await tester.pumpAndSettle();
-        expect(bottomOf(tester), rest - TtMetrics.fabSnackLift);
-        expect(TtMetrics.fabSnackLift, 64);
+        expect(bottomOf(tester), rest - 64);
         // A screen reader's target moves with it (semantics are in physical
         // pixels).
         expect(
           onScreen(tester.getSemantics(label)).bottom,
-          restSemantics - TtMetrics.fabSnackLift * tester.view.devicePixelRatio,
+          restSemantics - 64 * tester.view.devicePixelRatio,
         );
 
         // And back down when the snack goes.
@@ -837,11 +838,9 @@ void main() {
         expect(bottomOf(tester), rest);
 
         // Under "remove animations" the first frame is already there.
-        await tester.pumpWidget(
-          ttTestApp(fab(TtMetrics.fabSnackLift), disableAnimations: true),
-        );
+        await tester.pumpWidget(ttTestApp(fab(64), disableAnimations: true));
         await tester.pump();
-        expect(bottomOf(tester), rest - TtMetrics.fabSnackLift);
+        expect(bottomOf(tester), rest - 64);
         expect(tester.binding.hasScheduledFrame, isFalse);
         semantics.dispose();
       });
@@ -882,6 +881,196 @@ void main() {
         await tester.pumpWidget(ttTestApp(fab(64)));
         await tester.pumpAndSettle();
         await expectTtAccessible(tester);
+      });
+    });
+
+    group('follows the snack that is showing', () {
+      /// A screen with the FAB 16 dp from the corner, as without a nav pill.
+      Widget screen() => Stack(
+        children: [
+          PositionedDirectional(
+            end: 16,
+            bottom: 16,
+            child: TtFab(
+              label: 'New reel',
+              icon: Symbols.add_rounded,
+              onPressed: () {},
+            ),
+          ),
+        ],
+      );
+
+      Finder drawn() => find.descendant(
+        of: find.byType(TtFab),
+        matching: find.byType(Material),
+      );
+
+      Finder panel() => find.byType(TtSnack);
+
+      Future<ScaffoldFeatureController<SnackBar, SnackBarClosedReason>> show(
+        WidgetTester tester,
+        String message,
+      ) async {
+        final snack = showTtSnack(
+          tester.element(find.byType(Stack).first),
+          message: message,
+          actionLabel: 'Undo',
+          onAction: () {},
+        );
+        await tester.pumpAndSettle();
+        return snack;
+      }
+
+      double height(WidgetTester tester) =>
+          TtSnackHeight.of(tester.element(find.byType(TtFab))).value;
+
+      void phone(WidgetTester tester) {
+        tester.view
+          ..physicalSize = const Size(360, 800)
+          ..devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+      }
+
+      testWidgets('a one-line snack at 1x: the fab clears it by 12 dp', (
+        tester,
+      ) async {
+        phone(tester);
+        await tester.pumpWidget(ttTestApp(screen()));
+        final rest = tester.getRect(drawn()).bottom;
+        expect(height(tester), 0);
+
+        await show(tester, 'Moved to Lisbon trip');
+        final snack = tester.getRect(panel());
+        expect(height(tester), snack.height);
+        expect(snack.height, 56);
+        final fab = tester.getRect(drawn());
+        expect(fab.bottom, lessThanOrEqualTo(snack.top - 12 + 0.01));
+        // It rose by the snack and one 12 dp step, no more.
+        expect(fab.bottom, rest - (snack.height + 12));
+      });
+
+      testWidgets('a three-line snack at 2x: the fab is above its top', (
+        tester,
+      ) async {
+        phone(tester);
+        await tester.pumpWidget(ttTestApp(screen(), textScale: 2));
+        await show(
+          tester,
+          'Added 3 clips to Lisbon trip, London Food and 2 more reels',
+        );
+        final snack = tester.getRect(panel());
+        // Three lines of 2x text: well over the 64 dp a fixed lift would use.
+        expect(snack.height, greaterThan(64 * 2));
+        expect(height(tester), snack.height);
+        final fab = tester.getRect(drawn());
+        expect(fab.bottom, lessThanOrEqualTo(snack.top - 12 + 0.01));
+        expect(fab.overlaps(snack), isFalse);
+      });
+
+      testWidgets('the lift returns to 0 when the snack closes', (
+        tester,
+      ) async {
+        phone(tester);
+        await tester.pumpWidget(ttTestApp(screen()));
+        final rest = tester.getRect(drawn()).bottom;
+        final snack = await show(tester, 'Moved to Lisbon trip');
+        expect(tester.getRect(drawn()).bottom, lessThan(rest));
+
+        snack.close();
+        await tester.pumpAndSettle();
+        expect(height(tester), 0);
+        expect(tester.getRect(drawn()).bottom, rest);
+      });
+
+      testWidgets('a second snack of another height moves it again', (
+        tester,
+      ) async {
+        phone(tester);
+        await tester.pumpWidget(ttTestApp(screen(), textScale: 2));
+        await show(tester, 'Moved');
+        final short = tester.getRect(drawn()).bottom;
+        await show(
+          tester,
+          'Added 3 clips to Lisbon trip, London Food and 2 more reels',
+        );
+        expect(tester.getRect(drawn()).bottom, lessThan(short));
+        expect(
+          tester.getRect(drawn()).bottom,
+          lessThanOrEqualTo(tester.getRect(panel()).top - 12 + 0.01),
+        );
+      });
+
+      testWidgets('under reduced motion it is there at once', (tester) async {
+        phone(tester);
+        Future<double> afterFirstFrames({required bool reduced}) async {
+          await tester.pumpWidget(
+            ttTestApp(screen(), disableAnimations: reduced),
+          );
+          await tester.pumpAndSettle();
+          showTtSnack(
+            tester.element(find.byType(Stack).first),
+            message: 'Moved to Lisbon trip',
+          );
+          // The snack's first frames: laid out, measured, the FAB rebuilt.
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.pump(const Duration(milliseconds: 1));
+          final bottom = tester.getRect(drawn()).bottom;
+          await tester.pumpAndSettle();
+          return bottom;
+        }
+
+        final reduced = await afterFirstFrames(reduced: true);
+        final settled = tester.getRect(drawn()).bottom;
+        expect(reduced, settled);
+
+        // The same frames with animations: still on its way.
+        await tester.pumpWidget(const SizedBox());
+        final animated = await afterFirstFrames(reduced: false);
+        expect(animated, greaterThan(settled));
+      });
+
+      testWidgets('liftBy overrides the snack', (tester) async {
+        phone(tester);
+        await tester.pumpWidget(
+          ttTestApp(
+            Stack(
+              children: [
+                PositionedDirectional(
+                  end: 16,
+                  bottom: 16,
+                  child: TtFab(
+                    label: 'New reel',
+                    icon: Symbols.add_rounded,
+                    liftBy: 0,
+                    onPressed: () {},
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        final rest = tester.getRect(drawn()).bottom;
+        await show(tester, 'Moved to Lisbon trip');
+        expect(tester.getRect(drawn()).bottom, rest);
+      });
+
+      testWidgets('a snack panel outside a snack bar is not a showing snack', (
+        tester,
+      ) async {
+        phone(tester);
+        await tester.pumpWidget(
+          ttTestApp(
+            Column(
+              children: [
+                const TtSnack(message: 'Shown on its own'),
+                Expanded(child: screen()),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(height(tester), 0);
       });
     });
 

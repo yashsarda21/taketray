@@ -255,6 +255,48 @@ void main() {
         expect(tester.getSize(find.text(_long)).height, folded);
       });
 
+      testWidgets('the hidden Show more cannot take keyboard focus', (
+        tester,
+      ) async {
+        _phone(tester);
+        // Focusable nodes inside the header (its status pill, the Show more).
+        int focusable() => FocusManager.instance.rootScope.traversalDescendants
+            .where(
+              (node) =>
+                  node.canRequestFocus &&
+                  node.context
+                          ?.findAncestorWidgetOfExactType<
+                            TtReelHeader<TtStatusKind>
+                          >() !=
+                      null,
+            )
+            .length;
+
+        await tester.pumpWidget(ttTestApp(_header()));
+        await tester.pump();
+        final without = focusable();
+
+        // Short text: the button is built, but hidden and out of the focus.
+        await tester.pumpWidget(ttTestApp(_header(ideas: _short)));
+        await tester.pump();
+        expect(find.text('Show more', skipOffstage: false), findsOneWidget);
+        expect(find.text('Show more'), findsNothing);
+        expect(focusable(), without);
+
+        // Long text: the button is shown and is the one extra stop.
+        await tester.pumpWidget(ttTestApp(_header(ideas: _long)));
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('Show more'), findsOneWidget);
+        expect(focusable(), without + 1);
+
+        // And back to a text that fits: it leaves the focus again.
+        await tester.pumpWidget(ttTestApp(_header(ideas: _short)));
+        await tester.pump();
+        await tester.pump();
+        expect(focusable(), without);
+      });
+
       testWidgets('shotIdeasOpen starts a long text open', (tester) async {
         _phone(tester);
         await tester.pumpWidget(ttTestApp(_header(ideas: _long, open: true)));
