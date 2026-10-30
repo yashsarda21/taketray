@@ -67,6 +67,7 @@ class ShootingModeSection extends ConsumerWidget {
         on: false,
         title: l10n.shootingOffTitle,
         subtitle: l10n.shootingOffSubtitle,
+        semanticLabel: l10n.shootingModeCardSemantics('off'),
         switchSemanticLabel: l10n.shootingSwitchLabel,
         onChanged: controller.setOn,
       );
@@ -90,6 +91,7 @@ class ShootingModeSection extends ConsumerWidget {
         subtitle: limited
             ? l10n.shootingOnSubtitleManual(time)
             : l10n.shootingOnSubtitle(time),
+        semanticLabel: l10n.shootingModeCardSemantics('on'),
         switchSemanticLabel: l10n.shootingSwitchLabel,
         onChanged: controller.setOn,
         backdrop: latest == null
@@ -106,6 +108,7 @@ class ShootingModeSection extends ConsumerWidget {
         rows: [
           if (full && !shooting.earlierAdded)
             TtCardRow(
+              kind: TtCardRowKind.link,
               icon: Symbols.history_rounded,
               title: l10n.addEarlierVideos,
               subtitle: l10n.earlierCardRowSubtitle,
@@ -116,6 +119,7 @@ class ShootingModeSection extends ConsumerWidget {
         toTagStrip: pending.isEmpty
             ? null
             : TtCardRow(
+                kind: TtCardRowKind.strip,
                 icon: Symbols.sell_rounded,
                 title: l10n.shootingStripTitle(pending.length),
                 trailingText: l10n.shootingStripAction,

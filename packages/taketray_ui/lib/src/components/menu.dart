@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:taketray_ui/src/components/internal/menu_panel.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -66,6 +67,20 @@ class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
     if (mounted && _open != open) setState(() => _open = open);
   }
 
+  /// MenuAnchor closes an open menu from inside a build when the window
+  /// changes size, and `setState` is not allowed there (a debug-only assert).
+  /// In a build the change waits for the end of the frame.
+  void _setOpenSafely({required bool open}) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback(
+        (_) => _setOpen(open: open),
+      );
+    } else {
+      _setOpen(open: open);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
@@ -95,8 +110,8 @@ class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
       child: MenuAnchor(
         controller: _controller,
         style: menuStyle,
-        onOpen: () => _setOpen(open: true),
-        onClose: () => _setOpen(open: false),
+        onOpen: () => _setOpenSafely(open: true),
+        onClose: () => _setOpenSafely(open: false),
         menuChildren: [
           TtMenuPanel<T>(items: widget.items, onSelected: widget.onSelected),
         ],

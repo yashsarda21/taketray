@@ -32,9 +32,8 @@ Future<void> _tapInTree(WidgetTester tester, String label) async {
 }
 
 void main() {
-  testWidgets('every use case in the catalogue opens without an error', (
-    tester,
-  ) async {
+  testWidgets('use case tap selects it, and every use case opens without an '
+      'error', (tester) async {
     // A desktop-sized window, so the navigation panel is shown. The tree is
     // longer than the window; each entry is scrolled into view before a tap,
     // so the catalogue can grow without resizing the window.
@@ -65,6 +64,14 @@ void main() {
       // Not pumpAndSettle: TtRecDot pulses for ever.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
+      // The tap really opened this use case, not some other one.
+      expect(
+        WidgetbookState.of(tester.element(find.byType(Scaffold).first))
+            .useCase
+            ?.name,
+        name,
+        reason: '${component.name} / $name was not selected by the tap',
+      );
       expect(
         tester.takeException(),
         isNull,

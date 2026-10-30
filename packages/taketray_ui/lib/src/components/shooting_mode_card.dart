@@ -25,6 +25,7 @@ class TtShootingModeCard extends StatelessWidget {
     required this.on,
     required this.title,
     required this.subtitle,
+    required this.semanticLabel,
     required this.switchSemanticLabel,
     required this.onChanged,
     this.backdrop,
@@ -43,6 +44,11 @@ class TtShootingModeCard extends StatelessWidget {
 
   /// The line under the title (any length; it wraps).
   final String subtitle;
+
+  /// What a screen reader says for the card as a whole, such as "Shooting
+  /// mode, on". The switch, the camera button and the rows keep their own
+  /// nodes inside it.
+  final String semanticLabel;
 
   /// What a screen reader says for the switch.
   final String switchSemanticLabel;
@@ -69,7 +75,14 @@ class TtShootingModeCard extends StatelessWidget {
   final Widget? toTagStrip;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    explicitChildNodes: true,
+    label: semanticLabel,
+    child: _card(context),
+  );
+
+  Widget _card(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
     final corners = BorderRadius.circular(tt.radii.xxl);
@@ -319,19 +332,32 @@ class _TintPainter extends CustomPainter {
       oldDelegate.tint != tint || oldDelegate.black != black;
 }
 
+/// The look of a [TtCardRow].
+enum TtCardRowKind {
+  /// A link to somewhere else, such as References or Add earlier videos: a
+  /// frosted dark band with white text and a chevron.
+  link,
+
+  /// A call to act on waiting work, such as the clips to tag: a tertiary
+  /// container band with an arrow.
+  strip,
+}
+
 /// A full-width row at the bottom of the "on" Shooting mode card.
 ///
-/// Two looks, chosen by [trailingText]:
-/// - without it, a references row: a frosted dark band with white text, an
-///   optional [subtitle] and a chevron;
-/// - with it, a to-tag strip: a tertiary container band, the text and an
-///   arrow after the title.
+/// Two looks, chosen by [kind]:
+/// - [TtCardRowKind.link], a references row: a frosted dark band with white
+///   text, an optional [subtitle] and a chevron;
+/// - [TtCardRowKind.strip], a to-tag strip: a tertiary container band, the
+///   text, an optional [trailingText] and an arrow after the title.
 ///
 /// The whole row is one button named [semanticLabel], or the title,
 /// subtitle and trailing text joined by commas.
 class TtCardRow extends StatelessWidget {
-  /// A row showing [icon] and [title] that calls [onPressed] when tapped.
+  /// A row of look [kind] showing [icon] and [title] that calls [onPressed]
+  /// when tapped.
   const new({
+    required this.kind,
     required this.icon,
     required this.title,
     required this.onPressed,
@@ -339,7 +365,13 @@ class TtCardRow extends StatelessWidget {
     this.trailingText,
     this.semanticLabel,
     super.key,
-  });
+  }) : assert(
+         kind == TtCardRowKind.strip || trailingText == null,
+         'Only a strip has a trailing text',
+       );
+
+  /// Which look the row has.
+  final TtCardRowKind kind;
 
   /// The glyph before the title (drawn filled on a strip).
   final IconData icon;
@@ -350,8 +382,8 @@ class TtCardRow extends StatelessWidget {
   /// A line under the title, or null for none.
   final String? subtitle;
 
-  /// A word before the arrow, such as "Tag now"; giving it makes the row a
-  /// to-tag strip.
+  /// A word before the arrow, such as "Tag now". Only a
+  /// [TtCardRowKind.strip] has one.
   final String? trailingText;
 
   /// What a screen reader says instead of the texts, or null to read them.
@@ -366,7 +398,7 @@ class TtCardRow extends StatelessWidget {
     final scheme = context.scheme;
     final trailing = trailingText;
     final subtitle = this.subtitle;
-    final strip = trailing != null;
+    final strip = kind == TtCardRowKind.strip;
 
     // proto.css: .shoot .strip / .refrow, tt-style.css: .shoot.on .refrow
     final color = strip ? tt.colors.onWaitingContainer : tt.colors.onMedia;

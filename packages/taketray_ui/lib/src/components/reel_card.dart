@@ -7,6 +7,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/glass.dart';
 import 'package:taketray_ui/src/components/status_pill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A reel on the Home screen: a full-bleed 4:5 cover with the reel's status
@@ -40,7 +41,10 @@ class TtReelCard extends StatefulWidget {
     this.onTap,
     this.onReferencesTap,
     super.key,
-  });
+  }) : assert(
+         referenceCount <= 0 || referencesSemanticLabel != null,
+         'A reel with references needs a referencesSemanticLabel',
+       );
 
   /// The reel's name; two lines at most.
   final String name;
@@ -73,7 +77,8 @@ class TtReelCard extends StatefulWidget {
   /// How many references the reel has; the badge shows above zero.
   final int referenceCount;
 
-  /// What a screen reader says for the badge; the count when null.
+  /// What a screen reader says for the badge. Required when [referenceCount]
+  /// is above zero.
   final String? referencesSemanticLabel;
 
   /// Called when the card is tapped.
@@ -197,11 +202,41 @@ class _TtReelCardState extends State<TtReelCard> {
                   ),
                   const _Scrim(),
                 ],
-                // The caption sits at the bottom; the empty art takes the
-                // room above it, so the two never overlap at large text.
+                // The pills sit at the top and the caption at the bottom; the
+                // empty art takes the room between them, so none of them
+                // overlap at large text.
                 IgnorePointer(
                   child: Column(
                     children: [
+                      // The status and the VN pill, one under the other.
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(
+                          start: TtMetrics.reelCardPillInset,
+                          end: TtMetrics.reelCardPillInset,
+                          top: TtMetrics.reelCardPillInset,
+                        ),
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: tt.spacing.xs,
+                            children: [
+                              TtStatusPill(
+                                kind: widget.status,
+                                label: widget.statusLabel,
+                                onMedia: true,
+                              ),
+                              if (vn != null)
+                                TtGlassPill(
+                                  icon: Symbols.folder_copy_rounded,
+                                  text: vn,
+                                  semanticLabel: vn,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
                       Expanded(
                         child: onPicture
                             ? const SizedBox.shrink()
@@ -252,30 +287,6 @@ class _TtReelCardState extends State<TtReelCard> {
                     ],
                   ),
                 ),
-                // The status and the VN pill, one under the other.
-                PositionedDirectional(
-                  start: TtMetrics.reelCardPillInset,
-                  end: TtMetrics.reelCardPillInset,
-                  top: TtMetrics.reelCardPillInset,
-                  child: IgnorePointer(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      spacing: tt.spacing.xs,
-                      children: [
-                        TtStatusPill(
-                          kind: widget.status,
-                          label: widget.statusLabel,
-                          onMedia: true,
-                        ),
-                        if (vn != null)
-                          TtGlassPill(
-                            icon: Symbols.folder_copy_rounded,
-                            text: vn,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
                 // The ripple is drawn over the picture and the text.
                 Positioned.fill(
                   child: Material(
@@ -301,9 +312,7 @@ class _TtReelCardState extends State<TtReelCard> {
                 bottom: 0,
                 child: _ReferencesBadge(
                   count: widget.referenceCount,
-                  semanticLabel:
-                      widget.referencesSemanticLabel ??
-                      '${widget.referenceCount}',
+                  semanticLabel: widget.referencesSemanticLabel!,
                   onTap: widget.onReferencesTap,
                 ),
               ),
@@ -419,13 +428,9 @@ class _MissingMark extends StatelessWidget {
             text,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: style.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
-              fontVariations: const [
-                FontVariation('wght', TtMetrics.reelCardMissingWeight),
-              ],
-            ),
+            style: style
+                .merge(TtTextStyles.weight(TtMetrics.reelCardMissingWeight))
+                .copyWith(color: color),
           ),
         ),
       ],
@@ -448,13 +453,9 @@ class _ReferencesBadge extends StatelessWidget {
 
   static TextStyle _style(BuildContext context) {
     final tt = context.tt;
-    return tt.text.material.labelMedium!.copyWith(
-      color: tt.colors.onMedia,
-      fontWeight: FontWeight.w700,
-      fontVariations: const [FontVariation('wght', TtMetrics.refBadgeWeight)],
-      letterSpacing: 0,
-      height: 1,
-    );
+    return tt.text.material.labelMedium!
+        .merge(TtTextStyles.weight(TtMetrics.refBadgeWeight))
+        .copyWith(color: tt.colors.onMedia, letterSpacing: 0, height: 1);
   }
 
   /// The width of the pill for [count] when the text is scaled by [scaler].

@@ -110,6 +110,45 @@ void main() {
       expect(find.text('In VN folder'), findsNothing);
     });
 
+    for (final direction in TextDirection.values) {
+      testWidgets('the VN mark is inset 5 on the start side only '
+          '(${direction.name})', (tester) async {
+        final rtl = direction == TextDirection.rtl;
+        for (final label in ['VN', 'In the VN folder, and a very long name']) {
+          await tester.pumpWidget(
+            ttTestApp(
+              Directionality(
+                textDirection: direction,
+                child: _tile(vnLabel: label),
+              ),
+            ),
+          );
+          final tile = tester.getRect(find.byType(TtClipTile));
+          final mark = tester.getRect(
+            find
+                .ancestor(
+                  of: find.byIcon(Symbols.folder_copy_rounded),
+                  matching: find.byType(DecoratedBox),
+                )
+                .first,
+          );
+          // Start side: 5 dp from the tile's edge.
+          expect(
+            rtl ? tile.right - mark.right : mark.left - tile.left,
+            5,
+            reason: label,
+          );
+          // End side: no inset, so a long label may run to the tile's edge
+          // but never past it.
+          final endGap = rtl ? mark.left - tile.left : tile.right - mark.right;
+          expect(endGap, greaterThanOrEqualTo(0), reason: label);
+          if (label.length > 10) {
+            expect(endGap, lessThan(1), reason: 'runs to the edge');
+          }
+        }
+      });
+    }
+
     testWidgets('the VN label fits in full in a 107 dp tile at 1x', (
       tester,
     ) async {
@@ -365,6 +404,95 @@ void main() {
       await tester.pumpWidget(tile(onRemove: () => removed++));
       await tester.tap(find.text('Remove'));
       expect(removed, 1);
+    });
+
+    Widget tileAt2x({String label = 'Missing from phone'}) => ttTestApp(
+      Center(
+        child: SizedBox(
+          width: 108,
+          child: TtMissingClipTile(
+            label: label,
+            removeLabel: 'Remove',
+            onRemove: () {},
+          ),
+        ),
+      ),
+      textScale: 2,
+    );
+
+    testWidgets('missing tile wraps at 2x', (tester) async {
+      await tester.pumpWidget(tileAt2x());
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Missing from phone'),
+      );
+      // Every word is shown: wrapped over several lines, none cut off.
+      expect(label.didExceedMaxLines, isFalse);
+      final painter = TextPainter(
+        text: TextSpan(
+          text: 'Missing from phone',
+          style: tester.widget<Text>(find.text('Missing from phone')).style,
+        ),
+        textDirection: TextDirection.ltr,
+        textScaler: const TextScaler.linear(2),
+      )..layout(maxWidth: label.size.width);
+      expect(label.size.height, closeTo(painter.height, 0.5));
+      expect(painter.computeLineMetrics().length, greaterThan(1));
+      // The tile keeps its shape and everything fits inside it.
+      final tile = tester.getRect(find.byType(TtMissingClipTile));
+      expect(tile.size, const Size(108, 144));
+      for (final inner in [
+        tester.getRect(find.text('Missing from phone')),
+        tester.getRect(find.byIcon(Symbols.videocam_off_rounded)),
+        tester.getRect(find.byType(TtButton)),
+      ]) {
+        expect(tile.contains(inner.topLeft), isTrue, reason: '$inner');
+        expect(tile.contains(inner.bottomRight), isTrue, reason: '$inner');
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the Remove button is still tappable when shrunk at 2x', (
+      tester,
+    ) async {
+      var removed = 0;
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 108,
+              child: TtMissingClipTile(
+                label: 'Missing from phone',
+                removeLabel: 'Remove',
+                onRemove: () => removed++,
+              ),
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+      await tester.tap(find.text('Remove'));
+      expect(removed, 1);
+    });
+
+    testWidgets('missing tile answers intrinsic size queries', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 108,
+              child: IntrinsicHeight(
+                child: TtMissingClipTile(
+                  label: 'Missing from phone',
+                  removeLabel: 'Remove',
+                  onRemove: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(TtMissingClipTile)).height, 144);
     });
 
     testWidgets('does not overflow at 2x text', (tester) async {

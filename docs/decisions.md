@@ -758,3 +758,30 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - allowing duplicate names (D-56's original choice): the owner declined it;
   - no cap on the description: a pasted wall of text would make reel detail and backups unwieldy.
 - Consequences: the viewer's action bar has three columns until Phase 8 adds Share. The repository gains a `duplicate` name problem.
+
+### D-81 · Design-system debts paid before the reel screens: the package composes no user-facing string, one font-weight helper, `TtCardRowKind`, and text that wraps or moves at 2×
+- Date: 2026-10-30 · Phase: 4 · Task: 2
+- Decision:
+  1. **The package takes its words from the caller.**
+     - `TtTextField.counterText` is a `String Function(int length, int max)`, required (an assert) when `maxLength` is given.
+     - `TtProgressBar.percentText` is a `String Function(int percent)`, required when `value` is given.
+     - `TtReelCard.referencesSemanticLabel` is required when `referenceCount > 0` (an assert); the "just the count" fallback is gone.
+     - `TtAddReferenceTile.semanticLabel` is required (it was `'$title. $subtitle'`).
+     - `TtGlassPill.semanticLabel` and `TtShootingModeCard.semanticLabel` are required. The card's label is a group around the card ("Shooting mode, on" or "..., off", the app's `shootingModeCardSemantics` select); the switch, the camera button and the rows keep their own nodes.
+  2. **`TtTextStyles.weight(FontWeight)`** returns a `TextStyle` with `fontWeight` and the `wght` variation set together. Every component merges it (`style.merge(TtTextStyles.weight(TtMetrics.badgeFontWeight))`), and the text-weight metrics are `FontWeight`s now. A test scans `lib/src` and fails if any file but the helper and the generated type scale builds a `FontVariation`. `TtTextStyles`' own constructor is no longer `const`, because its styles are made with the helper.
+  3. **`TtCardRowKind { link, strip }`** is a required argument of `TtCardRow`. Before, a row was a to-tag strip when it had a `trailingText`; now the kind says so, a strip may have no trailing text, and a link with one is an assertion error.
+  4. **`TtTextField`:** the error is also the field's semantics hint (as Material does for its own `errorText`); the error icon scales with the text; and swapping the controller keeps the text. From the field's own controller to the caller's, the caller's text stays, or, if it is empty, the typed text is copied in. From the caller's to the field's own, the caller's text is copied. From one caller's controller to another, both are left alone.
+  5. **At 2× text:**
+     - the missing-clip tile keeps its 3:4 shape, the label wraps over as many lines as it needs, and the content (icon, label, Remove) shrinks to fit (`FitHeight`, a small render box that does not use a `LayoutBuilder`, so it works inside `IntrinsicHeight`);
+     - the stat strip puts its action under the text from a text scale of 1.5 (`TtMetrics.largeTextScale`), as `TtBanner` does, so the text keeps its two lines;
+     - on a reel card the pills are in the column above the empty art instead of floating over it, so the film icon is always below them;
+     - the pill-tab "long label" test now checks with `wrapAtLargeText` that every tab is on the screen, and a second test that the scroller scrolls.
+  6. `TtMenuButton` sets its "open" flag after the frame when `MenuAnchor` calls `onClose` during a build. The doc comments that said "glass circle" are fixed. The status pill's caret gap was already 6 dp (`TtMetrics.statusPillCaretGap`); a test pins it.
+  7. **Widgetbook tests:** `catalog_use_cases_test.dart` checks that each tap selected its use case (`WidgetbookState.useCase.name`). `catalog_coverage_test.dart` checks per class, with an allow-list of the data classes that the catalogue deliberately does not show (`TtMenuItem`, `TtNavItem`, `TtPillTab`, `TtDialogAction`, `TtClipMark`, the two labels classes and the calendar controller).
+- Why: the first reel forms and cards use all of these, and each was a small defect or a gap a review had found: a screen reader missed a field's error, a swapped controller lost the text, English words and `%` were fixed inside a package whose app is translated, and a weight set in only one of the two places looks wrong in a variable font. A `trailingText` that also chose the look hid the real choice.
+- Alternatives considered:
+  - a locale-aware formatter inside the package (`intl` for the percent): the app already owns all its words in `app_en.arb`, so one more place would split them;
+  - a `TtTextStyles.weight` that returns a `FontWeight`: the two properties would again be set apart;
+  - letting the missing tile grow taller at large text: a grid cell is a fixed size, and a `LayoutBuilder` could not be used inside the golden harness' `IntrinsicHeight`;
+  - leaving the pills floating over the empty art and moving the icon: the caption already shares the column with the art, so the pills do too.
+- Consequences: every caller of the changed constructors was updated (`shooting_mode_section.dart`, the Widgetbook use cases, the package tests). The Shooting mode card's label gets a new key, `shootingModeCardSemantics`. At 2× the Remove button of a shrunk missing tile can wrap its word ("Rem / ove"); a later pass can give the button its own width. The macOS goldens of the clip tile, reel card, stat strip and text field changed; the CI set is made by the controller afterwards.

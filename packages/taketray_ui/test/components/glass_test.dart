@@ -73,7 +73,11 @@ void main() {
       await tester.pumpWidget(
         ttTestApp(
           const Center(
-            child: TtGlassPill(icon: Symbols.link_rounded, text: '3'),
+            child: TtGlassPill(
+              icon: Symbols.link_rounded,
+              text: '3',
+              semanticLabel: '3 links',
+            ),
           ),
         ),
       );
@@ -83,9 +87,64 @@ void main() {
 
     testWidgets('is 24 dp high', (tester) async {
       await tester.pumpWidget(
-        ttTestApp(const Center(child: TtGlassPill(icon: Symbols.link_rounded))),
+        ttTestApp(
+          const Center(
+            child: TtGlassPill(
+              icon: Symbols.link_rounded,
+              semanticLabel: 'Linked',
+            ),
+          ),
+        ),
       );
       expect(tester.getSize(find.byType(TtGlassPill)).height, 24);
+    });
+
+    testWidgets('an icon-only pill is announced by its semanticLabel', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(
+              child: TtGlassPill(
+                icon: Symbols.link_rounded,
+                semanticLabel: 'Has references',
+              ),
+            ),
+          ),
+        );
+        final data = tester
+            .getSemantics(find.byType(TtGlassPill))
+            .getSemanticsData();
+        expect(data.label, 'Has references');
+        // One node: the icon adds no label of its own.
+        expect(find.bySemanticsLabel('Has references'), findsOneWidget);
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    testWidgets('a pill with text is announced by its semanticLabel, not '
+        'the text', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(
+              child: TtGlassPill(
+                icon: Symbols.link_rounded,
+                text: '3',
+                semanticLabel: '3 references',
+              ),
+            ),
+          ),
+        );
+        expect(find.bySemanticsLabel('3 references'), findsOneWidget);
+        expect(find.bySemanticsLabel('3'), findsNothing);
+      } finally {
+        handle.dispose();
+      }
     });
   });
 }

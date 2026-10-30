@@ -291,6 +291,21 @@ void main() {
         'Shooting mode',
       );
     });
+
+    for (final (isOn, label) in [
+      (false, 'Shooting mode, off'),
+      (true, 'Shooting mode, on'),
+    ]) {
+      testWidgets('the card is named "$label"', (tester) async {
+        await pump(tester, shooting: isOn ? on() : ShootingState.off);
+        expect(
+          tester
+              .widget<TtShootingModeCard>(find.byType(TtShootingModeCard))
+              .semanticLabel,
+          label,
+        );
+      });
+    }
   });
 
   group('strip shows the count and opens To tag', () {

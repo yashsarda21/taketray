@@ -29,6 +29,7 @@ Widget _card({
       on: on,
       title: on ? 'Shooting mode on' : 'Shooting mode',
       subtitle: subtitle,
+      semanticLabel: on ? 'Shooting mode, on' : 'Shooting mode, off',
       switchSemanticLabel: 'Shooting mode',
       onChanged: onChanged ?? (_) {},
       backdrop: backdrop,
@@ -37,6 +38,7 @@ Widget _card({
       rows: [
         if (rows)
           TtCardRow(
+            kind: TtCardRowKind.link,
             icon: Symbols.link_rounded,
             title: 'References · 4',
             subtitle: 'From 2 Recording reels',
@@ -45,6 +47,7 @@ Widget _card({
           ),
         if (earlier)
           TtCardRow(
+            kind: TtCardRowKind.link,
             icon: Symbols.history_rounded,
             title: 'Add earlier videos',
             subtitle: 'Shot before Shooting mode was on',
@@ -55,6 +58,7 @@ Widget _card({
       ],
       toTagStrip: rows
           ? TtCardRow(
+              kind: TtCardRowKind.strip,
               icon: Symbols.sell_rounded,
               title: '3 clips to tag',
               trailingText: 'Tag now',
@@ -310,11 +314,13 @@ void main() {
           on: true,
           title: 't',
           subtitle: 's',
+          semanticLabel: 'x',
           switchSemanticLabel: 'x',
           onChanged: (_) {},
           rows: [
             for (var i = 0; i < 3; i++)
               TtCardRow(
+                kind: TtCardRowKind.link,
                 icon: Symbols.link_rounded,
                 title: '$i',
                 onPressed: () {},
@@ -368,6 +374,34 @@ void main() {
       expect(tester.hasRunningAnimations, isFalse);
     });
 
+    testWidgets('shooting mode card has a top-level label', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        for (final on in [true, false]) {
+          await tester.pumpWidget(ttTestApp(_card(on: on)));
+          final node = tester.getSemantics(
+            find.bySemanticsLabel(
+              on ? 'Shooting mode, on' : 'Shooting mode, off',
+            ),
+          );
+          final data = node.getSemanticsData();
+          // A group that names the card; the switch keeps its own node.
+          expect(node.childrenCount, greaterThan(0));
+          expect(data.flagsCollection.isToggled, ui.Tristate.none);
+          final switchData = tester
+              .getSemantics(find.byType(TtSwitch))
+              .getSemanticsData();
+          expect(switchData.label, 'Shooting mode');
+          expect(
+            switchData.flagsCollection.isToggled,
+            on ? ui.Tristate.isTrue : ui.Tristate.isFalse,
+          );
+        }
+      } finally {
+        handle.dispose();
+      }
+    });
+
     testWidgets('semantics: the switch is named and toggled', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(ttTestApp(_card()));
@@ -382,6 +416,7 @@ void main() {
 
   group('TtCardRow', () {
     Widget row({
+      TtCardRowKind? kind,
       String? subtitle,
       String? trailingText,
       VoidCallback? onPressed,
@@ -390,6 +425,9 @@ void main() {
       child: SizedBox(
         width: 328,
         child: TtCardRow(
+          kind:
+              kind ??
+              (trailingText == null ? TtCardRowKind.link : TtCardRowKind.strip),
           icon: Symbols.link_rounded,
           title: 'References · 4',
           subtitle: subtitle,
@@ -430,6 +468,36 @@ void main() {
           ),
         ),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('card row look follows its kind, not the trailing text', (
+      tester,
+    ) async {
+      // A strip with no trailing text is still a strip.
+      await tester.pumpWidget(ttTestApp(row(kind: TtCardRowKind.strip)));
+      expect(find.byIcon(Symbols.arrow_forward_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsNothing);
+      expect(tester.getSize(find.byType(TtCardRow)).height, 52);
+
+      // A link with a subtitle is a link.
+      await tester.pumpWidget(
+        ttTestApp(row(kind: TtCardRowKind.link, subtitle: 'From 2 reels')),
+      );
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+      expect(tester.getSize(find.byType(TtCardRow)).height, 56);
+    });
+
+    test('a link row refuses a trailing text', () {
+      expect(
+        () => TtCardRow(
+          kind: TtCardRowKind.link,
+          icon: Symbols.link_rounded,
+          title: 'References',
+          trailingText: 'Tag now',
+          onPressed: () {},
+        ),
+        throwsAssertionError,
       );
     });
 

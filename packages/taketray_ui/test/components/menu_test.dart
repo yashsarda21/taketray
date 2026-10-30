@@ -51,6 +51,50 @@ void main() {
       expect(find.text('Delete reel'), findsOneWidget);
     });
 
+    testWidgets('onClose during build is deferred', (tester) async {
+      // MenuAnchor closes an open menu from inside a build when the window
+      // changes size. Make a sibling call its onClose during its own build,
+      // which setState on the menu button would reject.
+      final trigger = ValueNotifier<int>(0);
+      addTearDown(trigger.dispose);
+      await tester.pumpWidget(
+        ttTestApp(
+          Column(
+            children: [
+              _menu(),
+              ValueListenableBuilder<int>(
+                valueListenable: trigger,
+                builder: (context, count, _) {
+                  if (count > 0) {
+                    tester
+                        .widget<MenuAnchor>(find.byType(MenuAnchor))
+                        .onClose!();
+                  }
+                  return const SizedBox();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      await _open(tester);
+      expect(find.text('Reel details'), findsOneWidget);
+
+      trigger.value = 1;
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // The menu button now knows the menu is closed: back leaves the screen.
+      final scope = tester.widget(
+        find.descendant(
+          of: find.byType(TtMenuButton<String>),
+          matching: find.byWidgetPredicate((w) => w is PopScope),
+        ),
+      );
+      expect((scope as PopScope).canPop, isTrue);
+    });
+
     testWidgets('calls onSelected with the item value and closes', (
       tester,
     ) async {

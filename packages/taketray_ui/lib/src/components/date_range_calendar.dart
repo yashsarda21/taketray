@@ -1,11 +1,10 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:intl/intl.dart' show DateFormat;
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// What the calendar says to a screen reader, and the words on its year and
@@ -779,7 +778,7 @@ class _DayCell extends StatelessWidget {
 
     // proto.css: .evd, .evd-c.out / .band / .today / .sel, .evd[disabled]
     final Color textColor;
-    final double weight;
+    final FontWeight weight;
     if (chosen) {
       textColor = scheme.onPrimary;
       weight = TtMetrics.calendarDaySelectedWeight;
@@ -803,14 +802,14 @@ class _DayCell extends StatelessWidget {
       textColor = scheme.onSurface;
       weight = TtMetrics.calendarDayWeight;
     }
-    final style = tt.text.material.bodyLarge!.copyWith(
-      color: textColor,
-      letterSpacing: 0,
-      fontWeight: FontWeight.values[(weight / 100).round() - 1],
-      fontVariations: [ui.FontVariation('wght', weight)],
-      decoration: off && !chosen ? TextDecoration.lineThrough : null,
-      decorationColor: textColor,
-    );
+    final style = tt.text.material.bodyLarge!
+        .merge(TtTextStyles.weight(weight))
+        .copyWith(
+          color: textColor,
+          letterSpacing: 0,
+          decoration: off && !chosen ? TextDecoration.lineThrough : null,
+          decorationColor: textColor,
+        );
 
     final BoxDecoration? circle;
     if (chosen) {

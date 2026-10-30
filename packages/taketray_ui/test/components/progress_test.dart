@@ -5,12 +5,20 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../support/tt_accessibility.dart';
 import '../support/tt_test_app.dart';
 
-Widget _bar({double? value, String? label, String? semanticLabel}) => Padding(
+String _percent(int percent) => '$percent%';
+
+Widget _bar({
+  double? value,
+  String? label,
+  String? semanticLabel,
+  String Function(int percent) percentText = _percent,
+}) => Padding(
   padding: const EdgeInsets.all(16),
   child: TtProgressBar(
     value: value,
     label: label,
     semanticLabel: semanticLabel,
+    percentText: percentText,
   ),
 );
 
@@ -111,6 +119,46 @@ void main() {
       expect(data.value, '40%');
       expect(data.label, 'Copying');
       handle.dispose();
+    });
+
+    testWidgets('the percentage text comes from the caller', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          ttTestApp(
+            _bar(
+              value: 0.4,
+              label: 'Copying',
+              percentText: (percent) => '$percent per cent done',
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final data = tester
+            .getSemantics(find.byType(TtProgressBar))
+            .getSemanticsData();
+        expect(data.value, '40 per cent done');
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    testWidgets('an indeterminate bar asks for no percentage text', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Padding(
+            padding: EdgeInsets.all(16),
+            child: TtProgressBar(label: 'Looking'),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    test('a bar with a value but no percentText is a programming error', () {
+      expect(() => TtProgressBar(value: 0.4), throwsAssertionError);
     });
 
     testWidgets('the semantics label defaults to the visible label', (

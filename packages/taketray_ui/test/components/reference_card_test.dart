@@ -38,6 +38,7 @@ Widget _add({VoidCallback? onPressed}) => Center(
     child: TtAddReferenceTile(
       title: 'Add reference',
       subtitle: 'Save a reel you want to recreate',
+      semanticLabel: 'Add a reference: a reel you want to recreate',
       onPressed: onPressed ?? () {},
     ),
   ),
@@ -174,13 +175,13 @@ void main() {
       expect(taps, 1);
     });
 
-    testWidgets('semantics: one button with both texts', (tester) async {
+    testWidgets('semantics: one button named by the caller', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(ttTestApp(_add()));
       final data = tester
           .getSemantics(find.byType(TtAddReferenceTile))
           .getSemanticsData();
-      expect(data.label, 'Add reference. Save a reel you want to recreate');
+      expect(data.label, 'Add a reference: a reel you want to recreate');
       expect(data.flagsCollection.isButton, isTrue);
       handle.dispose();
     });
@@ -194,6 +195,7 @@ void main() {
               child: TtAddReferenceTile(
                 title: _longTitle,
                 subtitle: _longTitle,
+                semanticLabel: 'Add reference',
                 onPressed: () {},
               ),
             ),

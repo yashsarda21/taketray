@@ -6,6 +6,8 @@ import '../support/tt_golden.dart';
 /// The bar in a page with 16 dp margins.
 const _width = 328.0;
 
+String _percent(int percent) => '$percent%';
+
 void main() {
   ttGoldenTest(
     'Progress bar',
@@ -16,9 +18,21 @@ void main() {
       await tester.pump(const Duration(milliseconds: 700));
     },
     scenarios: const [
-      TtScenario('0 %', TtProgressBar(value: 0), width: _width),
-      TtScenario('40 %', TtProgressBar(value: 0.4), width: _width),
-      TtScenario('100 %', TtProgressBar(value: 1), width: _width),
+      TtScenario(
+        '0 %',
+        TtProgressBar(value: 0, percentText: _percent),
+        width: _width,
+      ),
+      TtScenario(
+        '40 %',
+        TtProgressBar(value: 0.4, percentText: _percent),
+        width: _width,
+      ),
+      TtScenario(
+        '100 %',
+        TtProgressBar(value: 1, percentText: _percent),
+        width: _width,
+      ),
       TtScenario(
         'indeterminate (0.7 s into a slide)',
         TtProgressBar(),
@@ -26,13 +40,18 @@ void main() {
       ),
       TtScenario(
         'with label',
-        TtProgressBar(value: 0.58, label: '7 of 12 clips'),
+        TtProgressBar(
+          value: 0.58,
+          label: '7 of 12 clips',
+          percentText: _percent,
+        ),
         width: _width,
       ),
       TtScenario(
         'long label',
         TtProgressBar(
           value: 0.58,
+          percentText: _percent,
           label: '7 of 12 clips copied into Movies/TakeTray/London Food',
         ),
         width: _width,

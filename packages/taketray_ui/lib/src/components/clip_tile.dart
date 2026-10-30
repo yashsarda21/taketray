@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/fit_height.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A label with an icon that covers a clip tile, such as "Skipped".
@@ -284,12 +286,9 @@ class _TimeRow extends StatelessWidget {
     // proto.css: .tile .tm, .tile .du
     final style = tt.text
         .numeric(tt.text.material.bodySmall!)
+        .merge(TtTextStyles.weight(TtMetrics.clipTileTextWeight))
         .copyWith(
           color: tt.colors.onMedia,
-          fontWeight: FontWeight.w700,
-          fontVariations: const [
-            FontVariation('wght', TtMetrics.clipTileTextWeight),
-          ],
           letterSpacing: 0,
           shadows: [
             Shadow(
@@ -369,15 +368,9 @@ class _MultiBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     // proto.css: .tile .multi { font: 700 11.5px/1 … }
-    final style = tt.text.navLabel.copyWith(
-      color: tt.colors.onMedia,
-      fontWeight: FontWeight.w700,
-      fontVariations: const [
-        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
-      ],
-      letterSpacing: 0,
-      height: 1,
-    );
+    final style = tt.text.navLabel
+        .merge(TtTextStyles.weight(TtMetrics.clipTileBadgeTextWeight))
+        .copyWith(color: tt.colors.onMedia, letterSpacing: 0, height: 1);
     return _BadgeBox(
       padding: const EdgeInsetsDirectional.only(
         start: TtMetrics.clipTileMultiPaddingStart,
@@ -485,14 +478,9 @@ class _MarkOverlay extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     // proto.css: .tile .mark, .tile .mark > span
-    final style = tt.text.navLabel.copyWith(
-      color: scheme.onInverseSurface,
-      fontWeight: FontWeight.w700,
-      fontVariations: const [
-        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
-      ],
-      letterSpacing: 0,
-    );
+    final style = tt.text.navLabel
+        .merge(TtTextStyles.weight(TtMetrics.clipTileBadgeTextWeight))
+        .copyWith(color: scheme.onInverseSurface, letterSpacing: 0);
     return Positioned.fill(
       child: IgnorePointer(
         child: ColoredBox(
@@ -596,8 +584,10 @@ class _SelectCircle extends StatelessWidget {
 /// A clip that is gone from the phone: a grey dashed tile with a camera-off
 /// icon, [label], and, when [removeLabel] is given, a small Remove button.
 ///
-/// The label wraps to two lines, or one at large text sizes, so the tile
-/// never overflows.
+/// The tile keeps its 3:4 shape. The label wraps over as many lines as it
+/// needs, and when the text is large the whole content (icon, label and
+/// button) shrinks to fit the tile, so the label is never cut off and the
+/// tile never overflows.
 class TtMissingClipTile extends StatelessWidget {
   /// A missing-clip tile saying [label].
   const new({required this.label, this.removeLabel, this.onRemove, super.key});
@@ -617,12 +607,6 @@ class TtMissingClipTile extends StatelessWidget {
     final scheme = context.scheme;
     final removeLabel = this.removeLabel;
     // proto.css: .tile.miss
-    // The label gets two lines, or one when text is enlarged so much that
-    // two would not leave room for the icon and the button.
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final labelLines = textScale > TtMetrics.clipTileMissingLabelScaleLimit
-        ? 1
-        : TtMetrics.clipTileMissingLabelLines.toInt();
     return AspectRatio(
       aspectRatio: tt.sizes.clipTileAspect,
       child: CustomPaint(
@@ -639,39 +623,39 @@ class TtMissingClipTile extends StatelessWidget {
                 horizontal: TtMetrics.clipTileMissingPaddingHorizontal,
                 vertical: tt.spacing.xs,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                spacing: tt.spacing.xxs,
-                children: [
-                  Icon(
-                    Symbols.videocam_off_rounded,
-                    size: TtMetrics.clipTileMissingIconSize,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  Flexible(
-                    child: Text(
+              // The content is as wide as the tile and as tall as it needs,
+              // and is scaled down, never up, to fit the tile's height.
+              child: FitHeight(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: tt.spacing.xxs,
+                  children: [
+                    Icon(
+                      Symbols.videocam_off_rounded,
+                      size: TtMetrics.clipTileMissingIconSize,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    Text(
                       label,
                       textAlign: TextAlign.center,
-                      maxLines: labelLines,
-                      overflow: TextOverflow.ellipsis,
                       style: tt.text.material.labelMedium!.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                  if (removeLabel != null)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: TtMetrics.clipTileMissingButtonGap,
+                    if (removeLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: TtMetrics.clipTileMissingButtonGap,
+                        ),
+                        child: TtButton(
+                          label: removeLabel,
+                          kind: TtButtonKind.tonal,
+                          size: TtButtonSize.small,
+                          onPressed: onRemove,
+                        ),
                       ),
-                      child: TtButton(
-                        label: removeLabel,
-                        kind: TtButtonKind.tonal,
-                        size: TtButtonSize.small,
-                        onPressed: onRemove,
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

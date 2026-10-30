@@ -1,3 +1,5 @@
+import 'dart:ui' show FontWeight;
+
 /// Component numbers that are not design tokens: blur radii, opacities and
 /// corner radii that the TakeTray style (`design/prototype/assets/tt-style.css`)
 /// sets for one component.
@@ -20,7 +22,8 @@ abstract final class TtMetrics {
 
   // ---- Glass (floating chrome) ----
 
-  /// Background blur behind glass chrome (nav pill, glass circles).
+  /// Background blur behind glass chrome: the nav pill and glass pills (the
+  /// app bar's circle is solid, not glass).
   // tt-style.css: .style-tt .navbar { backdrop-filter: blur(18px) }
   static const double glassBlur = 18;
 
@@ -203,7 +206,7 @@ abstract final class TtMetrics {
 
   /// Weight of the count badge's digits.
   // proto.css: .badge { font: 700 11.5px/18px … }
-  static const double badgeFontWeight = 700;
+  static const FontWeight badgeFontWeight = FontWeight.w700;
 
   /// The largest text scale a count badge draws its number at.
   // Not in the prototype: decorative overlay. The badge sits on the corner of
@@ -676,7 +679,7 @@ abstract final class TtMetrics {
 
   /// Weight of the time and duration.
   // proto.css: .tile .tm, .tile .du { font: 700 12px/16px … }
-  static const double clipTileTextWeight = 700;
+  static const FontWeight clipTileTextWeight = FontWeight.w700;
 
   /// Blur of the shadow under the time and duration.
   // proto.css: .tile .tm, .tile .du { text-shadow: 0 1px 2px rgba(0,0,0,.5) }
@@ -729,7 +732,7 @@ abstract final class TtMetrics {
 
   /// Weight of the count in the reel count badge and the text of the mark.
   // proto.css: .tile .multi { font: 700 11.5px/1 … }
-  static const double clipTileBadgeTextWeight = 700;
+  static const FontWeight clipTileBadgeTextWeight = FontWeight.w700;
 
   /// Diameter of the selection circle.
   // proto.css: .tile .selc { width: 24px; height: 24px }
@@ -848,14 +851,6 @@ abstract final class TtMetrics {
   // proto.css: .tile.miss .btn { margin-top: 2px }
   static const double clipTileMissingButtonGap = 2;
 
-  /// Lines of the missing tile's label before it ends in an ellipsis.
-  // (not in the prototype: a limit so the label cannot take the tile)
-  static const double clipTileMissingLabelLines = 2;
-
-  /// The text scale above which the missing tile's label gets one line only.
-  // (not in the prototype: two lines no longer fit the 3:4 tile above this)
-  static const double clipTileMissingLabelScaleLimit = 1.15;
-
   // ---- Skeleton ----
 
   /// Width of the skeleton bar that stands in for a short value, such as the
@@ -956,7 +951,7 @@ abstract final class TtMetrics {
 
   /// Weight of the missing-clips text.
   // proto.css: .rcard .mt .miss { font-weight: 600 }
-  static const double reelCardMissingWeight = 600;
+  static const FontWeight reelCardMissingWeight = FontWeight.w600;
 
   /// Gap between the empty art's icon and its label.
   // proto.css: .rcard .ph-empty { gap: 6px }
@@ -998,7 +993,7 @@ abstract final class TtMetrics {
 
   /// Weight of the badge's count.
   // proto.css: .refbadge { font: 700 12px/1 var(--font) }
-  static const double refBadgeWeight = 700;
+  static const FontWeight refBadgeWeight = FontWeight.w700;
 
   // ---- Reference card ----
 
@@ -1265,7 +1260,7 @@ abstract final class TtMetrics {
 
   /// Weight of the time texts and the hint.
   // proto.css: .scrub { font: 600 12px/1 var(--font) }
-  static const double scrubTextWeight = 600;
+  static const FontWeight scrubTextWeight = FontWeight.w600;
 
   /// How far the hint's bottom edge sits above the middle of the track.
   // proto.css: .scrub .hint { bottom: 18px } on a 22 px bar whose track is
@@ -1433,7 +1428,7 @@ abstract final class TtMetrics {
 
   /// Weight of a list row's title.
   // proto.css: .li .txt b { font-weight: 500 }
-  static const double listRowTitleWeight = 500;
+  static const FontWeight listRowTitleWeight = FontWeight.w500;
 
   /// Minimum height of a tall list row (two lines and a trailing part).
   // proto.css: .li.tall { min-height: 72px }
@@ -1441,7 +1436,7 @@ abstract final class TtMetrics {
 
   /// Weight of the title of a list row that is off.
   // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
-  static const double listRowOffTitleWeight = 400;
+  static const FontWeight listRowOffTitleWeight = FontWeight.w400;
 
   /// Minimum height of the count pill at the end of a list row.
   // proto.css: .ev-row .ev-trail .n { min-height: 28px }
@@ -1625,19 +1620,19 @@ abstract final class TtMetrics {
 
   /// Weight of a day's number.
   // proto.css: .evd { font-weight: 600 }
-  static const double calendarDayWeight = 600;
+  static const FontWeight calendarDayWeight = FontWeight.w600;
 
   /// Weight of the number of a day of another month.
   // proto.css: .evd-c.out .evd { font-weight: 500 }
-  static const double calendarDayOutWeight = 500;
+  static const FontWeight calendarDayOutWeight = FontWeight.w500;
 
   /// Weight of the number of the first and the last chosen day.
   // proto.css: .evd-c.sel .evd { font-weight: 700 }
-  static const double calendarDaySelectedWeight = 700;
+  static const FontWeight calendarDaySelectedWeight = FontWeight.w700;
 
   /// Weight of the number of a day that is off.
   // proto.css: .evd[disabled] { font-weight: 400 }
-  static const double calendarDayOffWeight = 400;
+  static const FontWeight calendarDayOffWeight = FontWeight.w400;
 
   /// Width of a pill in the year and month grid, in ems of its label (the
   /// grid has fewer columns at large text).

@@ -179,21 +179,54 @@ void main() {
       });
     }
 
-    testWidgets('a long label does not overflow at 2x text', (tester) async {
+    const long = [
+      TtPillTab<String>('a', 'A very long label that keeps going on'),
+      TtPillTab<String>('b', 'Two'),
+      TtPillTab<String>('c', 'Three tabs here'),
+    ];
+
+    testWidgets('a long label wraps into the width at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         ttTestApp(
           TtPillTabs<String>(
-            tabs: const [
-              TtPillTab<String>('a', 'A very long label that keeps going on'),
-              TtPillTab<String>('b', 'Two'),
-            ],
+            tabs: long,
             value: 'a',
             onChanged: (_) {},
+            wrapAtLargeText: true,
           ),
           textScale: 2,
         ),
       );
       expect(tester.takeException(), isNull);
+      // Every tab is wholly on the screen (none runs off to be scrolled to),
+      // and they stack in more than one row.
+      final tabs = [
+        for (final tab in long) tester.getRect(find.text(tab.label)),
+      ];
+      for (final rect in tabs) {
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+      }
+      expect({for (final rect in tabs) rect.top}.length, greaterThan(1));
+      expect(find.byType(SingleChildScrollView), findsNothing);
+    });
+
+    testWidgets('a long label scrolls sideways at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(
+          TtPillTabs<String>(tabs: long, value: 'a', onChanged: (_) {}),
+          textScale: 2,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      expect(scrollable.position.maxScrollExtent, greaterThan(0));
     });
   });
 

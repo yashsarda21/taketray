@@ -14,31 +14,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.
 - App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.
-- `TtTextField`:
-  - the error is not in the field's semantics
-  - swapping the controller loses the text
-  - the error icon doesn't scale
-
-  Fix before the first form.
-- Package-composed strings: progress `%`, the reel-card references badge fallback, the reference-card label and the text-field counter. Take them from the caller. Make `referencesSemanticLabel` required when the count is > 0.
-- A font weight helper, so `fontWeight` and the `wght` variation come from one place.
-- `TtMenuButton`: `onClose` calls `setState` during build when the window size changes (debug-only assert). Defer it to after the frame.
-- Doc comments still say "glass circle" (`bar_scope.dart:4`, `tt_metrics.dart:23`).
-- Status pill caret gap is 2 dp; the CSS says 6.
-- At 2× text:
-  - the missing tile truncates
-  - the stat-strip action squeezes its text
-  - on empty art, the reel card's status pill touches the film icon
-  - the pill-tab overflow test can't fail
-- Tests:
-  - the fill-1 glyph, pressed colour and per-kind colours on buttons
-  - `TtReelCard` accessibility beyond empty art
-  - guarding the VN-mark start-only padding
-- The shooting card needs a top-level semantics label. The icon-only `TtGlassPill` needs a semantics doc.
-- Review the `TtCardRow` API: its look is currently chosen by `trailingText`.
-- Widgetbook tests, when screens grow the catalogue:
-  - `widgetbook/test/catalog_use_cases_test.dart` taps each use case but never checks the tap selected it. After the pump, add `expect(WidgetbookState.of(tester.element(find.byType(Scaffold).first)).useCase?.name, name)` (checked in a scratch copy during the Phase 2 Task 3 review).
-  - `widgetbook/test/catalog_coverage_test.dart` (`_unregisteredFiles`) is satisfied by any one registered class in a file, so a second widget added to a registered file goes unnoticed. Check per class, with an allow-list of classes that are deliberately not in the catalogue.
 
 ## Phase 5 (tagging and the player)
 

@@ -8,7 +8,7 @@ enum _Trailing { none, chevron, value, switchOn, switchOff }
 /// `TtGroupedRows`, `TtGroupLabel`, `TtRowIcon` and `TtListRow`: settings-style
 /// groups of rows.
 final WidgetbookComponent ttGroupedRowsComponent = WidgetbookComponent(
-  name: 'TtGroupedRows',
+  name: 'TtGroupedRows / TtGroupLabel / TtRowIcon',
   useCases: [
     WidgetbookUseCase(
       name: 'Playground',

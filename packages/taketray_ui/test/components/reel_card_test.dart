@@ -232,6 +232,33 @@ void main() {
       );
     }
 
+    for (final scale in [1.0, 1.5, 2.0]) {
+      for (final vn in [null, 'Editing in VN']) {
+        testWidgets('on empty art the status pill clears the film icon '
+            '(${scale}x, ${vn == null ? 'no VN' : 'VN'})', (tester) async {
+          await tester.pumpWidget(
+            ttTestApp(
+              _card(
+                withCover: false,
+                name: _longName,
+                meta: '1234 clips · 12:34:56',
+                vnLabel: vn,
+              ),
+              textScale: scale,
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          final lowestPill = [
+            tester.getRect(find.byType(TtStatusPill)),
+            if (vn != null) tester.getRect(find.byType(TtGlassPill)),
+          ].map((r) => r.bottom).reduce((a, b) => a > b ? a : b);
+          final icon = tester.getRect(find.byIcon(Symbols.movie_rounded));
+          expect(icon.top, greaterThanOrEqualTo(lowestPill));
+        });
+      }
+    }
+
     testWidgets('a tap on the card calls onTap', (tester) async {
       var taps = 0;
       var refs = 0;
@@ -252,6 +279,25 @@ void main() {
     });
 
     group('references badge', () {
+      test('references without a semantic label is a programming error', () {
+        TtReelCard build({required int count, String? label}) => TtReelCard(
+          name: 'Lisbon trip',
+          semanticLabel: 'Lisbon trip',
+          status: TtStatusKind.collecting,
+          statusLabel: 'Collecting',
+          meta: '12 clips',
+          emptyLabel: 'No clips yet',
+          referenceCount: count,
+          referencesSemanticLabel: label,
+        );
+        expect(() => build(count: 3), throwsAssertionError);
+        expect(
+          () => build(count: 3, label: 'Three references'),
+          returnsNormally,
+        );
+        expect(() => build(count: 0), returnsNormally);
+      });
+
       testWidgets('is not built when referenceCount is 0', (tester) async {
         await tester.pumpWidget(ttTestApp(_card()));
         expect(find.byIcon(Symbols.link_rounded), findsNothing);
@@ -343,6 +389,65 @@ void main() {
       expect(data.flagsCollection.isButton, isTrue);
       expect(data.hasAction(SemanticsAction.tap), isTrue);
       handle.dispose();
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets(
+        'passes the accessibility guidelines with a cover, missing clips and '
+        'each status (${brightness.name})',
+        (tester) async {
+          for (final withCover in [true, false]) {
+            for (final status in TtStatusKind.values) {
+              await tester.pumpWidget(
+                ttTestApp(
+                  _card(
+                    withCover: withCover,
+                    status: status,
+                    referenceCount: 2,
+                    missingText: '2 missing',
+                  ),
+                  brightness: brightness,
+                ),
+              );
+              if (withCover) await _decode(tester, fixtureThumb(1));
+              await expectTtAccessible(tester);
+            }
+          }
+        },
+      );
+    }
+
+    testWidgets('the card is announced with the status and missing clips, '
+        'and the badge is its own button', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(
+              status: TtStatusKind.published,
+              missingText: '2 missing',
+              referenceCount: 3,
+              onTap: () {},
+              onReferencesTap: () {},
+            ),
+          ),
+        );
+        await _decode(tester, fixtureThumb(1));
+        final card = tester.getSemantics(
+          find.bySemanticsLabel('Lisbon trip. Collecting. 12 clips'),
+        );
+        expect(card.getSemanticsData().flagsCollection.isButton, isTrue);
+        // The pill and the "missing" text are part of the card's one label,
+        // not separate nodes.
+        expect(find.bySemanticsLabel('Collecting'), findsNothing);
+        expect(find.bySemanticsLabel('2 missing'), findsNothing);
+        expect(
+          find.bySemanticsLabel('3 references in Lisbon trip'),
+          findsOneWidget,
+        );
+      } finally {
+        handle.dispose();
+      }
     });
 
     for (final brightness in Brightness.values) {

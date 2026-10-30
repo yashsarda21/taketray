@@ -12,10 +12,20 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// the middle. The `.prog` of the prototype has no indeterminate look; this
 /// one is a sensible addition (D-49).
 ///
-/// A screen reader hears [semanticLabel], or the [label], or nothing.
+/// A screen reader hears [semanticLabel], or the [label], or nothing, and
+/// for a [value] the text [percentText] makes of the percentage.
 class TtProgressBar extends StatefulWidget {
   /// A bar at [value] (0 to 1), or indeterminate when null.
-  const new({this.value, this.label, this.semanticLabel, super.key});
+  const new({
+    this.value,
+    this.label,
+    this.semanticLabel,
+    this.percentText,
+    super.key,
+  }) : assert(
+         value == null || percentText != null,
+         'A bar with a value needs a percentText',
+       );
 
   /// How far along the work is, from 0 to 1 (anything else is clamped), or
   /// null when unknown.
@@ -26,6 +36,11 @@ class TtProgressBar extends StatefulWidget {
 
   /// What a screen reader says for the bar, or null for the [label].
   final String? semanticLabel;
+
+  /// The words a screen reader says for a [value], given the whole percent
+  /// (0 to 100), such as "40%". Needed when [value] is given; the caller
+  /// supplies it so that the package composes no user-facing string.
+  final String Function(int percent)? percentText;
 
   @override
   State<TtProgressBar> createState() => _TtProgressBarState();
@@ -138,7 +153,9 @@ class _TtProgressBarState extends State<TtProgressBar>
       container: true,
       excludeSemantics: true,
       label: widget.semanticLabel ?? label,
-      value: value == null ? null : '${(value.clamp(0.0, 1.0) * 100).round()}%',
+      value: value == null
+          ? null
+          : widget.percentText!((value.clamp(0.0, 1.0) * 100).round()),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,

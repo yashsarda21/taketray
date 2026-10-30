@@ -83,6 +83,7 @@ final WidgetbookComponent ttGlassPillComponent = WidgetbookComponent(
               _ => null,
             },
             text: withText ? text : null,
+            semanticLabel: withText ? text : 'Linked',
           ),
         );
       },

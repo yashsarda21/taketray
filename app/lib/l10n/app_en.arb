@@ -97,6 +97,16 @@
   "@shootingSwitchLabel": {
     "description": "Screen-reader label of the Shooting mode switch."
   },
+  "shootingModeCardSemantics": "Shooting mode, {state, select, on{on} other{off}}",
+  "@shootingModeCardSemantics": {
+    "description": "Screen-reader label of the whole Shooting mode card: the feature and whether it is on or off.",
+    "placeholders": {
+      "state": {
+        "type": "String",
+        "example": "on"
+      }
+    }
+  },
   "shootingOpenCamera": "Open camera",
   "@shootingOpenCamera": {
     "description": "Button that opens the phone camera in video mode."

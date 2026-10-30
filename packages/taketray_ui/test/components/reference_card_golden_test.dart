@@ -119,6 +119,10 @@ class _Add extends StatelessWidget {
   final String subtitle;
 
   @override
-  Widget build(BuildContext context) =>
-      TtAddReferenceTile(title: title, subtitle: subtitle, onPressed: () {});
+  Widget build(BuildContext context) => TtAddReferenceTile(
+    title: title,
+    subtitle: subtitle,
+    semanticLabel: '$title. $subtitle',
+    onPressed: () {},
+  );
 }

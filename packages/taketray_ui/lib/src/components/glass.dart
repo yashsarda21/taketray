@@ -77,9 +77,19 @@ class TtGlass extends StatelessWidget {
 
 /// A small dark-glass badge on media: an [icon] and optional [text], as in
 /// the status and reference marks on a reel cover.
+///
+/// A screen reader says [semanticLabel] for the whole pill and nothing else:
+/// an icon-only pill has no words of its own, and one with [text] may need
+/// more than the text (for example "3 references" for a pill showing "3").
 class TtGlassPill extends StatelessWidget {
   /// A pill showing [icon] and, when given, [text].
-  const new({required this.icon, this.iconColor, this.text, super.key});
+  const new({
+    required this.icon,
+    required this.semanticLabel,
+    this.iconColor,
+    this.text,
+    super.key,
+  });
 
   /// The glyph, drawn filled.
   final IconData icon;
@@ -90,11 +100,14 @@ class TtGlassPill extends StatelessWidget {
   /// Text after the icon, or null for an icon-only pill.
   final String? text;
 
+  /// What a screen reader says for the pill.
+  final String semanticLabel;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final label = text;
-    return ClipRRect(
+    final pill = ClipRRect(
       borderRadius: BorderRadius.circular(tt.radii.s),
       child: BackdropFilter(
         filter: ui.ImageFilter.blur(
@@ -143,6 +156,12 @@ class TtGlassPill extends StatelessWidget {
           ),
         ),
       ),
+    );
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      label: semanticLabel,
+      child: pill,
     );
   }
 }

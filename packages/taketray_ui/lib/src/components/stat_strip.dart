@@ -38,6 +38,30 @@ class TtStatStrip extends StatelessWidget {
     final action = this.action;
     // proto.css: .stat-strip, .v
     final color = muted ? scheme.onSurfaceVariant : scheme.onSurface;
+    // At large text the action would leave the text a few letters of room, so
+    // it goes under the text, which keeps its two lines. (Not in the
+    // prototype, which has no text scaling.)
+    final below =
+        action != null &&
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    final line = Row(
+      spacing: tt.spacing.xs,
+      children: [
+        IconTheme.merge(
+          data: IconThemeData(color: color, size: tt.sizes.iconSmall),
+          child: leading,
+        ),
+        Expanded(
+          child: Text(
+            text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: tt.text.material.labelLarge!.copyWith(color: color),
+          ),
+        ),
+        if (action != null && !below) action,
+      ],
+    );
     return ConstrainedBox(
       constraints: BoxConstraints(minHeight: tt.sizes.touchTarget),
       child: Padding(
@@ -45,24 +69,25 @@ class TtStatStrip extends StatelessWidget {
           start: tt.spacing.m,
           end: TtMetrics.statStripPaddingEnd,
         ),
-        child: Row(
-          spacing: tt.spacing.xs,
-          children: [
-            IconTheme.merge(
-              data: IconThemeData(color: color, size: tt.sizes.iconSmall),
-              child: leading,
-            ),
-            Expanded(
-              child: Text(
-                text,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: tt.text.material.labelLarge!.copyWith(color: color),
-              ),
-            ),
-            ?action,
-          ],
-        ),
+        child: below
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  line,
+                  Padding(
+                    // Under the text, not under the mark.
+                    padding: EdgeInsetsDirectional.only(
+                      start: tt.sizes.iconSmall + tt.spacing.xs,
+                    ),
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: action,
+                    ),
+                  ),
+                ],
+              )
+            : line,
       ),
     );
   }

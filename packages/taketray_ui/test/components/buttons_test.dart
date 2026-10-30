@@ -72,6 +72,98 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets('each kind has its own colours (enabled and disabled)', (
+      tester,
+    ) async {
+      Future<ButtonStyle> styleOf(
+        TtButtonKind kind, {
+        bool enabled = true,
+      }) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            Center(
+              child: TtButton(
+                label: 'Go',
+                kind: kind,
+                onPressed: enabled ? () {} : null,
+              ),
+            ),
+          ),
+        );
+        return tester
+            .widget<ButtonStyleButton>(find.bySubtype<ButtonStyleButton>())
+            .style!;
+      }
+
+      const enabled = <WidgetState>{};
+      const disabled = {WidgetState.disabled};
+      Color? fill(ButtonStyle s, Set<WidgetState> st) =>
+          s.backgroundColor?.resolve(st);
+      Color? content(ButtonStyle s, Set<WidgetState> st) =>
+          s.foregroundColor?.resolve(st);
+      Color? edge(ButtonStyle s, Set<WidgetState> st) =>
+          s.side?.resolve(st)?.color;
+
+      await tester.pumpWidget(ttTestApp(const SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
+      final scheme = context.scheme;
+      final tt = context.tt;
+      final expected = {
+        TtButtonKind.filled: (scheme.primary, scheme.onPrimary, null),
+        TtButtonKind.tonal: (
+          scheme.surfaceContainerHighest,
+          scheme.onSurface,
+          null,
+        ),
+        TtButtonKind.outlined: (null, scheme.onSurface, scheme.outlineVariant),
+        TtButtonKind.text: (null, scheme.primary, null),
+        TtButtonKind.ghost: (
+          null,
+          tt.colors.onMedia,
+          tt.colors.onMedia.withValues(alpha: 0.35),
+        ),
+        TtButtonKind.danger: (scheme.error, scheme.onError, null),
+        TtButtonKind.attention: (
+          tt.colors.waitingContainer,
+          tt.colors.onWaitingContainer,
+          null,
+        ),
+      };
+      expect(expected.keys, unorderedEquals(TtButtonKind.values));
+      for (final MapEntry(key: kind, value: (bg, fg, border))
+          in expected.entries) {
+        final style = await styleOf(kind);
+        expect(fill(style, enabled), bg, reason: '${kind.name} fill');
+        expect(content(style, enabled), fg, reason: '${kind.name} content');
+        expect(edge(style, enabled), border, reason: '${kind.name} edge');
+
+        // Disabled: on-surface (white on video) at 12 % and 38 %.
+        final base = kind == TtButtonKind.ghost
+            ? tt.colors.onMedia
+            : scheme.onSurface;
+        final off = await styleOf(kind, enabled: false);
+        expect(
+          content(off, disabled),
+          base.withValues(alpha: 0.38),
+          reason: '${kind.name} disabled content',
+        );
+        if (bg != null) {
+          expect(
+            fill(off, disabled),
+            base.withValues(alpha: 0.12),
+            reason: '${kind.name} disabled fill',
+          );
+        }
+        if (border != null) {
+          expect(
+            edge(off, disabled),
+            base.withValues(alpha: 0.12),
+            reason: '${kind.name} disabled edge',
+          );
+        }
+      }
+    });
+
     testWidgets('shows its icon', (tester) async {
       await tester.pumpWidget(
         ttTestApp(
@@ -474,6 +566,80 @@ void main() {
         );
       }
       semantics.dispose();
+    });
+
+    testWidgets('filled draws the fill-1 glyph, the default does not', (
+      tester,
+    ) async {
+      for (final filled in [true, false]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            Center(
+              child: TtIconButton(
+                icon: Symbols.favorite_rounded,
+                semanticLabel: 'Favourite',
+                filled: filled,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        expect(
+          tester.widget<Icon>(find.byIcon(Symbols.favorite_rounded)).fill,
+          filled ? 1 : 0,
+        );
+      }
+    });
+
+    testWidgets('pressed is drawn in the accent colour in every style', (
+      tester,
+    ) async {
+      Future<Color?> colour(TtIconButtonStyle style, {bool? pressed}) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            Center(
+              child: TtIconButton(
+                icon: Symbols.favorite_rounded,
+                semanticLabel: 'Favourite',
+                style: style,
+                pressed: pressed,
+                onPressed: () {},
+              ),
+            ),
+          ),
+        );
+        return tester
+            .widget<IconButton>(find.byType(IconButton))
+            .style!
+            .foregroundColor!
+            .resolve({});
+      }
+
+      await tester.pumpWidget(ttTestApp(const SizedBox()));
+      final context = tester.element(find.byType(SizedBox));
+      final scheme = context.scheme;
+      final tt = context.tt;
+      expect(
+        await colour(TtIconButtonStyle.plain, pressed: true),
+        scheme.primary,
+      );
+      expect(
+        await colour(TtIconButtonStyle.plain, pressed: false),
+        scheme.onSurfaceVariant,
+      );
+      expect(
+        await colour(TtIconButtonStyle.circle, pressed: true),
+        scheme.primary,
+      );
+      expect(await colour(TtIconButtonStyle.circle), scheme.onSurface);
+      expect(
+        await colour(TtIconButtonStyle.onVideo, pressed: true),
+        tt.colors.readyOnMedia,
+      );
+      expect(
+        await colour(TtIconButtonStyle.onVideo, pressed: false),
+        tt.colors.onVideo,
+      );
     });
 
     testWidgets('is 48 x 48 in every style', (tester) async {

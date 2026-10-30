@@ -3,6 +3,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_golden.dart';
 
+String _counter(int length, int max) => '$length/$max';
+
 void main() {
   final filled = TextEditingController(text: 'London Food');
   final full = TextEditingController(text: 'a' * 40);
@@ -43,6 +45,7 @@ void main() {
             label: 'Reel name',
             controller: full,
             maxLength: 40,
+            counterText: _counter,
             helper: 'Up to 40 characters',
           ),
         ),
@@ -55,6 +58,7 @@ void main() {
             controller: filled,
             error: 'A reel with this name already exists',
             maxLength: 40,
+            counterText: _counter,
           ),
         ),
       ),
@@ -77,6 +81,7 @@ void main() {
             controller: long,
             error: 'This name is already used by another reel in this tray',
             maxLength: 40,
+            counterText: _counter,
           ),
         ),
       ),
