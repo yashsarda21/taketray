@@ -396,12 +396,22 @@ class TtIconButton extends StatelessWidget {
 
 /// The extended floating action button: an icon and a label on a primary
 /// stadium, 52 dp tall, with a primary-tinted shadow.
+///
+/// It has no position of its own. Above the nav pill, a screen puts it at
+/// `TtNavPill.fabBottom(context)` from the bottom of a `Stack`; without the
+/// pill, 16 dp from the edge. While a snack is showing, the screen gives
+/// [liftBy] the height to rise by (`TtMetrics.fabSnackLift` for a snack with
+/// an action), and the button glides up over `motion.medium1` and back down
+/// when [liftBy] returns to 0; under "remove animations" it jumps. The lift
+/// is a paint-time shift: the space the button takes does not change, and a
+/// tap lands where the button is drawn.
 class TtFab extends StatelessWidget {
   /// A FAB showing [icon] and [label] that calls [onPressed] when tapped.
   const new({
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.liftBy = 0,
     super.key,
   });
 
@@ -414,8 +424,25 @@ class TtFab extends StatelessWidget {
   /// Called when the button is tapped.
   final VoidCallback onPressed;
 
+  /// How far above its place the button is drawn, in dp: 0 normally, the
+  /// height of the snack while one is showing.
+  final double liftBy;
+
   @override
   Widget build(BuildContext context) {
+    final tt = context.tt;
+    // screens.js: fab() adds the snack's height to the button's `bottom`.
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: liftBy),
+      duration: tt.motion.medium1,
+      curve: tt.motion.emphasizedDecelerate,
+      builder: (context, lift, child) =>
+          Transform.translate(offset: Offset(0, -lift), child: child),
+      child: _buildButton(context),
+    );
+  }
+
+  Widget _buildButton(BuildContext context) {
     final scheme = context.scheme;
     final tt = context.tt;
     // tt-style.css: .style-tt .fab { border-radius: 26px } is a stadium at

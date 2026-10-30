@@ -95,6 +95,9 @@ final WidgetbookComponent ttFabComponent = WidgetbookComponent(
         child: TtFab(
           label: context.knobs.string(label: 'label', initialValue: 'Shoot'),
           icon: Symbols.videocam_rounded,
+          liftBy: context.knobs.boolean(label: 'snack showing (lifted)')
+              ? TtMetrics.fabSnackLift
+              : 0,
           onPressed: () {},
         ),
       ),

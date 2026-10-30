@@ -760,8 +760,129 @@ void main() {
         ),
       );
       expect(tester.getSize(find.byType(TtFab)).height, 52);
-      expect(_semantics(tester, TtFab).label, 'Shoot');
+      // The button's root is the lift (a Transform), so the semantics node is
+      // found by its label.
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('Shoot'))
+            .getSemanticsData()
+            .label,
+        'Shoot',
+      );
       semantics.dispose();
+    });
+
+    group('lift over a snack', () {
+      Widget fab(double liftBy) => Align(
+        alignment: Alignment.bottomRight,
+        child: TtFab(
+          label: 'New reel',
+          icon: Symbols.add_rounded,
+          liftBy: liftBy,
+          onPressed: () {},
+        ),
+      );
+
+      // Where the button is drawn: its Material, inside the lift. (The rect
+      // of the TtFab itself is the place it takes, which does not move.)
+      Finder drawn() => find.descendant(
+        of: find.byType(TtFab),
+        matching: find.byType(Material),
+      );
+
+      double bottomOf(WidgetTester tester) => tester.getRect(drawn()).bottom;
+
+      /// The rect of a semantics node on the screen.
+      Rect onScreen(SemanticsNode node) {
+        var rect = node.rect;
+        for (SemanticsNode? at = node; at != null; at = at.parent) {
+          final transform = at.transform;
+          if (transform != null) {
+            rect = MatrixUtils.transformRect(transform, rect);
+          }
+        }
+        return rect;
+      }
+
+      testWidgets('fab lifts by the snack height and not under reduced '
+          'motion', (tester) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(ttTestApp(fab(0)));
+        final rest = bottomOf(tester);
+        final label = find.bySemanticsLabel('New reel');
+        final restSemantics = onScreen(tester.getSemantics(label)).bottom;
+
+        // With animations: it starts where it was, moves over the medium1
+        // time, and ends exactly liftBy higher.
+        await tester.pumpWidget(ttTestApp(fab(TtMetrics.fabSnackLift)));
+        expect(bottomOf(tester), rest);
+        await tester.pump(); // the animation's first frame
+        await tester.pump(const Duration(milliseconds: 125));
+        final mid = bottomOf(tester);
+        expect(mid, lessThan(rest));
+        expect(mid, greaterThan(rest - TtMetrics.fabSnackLift));
+        await tester.pumpAndSettle();
+        expect(bottomOf(tester), rest - TtMetrics.fabSnackLift);
+        expect(TtMetrics.fabSnackLift, 64);
+        // A screen reader's target moves with it (semantics are in physical
+        // pixels).
+        expect(
+          onScreen(tester.getSemantics(label)).bottom,
+          restSemantics - TtMetrics.fabSnackLift * tester.view.devicePixelRatio,
+        );
+
+        // And back down when the snack goes.
+        await tester.pumpWidget(ttTestApp(fab(0)));
+        await tester.pumpAndSettle();
+        expect(bottomOf(tester), rest);
+
+        // Under "remove animations" the first frame is already there.
+        await tester.pumpWidget(
+          ttTestApp(fab(TtMetrics.fabSnackLift), disableAnimations: true),
+        );
+        await tester.pump();
+        expect(bottomOf(tester), rest - TtMetrics.fabSnackLift);
+        expect(tester.binding.hasScheduledFrame, isFalse);
+        semantics.dispose();
+      });
+
+      testWidgets('a lifted fab is tapped where it is drawn', (tester) async {
+        var taps = 0;
+        await tester.pumpWidget(
+          ttTestApp(
+            Align(
+              alignment: Alignment.bottomRight,
+              child: TtFab(
+                label: 'New reel',
+                icon: Symbols.add_rounded,
+                liftBy: 64,
+                onPressed: () => taps++,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('New reel'));
+        expect(taps, 1);
+      });
+
+      testWidgets('lifting does not change the size the fab takes', (
+        tester,
+      ) async {
+        await tester.pumpWidget(ttTestApp(fab(0)));
+        final before = tester.getSize(find.byType(TtFab));
+        await tester.pumpWidget(ttTestApp(fab(64)));
+        await tester.pumpAndSettle();
+        expect(tester.getSize(find.byType(TtFab)), before);
+      });
+
+      testWidgets('a lifted fab passes the accessibility guidelines', (
+        tester,
+      ) async {
+        await tester.pumpWidget(ttTestApp(fab(64)));
+        await tester.pumpAndSettle();
+        await expectTtAccessible(tester);
+      });
     });
 
     for (final brightness in Brightness.values) {

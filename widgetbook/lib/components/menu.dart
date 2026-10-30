@@ -7,7 +7,7 @@ final WidgetbookComponent ttMenuButtonComponent = WidgetbookComponent(
   name: 'TtMenuButton',
   useCases: [
     WidgetbookUseCase(
-      name: 'Playground',
+      name: 'Reel menu',
       builder: (context) {
         final count = context.knobs.int.slider(
           label: 'items',
@@ -56,6 +56,59 @@ final WidgetbookComponent ttMenuButtonComponent = WidgetbookComponent(
                   semanticLabel: 'More',
                   onPressed: open,
                 ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+    WidgetbookUseCase(
+      name: 'Status menu',
+      builder: (context) {
+        final current = context.knobs.object.dropdown<TtStatusKind>(
+          label: 'current status',
+          options: TtStatusKind.values,
+          labelBuilder: (v) => v.name,
+        );
+        const labels = {
+          TtStatusKind.collecting: (
+            'Collecting',
+            'Still shooting clips for it',
+            Symbols.radio_button_checked_rounded,
+          ),
+          TtStatusKind.ready: (
+            'Ready to edit',
+            'All the clips are in',
+            Symbols.content_cut_rounded,
+          ),
+          TtStatusKind.published: (
+            'Published',
+            'Posted on Instagram',
+            Symbols.check_circle_rounded,
+          ),
+        };
+        return Align(
+          alignment: Alignment.topLeft,
+          child: Padding(
+            padding: EdgeInsets.all(context.tt.spacing.m),
+            child: TtMenuButton<TtStatusKind>(
+              items: [
+                for (final kind in TtStatusKind.values)
+                  TtMenuItem<TtStatusKind>(
+                    kind,
+                    labels[kind]!.$1,
+                    icon: labels[kind]!.$3,
+                    iconFilled: true,
+                    subtitle: labels[kind]!.$2,
+                    checked: kind == current,
+                  ),
+              ],
+              onSelected: (_) {},
+              builder: (context, open) => TtStatusPill(
+                kind: current,
+                label: labels[current]!.$1,
+                large: true,
+                onPressed: open,
               ),
             ),
           ),

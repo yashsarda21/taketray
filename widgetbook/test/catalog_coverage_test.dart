@@ -124,6 +124,7 @@ const Map<String, String> _notInCatalogue = {
       'data for TtDialog.actions; shown in the TtDialog use cases',
   'TtMenuItem': 'data for TtMenuButton.items; shown in its use cases',
   'TtNavItem': 'data for TtNavPill.items; shown in its use cases',
+  'TtViewerAction': 'data for TtViewerActions.actions; shown in its use case',
   'TtPillTab': 'data for TtPillTabs.tabs; shown in its use cases',
 };
 

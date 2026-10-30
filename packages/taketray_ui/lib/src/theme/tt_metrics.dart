@@ -134,6 +134,11 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .fab { height: 52px }
   static const double fabHeight = 52;
 
+  /// How far the FAB rises while a snack with an action is showing: the
+  /// snack's 56 dp and an 8 dp gap.
+  // screens.js: fab() { bottom: … + (snack ? 64 : 0) }
+  static const double fabSnackLift = 64;
+
   /// Blur radius of the FAB's primary-tinted shadow.
   // tt-style.css: .style-tt .fab { box-shadow: 0 12px 26px -8px … }
   static const double fabShadowBlur = 26;
@@ -442,6 +447,10 @@ abstract final class TtMetrics {
   /// Corner radius of a menu item.
   // tt-style.css: .style-tt .menu .mi { border-radius: 14px }
   static const double menuItemRadius = 14;
+
+  /// Minimum height of a menu item that has a subtitle.
+  // proto.css: .menu .mi.tall { min-height: 60px }
+  static const double menuItemTallHeight = 60;
 
   /// Padding around the items of a menu.
   // tt-style.css: .style-tt .menu { padding: 6px }
@@ -1649,4 +1658,94 @@ abstract final class TtMetrics {
   /// it is too slow to count as a fling.
   // Not in the prototype (it has no swipe): the width of a day.
   static const double calendarSwipeDistance = 48;
+
+  // ---- Reel header (the top of a reel's detail screen) ----
+
+  /// Gap between the name and the meta row of the reel header.
+  // proto.css: .rd-head { gap: 10px }
+  static const double reelHeaderGap = 10;
+
+  /// Weight of the "N missing" text in the reel header.
+  // screens.js: routes.reel, the `.er` span with `font-weight:600`
+  static const FontWeight reelHeaderMissingWeight = FontWeight.w600;
+
+  /// Space before and after the text of the Shot ideas block.
+  // proto.css: .desc { padding: 12px 14px }
+  static const double shotIdeasPaddingHorizontal = 14;
+
+  /// Size of the lightbulb in the Shot ideas block.
+  // proto.css: .desc .dh .ms { font-size: 16px }
+  static const double shotIdeasIconSize = 16;
+
+  /// Gap between the lightbulb and the title of the Shot ideas block.
+  // proto.css: .desc .dh { gap: 6px }
+  static const double shotIdeasHeadGap = 6;
+
+  /// How many lines of the Shot ideas show before "Show more".
+  // proto.css: .clamp2 { -webkit-line-clamp: 2 }
+  static const int shotIdeasMaxLines = 2;
+
+  // ---- Viewer chrome (the full-screen clip viewer, always dark) ----
+
+  /// Opacity of white in the fill of a reel tag on the viewer.
+  // proto.css: .viewer .inreels .tagc { background: rgba(255,255,255,.16) }
+  static const double reelTagFillOpacity = 0.16;
+
+  /// Height of a reel tag.
+  // proto.css: .viewer .inreels .tagc { height: 28px }
+  static const double reelTagHeight = 28;
+
+  /// Space before and after the name in a reel tag.
+  // proto.css: .viewer .inreels .tagc { padding: 0 10px }
+  static const double reelTagPaddingHorizontal = 10;
+
+  /// Size of the icon in a reel tag.
+  // screens.js: routes.viewer, `icon('video_library', 's16')`
+  static const double reelTagIconSize = 16;
+
+  /// Gap between the reel tags (and the "In" label) of the viewer.
+  // proto.css: .viewer .inreels { gap: 6px }
+  static const double reelTagGap = 6;
+
+  /// Opacity of white in the "In" label before the reel tags.
+  // proto.css: .viewer .inreels { color: rgba(255,255,255,.8) }
+  static const double reelTagLabelOpacity = 0.8;
+
+  /// Minimum height of an action in the viewer's action bar.
+  // proto.css: .viewer .vacts button { min-height: 64px }
+  static const double viewerActionMinHeight = 64;
+
+  /// Fewest actions the viewer's action bar holds.
+  // screens.js: routes.viewer shows 4 columns; Phase 4 hides Share (3).
+  static const int viewerActionsMin = 3;
+
+  /// Most actions the viewer's action bar holds.
+  // proto.css: .viewer .vacts { grid-template-columns: repeat(4, 1fr) }
+  static const int viewerActionsMax = 4;
+
+  // ---- Reel pick rows (the reel picker sheet) ----
+
+  /// Width of the cover in a reel pick row.
+  // screens.js: sheets.picker, `.thumb` style="width:40px;height:52px"
+  static const double pickRowCoverWidth = 40;
+
+  /// Height of the cover in a reel pick row.
+  // screens.js: sheets.picker, `.thumb` style="width:40px;height:52px"
+  static const double pickRowCoverHeight = 52;
+
+  /// Size of the film icon that stands in for a missing cover.
+  // proto.css: .li .thumb .ms { font-size: 20px }
+  static const double pickRowCoverIconSize = 20;
+
+  /// Minimum height of a reel pick row.
+  // proto.css: .li { min-height: 56px }
+  static const double pickRowMinHeight = 56;
+
+  /// Size of the box of the "New reel" row.
+  // proto.css: .li .lead.box { width: 40px; height: 40px }
+  static const double pickNewBoxSize = 40;
+
+  /// Weight of the name in a pick row.
+  // proto.css: .li .txt b { font-weight: 500 }
+  static const FontWeight pickRowNameWeight = FontWeight.w500;
 }
