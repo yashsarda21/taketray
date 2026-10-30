@@ -30,7 +30,7 @@ final Logger _log = Logger('reels');
 /// bring back a reel whose name another reel has taken meanwhile: they do not
 /// go through [create].
 class ReelsRepository {
-  new(this._db, this._clock) : _undo = UndoWriter(_db);
+  new(this._db, this._clock) : _undo = UndoWriter(_db, _clock);
 
   final AppDatabase _db;
   final Clock _clock;
@@ -68,12 +68,22 @@ class ReelsRepository {
   }
 
   /// Renames reel [id]. The name is checked as in [create]; the reel's own
-  /// name, in any case, is fine. Throws [StateError] when there is no such
-  /// reel.
+  /// name, in any case, is fine, even when another reel has it too (a backup
+  /// import or an Undo can bring two). Throws [StateError] when there is no
+  /// such reel.
   Future<void> rename(int id, String name) async {
     _checkName(name);
     await _db.transaction(() async {
-      await _checkUnique(name, except: id);
+      final current = await (_db.select(
+        _db.reels,
+      )..where((r) => r.id.equals(id))).getSingleOrNull();
+      if (current == null) throw StateError('No reel with id $id');
+      // Its own name in any case is always fine, even while an imported or
+      // restored reel has the same name: otherwise that reel could not be
+      // saved at all.
+      if (reelNameKey(current.name) != reelNameKey(name)) {
+        await _checkUnique(name);
+      }
       await _update(id, ReelsCompanion(name: Value(normalizeName(name))));
     });
   }
@@ -252,17 +262,15 @@ class ReelsRepository {
     if (problem != null) throw InvalidInputException(problem);
   }
 
-  /// Throws [ReelNameProblem.duplicate] when a reel other than [except] has
-  /// [name], ignoring case and edge spaces. Compared in Dart ([reelNameKey]):
-  /// SQL's `lower()` folds only ASCII, so "CAFÉ" would not match "Café".
-  /// Run inside the write's transaction.
-  Future<void> _checkUnique(String name, {int? except}) async {
+  /// Throws [ReelNameProblem.duplicate] when a reel has [name], ignoring case
+  /// and edge spaces (`rename` skips this for the reel's own name). Compared
+  /// in Dart ([reelNameKey]): SQL's `lower()` folds only ASCII, so "CAFÉ"
+  /// would not match "Café". Run inside the write's transaction.
+  Future<void> _checkUnique(String name) async {
     final key = reelNameKey(name);
-    final query = _db.selectOnly(_db.reels)
-      ..addColumns([_db.reels.id, _db.reels.name]);
+    final query = _db.selectOnly(_db.reels)..addColumns([_db.reels.name]);
     final rows = await query.get();
     for (final row in rows) {
-      if (row.read(_db.reels.id) == except) continue;
       if (reelNameKey(row.read(_db.reels.name)!) == key) {
         throw const InvalidInputException(ReelNameProblem.duplicate);
       }

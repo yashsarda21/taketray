@@ -302,10 +302,15 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
   ```dart
   if (atId != null && _sameClip(atId, clip)) return clip.id;
   final holder = await _identityHolder(clip);
-  if (holder != null) return holder;
+  if (holder != null &&
+      sameFingerprint(_fingerprintOf(holder), clip.fingerprint)) {
+    return holder.id;
+  }
   ```
 
-  If "Add earlier videos" found the same video again in the meantime, it already has a new row with the same volume and MediaStore number. That row is linked and nothing is inserted: two rows for one video is the bug this avoids. Otherwise the clip is inserted with its old id (`id: Value(clip.id)`). Ids are `AUTOINCREMENT`, so an old id is never given to another clip; only a backup import could, and then the clip is skipped with a warning rather than linking the wrong video.
+  If "Add earlier videos" found the same video again in the meantime, it already has a new row with the same volume and MediaStore number. That row is linked and nothing is inserted: two rows for one video is the bug this avoids. But a number alone is not proof: after Android rebuilds its media library, number 10 can belong to a different video. So the holder is linked only when its fingerprint (size, length, shooting instant; the name is ignored, D-69) is the swept clip's. When it is not, the clip comes back with its old id but detached and missing (`mediaStoreId = -id`, the D-71 shape): the reel shows the missing tile, never the other video. With no holder at all, the clip is inserted with its old id (`id: Value(clip.id)`). Ids are `AUTOINCREMENT`, so an old id is never given to another clip; only a backup import could, and then the clip is skipped with a warning rather than linking the wrong video.
+
+- **Undo never deletes a clip.** Undoing a move or an add removes a link it created only if the clip has another place (a link or To tag/Skipped). Add X to Paris, remove X from Goa, then undo the add: Paris is X's only place now, so X keeps that link instead of being swept.
 
 - **Idempotent, twice over.** Every restore step is "insert if it is not there", so running it again changes nothing. On top of that, an `Expando` (a side table keyed by object identity that does not keep the object alive) marks a record once its undo commits. That matters for "delete, Undo, delete again, then the first Undo once more": without the mark, the first record would bring the reel back a second time.
 

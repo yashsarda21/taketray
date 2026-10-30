@@ -34,7 +34,7 @@ final Logger _log = Logger('clips');
 /// Every `Iterable<int>` / `Set<int>` of ids is treated as a set: duplicates
 /// are ignored.
 class ClipsRepository {
-  new(this._db, this._clock) : _undo = UndoWriter(_db);
+  new(this._db, this._clock) : _undo = UndoWriter(_db, _clock);
 
   final AppDatabase _db;
   final Clock _clock;

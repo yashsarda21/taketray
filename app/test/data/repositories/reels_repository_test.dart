@@ -165,6 +165,42 @@ void main() {
       expect(after.updatedAt, _t0.add(const Duration(minutes: 1)));
     });
 
+    test(
+      'rename to its own name is fine while an imported duplicate exists',
+      () async {
+        final goa = await repo.create('Goa');
+        await repo.create('Paris');
+        // A backup import (or Undo of a delete) can bring a second "goa".
+        await db
+            .into(db.reels)
+            .insert(
+              ReelsCompanion.insert(
+                name: 'goa',
+                status: ReelStatus.collecting,
+                createdAt: _t0,
+                updatedAt: _t0,
+              ),
+            );
+        clock.advance(const Duration(minutes: 1));
+
+        await repo.rename(goa.id, 'Goa');
+        await repo.rename(goa.id, ' GOA ');
+
+        expect((await repo.getById(goa.id))!.name, 'GOA');
+        // Another reel's name is still refused.
+        await expectLater(
+          repo.rename(goa.id, 'paris'),
+          throwsA(
+            isA<InvalidInputException>().having(
+              (e) => e.problem,
+              'problem',
+              ReelNameProblem.duplicate,
+            ),
+          ),
+        );
+      },
+    );
+
     test('description over 1000 is rejected and saves nothing', () async {
       await expectLater(
         repo.create('Goa', description: 'a' * 1001),

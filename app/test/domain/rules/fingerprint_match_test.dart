@@ -49,6 +49,30 @@ void main() {
     volumeName: volume,
   );
 
+  group('sameFingerprint', () {
+    test('same size, length and instant is the same video, name ignored', () {
+      expect(sameFingerprint(fp(), fp(name: 'renamed.mp4')), isTrue);
+      expect(
+        sameFingerprint(fp(), fp(date: taken.toLocal())),
+        isTrue,
+        reason: 'the same instant in another zone',
+      );
+    });
+
+    test('a different size, length or instant is another video', () {
+      expect(sameFingerprint(fp(), fp(sizeBytes: 1000001)), isFalse);
+      expect(sameFingerprint(fp(), fp(durationMs: 5001)), isFalse);
+      expect(
+        sameFingerprint(fp(), fp(date: taken.add(const Duration(seconds: 1)))),
+        isFalse,
+      );
+    });
+
+    test('a size of 0 never matches', () {
+      expect(sameFingerprint(fp(sizeBytes: 0), fp(sizeBytes: 0)), isFalse);
+    });
+  });
+
   group('sameVideo', () {
     final v = fakeVideo(id: 7, name: 'VID_1.mp4');
 

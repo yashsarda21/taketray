@@ -304,6 +304,77 @@ void main() {
       expect(warnings, ['Undo remove: reel ${goa.id} is gone']);
     });
 
+    test(
+      'undo remove never links a different video that took the number',
+      () async {
+        final goa = await reels.create('Goa');
+        final [id, pickedId] = await clips.addNewClipsToReel(goa.id, [
+          shot(10),
+          picked('content://media/picker/0/7'),
+        ]);
+        final before = await clipById(id);
+        final record = await clips.removeClipsFromReel(goa.id, [id, pickedId]);
+        // After a rebuild, number 10 is another video (same date, other size
+        // and length); the picker URI too.
+        final other = (await clips.saveDetected([
+          NewClip.mediaStore(
+            mediaStoreId: 10,
+            volumeName: 'external_primary',
+            fingerprint: ClipFingerprint(
+              sizeBytes: 999999,
+              durationMs: 1234,
+              dateTakenUtc: before.fingerprint.dateTakenUtc,
+              displayName: 'VID_10.mp4',
+            ),
+            width: 1080,
+            height: 1920,
+            mimeType: 'video/mp4',
+          ),
+        ])).single;
+        final otherPicked = (await clips.addNewClipsToReel(
+          (await reels.create('Paris')).id,
+          [
+            NewClip.picker(
+              pickerUri: 'content://media/picker/0/7',
+              fingerprint: ClipFingerprint(
+                sizeBytes: 5,
+                durationMs: 5,
+                dateTakenUtc: _t0,
+                displayName: 'friend.mp4',
+              ),
+              width: 1,
+              height: 1,
+              mimeType: 'video/mp4',
+            ),
+          ],
+        )).single;
+        clock.advance(_minute);
+
+        final warnings = await warningsOf(() => clips.undo(record));
+
+        // The clip is back with its id, detached and missing (D-71): the
+        // missing tile, never the other video.
+        expect(
+          await clipById(id),
+          before.copyWith(
+            mediaStoreId: -id,
+            missing: true,
+            lastVerifiedAt: _t0.add(_minute),
+          ),
+        );
+        expect(await linksOf(goa.id), [(id, goa.id, _t0)]);
+        expect(await reelIdsOf(other), isEmpty);
+        expect(await inbox(), {other: (InboxState.pending, _t0)});
+        // The picked clip has nothing else to be found by: left out.
+        expect(await reelIdsOf(otherPicked), isNot(contains(goa.id)));
+        expect(await clipIds(), [id, other, otherPicked]);
+        final pickedWarning =
+            'Undo: clip $pickedId: clip $otherPicked is another video with '
+            'its identity, not restored';
+        expect(warnings, [pickedWarning, 'Undo: 1 links could not come back']);
+      },
+    );
+
     test('undo never links a different clip that holds the old id', () async {
       final goa = await reels.create('Goa');
       final id = (await clips.addNewClipsToReel(goa.id, [shot(10)])).single;
@@ -527,19 +598,38 @@ void main() {
       expect(await clipIds(), [pending, skipped, inReel]);
     });
 
-    test('add undo sweeps a clip it orphaned', () async {
+    test('add undo never deletes a clip: one whose only place is the added '
+        'link keeps it', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
       final id = (await clips.addNewClipsToReel(goa.id, [shot(10)])).single;
+      final before = await clipById(id);
+      clock.advance(_minute);
       final record = await clips.addClipsToReel(paris.id, [id]);
       // Removed from Goa meanwhile: Paris is its only place now.
       await clips.removeClipsFromReel(goa.id, [id]);
       expect(await clipIds(), [id]);
 
+      final warnings = await warningsOf(() => clips.undo(record));
+
+      expect(await clipById(id), before);
+      expect(await linksOf(paris.id), [(id, paris.id, _t0.add(_minute))]);
+      expect(
+        warnings,
+        contains('Undo: kept 1 links of clips with no other place'),
+      );
+    });
+
+    test('add undo puts a clip back in To tag before its link goes', () async {
+      final goa = await reels.create('Goa');
+      final id = (await clips.saveDetected([shot(10)])).single;
+      final record = await clips.addClipsToReel(goa.id, [id]);
+
       await clips.undo(record);
 
-      expect(await clipIds(), isEmpty);
-      expect(await db.select(db.clipReels).get(), isEmpty);
+      expect(await clipIds(), [id]);
+      expect(await linksOf(goa.id), isEmpty);
+      expect(await inbox(), {id: (InboxState.pending, _t0)});
     });
 
     test('add undo leaves a clip put in another reel since', () async {

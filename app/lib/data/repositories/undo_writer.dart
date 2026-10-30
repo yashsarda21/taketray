@@ -1,14 +1,17 @@
 import 'package:drift/drift.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
 import 'package:taketray/domain/models/vn_session.dart';
+import 'package:taketray/domain/rules/fingerprint_match.dart';
 
 // Ids and counts only (D-10): never a name, a description, a display name or
 // a URI.
@@ -23,9 +26,10 @@ final Expando<bool> _undone = Expando<bool>('undone');
 /// Shared by `ClipsRepository` and `ReelsRepository`; screens call `undo` on
 /// either. Every method except [undo] runs inside the caller's transaction.
 class UndoWriter {
-  new(this._db);
+  new(this._db, this._clock);
 
   final AppDatabase _db;
+  final Clock _clock;
 
   /// Runs the orphan sweep (D-56) and returns every field of each clip it
   /// deleted. Run inside a transaction, so the rows read are the rows
@@ -133,18 +137,15 @@ class UndoWriter {
       _log.warning('Undo add: reel ${record.reelId} is gone');
       return;
     }
-    var deleted = 0;
-    for (final link in record.createdLinks) {
-      deleted += await _deleteLink(link);
-    }
     var back = 0;
+    // The lists first: a clip that came from To tag or Skipped and is in no
+    // reel now except through this add goes back to its list, so it has a
+    // place before its link goes. One the user has put in a reel since stays
+    // there (a clip is never in a reel and a list at once, D-57).
     for (final entry in record.removedInbox) {
-      // Only a clip that is in no reel now goes back to its list: one the
-      // user has put in another reel since stays there (a clip is never in
-      // a reel and a list at once, D-57).
       if (!await _clipExists(entry.clipId) ||
-          await _hasLink(entry.clipId) ||
-          await _hasInboxRow(entry.clipId)) {
+          await _hasInboxRow(entry.clipId) ||
+          await _hasOtherLink(entry.clipId, record)) {
         continue;
       }
       await _db
@@ -158,11 +159,14 @@ class UndoWriter {
           );
       back++;
     }
-    final swept = await _db.deleteOrphanClips();
+    // Then the links, each only while its clip keeps another place: undoing
+    // an add never deletes a clip (one removed from its other reel since
+    // stays in this one). No sweep.
+    final deleted = await _deleteCreatedLinks(record.createdLinks);
     await _restoreTouch(record.touch);
     _log.info(
       'Undid an add to reel ${record.reelId}: $deleted links removed, '
-      '$back back in their list, swept $swept',
+      '$back back in their list',
     );
   }
 
@@ -249,20 +253,60 @@ class UndoWriter {
     )..where((c) => c.id.equals(clip.id))).getSingleOrNull();
     if (atId != null && _sameClip(atId, clip)) return clip.id;
     // The same video, saved again under another id meanwhile (Add earlier
-    // videos found it again): link that one, insert nothing.
+    // videos found it again): link that one, insert nothing. Only when its
+    // fingerprint is this clip's (D-69): after a rebuild the number, or a
+    // URI, can belong to another video, which must never join the reel.
     final holder = await _identityHolder(clip);
-    if (holder != null) return holder;
+    if (holder != null &&
+        sameFingerprint(_fingerprintOf(holder), clip.fingerprint)) {
+      return holder.id;
+    }
     if (atId != null) {
       // Ids are AUTOINCREMENT and never reused, so only a backup import can
       // put another clip here. Skip it rather than link the wrong video.
       _log.warning('Undo: clip id ${clip.id} holds another clip, not restored');
       return null;
     }
+    if (holder == null) {
+      await _db
+          .into(_db.clips)
+          .insert(_clipCompanion(clip), mode: InsertMode.insertOrAbort);
+      return clip.id;
+    }
+    // Another video holds its identity now.
+    if (clip.source != ClipSource.mediaStore || clip.pickerUri != null) {
+      // A picked clip has nothing else to be found by: leave it out.
+      _log.warning(
+        'Undo: clip ${clip.id}: clip ${holder.id} is another video with its '
+        'identity, not restored',
+      );
+      return null;
+    }
+    // Back with its old id but detached and missing (the D-71 shape): it
+    // shows the missing tile and can never play the other video.
     await _db
         .into(_db.clips)
-        .insert(_clipCompanion(clip), mode: InsertMode.insertOrAbort);
+        .insert(
+          _clipCompanion(clip).copyWith(
+            mediaStoreId: Value(-clip.id),
+            missing: const Value(true),
+            lastVerifiedAt: Value(_clock.now()),
+          ),
+          mode: InsertMode.insertOrAbort,
+        );
+    _log.info(
+      'Undo: clip ${clip.id} restored detached; clip ${holder.id} is '
+      'another video with its number',
+    );
     return clip.id;
   }
+
+  ClipFingerprint _fingerprintOf(ClipRow row) => ClipFingerprint(
+    sizeBytes: row.sizeBytes,
+    durationMs: row.durationMs,
+    dateTakenUtc: row.dateTakenUtc,
+    displayName: row.displayName,
+  );
 
   /// The row with [clip]'s id is [clip] when it was saved at the same moment
   /// from the same video facts. Its MediaStore number may have changed since
@@ -274,29 +318,27 @@ class UndoWriter {
       row.dateTakenUtc == clip.fingerprint.dateTakenUtc &&
       row.firstSeenAt == clip.firstSeenAt;
 
-  /// The id of a stored clip with [clip]'s identity: the same volume and
-  /// MediaStore number above 0, or the same picker URI. These are the
-  /// table's unique keys, so a clip they find would also block the insert.
-  /// A detached clip (number `-id`) has no identity to find.
-  Future<int?> _identityHolder(Clip clip) async {
+  /// The stored clip with [clip]'s identity: the same volume and MediaStore
+  /// number above 0, or the same picker URI. These are the table's unique
+  /// keys, so a clip they find would also block the insert. A detached clip
+  /// (number `-id`) has no identity to find.
+  Future<ClipRow?> _identityHolder(Clip clip) async {
     final volume = clip.volumeName;
     final number = clip.mediaStoreId;
     final uri = clip.pickerUri;
     final byStore = volume != null && number != null && number > 0;
     if (!byStore && uri == null) return null;
-    final c = _db.clips;
-    final query = _db.selectOnly(c)
-      ..addColumns([c.id])
+    final query = _db.select(_db.clips)
       ..where(
-        Expression.or([
+        (c) => Expression.or([
           if (byStore)
             c.volumeName.equals(volume) & c.mediaStoreId.equals(number),
           if (uri != null) c.pickerUri.equals(uri),
         ]),
       )
-      ..orderBy([OrderingTerm.asc(c.id)])
+      ..orderBy([(c) => OrderingTerm.asc(c.id)])
       ..limit(1);
-    return await query.map((row) => row.read(c.id)).getSingleOrNull();
+    return await query.getSingleOrNull();
   }
 
   /// Inserts each of [links] that is not there, with its `addedAt`, when its
@@ -364,7 +406,7 @@ class UndoWriter {
       deleted += await _deleteLink(link);
     }
     if (kept > 0) {
-      _log.warning('Undo move: kept $kept links of clips with no other place');
+      _log.warning('Undo: kept $kept links of clips with no other place');
     }
     return deleted;
   }
@@ -420,12 +462,17 @@ class UndoWriter {
           .getSingleOrNull() !=
       null;
 
-  Future<bool> _hasLink(int clipId) async =>
-      await (_db.select(_db.clipReels)
-            ..where((l) => l.clipId.equals(clipId))
-            ..limit(1))
-          .getSingleOrNull() !=
-      null;
+  /// Whether [clipId] has a link other than the one [record] created (to
+  /// its reel, with the add's `addedAt`).
+  Future<bool> _hasOtherLink(int clipId, AddUndo record) async {
+    final ours = record.createdLinks.where((l) => l.clipId == clipId).toList();
+    final links = await (_db.select(
+      _db.clipReels,
+    )..where((l) => l.clipId.equals(clipId))).get();
+    return links.any(
+      (l) => !ours.any((o) => o.reelId == l.reelId && o.addedAt == l.addedAt),
+    );
+  }
 
   Future<bool> _hasInboxRow(int clipId) async =>
       await (_db.select(
