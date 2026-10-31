@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Builds the release APK and checks its merged manifest: no forbidden
-# permission (INTERNET and the media permissions TakeTray never asks for),
+# permission (INTERNET, the network state and wake lock that the video player
+# would merge in, and the media permissions TakeTray never asks for),
 # Google backup off (D-64) and exactly the media permissions TakeTray needs
 # (D-68). It also checks that the on-device test code (the debug-only test
 # media channel, D-77) is not in the release dex. Slow (full release build), so
@@ -92,6 +93,8 @@ FORBIDDEN_PERMISSIONS=(
   android.permission.READ_MEDIA_IMAGES
   android.permission.MANAGE_EXTERNAL_STORAGE
   android.permission.ACCESS_MEDIA_LOCATION
+  android.permission.ACCESS_NETWORK_STATE
+  android.permission.WAKE_LOCK
 )
 for p in "${FORBIDDEN_PERMISSIONS[@]}"; do
   if awk -v p="$p" '$1 == "permission" && $2 == p { found = 1 } END { exit !found }' <<<"$facts"; then

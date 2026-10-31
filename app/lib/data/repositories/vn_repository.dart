@@ -66,7 +66,7 @@ class VnRepository {
             VnSessionsCompanion.insert(
               reelId: Value(reelId),
               folderName: uniqueFolderName(base, taken),
-              createdAt: _clock.now(),
+              createdAt: _clock.storedNow(),
             ),
           );
       return _toSession(row);

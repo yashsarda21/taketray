@@ -1,3 +1,5 @@
+import 'dart:ui' show FontWeight;
+
 /// Component numbers that are not design tokens: blur radii, opacities and
 /// corner radii that the TakeTray style (`design/prototype/assets/tt-style.css`)
 /// sets for one component.
@@ -20,7 +22,8 @@ abstract final class TtMetrics {
 
   // ---- Glass (floating chrome) ----
 
-  /// Background blur behind glass chrome (nav pill, glass circles).
+  /// Background blur behind glass chrome: the nav pill and glass pills (the
+  /// app bar's circle is solid, not glass).
   // tt-style.css: .style-tt .navbar { backdrop-filter: blur(18px) }
   static const double glassBlur = 18;
 
@@ -203,7 +206,7 @@ abstract final class TtMetrics {
 
   /// Weight of the count badge's digits.
   // proto.css: .badge { font: 700 11.5px/18px … }
-  static const double badgeFontWeight = 700;
+  static const FontWeight badgeFontWeight = FontWeight.w700;
 
   /// The largest text scale a count badge draws its number at.
   // Not in the prototype: decorative overlay. The badge sits on the corner of
@@ -304,6 +307,18 @@ abstract final class TtMetrics {
   /// Gap between the content of a dialog and its actions.
   // tt-style.css: .style-tt .dlg .acts { margin-top: 18px }
   static const double dialogActionsGap = 18;
+
+  /// Padding at the sides of a `TtDialogNote`.
+  // proto.css: .dlg .safe { padding: 10px 12px }
+  static const double dialogNotePaddingHorizontal = 12;
+
+  /// Padding above and below a `TtDialogNote`.
+  // proto.css: .dlg .safe { padding: 10px 12px }
+  static const double dialogNotePaddingVertical = 10;
+
+  /// Size of the icon of a `TtDialogNote` (grows with the text size).
+  // proto.css: .dlg .safe .ms { font-size: 20px }
+  static const double dialogNoteIconSize = 20;
 
   // ---- Overlays (sheet, dialog, menu) ----
 
@@ -439,6 +454,10 @@ abstract final class TtMetrics {
   /// Corner radius of a menu item.
   // tt-style.css: .style-tt .menu .mi { border-radius: 14px }
   static const double menuItemRadius = 14;
+
+  /// Minimum height of a menu item that has a subtitle.
+  // proto.css: .menu .mi.tall { min-height: 60px }
+  static const double menuItemTallHeight = 60;
 
   /// Padding around the items of a menu.
   // tt-style.css: .style-tt .menu { padding: 6px }
@@ -676,7 +695,7 @@ abstract final class TtMetrics {
 
   /// Weight of the time and duration.
   // proto.css: .tile .tm, .tile .du { font: 700 12px/16px … }
-  static const double clipTileTextWeight = 700;
+  static const FontWeight clipTileTextWeight = FontWeight.w700;
 
   /// Blur of the shadow under the time and duration.
   // proto.css: .tile .tm, .tile .du { text-shadow: 0 1px 2px rgba(0,0,0,.5) }
@@ -729,7 +748,7 @@ abstract final class TtMetrics {
 
   /// Weight of the count in the reel count badge and the text of the mark.
   // proto.css: .tile .multi { font: 700 11.5px/1 … }
-  static const double clipTileBadgeTextWeight = 700;
+  static const FontWeight clipTileBadgeTextWeight = FontWeight.w700;
 
   /// Diameter of the selection circle.
   // proto.css: .tile .selc { width: 24px; height: 24px }
@@ -848,14 +867,6 @@ abstract final class TtMetrics {
   // proto.css: .tile.miss .btn { margin-top: 2px }
   static const double clipTileMissingButtonGap = 2;
 
-  /// Lines of the missing tile's label before it ends in an ellipsis.
-  // (not in the prototype: a limit so the label cannot take the tile)
-  static const double clipTileMissingLabelLines = 2;
-
-  /// The text scale above which the missing tile's label gets one line only.
-  // (not in the prototype: two lines no longer fit the 3:4 tile above this)
-  static const double clipTileMissingLabelScaleLimit = 1.15;
-
   // ---- Skeleton ----
 
   /// Width of the skeleton bar that stands in for a short value, such as the
@@ -956,7 +967,7 @@ abstract final class TtMetrics {
 
   /// Weight of the missing-clips text.
   // proto.css: .rcard .mt .miss { font-weight: 600 }
-  static const double reelCardMissingWeight = 600;
+  static const FontWeight reelCardMissingWeight = FontWeight.w600;
 
   /// Gap between the empty art's icon and its label.
   // proto.css: .rcard .ph-empty { gap: 6px }
@@ -998,7 +1009,7 @@ abstract final class TtMetrics {
 
   /// Weight of the badge's count.
   // proto.css: .refbadge { font: 700 12px/1 var(--font) }
-  static const double refBadgeWeight = 700;
+  static const FontWeight refBadgeWeight = FontWeight.w700;
 
   // ---- Reference card ----
 
@@ -1265,7 +1276,7 @@ abstract final class TtMetrics {
 
   /// Weight of the time texts and the hint.
   // proto.css: .scrub { font: 600 12px/1 var(--font) }
-  static const double scrubTextWeight = 600;
+  static const FontWeight scrubTextWeight = FontWeight.w600;
 
   /// How far the hint's bottom edge sits above the middle of the track.
   // proto.css: .scrub .hint { bottom: 18px } on a 22 px bar whose track is
@@ -1433,7 +1444,7 @@ abstract final class TtMetrics {
 
   /// Weight of a list row's title.
   // proto.css: .li .txt b { font-weight: 500 }
-  static const double listRowTitleWeight = 500;
+  static const FontWeight listRowTitleWeight = FontWeight.w500;
 
   /// Minimum height of a tall list row (two lines and a trailing part).
   // proto.css: .li.tall { min-height: 72px }
@@ -1441,7 +1452,7 @@ abstract final class TtMetrics {
 
   /// Weight of the title of a list row that is off.
   // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
-  static const double listRowOffTitleWeight = 400;
+  static const FontWeight listRowOffTitleWeight = FontWeight.w400;
 
   /// Minimum height of the count pill at the end of a list row.
   // proto.css: .ev-row .ev-trail .n { min-height: 28px }
@@ -1625,19 +1636,19 @@ abstract final class TtMetrics {
 
   /// Weight of a day's number.
   // proto.css: .evd { font-weight: 600 }
-  static const double calendarDayWeight = 600;
+  static const FontWeight calendarDayWeight = FontWeight.w600;
 
   /// Weight of the number of a day of another month.
   // proto.css: .evd-c.out .evd { font-weight: 500 }
-  static const double calendarDayOutWeight = 500;
+  static const FontWeight calendarDayOutWeight = FontWeight.w500;
 
   /// Weight of the number of the first and the last chosen day.
   // proto.css: .evd-c.sel .evd { font-weight: 700 }
-  static const double calendarDaySelectedWeight = 700;
+  static const FontWeight calendarDaySelectedWeight = FontWeight.w700;
 
   /// Weight of the number of a day that is off.
   // proto.css: .evd[disabled] { font-weight: 400 }
-  static const double calendarDayOffWeight = 400;
+  static const FontWeight calendarDayOffWeight = FontWeight.w400;
 
   /// Width of a pill in the year and month grid, in ems of its label (the
   /// grid has fewer columns at large text).
@@ -1654,4 +1665,94 @@ abstract final class TtMetrics {
   /// it is too slow to count as a fling.
   // Not in the prototype (it has no swipe): the width of a day.
   static const double calendarSwipeDistance = 48;
+
+  // ---- Reel header (the top of a reel's detail screen) ----
+
+  /// Gap between the name and the meta row of the reel header.
+  // proto.css: .rd-head { gap: 10px }
+  static const double reelHeaderGap = 10;
+
+  /// Weight of the "N missing" text in the reel header.
+  // screens.js: routes.reel, the `.er` span with `font-weight:600`
+  static const FontWeight reelHeaderMissingWeight = FontWeight.w600;
+
+  /// Space before and after the text of the Shot ideas block.
+  // proto.css: .desc { padding: 12px 14px }
+  static const double shotIdeasPaddingHorizontal = 14;
+
+  /// Size of the lightbulb in the Shot ideas block.
+  // proto.css: .desc .dh .ms { font-size: 16px }
+  static const double shotIdeasIconSize = 16;
+
+  /// Gap between the lightbulb and the title of the Shot ideas block.
+  // proto.css: .desc .dh { gap: 6px }
+  static const double shotIdeasHeadGap = 6;
+
+  /// How many lines of the Shot ideas show before "Show more".
+  // proto.css: .clamp2 { -webkit-line-clamp: 2 }
+  static const int shotIdeasMaxLines = 2;
+
+  // ---- Viewer chrome (the full-screen clip viewer, always dark) ----
+
+  /// Opacity of white in the fill of a reel tag on the viewer.
+  // proto.css: .viewer .inreels .tagc { background: rgba(255,255,255,.16) }
+  static const double reelTagFillOpacity = 0.16;
+
+  /// Height of a reel tag.
+  // proto.css: .viewer .inreels .tagc { height: 28px }
+  static const double reelTagHeight = 28;
+
+  /// Space before and after the name in a reel tag.
+  // proto.css: .viewer .inreels .tagc { padding: 0 10px }
+  static const double reelTagPaddingHorizontal = 10;
+
+  /// Size of the icon in a reel tag.
+  // screens.js: routes.viewer, `icon('video_library', 's16')`
+  static const double reelTagIconSize = 16;
+
+  /// Gap between the reel tags (and the "In" label) of the viewer.
+  // proto.css: .viewer .inreels { gap: 6px }
+  static const double reelTagGap = 6;
+
+  /// Opacity of white in the "In" label before the reel tags.
+  // proto.css: .viewer .inreels { color: rgba(255,255,255,.8) }
+  static const double reelTagLabelOpacity = 0.8;
+
+  /// Minimum height of an action in the viewer's action bar.
+  // proto.css: .viewer .vacts button { min-height: 64px }
+  static const double viewerActionMinHeight = 64;
+
+  /// Fewest actions the viewer's action bar holds.
+  // screens.js: routes.viewer shows 4 columns; Phase 4 hides Share (3).
+  static const int viewerActionsMin = 3;
+
+  /// Most actions the viewer's action bar holds.
+  // proto.css: .viewer .vacts { grid-template-columns: repeat(4, 1fr) }
+  static const int viewerActionsMax = 4;
+
+  // ---- Reel pick rows (the reel picker sheet) ----
+
+  /// Width of the cover in a reel pick row.
+  // screens.js: sheets.picker, `.thumb` style="width:40px;height:52px"
+  static const double pickRowCoverWidth = 40;
+
+  /// Height of the cover in a reel pick row.
+  // screens.js: sheets.picker, `.thumb` style="width:40px;height:52px"
+  static const double pickRowCoverHeight = 52;
+
+  /// Size of the film icon that stands in for a missing cover.
+  // proto.css: .li .thumb .ms { font-size: 20px }
+  static const double pickRowCoverIconSize = 20;
+
+  /// Minimum height of a reel pick row.
+  // proto.css: .li { min-height: 56px }
+  static const double pickRowMinHeight = 56;
+
+  /// Size of the box of the "New reel" row.
+  // proto.css: .li .lead.box { width: 40px; height: 40px }
+  static const double pickNewBoxSize = 40;
+
+  /// Weight of the name in a pick row.
+  // proto.css: .li .txt b { font-weight: 500 }
+  static const FontWeight pickRowNameWeight = FontWeight.w500;
 }

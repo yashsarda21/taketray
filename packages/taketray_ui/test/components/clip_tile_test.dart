@@ -49,6 +49,14 @@ Size _paintedSize(WidgetTester tester) {
   return Size(corner.dx, corner.dy);
 }
 
+/// How many lines [paragraph] is laid out over.
+int _lineCount(RenderParagraph paragraph) => (TextPainter(
+  text: paragraph.text,
+  textDirection: paragraph.textDirection,
+  textScaler: paragraph.textScaler,
+  maxLines: paragraph.maxLines,
+)..layout(maxWidth: paragraph.size.width)).computeLineMetrics().length;
+
 Finder _icon(IconData icon) =>
     find.descendant(of: find.byType(TtClipTile), matching: find.byIcon(icon));
 
@@ -109,6 +117,45 @@ void main() {
       await tester.pumpWidget(ttTestApp(_tile()));
       expect(find.text('In VN folder'), findsNothing);
     });
+
+    for (final direction in TextDirection.values) {
+      testWidgets('the VN mark is inset 5 on the start side only '
+          '(${direction.name})', (tester) async {
+        final rtl = direction == TextDirection.rtl;
+        for (final label in ['VN', 'In the VN folder, and a very long name']) {
+          await tester.pumpWidget(
+            ttTestApp(
+              Directionality(
+                textDirection: direction,
+                child: _tile(vnLabel: label),
+              ),
+            ),
+          );
+          final tile = tester.getRect(find.byType(TtClipTile));
+          final mark = tester.getRect(
+            find
+                .ancestor(
+                  of: find.byIcon(Symbols.folder_copy_rounded),
+                  matching: find.byType(DecoratedBox),
+                )
+                .first,
+          );
+          // Start side: 5 dp from the tile's edge.
+          expect(
+            rtl ? tile.right - mark.right : mark.left - tile.left,
+            5,
+            reason: label,
+          );
+          // End side: no inset, so a long label may run to the tile's edge
+          // but never past it.
+          final endGap = rtl ? mark.left - tile.left : tile.right - mark.right;
+          expect(endGap, greaterThanOrEqualTo(0), reason: label);
+          if (label.length > 10) {
+            expect(endGap, lessThan(1), reason: 'runs to the edge');
+          }
+        }
+      });
+    }
 
     testWidgets('the VN label fits in full in a 107 dp tile at 1x', (
       tester,
@@ -358,6 +405,7 @@ void main() {
     testWidgets('has no button without a removeLabel', (tester) async {
       await tester.pumpWidget(tile(removeLabel: null));
       expect(find.byType(TtButton), findsNothing);
+      expect(find.byType(TtIconButton), findsNothing);
     });
 
     testWidgets('Remove calls onRemove', (tester) async {
@@ -365,6 +413,369 @@ void main() {
       await tester.pumpWidget(tile(onRemove: () => removed++));
       await tester.tap(find.text('Remove'));
       expect(removed, 1);
+    });
+
+    Widget tileAt({
+      double scale = 1,
+      double width = 108,
+      String label = 'Missing from phone',
+      VoidCallback? onRemove,
+    }) => ttTestApp(
+      Center(
+        child: SizedBox(
+          width: width,
+          child: TtMissingClipTile(
+            label: label,
+            removeLabel: 'Remove',
+            onRemove: onRemove ?? () {},
+          ),
+        ),
+      ),
+      textScale: scale,
+    );
+
+    Widget longRemoveTile(double width) => ttTestApp(
+      Center(
+        child: SizedBox(
+          width: width,
+          child: TtMissingClipTile(
+            label: 'Missing from phone',
+            removeLabel: 'Remove from reel',
+            onRemove: () {},
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('a Remove label that does not fit at 1x becomes the icon, '
+        'never an ellipsis', (tester) async {
+      await tester.pumpWidget(longRemoveTile(108));
+      expect(find.text('Remove from reel').hitTestable(), findsNothing);
+      expect(
+        find.byIcon(Symbols.playlist_remove_rounded).hitTestable(),
+        findsOneWidget,
+      );
+      // The label is at its real size: nothing shrank.
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Missing from phone'),
+      );
+      expect(
+        tester.getRect(find.text('Missing from phone')).height,
+        closeTo(label.size.height, 0.01),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('long text tile at 1x: a Remove label is never cut short', (
+      tester,
+    ) async {
+      // The golden's "long text" tile, with its long Remove label.
+      for (final width in [108.0, 130.0, 160.0, 220.0]) {
+        await tester.pumpWidget(longRemoveTile(width));
+        final text = find.text('Remove from reel').hitTestable();
+        if (text.evaluate().isEmpty) {
+          // Too narrow: the icon takes over.
+          expect(
+            find.byType(TtIconButton).hitTestable(),
+            findsOneWidget,
+            reason: '$width',
+          );
+        } else {
+          final remove = tester.renderObject<RenderParagraph>(text);
+          expect(remove.didExceedMaxLines, isFalse, reason: '$width');
+          expect(_lineCount(remove), 1, reason: '$width');
+        }
+      }
+      // And with room, the word itself shows, whole and on one line.
+      await tester.pumpWidget(longRemoveTile(220));
+      final remove = tester.renderObject<RenderParagraph>(
+        find.text('Remove from reel'),
+      );
+      expect(remove.didExceedMaxLines, isFalse);
+      expect(_lineCount(remove), 1);
+    });
+
+    testWidgets('the Remove label is one line at 1x', (tester) async {
+      await tester.pumpWidget(tileAt());
+      final remove = tester.renderObject<RenderParagraph>(find.text('Remove'));
+      expect(_lineCount(remove), 1);
+      expect(remove.didExceedMaxLines, isFalse);
+      expect(find.byType(TtIconButton).hitTestable(), findsNothing);
+    });
+
+    testWidgets('Remove is a text button below 1.5x and an icon button from '
+        '1.5x, when the room is wide', (tester) async {
+      await tester.pumpWidget(tileAt(scale: 1.4, width: 200));
+      expect(find.text('Remove').hitTestable(), findsOneWidget);
+      expect(find.byType(TtIconButton).hitTestable(), findsNothing);
+      await tester.pumpWidget(tileAt(scale: 1.5, width: 200));
+      expect(find.text('Remove').hitTestable(), findsNothing);
+      expect(find.byType(TtIconButton).hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('missing tile at 2x: Remove is an icon-only button named '
+        '"Remove"', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        var removed = 0;
+        await tester.pumpWidget(tileAt(scale: 2, onRemove: () => removed++));
+        expect(
+          find.byIcon(Symbols.playlist_remove_rounded).hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.text('Remove'), findsNothing);
+        expect(find.byTooltip('Remove'), findsOneWidget);
+        final node = tester.getSemantics(find.byType(TtIconButton));
+        expect(node.getSemanticsData().label, 'Remove');
+        expect(node.getSemanticsData().flagsCollection.isButton, isTrue);
+        // A 48 dp target, tappable even though the content may be shrunk.
+        await tester.tap(find.byIcon(Symbols.playlist_remove_rounded));
+        expect(removed, 1);
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    testWidgets('the label is at its real 2x size when the tile is tall '
+        'enough', (tester) async {
+      await tester.pumpWidget(tileAt(scale: 2, width: 168));
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text('Missing from phone'),
+      );
+      final drawn = tester.getRect(find.text('Missing from phone'));
+      expect(drawn.height, closeTo(paragraph.size.height, 0.01));
+      expect(paragraph.text.style!.fontSize, 12);
+      // Real 2x: the text scaler of the paragraph is 2.
+      expect(paragraph.textScaler.scale(1), 2);
+    });
+
+    testWidgets('missing tile wraps at 2x, between words only', (tester) async {
+      await tester.pumpWidget(tileAt(scale: 2));
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Missing from phone'),
+      );
+      expect(label.didExceedMaxLines, isFalse);
+      // It wraps over several lines...
+      expect(_lineCount(label), greaterThan(1));
+      // ...and no line is a piece of a word: the paragraph is at least as wide
+      // as its widest word.
+      expect(
+        label.getMinIntrinsicWidth(double.infinity),
+        lessThanOrEqualTo(label.size.width + 0.01),
+      );
+      // The tile keeps its shape and everything fits inside it.
+      final tile = tester.getRect(find.byType(TtMissingClipTile));
+      expect(tile.size, const Size(108, 144));
+      for (final inner in [
+        tester.getRect(find.text('Missing from phone')),
+        tester.getRect(find.byIcon(Symbols.videocam_off_rounded)),
+        tester.getRect(find.byType(TtIconButton)),
+      ]) {
+        expect(tile.contains(inner.topLeft), isTrue, reason: '$inner');
+        expect(tile.contains(inner.bottomRight), isTrue, reason: '$inner');
+      }
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a word wider than the tile is shrunk, not broken, at 2x', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        tileAt(scale: 2, width: 90, label: 'Disappeared from phone'),
+      );
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Disappeared from phone'),
+      );
+      expect(
+        label.getMinIntrinsicWidth(double.infinity),
+        lessThanOrEqualTo(label.size.width + 0.01),
+      );
+      final tile = tester.getRect(find.byType(TtMissingClipTile));
+      expect(
+        tile.contains(
+          tester.getRect(find.text('Disappeared from phone')).topLeft,
+        ),
+        isTrue,
+      );
+      expect(
+        tile.contains(
+          tester.getRect(find.text('Disappeared from phone')).bottomRight,
+        ),
+        isTrue,
+      );
+    });
+
+    testWidgets('in a 3-column cell on 360 dp at 2x (what the golden shows)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(const SizedBox()));
+      final tt = tester.element(find.byType(SizedBox)).tt;
+      final cell = (360 - 2 * tt.spacing.gutter - 2 * tt.spacing.gridGap) / 3;
+      await tester.pumpWidget(tileAt(scale: 2, width: cell));
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Missing from phone'),
+      );
+      final shown =
+          tester.getRect(find.text('Missing from phone')).height /
+          label.size.height;
+      // The content cannot all be shown at real 2x in a cell this small (icon,
+      // three label lines and a 48 dp button need about 180 dp of the 142), so
+      // it is shrunk to about 0.7 and the golden shows it so.
+      expect(shown, greaterThan(0.6));
+      expect(tester.takeException(), isNull);
+    });
+
+    group('heightFor', () {
+      /// A 107 dp wide missing tile (a cell of a three-column grid on a
+      /// 360 dp phone) in a cell as tall as the larger of its 3:4 shape and
+      /// [TtMissingClipTile.heightFor], at [scale].
+      Widget grownCell({
+        double scale = 1,
+        String? removeLabel = 'Remove',
+        String label = 'Missing from phone',
+      }) => ttTestApp(
+        Align(
+          alignment: Alignment.topLeft,
+          child: Builder(
+            builder: (context) {
+              final natural = 107 / context.tt.sizes.clipTileAspect;
+              final needed = TtMissingClipTile.heightFor(
+                context,
+                width: 107,
+                label: label,
+                removeLabel: removeLabel,
+              );
+              return SizedBox(
+                width: 107,
+                height: needed > natural ? needed : natural,
+                child: TtMissingClipTile(
+                  label: label,
+                  removeLabel: removeLabel,
+                  onRemove: () {},
+                ),
+              );
+            },
+          ),
+        ),
+        textScale: scale,
+      );
+
+      double shown(WidgetTester tester) {
+        final label = tester.renderObject<RenderParagraph>(
+          find.text('Missing from phone'),
+        );
+        return tester.getRect(find.text('Missing from phone')).height /
+            label.size.height;
+      }
+
+      testWidgets('at 2x the cell is tall enough to show the tile at its '
+          'real size', (tester) async {
+        await tester.pumpWidget(grownCell(scale: 2));
+        expect(shown(tester), closeTo(1, 0.001));
+        // Taller than the 3:4 cell it would otherwise get.
+        expect(
+          tester.getSize(find.byType(TtMissingClipTile)).height,
+          greaterThan(107 * 4 / 3),
+        );
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('at 1.75x too, and it grows with the text', (tester) async {
+        await tester.pumpWidget(grownCell(scale: 1.75));
+        expect(shown(tester), closeTo(1, 0.001));
+        final at175 = tester.getSize(find.byType(TtMissingClipTile)).height;
+        await tester.pumpWidget(grownCell(scale: 2));
+        expect(
+          tester.getSize(find.byType(TtMissingClipTile)).height,
+          greaterThan(at175),
+        );
+      });
+
+      testWidgets('at 1x it asks for no more than the 3:4 shape', (
+        tester,
+      ) async {
+        await tester.pumpWidget(grownCell());
+        expect(shown(tester), closeTo(1, 0.001));
+        final size = tester.getSize(find.byType(TtMissingClipTile));
+        expect(size.height, closeTo(107 * 4 / 3, 0.5));
+      });
+
+      testWidgets('is not more than the tile needs: no empty band at 2x', (
+        tester,
+      ) async {
+        await tester.pumpWidget(grownCell(scale: 2));
+        final tile = tester.getRect(find.byType(TtMissingClipTile));
+        final button = tester.getRect(find.byType(TtIconButton));
+        // The last thing in the tile ends within the tile's bottom padding.
+        expect(tile.bottom - button.bottom, lessThan(24));
+      });
+
+      testWidgets('without a Remove button it needs less', (tester) async {
+        late double with_;
+        late double without;
+        await tester.pumpWidget(
+          ttTestApp(
+            Builder(
+              builder: (context) {
+                with_ = TtMissingClipTile.heightFor(
+                  context,
+                  width: 107,
+                  label: 'Missing from phone',
+                  removeLabel: 'Remove',
+                );
+                without = TtMissingClipTile.heightFor(
+                  context,
+                  width: 107,
+                  label: 'Missing from phone',
+                );
+                return const SizedBox();
+              },
+            ),
+            textScale: 2,
+          ),
+        );
+        expect(without, lessThan(with_));
+        expect(without, greaterThan(0));
+      });
+
+      testWidgets('a long label wraps to more lines and needs more height', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          grownCell(
+            scale: 2,
+            label: 'Missing from phone, deleted in the gallery app',
+          ),
+        );
+        final label = tester.renderObject<RenderParagraph>(
+          find.text('Missing from phone, deleted in the gallery app'),
+        );
+        final drawn = tester.getRect(
+          find.text('Missing from phone, deleted in the gallery app'),
+        );
+        expect(drawn.height / label.size.height, closeTo(1, 0.001));
+      });
+    });
+
+    testWidgets('missing tile answers intrinsic size queries', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Center(
+            child: SizedBox(
+              width: 108,
+              child: IntrinsicHeight(
+                child: TtMissingClipTile(
+                  label: 'Missing from phone',
+                  removeLabel: 'Remove',
+                  onRemove: () {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(TtMissingClipTile)).height, 144);
     });
 
     testWidgets('does not overflow at 2x text', (tester) async {

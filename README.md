@@ -34,8 +34,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 1 | Design system | ✅ Done |
 | 2 | Data layer | ✅ Done |
 | 3 | Finding your videos (Android media bridge) | ✅ Done |
-| 4 | Reels screens | Next |
-| 5 | Tagging (To tag and the tag player) | Planned |
+| 4 | Reels screens | ✅ Done |
+| 5 | Tagging (To tag and the tag player) | Next |
 | 6 | Background detection and notifications | Planned |
 | 7 | Adding friends' videos | Planned |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | Planned |
@@ -77,7 +77,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **To tag**: the new videos land here, oldest first, as a grid with each video's picture, the time it was shot and its length. Open the tab and TakeTray checks for new videos first. When Shooting mode is off but videos are waiting, a banner on the Reels tab says how many and how much video that is. (Tagging itself comes in Phase 5.)
 - **Thumbnails**: a small picture for every video, made once and kept on the phone (up to 64 MB, tidied up each time the app starts). If Android ever gives a number to a different video, the old picture is never shown for it.
 - **Manual mode and the access banner**: TakeTray asks Android for permission to see your videos, and only videos. If you share only some of them ("Select photos and videos") or say no, a banner says **Manual mode** and offers **Allow full access**. If Android takes the permission away later, the banner says **TakeTray can't see your videos**. Either way, nothing is removed just because TakeTray cannot see it.
-- **Add earlier videos**: from the Shooting mode card or the ⋮ menu of To tag. **Today** adds at once; **Choose dates…** opens a calendar for any from-to range, counts the videos first and asks "N videos found. Add them to To tag?" before adding anything. A snack with **Undo** follows.
+- **Add earlier videos**: from the Shooting mode card (on or off, whenever TakeTray has full video access; it stays after use) or the ⋮ menu of To tag. **Today** adds at once; **Choose dates…** opens a calendar for any from-to range, counts the videos first and asks "N videos found. Add them to To tag?" before adding anything. A snack with **Undo** follows.
 - **Noticing deleted videos**: a video you delete in the Gallery leaves To tag when you come back to TakeTray. A clip that is already in a reel stays there, marked as missing. If Android rebuilds its media library, TakeTray finds your clips again by their size, length and date. When it is not sure, it calls the clip missing instead of showing the wrong video.
 - **Time zones**: a clip is dated in the zone you were in when you shot it, even if you changed zone while TakeTray was closed.
 - **No Google backup**: Android no longer copies TakeTray's data to Google or to a new phone, because its video numbers only mean something on the phone that made them. Export / Import (Phase 10) is the same-phone backup.
@@ -88,6 +88,46 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
   - the release check also confirms the app asks only for video access and has no internet permission
   - the date logic is tested again with the clock set to London, where the clocks change
 - **Learning guide**: [docs/learn/phase-3-media-bridge.md](docs/learn/phase-3-media-bridge.md) explains the whole phase in plain English, with the real code.
+
+### Phase 4: Reels
+- **Home (the Reels tab)**:
+  - the Shooting mode card at the top;
+  - filters (All, Collecting, Ready to edit, Published), each with its count;
+  - your reels as cards: the oldest clip as the cover, the status, how many clips, how much video, and how many are missing;
+  - a **New reel** button, which moves up out of the way when a message shows at the bottom;
+  - "On since" updates at midnight;
+  - if the camera can't be opened, TakeTray says so.
+- **Creating and editing a reel**:
+  - a name of up to 40 characters; two reels can't share a name;
+  - optional shot ideas, up to 1,000 characters;
+  - the status (Collecting, Ready to edit, Published).
+  - If saving fails, the message shows inside the sheet, with what you typed kept.
+- **Deleting a reel**: it asks first and says your videos stay in your gallery. **Undo** brings the reel back with all its clips.
+- **Reel page**:
+  - the full name, the status (tap it to change it), the clip count and length, and the shot ideas;
+  - clips grouped by the day they were shot ("Day 1 · Sat 12 Oct");
+  - an "in 2 reels" badge on a clip that is in more than one reel;
+  - a grey tile with **Remove** for a clip whose video is gone.
+  - Opening a reel checks that its videos are still on the phone.
+- **Several clips at once**: long-press a clip to select it. Then:
+  - **Add to another reel** (to one or more reels);
+  - **Move to another reel**;
+  - **Remove from this reel**;
+  - **+ New reel** right in the picker.
+  - Every change shows a message with **Undo**, which still works after you leave the page.
+- **Clip viewer**:
+  - full screen on black, playing the original video straight from your gallery (never a copy);
+  - swipe or tap the arrows between clips; sound on or off; a scrubber;
+  - the reels the clip is in;
+  - Add to reel, Move and Remove.
+  - If a video can't be played, it says so and offers to remove it from the reel.
+- **Times where you shot**: a clip filmed in London and tagged later in India shows London time and sits under its London day. The viewer adds "London time". The phone's own time-zone rules are used, so nothing needs updating.
+- **Undo you can trust**: Undo puts back exactly what changed, with the same clips. If Android gave a clip's number to a different video in the meantime, the clip comes back as missing, never as the wrong video.
+- **Phone tests**: on the S24, the app creates a reel, renames it, marks it Ready to edit, adds a test video, plays it in the viewer, removes it and undoes that, then deletes the reel and undoes that. The whole on-phone suite passes (8 tests, 1 skipped on purpose).
+- **Quality gates**:
+  - the release check now also rejects the network-state and keep-awake permissions that the video player library tries to add; TakeTray never goes online;
+  - more date tests run with the clock set to London.
+- **Learning guide**: [docs/learn/phase-4-reels.md](docs/learn/phase-4-reels.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 

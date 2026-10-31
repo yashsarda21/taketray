@@ -317,7 +317,7 @@ void main() {
 
       expect((await h.media.allClips()).map((c) => c.id), ids);
       expect(
-        (await h.media.clips.watchReelClips(goa).first).map((c) => c.id),
+        (await h.media.clips.watchReelClips(goa).first).map((c) => c.clip.id),
         ids,
       );
     });

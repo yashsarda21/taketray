@@ -11,6 +11,8 @@ Widget _field(Widget field, {Brightness brightness = Brightness.light}) =>
       brightness: brightness,
     );
 
+String _counter(int length, int max) => '$length/$max';
+
 void main() {
   group('TtTextField', () {
     testWidgets('shows its label and hint', (tester) async {
@@ -52,7 +54,13 @@ void main() {
 
     testWidgets('maxLength 40 refuses a 41st character', (tester) async {
       await tester.pumpWidget(
-        _field(const TtTextField(label: 'Reel name', maxLength: 40)),
+        _field(
+          const TtTextField(
+            label: 'Reel name',
+            maxLength: 40,
+            counterText: _counter,
+          ),
+        ),
       );
       await tester.enterText(find.byType(TextField), 'a' * 40);
       await tester.pump();
@@ -68,7 +76,13 @@ void main() {
       tester,
     ) async {
       await tester.pumpWidget(
-        _field(const TtTextField(label: 'Reel name', maxLength: 40)),
+        _field(
+          const TtTextField(
+            label: 'Reel name',
+            maxLength: 40,
+            counterText: _counter,
+          ),
+        ),
       );
       expect(find.text('0/40'), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'abc');
@@ -77,6 +91,199 @@ void main() {
 
       await tester.pumpWidget(_field(const TtTextField(label: 'Reel name')));
       expect(find.textContaining('/'), findsNothing);
+    });
+
+    testWidgets('the counter text comes from the caller', (tester) async {
+      await tester.pumpWidget(
+        _field(
+          TtTextField(
+            label: 'Reel name',
+            maxLength: 40,
+            counterText: (length, max) => '$length of $max used',
+          ),
+        ),
+      );
+      expect(find.text('0 of 40 used'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), 'abc');
+      await tester.pump();
+      expect(find.text('3 of 40 used'), findsOneWidget);
+    });
+
+    test('maxLength without a counterText is a programming error', () {
+      expect(
+        () => TtTextField(label: 'Reel name', maxLength: 40),
+        throwsAssertionError,
+      );
+    });
+
+    testWidgets('text field error is in semantics', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          _field(
+            const TtTextField(label: 'Reel name', error: 'Name already used'),
+          ),
+        );
+        final node = tester.getSemantics(find.byType(EditableText));
+        expect(node.hint, contains('Name already used'));
+
+        await tester.pumpWidget(_field(const TtTextField(label: 'Reel name')));
+        expect(
+          tester.getSemantics(find.byType(EditableText)).hint,
+          isNot(contains('Name already used')),
+        );
+      } finally {
+        handle.dispose();
+      }
+    });
+
+    group('swapping the controller', () {
+      Future<void> pumpWith(
+        WidgetTester tester,
+        TextEditingController? controller,
+      ) => tester.pumpWidget(
+        _field(TtTextField(label: 'Reel name', controller: controller)),
+      );
+
+      String shown(WidgetTester tester) =>
+          tester.widget<TextField>(find.byType(TextField)).controller!.text;
+
+      testWidgets('swapping controller keeps text (own to given)', (
+        tester,
+      ) async {
+        await pumpWith(tester, null);
+        await tester.enterText(find.byType(TextField), 'typed');
+        final given = TextEditingController();
+        addTearDown(given.dispose);
+        await pumpWith(tester, given);
+        await tester.pump();
+        expect(given.text, 'typed');
+        expect(shown(tester), 'typed');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('copying the typed text does not notify listeners during a '
+          'build', (tester) async {
+        final given = TextEditingController();
+        addTearDown(given.dispose);
+        // A listener of the caller's controller above the field, as a
+        // ListenableBuilder or a view model around a form would be: it
+        // throws if told of a change in the middle of a build.
+        Widget app({required bool useGiven}) => _field(
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: given,
+            builder: (context, value, _) => Column(
+              children: [
+                Text('seen: ${value.text}', key: const Key('seen')),
+                TtTextField(
+                  label: 'Reel name',
+                  controller: useGiven ? given : null,
+                ),
+              ],
+            ),
+          ),
+        );
+        await tester.pumpWidget(app(useGiven: false));
+        await tester.enterText(find.byType(TextField), 'typed');
+        await tester.pumpWidget(app(useGiven: true));
+        expect(tester.takeException(), isNull);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(given.text, 'typed');
+        expect(find.text('seen: typed'), findsOneWidget);
+      });
+
+      testWidgets('the deferred copy is dropped if the controller changed '
+          'again', (tester) async {
+        final a = TextEditingController();
+        final b = TextEditingController();
+        addTearDown(a.dispose);
+        addTearDown(b.dispose);
+        await pumpWith(tester, null);
+        await tester.enterText(find.byType(TextField), 'typed');
+        await pumpWith(tester, a);
+        await pumpWith(tester, b);
+        await tester.pump();
+        expect(b.text, '');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a given controller that has text keeps its own text', (
+        tester,
+      ) async {
+        await pumpWith(tester, null);
+        await tester.enterText(find.byType(TextField), 'typed');
+        final given = TextEditingController(text: 'theirs');
+        addTearDown(given.dispose);
+        await pumpWith(tester, given);
+        expect(given.text, 'theirs');
+        expect(shown(tester), 'theirs');
+      });
+
+      testWidgets('swapping controller keeps text (given to own)', (
+        tester,
+      ) async {
+        final given = TextEditingController(text: 'theirs');
+        addTearDown(given.dispose);
+        await pumpWith(tester, given);
+        await tester.enterText(find.byType(TextField), 'edited');
+        await pumpWith(tester, null);
+        expect(shown(tester), 'edited');
+        expect(given.text, 'edited');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('given to another given leaves both alone', (tester) async {
+        final a = TextEditingController(text: 'a');
+        final b = TextEditingController();
+        addTearDown(a.dispose);
+        addTearDown(b.dispose);
+        await pumpWith(tester, a);
+        await pumpWith(tester, b);
+        expect(a.text, 'a');
+        expect(b.text, '');
+        expect(shown(tester), '');
+      });
+
+      testWidgets('the counter follows a swapped controller', (tester) async {
+        Widget field(TextEditingController? c) => _field(
+          TtTextField(
+            label: 'Reel name',
+            controller: c,
+            maxLength: 40,
+            counterText: _counter,
+          ),
+        );
+        await tester.pumpWidget(field(null));
+        await tester.enterText(find.byType(TextField), 'abc');
+        final given = TextEditingController();
+        addTearDown(given.dispose);
+        await tester.pumpWidget(field(given));
+        await tester.pump();
+        expect(find.text('3/40'), findsOneWidget);
+        given.text = 'abcde';
+        await tester.pump();
+        expect(find.text('5/40'), findsOneWidget);
+      });
+    });
+
+    testWidgets('the error icon scales with text', (tester) async {
+      Future<double> iconSize(double scale) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: TtTextField(label: 'Reel name', error: 'Oops'),
+            ),
+            textScale: scale,
+          ),
+        );
+        return tester.getSize(find.byIcon(Symbols.error_rounded)).width;
+      }
+
+      final one = await iconSize(1);
+      final two = await iconSize(2);
+      expect(two, closeTo(one * 2, 0.01));
     });
 
     testWidgets('the helper shows under the box', (tester) async {
@@ -153,6 +360,7 @@ void main() {
               hint: 'London Food',
               helper: 'Press Enter to add the next one',
               maxLength: 40,
+              counterText: _counter,
             ),
             brightness: brightness,
           ),
@@ -183,6 +391,7 @@ void main() {
               label: 'A very long label for the reel name field',
               error: 'This name is already used by another reel in this tray',
               maxLength: 40,
+              counterText: _counter,
             ),
           ),
           textScale: 2,

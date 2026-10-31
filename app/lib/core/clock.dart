@@ -7,8 +7,19 @@ part 'clock.g.dart';
 class Clock {
   const new();
 
-  /// The current time, in UTC.
+  /// The current time, in UTC. A real clock's time has microseconds.
   DateTime now() => DateTime.now().toUtc();
+
+  /// [now] as the database stores it: UTC, to the millisecond (the
+  /// microseconds are dropped, as `UtcMillisConverter` drops them).
+  ///
+  /// Repositories take the time they write into a row from here, so what
+  /// they return and what they put in an undo record is exactly the stored
+  /// value: a comparison in Dart then agrees with one in SQL (D-84 point 9).
+  DateTime storedNow() => DateTime.fromMillisecondsSinceEpoch(
+    now().millisecondsSinceEpoch,
+    isUtc: true,
+  );
 }
 
 @Riverpod(keepAlive: true)

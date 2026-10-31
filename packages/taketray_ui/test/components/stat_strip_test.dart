@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -96,6 +97,79 @@ void main() {
       await tester.pumpWidget(ttTestApp(_strip(onPressed: () => taps++)));
       await tester.tap(find.text('Open camera'));
       expect(taps, 1);
+    });
+
+    testWidgets('stat strip action keeps its label and the text wraps at 2x', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(_strip(), textScale: 2, disableAnimations: true),
+      );
+      await tester.pumpAndSettle();
+      final text = tester.renderObject<RenderParagraph>(
+        find.text('Shooting since 9:41 AM'),
+      );
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Open camera'),
+      );
+      // Neither is cut short, and the text takes at most two lines.
+      expect(text.didExceedMaxLines, isFalse);
+      expect(label.didExceedMaxLines, isFalse);
+      expect(
+        tester.getSize(find.text('Shooting since 9:41 AM')).height,
+        lessThanOrEqualTo(2 * 40),
+      );
+      // The action sits under the text instead of squeezing it.
+      final strip = tester.getRect(find.byType(TtStatStrip));
+      expect(
+        tester.getRect(find.byType(TtButton)).top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('Shooting since 9:41 AM')).bottom,
+        ),
+      );
+      expect(
+        tester.getRect(find.byType(TtButton)).right,
+        lessThanOrEqualTo(strip.right),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('at 1.3x on 360 dp the action stays beside the text and '
+        'nothing is cut', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(_strip(), textScale: 1.3, disableAnimations: true),
+      );
+      await tester.pumpAndSettle();
+      final text = tester.renderObject<RenderParagraph>(
+        find.text('Shooting since 9:41 AM'),
+      );
+      final label = tester.renderObject<RenderParagraph>(
+        find.text('Open camera'),
+      );
+      expect(text.didExceedMaxLines, isFalse);
+      expect(label.didExceedMaxLines, isFalse);
+      expect(
+        tester.getRect(find.byType(TtButton)).left,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('Shooting since 9:41 AM')).right,
+        ),
+      );
+      expect(
+        tester.getRect(find.byType(TtButton)).right,
+        lessThanOrEqualTo(tester.getRect(find.byType(TtStatStrip)).right),
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('the action stays beside the text at 1x', (tester) async {
+      await tester.pumpWidget(ttTestApp(_strip()));
+      expect(
+        tester.getRect(find.byType(TtButton)).left,
+        greaterThanOrEqualTo(
+          tester.getRect(find.text('Shooting since 9:41 AM')).right,
+        ),
+      );
+      expect(tester.getSize(find.byType(TtStatStrip)).height, 48);
     });
 
     testWidgets('long text at 2x does not overflow', (tester) async {

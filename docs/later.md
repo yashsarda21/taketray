@@ -7,43 +7,16 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 4
 
 - Phase 3 left these (D-76):
-  - `openCamera()` returning false (no camera app, or the call failed) shows nothing. Needs copy for a snack; the owner approves it.
-  - "On since {time}" and "Shooting since {time}" are built once per build, so they do not change at midnight until something redraws the screen. Rebuild the card at the next local midnight (a timer, or a clock provider that ticks).
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
-- Reel description has no length limit at the repository (D-56). The create/edit form should cap it; record the cap in a decision.
-
-- Decide the FAB contract: where it sits above the nav pill and how it lifts over a snack. Either a `TtNavPill.fabBottom(context)` helper or the shell hosts the FAB. Record the choice as a decision.
-- App bar titles clamp at 1.5× text, so show the full reel name in the body at large text.
-- `TtTextField`:
-  - the error is not in the field's semantics
-  - swapping the controller loses the text
-  - the error icon doesn't scale
-
-  Fix before the first form.
-- Package-composed strings: progress `%`, the reel-card references badge fallback, the reference-card label and the text-field counter. Take them from the caller. Make `referencesSemanticLabel` required when the count is > 0.
-- A font weight helper, so `fontWeight` and the `wght` variation come from one place.
-- `TtMenuButton`: `onClose` calls `setState` during build when the window size changes (debug-only assert). Defer it to after the frame.
-- Doc comments still say "glass circle" (`bar_scope.dart:4`, `tt_metrics.dart:23`).
-- Status pill caret gap is 2 dp; the CSS says 6.
-- At 2× text:
-  - the missing tile truncates
-  - the stat-strip action squeezes its text
-  - on empty art, the reel card's status pill touches the film icon
-  - the pill-tab overflow test can't fail
-- Tests:
-  - the fill-1 glyph, pressed colour and per-kind colours on buttons
-  - `TtReelCard` accessibility beyond empty art
-  - guarding the VN-mark start-only padding
-- The shooting card needs a top-level semantics label. The icon-only `TtGlassPill` needs a semantics doc.
-- Review the `TtCardRow` API: its look is currently chosen by `trailingText`.
-- Widgetbook tests, when screens grow the catalogue:
-  - `widgetbook/test/catalog_use_cases_test.dart` taps each use case but never checks the tap selected it. After the pump, add `expect(WidgetbookState.of(tester.element(find.byType(Scaffold).first)).useCase?.name, name)` (checked in a scratch copy during the Phase 2 Task 3 review).
-  - `widgetbook/test/catalog_coverage_test.dart` (`_unregisteredFiles`) is satisfied by any one registered class in a file, so a second widget added to a registered file goes unnoticed. Check per class, with an allow-list of classes that are deliberately not in the catalogue.
+- The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
 ## Phase 5 (tagging and the player)
 
+- Phase 4 left these (final review M-6, D-80):
+  - The reel picker's **tag mode** (hidden in Phase 4).
+  - The empty reel's copy says "Tag clips from To tag…", which only makes sense once tagging exists; check it then.
+  - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
 - Phase 3 left these (D-76):
-  - The time on a To tag tile is in the phone's time zone. Show it in the zone the clip was shot in (`Clip.timeZoneId`, D-58).
   - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
 - Scrub bar:
   - it reads `position / duration` as "slash"
@@ -75,7 +48,27 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - `tool/check_generated` must also hash `app/lib/data/database/app_database.steps.dart`, which `make-migrations` writes from v2. At v1 it also never regenerates `app/test/drift/.../generated/`.
 
+## Phase 7 (add videos and Manual mode)
+
+- Phase 4 left these (final review M-6, D-80):
+  - **Add videos** on the reel page (hidden in Phase 4).
+  - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
+
+Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
+
+- **Friends' videos.** Pick up videos the owner didn't shoot, such as WhatsApp downloads and Quick Share, behind a Settings switch. Today only `DCIM/Camera` is watched, so these never reach To tag. This may be done through Phase 10's editable watched folders. Open risks:
+  - busy groups and forwards could flood To tag;
+  - WhatsApp's "Sent" copies would duplicate the owner's own camera clips;
+  - WhatsApp strips the original shooting date, so a clip would be dated when it was received.
+- **Action cameras (GoPro, Insta360).** Open points:
+  - their phone apps save to their own folders;
+  - Insta360's raw 360° files must be reframed and exported first, so only the exported clip is useful;
+  - a whole day of clips is often copied at once;
+  - camera clocks and time zones are often wrong, which would put clips on the wrong day.
+
 ## Phase 8 (editor handoff)
+
+- Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
 
 - Sanitise a reel name before using it as a VN folder name (`/`, `:` and other characters Android storage rejects); `uniqueFolderName` only handles clashes.
 
@@ -83,6 +76,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 9 (references)
 
+- Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas).
 - The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it.
 - The reference card's "Open" button takes half the row at 2×.
 - The banner margin is not configurable (`refs.js` overrides it).
@@ -106,6 +100,18 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 11 (polish and release)
 
+- **Shooting card rows clamp to one line at 2× text.** "Add earlier vid…", "References · 4" and "3 clips… Tag now" are cut short. This was true of the on card since Phase 1/3, and is now true of the off card too (D-90). Let a row wrap to two lines at large text, or stack its trailing part, and check it with TalkBack.
+- **Empty Reels at large text.** The off card is one row taller now (D-90), so on a short screen at a large font the empty Home's **New reel** button can sit below the fold. It can still be scrolled to. Check it on the S24 and one small screen.
+
+- **Accessibility and the phone pass** (Phase 4 final review M-6; check each on the S24 with TalkBack):
+  - the reel page's app bar has an empty title until it scrolls (the name is in the body): what TalkBack reads there;
+  - focus order of the chips in Home's filter row;
+  - a text field's error (the Reel details form) may be read twice;
+  - the screen stays on while a long clip plays in the viewer;
+  - the sound at the start of a swipe in the viewer (the outgoing clip now pauses at the middle of the swipe; check nothing is heard from both before that).
+
+- `packages/taketray_ui/test/components/buttons_test.dart` has four tests that fail when `flutter test` is run from the repo root but pass from the package folder, which is how `tool/check` runs them ("TtButton at large text a stacked TtButtonRow button wraps too", "... wraps to two lines from the large-text scale", "TtButton the dialog size has 12 dp sides and wraps to two lines", "TtButtonRow puts buttons side by side, equal widths, 8 dp apart"). They fail at HEAD too (before Task 3). The cause has not been diagnosed; find it, and make the tests independent of the working folder.
+
 - The Play Console declaration for video access (`READ_MEDIA_VIDEO`). The Phase 3 research rates approval at about 50/50. The case to make: TakeTray's core feature is continuous detection of new camera clips as they are shot, which the one-off system photo picker cannot do. Say too that Manual mode (limited or denied access) already works without the permission, so a refusal costs the automatic detection and leaves the rest of the app working (spec: Play policy).
 
 - `design/tools/build_tokens.py --check` scans only `design/tokens/colour-options/` and `design/handoff/compose/` for orphans. Add `packages/taketray_ui/lib/src/tokens/` (it holds only `tokens.g.dart`) to `GENERATED_DIRS`.
@@ -114,4 +120,5 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - `TtGlass`: the shadow bleeds through the translucent fill.
 - Wrapped two-line buttons need more vertical padding. The `TtSwitch` focus highlight is taller than the track.
 - `TtThemeData` value equality; badge `TextPainter` re-measures on every build.
+- Zone-id aliases after a tz data rename (D-83). `Europe/Kiev` and `Europe/Kyiv` are the same zone but compare unequal as strings. So a clip stored with the old id on a phone that now reports the new one gets `isPhoneZone` false, and the viewer would say "Kiev time". Fix it by canonicalising both ids on the native side in a batch like `zoneOffsetsMs` (`android.icu.util.TimeZone.getCanonicalID(id)`, which follows the tz data's links; `ZoneId.normalized()` only turns a fixed-offset id into a `ZoneOffset` and does not resolve aliases), or by comparing the zones' offset rules (`ZoneId.of(a).rules == ZoneId.of(b).rules`) instead of their ids.
 - The theme doc should steer feature code to `Tt*` widgets, since stock Switch, Checkbox, TextField and AlertDialog are not themed.

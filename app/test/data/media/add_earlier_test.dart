@@ -295,7 +295,10 @@ void main() {
       expect(ids, hasLength(3));
       expect(await toTagIds(), unorderedEquals([1, 2, 4]));
       expect(
-        [for (final c in await h.clips.watchReelClips(reel.id).first) c.id],
+        [
+          for (final c in await h.clips.watchReelClips(reel.id).first)
+            c.clip.id,
+        ],
         [clipId],
       );
     });
@@ -314,13 +317,13 @@ void main() {
     test(
       'nothing in the range: 0, and add returns [] without writing',
       () async {
-        await h.turnOnNow();
+        final session = await h.turnOnNow();
 
         expect(await h.scanner.countEarlierIn(june(3, 4)), 0);
         expect(await h.scanner.addEarlier(june(3, 4)), isEmpty);
 
         expect(await h.allClips(), isEmpty);
-        expect((await h.phoneState.loadShooting()).earlierAdded, isFalse);
+        expect(await h.phoneState.loadShooting(), session);
       },
     );
 
@@ -436,32 +439,34 @@ void main() {
     });
 
     test(
-      'works with Shooting mode off and leaves earlierAdded false',
+      'works with Shooting mode off and leaves the Shooting state alone',
       () async {
         expect(await h.scanner.addEarlier(today), hasLength(2));
 
-        final state = await h.phoneState.loadShooting();
-        expect(state.on, isFalse);
-        expect(state.earlierAdded, isFalse);
+        expect(await h.phoneState.loadShooting(), ShootingState.off);
       },
     );
 
-    test('with Shooting mode on, adding marks earlierAdded', () async {
-      await h.turnOnNow();
+    test('with Shooting mode on, adding leaves the Shooting state alone '
+        '(D-90: no one-use mark)', () async {
+      final session = await h.turnOnNow();
 
-      await h.scanner.addEarlier(june(9, 9));
+      expect(await h.scanner.addEarlier(june(9, 9)), isNotEmpty);
 
-      expect((await h.phoneState.loadShooting()).earlierAdded, isTrue);
+      expect(await h.phoneState.loadShooting(), session);
     });
 
-    test('an empty result returns [] and does not set earlierAdded', () async {
-      await h.turnOnNow();
-      await h.store([today1, today2]);
+    test(
+      'an empty result returns [] and leaves the Shooting state alone',
+      () async {
+        final session = await h.turnOnNow();
+        await h.store([today1, today2]);
 
-      expect(await h.scanner.addEarlier(today), isEmpty);
+        expect(await h.scanner.addEarlier(today), isEmpty);
 
-      expect((await h.phoneState.loadShooting()).earlierAdded, isFalse);
-    });
+        expect(await h.phoneState.loadShooting(), session);
+      },
+    );
 
     test('a volume whose query fails is left out; the others count', () async {
       bridge

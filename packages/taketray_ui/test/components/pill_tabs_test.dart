@@ -136,6 +136,51 @@ void main() {
       semantics.dispose();
     });
 
+    group('ensureVisible on a chip', () {
+      Widget tabs({required bool inColumnScroll}) {
+        final row = TtPillTabs<String>(
+          tabs: const [
+            TtPillTab<String>('all', 'All 12'),
+            TtPillTab<String>('collecting', 'Collecting 5'),
+            TtPillTab<String>('ready', 'Ready to edit 4'),
+            TtPillTab<String>('published', 'Published 3'),
+          ],
+          value: 'all',
+          onChanged: (_) {},
+        );
+        return ttTestApp(
+          inColumnScroll
+              ? ListView(children: [const SizedBox(height: 40), row])
+              : row,
+        );
+      }
+
+      for (final inColumnScroll in [false, true]) {
+        testWidgets('settles on the last chip'
+            '${inColumnScroll ? ' inside a vertical list' : ''}', (
+          tester,
+        ) async {
+          tester.view.physicalSize = const Size(360, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(tabs(inColumnScroll: inColumnScroll));
+          expect(
+            tester.getRect(find.text('Published 3')).right,
+            greaterThan(360),
+            reason: 'the last chip starts out of view',
+          );
+
+          await tester.ensureVisible(find.text('Published 3'));
+          await tester.pumpAndSettle();
+
+          expect(
+            tester.getRect(find.text('Published 3')).right,
+            lessThanOrEqualTo(360),
+          );
+        });
+      }
+    });
+
     testWidgets('scrolls horizontally when the tabs do not fit', (
       tester,
     ) async {
@@ -179,21 +224,54 @@ void main() {
       });
     }
 
-    testWidgets('a long label does not overflow at 2x text', (tester) async {
+    const long = [
+      TtPillTab<String>('a', 'A very long label that keeps going on'),
+      TtPillTab<String>('b', 'Two'),
+      TtPillTab<String>('c', 'Three tabs here'),
+    ];
+
+    testWidgets('a long label wraps into the width at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
       await tester.pumpWidget(
         ttTestApp(
           TtPillTabs<String>(
-            tabs: const [
-              TtPillTab<String>('a', 'A very long label that keeps going on'),
-              TtPillTab<String>('b', 'Two'),
-            ],
+            tabs: long,
             value: 'a',
             onChanged: (_) {},
+            wrapAtLargeText: true,
           ),
           textScale: 2,
         ),
       );
       expect(tester.takeException(), isNull);
+      // Every tab is wholly on the screen (none runs off to be scrolled to),
+      // and they stack in more than one row.
+      final tabs = [
+        for (final tab in long) tester.getRect(find.text(tab.label)),
+      ];
+      for (final rect in tabs) {
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+      }
+      expect({for (final rect in tabs) rect.top}.length, greaterThan(1));
+      expect(find.byType(SingleChildScrollView), findsNothing);
+    });
+
+    testWidgets('a long label scrolls sideways at 2x text', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(
+          TtPillTabs<String>(tabs: long, value: 'a', onChanged: (_) {}),
+          textScale: 2,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      final scrollable = tester.state<ScrollableState>(find.byType(Scrollable));
+      expect(scrollable.position.maxScrollExtent, greaterThan(0));
     });
   });
 

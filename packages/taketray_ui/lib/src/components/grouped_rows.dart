@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A settings-style group: [children] (usually [TtListRow]s) stacked 2 dp
@@ -253,18 +254,15 @@ class TtListRow extends StatelessWidget {
                   Text(
                     title,
                     // An off row: onSurfaceVariant at weight 400, no fade.
-                    style: text.bodyLarge!.copyWith(
-                      color: off ? quiet : scheme.onSurface,
-                      fontWeight: off ? FontWeight.w400 : FontWeight.w500,
-                      fontVariations: [
-                        FontVariation(
-                          'wght',
-                          off
-                              ? TtMetrics.listRowOffTitleWeight
-                              : TtMetrics.listRowTitleWeight,
-                        ),
-                      ],
-                    ),
+                    style: text.bodyLarge!
+                        .merge(
+                          TtTextStyles.weight(
+                            off
+                                ? TtMetrics.listRowOffTitleWeight
+                                : TtMetrics.listRowTitleWeight,
+                          ),
+                        )
+                        .copyWith(color: off ? quiet : scheme.onSurface),
                   ),
                   if (subtitle != null)
                     Text(

@@ -268,7 +268,7 @@ class TtCallout extends StatelessWidget {
   final String? body;
 
   /// The text with styled spans (for bold words; the font is variable, so a
-  /// bold span sets both `fontWeight` and `FontVariation('wght', 700)`).
+  /// bold span sets both through `TtTextStyles.weight(FontWeight.w700)`).
   /// Give this or [body].
   final InlineSpan? richBody;
 

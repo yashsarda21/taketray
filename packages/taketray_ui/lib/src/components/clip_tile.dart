@@ -3,7 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/fit_height.dart';
+import 'package:taketray_ui/src/components/internal/fit_or_fallback.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A label with an icon that covers a clip tile, such as "Skipped".
@@ -284,12 +287,9 @@ class _TimeRow extends StatelessWidget {
     // proto.css: .tile .tm, .tile .du
     final style = tt.text
         .numeric(tt.text.material.bodySmall!)
+        .merge(TtTextStyles.weight(TtMetrics.clipTileTextWeight))
         .copyWith(
           color: tt.colors.onMedia,
-          fontWeight: FontWeight.w700,
-          fontVariations: const [
-            FontVariation('wght', TtMetrics.clipTileTextWeight),
-          ],
           letterSpacing: 0,
           shadows: [
             Shadow(
@@ -369,15 +369,9 @@ class _MultiBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     // proto.css: .tile .multi { font: 700 11.5px/1 … }
-    final style = tt.text.navLabel.copyWith(
-      color: tt.colors.onMedia,
-      fontWeight: FontWeight.w700,
-      fontVariations: const [
-        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
-      ],
-      letterSpacing: 0,
-      height: 1,
-    );
+    final style = tt.text.navLabel
+        .merge(TtTextStyles.weight(TtMetrics.clipTileBadgeTextWeight))
+        .copyWith(color: tt.colors.onMedia, letterSpacing: 0, height: 1);
     return _BadgeBox(
       padding: const EdgeInsetsDirectional.only(
         start: TtMetrics.clipTileMultiPaddingStart,
@@ -485,14 +479,9 @@ class _MarkOverlay extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     // proto.css: .tile .mark, .tile .mark > span
-    final style = tt.text.navLabel.copyWith(
-      color: scheme.onInverseSurface,
-      fontWeight: FontWeight.w700,
-      fontVariations: const [
-        FontVariation('wght', TtMetrics.clipTileBadgeTextWeight),
-      ],
-      letterSpacing: 0,
-    );
+    final style = tt.text.navLabel
+        .merge(TtTextStyles.weight(TtMetrics.clipTileBadgeTextWeight))
+        .copyWith(color: scheme.onInverseSurface, letterSpacing: 0);
     return Positioned.fill(
       child: IgnorePointer(
         child: ColoredBox(
@@ -596,8 +585,12 @@ class _SelectCircle extends StatelessWidget {
 /// A clip that is gone from the phone: a grey dashed tile with a camera-off
 /// icon, [label], and, when [removeLabel] is given, a small Remove button.
 ///
-/// The label wraps to two lines, or one at large text sizes, so the tile
-/// never overflows.
+/// The tile keeps its 3:4 shape. The label wraps over as many lines as it
+/// needs, between words only. From a text scale of 1.5, or when the word
+/// [removeLabel] does not fit the tile on one line, the Remove button is just
+/// an icon (named by [removeLabel]), so it is never cut short. As
+/// a last resort, when the content is still too big for the tile it shrinks to
+/// fit, so nothing is cut off and the tile never overflows.
 class TtMissingClipTile extends StatelessWidget {
   /// A missing-clip tile saying [label].
   const new({required this.label, this.removeLabel, this.onRemove, super.key});
@@ -611,18 +604,76 @@ class TtMissingClipTile extends StatelessWidget {
   /// Called when Remove is tapped.
   final VoidCallback? onRemove;
 
+  /// How tall a tile [width] dp wide must be to show its content at its real
+  /// size: the icon, [label] over as many lines as it takes at the phone's
+  /// text scale, and the Remove button when [removeLabel] is given.
+  ///
+  /// The tile keeps a 3:4 shape when the cell is that tall, and shrinks its
+  /// content when the cell is shorter (see the class comment). A grid whose
+  /// text may be large gives a row with a missing tile at least this height
+  /// (`mainAxisExtent`), and the larger of the two is the row height. At the
+  /// normal text size this is less than the 3:4 height, so nothing grows.
+  ///
+  /// Measured the way the tile lays itself out: the same paddings, gaps and
+  /// text style, the label wrapped at the tile's inner width and scaled by
+  /// `MediaQuery.textScalerOf`, and the button 48 dp high (its tap target)
+  /// or, at normal text, as high as its label needs.
+  static double heightFor(
+    BuildContext context, {
+    required double width,
+    required String label,
+    String? removeLabel,
+  }) {
+    final tt = context.tt;
+    final scaler = MediaQuery.textScalerOf(context);
+    final text = TextPainter(
+      text: TextSpan(
+        text: label,
+        // The style the label is drawn in (the colour does not change a
+        // measure).
+        style: tt.text.material.labelMedium,
+      ),
+      textAlign: TextAlign.center,
+      textDirection: Directionality.of(context),
+      textScaler: scaler,
+      locale: Localizations.maybeLocaleOf(context),
+    )..layout(maxWidth: width - 2 * TtMetrics.clipTileMissingPaddingHorizontal);
+    final labelHeight = text.height;
+    text.dispose();
+
+    var height = 2 * tt.spacing.xs + TtMetrics.clipTileMissingIconSize;
+    height += tt.spacing.xxs + labelHeight;
+    if (removeLabel != null) {
+      final button = scaler.scale(1) >= TtMetrics.largeTextScale
+          ? tt.sizes.touchTarget
+          : math.max(
+              tt.sizes.touchTarget,
+              scaler.scale(TtMetrics.buttonMinHeightSmall),
+            );
+      height += tt.spacing.xxs + TtMetrics.clipTileMissingButtonGap + button;
+    }
+    return height;
+  }
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
     final removeLabel = this.removeLabel;
+    final iconOnly =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    final iconButton = removeLabel == null
+        ? null
+        : Tooltip(
+            message: removeLabel,
+            excludeFromSemantics: true,
+            child: TtIconButton(
+              icon: Symbols.playlist_remove_rounded,
+              semanticLabel: removeLabel,
+              onPressed: onRemove,
+            ),
+          );
     // proto.css: .tile.miss
-    // The label gets two lines, or one when text is enlarged so much that
-    // two would not leave room for the icon and the button.
-    final textScale = MediaQuery.textScalerOf(context).scale(1);
-    final labelLines = textScale > TtMetrics.clipTileMissingLabelScaleLimit
-        ? 1
-        : TtMetrics.clipTileMissingLabelLines.toInt();
     return AspectRatio(
       aspectRatio: tt.sizes.clipTileAspect,
       child: CustomPaint(
@@ -639,39 +690,50 @@ class TtMissingClipTile extends StatelessWidget {
                 horizontal: TtMetrics.clipTileMissingPaddingHorizontal,
                 vertical: tt.spacing.xs,
               ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                spacing: tt.spacing.xxs,
-                children: [
-                  Icon(
-                    Symbols.videocam_off_rounded,
-                    size: TtMetrics.clipTileMissingIconSize,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                  Flexible(
-                    child: Text(
+              // The content is as wide as the tile and as tall as it needs,
+              // and is scaled down, never up, to fit the tile's height.
+              child: FitHeight(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: tt.spacing.xxs,
+                  children: [
+                    Icon(
+                      Symbols.videocam_off_rounded,
+                      size: TtMetrics.clipTileMissingIconSize,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                    Text(
                       label,
                       textAlign: TextAlign.center,
-                      maxLines: labelLines,
-                      overflow: TextOverflow.ellipsis,
                       style: tt.text.material.labelMedium!.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
-                  ),
-                  if (removeLabel != null)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        top: TtMetrics.clipTileMissingButtonGap,
+                    if (removeLabel != null)
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: TtMetrics.clipTileMissingButtonGap,
+                        ),
+                        // The word "Remove" does not fit a narrow tile at
+                        // large text without breaking in the middle, nor a
+                        // long translation of it at normal text without an
+                        // ellipsis, so the button is just its icon, still
+                        // named "Remove", from the large-text scale and
+                        // whenever the word does not fit.
+                        child: iconOnly
+                            ? iconButton!
+                            : FitOrFallback(
+                                preferred: TtButton(
+                                  label: removeLabel,
+                                  kind: TtButtonKind.tonal,
+                                  size: TtButtonSize.small,
+                                  onPressed: onRemove,
+                                ),
+                                fallback: iconButton!,
+                              ),
                       ),
-                      child: TtButton(
-                        label: removeLabel,
-                        kind: TtButtonKind.tonal,
-                        size: TtButtonSize.small,
-                        onPressed: onRemove,
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

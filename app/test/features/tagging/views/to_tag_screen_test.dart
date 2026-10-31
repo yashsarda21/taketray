@@ -1,12 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
+import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -34,17 +38,28 @@ class Pumped {
 }
 
 /// To tag with fake view models. [clips] null: the list is still loading.
+///
+/// [times] are the clips' local times (`toTagTimesProvider`); null: they
+/// come from [timesLater] (still loading until the test completes it). By
+/// default none, so each tile shows the phone's time. [timesFail]: reading
+/// them fails.
 Future<Pumped> pump(
   WidgetTester tester, {
   ShootingState shooting = ShootingState.off,
   MediaAccessLevel? access = MediaAccessLevel.full,
   List<Clip>? clips = const [],
+  Map<int, ClipLocalTime>? times = const {},
+  bool timesFail = false,
+  Completer<Map<int, ClipLocalTime>>? timesLater,
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
   bool use24Hour = false,
+  FixedClock? clock,
+  bool cameraOpens = true,
+  bool midnightTick = false,
 }) async {
-  final fakeShooting = FakeShooting(shooting);
+  final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
   final fakeToTag = FakeToTag(clips);
   await pumpScreen(
@@ -54,13 +69,21 @@ Future<Pumped> pump(
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       toTagControllerProvider.overrideWith(() => fakeToTag),
-      clockProvider.overrideWithValue(FixedClock(_now)),
+      toTagTimesProvider.overrideWith((ref) {
+        if (timesFail) return Future.error(StateError('no times'));
+        if (times == null) {
+          return (timesLater ?? Completer<Map<int, ClipLocalTime>>()).future;
+        }
+        return Future.value(times);
+      }),
+      clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
       thumbnailCacheForTests,
     ],
     brightness: brightness,
     textScale: textScale,
     settle: settle,
     use24Hour: use24Hour,
+    midnightTick: midnightTick,
   );
   return Pumped(fakeShooting, fakeAccess, fakeToTag);
 }
@@ -181,6 +204,78 @@ void main() {
       expect(p.shooting.cameraOpened, 1);
     });
 
+    testWidgets('camera failure shows the snack (To tag strip)', (
+      tester,
+    ) async {
+      final p = await pump(
+        tester,
+        shooting: on(),
+        clips: [testClip(1)],
+        cameraOpens: false,
+      );
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtStatStrip),
+          matching: find.text('Open camera'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('camera failure shows the snack (All caught up)', (
+      tester,
+    ) async {
+      final p = await pump(tester, shooting: on(), cameraOpens: false);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtEmptyState),
+          matching: find.text('Open camera'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a camera that opens shows no snack', (tester) async {
+      final p = await pump(tester, shooting: on(), clips: [testClip(1)]);
+
+      await tester.tap(find.text('Open camera'));
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(find.text("Couldn't open the camera."), findsNothing);
+    });
+
+    testWidgets('Shooting since changes at midnight', (tester) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 50));
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 28, 22)),
+        clips: [testClip(1)],
+        clock: clock,
+        midnightTick: true,
+      );
+      expect(findPlain('Shooting since 10:00 PM'), findsOneWidget);
+
+      clock.advance(const Duration(minutes: 11));
+      await tester.pump(const Duration(minutes: 11));
+
+      expect(findPlain('Shooting since Oct 28, 10:00 PM'), findsOneWidget);
+    });
+
     testWidgets('on since yesterday: with the date', (tester) async {
       await pump(
         tester,
@@ -285,6 +380,101 @@ void main() {
 
       expect(plain(tiles(tester).single.timeText!), '9:41 PM');
       expect(plain(tiles(tester).single.semanticLabel), 'Clip, 9:41 PM, 0:32');
+    });
+  });
+
+  group('the time where a clip was shot (D-83)', () {
+    testWidgets('a clip shot in another zone shows the time where it was '
+        'shot', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 9, 41))],
+        times: {
+          1: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 11),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+      );
+
+      final tile = tiles(tester).single;
+      expect(plain(tile.timeText!), '4:11 AM');
+      expect(plain(tile.semanticLabel), 'Clip, 4:11 AM, 0:32');
+    });
+
+    testWidgets('the clip zone keeps the 24-hour rule', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 21, 41))],
+        times: {
+          1: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 16, 11),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+        use24Hour: true,
+      );
+
+      expect(tiles(tester).single.timeText, '16:11');
+    });
+
+    testWidgets("while the times load, tiles show the phone's time; then the "
+        'time where it was shot', (tester) async {
+      final later = Completer<Map<int, ClipLocalTime>>();
+      await pump(
+        tester,
+        clips: [testClip(1, shot: DateTime(2026, 10, 28, 9, 41))],
+        times: null,
+        timesLater: later,
+      );
+
+      // No skeletons waiting on the bridge (a hung channel would keep them
+      // for its timeouts): the tile is there at once, in the phone's time.
+      expect(find.byType(TtClipTileSkeleton), findsNothing);
+      expect(plain(tiles(tester).single.timeText!), '9:41 AM');
+
+      later.complete({
+        1: ClipLocalTime(
+          wallClock: DateTime.utc(2026, 10, 28, 4, 11),
+          zoneId: 'Europe/London',
+          isPhoneZone: false,
+        ),
+      });
+      await tester.pumpAndSettle();
+
+      expect(plain(tiles(tester).single.timeText!), '4:11 AM');
+      expect(plain(tiles(tester).single.semanticLabel), 'Clip, 4:11 AM, 0:32');
+    });
+
+    testWidgets("times that fail show the phone's time", (tester) async {
+      await pump(tester, clips: [testClip(1)], timesFail: true);
+
+      expect(plain(tiles(tester).single.timeText!), '9:41 AM');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets("a clip the times miss shows the phone's time", (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1),
+          testClip(2, shot: DateTime(2026, 10, 28, 10)),
+        ],
+        times: {
+          2: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 30),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+      );
+
+      expect(tiles(tester).map((t) => plain(t.timeText!)), [
+        '9:41 AM',
+        '4:30 AM',
+      ]);
     });
   });
 

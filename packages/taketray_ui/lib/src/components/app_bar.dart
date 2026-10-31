@@ -18,6 +18,10 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// `secondaryContainer` background, a one-line medium title and plain
 /// (circle-less) icons.
 ///
+/// A [selection] bar's title is a count ("3 selected") that changes under the
+/// user's finger. Set [liveRegion] to have a screen reader say the new count
+/// when it changes.
+///
 /// It fills the width it is given, adds the status bar's height above
 /// itself, and can be used as `Scaffold.appBar` or at the top of a column.
 /// Its text is drawn at no more than [TtMetrics.appBarMaxTextScale] so it
@@ -31,6 +35,7 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
     this.actions = const [],
     this.large = false,
     this.selection = false,
+    this.liveRegion = false,
     this.titleFocusNode,
     this.wrapTitle = false,
     super.key,
@@ -66,6 +71,12 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// Whether this is the contextual bar of a multi-select.
   final bool selection;
+
+  /// Whether a screen reader announces the title each time it changes (the
+  /// count of a multi-select: "2 selected"). Only a [selection] bar's title
+  /// is a live region; the titles of other bars are headings that do not
+  /// change while the screen is open, so this is ignored for them.
+  final bool liveRegion;
 
   @override
   Size get preferredSize => Size.fromHeight(
@@ -112,6 +123,7 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
     final titleBlock = Semantics(
       header: true,
       container: true,
+      liveRegion: selection && liveRegion,
       child: focusNode == null
           ? titleText
           : Focus(focusNode: focusNode, child: titleText),

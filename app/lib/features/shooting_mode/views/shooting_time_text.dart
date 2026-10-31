@@ -11,16 +11,33 @@ import 'package:intl/intl.dart';
 /// load the `intl` date data for that locale, and a locale they did not load
 /// throws. The app has English only for now. [time] may be UTC (as the
 /// database stores it).
+///
+/// For the time where a clip was shot (a `ClipLocalTime`), use
+/// [wallClockTimeText]: To tag's tiles do (D-83).
 String timeOfDayText(
   DateTime time, {
   required String locale,
   required bool use24Hour,
-}) {
-  final local = time.toLocal();
-  return use24Hour
-      ? DateFormat.Hm(locale).format(local)
-      : DateFormat.jm(locale).format(local);
-}
+}) => _timeOfDay(time.toLocal(), locale: locale, use24Hour: use24Hour);
+
+/// The time of day of [wallClock] as it is, with no conversion: for
+/// `ClipLocalTime.wallClock`, a UTC-flagged value whose fields are the time
+/// where the clip was shot (D-83). The same format as [timeOfDayText]: "9:41
+/// AM", or "09:41" when [use24Hour] (the phone's 24-hour setting, D-76).
+String wallClockTimeText(
+  DateTime wallClock, {
+  required String locale,
+  required bool use24Hour,
+}) => _timeOfDay(wallClock, locale: locale, use24Hour: use24Hour);
+
+/// [time]'s own fields as a time of day; `DateFormat` never converts.
+String _timeOfDay(
+  DateTime time, {
+  required String locale,
+  required bool use24Hour,
+}) => use24Hour
+    ? DateFormat.Hm(locale).format(time)
+    : DateFormat.jm(locale).format(time);
 
 /// The `{time}` of "On since {time}" and "Shooting since {time}" (D-76).
 ///

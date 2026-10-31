@@ -17,6 +17,18 @@ bool sameVideo(ClipFingerprint f, MediaVideo v, {required DateTime now}) =>
     f.durationMs == (v.durationMs ?? 0) &&
     f.dateTakenUtc.isAtSameMomentAs(shotAt(v, now: now));
 
+/// Whether two stored fingerprints are the same video, by the D-69 rule of
+/// [sameVideo]: a size above 0 and equal, the same duration and the same
+/// shooting instant. The display name is ignored.
+///
+/// Undo uses it before it links a clip that holds a swept clip's identity
+/// now (D-84): after a rebuild, the same number can belong to another video.
+bool sameFingerprint(ClipFingerprint a, ClipFingerprint b) =>
+    a.sizeBytes > 0 &&
+    a.sizeBytes == b.sizeBytes &&
+    a.durationMs == b.durationMs &&
+    a.dateTakenUtc.isAtSameMomentAs(b.dateTakenUtc);
+
 /// Which stored clips were found again after Android rebuilt its media
 /// library, and which were not.
 ///

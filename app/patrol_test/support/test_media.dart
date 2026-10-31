@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
@@ -9,6 +11,25 @@ import '../fixtures/test_video.dart';
 /// The folder the test videos live in. Nothing else is ever put there, and
 /// nothing outside it is ever deleted (D-77).
 const String testFolder = 'Movies/TakeTray Test';
+
+/// Makes the app watch only [testFolder], so no query it makes ever names a
+/// folder with the owner's videos. Returns a function that puts the settings
+/// back as they were; call it at the end of the test body.
+///
+/// It is not a tear-down: by the time tear-downs run, the app has closed its
+/// database (seen on the S24, 2026-10-31). Without the restore, TakeTray Dev
+/// kept watching only the test folder after a Patrol run, because its data
+/// survives the reinstall of the normal debug build, and "Add earlier videos"
+/// then found nothing in the camera folder (owner report, 2026-10-31). A run
+/// that fails half way skips the restore, so after any Patrol run TakeTray
+/// Dev's data is also cleared (`docs/dev-setup.md`, "After a Patrol run").
+Future<Future<void> Function()> watchOnlyTestFolder(
+  SettingsRepository settings,
+) async {
+  final before = await settings.load();
+  await settings.save(const AppSettings(watchedFolders: [testFolder]));
+  return () => settings.save(before);
+}
 
 /// Test videos in the phone's media library, through the debug-only channel
 /// `app.taketray/test_media` (`DebugHooks.kt`, D-77).

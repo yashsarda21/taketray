@@ -123,4 +123,33 @@ void main() {
       expect(tod(utc, use24Hour: true), '21:41');
     });
   });
+
+  group('wallClockTimeText (a time where a clip was shot)', () {
+    String wall(DateTime t, {bool use24Hour = false}) =>
+        plain(wallClockTimeText(t, locale: 'en', use24Hour: use24Hour));
+
+    test('shows the fields as they are, in any machine zone', () {
+      // A UTC value whose fields are the wall clock (ClipLocalTime): never
+      // converted to the machine's local time.
+      expect(wall(DateTime.utc(2026, 10, 28, 21, 41)), '9:41 PM');
+      expect(wall(DateTime.utc(2026, 10, 28, 4, 11)), '4:11 AM');
+      expect(wall(DateTime.utc(2026, 10, 28)), '12:00 AM');
+    });
+
+    test('24 hours: 21:41, 04:11, 00:00', () {
+      expect(
+        wall(DateTime.utc(2026, 10, 28, 21, 41), use24Hour: true),
+        '21:41',
+      );
+      expect(wall(DateTime.utc(2026, 10, 28, 4, 11), use24Hour: true), '04:11');
+      expect(wall(DateTime.utc(2026, 10, 28), use24Hour: true), '00:00');
+    });
+
+    test('a wall clock in the London spring-forward gap stays as it is', () {
+      // 01:30 on 2027-03-28 never happened on a London clock, but it is a
+      // real time in another zone; as a local DateTime in London it would
+      // move to 02:30.
+      expect(wall(DateTime.utc(2027, 3, 28, 1, 30), use24Hour: true), '01:30');
+    });
+  });
 }

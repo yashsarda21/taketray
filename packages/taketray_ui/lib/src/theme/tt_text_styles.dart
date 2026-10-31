@@ -10,18 +10,26 @@ import 'package:taketray_ui/src/tokens/tokens.g.dart';
 /// `context.scheme`.
 @immutable
 class TtTextStyles {
-  /// Text styles with every style given. Use [TtTextStyles.fromScheme].
-  const new({
+  /// Text styles; a TakeTray style that is not given is the design's own.
+  /// Use [TtTextStyles.fromScheme].
+  new({
     required this.material,
-    this.pageTitle = _pageTitle,
-    this.detailTitle = _detailTitle,
-    this.screenTitle = _screenTitle,
-    this.dialogTitle = _dialogTitle,
-    this.shootTitle = _shootTitle,
-    this.cardTitle = _cardTitle,
-    this.groupLabel = _groupLabel,
-    this.navLabel = _navLabel,
-  });
+    TextStyle? pageTitle,
+    TextStyle? detailTitle,
+    TextStyle? screenTitle,
+    TextStyle? dialogTitle,
+    TextStyle? shootTitle,
+    TextStyle? cardTitle,
+    TextStyle? groupLabel,
+    TextStyle? navLabel,
+  }) : pageTitle = pageTitle ?? _pageTitle,
+       detailTitle = detailTitle ?? _detailTitle,
+       screenTitle = screenTitle ?? _screenTitle,
+       dialogTitle = dialogTitle ?? _dialogTitle,
+       shootTitle = shootTitle ?? _shootTitle,
+       cardTitle = cardTitle ?? _cardTitle,
+       groupLabel = groupLabel ?? _groupLabel,
+       navLabel = navLabel ?? _navLabel;
 
   /// The type scale with [scheme]'s `onSurface` applied.
   factory fromScheme(ColorScheme scheme) => TtTextStyles(
@@ -29,6 +37,16 @@ class TtTextStyles {
       bodyColor: scheme.onSurface,
       displayColor: scheme.onSurface,
     ),
+  );
+
+  /// A style with only [weight] set: `fontWeight` and the variable font's
+  /// `wght` axis together. Plus Jakarta Sans is a variable font, and a
+  /// `fontWeight` alone may not move the axis, so always merge this over a
+  /// style instead of setting either one by hand:
+  /// `style.merge(TtTextStyles.weight(FontWeight.w700))`.
+  static TextStyle weight(FontWeight weight) => TextStyle(
+    fontWeight: weight,
+    fontVariations: [FontVariation('wght', weight.value.toDouble())],
   );
 
   /// The token type scale (Plus Jakarta Sans), without colours.
@@ -49,100 +67,83 @@ class TtTextStyles {
   );
 
   // tt-style.css: .style-tt .appbar.big .title
-  static const _pageTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _pageTitle = _display(
     fontSize: 34,
     height: 40 / 34,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w800,
-    fontVariations: [FontVariation('wght', 800)],
+    weight: FontWeight.w800,
     letterSpacing: -1.2,
   );
 
   // tt-style.css: .style-tt .rd-head h1 (also onboarding h1)
-  static const _detailTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _detailTitle = _display(
     fontSize: 30,
     height: 36 / 30,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w800,
-    fontVariations: [FontVariation('wght', 800)],
+    weight: FontWeight.w800,
     letterSpacing: -1,
   );
 
   // tt-style.css: .style-tt .appbar .title .t-tl
-  static const _screenTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _screenTitle = _display(
     fontSize: 20,
     height: 26 / 20,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w800,
-    fontVariations: [FontVariation('wght', 800)],
+    weight: FontWeight.w800,
     letterSpacing: -0.4,
   );
 
   // tt-style.css: .style-tt .dlg h2
-  static const _dialogTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _dialogTitle = _display(
     fontSize: 22,
     height: 28 / 22,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w800,
-    fontVariations: [FontVariation('wght', 800)],
+    weight: FontWeight.w800,
     letterSpacing: -0.4,
   );
 
   // tt-style.css: .style-tt .shoot.on .txt b
-  static const _shootTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _shootTitle = _display(
     fontSize: 19,
     height: 24 / 19,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w800,
-    fontVariations: [FontVariation('wght', 800)],
+    weight: FontWeight.w800,
     letterSpacing: -0.3,
   );
 
   // tt-style.css: .style-tt .rcard .nm
-  static const _cardTitle = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _cardTitle = _display(
     fontSize: 15,
     height: 19 / 15,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w700,
-    fontVariations: [FontVariation('wght', 700)],
+    weight: FontWeight.w700,
     letterSpacing: -0.1,
   );
 
   // tt-style.css: .style-tt .li-h (shown upper case by the component)
-  static const _groupLabel = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _groupLabel = _display(
     fontSize: 12,
     height: 16 / 12,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w700,
-    fontVariations: [FontVariation('wght', 700)],
+    weight: FontWeight.w700,
     letterSpacing: 0.8,
   );
 
   // tt-style.css: .style-tt .navbar .it
-  static const _navLabel = TextStyle(
-    fontFamily: TtTypeTokens.fontFamily,
-    package: TtTypeTokens.fontPackage,
+  static final TextStyle _navLabel = _display(
     fontSize: 11.5,
     height: 14 / 11.5,
-    leadingDistribution: TextLeadingDistribution.even,
-    fontWeight: FontWeight.w600,
-    fontVariations: [FontVariation('wght', 600)],
+    weight: FontWeight.w600,
     letterSpacing: 0.2,
   );
+
+  /// A TakeTray display style in the app font.
+  static TextStyle _display({
+    required double fontSize,
+    required double height,
+    required FontWeight weight,
+    required double letterSpacing,
+  }) => TextStyle(
+    fontFamily: TtTypeTokens.fontFamily,
+    package: TtTypeTokens.fontPackage,
+    fontSize: fontSize,
+    height: height,
+    leadingDistribution: TextLeadingDistribution.even,
+    letterSpacing: letterSpacing,
+  ).merge(TtTextStyles.weight(weight));
 
   /// The token type scale, with the scheme's colours applied.
   final TextTheme material;

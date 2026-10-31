@@ -24,6 +24,7 @@ final WidgetbookComponent ttProgressBarComponent = WidgetbookComponent(
           child: TtProgressBar(
             value: indeterminate ? null : percent / 100,
             label: label.isEmpty ? null : label,
+            percentText: (percent) => '$percent%',
           ),
         );
       },

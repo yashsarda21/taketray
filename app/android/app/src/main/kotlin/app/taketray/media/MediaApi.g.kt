@@ -635,6 +635,16 @@ interface MediaHostApi {
    */
   suspend fun thumbnail(volumeName: String, mediaStoreId: Long, widthPx: Long, heightPx: Long): ByteArray?
   fun currentZoneId(): String
+  /**
+   * The UTC offset, in milliseconds, of `zoneIds[i]` at `instantsMs[i]` (UTC
+   * milliseconds since the epoch), from the phone's own time-zone rules
+   * (`ZoneId.of(id).rules.getOffset(Instant.ofEpochMilli(ms))`), so it
+   * follows the phone's time-zone updates. An entry is null when its id is
+   * not a zone the phone knows (`DateTimeException`). The two lists must be
+   * the same length (otherwise the call fails). Async: Kotlin answers off the
+   * main thread, since a batch can hold hundreds of clips.
+   */
+  suspend fun zoneOffsetsMs(zoneIds: List<String>, instantsMs: List<Long>): List<Long?>
   fun pendingZoneChanges(): List<ZoneChangeMsg>
   fun clearZoneChangesUpTo(atMs: Long)
   fun openVideoCamera(): Boolean
@@ -844,6 +854,26 @@ interface MediaHostApi {
               MediaApiPigeonUtils.wrapError(exception)
             }
             reply.reply(wrapped)
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.zoneOffsetsMs$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val zoneIdsArg = args[0] as List<String>
+            val instantsMsArg = args[1] as List<Long>
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.zoneOffsetsMs(zoneIdsArg, instantsMsArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
           }
         } else {
           channel.setMessageHandler(null)

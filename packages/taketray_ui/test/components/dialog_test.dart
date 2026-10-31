@@ -46,6 +46,27 @@ class _Opener extends StatelessWidget {
   );
 }
 
+/// The label, value and hint of [node] and everything under it, in order.
+List<String> _spoken(SemanticsNode node) {
+  final spoken = <String>[];
+  void visit(SemanticsNode n) {
+    final data = n.getSemanticsData();
+    for (final text in [data.label, data.value, data.hint]) {
+      if (text.isNotEmpty) spoken.add(text);
+    }
+    n.visitChildren((child) {
+      visit(child);
+      return true;
+    });
+  }
+
+  visit(node);
+  return spoken;
+}
+
+/// How [icon] would be spoken if it had a node: its glyph, or a label.
+String _glyph(IconData icon) => String.fromCharCode(icon.codePoint);
+
 TtButton _button(WidgetTester tester, String label) =>
     tester.widget<TtButton>(find.widgetWithText(TtButton, label));
 
@@ -57,6 +78,99 @@ void main() {
       expect(find.text('Its clips stay in your gallery.'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
       expect(find.text('Keep'), findsOneWidget);
+    });
+
+    testWidgets('an icon sits above a centred title and is not announced', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialog<String>(
+              title: 'Delete Goa?',
+              icon: Symbols.delete_rounded,
+              actions: [TtDialogAction<String>('ok', 'OK')],
+            ),
+          ),
+        ),
+      );
+      final icon = tester.getRect(find.byIcon(Symbols.delete_rounded));
+      final title = tester.getRect(find.text('Delete Goa?'));
+      expect(icon.bottom + 16, title.top);
+      final panel = tester.getRect(find.byType(TtDialog<String>));
+      expect(title.center.dx, closeTo(panel.center.dx, 0.5));
+      expect(icon.center.dx, closeTo(panel.center.dx, 0.5));
+      expect(
+        tester.widget<Text>(find.text('Delete Goa?')).textAlign,
+        TextAlign.center,
+      );
+      expect(find.bySemanticsLabel('Delete Goa?'), findsWidgets);
+    });
+
+    testWidgets('the icon has no semantics node: only the title and the '
+        'actions are spoken', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialog<String>(
+              title: 'Delete Goa?',
+              icon: Symbols.delete_rounded,
+              actions: [TtDialogAction<String>('ok', 'OK')],
+            ),
+          ),
+        ),
+      );
+
+      final spoken = _spoken(
+        tester.getSemantics(find.byType(TtDialog<String>)),
+      );
+
+      expect(spoken, isNotEmpty);
+      expect(
+        spoken.any((text) => text.contains(_glyph(Symbols.delete_rounded))),
+        isFalse,
+        reason: 'the glyph is not read out',
+      );
+      expect(
+        spoken.every((text) => text == 'Delete Goa?' || text == 'OK'),
+        isTrue,
+        reason: 'nothing but the title and the action: $spoken',
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('an icon and a note pass the accessibility guidelines', (
+      tester,
+    ) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(
+              child: TtDialog<String>(
+                title: 'Delete Goa?',
+                icon: Symbols.delete_rounded,
+                body: 'Its clips stay in your gallery.',
+                content: TtDialogNote(
+                  text: 'Your videos stay in your gallery.',
+                ),
+                actions: [
+                  TtDialogAction<String>('cancel', 'Cancel'),
+                  TtDialogAction<String>('delete', 'Delete', destructive: true),
+                ],
+              ),
+            ),
+            brightness: brightness,
+          ),
+        );
+        await expectTtAccessible(tester);
+      }
+    });
+
+    testWidgets('without an icon the title stays at the start', (tester) async {
+      await tester.pumpWidget(ttTestApp(_dialog()));
+      expect(tester.widget<Text>(find.text('Delete reel?')).textAlign, isNull);
+      expect(find.byIcon(Symbols.delete_rounded), findsNothing);
     });
 
     testWidgets('is 312 dp wide with 32 dp corners, in the high surface', (
@@ -409,6 +523,74 @@ void main() {
       expect(tester.takeException(), isNull);
       final rect = tester.getRect(find.byType(TtDialog<String>));
       expect(rect.bottom, lessThanOrEqualTo(640 - 300 - 24));
+    });
+  });
+
+  group('TtDialogNote', () {
+    testWidgets('shows its sentence on the success colours', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialogNote(text: 'Your videos stay in your gallery.'),
+          ),
+        ),
+      );
+      final colors = tester.element(find.byType(TtDialogNote)).tt.colors;
+      final box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(TtDialogNote),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect((box.decoration as BoxDecoration).color, colors.successContainer);
+      final text = tester.widget<Text>(
+        find.text('Your videos stay in your gallery.'),
+      );
+      expect(text.style!.color, colors.onSuccessContainer);
+      // The icon is decoration: the sentence is the message.
+      expect(find.byIcon(Symbols.verified_user_rounded), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Your videos stay in your gallery.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the shield has no semantics node: only the sentence is '
+        'spoken', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialogNote(text: 'Your videos stay in your gallery.'),
+          ),
+        ),
+      );
+
+      final spoken = _spoken(tester.getSemantics(find.byType(TtDialogNote)));
+
+      expect(spoken, ['Your videos stay in your gallery.']);
+      semantics.dispose();
+    });
+
+    testWidgets('a long sentence wraps at 2x text without overflow', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const SizedBox(
+            width: 264,
+            child: TtDialogNote(
+              text:
+                  'Your videos stay in your gallery. Only this reel and its '
+                  'tags are removed.',
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+      expect(tester.takeException(), isNull);
     });
   });
 }

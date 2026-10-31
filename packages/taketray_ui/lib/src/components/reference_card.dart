@@ -272,12 +272,14 @@ class _StripesPainter extends CustomPainter {
 /// The "Add reference" tile: a dashed outline around an add-link icon, a
 /// title and subtitle, and a plus.
 ///
-/// One button named by [title] and [subtitle] together.
+/// One button named by [semanticLabel], which should say [title] and
+/// [subtitle] together.
 class TtAddReferenceTile extends StatelessWidget {
   /// A tile saying [title] and [subtitle] that calls [onPressed] when tapped.
   const new({
     required this.title,
     required this.subtitle,
+    required this.semanticLabel,
     required this.onPressed,
     super.key,
   });
@@ -287,6 +289,9 @@ class TtAddReferenceTile extends StatelessWidget {
 
   /// A hint under the title.
   final String subtitle;
+
+  /// What a screen reader says for the tile.
+  final String semanticLabel;
 
   /// Called when the tile is tapped.
   final VoidCallback onPressed;
@@ -302,7 +307,7 @@ class TtAddReferenceTile extends StatelessWidget {
       excludeSemantics: true,
       button: true,
       enabled: true,
-      label: '$title. $subtitle',
+      label: semanticLabel,
       onTap: onPressed,
       child: CustomPaint(
         foregroundPainter: _DashedBorderPainter(

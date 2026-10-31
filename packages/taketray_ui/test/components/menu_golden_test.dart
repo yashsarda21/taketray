@@ -50,6 +50,35 @@ void main() {
         ]),
       ),
       const TtScenario(
+        'status menu, Collecting checked',
+        _OpenMenu([
+          TtMenuItem(
+            'collecting',
+            'Collecting',
+            icon: Symbols.radio_button_checked_rounded,
+            iconFilled: true,
+            subtitle: 'Still shooting clips for it',
+            checked: true,
+          ),
+          TtMenuItem(
+            'ready',
+            'Ready to edit',
+            icon: Symbols.content_cut_rounded,
+            iconFilled: true,
+            subtitle: 'All the clips are in',
+            checked: false,
+          ),
+          TtMenuItem(
+            'published',
+            'Published',
+            icon: Symbols.check_circle_rounded,
+            iconFilled: true,
+            subtitle: 'Posted on Instagram',
+            checked: false,
+          ),
+        ]),
+      ),
+      const TtScenario(
         'long labels',
         _OpenMenu([
           TtMenuItem(

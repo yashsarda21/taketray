@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/internal/blur_barrier.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -46,11 +47,16 @@ class TtDialog<T> extends StatelessWidget {
     required this.actions,
     this.body,
     this.content,
+    this.icon,
     super.key,
   });
 
   /// The heading; also what a screen reader announces for the dialog.
   final String title;
+
+  /// A glyph above the title, or null for none. With one, the title is
+  /// centred (proto.css: `.dlg .dico + h2`). Decorative: the title says it.
+  final IconData? icon;
 
   /// A paragraph under the title, or null for none.
   final String? body;
@@ -69,10 +75,17 @@ class TtDialog<T> extends StatelessWidget {
     final text = tt.text.material;
 
     final scrolling = <Widget>[
+      if (icon != null) ...[
+        // proto.css: .dlg .dico { text-align: center; color: secondary;
+        // margin-bottom: 16px }
+        ExcludeSemantics(child: Icon(icon, color: scheme.secondary, fill: 1)),
+        const SizedBox(height: TtMetrics.dialogTitleGap),
+      ],
       Semantics(
         header: true,
         child: Text(
           title,
+          textAlign: icon != null ? TextAlign.center : null,
           style: tt.text.dialogTitle.copyWith(color: scheme.onSurface),
         ),
       ),
@@ -193,6 +206,7 @@ Future<T?> showTtDialog<T>(
   required List<TtDialogAction<T>> actions,
   String? body,
   Widget? content,
+  IconData? icon,
 }) {
   final navigator = Navigator.of(context, rootNavigator: true);
   final motion = context.tt.motion;
@@ -227,6 +241,7 @@ Future<T?> showTtDialog<T>(
               title: title,
               body: body,
               content: content,
+              icon: icon,
               actions: actions,
             ),
           ),
@@ -234,6 +249,61 @@ Future<T?> showTtDialog<T>(
       ),
     ),
   );
+}
+
+/// A reassurance line for a dialog's `content`: a check-shield icon and a
+/// sentence on the success colours ("Your videos stay in your gallery.").
+///
+/// The icon is decorative; the sentence is the whole message. It wraps over as
+/// many lines as it needs.
+class TtDialogNote extends StatelessWidget {
+  /// A note saying [text].
+  const new({required this.text, super.key});
+
+  /// The sentence.
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final colors = tt.colors;
+    // proto.css: .dlg .safe
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: colors.successContainer,
+        borderRadius: BorderRadius.circular(tt.radii.m),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: TtMetrics.dialogNotePaddingHorizontal,
+          vertical: TtMetrics.dialogNotePaddingVertical,
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ExcludeSemantics(
+              child: Icon(
+                Symbols.verified_user_rounded,
+                fill: 1,
+                size: MediaQuery.textScalerOf(context)
+                    .scale(TtMetrics.dialogNoteIconSize),
+                color: colors.onSuccessContainer,
+              ),
+            ),
+            SizedBox(width: tt.spacing.xs),
+            Expanded(
+              child: Text(
+                text,
+                style: tt.text.material.bodyMedium!.copyWith(
+                  color: colors.onSuccessContainer,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// A dialog route whose scrim is blurred as well as dimmed.

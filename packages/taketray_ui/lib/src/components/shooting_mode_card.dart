@@ -12,11 +12,13 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// The Shooting mode card at the top of Home.
 ///
 /// Off, it is a quiet hairline card: a videocam tile, a [title] and
-/// [subtitle], and a switch. On, it is a black "media hero": the [backdrop]
-/// (the latest clip) at 62 % under a brand tint, the tile with a pulsing
-/// record dot, the same texts in white, the inverted switch, a white
-/// [cameraLabel] button, and below them up to two [rows] and the optional
-/// [toTagStrip] (use [TtCardRow]).
+/// [subtitle], a switch, and below them up to two [rows] in the same quiet
+/// look (a hairline above each, the surface's text colours). On, it is a
+/// black "media hero": the [backdrop] (the latest clip) at 62 % under a
+/// brand tint, the tile with a pulsing record dot, the same texts in white,
+/// the inverted switch, a white [cameraLabel] button, and below them up to
+/// two [rows] (frosted bands) and the optional [toTagStrip] (use
+/// [TtCardRow]).
 ///
 /// A [backdrop] that fails to load leaves the plain black card.
 class TtShootingModeCard extends StatelessWidget {
@@ -25,6 +27,7 @@ class TtShootingModeCard extends StatelessWidget {
     required this.on,
     required this.title,
     required this.subtitle,
+    required this.semanticLabel,
     required this.switchSemanticLabel,
     required this.onChanged,
     this.backdrop,
@@ -44,6 +47,11 @@ class TtShootingModeCard extends StatelessWidget {
   /// The line under the title (any length; it wraps).
   final String subtitle;
 
+  /// What a screen reader says for the card as a whole, such as "Shooting
+  /// mode, on". The switch, the camera button and the rows keep their own
+  /// nodes inside it.
+  final String semanticLabel;
+
   /// What a screen reader says for the switch.
   final String switchSemanticLabel;
 
@@ -59,9 +67,9 @@ class TtShootingModeCard extends StatelessWidget {
   /// Called when the camera button is tapped.
   final VoidCallback? onOpenCamera;
 
-  /// Up to two [TtCardRow]s above the to-tag strip (on only), top to bottom:
-  /// References, then Add earlier videos. Each is a frosted band with a
-  /// hairline above it.
+  /// Up to two [TtCardRow]s, top to bottom: References, then Add earlier
+  /// videos. On, each is a frosted band with a hairline above it, above the
+  /// to-tag strip; off, each is a plain band under a hairline (D-90).
   final List<TtCardRow> rows;
 
   /// A [TtCardRow] with a trailing text, for clips waiting to be tagged (on
@@ -69,7 +77,14 @@ class TtShootingModeCard extends StatelessWidget {
   final Widget? toTagStrip;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Semantics(
+    container: true,
+    explicitChildNodes: true,
+    label: semanticLabel,
+    child: _card(context),
+  );
+
+  Widget _card(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
     final corners = BorderRadius.circular(tt.radii.xxl);
@@ -133,7 +148,17 @@ class TtShootingModeCard extends StatelessWidget {
             side: BorderSide(color: tt.colors.hairline),
           ),
         ),
-        child: ClipRRect(borderRadius: corners, child: top),
+        child: ClipRRect(
+          borderRadius: corners,
+          child: rows.isEmpty
+              ? top
+              : _OffCardScope(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [top, ...rows],
+                  ),
+                ),
+        ),
       );
     }
 
@@ -319,19 +344,46 @@ class _TintPainter extends CustomPainter {
       oldDelegate.tint != tint || oldDelegate.black != black;
 }
 
-/// A full-width row at the bottom of the "on" Shooting mode card.
+/// Marks the rows of an "off" [TtShootingModeCard], so a link [TtCardRow]
+/// takes the off card's quiet look instead of the frosted dark band.
+class _OffCardScope extends InheritedWidget {
+  const new({required super.child});
+
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<_OffCardScope>() != null;
+
+  @override
+  bool updateShouldNotify(_OffCardScope oldWidget) => false;
+}
+
+/// The look of a [TtCardRow].
+enum TtCardRowKind {
+  /// A link to somewhere else, such as References or Add earlier videos: a
+  /// frosted dark band with white text and a chevron.
+  link,
+
+  /// A call to act on waiting work, such as the clips to tag: a tertiary
+  /// container band with an arrow.
+  strip,
+}
+
+/// A full-width row at the bottom of the Shooting mode card.
 ///
-/// Two looks, chosen by [trailingText]:
-/// - without it, a references row: a frosted dark band with white text, an
-///   optional [subtitle] and a chevron;
-/// - with it, a to-tag strip: a tertiary container band, the text and an
-///   arrow after the title.
+/// Two looks, chosen by [kind]:
+/// - [TtCardRowKind.link], a references row: a frosted dark band with white
+///   text, an optional [subtitle] and a chevron; in the rows of an "off"
+///   card, the same row on the card's surface instead: a hairline above, the
+///   title in `onSurface`, the subtitle and glyphs in `onSurfaceVariant`;
+/// - [TtCardRowKind.strip], a to-tag strip: a tertiary container band, the
+///   text, an optional [trailingText] and an arrow after the title.
 ///
 /// The whole row is one button named [semanticLabel], or the title,
 /// subtitle and trailing text joined by commas.
 class TtCardRow extends StatelessWidget {
-  /// A row showing [icon] and [title] that calls [onPressed] when tapped.
+  /// A row of look [kind] showing [icon] and [title] that calls [onPressed]
+  /// when tapped.
   const new({
+    required this.kind,
     required this.icon,
     required this.title,
     required this.onPressed,
@@ -339,7 +391,13 @@ class TtCardRow extends StatelessWidget {
     this.trailingText,
     this.semanticLabel,
     super.key,
-  });
+  }) : assert(
+         kind == TtCardRowKind.strip || trailingText == null,
+         'Only a strip has a trailing text',
+       );
+
+  /// Which look the row has.
+  final TtCardRowKind kind;
 
   /// The glyph before the title (drawn filled on a strip).
   final IconData icon;
@@ -350,8 +408,8 @@ class TtCardRow extends StatelessWidget {
   /// A line under the title, or null for none.
   final String? subtitle;
 
-  /// A word before the arrow, such as "Tag now"; giving it makes the row a
-  /// to-tag strip.
+  /// A word before the arrow, such as "Tag now". Only a
+  /// [TtCardRowKind.strip] has one.
   final String? trailingText;
 
   /// What a screen reader says instead of the texts, or null to read them.
@@ -366,10 +424,19 @@ class TtCardRow extends StatelessWidget {
     final scheme = context.scheme;
     final trailing = trailingText;
     final subtitle = this.subtitle;
-    final strip = trailing != null;
+    final strip = kind == TtCardRowKind.strip;
+    // A link in an off card sits on the card's surface (D-90).
+    final quiet = !strip && _OffCardScope.of(context);
 
     // proto.css: .shoot .strip / .refrow, tt-style.css: .shoot.on .refrow
-    final color = strip ? tt.colors.onWaitingContainer : tt.colors.onMedia;
+    final color = strip
+        ? tt.colors.onWaitingContainer
+        : quiet
+        ? scheme.onSurface
+        : tt.colors.onMedia;
+    final secondary = quiet
+        ? scheme.onSurfaceVariant
+        : color.withValues(alpha: TtMetrics.cardRowSubtitleOpacity);
     final text = tt.text.material;
     final body = ConstrainedBox(
       constraints: BoxConstraints(
@@ -383,7 +450,10 @@ class TtCardRow extends StatelessWidget {
           end: tt.spacing.s,
         ),
         child: IconTheme.merge(
-          data: IconThemeData(color: color, size: tt.sizes.icon),
+          data: IconThemeData(
+            color: quiet ? secondary : color,
+            size: tt.sizes.icon,
+          ),
           child: Row(
             spacing: strip ? TtMetrics.cardStripGap : TtMetrics.cardRowGap,
             children: [
@@ -404,11 +474,7 @@ class TtCardRow extends StatelessWidget {
                         subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall!.copyWith(
-                          color: color.withValues(
-                            alpha: TtMetrics.cardRowSubtitleOpacity,
-                          ),
-                        ),
+                        style: text.bodySmall!.copyWith(color: secondary),
                       ),
                   ],
                 ),
@@ -436,6 +502,17 @@ class TtCardRow extends StatelessWidget {
       band = Material(
         color: tt.colors.waitingContainer,
         child: InkWell(onTap: onPressed, child: body),
+      );
+    } else if (quiet) {
+      // tt-style.css: .shoot:not(.on), its hairline between the parts.
+      band = DecoratedBox(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: tt.colors.hairline)),
+        ),
+        child: Material(
+          type: MaterialType.transparency,
+          child: InkWell(onTap: onPressed, child: body),
+        ),
       );
     } else {
       band = ClipRect(

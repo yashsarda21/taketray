@@ -65,7 +65,6 @@ void main() {
 
       expect(state.on, isTrue);
       expect(state.since, _t0);
-      expect(state.earlierAdded, isFalse);
       expect(state.baselines, {'external_primary': _phone, 'ABCD-1234': _card});
       expect(await repo.loadShooting(), state);
       // One row holds the whole state, so it changes atomically.
@@ -88,19 +87,16 @@ void main() {
       expect(second.since, _t0);
     });
 
-    test('already on keeps since, baselines and earlierAdded', () async {
+    test('already on keeps since and baselines', () async {
       await turnOn();
-      await repo.markEarlierAdded();
       clock.advance(_minute);
       final before = await repo.loadShooting();
-      expect(before.earlierAdded, isTrue);
 
       final again = await turnOn({'other': _card});
 
       expect(again, before);
       expect(again.since, _t0);
       expect(again.baselines, {'external_primary': _phone});
-      expect(again.earlierAdded, isTrue);
     });
 
     test('off clears baselines', () async {
@@ -122,7 +118,6 @@ void main() {
 
     test('a new session after off starts fresh', () async {
       await turnOn();
-      await repo.markEarlierAdded();
       await repo.turnShootingOff();
       clock.advance(_minute);
 
@@ -130,7 +125,6 @@ void main() {
 
       expect(next.since, _t0.add(_minute));
       expect(next.baselines, {'external_primary': _card});
-      expect(next.earlierAdded, isFalse);
     });
 
     test('watchShooting emits distinct values only', () async {
@@ -339,26 +333,40 @@ void main() {
     }
   });
 
-  group('markEarlierAdded', () {
-    test('sets the flag, a new session clears it, off ignores it', () async {
-      // Off: ignored, and nothing is written.
-      await repo.markEarlierAdded();
-      expect(await repo.loadShooting(), ShootingState.off);
-      expect(await _raw('shootingMode'), isNull);
+  group('a state stored before D-90', () {
+    test('with earlierAdded: true still loads, and the next write drops the '
+        'key', () async {
+      await _put(
+        'shootingMode',
+        jsonEncode({
+          'on': true,
+          'baselines': {
+            'external_primary': {'version': 'v1', 'generation': 40},
+          },
+          'since': '2026-10-28T09:00:00.000Z',
+          'earlierAdded': true,
+        }),
+      );
 
-      final started = await turnOn();
-      await repo.markEarlierAdded();
-      final marked = await repo.loadShooting();
-      expect(marked.earlierAdded, isTrue);
-      expect(marked, started.copyWith(earlierAdded: true));
+      final state = await repo.loadShooting();
+      expect(state.on, isTrue);
+      expect(state.since, _t0);
+      expect(state.baselines, {'external_primary': _phone});
+      expect(await repo.watchShooting().first, state);
 
-      await repo.markEarlierAdded(); // twice is fine
-      expect((await repo.loadShooting()).earlierAdded, isTrue);
-
-      await repo.turnShootingOff();
-      clock.advance(_minute);
-      expect((await turnOn()).earlierAdded, isFalse);
-      expect((await repo.loadShooting()).earlierAdded, isFalse);
+      // A write rewrites the whole value without the old key.
+      expect(
+        await repo.advanceBaseline(
+          'external_primary',
+          expectedSession: state,
+          expected: _phone,
+          next: const VolumeBaseline(version: 'v1', generation: 45),
+        ),
+        isTrue,
+      );
+      final json = jsonDecode((await _raw('shootingMode'))!) as Map;
+      expect(json.containsKey('earlierAdded'), isFalse);
+      expect((await repo.loadShooting()).since, _t0);
     });
   });
 
@@ -391,17 +399,14 @@ void main() {
       expect(state.on, isTrue);
     });
 
-    test('it keeps the other volumes and earlierAdded', () async {
+    test('it keeps the other volumes', () async {
       await repo.turnShootingOff();
       session = await turnOn({'external_primary': _phone, 'ABCD-1234': _card});
-      await repo.markEarlierAdded();
-      session = await repo.loadShooting();
 
       expect(await advance(), isTrue);
 
       final state = await repo.loadShooting();
       expect(state.baselines, {'external_primary': next, 'ABCD-1234': _card});
-      expect(state.earlierAdded, isTrue);
     });
 
     test('it writes when the generation stays the same', () async {
@@ -586,7 +591,6 @@ void main() {
   test('logs counts only, never values', () async {
     final records = _record();
     await turnOn({'external_primary': _phone});
-    await repo.markEarlierAdded();
     await repo.markAccessWasFull();
     await repo.turnShootingOff();
 

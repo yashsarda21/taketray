@@ -6,6 +6,7 @@ import android.content.Context
 import android.database.MatrixCursor
 import android.graphics.Point
 import android.os.Build
+import android.os.Looper
 import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
@@ -291,6 +292,39 @@ class MediaHostApiImplTest {
         assertEquals(listOf(ZoneChangeMsg(2_000, "UTC")), impl.pendingZoneChanges())
         assertEquals(TimeZone.getDefault().id, impl.currentZoneId())
     }
+
+    @Test
+    fun `zone offsets come from ZoneOffsets, off the main thread`() =
+        timed {
+            assertEquals(Looper.getMainLooper(), Looper.myLooper())
+            var onMain: Boolean? = null
+            val spy =
+                MediaHostApiImpl(activity, noVolumes, offsetsOf = { ids, at ->
+                    onMain = Looper.myLooper() == Looper.getMainLooper()
+                    ZoneOffsets.offsetsMs(ids, at)
+                })
+            assertEquals(
+                listOf<Long?>(3_600_000L, null, 19_800_000L),
+                spy.zoneOffsetsMs(listOf("Europe/London", "Not/AZone", "Asia/Kolkata"), listOf(1_782_907_200_000L, 0L, 0L)),
+            )
+            assertEquals(false, onMain)
+            // The default is the real ZoneOffsets.
+            assertEquals(listOf<Long?>(0L), impl.zoneOffsetsMs(listOf("UTC"), listOf(0L)))
+        }
+
+    @Test
+    fun `zone offsets with lists of different lengths are a native-error`() =
+        timed {
+            val error =
+                try {
+                    impl.zoneOffsetsMs(listOf("Europe/London"), emptyList())
+                    null
+                } catch (e: FlutterError) {
+                    e
+                }
+            assertEquals("native-error", error?.code)
+            assertEquals("zoneOffsetsMs failed: IllegalArgumentException", error?.message)
+        }
 
     @Test
     fun `a gone thumbnail is null`() =

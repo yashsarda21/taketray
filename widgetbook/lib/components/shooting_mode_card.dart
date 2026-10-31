@@ -5,7 +5,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtShootingModeCard`: off (quiet) or on (the black media hero).
+/// `TtShootingModeCard`: off (quiet) or on (the black media hero). The rows
+/// show in both (D-90); the to-tag strip and the camera button only on.
 final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
   name: 'TtShootingModeCard',
   useCases: [
@@ -34,7 +35,7 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
           initialValue: true,
         );
         final earlier = context.knobs.boolean(
-          label: 'add earlier videos row',
+          label: 'add earlier videos row (on and off)',
           initialValue: true,
         );
         final toTag = context.knobs.boolean(
@@ -47,6 +48,7 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
             on: on,
             title: on ? 'Shooting mode on' : 'Shooting mode',
             subtitle: subtitle,
+            semanticLabel: on ? 'Shooting mode, on' : 'Shooting mode, off',
             switchSemanticLabel: 'Shooting mode',
             onChanged: (_) {},
             backdrop: switch (backdrop) {
@@ -59,6 +61,7 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
             rows: [
               if (references)
                 TtCardRow(
+                  kind: TtCardRowKind.link,
                   icon: Symbols.link_rounded,
                   title: 'References · 4',
                   subtitle: 'From 2 Recording reels',
@@ -67,16 +70,21 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
                 ),
               if (earlier)
                 TtCardRow(
+                  kind: TtCardRowKind.link,
                   icon: Symbols.history_rounded,
                   title: 'Add earlier videos',
-                  subtitle: 'Shot before Shooting mode was on',
-                  semanticLabel:
-                      'Add earlier videos, shot before Shooting mode was on',
+                  subtitle: on
+                      ? 'Shot before Shooting mode was on'
+                      : 'From your camera folder',
+                  semanticLabel: on
+                      ? 'Add earlier videos, shot before Shooting mode was on'
+                      : 'Add earlier videos, from your camera folder',
                   onPressed: () {},
                 ),
             ],
             toTagStrip: toTag
                 ? TtCardRow(
+                    kind: TtCardRowKind.strip,
                     icon: Symbols.sell_rounded,
                     title: '3 clips to tag',
                     trailingText: 'Tag now',
@@ -90,8 +98,8 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
   ],
 );
 
-/// `TtCardRow`: a references row (no trailing text) or a to-tag strip (with
-/// trailing text), as inside the "on" Shooting mode card.
+/// `TtCardRow`: a link row (references) or a to-tag strip (with trailing
+/// text), as inside the "on" Shooting mode card.
 final WidgetbookComponent ttCardRowComponent = WidgetbookComponent(
   name: 'TtCardRow',
   useCases: [
@@ -120,6 +128,7 @@ final WidgetbookComponent ttCardRowComponent = WidgetbookComponent(
           child: Padding(
             padding: EdgeInsets.symmetric(vertical: context.tt.spacing.xxl),
             child: TtCardRow(
+              kind: strip ? TtCardRowKind.strip : TtCardRowKind.link,
               icon: strip ? Symbols.sell_rounded : Symbols.link_rounded,
               title: title,
               subtitle: subtitle.isEmpty ? null : subtitle,

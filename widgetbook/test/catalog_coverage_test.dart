@@ -52,36 +52,93 @@ void main() {
     };
 
     expect(
-      _unregisteredFiles(classesByFile, registered),
+      _unregisteredClasses(classesByFile, registered, _notInCatalogue.keys),
       isEmpty,
       reason:
-          'None of the classes in these package files is the name of a '
-          'WidgetbookComponent in ttCatalog. Add a component named after one '
-          "of its classes to the file's catalogue entry.",
+          'These public classes are not the name of a WidgetbookComponent in '
+          'ttCatalog. Add a component named after the class (or `A / B` for '
+          'several) to the catalogue entry of its file, or, if it is '
+          'deliberately left out, add it to _notInCatalogue with the reason.',
     );
   });
 
-  test('the registration check fails for a file with no registered class', () {
+  test('the allow-list holds only classes that exist and are not shown', () {
+    final classes = {
+      for (final name in names)
+        ..._publicClasses(
+          File('${packageComponents.path}/$name').readAsStringSync(),
+        ),
+    };
+    final registered = _registeredNames(ttCatalog);
+    expect(
+      [
+        for (final name in _notInCatalogue.keys)
+          if (!classes.contains(name) || registered.contains(name)) name,
+      ],
+      isEmpty,
+      reason:
+          'Remove these from _notInCatalogue: gone, or now in the catalogue.',
+    );
+  });
+
+  test('second class in a registered file is caught', () {
     final registered = {'TtButton'};
     expect(
-      _unregisteredFiles({
-        'buttons.dart': ['TtButton', 'TtFab'],
-        'banners.dart': ['TtBanner'],
-        'empty.dart': [],
-      }, registered),
-      ['banners.dart', 'empty.dart'],
+      _unregisteredClasses(
+        {
+          'buttons.dart': ['TtButton', 'TtFab'],
+          'banners.dart': ['TtBanner'],
+          'empty.dart': [],
+        },
+        registered,
+        const [],
+      ),
+      ['buttons.dart: TtFab', 'banners.dart: TtBanner'],
+    );
+  });
+
+  test('a class on the allow-list is not reported', () {
+    expect(
+      _unregisteredClasses(
+        {
+          'buttons.dart': ['TtButton', 'TtFab'],
+        },
+        {'TtButton'},
+        const ['TtFab'],
+      ),
+      isEmpty,
     );
   });
 }
 
-/// Names of the files in [classesByFile] none of whose classes is in
-/// [registered].
-List<String> _unregisteredFiles(
+/// Public classes that the catalogue deliberately does not show, and why.
+const Map<String, String> _notInCatalogue = {
+  'TtClipMark': 'data for TtClipTile.mark; shown in the TtClipTile use cases',
+  'TtDateRangeCalendarLabels':
+      'words for TtDateRangeCalendar; set in its use cases',
+  'TtDateRangeCalendarController':
+      'state holder of TtDateRangeCalendar, not a widget',
+  'TtDateRangePickerLabels':
+      'words for TtDateRangePicker; set in its use cases',
+  'TtDialogAction':
+      'data for TtDialog.actions; shown in the TtDialog use cases',
+  'TtMenuItem': 'data for TtMenuButton.items; shown in its use cases',
+  'TtNavItem': 'data for TtNavPill.items; shown in its use cases',
+  'TtViewerAction': 'data for TtViewerActions.actions; shown in its use case',
+  'TtPillTab': 'data for TtPillTabs.tabs; shown in its use cases',
+};
+
+/// The classes in [classesByFile] that are neither in [registered] nor in
+/// [allowed], as `file: Class`. Checked per class, so a second widget added to
+/// a file whose first widget is registered is still reported.
+List<String> _unregisteredClasses(
   Map<String, List<String>> classesByFile,
   Set<String> registered,
+  Iterable<String> allowed,
 ) => [
   for (final MapEntry(:key, :value) in classesByFile.entries)
-    if (!value.any(registered.contains)) key,
+    for (final name in value)
+      if (!registered.contains(name) && !allowed.contains(name)) '$key: $name',
 ];
 
 /// The `WidgetbookComponent` names under [nodes] at any depth. A name may list

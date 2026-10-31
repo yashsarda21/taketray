@@ -46,13 +46,21 @@ void main() {
         'glass pill',
         _OnPhoto(
           children: [
-            const TtGlassPill(icon: Symbols.link_rounded),
-            const TtGlassPill(icon: Symbols.link_rounded, text: '3'),
+            const TtGlassPill(
+              icon: Symbols.link_rounded,
+              semanticLabel: 'Linked',
+            ),
+            const TtGlassPill(
+              icon: Symbols.link_rounded,
+              text: '3',
+              semanticLabel: '3 links',
+            ),
             Builder(
               builder: (context) => TtGlassPill(
                 icon: Symbols.fiber_manual_record_rounded,
                 iconColor: context.tt.colors.recordOnMedia,
                 text: 'Recording',
+                semanticLabel: 'Recording',
               ),
             ),
             Builder(
@@ -60,6 +68,7 @@ void main() {
                 icon: Symbols.check_circle_rounded,
                 iconColor: context.tt.colors.publishedOnMedia,
                 text: 'Published a very long status name that cannot fit',
+                semanticLabel: 'Published',
               ),
             ),
           ],

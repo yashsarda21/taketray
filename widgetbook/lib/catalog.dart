@@ -18,6 +18,8 @@ import 'package:taketray_widgetbook/components/progress.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/reel_card.dart';
 import 'package:taketray_widgetbook/components/reel_chip.dart';
+import 'package:taketray_widgetbook/components/reel_header.dart';
+import 'package:taketray_widgetbook/components/reel_pick_row.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
 import 'package:taketray_widgetbook/components/sheet.dart';
@@ -30,6 +32,7 @@ import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
 import 'package:taketray_widgetbook/components/video_surface.dart';
+import 'package:taketray_widgetbook/components/viewer_chrome.dart';
 import 'package:widgetbook/widgetbook.dart';
 
 export 'package:taketray_widgetbook/fixtures.dart';
@@ -81,6 +84,7 @@ final List<WidgetbookNode> ttCatalog = [
       ttAddReferenceTileComponent,
       ttShootingModeCardComponent,
       ttCardRowComponent,
+      ttReelHeaderComponent,
     ],
   ),
   WidgetbookFolder(
@@ -94,6 +98,8 @@ final List<WidgetbookNode> ttCatalog = [
       ttReelChipComponent,
       ttTagPanelComponent,
       ttSameAsPreviousButtonComponent,
+      ttReelTagComponent,
+      ttViewerActionsComponent,
     ],
   ),
   WidgetbookFolder(
@@ -128,6 +134,8 @@ final List<WidgetbookNode> ttCatalog = [
       ttDialogComponent,
       ttSnackComponent,
       ttMenuButtonComponent,
+      ttReelPickRowComponent,
+      ttReelPickNewRowComponent,
     ],
   ),
 ];

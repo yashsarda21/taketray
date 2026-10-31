@@ -101,15 +101,17 @@ abstract class VolumeBaseline with _$VolumeBaseline {
 /// Shooting mode, as stored between app starts.
 ///
 /// [since] is when it was switched on (UTC); [baselines] holds one
-/// [VolumeBaseline] per volume name. [earlierAdded] is true once "Add earlier
-/// videos" was used in this Shooting session, which hides its link.
+/// [VolumeBaseline] per volume name.
+///
+/// Older versions also stored `earlierAdded` (whether "Add earlier videos"
+/// was used in the session, which hid its link). D-90 dropped it: JSON that
+/// still has the key reads as before, and the key is ignored.
 @freezed
 abstract class ShootingState with _$ShootingState {
   const factory ShootingState({
     required bool on,
     required Map<String, VolumeBaseline> baselines,
     DateTime? since,
-    @Default(false) bool earlierAdded,
   }) = _ShootingState;
 
   const ShootingState._();

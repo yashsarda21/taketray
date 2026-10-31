@@ -7,18 +7,21 @@ import '../support/tt_test_app.dart';
 
 final DateTime _today = DateTime(2026, 10, 28);
 
-/// The text for [day] in an app with [locale].
+/// The text for [day] in an app with [locale] ([weekday]: with the weekday).
 Future<String> _text(
   WidgetTester tester,
   DateTime day, {
   Locale? locale,
+  bool weekday = false,
 }) async {
   late String text;
   await tester.pumpWidget(
     ttTestApp(
       Builder(
         builder: (context) {
-          text = ttDayText(context, day, today: _today);
+          text = weekday
+              ? ttDayWeekdayText(context, day, today: _today)
+              : ttDayText(context, day, today: _today);
           return Text(text);
         },
       ),
@@ -148,6 +151,162 @@ void main() {
               ),
             ),
             locale: const Locale('en', 'US'),
+          ),
+        );
+
+        final text = tester.widget<Text>(find.byType(Text)).data!;
+        final at = text.indexOf(date);
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.byType(Text),
+        );
+        final boxes = paragraph.getBoxesForSelection(
+          TextSelection(baseOffset: at, extentOffset: at + date.length),
+        );
+        expect(
+          {for (final box in boxes) box.top}.length,
+          1,
+          reason: 'the date is on one line at $width dp',
+        );
+      }
+    });
+  });
+
+  group('ttDayWeekdayText', () {
+    const us = Locale('en', 'US');
+    const india = Locale('en', 'IN');
+
+    String plain(String text) => text.replaceAll('\u00a0', ' ');
+
+    testWidgets('a day of this year has the weekday and no year', (
+      tester,
+    ) async {
+      // 28 October 2026 is a Wednesday, 8 October a Thursday.
+      expect(
+        plain(
+          await _text(
+            tester,
+            DateTime(2026, 10, 28),
+            locale: us,
+            weekday: true,
+          ),
+        ),
+        'Wed, Oct 28',
+      );
+      expect(
+        plain(
+          await _text(tester, DateTime(2026, 10, 8), locale: us, weekday: true),
+        ),
+        'Thu, Oct 8',
+      );
+    });
+
+    testWidgets('a day of another year has the weekday and the year', (
+      tester,
+    ) async {
+      // 30 December 2025 is a Tuesday, 1 January 2027 a Friday.
+      expect(
+        plain(
+          await _text(
+            tester,
+            DateTime(2025, 12, 30),
+            locale: us,
+            weekday: true,
+          ),
+        ),
+        'Tue, Dec 30, 2025',
+      );
+      expect(
+        plain(await _text(tester, DateTime(2027), locale: us, weekday: true)),
+        'Fri, Jan 1, 2027',
+      );
+    });
+
+    testWidgets('the year is by the calendar, not by 365 days', (tester) async {
+      expect(
+        await _text(tester, DateTime(2025, 12, 31), locale: us, weekday: true),
+        contains('2025'),
+      );
+    });
+
+    testWidgets('en-US writes the month first, en-IN the day first', (
+      tester,
+    ) async {
+      expect(
+        plain(
+          await _text(
+            tester,
+            DateTime(2026, 10, 8),
+            locale: india,
+            weekday: true,
+          ),
+        ),
+        'Thu, 8 Oct',
+      );
+      expect(
+        plain(
+          await _text(
+            tester,
+            DateTime(2025, 12, 30),
+            locale: india,
+            weekday: true,
+          ),
+        ),
+        'Tue, 30 Dec, 2025',
+      );
+    });
+
+    testWidgets('only reads the date, never converts it (a UTC date)', (
+      tester,
+    ) async {
+      expect(
+        plain(
+          await _text(
+            tester,
+            DateTime.utc(2026, 7, 2),
+            locale: us,
+            weekday: true,
+          ),
+        ),
+        'Thu, Jul 2',
+      );
+    });
+
+    testWidgets('the words of one date never part, only the date from the day '
+        'name by a comma and a space', (tester) async {
+      for (final locale in const [us, india]) {
+        for (final day in [DateTime(2026, 10, 8), DateTime(2025, 12, 30)]) {
+          final text = await _text(tester, day, locale: locale, weekday: true);
+          expect(text.contains(' '), isFalse, reason: '$locale $day');
+          expect(text.contains(' '), isFalse);
+        }
+      }
+    });
+
+    testWidgets('a date inside a sentence never breaks across lines', (
+      tester,
+    ) async {
+      // Wide enough for the longest date on a line of its own.
+      for (final width in [160.0, 180.0, 200.0, 220.0, 260.0]) {
+        late String date;
+        await tester.pumpWidget(
+          ttTestApp(
+            Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: width,
+                child: Builder(
+                  builder: (context) {
+                    date = ttDayWeekdayText(
+                      context,
+                      DateTime(2025, 12, 30),
+                      today: _today,
+                    );
+                    return Text('Day 3 · $date and some more words after it');
+                  },
+                ),
+              ),
+            ),
+            locale: us,
           ),
         );
 

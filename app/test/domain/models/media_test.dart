@@ -17,7 +17,7 @@ void main() {
       expect(back.generation, 4821);
     });
 
-    test('ShootingState that is on, with baselines and earlierAdded', () {
+    test('ShootingState that is on, with baselines', () {
       final state = ShootingState(
         on: true,
         since: DateTime.utc(2026, 10, 28, 9, 15, 30, 123),
@@ -25,14 +25,14 @@ void main() {
           'external_primary': VolumeBaseline(version: 'v1', generation: 10),
           '0000-0000': VolumeBaseline(version: 'v2', generation: 0),
         },
-        earlierAdded: true,
       );
       final back = ShootingState.fromJson(viaText(state.toJson()));
       expect(back, state);
       expect(back.since, DateTime.utc(2026, 10, 28, 9, 15, 30, 123));
       expect(back.since!.isUtc, isTrue);
       expect(back.baselines['0000-0000']!.generation, 0);
-      expect(back.earlierAdded, isTrue);
+      // Nothing about earlier videos is written any more (D-90).
+      expect(state.toJson().containsKey('earlierAdded'), isFalse);
     });
 
     test('ShootingState.off', () {
@@ -41,34 +41,29 @@ void main() {
       expect(back.on, isFalse);
       expect(back.since, isNull);
       expect(back.baselines, isEmpty);
-      expect(back.earlierAdded, isFalse);
     });
 
-    test('ShootingState stored before earlierAdded existed reads as false', () {
-      final json = viaText(
-        ShootingState(
-          on: true,
-          since: DateTime.utc(2026, 10, 28),
-          baselines: const {},
-        ).toJson(),
-      )..remove('earlierAdded');
-      expect(ShootingState.fromJson(json).earlierAdded, isFalse);
+    test('ShootingState stored with earlierAdded (before D-90) still reads, '
+        'and the key is ignored', () {
+      final state = ShootingState(
+        on: true,
+        since: DateTime.utc(2026, 10, 28),
+        baselines: const {
+          'external_primary': VolumeBaseline(version: 'v1', generation: 10),
+        },
+      );
+      for (final old in [true, false]) {
+        final json = viaText(state.toJson())..['earlierAdded'] = old;
+        expect(ShootingState.fromJson(json), state, reason: '$old');
+      }
     });
   });
 
   group('ShootingState.off', () {
-    test('is off, with no start time, baselines or earlier videos', () {
+    test('is off, with no start time or baselines', () {
       expect(ShootingState.off.on, isFalse);
       expect(ShootingState.off.since, isNull);
       expect(ShootingState.off.baselines, isEmpty);
-      expect(ShootingState.off.earlierAdded, isFalse);
-    });
-
-    test('earlierAdded is false unless set', () {
-      expect(
-        const ShootingState(on: true, baselines: {}).earlierAdded,
-        isFalse,
-      );
     });
   });
 

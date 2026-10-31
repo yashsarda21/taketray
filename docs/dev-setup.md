@@ -11,7 +11,7 @@ Everything goes through the wrappers in `tool/`. The `flutter` on `PATH` is 2.8.
 ## Commands
 
 - `tool/check`: generated-file and token freshness, format, analysis, style rules, all tests (including the Android unit tests, `tool/test_android`) and the coverage gate; must end with `ALL CHECKS PASSED`. GitHub runs the same script (below). The Android unit tests need a JDK (17 or newer; Gradle uses `JAVA_HOME`) and the Android SDK, and their first run downloads Gradle and Robolectric's Android framework jars (about 650 MB into `~/.m2`, D-67).
-- `tool/check_release_permissions`: builds the release APK and fails on a forbidden permission (`INTERNET`, `READ_MEDIA_IMAGES`, `MANAGE_EXTERNAL_STORAGE`, `ACCESS_MEDIA_LOCATION`), a missing or wrong media permission (D-68), Google backup turned on (D-64) or on-device test code in the release build (`TestMedia`, `test_media`; D-77); must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
+- `tool/check_release_permissions`: builds the release APK and fails on a forbidden permission (`INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `READ_MEDIA_IMAGES`, `MANAGE_EXTERNAL_STORAGE`, `ACCESS_MEDIA_LOCATION`), a missing or wrong media permission (D-68), Google backup turned on (D-64) or on-device test code in the release build (`TestMedia`, `test_media`; D-77); must end with `RELEASE PERMISSIONS OK`. Slow; run at the end of every phase.
 - `tool/make_test_video`: makes the 2 second test video that the on-device media tests put on the phone and writes it as `app/patrol_test/fixtures/test_video.dart` (needs `ffmpeg`, for example `brew install ffmpeg`; refuses to touch the file without it). `tool/make_test_video --check` writes nothing and fails if the committed file differs from what this ffmpeg makes (a different ffmpeg build can give other bytes, which is harmless).
 - Run the catalogue on the phone: `cd widgetbook && ../tool/flutter run -d <device>` (list device ids with `tool/adb devices`). It installs as "TakeTray UI" (`app.taketray.widgetbook`) next to the app.
 - `tool/patrol doctor`: shows the CLI version and the Flutter it uses (must say 3.47.7).
@@ -77,7 +77,17 @@ If an install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE` (an older build si
 
 Debug builds (`flutter run`, Patrol) are a separate app, **TakeTray Dev** (`app.taketray.dev`), and show up as a second icon next to the real **TakeTray** (`app.taketray`, release and profile builds); each has its own data (D-52). The Patrol run installs the debug app and a test APK (`app.taketray.dev.test`) and leaves both installed (`--no-uninstall`, added by `tool/patrol`). Patrol's orchestrator clears the app's data between tests (`clearPackageData`), so a Patrol run wipes the data of TakeTray Dev only; the real TakeTray is never touched. Because patrol_cli no longer uninstalls first, a build signed with a different key fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`; uninstall as described above.
 
-**After a Patrol run, reinstall the normal debug build.** Patrol leaves its test-bundle APK installed as TakeTray Dev, and that build waits on the logo (its `main` is the Patrol test runner, not the app). Put the real debug app back: `tool/flutter build apk --debug` (in `app/`), then `tool/adb install -r app/build/app/outputs/flutter-apk/app-debug.apk`. Do this before the Phase 3 check below, and before any other hand check in TakeTray Dev (found by the owner, 2026-10-29).
+**After a Patrol run, reinstall the normal debug build.** Patrol leaves its test-bundle APK installed as TakeTray Dev, and that build waits on the logo (its `main` is the Patrol test runner, not the app). Put the real debug app back and wipe what the tests left in TakeTray Dev (never the real TakeTray):
+
+```
+tool/flutter build apk --debug                     # in app/
+tool/adb install -r app/build/app/outputs/flutter-apk/app-debug.apk
+tool/adb shell pm clear app.taketray.dev
+```
+
+Then open TakeTray Dev and allow video access again. Do this before the Phase 3 check below, and before any other hand check in TakeTray Dev.
+- **The reinstall:** found by the owner, 2026-10-29.
+- **The `pm clear`:** found by the owner, 2026-10-31. The tests make TakeTray Dev watch only `Movies/TakeTray Test`, so that no query ever names a folder with your videos, and that setting survives `install -r`. The tests now put the camera folder back at the end, but a run that fails halfway cannot. Without the clear, To tag and "Add earlier videos" find nothing in TakeTray Dev.
 
 ## Emulators
 
@@ -118,3 +128,33 @@ Phase 3 connects TakeTray to the phone's videos: Shooting mode, finding new clip
 10. Limited access, (the Patrol limited-access test is skipped, so this is done by hand). Start fresh: in Settings → Apps → TakeTray Dev → Storage, tap **Clear data** (this only empties TakeTray Dev; it should also take its photo and video permission away; if the banner does not show Manual mode afterwards, revoke the permission under Settings → Apps → TakeTray Dev → Permissions), then open TakeTray Dev. On To tag, tap **Allow full access** and choose **Select photos and videos** (or "Allow limited access"), pick one video and confirm. The banner still says **Manual mode**. Turn Shooting mode on: the card says "On since … · Manual mode: add clips yourself". Back on To tag, tap **Allow full access** again: the system dialog shows again. Choose **Allow all**: the banner goes.
 
 If a step does not behave like this, write down the step number and what you saw. Do not delete anything in `Movies/TakeTray Test/` by hand while the tests run; if a test says the folder holds a file it cannot delete, delete the folder in a file manager.
+
+## Phase 4 check
+
+Phase 4 is reels: the Reels tab, creating, editing and deleting a reel, a reel's page with its clips by shooting day, choosing several clips, the reel picker and the full-screen clip viewer, with Undo on every remove, move and delete. The controller runs the on-device test `app/patrol_test/reels_test.dart` on the phone (see below). It puts one test video into `Movies/TakeTray Test/` and deletes it again. It checks that a reel can be created, renamed and marked Ready to edit, that its tile and "Day 1" header show, that the viewer says "1 of 1" and the video really plays, and that Remove and Delete each work and can be undone. Then the controller reinstalls the normal debug build. Check these yourself on the S24, in **TakeTray Dev** (the debug copy; your real TakeTray is not used for this check):
+
+1. **Create.** On the Reels tab, tap **New reel** (the button on an empty Home, or the floating button once a reel exists). Type a name, for example "London Food", and tap **Create reel**. A card appears with the status **Collecting**. Try an empty name ("Give this reel a name") and the same name again, in another case ("You already have a reel called london food"): the sheet stays open and explains.
+2. **Edit.** Open the reel. Tap the three dots, then **Reel details**. Change the name, add a note in Shot ideas, pick **Ready to edit**, tap **Save**. The page shows the new name and the Shot ideas block, and the pill says **Ready to edit**. Tap the pill: the menu lists Collecting, Ready to edit and Published, each with a line saying what it means. Choose **Published**: "Marked as Published".
+3. **Filter.** Make a second reel. On Reels, the chips (All, Collecting, Ready to edit, Published) show how many reels each holds. Tap **Published**: only the published reel shows. Tap a status no reel has: "No reels marked …" with **Show all reels**.
+4. **Open.** Phase 4 has no way yet to put clips into a reel from the app: tagging is Phase 5, and Add videos is Phase 7. So steps 4–7 can only be checked by hand from Phase 5 on. `reels_test.dart` covers them on the phone now. Once clips are in a reel, open it:
+   - clips are grouped by the day they were shot ("Day 1 · Sat 12 Oct"), with the time and length on each tile;
+   - delete a clip you shot only for this check (never a real one) in the Gallery app and come back: its tile turns into a "Missing" tile with **Remove**;
+   - Remove shows "Missing clip removed" with **Undo**.
+
+   The owner chose to rely on the automated phone test for Phase 4 (2026-10-31).
+5. **The viewer.** Tap a tile. The video plays with sound; tap to pause and play, drag the bar to seek, use the speaker to mute, swipe or use the arrows for the next clip. The top says "2 of 5 · {reel}" and the day and time where the clip was shot. If you have a clip shot abroad (the phone was in another time zone), it says the city: "… · London time", and it is on the day it was shot there. Turn the phone's airplane mode on to check it still plays: it is played from the gallery, never copied. Press back.
+6. **Choose several, Move, Undo.** Long press a tile, tap two more. The bar says "3 selected". Tap **Move to another reel**, pick a reel (or **New reel** in the picker and type a name) and confirm. "Moved to {reel}" appears with **Undo**: tap **Undo** and the three clips are back in the first reel and gone from the second. Do the same with **Add to another reel** ("Added to …") and **Remove from this reel** (the videos stay in the Gallery).
+7. **Delete, Undo.** Open the reel, three dots, **Delete reel**, **Delete reel** again. You are back on Reels, the card is gone and "{name} deleted" has **Undo**. Tap **Undo**: the card is back with its clips. Delete it again and wait for the message to go: it is gone for good, and the videos are still in the Gallery.
+8. **Dark mode and large text.** Switch the phone to dark mode (Settings > Display). Look at Reels, a reel's page, the picker and the viewer in both looks, then set the font size to the largest (Settings > Display > Font size and style). Nothing should be cut off or overlap: long names wrap on the reel's page; the app bar clips them.
+
+If a step does not behave like this, write down the step number and what you saw.
+
+### Running `reels_test.dart` (the controller does this)
+
+```
+tool/patrol test -d RZCY80PHWCZ -t patrol_test/reels_test.dart
+```
+
+The phone must be unlocked, on the home screen, with USB debugging allowed. It installs TakeTray Dev and its test APK, clears TakeTray Dev's data (never the real TakeTray), and shows the app while it taps through the flows. It never asks for the photo permission, and only ever creates and deletes its own video in `Movies/TakeTray Test/` (D-77); its bridge calls ask for that video's id alone. If a run stops halfway, the video and the reel are deleted anyway; if it says the test folder holds a file TakeTray Dev does not own, delete the folder in a file manager.
+
+**After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above. Until then TakeTray Dev waits on the logo, and it would watch only the test folder.

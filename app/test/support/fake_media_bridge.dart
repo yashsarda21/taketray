@@ -46,7 +46,9 @@ MediaVideo fakeVideo({
 ///
 /// - Settable state: [access], [volumeList], [videosByVolume] (volume name to
 ///   its videos), [folders], [thumbnails] (keyed by `(volume, id)`),
-///   [currentZone], [zoneChanges], [cameraOpens].
+///   [currentZone], [zoneRules], [zoneChanges], [cameraOpens].
+/// - `zoneOffsetsMs` answers from the fixed table [zoneRules] (null for a zone
+///   not in it) and logs each request in [zoneOffsetRequests].
 /// - [onRequestAccess] gives the result of `requestAccess`, which also becomes
 ///   the new [access].
 /// - [calls] logs the name of every call, in order, including a call that
@@ -83,6 +85,18 @@ class FakeMediaBridge implements MediaBridge {
   final Map<(String, int), Uint8List?> thumbnails = {};
 
   String currentZone = 'UTC';
+
+  /// Zone id to its UTC offset in milliseconds at an instant (UTC ms), for
+  /// `zoneOffsetsMs`. A zone that is not here is unknown (null). By default:
+  /// `UTC`, `Asia/Kolkata` (+5:30) and `Europe/London` ([londonOffsetMs]).
+  final Map<String, int Function(int instantMs)> zoneRules = {
+    'UTC': (_) => 0,
+    'Asia/Kolkata': (_) => 19800000,
+    'Europe/London': londonOffsetMs,
+  };
+
+  /// The `(zoneIds, instantsMs)` of every `zoneOffsetsMs` call, in order.
+  final List<(List<String>, List<int>)> zoneOffsetRequests = [];
 
   List<ZoneEntry> zoneChanges = [];
 
@@ -216,6 +230,22 @@ class FakeMediaBridge implements MediaBridge {
   Future<String> currentZoneId() => _call('currentZoneId', () => currentZone);
 
   @override
+  Future<List<int?>> zoneOffsetsMs(
+    List<String> zoneIds,
+    List<int> instantsMs,
+  ) => _call('zoneOffsetsMs', () {
+    zoneOffsetRequests.add((List.of(zoneIds), List.of(instantsMs)));
+    if (zoneIds.length != instantsMs.length) {
+      // The phone's answer (IllegalArgumentException, through `guarded`).
+      throw PlatformException(code: 'native-error');
+    }
+    return [
+      for (var i = 0; i < zoneIds.length; i++)
+        zoneRules[zoneIds[i]]?.call(instantsMs[i]),
+    ];
+  });
+
+  @override
   Future<List<ZoneEntry>> pendingZoneChanges() =>
       _call('pendingZoneChanges', () => List.of(zoneChanges));
 
@@ -259,4 +289,20 @@ class FakeMediaBridge implements MediaBridge {
     RegExp('[A-Z]'),
     (m) => String.fromCharCode(m[0]!.codeUnitAt(0) + 32),
   );
+}
+
+/// Europe/London's UTC offset in milliseconds at [instantMs] (UTC ms): one
+/// hour (BST) from 01:00 UTC on the last Sunday of March to 01:00 UTC on the
+/// last Sunday of October, otherwise 0 (GMT). The rule since 1996.
+int londonOffsetMs(int instantMs) {
+  final year = DateTime.fromMillisecondsSinceEpoch(instantMs, isUtc: true).year;
+  DateTime lastSundayAt1(int month) {
+    final last = DateTime.utc(year, month + 1, 0, 1); // the month's last day
+    return last.subtract(Duration(days: last.weekday % DateTime.daysPerWeek));
+  }
+
+  final summer =
+      instantMs >= lastSundayAt1(DateTime.march).millisecondsSinceEpoch &&
+      instantMs < lastSundayAt1(DateTime.october).millisecondsSinceEpoch;
+  return summer ? 3600000 : 0;
 }

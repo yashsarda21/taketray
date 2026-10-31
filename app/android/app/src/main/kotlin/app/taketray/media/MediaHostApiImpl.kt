@@ -27,8 +27,8 @@ import kotlinx.coroutines.withContext
  *
  * Threading: Pigeon runs every handler on the main thread; the `suspend`
  * (@async) ones that read MediaStore (volumes, the row queries, folders,
- * thumbnails) switch to Dispatchers.IO and Pigeon replies on the main thread
- * when they return. [requestAccess] stays on the main thread, where Android
+ * thumbnails) and the zone offsets batch switch to Dispatchers.IO, and
+ * Pigeon replies on the main thread when they return. [requestAccess] stays on the main thread, where Android
  * delivers the permission result; the quick synchronous ones (permission
  * state, zone list, intents) run on the main thread.
  *
@@ -39,6 +39,7 @@ import kotlinx.coroutines.withContext
 class MediaHostApiImpl(
     activity: Activity,
     private val volumeSource: Volumes = MediaStoreVolumes(activity.applicationContext),
+    private val offsetsOf: (List<String>, List<Long>) -> List<Long?> = ZoneOffsets::offsetsMs,
     private val askPermissions: (Activity, Array<String>, Int) -> Unit = { host, permissions, code ->
         host.requestPermissions(permissions, code)
     },
@@ -229,8 +230,17 @@ class MediaHostApiImpl(
     private fun Long.toPixels(): Int = coerceIn(0, MAX_THUMBNAIL_PX.toLong()).toInt()
 
     // ---- Time zones ----
+    //
+    // zoneOffsetsMs is async and runs on Dispatchers.IO like the MediaStore
+    // reads: a batch holds one entry per clip of a reel (hundreds), and the
+    // first ZoneId.of of a zone loads its rules from the system's tz data.
 
     override fun currentZoneId(): String = guarded("currentZoneId") { TimeZone.getDefault().id }
+
+    override suspend fun zoneOffsetsMs(
+        zoneIds: List<String>,
+        instantsMs: List<Long>,
+    ): List<Long?> = io("zoneOffsetsMs") { offsetsOf(zoneIds, instantsMs) }
 
     override fun pendingZoneChanges(): List<ZoneChangeMsg> = guarded("pendingZoneChanges") { zones.pending() }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// The progress bar along the top of the tag player: one segment per clip.
@@ -307,14 +308,11 @@ class TtScrubBar extends StatelessWidget {
     // proto.css: .scrub { font: 600 12px/1 }, .scrub .hint
     final textStyle = tt.text
         .numeric(tt.text.material.labelMedium!)
+        .merge(TtTextStyles.weight(TtMetrics.scrubTextWeight))
         .copyWith(
           color: tt.colors.onVideo.withValues(
             alpha: TtMetrics.scrubTextOpacity,
           ),
-          fontWeight: FontWeight.w600,
-          fontVariations: const [
-            FontVariation('wght', TtMetrics.scrubTextWeight),
-          ],
           letterSpacing: 0,
           height: 1,
         );

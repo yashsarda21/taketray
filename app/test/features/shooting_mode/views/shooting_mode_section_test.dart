@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
@@ -24,11 +25,10 @@ import '../../../support/vm_harness.dart';
 final DateTime _now = DateTime(2026, 10, 28, 15, 30);
 final DateTime _since = DateTime(2026, 10, 28, 9, 41);
 
-ShootingState on({DateTime? since, bool earlierAdded = false}) => ShootingState(
+ShootingState on({DateTime? since}) => ShootingState(
   on: true,
   baselines: const {},
   since: (since ?? _since).toUtc(),
-  earlierAdded: earlierAdded,
 );
 
 String plain(String s) => s.replaceAll(' ', ' ');
@@ -49,8 +49,11 @@ Future<Pumped> pump(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool use24Hour = false,
+  FixedClock? clock,
+  bool cameraOpens = true,
+  bool midnightTick = false,
 }) async {
-  final fakeShooting = FakeShooting(shooting);
+  final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
   final container = await pumpScreen(
     tester,
@@ -60,13 +63,14 @@ Future<Pumped> pump(
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       pendingClipsProvider.overrideWith((ref) => Stream.value(pending)),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(fallback)),
-      clockProvider.overrideWithValue(FixedClock(_now)),
+      clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
     ],
     brightness: brightness,
     textScale: textScale,
     use24Hour: use24Hour,
+    midnightTick: midnightTick,
   );
   return Pumped(fakeShooting, fakeAccess, container);
 }
@@ -92,7 +96,11 @@ void main() {
       expect(card(tester).on, isFalse);
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
       expect(find.text('Open camera'), findsNothing);
-      expect(find.byType(TtCardRow), findsNothing);
+      // With full access the only row is Add earlier videos (D-90); no
+      // strip.
+      expect(find.byType(TtCardRow), findsOneWidget);
+      expect(card(tester).rows.single.title, 'Add earlier videos');
+      expect(card(tester).toTagStrip, isNull);
     });
 
     testWidgets('on: title, since today as a time, and Open camera', (
@@ -183,6 +191,62 @@ void main() {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 21, 41)));
 
       expect(findPlain('On since Oct 27, 9:41 PM'), findsOneWidget);
+    });
+  });
+
+  group('at midnight', () {
+    testWidgets('on-since text changes at midnight', (tester) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 50));
+      await pump(
+        tester,
+        shooting: on(since: DateTime(2026, 10, 28, 22)),
+        clock: clock,
+        midnightTick: true,
+      );
+      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+
+      // Nine minutes on, still the same day.
+      clock.advance(const Duration(minutes: 9));
+      await tester.pump(const Duration(minutes: 9));
+      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+
+      clock.advance(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+      expect(findPlain('On since Oct 28, 10:00 PM'), findsOneWidget);
+      expect(findPlain('On since 10:00 PM'), findsNothing);
+    });
+
+    testWidgets('a card that is off is drawn the same after midnight', (
+      tester,
+    ) async {
+      final clock = FixedClock(DateTime(2026, 10, 28, 23, 59));
+      final p = await pump(tester, clock: clock, midnightTick: true);
+      // The card is subscribed to the tick; this listener only counts it.
+      final days = <DateTime>[];
+      p.container.listen<AsyncValue<DateTime>>(localDayProvider, (_, next) {
+        final day = next.value;
+        if (day != null) days.add(day);
+      }, fireImmediately: true);
+      const offText =
+          'Off. Turn on before you start filming, and new videos wait in '
+          'To tag.';
+      expect(find.text(offText), findsOneWidget);
+
+      clock.advance(const Duration(minutes: 2));
+      await tester.pump(const Duration(minutes: 2));
+
+      // The day did turn over, and nothing on the card says so.
+      expect(days, [DateTime(2026, 10, 28), DateTime(2026, 10, 29)]);
+      expect(find.text('Shooting mode'), findsOneWidget);
+      expect(find.text(offText), findsOneWidget);
+      expect(card(tester).on, isFalse);
+      expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
+      expect(find.textContaining('On since'), findsNothing);
+      expect(find.textContaining('Oct'), findsNothing);
+      // Only the Add earlier videos row (D-90), unchanged.
+      expect(find.byType(TtCardRow), findsOneWidget);
+      expect(find.text('From your camera folder'), findsOneWidget);
+      expect(tester.takeException(), isNull);
     });
   });
 
@@ -281,6 +345,19 @@ void main() {
       expect(p.shooting.cameraOpened, 1);
     });
 
+    testWidgets('Open camera failing shows the snack', (tester) async {
+      final p = await pump(tester, shooting: on(), cameraOpens: false);
+
+      await tester.tap(find.text('Open camera'));
+      await tester.pumpAndSettle();
+
+      expect(p.shooting.cameraOpened, 1);
+      expect(
+        find.text("Couldn't open the camera.").hitTestable(),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('the switch is named Shooting mode', (tester) async {
       await pump(tester);
 
@@ -291,6 +368,21 @@ void main() {
         'Shooting mode',
       );
     });
+
+    for (final (isOn, label) in [
+      (false, 'Shooting mode, off'),
+      (true, 'Shooting mode, on'),
+    ]) {
+      testWidgets('the card is named "$label"', (tester) async {
+        await pump(tester, shooting: isOn ? on() : ShootingState.off);
+        expect(
+          tester
+              .widget<TtShootingModeCard>(find.byType(TtShootingModeCard))
+              .semanticLabel,
+          label,
+        );
+      });
+    }
   });
 
   group('strip shows the count and opens To tag', () {
@@ -441,7 +533,8 @@ void main() {
       tester,
     ) async {
       final off = await pump(tester, pending: [testClip(1)]);
-      expect(find.byType(TtCardRow), findsNothing);
+      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsNothing);
+      expect(card(tester).toTagStrip, isNull);
       expect(waiting('1 clip to tag'), findsOneWidget);
 
       off.shooting.states.add(on());
@@ -532,11 +625,15 @@ void main() {
       );
     }
 
-    testWidgets('shows when on, full access, and not used yet', (tester) async {
+    testWidgets('shows when on and access is full', (tester) async {
       await expectLink(tester, shown: true);
     });
 
-    testWidgets('the row has the history icon, its line and a chevron', (
+    testWidgets('shows when off and access is full (D-90)', (tester) async {
+      await expectLink(tester, shown: true, shooting: ShootingState.off);
+    });
+
+    testWidgets('the on row has the history icon, its line and a chevron', (
       tester,
     ) async {
       await pump(tester, shooting: on());
@@ -574,36 +671,143 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets('the off row says From your camera folder', (tester) async {
+      await pump(tester);
+
+      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
+      expect(row, findsOneWidget);
+      expect(card(tester).on, isFalse);
+      expect(card(tester).rows.single.kind, TtCardRowKind.link);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Symbols.history_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('From your camera folder'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Shot before Shooting mode was on'), findsNothing);
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.byIcon(Symbols.chevron_right_rounded),
+        ),
+        findsOneWidget,
+      );
+      final semantics = tester.ensureSemantics();
+      expect(
+        find.bySemanticsLabel('Add earlier videos, from your camera folder'),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+
     testWidgets('the card gets it in its rows slot, above the strip', (
       tester,
     ) async {
-      await pump(tester, shooting: on());
+      await pump(tester, shooting: on(), pending: [testClip(1)]);
 
-      final card = tester.widget<TtShootingModeCard>(
-        find.byType(TtShootingModeCard),
+      expect(card(tester).rows, hasLength(1));
+      expect(card(tester).rows.single.title, 'Add earlier videos');
+      expect(card(tester).toTagStrip, isNotNull);
+    });
+
+    testWidgets('it stays when the session state changes (no one-use hide)', (
+      tester,
+    ) async {
+      final p = await pump(tester, shooting: on());
+
+      // What an add left behind before D-90 (a new state of the same
+      // session): the row is still there.
+      p.shooting.states.add(on());
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Add earlier videos'), findsOneWidget);
+    });
+
+    for (final shooting in [ShootingState.off, on()]) {
+      final state = shooting.on ? 'on' : 'off';
+      for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+        testWidgets('$state: hidden in Manual mode (${level.name})', (
+          tester,
+        ) async {
+          await expectLink(
+            tester,
+            shown: false,
+            shooting: shooting,
+            access: level,
+          );
+        });
+      }
+
+      testWidgets('$state: hidden while access is loading or unknown', (
+        tester,
+      ) async {
+        await expectLink(
+          tester,
+          shown: false,
+          shooting: shooting,
+          access: null,
+        );
+      });
+    }
+
+    testWidgets('hidden while the Shooting state is loading', (tester) async {
+      final fakeShooting = _NeverShooting();
+      await pumpScreen(
+        tester,
+        const Scaffold(
+          body: SingleChildScrollView(child: ShootingModeSection()),
+        ),
+        overrides: <Override>[
+          shootingModeControllerProvider.overrideWith(() => fakeShooting),
+          mediaAccessControllerProvider.overrideWith(
+            () => FakeAccess(MediaAccessLevel.full),
+          ),
+          pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
+          firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
+          clockProvider.overrideWithValue(FixedClock(_now)),
+          thumbnailCacheForTests,
+        ],
+        settle: false,
       );
-      expect(card.rows, hasLength(1));
-      expect(card.rows.single.title, 'Add earlier videos');
+      await tester.pump();
+
+      expect(find.byType(TtShootingModeCard), findsNothing);
+      expect(find.text('Add earlier videos'), findsNothing);
     });
 
-    testWidgets('hidden once it was used this session', (tester) async {
-      await expectLink(tester, shown: false, shooting: on(earlierAdded: true));
-    });
+    testWidgets('hidden when the Shooting state could not be read', (
+      tester,
+    ) async {
+      await pumpScreen(
+        tester,
+        const Scaffold(
+          body: SingleChildScrollView(child: ShootingModeSection()),
+        ),
+        overrides: <Override>[
+          shootingModeControllerProvider.overrideWith(_FailingShooting.new),
+          mediaAccessControllerProvider.overrideWith(
+            () => FakeAccess(MediaAccessLevel.full),
+          ),
+          pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
+          firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
+          clockProvider.overrideWithValue(FixedClock(_now)),
+          thumbnailCacheForTests,
+        ],
+      );
 
-    testWidgets('hidden when Shooting mode is off', (tester) async {
-      await expectLink(tester, shown: false, shooting: ShootingState.off);
-    });
-
-    testWidgets('hidden with limited access', (tester) async {
-      await expectLink(tester, shown: false, access: MediaAccessLevel.limited);
-    });
-
-    testWidgets('hidden with denied access', (tester) async {
-      await expectLink(tester, shown: false, access: MediaAccessLevel.denied);
-    });
-
-    testWidgets('hidden while access is unknown', (tester) async {
-      await expectLink(tester, shown: false, access: null);
+      // The card says off (its switch still works) but nothing is known,
+      // so no row.
+      expect(card(tester).on, isFalse);
+      expect(find.text('Add earlier videos'), findsNothing);
     });
 
     testWidgets('appears when access becomes full, without a restart', (
@@ -620,17 +824,6 @@ void main() {
       await tester.pump();
 
       expect(find.text('Add earlier videos'), findsOneWidget);
-    });
-
-    testWidgets('disappears when the session has used it', (tester) async {
-      final p = await pump(tester, shooting: on());
-
-      p.shooting.states.add(on(earlierAdded: true));
-      // The first pump delivers the stream event, the second draws it.
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.text('Add earlier videos'), findsNothing);
     });
   });
 
@@ -726,4 +919,16 @@ void main() {
       expect(await tester.runAsync(h.media.toTag), isEmpty);
     });
   });
+}
+
+/// A Shooting mode controller whose stored state never arrives.
+class _NeverShooting extends ShootingModeController {
+  @override
+  Stream<ShootingState> build() => const Stream.empty();
+}
+
+/// A Shooting mode controller whose stored state cannot be read.
+class _FailingShooting extends ShootingModeController {
+  @override
+  Stream<ShootingState> build() => Stream.error(StateError('disk'));
 }

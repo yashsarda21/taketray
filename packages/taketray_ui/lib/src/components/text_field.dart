@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/services.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -21,13 +22,17 @@ class TtTextField extends StatefulWidget {
     this.helper,
     this.error,
     this.maxLength,
+    this.counterText,
     this.multiline = false,
     this.autofocus = false,
     this.textInputAction,
     this.onChanged,
     this.onSubmitted,
     super.key,
-  });
+  }) : assert(
+         maxLength == null || counterText != null,
+         'A field with a maxLength needs a counterText',
+       );
 
   /// The label on the box's top edge.
   final String label;
@@ -47,6 +52,11 @@ class TtTextField extends StatefulWidget {
 
   /// The most characters accepted, or null for no limit. Shows the counter.
   final int? maxLength;
+
+  /// The counter's text for the text's length and [maxLength], or null when
+  /// there is no [maxLength]. The caller supplies it so that the package
+  /// composes no user-facing string (for example `'$length/$max'`).
+  final String Function(int length, int max)? counterText;
 
   /// Whether the box is several lines tall and Enter starts a new line.
   final bool multiline;
@@ -76,10 +86,28 @@ class _TtTextFieldState extends State<TtTextField> {
   @override
   void didUpdateWidget(TtTextField oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.controller != null) {
+    final old = oldWidget.controller;
+    final given = widget.controller;
+    if (old == null && given != null) {
+      // From the field's own controller to the caller's: the caller's text
+      // wins, unless it is empty, in which case the typed text moves over. The
+      // move waits for the end of the frame: the caller's listeners must not
+      // be told of a change in the middle of a build.
+      final typed = _own?.value;
+      if (typed != null && typed.text.isNotEmpty && given.text.isEmpty) {
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (mounted && widget.controller == given && given.text.isEmpty) {
+            given.value = typed;
+          }
+        });
+      }
       _own?.dispose();
       _own = null;
+    } else if (old != null && given == null) {
+      // From the caller's controller to the field's own: keep what showed.
+      _own = TextEditingController.fromValue(old.value);
     }
+    // From one given controller to another, the caller owns both.
   }
 
   @override
@@ -123,7 +151,10 @@ class _TtTextFieldState extends State<TtTextField> {
         : ListenableBuilder(
             listenable: _controller,
             builder: (context, _) => Text(
-              '${_controller.text.characters.length}/${widget.maxLength}',
+              widget.counterText!(
+                _controller.text.characters.length,
+                widget.maxLength!,
+              ),
               style: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
             ),
           );
@@ -137,38 +168,46 @@ class _TtTextFieldState extends State<TtTextField> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          TextField(
-            controller: _controller,
-            autofocus: widget.autofocus,
-            minLines: widget.multiline
-                ? TtMetrics.textFieldMultilineLines.toInt()
-                : null,
-            maxLines: widget.multiline
-                ? TtMetrics.textFieldMultilineMaxLines.toInt()
-                : 1,
-            keyboardType: widget.multiline ? TextInputType.multiline : null,
-            textInputAction: widget.textInputAction,
-            maxLength: widget.maxLength,
-            maxLengthEnforcement: MaxLengthEnforcement.enforced,
-            onChanged: widget.onChanged,
-            onSubmitted: widget.onSubmitted,
-            cursorColor: scheme.primary,
-            style: text.bodyLarge,
-            decoration: InputDecoration(
-              labelText: widget.label,
-              hintText: widget.hint,
-              // The counter is drawn in the help row, not by Material.
-              counterText: '',
-              floatingLabelBehavior: FloatingLabelBehavior.always,
-              labelStyle: labelStyle,
-              floatingLabelStyle: labelStyle,
-              hintStyle: text.bodyLarge?.copyWith(
-                color: scheme.onSurfaceVariant,
+          // The error goes into the field's own semantics as well, so a screen
+          // reader reads it with the field (Material does the same for its
+          // own errorText).
+          Semantics(
+            hint: widget.error,
+            child: TextField(
+              controller: _controller,
+              autofocus: widget.autofocus,
+              minLines: widget.multiline
+                  ? TtMetrics.textFieldMultilineLines.toInt()
+                  : null,
+              maxLines: widget.multiline
+                  ? TtMetrics.textFieldMultilineMaxLines.toInt()
+                  : 1,
+              keyboardType: widget.multiline ? TextInputType.multiline : null,
+              textInputAction: widget.textInputAction,
+              maxLength: widget.maxLength,
+              maxLengthEnforcement: MaxLengthEnforcement.enforced,
+              onChanged: widget.onChanged,
+              onSubmitted: widget.onSubmitted,
+              cursorColor: scheme.primary,
+              style: text.bodyLarge,
+              decoration: InputDecoration(
+                labelText: widget.label,
+                hintText: widget.hint,
+                // The counter is drawn in the help row, not by Material.
+                counterText: '',
+                floatingLabelBehavior: FloatingLabelBehavior.always,
+                labelStyle: labelStyle,
+                floatingLabelStyle: labelStyle,
+                hintStyle: text.bodyLarge?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+                contentPadding: const EdgeInsets.all(
+                  TtMetrics.textFieldPadding,
+                ),
+                enabledBorder: rest,
+                border: rest,
+                focusedBorder: focused,
               ),
-              contentPadding: const EdgeInsets.all(TtMetrics.textFieldPadding),
-              enabledBorder: rest,
-              border: rest,
-              focusedBorder: focused,
             ),
           ),
           if (helpText != null || counter != null)
@@ -217,11 +256,13 @@ class _HelpText extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (isError) ...[
-            // body-small's 16 dp line is as tall as the icon.
+            // body-small's 16 dp line is as tall as the icon, and both grow
+            // with the text size.
             Icon(
               Symbols.error_rounded,
               fill: 1,
-              size: TtMetrics.textFieldHelpIconSize,
+              size: MediaQuery.textScalerOf(context)
+                  .scale(TtMetrics.textFieldHelpIconSize),
               color: color,
             ),
             const SizedBox(width: TtMetrics.textFieldHelpIconGap),

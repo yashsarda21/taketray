@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/app/media_lifecycle.dart';
+import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -19,6 +20,8 @@ class TakeTrayApp extends ConsumerWidget {
       child: MaterialApp.router(
         onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
         routerConfig: ref.watch(appRouterProvider),
+        // The one root messenger, so a snack outlives its screen (D-85).
+        scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolvePhoneLocale,

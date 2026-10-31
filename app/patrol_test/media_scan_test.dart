@@ -6,10 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
-import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
-import 'package:taketray/features/reels/views/reels_placeholder_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/media_bridge.dart';
@@ -42,9 +41,9 @@ void main() {
       // 1. Only our folder watched (before access is given, so no query the
       // app makes ever names another folder), then full access, the way a user
       // gives it.
-      await container
-          .read(settingsRepositoryProvider)
-          .save(const AppSettings(watchedFolders: [testFolder]));
+      final restoreFolders = await watchOnlyTestFolder(
+        container.read(settingsRepositoryProvider),
+      );
       await $(TtNavPill).$('To tag').tap();
       await waitFor(
         $,
@@ -137,6 +136,10 @@ void main() {
         () => _tiles.evaluate().isEmpty,
         what: 'the added clip to go after Undo',
       );
+
+      // The camera folder is watched again (not a tear-down: see
+      // watchOnlyTestFolder).
+      await restoreFolders();
     },
   );
 
@@ -251,7 +254,7 @@ Future<void> _setShootingMode(
     what: 'the stored Shooting mode to be read',
   );
   if (stored() != on) {
-    await $(ReelsPlaceholderScreen).$(TtSwitch).tap();
+    await $(ReelsScreen).$(TtSwitch).tap();
   }
   await waitFor(
     $,

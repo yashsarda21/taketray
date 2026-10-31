@@ -39,6 +39,7 @@ final WidgetbookComponent ttTextFieldComponent = WidgetbookComponent(
             helper: helper.isEmpty ? null : helper,
             error: error.isEmpty ? null : error,
             maxLength: maxLength == 0 ? null : maxLength,
+            counterText: (length, max) => '$length/$max',
             multiline: multiline,
             autofocus: autofocus,
           ),

@@ -97,6 +97,16 @@
   "@shootingSwitchLabel": {
     "description": "Screen-reader label of the Shooting mode switch."
   },
+  "shootingModeCardSemantics": "Shooting mode, {state, select, on{on} other{off}}",
+  "@shootingModeCardSemantics": {
+    "description": "Screen-reader label of the whole Shooting mode card: the feature and whether it is on or off.",
+    "placeholders": {
+      "state": {
+        "type": "String",
+        "example": "on"
+      }
+    }
+  },
   "shootingOpenCamera": "Open camera",
   "@shootingOpenCamera": {
     "description": "Button that opens the phone camera in video mode."
@@ -270,9 +280,9 @@
   "@earlierAddFailed": {
     "description": "Snack shown when adding earlier videos failed."
   },
-  "earlierUndoFailed": "Couldn't undo. Try again.",
-  "@earlierUndoFailed": {
-    "description": "Snack shown when taking back the added earlier videos failed."
+  "undoFailed": "Couldn't undo. Try again.",
+  "@undoFailed": {
+    "description": "Snack shown when Undo of a remove, move, add, delete or earlier-videos add failed."
   },
   "earlierCountFailed": "Couldn't check your videos.",
   "@earlierCountFailed": {
@@ -285,6 +295,14 @@
   "earlierCardRowLabel": "Add earlier videos, shot before Shooting mode was on",
   "@earlierCardRowLabel": {
     "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
+  },
+  "earlierCardRowSubtitleOff": "From your camera folder",
+  "@earlierCardRowSubtitleOff": {
+    "description": "Line under the Add earlier videos row on the Shooting mode card while Shooting mode is off (D-90)."
+  },
+  "earlierCardRowLabelOff": "Add earlier videos, from your camera folder",
+  "@earlierCardRowLabelOff": {
+    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card while Shooting mode is off."
   },
   "earlierChooseSubtitle": "Up to 10 years back",
   "@earlierChooseSubtitle": {
@@ -557,8 +575,697 @@
       }
     }
   },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Button that closes a sheet or dialog without doing anything."
+  },
+  "reelFormTitleNew": "New reel",
+  "@reelFormTitleNew": {
+    "description": "Title of the sheet that creates a reel."
+  },
+  "reelFormTitleEdit": "Reel details",
+  "@reelFormTitleEdit": {
+    "description": "Title of the sheet that edits a reel's name, shot ideas and status."
+  },
+  "reelNameLabel": "Reel name",
+  "@reelNameLabel": {
+    "description": "Label of the reel name field."
+  },
+  "reelNameHint": "For example: London Food",
+  "@reelNameHint": {
+    "description": "Hint inside the empty reel name field."
+  },
+  "reelNameEmpty": "Give this reel a name",
+  "@reelNameEmpty": {
+    "description": "Error under the reel name field when it is empty or blank."
+  },
+  "reelNameTooLong": "Use {max} characters or fewer",
+  "@reelNameTooLong": {
+    "description": "Error under the reel name field when it is too long.",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelNameDuplicate": "You already have a reel called {name}",
+  "@reelNameDuplicate": {
+    "description": "Error under the reel name field when another reel has that name (ignoring case). The name is the other reel's name as stored.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCounter": "{length}/{max}",
+  "@reelCounter": {
+    "description": "Character counter under a field: how many characters are typed out of the most allowed.",
+    "placeholders": {
+      "length": {
+        "type": "int"
+      },
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelDescriptionLabel": "Shot ideas (optional)",
+  "@reelDescriptionLabel": {
+    "description": "Label of the field for a reel's concept, shots to get and songs to try."
+  },
+  "reelDescriptionHint": "Concept, shots to get, songs to try…",
+  "@reelDescriptionHint": {
+    "description": "Hint inside the empty Shot ideas field."
+  },
+  "reelDescriptionHelp": "Only you see this.",
+  "@reelDescriptionHelp": {
+    "description": "Help line under the Shot ideas field."
+  },
+  "reelDescriptionTooLong": "Use {max} characters or fewer",
+  "@reelDescriptionTooLong": {
+    "description": "Error under the Shot ideas field when it is too long (the field normally stops typing first).",
+    "placeholders": {
+      "max": {
+        "type": "int"
+      }
+    }
+  },
+  "reelStatusHeading": "Status",
+  "@reelStatusHeading": {
+    "description": "Heading above the status choices in the reel details sheet; also the name of the status menu."
+  },
+  "statusCollecting": "Collecting",
+  "@statusCollecting": {
+    "description": "A reel's status while the user is still shooting clips for it."
+  },
+  "statusCollectingDescription": "Still shooting clips for it",
+  "@statusCollectingDescription": {
+    "description": "Explains the Collecting status."
+  },
+  "statusReady": "Ready to edit",
+  "@statusReady": {
+    "description": "A reel's status once all its clips are in."
+  },
+  "statusReadyDescription": "All the clips are in",
+  "@statusReadyDescription": {
+    "description": "Explains the Ready to edit status."
+  },
+  "statusPublished": "Published",
+  "@statusPublished": {
+    "description": "A reel's status once it is posted."
+  },
+  "statusPublishedDescription": "Posted on Instagram",
+  "@statusPublishedDescription": {
+    "description": "Explains the Published status."
+  },
+  "reelCreateButton": "Create reel",
+  "@reelCreateButton": {
+    "description": "Button of the New reel sheet that creates the reel."
+  },
+  "reelSaveButton": "Save",
+  "@reelSaveButton": {
+    "description": "Button of the Reel details sheet that saves the changes."
+  },
+  "reelCreatedSnack": "{name} created",
+  "@reelCreatedSnack": {
+    "description": "Snack shown after a reel is created.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelSavedSnack": "Saved",
+  "@reelSavedSnack": {
+    "description": "Snack shown after a reel's details are saved."
+  },
+  "reelStatusChangedSnack": "Marked as {status}",
+  "@reelStatusChangedSnack": {
+    "description": "Snack shown after the status of a reel is changed. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDeletedSnack": "{name} deleted",
+  "@reelDeletedSnack": {
+    "description": "Snack shown after a reel is deleted, with an Undo button.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelActionFailed": "Something went wrong. Try again.",
+  "@reelActionFailed": {
+    "description": "Snack shown when saving, deleting or changing the status of a reel failed for a reason the user cannot fix."
+  },
+  "deleteReelTitle": "Delete {name}?",
+  "@deleteReelTitle": {
+    "description": "Title of the dialog that asks to delete a reel.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteReelSafe": "Your videos stay in your gallery. Only this reel and its tags are removed.",
+  "@deleteReelSafe": {
+    "description": "Reassurance in the delete reel dialog."
+  },
+  "deleteReelConfirm": "Delete reel",
+  "@deleteReelConfirm": {
+    "description": "Button of the delete reel dialog that deletes the reel."
+  },
+  "reelsEmptyTitle": "Plan your first reel",
+  "@reelsEmptyTitle": {
+    "description": "Title of the Reels tab when there are no reels yet."
+  },
+  "reelsEmptyBody": "A reel is a video you're planning, like London Food or Day 1 Vlog. Clips you tag go into it.",
+  "@reelsEmptyBody": {
+    "description": "Text of the Reels tab when there are no reels yet."
+  },
+  "reelsNewReel": "New reel",
+  "@reelsNewReel": {
+    "description": "Label of the button and of the floating button that open the New reel sheet."
+  },
+  "reelFilterAll": "All",
+  "@reelFilterAll": {
+    "description": "Filter chip on the Reels tab that shows every reel."
+  },
+  "reelFilterChip": "{label} {count}",
+  "@reelFilterChip": {
+    "description": "Filter chip on the Reels tab: the filter name and how many reels it shows, such as \"Published 3\".",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelFilterChipSemantics": "{label}, {count, plural, =0{no reels} one{1 reel} other{{count} reels}}",
+  "@reelFilterChipSemantics": {
+    "description": "What a screen reader says for a filter chip on the Reels tab.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelFilterEmptyTitle": "No reels marked {status}",
+  "@reelFilterEmptyTitle": {
+    "description": "Title shown on the Reels tab when the chosen filter has no reels. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelFilterEmptyCollecting": "New reels start as Collecting.",
+  "@reelFilterEmptyCollecting": {
+    "description": "Text shown on the Reels tab when no reel is marked Collecting."
+  },
+  "reelFilterEmptyReady": "When a reel has all its clips, mark it as Ready to edit.",
+  "@reelFilterEmptyReady": {
+    "description": "Text shown on the Reels tab when no reel is marked Ready to edit."
+  },
+  "reelFilterEmptyPublished": "When you post a reel, mark it as Published from its page.",
+  "@reelFilterEmptyPublished": {
+    "description": "Text shown on the Reels tab when no reel is marked Published."
+  },
+  "reelsShowAll": "Show all reels",
+  "@reelsShowAll": {
+    "description": "Button shown when a filter has no reels; it goes back to showing every reel."
+  },
+  "reelCardClips": "{count, plural, one{1 clip} other{{count} clips}}",
+  "@reelCardClips": {
+    "description": "How many clips a reel has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardMeta": "{clips} · {duration}",
+  "@reelCardMeta": {
+    "description": "Line under a reel card name: the number of clips and their total length, such as \"3 clips · 1:05\".",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardMissing": "{count} missing",
+  "@reelCardMissing": {
+    "description": "Mark on a reel card: how many of its clips are gone from the phone.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardEmptyArt": "No clips yet",
+  "@reelCardEmptyArt": {
+    "description": "Words on the picture of a reel card that has no cover."
+  },
+  "reelCardSemantics": "{name}. {status}. {count, plural, one{1 clip} other{{count} clips}}",
+  "@reelCardSemantics": {
+    "description": "What a screen reader says for a reel card: its name, its status and its clip count.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCardSemanticsMissing": "{name}. {status}. {count, plural, one{1 clip} other{{count} clips}}, {missing} missing",
+  "@reelCardSemanticsMissing": {
+    "description": "What a screen reader says for a reel card with clips missing from the phone.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "missing": {
+        "type": "int"
+      }
+    }
+  },
+  "navBack": "Back",
+  "@navBack": {
+    "description": "What a screen reader says for the back button of a screen's top bar."
+  },
+  "reelMenuDetails": "Reel details",
+  "@reelMenuDetails": {
+    "description": "Item of the menu on a reel's page that opens the sheet with the reel's name, shot ideas and status."
+  },
+  "reelMenuSelectClips": "Select clips",
+  "@reelMenuSelectClips": {
+    "description": "Item of the menu on a reel's page that starts choosing clips to move, add or remove."
+  },
+  "reelMenuDelete": "Delete reel",
+  "@reelMenuDelete": {
+    "description": "Item of the menu on a reel's page that asks to delete the reel."
+  },
+  "reelStatusSemantics": "Status: {status}. Change",
+  "@reelStatusSemantics": {
+    "description": "What a screen reader says for the status pill on a reel's page, which opens the status menu. The status is Collecting, Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNoClips": "No clips yet",
+  "@reelNoClips": {
+    "description": "A reel's page: the facts line and the title of the empty state when the reel has no clips."
+  },
+  "reelEmptyBody": "Tag clips from To tag, or add videos from your phone.",
+  "@reelEmptyBody": {
+    "description": "Text of a reel's page when the reel has no clips."
+  },
+  "reelEmptyAction": "Go to To tag",
+  "@reelEmptyAction": {
+    "description": "Button of the empty reel page that opens the To tag tab."
+  },
+  "shotIdeasTitle": "Shot ideas",
+  "@shotIdeasTitle": {
+    "description": "Title of the block on a reel's page that shows the reel's notes: concept, shots to get, songs to try."
+  },
+  "showMore": "Show more",
+  "@showMore": {
+    "description": "Button that opens a long text that is cut short."
+  },
+  "showLess": "Show less",
+  "@showLess": {
+    "description": "Button that folds a long text that was opened."
+  },
+  "reelDayTitle": "Day {number} · {date}",
+  "@reelDayTitle": {
+    "description": "Heading of a shooting day on a reel's page: the day's number counted from the reel's first day, and its date, with its weekday (the year too when it is not this year), such as \"Day 2 · Wed, Oct 28\".",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDayClips": "{count, plural, one{1 clip} other{{count} clips}}",
+  "@reelDayClips": {
+    "description": "After a shooting day's heading on a reel's page: how many clips were shot that day.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipTileSemanticsInReels": "Clip, {time}, {duration}, in {count} reels",
+  "@clipTileSemanticsInReels": {
+    "description": "Screen-reader label of a clip tile for a clip that is in two or more reels. {time} is the time of day it was shot, {duration} its length such as 0:32, {count} how many reels it is in.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipRemove": "Remove",
+  "@clipRemove": {
+    "description": "Button on the tile of a missing clip that takes the clip out of the reel."
+  },
+  "missingClipRemovedSnack": "Missing clip removed",
+  "@missingClipRemovedSnack": {
+    "description": "Snack shown after a missing clip is taken out of a reel, with an Undo button."
+  },
+  "cameraFailedSnack": "Couldn't open the camera.",
+  "@cameraFailedSnack": {
+    "description": "Snack shown when the phone has no camera app that opens, or the call failed."
+  },
   "loading": "Loading",
   "@loading": {
     "description": "Screen-reader word for something that is still loading, after its name."
+  },
+  "selectionCount": "{count} selected",
+  "@selectionCount": {
+    "description": "Title of the selection bar on a reel's page: how many clips are chosen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectionClose": "Close",
+  "@selectionClose": {
+    "description": "What a screen reader says for the button that ends choosing clips."
+  },
+  "selectionAddTo": "Add to another reel",
+  "@selectionAddTo": {
+    "description": "Button of the selection bar on a reel's page that opens the sheet to also put the chosen clips in other reels."
+  },
+  "selectionMoveTo": "Move to another reel",
+  "@selectionMoveTo": {
+    "description": "Button of the selection bar on a reel's page that opens the sheet to move the chosen clips to another reel."
+  },
+  "selectionRemove": "Remove from this reel",
+  "@selectionRemove": {
+    "description": "Button of the selection bar on a reel's page that takes the chosen clips out of the reel."
+  },
+  "selectionSelectAll": "Select all",
+  "@selectionSelectAll": {
+    "description": "Item of the menu of the selection bar that chooses every clip that is on the phone."
+  },
+  "pickerTitleAdd": "{count, plural, one{Add clip to reels} other{Add {count} clips to reels}}",
+  "@pickerTitleAdd": {
+    "description": "Title of the reel picker when clips are added to more reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerTitleMove": "{count, plural, one{Move clip to} other{Move {count} clips to}}",
+  "@pickerTitleMove": {
+    "description": "Title of the reel picker when clips are moved to another reel.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleAdd": "{count, plural, one{It stays in this reel too.} other{They stay in this reel too.}}",
+  "@pickerSubtitleAdd": {
+    "description": "Line under the title of the reel picker when adding: the clips are not taken out of the reel.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleMove": "{count, plural, one{It leaves {reel}.} other{They leave {reel}.}}",
+  "@pickerSubtitleMove": {
+    "description": "Line under the title of the reel picker when moving: the clips leave this reel. The reel is its name.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "pickerThisReel": "this reel",
+  "@pickerThisReel": {
+    "description": "The reel's name in the reel picker's subtitle when the reel cannot be read."
+  },
+  "pickerNewReel": "New reel",
+  "@pickerNewReel": {
+    "description": "Row at the top of the reel picker that opens the field for a new reel's name."
+  },
+  "pickerNewReelName": "New reel name",
+  "@pickerNewReelName": {
+    "description": "Label of the field for a new reel's name inside the reel picker."
+  },
+  "pickerCreate": "Create",
+  "@pickerCreate": {
+    "description": "Button next to the new reel's name in the reel picker; it creates the reel and picks it."
+  },
+  "pickerOtherReels": "Other reels",
+  "@pickerOtherReels": {
+    "description": "Heading in the reel picker over the reels that are not Collecting."
+  },
+  "pickerAdd": "Add",
+  "@pickerAdd": {
+    "description": "Button of the reel picker that adds the clips, while no reel is picked."
+  },
+  "pickerAddToReels": "{count, plural, one{Add to 1 reel} other{Add to {count} reels}}",
+  "@pickerAddToReels": {
+    "description": "Button of the reel picker that adds the clips to the picked reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerMove": "Move",
+  "@pickerMove": {
+    "description": "Button of the reel picker that moves the clips."
+  },
+  "pickerRowSemantics": "{name}, {clips}",
+  "@pickerRowSemantics": {
+    "description": "What a screen reader says for a reel in the reel picker: its name and clip count, such as \"Lisbon trip, 12 clips\".",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "clips": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToOneSnack": "Added to {first}",
+  "@addedToOneSnack": {
+    "description": "Snack after clips are added to one reel, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToTwoSnack": "Added to {first} and {second}",
+  "@addedToTwoSnack": {
+    "description": "Snack after clips are added to two reels, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToMoreSnack": "Added to {first}, {second} and {more} more",
+  "@addedToMoreSnack": {
+    "description": "Snack after clips are added to three reels or more: the first two names and how many more there are, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
+  },
+  "movedToSnack": "Moved to {reel}",
+  "@movedToSnack": {
+    "description": "Snack after clips are moved to another reel, with an Undo button.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "clipsRemovedSnack": "{count, plural, one{1 clip removed from {reel}. The video is still in your gallery.} other{{count} clips removed from {reel}. The videos are still in your gallery.}}",
+  "@clipsRemovedSnack": {
+    "description": "Snack after clips are taken out of a reel, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerTitle": "{index} of {count} · {reel}",
+  "@viewerTitle": {
+    "description": "The first line of the clip viewer: which clip of the reel it is on, and the reel.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerWhen": "{date} · {time}",
+  "@viewerWhen": {
+    "description": "The second line of the clip viewer: the day and the time where the clip was shot.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerWhenInCity": "{date} · {time} · {city} time",
+  "@viewerWhenInCity": {
+    "description": "The second line of the clip viewer for a clip shot in another time zone than the phone is in: the day, the time, and the city whose time it is, such as \"Wed, Oct 28 · 9:41 AM · London time\".",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerMute": "Mute",
+  "@viewerMute": {
+    "description": "The clip viewer button that turns the sound off."
+  },
+  "viewerUnmute": "Unmute",
+  "@viewerUnmute": {
+    "description": "The clip viewer button that turns the sound back on."
+  },
+  "viewerPrevious": "Previous clip",
+  "@viewerPrevious": {
+    "description": "The clip viewer arrow to the clip before this one."
+  },
+  "viewerNext": "Next clip",
+  "@viewerNext": {
+    "description": "The clip viewer arrow to the clip after this one."
+  },
+  "viewerIn": "In",
+  "@viewerIn": {
+    "description": "The word before the reels a clip is in, in the clip viewer (\"In  Goa  London\")."
+  },
+  "viewerAddToReel": "Add to reel",
+  "@viewerAddToReel": {
+    "description": "The clip viewer action that also puts the clip in other reels."
+  },
+  "viewerMove": "Move",
+  "@viewerMove": {
+    "description": "The clip viewer action that moves the clip to another reel."
+  },
+  "viewerRemove": "Remove",
+  "@viewerRemove": {
+    "description": "The clip viewer action that takes the clip out of the reel."
+  },
+  "viewerRemovedSnack": "Removed from {reel}. The video is still in your gallery.",
+  "@viewerRemovedSnack": {
+    "description": "Snack after the clip viewer takes a clip out of a reel, with an Undo button.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerStage": "Clip {index} of {count}",
+  "@viewerStage": {
+    "description": "What a screen reader says for the video in the clip viewer; tapping it plays or pauses.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "viewerStagePlaying": "Playing",
+  "@viewerStagePlaying": {
+    "description": "The state a screen reader hears for the clip viewer's video while it plays."
+  },
+  "viewerStagePaused": "Paused",
+  "@viewerStagePaused": {
+    "description": "The state a screen reader hears for the clip viewer's video while it is paused."
+  },
+  "viewerStageHintPause": "Pause",
+  "@viewerStageHintPause": {
+    "description": "What a tap on the clip viewer's video does while it plays, as a screen reader hint."
+  },
+  "viewerStageHintPlay": "Play",
+  "@viewerStageHintPlay": {
+    "description": "What a tap on the clip viewer's video does while it is paused, as a screen reader hint."
+  },
+  "viewerCantPlayTitle": "This video can't be played",
+  "@viewerCantPlayTitle": {
+    "description": "The clip viewer when the video cannot be played."
+  },
+  "viewerCantPlayBody": "It may be damaged, or in a format your phone doesn't support. The file is still in your gallery.",
+  "@viewerCantPlayBody": {
+    "description": "The explanation under the title when the video cannot be played."
+  },
+  "viewerRemoveFromReel": "Remove from reel",
+  "@viewerRemoveFromReel": {
+    "description": "The button under the \"can't be played\" message that takes the clip out of the reel."
   }
 }

@@ -74,6 +74,16 @@ class TtNavPill extends StatelessWidget {
       TtMetrics.navPillInsetBottom +
       MediaQuery.paddingOf(context).bottom;
 
+  /// The distance from the bottom of the screen to the bottom edge of a
+  /// floating action button that sits above the pill: [reservedHeight] plus
+  /// one 16 dp step (`TtSpacing.m`), the gap a FAB keeps from the screen's
+  /// edge when there is no pill. Use it as the `bottom` of the FAB in a
+  /// `Stack`, so every tab screen puts its FAB in the same place. Like
+  /// [reservedHeight] it reads the bottom padding of the nearest
+  /// `MediaQuery`.
+  static double fabBottom(BuildContext context) =>
+      reservedHeight(context) + context.tt.spacing.m;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;

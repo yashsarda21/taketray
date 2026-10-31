@@ -51,6 +51,50 @@ void main() {
       expect(find.text('Delete reel'), findsOneWidget);
     });
 
+    testWidgets('onClose during build is deferred', (tester) async {
+      // MenuAnchor closes an open menu from inside a build when the window
+      // changes size. Make a sibling call its onClose during its own build,
+      // which setState on the menu button would reject.
+      final trigger = ValueNotifier<int>(0);
+      addTearDown(trigger.dispose);
+      await tester.pumpWidget(
+        ttTestApp(
+          Column(
+            children: [
+              _menu(),
+              ValueListenableBuilder<int>(
+                valueListenable: trigger,
+                builder: (context, count, _) {
+                  if (count > 0) {
+                    tester
+                        .widget<MenuAnchor>(find.byType(MenuAnchor))
+                        .onClose!();
+                  }
+                  return const SizedBox();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+      await _open(tester);
+      expect(find.text('Reel details'), findsOneWidget);
+
+      trigger.value = 1;
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      // The menu button now knows the menu is closed: back leaves the screen.
+      final scope = tester.widget(
+        find.descendant(
+          of: find.byType(TtMenuButton<String>),
+          matching: find.byWidgetPredicate((w) => w is PopScope),
+        ),
+      );
+      expect((scope as PopScope).canPop, isTrue);
+    });
+
     testWidgets('calls onSelected with the item value and closes', (
       tester,
     ) async {
@@ -264,6 +308,207 @@ void main() {
       final rect = tester.getRect(find.byType(MenuItemButton));
       expect(rect.width, lessThanOrEqualTo(300));
       expect(rect.right, lessThanOrEqualTo(360));
+    });
+
+    group('status items (subtitle, checked, filled icon)', () {
+      const status = [
+        TtMenuItem<String>(
+          'collecting',
+          'Collecting',
+          icon: Symbols.radio_button_checked_rounded,
+          iconFilled: true,
+          subtitle: 'Still shooting clips for it',
+          checked: true,
+        ),
+        TtMenuItem<String>(
+          'ready',
+          'Ready to edit',
+          icon: Symbols.content_cut_rounded,
+          iconFilled: true,
+          subtitle: 'All the clips are in',
+          checked: false,
+        ),
+        TtMenuItem<String>(
+          'published',
+          'Published',
+          icon: Symbols.check_circle_rounded,
+          iconFilled: true,
+          subtitle: 'Posted on Instagram',
+          checked: false,
+        ),
+      ];
+
+      testWidgets('status menu item is a checked menuitemradio', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(ttTestApp(_menu(items: status)));
+        await _open(tester);
+        SemanticsData itemData(String label) {
+          final index = status.indexWhere((i) => i.label == label);
+          final node = tester.getSemantics(
+            find.byKey(ValueKey('tt-menu-item-$index')),
+          );
+          return node.getSemanticsData();
+        }
+
+        final on = itemData('Collecting');
+        expect(on.role, ui.SemanticsRole.menuItemRadio);
+        expect(on.flagsCollection.isChecked, isNot(ui.CheckedState.none));
+        expect(on.flagsCollection.isChecked, ui.CheckedState.isTrue);
+        expect(on.flagsCollection.isInMutuallyExclusiveGroup, isTrue);
+        expect(on.label, contains('Collecting'));
+        expect(on.label, contains('Still shooting clips for it'));
+        expect(on.hasAction(SemanticsAction.tap), isTrue);
+
+        final off = itemData('Ready to edit');
+        expect(off.role, ui.SemanticsRole.menuItemRadio);
+        expect(off.flagsCollection.isChecked, ui.CheckedState.isFalse);
+        semantics.dispose();
+      });
+
+      testWidgets('an item without checked is a plain menu item', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(ttTestApp(_menu()));
+        await _open(tester);
+        final data = tester
+            .getSemantics(find.byKey(const ValueKey('tt-menu-item-1')))
+            .getSemanticsData();
+        expect(data.role, isNot(ui.SemanticsRole.menuItemRadio));
+        expect(data.flagsCollection.isChecked, ui.CheckedState.none);
+        semantics.dispose();
+      });
+
+      testWidgets('the subtitle shows under the label and the item is tall', (
+        tester,
+      ) async {
+        await tester.pumpWidget(ttTestApp(_menu(items: status)));
+        await _open(tester);
+        expect(find.text('Still shooting clips for it'), findsOneWidget);
+        expect(find.text('All the clips are in'), findsOneWidget);
+        expect(find.text('Posted on Instagram'), findsOneWidget);
+        for (final label in ['Collecting', 'Ready to edit', 'Published']) {
+          final rect = tester.getRect(
+            find.ancestor(
+              of: find.text(label),
+              matching: find.byType(MenuItemButton),
+            ),
+          );
+          expect(rect.height, greaterThanOrEqualTo(60), reason: label);
+        }
+        final label = tester.getRect(find.text('Collecting'));
+        final sub = tester.getRect(find.text('Still shooting clips for it'));
+        expect(sub.top, greaterThanOrEqualTo(label.bottom));
+        // The subtitle is small and in the variant colour, regular weight.
+        final context = tester.element(
+          find.text('Still shooting clips for it'),
+        );
+        final text = tester.widget<Text>(
+          find.text('Still shooting clips for it'),
+        );
+        expect(text.style?.color, context.scheme.onSurfaceVariant);
+        expect(
+          text.style?.fontSize,
+          context.tt.text.material.bodySmall!.fontSize,
+        );
+        // An item with no subtitle stays 48 dp.
+        await tester.pumpWidget(ttTestApp(_menu()));
+        await tester.pumpAndSettle();
+        final plain = tester.getRect(find.byType(MenuItemButton).first);
+        expect(plain.height, 48);
+      });
+
+      testWidgets('the checked item has the selected look and a check', (
+        tester,
+      ) async {
+        await tester.pumpWidget(ttTestApp(_menu(items: status)));
+        await _open(tester);
+        final scheme = tester.element(find.byType(MenuItemButton).first).scheme;
+        final buttons = tester
+            .widgetList<MenuItemButton>(find.byType(MenuItemButton))
+            .toList();
+        expect(
+          buttons[0].style!.backgroundColor!.resolve({}),
+          scheme.secondaryContainer,
+        );
+        expect(
+          buttons[0].style!.foregroundColor!.resolve({}),
+          scheme.onSecondaryContainer,
+        );
+        expect(buttons[1].style!.backgroundColor?.resolve({}), isNull);
+        // One check, in the checked item only.
+        expect(find.byIcon(Symbols.check_rounded), findsOneWidget);
+        expect(
+          find.descendant(
+            of: find.byType(MenuItemButton).first,
+            matching: find.byIcon(Symbols.check_rounded),
+          ),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('iconFilled draws the leading icon filled', (tester) async {
+        await tester.pumpWidget(ttTestApp(_menu(items: status)));
+        await _open(tester);
+        expect(
+          tester
+              .widget<Icon>(find.byIcon(Symbols.radio_button_checked_rounded))
+              .fill,
+          1,
+        );
+      });
+
+      testWidgets('an icon is not filled unless iconFilled is set', (
+        tester,
+      ) async {
+        await tester.pumpWidget(ttTestApp(_menu()));
+        await _open(tester);
+        expect(
+          tester.widget<Icon>(find.byIcon(Symbols.edit_rounded)).fill,
+          isNull,
+        );
+      });
+
+      testWidgets('choosing a status item calls onSelected', (tester) async {
+        final picked = <String>[];
+        await tester.pumpWidget(
+          ttTestApp(_menu(items: status, onSelected: picked.add)),
+        );
+        await _open(tester);
+        await tester.tap(find.text('Published'));
+        await tester.pumpAndSettle();
+        expect(picked, ['published']);
+      });
+
+      testWidgets('a long subtitle at 2x wraps and nothing overflows', (
+        tester,
+      ) async {
+        tester.view
+          ..physicalSize = const Size(360, 800)
+          ..devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(ttTestApp(_menu(items: status), textScale: 2));
+        await _open(tester);
+        expect(tester.takeException(), isNull);
+        final rect = tester.getRect(find.byType(MenuItemButton).first);
+        expect(rect.right, lessThanOrEqualTo(360));
+      });
+
+      testWidgets('passes the accessibility guidelines in light and dark', (
+        tester,
+      ) async {
+        for (final brightness in Brightness.values) {
+          await tester.pumpWidget(
+            ttTestApp(_menu(items: status), brightness: brightness),
+          );
+          await _open(tester);
+          await expectTtAccessible(tester);
+          await tester.tapAt(const Offset(20, 500));
+          await tester.pumpAndSettle();
+        }
+      });
     });
 
     testWidgets('passes the accessibility guidelines in light and dark', (

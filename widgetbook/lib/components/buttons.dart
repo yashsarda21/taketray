@@ -95,6 +95,15 @@ final WidgetbookComponent ttFabComponent = WidgetbookComponent(
         child: TtFab(
           label: context.knobs.string(label: 'label', initialValue: 'Shoot'),
           icon: Symbols.videocam_rounded,
+          // 0 follows the snack that is showing (none here); more is a fixed
+          // lift in dp.
+          liftBy: switch (context.knobs.double.slider(
+            label: 'lift by (dp; 0 follows the snack)',
+            max: 200,
+          )) {
+            0 => null,
+            final lift => lift,
+          },
           onPressed: () {},
         ),
       ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A "clips waiting" count in the marigold waiting colours.
@@ -21,13 +22,8 @@ class TtCountBadge extends StatelessWidget {
     // proto.css: .badge { font: 700 11.5px/18px … }
     final style = tt.text
         .numeric(tt.text.navLabel)
-        .copyWith(
-          color: tt.colors.onWaiting,
-          fontWeight: FontWeight.w700,
-          fontVariations: const [
-            FontVariation('wght', TtMetrics.badgeFontWeight),
-          ],
-        );
+        .merge(TtTextStyles.weight(TtMetrics.badgeFontWeight))
+        .copyWith(color: tt.colors.onWaiting);
     return DecoratedBox(
       decoration: ShapeDecoration(
         color: tt.colors.waiting,

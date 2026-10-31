@@ -3,18 +3,26 @@ import 'package:characters/characters.dart';
 /// The longest reel name, in characters.
 const reelNameMaxLength = 40;
 
+/// The longest reel description, in characters (D-80).
+const reelDescriptionMaxLength = 1000;
+
 /// The longest reference label, in characters.
 const referenceLabelMaxLength = 60;
 
-/// Why a reel name is not acceptable.
-enum ReelNameProblem { empty, tooLong }
+/// Why a reel name is not acceptable. [duplicate]: another reel already has
+/// that name, ignoring case and the spaces at either end (D-80, D-84).
+enum ReelNameProblem { empty, tooLong, duplicate }
+
+/// Why a reel description is not acceptable.
+enum ReelDescriptionProblem { tooLong }
 
 /// Why a reference label is not acceptable.
 enum ReferenceLabelProblem { tooLong }
 
 /// Thrown by repositories when the user's input breaks a rule. [problem] is
-/// one of the problem enums ([ReelNameProblem], [ReferenceLabelProblem],
-/// `ReferenceUrlProblem`) so the screen can show the matching message.
+/// one of the problem enums ([ReelNameProblem], [ReelDescriptionProblem],
+/// [ReferenceLabelProblem], `ReferenceUrlProblem`) so the screen can show the
+/// matching message.
 class InvalidInputException implements Exception {
   const InvalidInputException(this.problem);
 
@@ -44,6 +52,24 @@ ReelNameProblem? checkReelName(String raw) {
   final length = normalizeName(raw).characters.length;
   if (length == 0) return ReelNameProblem.empty;
   if (length > reelNameMaxLength) return ReelNameProblem.tooLong;
+  return null;
+}
+
+/// What two reel names are compared by: the name as it is saved
+/// ([normalizeName]), in lower case. "Goa" and " GOA " give the same key, and
+/// so do "Café" and "CAFÉ" (Dart's `toLowerCase` folds non-ASCII letters too,
+/// unlike SQL's `lower()`).
+String reelNameKey(String raw) => normalizeName(raw).toLowerCase();
+
+/// Checks a reel description the way it will be saved: null, empty or blank
+/// is "no description" and fine, otherwise at most
+/// [reelDescriptionMaxLength] characters after trimming (counted like a
+/// name: an emoji is one).
+ReelDescriptionProblem? checkReelDescription(String? raw) {
+  if (raw == null) return null;
+  if (normalizeName(raw).characters.length > reelDescriptionMaxLength) {
+    return ReelDescriptionProblem.tooLong;
+  }
   return null;
 }
 

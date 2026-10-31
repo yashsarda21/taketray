@@ -110,6 +110,92 @@ void main() {
       semantics.dispose();
     });
 
+    group('liveRegion', () {
+      bool isLive(WidgetTester tester, String title) => tester
+          .getSemantics(find.text(title))
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion;
+
+      testWidgets('a selection bar title is announced when it changes', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(
+          _bar(
+            const TtAppBar(
+              title: '1 selected',
+              selection: true,
+              liveRegion: true,
+            ),
+          ),
+        );
+        expect(isLive(tester, '1 selected'), isTrue);
+        // Still a heading.
+        expect(
+          tester
+              .getSemantics(find.text('1 selected'))
+              .getSemanticsData()
+              .flagsCollection
+              .isHeader,
+          isTrue,
+        );
+
+        await tester.pumpWidget(
+          _bar(
+            const TtAppBar(
+              title: '2 selected',
+              selection: true,
+              liveRegion: true,
+            ),
+          ),
+        );
+        expect(isLive(tester, '2 selected'), isTrue);
+        semantics.dispose();
+      });
+
+      testWidgets('is off unless asked for', (tester) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(
+          _bar(const TtAppBar(title: '1 selected', selection: true)),
+        );
+        expect(isLive(tester, '1 selected'), isFalse);
+        semantics.dispose();
+      });
+
+      testWidgets('is ignored outside selection mode', (tester) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(
+          _bar(const TtAppBar(title: 'Reels', liveRegion: true)),
+        );
+        expect(isLive(tester, 'Reels'), isFalse);
+        await tester.pumpWidget(
+          _bar(const TtAppBar(title: 'Reels', large: true, liveRegion: true)),
+        );
+        expect(isLive(tester, 'Reels'), isFalse);
+        semantics.dispose();
+      });
+
+      for (final brightness in Brightness.values) {
+        testWidgets('a live selection bar passes the guidelines '
+            '(${brightness.name})', (tester) async {
+          await tester.pumpWidget(
+            _bar(
+              TtAppBar(
+                title: '3 selected',
+                selection: true,
+                liveRegion: true,
+                leading: _back(),
+                actions: [_action('Tag')],
+              ),
+              brightness: brightness,
+            ),
+          );
+          await expectTtAccessible(tester);
+        });
+      }
+    });
+
     testWidgets('puts leading first and actions last, 4 dp apart', (
       tester,
     ) async {

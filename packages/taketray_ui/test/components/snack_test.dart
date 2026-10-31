@@ -372,5 +372,51 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Hello'), findsNothing);
     });
+
+    testWidgets('showTtSnackOn needs no context: the messenger is enough', (
+      tester,
+    ) async {
+      final key = GlobalKey<ScaffoldMessengerState>();
+      var undone = 0;
+      await tester.pumpWidget(
+        ttTestApp(const Center(child: Text('page')), messengerKey: key),
+      );
+      // The context that would have opened it is long gone: only the
+      // messenger is used.
+      showTtSnackOn(
+        key.currentState!,
+        message: 'Reel deleted',
+        actionLabel: 'Undo',
+        onAction: () => undone++,
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Reel deleted'), findsOneWidget);
+      // The bar around the snack's own panel is clear (no double fill).
+      final theme = Theme.of(tester.element(find.byType(TtSnack)));
+      expect(theme.snackBarTheme.backgroundColor, const Color(0x00000000));
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(undone, 1);
+      expect(find.byType(TtSnack), findsNothing);
+    });
+
+    testWidgets('showTtSnackOn keeps a snack with an action when asked to', (
+      tester,
+    ) async {
+      final key = GlobalKey<ScaffoldMessengerState>();
+      await tester.pumpWidget(
+        ttTestApp(const Center(child: Text('page')), messengerKey: key),
+      );
+      showTtSnackOn(
+        key.currentState!,
+        message: 'Moved',
+        actionLabel: 'Undo',
+        onAction: () {},
+        persist: true,
+      );
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 30));
+      expect(find.text('Moved'), findsOneWidget);
+    });
   });
 }

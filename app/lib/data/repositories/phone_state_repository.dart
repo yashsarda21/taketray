@@ -90,11 +90,11 @@ class PhoneStateRepository {
           .distinct();
 
   /// Switches Shooting mode on: `since` is now, [baselines] are the volumes'
-  /// positions (by volume name) and `earlierAdded` is false.
+  /// positions (by volume name).
   ///
   /// If Shooting mode is already on, nothing is written and the current state
-  /// is returned: the first `since`, baselines and `earlierAdded` stay, so a
-  /// second tap (or a second caller) cannot move the start of the session.
+  /// is returned: the first `since` and the baselines stay, so a second tap
+  /// (or a second caller) cannot move the start of the session.
   Future<ShootingState> turnShootingOn(
     Map<String, VolumeBaseline> baselines,
   ) async {
@@ -103,6 +103,8 @@ class PhoneStateRepository {
       if (current.on) return (current, false);
       final state = ShootingState(
         on: true,
+        // Not `storedNow`: this goes into JSON, which keeps the microseconds,
+        // so the value read back equals this one.
         since: _clock.now(),
         baselines: Map.unmodifiable(baselines),
       );
@@ -141,7 +143,7 @@ class PhoneStateRepository {
   ///   when [rebuilt] is true: the scanner resynced the volume because its
   ///   generation went backwards (D-70), and the old numbers mean nothing.
   ///
-  /// Other volumes and `earlierAdded` are kept.
+  /// Other volumes are kept.
   Future<bool> advanceBaseline(
     String volume, {
     required ShootingState expectedSession,
@@ -202,19 +204,6 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Marked that access was full');
-  }
-
-  /// Notes that "Add earlier videos" was used in this Shooting session.
-  /// Does nothing when Shooting mode is off. A new session starts with it
-  /// false again ([turnShootingOn]).
-  Future<void> markEarlierAdded() async {
-    final wrote = await _db.transaction(() async {
-      final current = await loadShooting();
-      if (!current.on || current.earlierAdded) return false;
-      await _putShooting(current.copyWith(earlierAdded: true));
-      return true;
-    });
-    _log.info(wrote ? 'Marked earlier videos added' : 'Earlier mark unchanged');
   }
 
   Future<String?> _rawValue(String key) async => (await (_db.select(

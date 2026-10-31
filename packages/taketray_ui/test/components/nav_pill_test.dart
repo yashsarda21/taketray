@@ -292,6 +292,76 @@ void main() {
       expect(TtNavPill.reservedHeight(context), taken);
     });
 
+    testWidgets('fabBottom is the reserved height plus 16', (tester) async {
+      late double bottom;
+      await tester.pumpWidget(
+        ttTestApp(
+          Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(padding: const EdgeInsets.only(bottom: 24)),
+              child: Builder(
+                builder: (context) {
+                  bottom = TtNavPill.fabBottom(context);
+                  return const SizedBox();
+                },
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(bottom, 64 + 10 + 24 + 16);
+    });
+
+    testWidgets('a fab placed at fabBottom sits 16 dp above the pill', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 780);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(
+          Builder(
+            builder: (context) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(padding: const EdgeInsets.only(bottom: 24)),
+              child: Builder(
+                builder: (context) => Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.bottomCenter,
+                      child: TtNavPill(
+                        items: _items(),
+                        currentIndex: 0,
+                        onSelected: (_) {},
+                      ),
+                    ),
+                    PositionedDirectional(
+                      end: 16,
+                      bottom: TtNavPill.fabBottom(context),
+                      child: TtFab(
+                        label: 'New reel',
+                        icon: Symbols.add_rounded,
+                        onPressed: () {},
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      final pillTop = tester.getRect(find.byType(TtGlass)).top;
+      final fabBottom = tester.getRect(find.byType(TtFab)).bottom;
+      // (no lift here: liftBy is 0)
+      expect(pillTop - fabBottom, 16);
+      expect(
+        780 - fabBottom,
+        TtNavPill.fabBottom(tester.element(find.byType(TtFab))),
+      );
+    });
+
     testWidgets('a long label ends in an ellipsis and nothing overflows', (
       tester,
     ) async {

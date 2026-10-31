@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:taketray_ui/src/components/internal/menu_panel.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// One entry of a [TtMenuButton]: a [label] with an optional [icon] that
 /// selects [value].
+///
+/// A [subtitle] makes the entry two lines (60 dp high), and a [checked] makes
+/// it one of a set of choices, as the status menu of a reel is.
 @immutable
 class TtMenuItem<T> {
   /// An entry labelled [label] that selects [value].
-  const new(this.value, this.label, {this.icon, this.destructive = false});
+  const new(
+    this.value,
+    this.label, {
+    this.icon,
+    this.iconFilled = false,
+    this.destructive = false,
+    this.subtitle,
+    this.checked,
+  });
 
   /// What `onSelected` receives when the entry is chosen.
   final T value;
@@ -19,8 +31,21 @@ class TtMenuItem<T> {
   /// A glyph before the label, or null for none.
   final IconData? icon;
 
+  /// Whether [icon] is drawn in its filled variant.
+  final bool iconFilled;
+
   /// Whether the entry deletes or discards something (error colour).
   final bool destructive;
+
+  /// A smaller line under the label, such as "Still shooting clips for it";
+  /// null for none.
+  final String? subtitle;
+
+  /// Whether this is the current one of a set of choices (a screen reader
+  /// calls it a radio menu item, checked or not), or null for an entry that
+  /// is not a choice. The checked one is drawn on `secondaryContainer` with a
+  /// check after the label.
+  final bool? checked;
 }
 
 /// A button that opens a menu of [items].
@@ -66,6 +91,20 @@ class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
     if (mounted && _open != open) setState(() => _open = open);
   }
 
+  /// MenuAnchor closes an open menu from inside a build when the window
+  /// changes size, and `setState` is not allowed there (a debug-only assert).
+  /// In a build the change waits for the end of the frame.
+  void _setOpenSafely({required bool open}) {
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback(
+        (_) => _setOpen(open: open),
+      );
+    } else {
+      _setOpen(open: open);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.scheme;
@@ -95,8 +134,8 @@ class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
       child: MenuAnchor(
         controller: _controller,
         style: menuStyle,
-        onOpen: () => _setOpen(open: true),
-        onClose: () => _setOpen(open: false),
+        onOpen: () => _setOpenSafely(open: true),
+        onClose: () => _setOpenSafely(open: false),
         menuChildren: [
           TtMenuPanel<T>(items: widget.items, onSelected: widget.onSelected),
         ],

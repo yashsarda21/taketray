@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/components/internal/bar_scope.dart';
 import 'package:taketray_ui/src/components/internal/button_row.dart';
+import 'package:taketray_ui/src/components/internal/snack_height.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -396,12 +397,26 @@ class TtIconButton extends StatelessWidget {
 
 /// The extended floating action button: an icon and a label on a primary
 /// stadium, 52 dp tall, with a primary-tinted shadow.
+///
+/// It has no position of its own. Above the nav pill, a screen puts it at
+/// `TtNavPill.fabBottom(context)` from the bottom of a `Stack`; without the
+/// pill, 16 dp from the edge.
+///
+/// **It rises above a snack by itself.** While a snack shows (`showTtSnack`),
+/// the button listens to `TtSnackHeight` and is drawn that much higher plus
+/// one 12 dp step (`TtSpacing.s`), so a one-line snack, or a three-line one at
+/// large text, never covers it. It glides up over `motion.medium1` and back
+/// down when the snack is gone; under "remove animations" it jumps. [liftBy]
+/// replaces this with a fixed number of dp (0 for never). The lift is a
+/// paint-time shift: the space the button takes does not change, and a tap
+/// lands where the button is drawn.
 class TtFab extends StatelessWidget {
   /// A FAB showing [icon] and [label] that calls [onPressed] when tapped.
   const new({
     required this.label,
     required this.icon,
     required this.onPressed,
+    this.liftBy,
     super.key,
   });
 
@@ -414,8 +429,27 @@ class TtFab extends StatelessWidget {
   /// Called when the button is tapped.
   final VoidCallback onPressed;
 
+  /// How far above its place the button is drawn, in dp, whatever snack is
+  /// showing; null (the default) follows the snack that is showing.
+  final double? liftBy;
+
   @override
   Widget build(BuildContext context) {
+    final fixed = liftBy;
+    final button = _buildButton(context);
+    if (fixed != null) return _Lift(lift: fixed, child: button);
+    // screens.js: fab() adds the snack's height to the button's `bottom`; the
+    // real height is measured (`TtSnackHeight`), plus a 12 dp gap.
+    final gap = context.tt.spacing.s;
+    return ValueListenableBuilder<double>(
+      valueListenable: TtSnackHeight.of(context),
+      child: button,
+      builder: (context, snack, child) =>
+          _Lift(lift: snack > 0 ? snack + gap : 0, child: child!),
+    );
+  }
+
+  Widget _buildButton(BuildContext context) {
     final scheme = context.scheme;
     final tt = context.tt;
     // tt-style.css: .style-tt .fab { border-radius: 26px } is a stadium at
@@ -485,6 +519,27 @@ class TtFab extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Draws [child] [lift] dp higher, gliding there when [lift] changes.
+class _Lift extends StatelessWidget {
+  const new({required this.lift, required this.child});
+
+  final double lift;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: lift),
+      duration: tt.motion.medium1,
+      curve: tt.motion.emphasizedDecelerate,
+      builder: (context, value, child) =>
+          Transform.translate(offset: Offset(0, -value), child: child),
+      child: child,
     );
   }
 }

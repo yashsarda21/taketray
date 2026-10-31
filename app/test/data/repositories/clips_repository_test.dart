@@ -605,6 +605,120 @@ void main() {
       },
     );
 
+    group('addClipsToReels (several reels, one transaction)', () {
+      Future<String> state() async => [
+        for (final l in await db.select(db.clipReels).get())
+          'link ${l.clipId} ${l.reelId} ${l.addedAt}',
+        for (final i in await inboxRows())
+          'inbox ${i.clipId} ${i.state} ${i.addedAt}',
+        for (final r in await db.select(db.reels).get())
+          'reel ${r.id} ${r.updatedAt}',
+      ].join('\n');
+
+      test(
+        'adds to every reel and gives one record per reel, in order',
+        () async {
+          final goa = await reels.create('Goa');
+          final paris = await reels.create('Paris');
+          final lisbon = await reels.create('Lisbon');
+          final ids = await repo.saveDetected([
+            mediaStoreClip(10),
+            mediaStoreClip(11),
+          ]);
+
+          final records = await repo.addClipsToReels({
+            lisbon.id,
+            goa.id,
+            paris.id,
+          }, ids);
+
+          expect(records.map((r) => r.reelId), [lisbon.id, goa.id, paris.id]);
+          for (final record in records) {
+            expect(record.createdLinks.map((l) => l.clipId), ids);
+          }
+          for (final reel in [goa, paris, lisbon]) {
+            expect(await repo.watchReelClips(reel.id).first, hasLength(2));
+          }
+          // The clips left To tag once, by the first reel's record.
+          expect(await inboxRows(), isEmpty);
+        },
+      );
+
+      test('a reel that is gone, second in line, leaves nothing added '
+          'to the first', () async {
+        final goa = await reels.create('Goa');
+        final ids = await repo.saveDetected([mediaStoreClip(10)]);
+        clock.advance(_minute);
+        final before = await state();
+
+        await expectLater(
+          repo.addClipsToReels({goa.id, 99}, ids),
+          throwsStateError,
+        );
+
+        expect(await state(), before);
+        expect(await db.select(db.clipReels).get(), isEmpty);
+        expect(await inboxRows(), hasLength(1));
+        expect(await updatedAt(goa.id), _t0);
+      });
+
+      test('a clip that is gone fails before any reel changes', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
+        final before = await state();
+
+        await expectLater(
+          repo.addClipsToReels({goa.id, paris.id}, [id, 99]),
+          throwsStateError,
+        );
+
+        expect(await state(), before);
+      });
+
+      test('undoing the records last to first restores everything', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final ids = await repo.saveDetected([
+          mediaStoreClip(10),
+          mediaStoreClip(11),
+        ]);
+        await repo.skip([ids.last]);
+        // With microseconds, as a real clock has: the records must hold the
+        // times the database stores (milliseconds), or undo misreads them.
+        clock.advance(_minute + const Duration(microseconds: 123));
+        final before = await state();
+
+        final records = await repo.addClipsToReels({goa.id, paris.id}, ids);
+        expect(await state(), isNot(before));
+        for (final record in records.reversed) {
+          await repo.undo(record);
+        }
+
+        expect(await state(), before);
+      });
+
+      test('a clip a reel has already makes an empty record for it', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final ids = await repo.addNewClipsToReel(goa.id, [mediaStoreClip(10)]);
+
+        final records = await repo.addClipsToReels({goa.id, paris.id}, ids);
+
+        expect(records.first.isEmpty, isTrue);
+        expect(records.last.createdLinks, hasLength(1));
+      });
+
+      test('no reels gives no records and changes nothing', () async {
+        final ids = await repo.saveDetected([mediaStoreClip(10)]);
+        final before = await state();
+
+        expect(await repo.addClipsToReels(const {}, ids), isEmpty);
+
+        expect(await state(), before);
+      });
+    });
+
     test(
       'removing a clip from its last reel deletes it (no inbox row)',
       () async {
@@ -2007,7 +2121,7 @@ void main() {
 
       final clips = await repo.watchReelClips(reel.id).first;
 
-      expect(clips.map((c) => c.id), [ids[1], ids[2], ids[0]]);
+      expect(clips.map((c) => c.clip.id), [ids[1], ids[2], ids[0]]);
     });
 
     test(
@@ -2017,7 +2131,7 @@ void main() {
         final seen = <List<int>>[];
         final sub = repo
             .watchReelClips(reel.id)
-            .listen((clips) => seen.add([for (final c in clips) c.id]));
+            .listen((clips) => seen.add([for (final c in clips) c.clip.id]));
         addTearDown(sub.cancel);
         await pumpEventQueue();
 
@@ -2029,6 +2143,58 @@ void main() {
         expect(seen, [<int>[], ids, <int>[]]);
       },
     );
+
+    test('reel clips carry reelCount and addedAt', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final lisbon = await reels.create('Lisbon');
+      final ids = await repo.addNewClipsToReel(goa.id, [
+        mediaStoreClip(10, shotAt: _t0.add(_minute)),
+        mediaStoreClip(11, shotAt: _t0),
+      ]);
+      clock.advance(_minute * 5);
+      await repo.addClipsToReel(paris.id, [ids[0]]);
+      clock.advance(_minute * 5);
+      await repo.addClipsToReel(lisbon.id, [ids[0]]);
+
+      final inGoa = await repo.watchReelClips(goa.id).first;
+      final inParis = await repo.watchReelClips(paris.id).first;
+
+      expect(
+        [for (final c in inGoa) (c.clip.id, c.reelCount, c.addedAt)],
+        [(ids[1], 1, _t0), (ids[0], 3, _t0)],
+      );
+      expect(
+        [for (final c in inParis) (c.clip.id, c.reelCount, c.addedAt)],
+        [(ids[0], 3, _t0.add(_minute * 5))],
+      );
+      expect(inGoa.last.clip, (await repo.clipsByIds([ids[0]])).single);
+    });
+
+    test('reelCount follows a link change', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final id = (await repo.addNewClipsToReel(goa.id, [
+        mediaStoreClip(10),
+      ])).single;
+      final counts = <List<int>>[];
+      final sub = repo
+          .watchReelClips(goa.id)
+          .listen((all) => counts.add([for (final c in all) c.reelCount]));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repo.addClipsToReel(paris.id, [id]);
+      await pumpEventQueue();
+      await repo.removeClipsFromReel(paris.id, [id]);
+      await pumpEventQueue();
+
+      expect(counts, [
+        [1],
+        [2],
+        [1],
+      ]);
+    });
 
     test('watchReelIdsOf follows tag and Undo', () async {
       final goa = await reels.create('Goa');

@@ -97,6 +97,7 @@ final WidgetbookComponent ttAddReferenceTileComponent = WidgetbookComponent(
           child: TtAddReferenceTile(
             title: title,
             subtitle: subtitle,
+            semanticLabel: '$title. $subtitle',
             onPressed: () {},
           ),
         );

@@ -29,6 +29,7 @@ Widget _card({
       on: on,
       title: on ? 'Shooting mode on' : 'Shooting mode',
       subtitle: subtitle,
+      semanticLabel: on ? 'Shooting mode, on' : 'Shooting mode, off',
       switchSemanticLabel: 'Shooting mode',
       onChanged: onChanged ?? (_) {},
       backdrop: backdrop,
@@ -37,6 +38,7 @@ Widget _card({
       rows: [
         if (rows)
           TtCardRow(
+            kind: TtCardRowKind.link,
             icon: Symbols.link_rounded,
             title: 'References · 4',
             subtitle: 'From 2 Recording reels',
@@ -45,6 +47,7 @@ Widget _card({
           ),
         if (earlier)
           TtCardRow(
+            kind: TtCardRowKind.link,
             icon: Symbols.history_rounded,
             title: 'Add earlier videos',
             subtitle: 'Shot before Shooting mode was on',
@@ -55,6 +58,7 @@ Widget _card({
       ],
       toTagStrip: rows
           ? TtCardRow(
+              kind: TtCardRowKind.strip,
               icon: Symbols.sell_rounded,
               title: '3 clips to tag',
               trailingText: 'Tag now',
@@ -128,6 +132,103 @@ void main() {
       );
       await tester.tap(find.byType(TtSwitch));
       expect(values, [true]);
+    });
+
+    testWidgets('shows its rows under the top, in the hairline look (D-90)', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        ttTestApp(
+          _card(
+            on: false,
+            subtitle: 'Off. Turn on before filming',
+            earlier: true,
+            onEarlier: () => taps++,
+          ),
+        ),
+      );
+      final row = find.byType(TtCardRow);
+      expect(row, findsOneWidget);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.byIcon(Symbols.history_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+      // Under the top, the card's full width.
+      expect(
+        tester.getTopLeft(find.text('Add earlier videos')).dy,
+        greaterThan(tester.getBottomLeft(find.byType(TtSwitch)).dy),
+      );
+      expect(
+        tester.getSize(row).width,
+        tester.getSize(find.byType(TtShootingModeCard)).width,
+      );
+
+      // The off card's look: no frosted dark band, a hairline above, and
+      // the surface's text colours.
+      final context = tester.element(find.byType(TtShootingModeCard));
+      final tt = context.tt;
+      final scheme = context.scheme;
+      expect(
+        find.descendant(of: row, matching: find.byType(BackdropFilter)),
+        findsNothing,
+      );
+      final border =
+          tester
+                  .widgetList<DecoratedBox>(
+                    find.descendant(
+                      of: row,
+                      matching: find.byType(DecoratedBox),
+                    ),
+                  )
+                  .map((d) => d.decoration)
+                  .whereType<BoxDecoration>()
+                  .single
+                  .border!
+              as Border;
+      expect(border.top.color, tt.colors.hairline);
+      expect(
+        tester.widget<Text>(find.text('Add earlier videos')).style!.color,
+        scheme.onSurface,
+      );
+      expect(
+        tester
+            .widget<Text>(find.text('Shot before Shooting mode was on'))
+            .style!
+            .color,
+        scheme.onSurfaceVariant,
+      );
+
+      await tester.tap(find.text('Add earlier videos'));
+      expect(taps, 1);
+    });
+
+    testWidgets('never shows the to-tag strip', (tester) async {
+      await tester.pumpWidget(ttTestApp(_card(on: false, rows: true)));
+      expect(find.text('References · 4'), findsOneWidget);
+      expect(find.text('3 clips to tag'), findsNothing);
+    });
+
+    testWidgets('with a row: a button with its label, accessible, fits at '
+        '2x', (tester) async {
+      final semantics = tester.ensureSemantics();
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(on: false, earlier: true),
+            brightness: brightness,
+            textScale: 2,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        final node = tester.getSemantics(
+          find.bySemanticsLabel(
+            'Add earlier videos, shot before Shooting mode was on',
+          ),
+        );
+        expect(node.getSemanticsData().flagsCollection.isButton, isTrue);
+        await expectTtAccessible(tester);
+      }
+      semantics.dispose();
     });
   });
 
@@ -310,11 +411,13 @@ void main() {
           on: true,
           title: 't',
           subtitle: 's',
+          semanticLabel: 'x',
           switchSemanticLabel: 'x',
           onChanged: (_) {},
           rows: [
             for (var i = 0; i < 3; i++)
               TtCardRow(
+                kind: TtCardRowKind.link,
                 icon: Symbols.link_rounded,
                 title: '$i',
                 onPressed: () {},
@@ -368,6 +471,34 @@ void main() {
       expect(tester.hasRunningAnimations, isFalse);
     });
 
+    testWidgets('shooting mode card has a top-level label', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        for (final on in [true, false]) {
+          await tester.pumpWidget(ttTestApp(_card(on: on)));
+          final node = tester.getSemantics(
+            find.bySemanticsLabel(
+              on ? 'Shooting mode, on' : 'Shooting mode, off',
+            ),
+          );
+          final data = node.getSemanticsData();
+          // A group that names the card; the switch keeps its own node.
+          expect(node.childrenCount, greaterThan(0));
+          expect(data.flagsCollection.isToggled, ui.Tristate.none);
+          final switchData = tester
+              .getSemantics(find.byType(TtSwitch))
+              .getSemanticsData();
+          expect(switchData.label, 'Shooting mode');
+          expect(
+            switchData.flagsCollection.isToggled,
+            on ? ui.Tristate.isTrue : ui.Tristate.isFalse,
+          );
+        }
+      } finally {
+        handle.dispose();
+      }
+    });
+
     testWidgets('semantics: the switch is named and toggled', (tester) async {
       final handle = tester.ensureSemantics();
       await tester.pumpWidget(ttTestApp(_card()));
@@ -382,6 +513,7 @@ void main() {
 
   group('TtCardRow', () {
     Widget row({
+      TtCardRowKind? kind,
       String? subtitle,
       String? trailingText,
       VoidCallback? onPressed,
@@ -390,6 +522,9 @@ void main() {
       child: SizedBox(
         width: 328,
         child: TtCardRow(
+          kind:
+              kind ??
+              (trailingText == null ? TtCardRowKind.link : TtCardRowKind.strip),
           icon: Symbols.link_rounded,
           title: 'References · 4',
           subtitle: subtitle,
@@ -430,6 +565,36 @@ void main() {
           ),
         ),
         findsOneWidget,
+      );
+    });
+
+    testWidgets('card row look follows its kind, not the trailing text', (
+      tester,
+    ) async {
+      // A strip with no trailing text is still a strip.
+      await tester.pumpWidget(ttTestApp(row(kind: TtCardRowKind.strip)));
+      expect(find.byIcon(Symbols.arrow_forward_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsNothing);
+      expect(tester.getSize(find.byType(TtCardRow)).height, 52);
+
+      // A link with a subtitle is a link.
+      await tester.pumpWidget(
+        ttTestApp(row(kind: TtCardRowKind.link, subtitle: 'From 2 reels')),
+      );
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+      expect(tester.getSize(find.byType(TtCardRow)).height, 56);
+    });
+
+    test('a link row refuses a trailing text', () {
+      expect(
+        () => TtCardRow(
+          kind: TtCardRowKind.link,
+          icon: Symbols.link_rounded,
+          title: 'References',
+          trailingText: 'Tag now',
+          onPressed: () {},
+        ),
+        throwsAssertionError,
       );
     });
 

@@ -23,12 +23,23 @@ extension Housekeeping on AppDatabase {
   ///
   /// This is one statement, so it is atomic by itself; callers that need it
   /// together with other changes run it inside their own `transaction`.
-  Future<int> deleteOrphanClips() {
+  Future<int> deleteOrphanClips() => (delete(clips)..where(_isOrphan)).go();
+
+  /// The clips [deleteOrphanClips] would delete now, every column, by id.
+  ///
+  /// Undo needs the rows of the clips a sweep is about to delete (D-84), so a
+  /// caller that wants them runs this and then [deleteOrphanClips] inside one
+  /// transaction: both read the same state, and the rule is still written
+  /// once, in [_isOrphan].
+  Future<List<ClipRow>> selectOrphanClips() =>
+      (select(clips)
+            ..where(_isOrphan)
+            ..orderBy([(c) => OrderingTerm.asc(c.id)]))
+          .get();
+
+  Expression<bool> _isOrphan($ClipsTable c) {
     final inAReel = selectOnly(clipReels)..addColumns([clipReels.clipId]);
     final inInbox = selectOnly(inbox)..addColumns([inbox.clipId]);
-    return (delete(clips)..where(
-          (c) => c.id.isNotInQuery(inAReel) & c.id.isNotInQuery(inInbox),
-        ))
-        .go();
+    return c.id.isNotInQuery(inAReel) & c.id.isNotInQuery(inInbox);
   }
 }

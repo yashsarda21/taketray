@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 /// Tells the icon buttons inside a `TtAppBar` whether the bar is in
-/// selection mode, where they are drawn without their glass circle and in
+/// selection mode, where they are drawn without their solid circle and in
 /// `onSecondaryContainer` (`.appbar:not(.sel) .ib::before`,
 /// `.appbar.sel .ib`).
 class TtBarScope extends InheritedWidget {

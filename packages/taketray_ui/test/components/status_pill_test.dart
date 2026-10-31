@@ -72,6 +72,19 @@ void main() {
       expect(find.byIcon(Symbols.arrow_drop_down_rounded), findsOneWidget);
     });
 
+    for (final large in [false, true]) {
+      testWidgets('status pill caret gap is 6 (large: $large)', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(_pill(TtStatusKind.ready, large: large, onPressed: () {})),
+        );
+        final label = tester.getRect(find.text('Ready to edit'));
+        final caret = tester.getRect(
+          find.byIcon(Symbols.arrow_drop_down_rounded),
+        );
+        expect(caret.left - label.right, 6);
+      });
+    }
+
     testWidgets('uses the status colours on a surface', (tester) async {
       await tester.pumpWidget(ttTestApp(_pill(TtStatusKind.collecting)));
       final tt = tester.element(find.byType(TtStatusPill)).tt;
