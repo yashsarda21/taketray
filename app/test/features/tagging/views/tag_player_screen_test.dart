@@ -66,6 +66,12 @@ void main() {
     await tester.runAsync(settle);
     await tester.pump();
     await tester.pumpAndSettle();
+    // The clip ahead is opened a moment after the frame (D-97): let real time
+    // pass (a released player goes) between steps of the test clock.
+    for (var i = 0; i < 6; i++) {
+      await tester.runAsync(settle);
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.runAsync(settle);
     await tester.pump();
   }
@@ -499,6 +505,12 @@ void main() {
       }
 
       expect(most, lessThanOrEqualTo(2));
+      // Counted when each player was made, not only after things settle.
+      // The fake platform releases a controller after the test clock has moved
+      // on, so a clip let go and the one opened after it can overlap here;
+      // settled, there are never more than two (checked above). Task 10
+      // measures the overlap on the S24.
+      expect(platform.peakLive, lessThanOrEqualTo(3));
       // The clip that came up is the player that was opened a clip ahead: it
       // was not opened again, and it plays now. (4 clips: 4 players, ever.)
       expect(platform.players, hasLength(4));
@@ -518,6 +530,94 @@ void main() {
       expect(platform.player(1).disposed, isTrue);
       expect(platform.live.length, lessThanOrEqualTo(2));
     });
+
+    /// Lets the database answer and draws, in a few short steps, so the clip
+    /// ahead (opened 200 ms after a frame, D-97) is not yet re-pointed.
+    Future<void> quick(WidgetTester tester) async {
+      await tester.runAsync(settle);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.runAsync(settle);
+      await tester.pump();
+    }
+
+    Iterable<String?> playingUris() =>
+        platform.players.where((p) => p.playing).map((p) => p.uri);
+
+    testApp('previous leaves the earlier clip paused while it is kept alive', (
+      tester,
+    ) async {
+      await waiting(tester, 3);
+      await open(tester);
+      expect(playingUris(), [_uri(1)]);
+
+      // Next, and Previous again before the clip ahead has moved on: clip 2's
+      // controller is still held (as the clip ahead) when its stage goes.
+      await tester.tap(arrow(TtArrowSide.next));
+      await quick(tester);
+      expect(title(tester), '2 of 3');
+      expect(playingUris(), [_uri(2)]);
+      await tester.tap(arrow(TtArrowSide.previous));
+      await quick(tester);
+
+      expect(title(tester), '1 of 3');
+      final two = platform.players.where((p) => p.uri == _uri(2)).single;
+      expect(two.disposed, isFalse, reason: 'still held as the clip ahead');
+      expect(two.playing, isFalse);
+      // It starts from the beginning when it comes back.
+      expect(two.position, Duration.zero);
+      expect(platform.calls, contains('pause:${two.id}'));
+      expect(playingUris(), [_uri(1)]);
+      await settleApp(tester);
+      expect(playingUris(), [_uri(1)]);
+    });
+
+    testApp('undo back leaves the left clip paused', (tester) async {
+      await newReel(tester, 'Goa');
+      await waiting(tester, 3);
+      await open(tester);
+      await tester.tap(chip('Goa'));
+      await tester.pump();
+      holds.fireAll();
+      await quick(tester);
+      expect(title(tester), '2 of 3');
+      expect(playingUris(), [_uri(2)]);
+
+      // The snack is still arriving: press its action directly.
+      tester.widget<TtSnack>(find.byType(TtSnack)).onAction!();
+      await quick(tester);
+
+      expect(title(tester), '1 of 3');
+      final two = platform.players.where((p) => p.uri == _uri(2)).single;
+      expect(two.disposed, isFalse, reason: 'still held as the clip ahead');
+      expect(two.playing, isFalse);
+      expect(two.position, Duration.zero);
+      expect(playingUris(), [_uri(1)]);
+      await settleApp(tester);
+      expect(playingUris(), [_uri(1)]);
+    });
+
+    testApp(
+      'going back and forth: one clip plays, two are alive when settled',
+      (tester) async {
+        await waiting(tester, 4);
+        await open(tester);
+
+        for (var i = 0; i < 3; i++) {
+          await tester.tap(arrow(TtArrowSide.next));
+          await settleApp(tester);
+        }
+        for (var i = 0; i < 3; i++) {
+          await tester.tap(arrow(TtArrowSide.previous));
+          await settleApp(tester);
+          expect(playingUris(), hasLength(1));
+          expect(platform.live.length, lessThanOrEqualTo(2));
+        }
+
+        expect(title(tester), '1 of 4');
+        expect(playingUris(), [_uri(1)]);
+      },
+    );
 
     testApp('the player is disposed with the screen', (tester) async {
       await waiting(tester, 3);
@@ -628,7 +728,11 @@ void main() {
       expect(await reelsOf(tester, ids[0]), isEmpty);
       expect(await pendingIds(tester), ids.toSet());
       expect(title(tester), '1 of 3');
-      expect(platform.player(platform.players.length).playing, isTrue);
+      // The clip showing plays (the last player made is the clip ahead).
+      expect(
+        platform.players.where((p) => p.uri == _uri(1)).last.playing,
+        isTrue,
+      );
       expect(goa.id, isPositive);
       expect(find.text('Undo'), findsNothing);
     });

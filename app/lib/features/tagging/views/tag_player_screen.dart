@@ -106,6 +106,8 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
 
   @override
   void dispose() {
+    _aheadTimer?.cancel();
+    _ahead?.close();
     _openOnce.dispose();
     super.dispose();
   }
@@ -213,8 +215,11 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
             ),
           );
 
+    // No `scrims:` (none by default): they belong to the viewer, whose
+    // controls sit over the video (proto.css `.viewer .vtop` / `.vbot`).
+    // Here the controls are above and below it, and a scrim would only
+    // darken the lower part of the clip.
     return TtVideoSurface(
-      scrims: true,
       child: SafeArea(
         bottom: false,
         child: Column(
@@ -304,28 +309,82 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       final forward = state.lastActedClipId == left || state.index > from;
       _slide = forward ? 1 : -1;
     }
+    final gone = left == null ? null : state.clips[left];
+    _leftUri = gone == null ? null : clipVideoUri(gone);
     _shownClipId = id;
     _shownIndex = state.index;
   }
 
+  /// The address of the clip that was showing before this one: its player is
+  /// let go once its stage has gone.
+  Uri? _leftUri;
+
+  /// The clip ahead whose player is held open now, and the one it should be.
+  ProviderSubscription<AsyncValue<VideoPlayerController>>? _ahead;
+  Uri? _aheadUri;
+  Timer? _aheadTimer;
+
   /// Keeps the player of the clip after this one open, paused (D-97): the
   /// clip the player goes to after a tag or a skip. With the one showing
   /// that is at most two controllers.
+  ///
+  /// It is held through a subscription that is changed **a moment after the
+  /// frame** ([kThemeAnimationDuration]), when the stage of the clip left
+  /// behind has gone and let its player go: made during the build, the new
+  /// clip ahead would be opened while the old clip's controller was still
+  /// alive, a third one for a moment. It waits until the left clip's player
+  /// has gone (`ref.exists`), at most a few tries. (Going back is the one case
+  /// left: the clip that comes up is opened in the frame in which the old
+  /// clip ahead is let go, so for those few milliseconds there are three.)
   void _preload(TagSessionState state) {
     final id = state.currentClipId;
-    if (id == null) return;
-    final ahead = TagQueue(state.session)
-        .afterAction(state.index, {...state.pending}..remove(id));
-    if (ahead == null) return;
-    final next = state.clips[state.session[ahead]];
-    final uri = next == null ? null : clipVideoUri(next);
-    if (uri == null) return;
-    // Held open while this build lives; nothing to read from it. An error is
-    // the next clip's own state to show when it comes up.
-    ref.listen(
-      clipPlayerProvider(uri, use: ClipPlayerUse.tagging, autoplay: false),
-      (_, _) {},
-    );
+    Uri? uri;
+    if (id != null) {
+      final ahead = TagQueue(state.session)
+          .afterAction(state.index, {...state.pending}..remove(id));
+      final next = ahead == null ? null : state.clips[state.session[ahead]];
+      uri = next == null ? null : clipVideoUri(next);
+    }
+    if (uri == _aheadUri) return;
+    _aheadUri = uri;
+    _aheadTimer?.cancel();
+    _aheadTries = 0;
+    _leftGone = false;
+    _aheadTimer = Timer(kThemeAnimationDuration, _openAhead);
+  }
+
+  int _aheadTries = 0;
+  bool _leftGone = false;
+
+  /// How many times [_openAhead] waits for the left clip's player to go.
+  static const int _aheadMaxTries = 10;
+
+  void _openAhead() {
+    if (!mounted) return;
+    final open = _aheadUri;
+    final left = _leftUri;
+    if (left != null && left != open && _aheadTries++ < _aheadMaxTries) {
+      // Wait while the left clip's player is still there, and one more turn
+      // after the provider has gone, for the controller's own release.
+      final held = ref.exists(
+        clipPlayerProvider(left, use: ClipPlayerUse.tagging, autoplay: false),
+      );
+      if (held || !_leftGone) {
+        _leftGone = !held;
+        _aheadTimer = Timer(kThemeAnimationDuration, _openAhead);
+        return;
+      }
+    }
+    _ahead?.close();
+    _ahead = null;
+    // Nothing is read from it; an error is the clip's own state to show when
+    // it comes up.
+    if (open != null) {
+      _ahead = ref.listenManual(
+        clipPlayerProvider(open, use: ClipPlayerUse.tagging, autoplay: false),
+        (_, _) {},
+      );
+    }
   }
 
   // ---------------------------------------------------------------- bottom
@@ -963,6 +1022,25 @@ class _PlayingState extends State<_Playing> {
         life == AppLifecycleState.paused || life == AppLifecycleState.hidden;
     if (!away && widget.controller.value.isInitialized) {
       unawaited(widget.controller.play());
+    }
+  }
+
+  @override
+  void dispose() {
+    // The stage of this clip is going: the clip may be kept open (as the clip
+    // ahead after Previous or Undo) and must not go on playing, unseen. It
+    // starts from the beginning when it comes back.
+    unawaited(_rest(widget.controller));
+    super.dispose();
+  }
+
+  static Future<void> _rest(VideoPlayerController controller) async {
+    try {
+      if (!controller.value.isInitialized) return;
+      await controller.pause();
+      await controller.seekTo(Duration.zero);
+    } on Object {
+      // The controller was let go meanwhile: nothing is left to stop.
     }
   }
 

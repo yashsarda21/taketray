@@ -508,7 +508,16 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
   }
   ```
 
-  Which clip is "ahead"? The one the player will go to after a tag or a skip, which is `TagQueue.afterAction(index, pending − current)`, not just `index + 1`: after the last clip it wraps to the first one still waiting. At most two controllers are alive (the one showing and the one ahead); the one left behind is disposed with its stage.
+  Which clip is "ahead"? The one the player will go to after a tag or a skip, which is `TagQueue.afterAction(index, pending − current)`, not just `index + 1`: after the last clip it wraps to the first one still waiting. It is opened a moment (200 ms) *after* the frame, once the clip that was left has let go of its player; opened inside the build, it would be a third controller for a moment. When settled there are at most two alive (the one showing and the one ahead).
+
+- **A clip you leave must stop.** After Previous (or Undo) the clip you just left becomes the "clip ahead", and its controller can still be alive, still looping. So when a stage goes away it pauses its clip and rewinds it:
+
+  ```dart
+  await controller.pause();
+  await controller.seekTo(Duration.zero);
+  ```
+
+  wrapped so that a controller that was let go in the meantime is no problem. The clip ahead is therefore never heard and never moves; it waits at the start.
 
 - **The check mark belongs to the clip you tapped.** When you tap a chip it shows a check for 400 ms. If that clip is tagged from somewhere else during those 400 ms, Section 6's controller moves on to the next clip but still tags the clip you tapped. The controller's `confirmingReelId` is about the *reel*, so if the screen showed the check whenever it was set, the *new* clip's chip would show a check it did not earn. The screen remembers the clip that was tapped:
 
@@ -532,11 +541,11 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
 
 - **A form that tags.** "New reel" from the player opens the Phase 4 form with `forClip: true`: a different subtitle ("This clip will be added to it."), only the name field, and **Create and add**. The form still checks the name (empty, too long, already taken) and tells you under the field. When the name is fine it does not call `ReelsRepository.create` but a function the player hands it, `createReelAndTag`, which makes the reel and tags the clip in one go, then the form closes. If the form had created the reel itself and the player had tagged afterwards, a failure in between would leave a reel with no clip and a second try would be told that the name is taken.
 
-- **The panel may not eat the video.** At 2x text the tag panel is allowed 520 dp, which would leave nothing for the video on a phone. The screen puts the panel (and the controls under it) in a box of at most 45 % of the screen's height; the panel already scrolls inside its box, and its header and footer stay put.
+- **The panel may not eat the video.** At 2x text the tag panel is allowed 520 dp, which would leave nothing for the video on a phone. The screen puts the panel alone (the scrub bar and the quick row stay at full size) in a box of at most 45 % of the screen's height; the panel scrolls inside its box, and its header and footer stay put.
 
 - **Screenshots only on your Mac.** The eight screens (first clip, mid-scene, Pick several, no reels, loading, a long clip, a horizontal clip, All done!) are compared as images in `app/test/features/tagging/views/goldens/macos/`, at 1x and 2x text. They are skipped on GitHub's CI, which has no images for the app's screens (Section 2's image sets are for components). A fake video platform draws a coloured gradient where the video would be, and real thumbnails are served, so the images show where things are.
 
-- **Tests that can fail.** The screen's 58 widget tests were run first against a screen that was an empty black box: 56 failed (the two that passed do so by nature: "nothing is offered" and the accessibility check of a blank page). Then three mistakes were made on purpose, one at a time, and each was caught: an Undo that does not go through the session (the player stayed on clip 2 after "Undo"), Other reels open by default (25 chips instead of 5), and the preload taken out (one player instead of two).
+- **Tests that can fail.** The screen's 58 widget tests were run first against a screen that was an empty black box: 56 failed (the two that passed do so by nature: "nothing is offered" and the accessibility check of a blank page). Then three mistakes were made on purpose, one at a time, and each was caught: an Undo that does not go through the session (the player stayed on clip 2 after "Undo"), Other reels open by default (25 chips instead of 5), and the preload taken out (one player instead of two). A later fix was proved the same way: without the pause-and-rewind, Next then Previous left the clip ahead playing.
 
 **Where it lives:** `app/lib/features/tagging/views/tag_player_screen.dart` (`TagPlayerScreen`), `tag_done_view.dart`, `tagging_snacks.dart`; `app/lib/features/clips/widgets/clip_scrubber.dart`; `app/lib/features/reels/views/reel_form_sheet.dart` (`forClip`) and `reel_form_controller.dart` (`createWith`); `app/lib/features/reels/views/undo_snacks.dart` (`undo:`); `clip_player.dart` (`autoplay`); `app/lib/router/` (`Routes.tagPlayer`, `Routes.tagFrom`). Tests: `app/test/features/tagging/views/tag_player_screen_test.dart`, `tag_player_golden_test.dart`, and the "from the tag player" group of `app/test/features/reels/views/reel_forms_test.dart`. Flow: "The tag player screen and All done" in `docs/flow.md`.
 

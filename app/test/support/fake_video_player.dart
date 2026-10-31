@@ -63,6 +63,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   bool hold = false;
 
   final List<FakePlayer> players = [];
+
+  /// The most players alive at once, counted at the moment each was made
+  /// (a leak that a later disposal hides does not escape it).
+  int peakLive = 0;
   final List<String> calls = [];
 
   List<FakePlayer> get live => [
@@ -91,6 +95,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<int?> createWithOptions(VideoCreationOptions options) async {
     final player = FakePlayer(players.length + 1, options.dataSource.uri);
     players.add(player);
+    if (live.length > peakLive) peakLive = live.length;
     calls.add('create:${player.id}');
     if (failUris.contains(player.uri)) {
       player.events.addError(
