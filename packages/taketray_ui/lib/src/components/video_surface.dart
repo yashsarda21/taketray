@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:taketray_ui/src/components/internal/scrim.dart';
 import 'package:taketray_ui/src/components/internal/system_ui.dart';
 import 'package:taketray_ui/src/theme/take_tray_theme.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -43,15 +44,24 @@ class TtVideoSurface extends StatelessWidget {
                 children: [
                   child,
                   if (scrims) ...[
-                    _Scrim(
-                      top: true,
+                    // proto.css: .viewer .vtop / .vbot gradients
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      top: 0,
                       height: TtMetrics.videoScrimTopHeight,
-                      color: colors.videoScrimTop,
+                      child: Scrim(top: true, color: colors.videoScrimTop),
                     ),
-                    _Scrim(
-                      top: false,
+                    Positioned(
+                      left: 0,
+                      right: 0,
+                      bottom: 0,
                       height: TtMetrics.videoScrimBottomHeight,
-                      color: colors.videoScrimBottom,
+                      child: Scrim(
+                        top: false,
+                        color: colors.videoScrimBottom,
+                        solid: TtMetrics.videoScrimBottomSolid,
+                      ),
                     ),
                   ],
                 ],
@@ -59,42 +69,6 @@ class TtVideoSurface extends StatelessWidget {
             ),
           );
         },
-      ),
-    );
-  }
-}
-
-/// One gradient scrim along an edge, from [color] at the edge to clear.
-class _Scrim extends StatelessWidget {
-  const new({required this.top, required this.height, required this.color});
-
-  final bool top;
-  final double height;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    // proto.css: .viewer .vtop / .vbot gradients
-    final edge = top ? Alignment.topCenter : Alignment.bottomCenter;
-    final inner = top ? Alignment.bottomCenter : Alignment.topCenter;
-    return Positioned(
-      left: 0,
-      right: 0,
-      top: top ? 0 : null,
-      bottom: top ? null : 0,
-      height: height,
-      child: ExcludeSemantics(
-        child: IgnorePointer(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: edge,
-                end: inner,
-                colors: [color, color.withValues(alpha: 0)],
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }

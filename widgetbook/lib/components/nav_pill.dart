@@ -43,7 +43,7 @@ final WidgetbookComponent ttNavPillComponent = WidgetbookComponent(
                         icon: Symbols.sell_rounded,
                         label: 'To tag',
                         badgeCount: badge,
-                        badgeSemanticLabel: '$badge clips waiting',
+                        badgeSemanticLabel: 'To tag, $badge clips',
                       ),
                       TtNavItem(
                         icon: Symbols.settings_rounded,

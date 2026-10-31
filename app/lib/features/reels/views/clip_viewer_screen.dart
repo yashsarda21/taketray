@@ -631,12 +631,15 @@ class _Scrubber extends ConsumerWidget {
     final controller = address == null
         ? null
         : ref.watch(clipPlayerProvider(address)).value;
+    final l10n = AppLocalizations.of(context);
     final fallback = formatClipDuration(clip.fingerprint.durationMs);
     if (controller == null) {
       return TtScrubBar(
         progress: 0,
         positionText: formatClipDuration(0),
         durationText: fallback,
+        semanticLabel: l10n.viewerScrubLabel,
+        semanticValue: l10n.viewerScrubValue(formatClipDuration(0), fallback),
       );
     }
     return ValueListenableBuilder<VideoPlayerValue>(
@@ -644,10 +647,26 @@ class _Scrubber extends ConsumerWidget {
       builder: (context, value, _) {
         final length = value.duration.inMilliseconds;
         final ready = value.isInitialized && !value.hasError && length > 0;
+        final position = value.position.inMilliseconds;
+        final durationText = ready ? formatClipDuration(length) : fallback;
+        // What a screen reader hears after a 5 % step either way (the bar
+        // does the stepping, `TtMetrics.scrubSemanticStep`).
+        int stepped(double by) =>
+            ((position / length + by).clamp(0.0, 1.0) * length).round();
+        String valueAt(int ms) =>
+            l10n.viewerScrubValue(formatClipDuration(ms), durationText);
         return TtScrubBar(
-          progress: ready ? value.position.inMilliseconds / length : 0,
-          positionText: formatClipDuration(value.position.inMilliseconds),
-          durationText: ready ? formatClipDuration(length) : fallback,
+          progress: ready ? position / length : 0,
+          positionText: formatClipDuration(position),
+          durationText: durationText,
+          semanticLabel: l10n.viewerScrubLabel,
+          semanticValue: valueAt(position),
+          semanticIncreasedValue: ready
+              ? valueAt(stepped(TtMetrics.scrubSemanticStep))
+              : null,
+          semanticDecreasedValue: ready
+              ? valueAt(stepped(-TtMetrics.scrubSemanticStep))
+              : null,
           onSeek: ready
               ? (fraction) => unawaited(
                   controller.seekTo(

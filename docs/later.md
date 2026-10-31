@@ -18,21 +18,11 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
 - Phase 3 left these (D-76):
   - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
-- Scrub bar:
-  - it reads `position / duration` as "slash"
-  - its semantics lack `value` and `increasedValue`
-
-  Fix before the player ships.
-- Scrub row: it is 48 dp (the CSS says 22). Also: the quick-row padding, a redundant `SizedBox`, and the thumb sits half outside the gesture area.
-- Video scrim: the tokens (.7 / .55, linear) disagree with the CSS (.78 / .6, solid). **The owner picks one.**
 - `TtTagPanel`:
   - make it a semantics group
   - budget its height cap of up to 520 dp at large text
   - add the "Other reels" label, the empty state and the dashed "New reel" chip (R8)
-- Before the dashed "New reel" chip, deduplicate the dashed-outline painters and the scrim widgets into `internal/`.
-- The nav badge's spoken label drops the tab name ("7 clips to tag" instead of "To tag, 7 clips").
-- The snack has no drop shadow. Add one or record why in D-48.
-- Add `expectTtAccessible` to `video_surface_test`. Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
+- Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
 
 ## Phase 6 (background detection)
 

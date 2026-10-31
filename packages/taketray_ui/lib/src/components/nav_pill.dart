@@ -23,8 +23,10 @@ class TtNavItem {
   /// A count on the icon (clips waiting); hidden at 0, "99+" above 99.
   final int badgeCount;
 
-  /// What a screen reader says instead of [label] while [badgeCount] is
-  /// above 0, such as "To tag, 7 clips waiting"; null to say [label].
+  /// The whole label a screen reader says instead of [label] while
+  /// [badgeCount] is above 0, such as "To tag, 7 clips". The caller writes it
+  /// (the package composes no words, D-81) and it must begin with the tab's
+  /// name, because it replaces it; null to say [label].
   final String? badgeSemanticLabel;
 }
 

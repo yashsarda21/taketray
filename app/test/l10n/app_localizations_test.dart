@@ -27,9 +27,32 @@ void main() {
     expect(l10n.navReels, 'Reels');
     expect(l10n.navToTag, 'To tag');
     expect(l10n.navSettings, 'Settings');
-    expect(l10n.toTagBadgeSemantics(0), 'No clips to tag');
-    expect(l10n.toTagBadgeSemantics(1), '1 clip to tag');
-    expect(l10n.toTagBadgeSemantics(23), '23 clips to tag');
+    expect(l10n.toTagBadgeSemantics(0), 'To tag, no clips');
+    expect(l10n.toTagBadgeSemantics(1), 'To tag, 1 clip');
+    expect(l10n.toTagBadgeSemantics(23), 'To tag, 23 clips');
+  });
+
+  testWidgets('nav badge label keeps the tab name', (tester) async {
+    late AppLocalizations l10n;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            l10n = AppLocalizations.of(context);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    // The pill speaks this label instead of the tab name (the package adds
+    // nothing, D-81), so the label has to start with the name.
+    for (final count in [0, 1, 7, 120]) {
+      expect(l10n.toTagBadgeSemantics(count), startsWith(l10n.navToTag));
+    }
+    expect(l10n.toTagBadgeSemantics(7), 'To tag, 7 clips');
   });
 
   testWidgets('the Phase 3 screens have the approved English copy', (

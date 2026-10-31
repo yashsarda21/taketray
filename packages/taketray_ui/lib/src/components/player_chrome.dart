@@ -260,24 +260,38 @@ class TtStageArrow extends StatelessWidget {
 ///
 /// [progress] runs from 0.0 to 1.0 and is clamped (NaN counts as 0).
 /// [onSeek] gets the fraction from a tap or a drag anywhere on the track;
-/// without it the bar only shows. The whole bar is 48 dp high so it is easy
-/// to hit, though the track itself is 4 dp, or 6 dp with [large]. [large]
-/// also gives the thumb a halo: it is for long clips, where a drag skims.
-/// [hint] floats a small label above the track, such as "Drag to skim".
+/// without it the bar only shows. The bar is 48 dp high so it is easy to hit,
+/// while what is drawn is a 22 dp row (the prototype's `.scrub`): the track is
+/// 4 dp, or 6 dp with [large], in the middle of that row. The gesture area
+/// reaches 10 dp past each end of the track, so the thumb at 0 % or 100 % lies
+/// fully inside it. [large] also gives the thumb a halo: it is for long clips,
+/// where a drag skims. [hint] floats a small label above the track, such as
+/// "Drag to skim".
 ///
-/// A screen reader finds a slider named by the two times, which it can step
-/// forward and back.
+/// A screen reader finds a slider called [semanticLabel] whose value is
+/// [semanticValue] ("1:12 of 4:32"). With [onSeek] it can step forward and
+/// back by 5 % of the clip; [semanticIncreasedValue] and
+/// [semanticDecreasedValue] are what the value will read after a step. The
+/// caller writes all of them, because the package composes no words (D-81).
 class TtScrubBar extends StatelessWidget {
   /// A bar at [progress] showing [positionText] and [durationText].
   const new({
     required this.progress,
     required this.positionText,
     required this.durationText,
+    required this.semanticLabel,
+    required this.semanticValue,
+    this.semanticIncreasedValue,
+    this.semanticDecreasedValue,
     this.large = false,
     this.hint,
     this.onSeek,
     super.key,
-  });
+  }) : assert(
+         onSeek == null ||
+             (semanticIncreasedValue != null && semanticDecreasedValue != null),
+         'a seekable bar needs the values a step leads to',
+       );
 
   /// How far through the clip, from 0.0 to 1.0.
   final double progress;
@@ -287,6 +301,20 @@ class TtScrubBar extends StatelessWidget {
 
   /// The length of the clip, such as "4:32".
   final String durationText;
+
+  /// The name of the slider for a screen reader, such as "Playback position".
+  final String semanticLabel;
+
+  /// What the slider is at, for a screen reader: "1:12 of 4:32".
+  final String semanticValue;
+
+  /// What the value will read after one step forward (5 % of the clip); needed
+  /// with [onSeek].
+  final String? semanticIncreasedValue;
+
+  /// What the value will read after one step back (5 % of the clip); needed
+  /// with [onSeek].
+  final String? semanticDecreasedValue;
 
   /// Whether the track and thumb are larger, for long clips.
   final bool large;
@@ -323,7 +351,10 @@ class TtScrubBar extends StatelessWidget {
       container: true,
       excludeSemantics: true,
       slider: true,
-      label: '$positionText / $durationText',
+      label: semanticLabel,
+      value: semanticValue,
+      increasedValue: semanticIncreasedValue,
+      decreasedValue: semanticDecreasedValue,
       hint: label,
       onIncrease: seek == null ? null : () => step(TtMetrics.scrubSemanticStep),
       onDecrease: seek == null
@@ -339,7 +370,9 @@ class TtScrubBar extends StatelessWidget {
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
                   child: Row(
-                    spacing: TtMetrics.scrubGap,
+                    // No spacing: the track's gesture area reaches
+                    // scrubTrackOverhang (= the 10 dp scrubGap) towards each
+                    // time, so the drawn track keeps the CSS gap.
                     children: [
                       Text(positionText, maxLines: 1, style: textStyle),
                       Expanded(
@@ -400,6 +433,10 @@ class TtScrubBar extends StatelessWidget {
 }
 
 /// The track, fill and thumb of the scrub bar, and the gestures on them.
+///
+/// It fills the 48 dp height it is given, which is the gesture area, and the
+/// width of the track plus [TtMetrics.scrubTrackOverhang] on each side. The
+/// drawn row is [TtMetrics.scrubRowHeight] high in the middle of it.
 class _Track extends StatelessWidget {
   const new({
     required this.progress,
@@ -427,14 +464,17 @@ class _Track extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, box) {
-        final width = box.maxWidth;
+        // The track proper, without the reach at each end.
+        final width = box.maxWidth - 2 * TtMetrics.scrubTrackOverhang;
         void seekTo(Offset at) {
           if (seek == null || width <= 0) return;
-          final fraction = (at.dx / width).clamp(0.0, 1.0);
+          final fraction = ((at.dx - TtMetrics.scrubTrackOverhang) / width)
+              .clamp(0.0, 1.0);
           seek(rtl ? 1 - fraction : fraction);
         }
 
         return GestureDetector(
+          key: const ValueKey('tt-scrub-gesture'),
           behavior: HitTestBehavior.opaque,
           onTapDown: seek == null ? null : (d) => seekTo(d.localPosition),
           onHorizontalDragStart: seek == null
@@ -445,66 +485,75 @@ class _Track extends StatelessWidget {
               : (d) => seekTo(d.localPosition),
           child: SizedBox(
             height: box.maxHeight,
-            child: SizedBox(
-              height: box.maxHeight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.center,
-                children: [
-                  SizedBox(
-                    key: const ValueKey('tt-scrub-track'),
-                    width: double.infinity,
-                    height: trackHeight,
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: white.withValues(
-                          alpha: TtMetrics.scrubTrackOpacity,
-                        ),
-                        borderRadius: radius,
-                      ),
-                    ),
-                  ),
-                  Align(
-                    alignment: AlignmentDirectional.centerStart,
-                    child: FractionallySizedBox(
-                      key: const ValueKey('tt-scrub-fill'),
-                      widthFactor: progress,
-                      child: SizedBox(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: TtMetrics.scrubTrackOverhang,
+              ),
+              child: Center(
+                child: SizedBox(
+                  key: const ValueKey('tt-scrub-row'),
+                  height: TtMetrics.scrubRowHeight,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        key: const ValueKey('tt-scrub-track'),
+                        width: double.infinity,
                         height: trackHeight,
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: white,
+                            color: white.withValues(
+                              alpha: TtMetrics.scrubTrackOpacity,
+                            ),
                             borderRadius: radius,
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  PositionedDirectional(
-                    start: width * progress - thumbSize / 2,
-                    top: (box.maxHeight - thumbSize) / 2,
-                    child: SizedBox.square(
-                      key: const ValueKey('tt-scrub-thumb'),
-                      dimension: thumbSize,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: white,
-                          shape: BoxShape.circle,
-                          boxShadow: large
-                              ? [
-                                  BoxShadow(
-                                    color: white.withValues(
-                                      alpha: TtMetrics.scrubThumbHaloOpacity,
-                                    ),
-                                    spreadRadius: TtMetrics.scrubThumbHalo,
-                                  ),
-                                ]
-                              : null,
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: FractionallySizedBox(
+                          key: const ValueKey('tt-scrub-fill'),
+                          widthFactor: progress,
+                          child: SizedBox(
+                            height: trackHeight,
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: white,
+                                borderRadius: radius,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      PositionedDirectional(
+                        start: width * progress - thumbSize / 2,
+                        top: (TtMetrics.scrubRowHeight - thumbSize) / 2,
+                        child: SizedBox.square(
+                          key: const ValueKey('tt-scrub-thumb'),
+                          dimension: thumbSize,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: white,
+                              shape: BoxShape.circle,
+                              boxShadow: large
+                                  ? [
+                                      BoxShadow(
+                                        color: white.withValues(
+                                          alpha:
+                                              TtMetrics.scrubThumbHaloOpacity,
+                                        ),
+                                        spreadRadius: TtMetrics.scrubThumbHalo,
+                                      ),
+                                    ]
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           ),

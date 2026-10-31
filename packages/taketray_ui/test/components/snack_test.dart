@@ -82,6 +82,30 @@ void main() {
       expect(decoration.color, scheme.inverseSurface.withValues(alpha: 0.94));
     });
 
+    testWidgets('casts the elevation 3 shadow', (tester) async {
+      await tester.pumpWidget(ttTestApp(_snack()));
+      final box = tester.widget<DecoratedBox>(
+        find
+            .descendant(
+              of: find.byType(TtSnack),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      final shadows = (box.decoration as BoxDecoration).boxShadow;
+      // proto.css: .snack { box-shadow: var(--elev-3) } =
+      // 0 1px 3px rgba(0,0,0,.30), 0 4px 8px 3px rgba(0,0,0,.15)
+      expect(shadows, hasLength(2));
+      expect(shadows![0].offset, const Offset(0, 1));
+      expect(shadows[0].blurRadius, 3);
+      expect(shadows[0].spreadRadius, 0);
+      expect(shadows[0].color.a, closeTo(0.30, 1 / 255));
+      expect(shadows[1].offset, const Offset(0, 4));
+      expect(shadows[1].blurRadius, 8);
+      expect(shadows[1].spreadRadius, 3);
+      expect(shadows[1].color.a, closeTo(0.15, 1 / 255));
+    });
+
     testWidgets('the message is body-medium on inverse-on-surface', (
       tester,
     ) async {

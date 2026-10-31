@@ -1193,6 +1193,12 @@ abstract final class TtMetrics {
   // proto.css: .viewer .vbot { padding: 40px 0 28px } around its content
   static const double videoScrimBottomHeight = 168;
 
+  /// The share of the bottom scrim, counted from the bottom edge, that stays
+  /// at full strength before it fades out.
+  // proto.css: .viewer .vbot { background: linear-gradient(transparent,
+  // rgba(0,0,0,.78) 30%) }: clear at the inner end, full from 30 % on.
+  static const double videoScrimBottomSolid = 0.7;
+
   // ---- Segment progress bar ----
 
   /// Height of the segment progress bar.
@@ -1290,6 +1296,17 @@ abstract final class TtMetrics {
   /// Corner radius of the hint.
   // proto.css: .scrub .hint { border-radius: 6px }
   static const double scrubHintRadius = 6;
+
+  /// Height of the drawn scrub row: the track, fill and thumb.
+  // proto.css: .scrub { padding: 10px 16px 0 } around a 12 px line is 22 px
+  // tall. The gesture area is the 48 dp touch target around it (D-92).
+  static const double scrubRowHeight = 22;
+
+  /// How far the scrub bar's gesture area reaches past each end of the track,
+  /// so the thumb at 0 % or 100 % lies inside it. Half the large thumb.
+  // No CSS source: the CSS thumb overhangs the track by half its width and
+  // has no separate touch area (D-92).
+  static const double scrubTrackOverhang = 10;
 
   /// How far a screen reader's increase or decrease moves the scrub bar, as
   /// a fraction of the clip.

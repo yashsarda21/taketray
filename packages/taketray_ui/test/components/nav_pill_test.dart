@@ -14,7 +14,7 @@ List<TtNavItem> _items({int badge = 0, String third = 'Settings'}) => [
     icon: Symbols.sell_rounded,
     label: 'To tag',
     badgeCount: badge,
-    badgeSemanticLabel: '$badge clips waiting',
+    badgeSemanticLabel: 'To tag, $badge clips',
   ),
   TtNavItem(icon: Symbols.settings_rounded, label: third),
 ];
@@ -229,16 +229,28 @@ void main() {
         semantics.dispose();
       });
 
-      testWidgets('the badge label is used when the count is above 0', (
-        tester,
-      ) async {
+      testWidgets('nav badge label keeps the tab name', (tester) async {
         final semantics = tester.ensureSemantics();
         await _pump(tester, items: _items(badge: 7));
-        expect(find.bySemanticsLabel('7 clips waiting'), findsOneWidget);
+        // The caller passes the whole label; it replaces the tab name for a
+        // screen reader, so it must carry that name itself.
+        expect(find.bySemanticsLabel('To tag, 7 clips'), findsOneWidget);
         expect(find.bySemanticsLabel('To tag'), findsNothing);
+        final node = tester
+            .getSemantics(
+              find.ancestor(
+                of: find.text('To tag'),
+                matching: find.byType(InkWell),
+              ),
+            )
+            .getSemanticsData();
+        expect(node.label, startsWith('To tag'));
+        expect(node.flagsCollection.isButton, isTrue);
+        // The drawn name is still the plain tab name.
+        expect(find.text('To tag'), findsOneWidget);
         await _pump(tester, items: _items());
         expect(find.bySemanticsLabel('To tag'), findsOneWidget);
-        expect(find.bySemanticsLabel('0 clips waiting'), findsNothing);
+        expect(find.bySemanticsLabel('To tag, 0 clips'), findsNothing);
         semantics.dispose();
       });
     });
