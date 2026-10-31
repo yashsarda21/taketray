@@ -571,6 +571,40 @@ No baseline is read or written.
 
 **In tests:** `test/support/fake_video_player.dart › FakeVideoPlayerPlatform.install()` (no ExoPlayer; `uris`, `live`, `calls`, `failUris`, `failPlayer`, `hold`), `test/features/reels/views/clip_viewer_screen_test.dart`, `view_models/clip_viewer_controller_test.dart`, `view_models/clip_player_test.dart`, `test/platform/clip_video_uri_test.dart`, and the viewer routes in `test/router/app_router_test.dart`. A widget test that checks `platform.live` settles in real time after `pumpAndSettle` (`tester.runAsync(settle)`), because the disposal runs on the event loop.
 
+### The tag player's session (`lib/features/tagging/view_models/`, D-96)
+
+The view model behind the tag player (the screen is Phase 5 Task 7). All in `tag_session_controller.dart › TagSessionController` (family on `int? startClipId`, auto-disposed with the route) unless named.
+
+**Opening** (`build`):
+1. Holds `clipsRepositoryProvider`, `reelsRepositoryProvider` and the `lastTagsProvider` notifier for the session's life (so an Undo after the player closed still works).
+2. Listens to `ClipsRepository.watchInbox(pending)`. The first answer is the session: `inShootingOrder` (`domain/rules/shooting_order.dart`) of those clips, as ids, fixed; `TagQueue(session)` (`domain/rules/tag_queue.dart`, D-95). `index` is `startClipId`'s position, else 0; an empty session is `done`. `pending` is the session's ids, `clips` the rows by id, `scenes` = `groupIntoScenes(clips, {})` (phone time until the times come).
+3. Without waiting: `ClipTimeService.localTimes(clips)` (D-83); when it answers, `times` and `scenes` are set again with the real times. A failure is logged by type.
+4. Every later answer of the same stream goes to `_onPending`: `pending` = the session's ids still in it, the rows of those clips replaced (fresh identity, D-89), then `_followed`: if the clip at `index` is not pending and no write runs, `index` = `TagQueue.afterAction(index, pending)`, or `done` when null. Clips not in the session are ignored.
+
+**One action at a time** (`_idle`): an action starts only when the state is loaded, not done, no action runs (`_running`) and no chip is held (`confirmingReelId`); otherwise it returns null at once. It reads `session[index]` and `index` before awaiting anything.
+
+**Tap a chip** (`tapReel(reelId, {reducedMotion})`):
+1. `_idle` and not `multi`; the action begins; `confirmingReelId` = `reelId`.
+2. `holdTimerProvider` (`Timer.new`) starts the hold: `tagHold` (`TtMotion.standardSet.medium4`, 400 ms) or `tagHoldReduced` (120 ms).
+3. If the route closes in the hold, `ref.onDispose › _cancelHold` cancels the timer, completes the tap with null and ends the action: nothing is written.
+4. When the hold ends: `_tag(clipId, from, …)` → `_act`: `busy` on → `ReelsRepository.watchAll().first` (names; every chosen id must exist, else `StateError`) → `ClipsRepository.addClipsToReels({reelId}, [clipId])` (one transaction, D-84) → `LastTags.set` → `TagOutcome`.
+5. `_advance`: `taggedPerReel` += 1 per reel, `index` = `afterAction(from, pending − clipId)` or `done`, `picked = []`, `multi` kept, `lastActedClipId` = the clip. Then `busy` off, `confirmingReelId` null, `_followed` (a change seen during the write), and the action ends. The screen shows the snack from the `TagOutcome`.
+
+**Other actions** (each through `_idle`, then `_act`, so steps 4–5 apply):
+- `confirmPicks()`: `addClipsToReels(picked, [clipId])`, the reels in the order picked. `setMulti`, `togglePick`, `longPressReel` (`multi` on with that reel) only change the state.
+- `sameAsPrevious()`: the `LastTags` ids that are in `watchAll()`; none → nothing (null).
+- `skip()`: `ClipsRepository.skipClips([clipId])` (`InboxUndo`, D-94); `skipped` += 1; `LastTags` untouched.
+- `createReelAndTag(name)`: `ReelsRepository.create(name)` (a name problem is thrown to the form, D-85); in Pick several the new id is added to `picked`, else the clip is tagged into it.
+- `previous()` / `next()`: `TagQueue.previous/next(index, pending)`; `picked = []`, `multi` kept; at an end nothing moves.
+
+**A failure** in `_act`: logged by type (ids only, D-10), `busy` off, `confirmingReelId` null, nothing moves, rethrown to the screen ("Something went wrong. Try again.").
+
+**Undo** (`undo(records, clipId)`): waits for the state, then for any running action (`_running`); begins its own; `busy` on → `ClipsRepository.undoAll(records)` (last to first, one transaction, D-84) → `watchInbox(pending).first` → `_uncount` (what this session counted for those records, once, by identity; `LastTags.undo` puts the previous last tag back unless a later tag replaced it) → if `clipId` is pending and in the session, `index` = its position and `done = false`. Then `busy` off and `_followed`. A failure is rethrown and moves nothing.
+
+**The player** (`features/reels/view_models/clip_player.dart › clipPlayerProvider(uri, use: ClipPlayerUse.tagging)`): as "Watching a clip" above, but the volume follows `tag_player_muted.dart › TagPlayerMuted` (kept alive, starts `true`, `toggle()`) and `setLooping(true)` is called after opening. `ClipPlayerUse.viewer` (the default) is unchanged.
+
+**In tests:** `test/features/tagging/view_models/tag_session_controller_test.dart` (in-memory Drift through `VmHarness`, `FakeHolds` for the hold, `SpyClips` to gate or fail `addClipsToReels`), `test/features/reels/view_models/clip_player_test.dart` (the tagging group).
+
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 
 Nothing shows a tile yet (Task 10); `MediaLifecycle` calls `ThumbnailCache.prune()` once per app start ("App start and resume"). Paths are relative to `app/`.

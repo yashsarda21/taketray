@@ -19,6 +19,7 @@ class FakePlayer {
   bool disposed = false;
   bool playing = false;
   double volume = 1;
+  bool looping = false;
   Duration position = Duration.zero;
 
   /// The positions it was asked to seek to, in order.
@@ -32,8 +33,8 @@ class FakePlayer {
 ///   `initialized` with [duration] at once, unless the address is in
 ///   [failUris] (an error, as a video the phone cannot decode gives) or
 ///   [hold] is true (it never initializes).
-/// - [calls] logs `create`, `play`, `pause`, `seekTo`, `setVolume` and
-///   `dispose` as `name:playerId`, in order.
+/// - [calls] logs `create`, `play`, `pause`, `seekTo`, `setVolume`,
+///   `setLooping` and `dispose` as `name:playerId`, in order.
 /// - [live] is the players not disposed yet: a leak shows here.
 class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// Installs a fresh fake as the platform for the rest of the test, and
@@ -138,7 +139,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   Future<void> setPlaybackSpeed(int playerId, double speed) async {}
 
   @override
-  Future<void> setLooping(int playerId, bool looping) async {}
+  Future<void> setLooping(int playerId, bool looping) async {
+    player(playerId).looping = looping;
+    calls.add('setLooping:$playerId:$looping');
+  }
 
   @override
   Future<void> seekTo(int playerId, Duration position) async {

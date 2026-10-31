@@ -399,7 +399,79 @@ It ends with `All tests passed!`. Now open `app/lib/domain/rules/scenes.dart`, f
 
 ## 6. The tag session
 
-_Filled in by Task 6._
+**What we built:** the brain of the tag player, with no screen yet (that is Section 7). `TagSessionController` is a Riverpod view model that knows:
+
+- **which clips this session tags**, in which order, and which one is showing;
+- **what each button does:** tap a reel chip, press and hold one, Pick several, Same as previous, Skip, Previous, Next, + New reel, and Undo;
+- **when it is done**, and what the "All done!" screen counts.
+
+Two small providers come with it: **`LastTags`** (the reels of the last tag, for "Same as previous") and **`TagPlayerMuted`** (the player's sound, off at first). And `clipPlayer`, Phase 4's video provider, learned a second use: `ClipPlayerUse.tagging` loops the clip and follows the tag player's own mute switch.
+
+**Why TakeTray needs it:** tagging is the app's core loop. A creator taps through forty clips in two minutes, often with a thumb, often twice by accident. The spec's worst bugs are a lost tag and a tag on the wrong clip (spec §4). So the rules here are strict: one tag per tap, always onto the clip that was showing, nothing lost, and an Undo that takes you back to the clip you got wrong.
+
+**Key ideas:**
+
+- **The session is a fixed list.** When the player opens, the controller asks the database once for the clips in To tag, sorts them in shooting order, and keeps their ids as `session`. It never changes after that. What changes is `pending`, the ids still waiting, which the controller keeps up to date from the same database stream. Section 5's `TagQueue` walks `session` and skips anything not in `pending`, so a clip tagged from another screen is simply passed over, and a clip that a scan adds meanwhile never appears in the middle of a run.
+
+- **Read the clip first, then wait.** Every action starts by reading which clip is showing, *before* it awaits anything:
+
+  ```dart
+  final s = _idle();
+  if (s == null || s.multi) return Future.value();
+  final clipId = s.session[s.index];
+  final from = s.index;
+  ```
+
+  `await` lets other code run in the gap: a stream answer, a timer, a second tap. If the tag read `state.index` after the wait instead, and the player had moved on meanwhile, the tag would land on the *next* clip. That is exactly the "wrong clip" bug, and a test (`tag goes to the clip shown when tapped`) fails if anyone writes it that way.
+
+- **One action at a time.** `_idle()` returns the state only when nothing else is running and no chip is held; otherwise the action is ignored and returns `null` at once:
+
+  ```dart
+  if (_running != null || s.busy || s.confirmingReelId != null) return null;
+  ```
+
+  `_running` is set when an action begins and cleared when it ends, success or failure (a `finally`). So a double tap on a chip tags once, and Skip during a tag does nothing.
+
+- **The 400 ms hold.** Tapping a chip doesn't tag at once. The chip shows a check (`confirmingReelId`) for 400 ms, the `medium4` motion token (120 ms when the phone asks for less motion), so the user sees what they tapped before the clip changes. The hold is a `Timer`, and the controller cancels it when it is disposed:
+
+  ```dart
+  ref.onDispose(() {
+    unawaited(watch.cancel());
+    _cancelHold();
+  });
+  ```
+
+  Closing the player during the hold therefore tags nothing. The timer comes from a provider (`holdTimerProvider`, normally `Timer.new`), so a test can hold the time still and end the hold when it chooses, while the real in-memory database keeps running.
+
+- **After a tag: next clip, picks cleared, Pick several kept.** `TagQueue.afterAction(from, pending)` gives the next waiting clip, or the first one from the start, or `null` (done). The owner ruled that Pick several is *sticky*: it stays on until Cancel, which helps a run of clips that all go into the same two reels. The picks themselves are cleared at each new clip.
+
+- **Undo waits its turn, then goes back.** Undo is the one action that is never ignored: if the next tag is still writing, Undo waits for it, then puts its own records back in one transaction and moves the player back to that clip:
+
+  ```dart
+  while (_running != null) {
+    await _running!.future;
+  }
+  ```
+
+  Ignoring it would be worse: the snack disappears when tapped, so the user would believe the wrong tag was gone. Undo after "All done!" reopens the session on that clip.
+
+- **A clip can leave under you.** If the clip showing leaves To tag without the player doing it (the verifier found its video gone, or it was tagged from the reel picker), the stream tells the controller and it moves on, as after a tag. That happens even during a hold, and the held tap still tags the clip it was tapped on, because its id was read first.
+
+- **Muted by default, looping.** The design prompt asks for muted autoplay. `TagPlayerMuted` starts `true` and keeps the choice until the app restarts. The tag player's `clipPlayer` also loops the clip, so a 3-second clip keeps playing while you decide.
+
+- **Tests that can fail.** Each of the brief's 25 tests was run against stubs first and failed on its own assertion (the stub for "same as previous does nothing with none" did nothing, so its red run used a naive version that tags with whatever `LastTags` holds). Then four mistakes were made one at a time, and each was caught: the hold not blocking a second tap (three holds instead of one), the tag reading `index` after the wait (the tag went to clip 2), Pick several turned off after a tag, and an Undo that does not move back.
+
+**Where it lives:** `app/lib/features/tagging/view_models/tag_session_controller.dart` (`TagSessionController`, `TagSessionState`, `TagOutcome`, `tagHold`, `holdTimerProvider`), `last_tags.dart`, `tag_player_muted.dart`; `app/lib/features/reels/view_models/clip_player.dart` (`ClipPlayerUse`). Tests: `app/test/features/tagging/view_models/tag_session_controller_test.dart` and the "tagging" group of `app/test/features/reels/view_models/clip_player_test.dart`. Flow: "The tag player's session" in `docs/flow.md`.
+
+**Try it yourself:** make the tag read the clip after the hold, and watch the test catch it. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/features/tagging/view_models/tag_session_controller_test.dart --plain-name "tag goes to the clip shown when tapped")
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/tagging/view_models/tag_session_controller.dart`, find `tapReel`, and inside the timer's callback replace `_tag(clipId, from, (_) => [reelId])` with `_tag(state.value!.session[state.value!.index], state.value!.index, (_) => [reelId])`. Run the command again. It fails with `Expected: <1>  Actual: <2>`: during the hold the clip was tagged elsewhere, the player moved on to clip 2, and the tap that was meant for clip 1 went to clip 2. Put the file back with `git checkout -- app/lib/features/tagging/view_models/tag_session_controller.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-96 (all of this section), with D-91 (sticky Pick several, Undo goes back, a clip leaving moves on), D-94 (`InboxUndo`, tagging through `addClipsToReels`), D-95 (`TagQueue`, scenes), D-89 (`clipPlayer`) and D-85 (a failure is "Something went wrong. Try again.") as background.
 
 ## 7. The tag player screen and All done
 

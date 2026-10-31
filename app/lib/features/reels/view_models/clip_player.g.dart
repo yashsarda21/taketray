@@ -91,6 +91,12 @@ abstract class _$ViewerMuted extends $Notifier<bool> {
 ///   video the user left.
 /// - **The mute switch** is followed while the player lives.
 ///
+/// - **[use]** says whose player it is: the clip viewer's
+///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+///   clip keeps playing while the user decides.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
 
@@ -114,6 +120,12 @@ final clipPlayerProvider = ClipPlayerFamily._();
 ///   is switched off (`allowBackgroundPlayback`), because it would resume a
 ///   video the user left.
 /// - **The mute switch** is followed while the player lives.
+///
+/// - **[use]** says whose player it is: the clip viewer's
+///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+///   clip keeps playing while the user decides.
 ///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
@@ -146,11 +158,17 @@ final class ClipPlayerProvider
   ///   video the user left.
   /// - **The mute switch** is followed while the player lives.
   ///
+  /// - **[use]** says whose player it is: the clip viewer's
+  ///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+  ///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+  ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+  ///   clip keeps playing while the user decides.
+  ///
   /// Auto-disposes, and never retries: a video that failed once would open
   /// again and again. The address is not logged.
   ClipPlayerProvider._({
     required ClipPlayerFamily super.from,
-    required Uri super.argument,
+    required (Uri, {ClipPlayerUse use}) super.argument,
   }) : super(
          retry: noRetry,
          name: r'clipPlayerProvider',
@@ -166,7 +184,7 @@ final class ClipPlayerProvider
   String toString() {
     return r'clipPlayerProvider'
         ''
-        '($argument)';
+        '$argument';
   }
 
   @$internal
@@ -177,8 +195,8 @@ final class ClipPlayerProvider
 
   @override
   FutureOr<VideoPlayerController> create(Ref ref) {
-    final argument = this.argument as Uri;
-    return clipPlayer(ref, argument);
+    final argument = this.argument as (Uri, {ClipPlayerUse use});
+    return clipPlayer(ref, argument.$1, use: argument.use);
   }
 
   @override
@@ -192,7 +210,7 @@ final class ClipPlayerProvider
   }
 }
 
-String _$clipPlayerHash() => r'8f993f426243d37c24a9c02a7b9d869312439447';
+String _$clipPlayerHash() => r'45bf45da39a0ba217a98141b1e73b6c84a0361f4';
 
 /// The player of the clip at [uri] (D-89): one `VideoPlayerController`
 /// (ExoPlayer, from the gallery by its `content://` address, never copied),
@@ -212,11 +230,21 @@ String _$clipPlayerHash() => r'8f993f426243d37c24a9c02a7b9d869312439447';
 ///   video the user left.
 /// - **The mute switch** is followed while the player lives.
 ///
+/// - **[use]** says whose player it is: the clip viewer's
+///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+///   clip keeps playing while the user decides.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
 
 final class ClipPlayerFamily extends $Family
-    with $FunctionalFamilyOverride<FutureOr<VideoPlayerController>, Uri> {
+    with
+        $FunctionalFamilyOverride<
+          FutureOr<VideoPlayerController>,
+          (Uri, {ClipPlayerUse use})
+        > {
   ClipPlayerFamily._()
     : super(
         retry: noRetry,
@@ -244,11 +272,19 @@ final class ClipPlayerFamily extends $Family
   ///   video the user left.
   /// - **The mute switch** is followed while the player lives.
   ///
+  /// - **[use]** says whose player it is: the clip viewer's
+  ///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+  ///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+  ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+  ///   clip keeps playing while the user decides.
+  ///
   /// Auto-disposes, and never retries: a video that failed once would open
   /// again and again. The address is not logged.
 
-  ClipPlayerProvider call(Uri uri) =>
-      ClipPlayerProvider._(argument: uri, from: this);
+  ClipPlayerProvider call(
+    Uri uri, {
+    ClipPlayerUse use = ClipPlayerUse.viewer,
+  }) => ClipPlayerProvider._(argument: (uri, use: use), from: this);
 
   @override
   String toString() => r'clipPlayerProvider';
