@@ -241,7 +241,104 @@ It ends with `All tests passed!`. Now open `packages/taketray_ui/lib/src/compone
 
 ## 4. Skip, skip all and restore with undo
 
-_Filled in by Task 4._
+**What we built:** the data side of three actions, in `ClipsRepository`, each giving back what Undo needs:
+
+- **`skipClips(ids)`** moves clips from To tag to Skipped (the player's **Skip**, and **Skip** on a selection in To tag);
+- **`skipAllPending()`** moves *every* clip in To tag to Skipped (the menu's **Skip all**);
+- **`restoreClips(ids)`** moves clips from Skipped back to To tag (a tap on a tile in Skipped, or **Restore** on a selection);
+- each returns an **`InboxUndo`**: the rows it moved, as they were, and the state it gave them;
+- **Undo** (`ClipsRepository.undo` / `undoAll`, written in `UndoWriter`) puts those rows back, but only the ones nothing else has touched since.
+
+Tagging needed no new data code: the player tags with `addClipsToReels`, built in Phase 4, whose `AddUndo` already puts a clip back in To tag.
+
+**Why TakeTray needs it:** a creator sorts dozens of clips in a few minutes, and a wrong tap must cost nothing. The spec's two worst bugs are a lost tag and the wrong clip (spec §4). Undo makes both harder: by the time someone taps it, a scan may have added new clips, or the same clip may have been tagged from another screen. Undo must put back exactly what the action did and nothing else.
+
+**Key ideas:**
+
+- **Where a clip lives.** Every clip is in exactly one place: To tag (an `inbox` row with state `pending`), Skipped (an `inbox` row with state `skipped`) or one or more reels (`clip_reels` rows, and no `inbox` row). So skip and restore change one column, `state`, and nothing else. In particular they keep `addedAt`, the time the clip arrived, so a restored clip goes back to its old place in the list:
+
+  ```dart
+  .write(InboxCompanion(state: Value(to)));
+  ```
+
+  `InboxCompanion` is Drift's "these columns only" object: a column you don't name is not written.
+
+- **An undo record is a snapshot.** The action reads the rows it is about to change, *in the same transaction*, and returns them as plain values (D-84):
+
+  ```dart
+  final class InboxUndo extends UndoRecord {
+    InboxUndo({required List<InboxEntry> before, required this.after})
+      : before = List.unmodifiable(before);
+    final List<InboxEntry> before;
+    final InboxState after;
+    @override
+    bool get isEmpty => before.isEmpty;
+  }
+  ```
+
+  `UndoRecord` is `sealed`: Dart knows every subclass, so the `switch` in `UndoWriter.undoAll` would not compile until it handled the new one. The snack keeps the record until it closes; nothing stores it.
+
+- **Read and write in one transaction.** A *transaction* is a group of statements the database runs as one: other callers see all of it or none of it, and they wait while it runs. Skip all reads every pending row, then skips them, inside one:
+
+  ```dart
+  final record = await _db.transaction(() async {
+    final rows = await (_db.select(_db.inbox)
+          ..where((i) => i.state.equalsValue(InboxState.pending)) ...).get();
+    if (rows.isNotEmpty) {
+      final moved = await (_db.update(_db.inbox)
+            ..where((i) => i.state.equalsValue(InboxState.pending)))
+          .write(const InboxCompanion(state: Value(InboxState.skipped)));
+      if (moved != rows.length) {
+        throw StateError('Skipped $moved clips but read ${rows.length}');
+      }
+    }
+  ```
+
+  Why it matters: the scanner can save a new clip at any moment. If the read ran *before* the transaction, a clip saved between the read and the write would be skipped but missing from the record, and Undo could never bring it back. Inside the transaction, the scan waits until skip all is finished, so its clip stays in To tag. The count check says the same thing in code: the write must move exactly the rows the read saw.
+
+- **Undo only what is still yours.** Between the skip and the Undo, the user may have tagged the clip, restored it, or skipped it again. Undo updates a row only while it is still exactly as the action left it: in the state the action set (`after`) and with the same `addedAt`:
+
+  ```dart
+  await (_db.update(_db.inbox)..where(
+        (i) =>
+            i.clipId.equals(entry.clipId) &
+            i.state.equalsValue(record.after) &
+            i.addedAt.equalsValue(entry.addedAt),
+      ))
+      .write(InboxCompanion(state: Value(entry.state), addedAt: Value(entry.addedAt)));
+  ```
+
+  A clip tagged since has no `inbox` row, so the update finds nothing. That is why it is an `UPDATE` and never an insert: an insert would give a clip in a reel a second place. A clip a scan added after skip all is not in the record at all. The task's brief asked only for the state check; the `addedAt` check was added because `untagToInbox` can put a clip back in To tag as `pending` with a new `addedAt`, and undoing an older restore must not pull that clip into Skipped (D-94).
+
+- **A second Undo does nothing.** `undoAll` marks each record it has undone in an `Expando` (a side table keyed by the object, which does not keep it alive; D-84). A double tap, or the same snack's Undo after the clip was skipped again by a new action, finds the mark and skips the record. The test `undo is idempotent` covers both.
+
+- **How to test a race.** The test `skip all takes every pending in one transaction` has to make a scan happen *between* skip all's read and its write. A small Drift interceptor runs a hook right after the next `SELECT` from `inbox`. The hook starts a real scan as another caller and waits up to 200 ms for it:
+
+  ```dart
+  _hook.armed = () async {
+    scan = outside.run(() => clips.saveDetected([shot(5)]));
+    await Future.any<Object?>([
+      scan!,
+      Future<void>.delayed(const Duration(milliseconds: 200)),
+    ]);
+  };
+  ```
+
+  `outside` is the test's own zone. Drift finds the current transaction through the *zone* (Dart's per-call context), so a call made from inside the hook would join skip all's transaction. Run from `outside`, it is a separate caller that has to wait. With the read inside the transaction, the scan can't run until skip all is finished, and its clip stays pending. With the read moved outside (a mutation check), the scan runs at once and is skipped behind the record's back, and the test fails.
+
+- **Tests that can fail.** Each new test was run against stubs first (the old state change, an empty record, an Undo that did nothing) and failed on its own assertion. Four kinds of change were then made one at a time, and each was caught: an Undo with no "still as left" check, an Undo that upserts, skip all reading outside its transaction (caught by the count check, and with that check removed too, by the test's own assertion), and a skip that overwrites `addedAt`. The test that pins Phase 4's add Undo passed from the start, so it was proved by breaking that code's `addedAt`.
+
+**Where it lives:** `app/lib/domain/models/undo_record.dart` (`InboxUndo`, `InboxEntry`), `app/lib/data/repositories/clips_repository.dart` (`skipClips`, `skipAllPending`, `restoreClips`, `_moveInbox`), `app/lib/data/repositories/undo_writer.dart` (`_undoInbox`). Tests: `app/test/data/repositories/clips_repository_inbox_test.dart` and `undo_writer_inbox_test.dart`. Flow: "Tagging data changes" and "Undo" in `docs/flow.md`.
+
+**Try it yourself:** watch the race test catch a read outside the transaction. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/data/repositories/clips_repository_inbox_test.dart --plain-name "skip all takes every pending in one transaction")
+```
+
+It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repository.dart`, find `skipAllPending`, and move the `final rows = await (_db.select(_db.inbox) ... .get();` statement up, above `final record = await _db.transaction(() async {`. Run the same command again. It fails with `Bad state: Skipped 3 clips but read 2`: the scan's clip was skipped, but the record held only two. Put the file back with `git checkout -- app/lib/data/repositories/clips_repository.dart`, and check with `git status` that nothing is left over.
+
+**Decisions:** D-94 (all of this section), extending D-84 (undo records, the `Expando`, `undoAll`, `Clock.storedNow()`), with D-57 (one place per clip) and D-10 (logs hold ids and counts only) as background.
 
 ## 5. Scenes, the tag queue and time ranges
 

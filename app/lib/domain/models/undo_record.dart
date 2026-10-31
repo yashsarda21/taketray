@@ -6,8 +6,8 @@ import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/domain/models/vn_copy.dart';
 import 'package:taketray/domain/models/vn_session.dart';
 
-/// What one remove, move, add-to-reel or reel delete changed, so that Undo
-/// can put it back (D-84).
+/// What one remove, move, add-to-reel, reel delete, skip or restore changed,
+/// so that Undo can put it back (D-84, D-94).
 ///
 /// Each record is a snapshot taken inside the same transaction as the change,
 /// and holds only plain values and domain models (never database rows), so
@@ -187,6 +187,30 @@ final class AddUndo extends UndoRecord {
 
   @override
   bool get isEmpty => createdLinks.isEmpty && removedInbox.isEmpty;
+}
+
+/// What `ClipsRepository.skipClips`, `skipAllPending` or `restoreClips`
+/// changed (D-94).
+///
+/// [before] holds each `inbox` row the action moved, as it was (its state and
+/// `addedAt`), and [after] the state the action gave them all. The action
+/// moves only the state, so a row it left is in [after] with the same
+/// `addedAt`. Undo puts back only the rows that are still exactly that: a
+/// clip tagged, restored, skipped or put back in To tag since keeps what
+/// happened to it, and a clip that arrived later is not in the record.
+final class InboxUndo extends UndoRecord {
+  InboxUndo({required List<InboxEntry> before, required this.after})
+    : before = List.unmodifiable(before);
+
+  /// The rows the action changed, as they were, by clip id.
+  final List<InboxEntry> before;
+
+  /// The state the action set: `skipped` for a skip, `pending` for a
+  /// restore.
+  final InboxState after;
+
+  @override
+  bool get isEmpty => before.isEmpty;
 }
 
 /// What `ReelsRepository.delete` changed.

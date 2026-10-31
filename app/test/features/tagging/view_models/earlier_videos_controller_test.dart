@@ -326,7 +326,7 @@ void main() {
       open();
       await h.container.read(earlierVideosControllerProvider.future);
       final ids = await notifier().add(today);
-      await h.media.clips.skip(ids);
+      await h.media.clips.skipClips(ids);
 
       await notifier().undo(ids);
 

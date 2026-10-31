@@ -579,7 +579,7 @@ void main() {
       final [pending, skipped] = await clips.saveDetected([shot(10), shot(11)]);
       clock.advance(_minute);
       final inReel = (await clips.addNewClipsToReel(goa.id, [shot(12)])).single;
-      await clips.skip([skipped]);
+      await clips.skipClips([skipped]);
       final inboxBefore = await inbox();
       final linksBefore = await linksOf(goa.id);
       final updatedBefore = await updatedAt(goa.id);
@@ -902,7 +902,7 @@ void main() {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
       final ids = await clips.saveDetected([shot(10), shot(11)]);
-      await clips.skip([ids.last]);
+      await clips.skipClips([ids.last]);
       clock.advance(_minute);
       final start = await dump();
       final records = await clips.addClipsToReels({goa.id, paris.id}, ids);

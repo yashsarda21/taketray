@@ -129,7 +129,7 @@ void main() {
     'missing inbox clip leaves To tag, missing reel clip is flagged',
     () async {
       final clips = await stored([video(1), video(2), video(3)]);
-      await h.clips.skip([clips[2]!.id]);
+      await h.clips.skipClips([clips[2]!.id]);
       final reel = await reels.create('Goa');
       await h.clips.tagClip(clips[3]!.id, {reel.id});
       bridge.put([]);

@@ -110,7 +110,7 @@ class _Seeded {
     final [shared, pending, skipped] = ids;
     clock.advance(_minute);
     await clips.tagClip(shared, {goa, london});
-    await clips.skip([skipped]);
+    await clips.skipClips([skipped]);
     clock.advance(_minute);
     final [picked] = await clips.addNewClipsToReel(london, [
       _picked('content://media/picker/0/x/media/42'),

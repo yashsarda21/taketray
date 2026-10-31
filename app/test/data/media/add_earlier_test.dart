@@ -100,7 +100,7 @@ void main() {
     test('the count excludes known clips', () async {
       await h.store([today1, yesterday, fiveDaysAgo]);
       // today1 waits in To tag, yesterday is skipped, fiveDaysAgo is tagged.
-      await h.clips.skip([await clipIdOf(yesterday)]);
+      await h.clips.skipClips([await clipIdOf(yesterday)]);
       final reel = await reels.create('Goa');
       await h.clips.tagClip(await clipIdOf(fiveDaysAgo), {reel.id});
 
@@ -206,7 +206,7 @@ void main() {
       await h.store([yesterday, fiveDaysAgo, eightDaysAgo]);
       // yesterday waits in To tag, fiveDaysAgo is skipped, eightDaysAgo is
       // tagged.
-      await h.clips.skip([await clipIdOf(fiveDaysAgo)]);
+      await h.clips.skipClips([await clipIdOf(fiveDaysAgo)]);
       final reel = await reels.create('Goa');
       await h.clips.tagClip(await clipIdOf(eightDaysAgo), {reel.id});
 
@@ -306,7 +306,7 @@ void main() {
     test('a skipped clip stays skipped', () async {
       await h.store([today1]);
       final clipId = await clipIdOf(today1);
-      await h.clips.skip([clipId]);
+      await h.clips.skipClips([clipId]);
 
       await h.scanner.addEarlier(june(9, 10));
 
