@@ -962,5 +962,179 @@
   "loading": "Loading",
   "@loading": {
     "description": "Screen-reader word for something that is still loading, after its name."
+  },
+  "selectionCount": "{count} selected",
+  "@selectionCount": {
+    "description": "Title of the selection bar on a reel's page: how many clips are chosen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectionClose": "Close",
+  "@selectionClose": {
+    "description": "What a screen reader says for the button that ends choosing clips."
+  },
+  "selectionAddTo": "Add to another reel",
+  "@selectionAddTo": {
+    "description": "Button of the selection bar on a reel's page that opens the sheet to also put the chosen clips in other reels."
+  },
+  "selectionMoveTo": "Move to another reel",
+  "@selectionMoveTo": {
+    "description": "Button of the selection bar on a reel's page that opens the sheet to move the chosen clips to another reel."
+  },
+  "selectionRemove": "Remove from this reel",
+  "@selectionRemove": {
+    "description": "Button of the selection bar on a reel's page that takes the chosen clips out of the reel."
+  },
+  "selectionSelectAll": "Select all",
+  "@selectionSelectAll": {
+    "description": "Item of the menu of the selection bar that chooses every clip that is on the phone."
+  },
+  "pickerTitleAdd": "{count, plural, one{Add clip to reels} other{Add {count} clips to reels}}",
+  "@pickerTitleAdd": {
+    "description": "Title of the reel picker when clips are added to more reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerTitleMove": "{count, plural, one{Move clip to} other{Move {count} clips to}}",
+  "@pickerTitleMove": {
+    "description": "Title of the reel picker when clips are moved to another reel.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleAdd": "{count, plural, one{It stays in this reel too.} other{They stay in this reel too.}}",
+  "@pickerSubtitleAdd": {
+    "description": "Line under the title of the reel picker when adding: the clips are not taken out of the reel.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleMove": "{count, plural, one{It leaves {reel}.} other{They leave {reel}.}}",
+  "@pickerSubtitleMove": {
+    "description": "Line under the title of the reel picker when moving: the clips leave this reel. The reel is its name.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "pickerThisReel": "this reel",
+  "@pickerThisReel": {
+    "description": "The reel's name in the reel picker's subtitle when the reel cannot be read."
+  },
+  "pickerNewReel": "New reel",
+  "@pickerNewReel": {
+    "description": "Row at the top of the reel picker that opens the field for a new reel's name."
+  },
+  "pickerNewReelName": "New reel name",
+  "@pickerNewReelName": {
+    "description": "Label of the field for a new reel's name inside the reel picker."
+  },
+  "pickerCreate": "Create",
+  "@pickerCreate": {
+    "description": "Button next to the new reel's name in the reel picker; it creates the reel and picks it."
+  },
+  "pickerOtherReels": "Other reels",
+  "@pickerOtherReels": {
+    "description": "Heading in the reel picker over the reels that are not Collecting."
+  },
+  "pickerAdd": "Add",
+  "@pickerAdd": {
+    "description": "Button of the reel picker that adds the clips, while no reel is picked."
+  },
+  "pickerAddToReels": "{count, plural, one{Add to 1 reel} other{Add to {count} reels}}",
+  "@pickerAddToReels": {
+    "description": "Button of the reel picker that adds the clips to the picked reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerMove": "Move",
+  "@pickerMove": {
+    "description": "Button of the reel picker that moves the clips."
+  },
+  "pickerRowSemantics": "{name}, {clips}",
+  "@pickerRowSemantics": {
+    "description": "What a screen reader says for a reel in the reel picker: its name and clip count, such as \"Lisbon trip, 12 clips\".",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "clips": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToOneSnack": "Added to {first}",
+  "@addedToOneSnack": {
+    "description": "Snack after clips are added to one reel, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToTwoSnack": "Added to {first} and {second}",
+  "@addedToTwoSnack": {
+    "description": "Snack after clips are added to two reels, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "addedToMoreSnack": "Added to {first}, {second} and {more} more",
+  "@addedToMoreSnack": {
+    "description": "Snack after clips are added to three reels or more: the first two names and how many more there are, with an Undo button.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
+  },
+  "movedToSnack": "Moved to {reel}",
+  "@movedToSnack": {
+    "description": "Snack after clips are moved to another reel, with an Undo button.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "clipsRemovedSnack": "{count, plural, one{1 clip removed from {reel}. The video is still in your gallery.} other{{count} clips removed from {reel}. The videos are still in your gallery.}}",
+  "@clipsRemovedSnack": {
+    "description": "Snack after clips are taken out of a reel, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
   }
 }

@@ -49,3 +49,11 @@ Future<List<int>> putInReel(
     for (final v in videos) newClipFrom(v, now: reelTestNow, zoneId: zoneId),
   ]);
 }
+
+/// Flags clips [ids] as `missing` or not, straight in the database.
+Future<void> flagForTest(VmHarness h, Set<int> ids, {required bool missing}) =>
+    h.media.clips.applyVerification(
+      found: missing ? {} : ids,
+      gone: missing ? ids : {},
+      otherVideo: {},
+    );

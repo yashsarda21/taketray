@@ -72,16 +72,10 @@ void main() {
     bool use24Hour = false,
     Locale? locale,
     List<Override> overrides = const [],
-    VoidCallback? onSelectClips,
-    ValueChanged<int>? onClipLongPress,
   }) async {
     await pumpScreen(
       tester,
-      ReelDetailScreen(
-        reelId: id,
-        onSelectClips: onSelectClips,
-        onClipLongPress: onClipLongPress,
-      ),
+      ReelDetailScreen(reelId: id),
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
@@ -824,16 +818,16 @@ void main() {
       expect(find.text('Saved'), findsOneWidget);
     });
 
-    testApp('Select clips calls the hook', (tester) async {
+    testApp('Select clips starts choosing with nothing chosen', (tester) async {
       final goa = await newReel(tester, 'Goa');
-      var called = 0;
-      await open(tester, goa.id, onSelectClips: () => called++);
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id);
       await openMenu(tester);
 
       await tester.tap(find.text('Select clips'));
       await tester.pumpAndSettle();
 
-      expect(called, 1);
+      expect(find.text('0 selected'), findsOneWidget);
     });
 
     testApp('Delete reel asks, deletes, shows Undo and goes to Reels', (
@@ -895,20 +889,18 @@ void main() {
       expect(find.text(clipRouteMarker(goa.id, ids.last)), findsOneWidget);
     });
 
-    testApp('a long press calls the hook with the clip', (tester) async {
+    testApp('a long press starts choosing and opens nothing', (tester) async {
       final goa = await newReel(tester, 'Goa');
-      final ids = await real(
+      await real(
         tester,
         () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
       );
-      final pressed = <int>[];
-      await open(tester, goa.id, onClipLongPress: pressed.add);
+      await open(tester, goa.id);
 
       await tester.longPress(find.byType(TtClipTile).first);
       await tester.pumpAndSettle();
 
-      expect(pressed, [ids.first]);
-      // Nothing opened.
+      expect(find.text('1 selected'), findsOneWidget);
       expect(find.textContaining('the viewer of clip'), findsNothing);
     });
 
@@ -1003,14 +995,6 @@ void main() {
     });
   });
 }
-
-/// Flags clips [ids] as `missing` or not, straight in the database.
-Future<void> flagForTest(VmHarness h, Set<int> ids, {required bool missing}) =>
-    h.media.clips.applyVerification(
-      found: missing ? {} : ids,
-      gone: missing ? ids : {},
-      otherVideo: {},
-    );
 
 /// A clips repository whose `removeClipsFromReel` fails.
 class _FailingRemove extends ClipsRepository {

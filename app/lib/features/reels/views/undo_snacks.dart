@@ -56,6 +56,15 @@ class ReelSnacks {
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showUndo(
     String message,
     UndoRecord record,
+  ) => showUndoAll(message, [record]);
+
+  /// A snack saying [message] with **Undo**, which puts back what every one
+  /// of [records] changed, last to first (an add to three reels is three
+  /// records). Every record is tried even if one fails, and "Couldn't undo.
+  /// Try again." is shown if any did. Null when the app is gone.
+  ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showUndoAll(
+    String message,
+    List<UndoRecord> records,
   ) {
     if (!_messenger.mounted) return null;
     return showTtSnackOn(
@@ -63,18 +72,22 @@ class ReelSnacks {
       message: message,
       icon: Symbols.check_circle_rounded,
       actionLabel: _l10n.undo,
-      onAction: () => unawaited(_undo(record)),
+      onAction: () => unawaited(_undo(records)),
       persist: _persistActions,
     );
   }
 
-  Future<void> _undo(UndoRecord record) async {
-    try {
-      await _container.read(reelsRepositoryProvider).undo(record);
-    } on Object catch (error) {
-      _log.warning('Undo failed: ${error.runtimeType}');
-      show(_l10n.undoFailed, done: false);
+  Future<void> _undo(List<UndoRecord> records) async {
+    var failed = false;
+    for (final record in records.reversed) {
+      try {
+        await _container.read(reelsRepositoryProvider).undo(record);
+      } on Object catch (error) {
+        failed = true;
+        _log.warning('Undo failed: ${error.runtimeType}');
+      }
     }
+    if (failed) show(_l10n.undoFailed, done: false);
   }
 }
 

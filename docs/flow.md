@@ -504,11 +504,11 @@ No baseline is read or written.
 2. While there is no state: a skeleton day header (read as "Loading") and 9 skeleton tiles. A first read that fails stays here (no error state is designed).
 3. `TtReelHeader<ReelStatus>` (name wrapped fully; the status pill opens the status menu, `reelStatusItems` and `changeReelStatus`; "{n} clips · {m:ss}" or "No clips yet"; "{m} missing"; Shot ideas with Show more / Show less).
 4. No clips: `TtEmptyState(emptyReel)` "No clips yet", "Tag clips from To tag, or add videos from your phone." and **Go to To tag** (`context.go(Routes.toTag)`).
-5. Else for each `ShootingDay`: `TtDayHeader("Day {n} · {ttDayWeekdayText(date)}", "{k} clips")`, then a lazy three-column `SliverGrid` inside a `SliverLayoutBuilder` (the real width). The date is `MMMEd` in the phone's locale with the weekday ("Wed, Oct 28"), and `yMMMEd` with the year when it is not this year ("Tue, Dec 30, 2025"), no-break spaces. A clip → `TtClipTile` (time, length, reel count, horizontal, label "Clip, {time}, {duration}[, in {k} reels]"; tap → viewer; long press → `onClipLongPress`). A clip flagged missing → `TtMissingClipTile` with **Remove**.
+5. Else for each `ShootingDay`: `TtDayHeader("Day {n} · {ttDayWeekdayText(date)}", "{k} clips")`, then a lazy three-column `SliverGrid` inside a `SliverLayoutBuilder` (the real width). The date is `MMMEd` in the phone's locale with the weekday ("Wed, Oct 28"), and `yMMMEd` with the year when it is not this year ("Tue, Dec 30, 2025"), no-break spaces. A clip → `TtClipTile` (time, length, reel count, horizontal, label "Clip, {time}, {duration}[, in {k} reels]"; tap → viewer; long press → starts choosing, see "Managing clips in a reel"). A clip flagged missing → `TtMissingClipTile` with **Remove**.
 6. **Rows that hold a missing tile:** the day's grid uses `mainAxisExtent = max(3:4 height, TtMissingClipTile.heightFor(...))`, so the tile is at its real size at the phone's text scale; its neighbours are `Align`ed to the top of their cell at 3:4. A day with no missing tile uses the 3:4 grid.
 7. Room under the grid for the floating nav pill.
 
-**The ⋮ menu:** **Reel details** → `showReelForm(context, reel:)`; **Select clips** → `onSelectClips` (nothing until Task 9); **Delete reel** → `showDeleteReelDialog` ("The delete dialog and its Undo": it deletes, shows "{name} deleted" with Undo and goes to `/reels`).
+**The ⋮ menu:** **Reel details** → `showReelForm(context, reel:)`; **Select clips** → `ReelSelection.begin()` ("Managing clips in a reel"); **Delete reel** → `showDeleteReelDialog` ("The delete dialog and its Undo": it deletes, shows "{name} deleted" with Undo and goes to `/reels`).
 
 **Remove on a missing tile:**
 1. The screen looks up `ReelSnacks.of(context)`, the words and the notifier **before** awaiting.
@@ -518,6 +518,25 @@ No baseline is read or written.
 **A reel that is gone** (deleted here, deleted elsewhere, or an id that names none): `detail.hasValue && detail.value == null` → after the frame, once, `context.go(Routes.reels)`.
 
 **In tests:** `test/support/pump_screen.dart › pumpScreen` (with a `/reels` marker, a `/reels/:id` marker and a `/reels/:id/clip/:clipId` marker), `test/support/reel_videos.dart` (`reelHarness`, `reelVideo`, `putInReel`: videos on the fake phone and in a reel, or in a reel and gone from the phone), `testApp`, and `h.bridge.gate('zoneOffsetsMs')` to hold the times back.
+
+### Managing clips in a reel (`lib/features/reels/`, D-88)
+
+**Choosing clips** (`view_models/reel_selection.dart › ReelSelection(reelId)`, `views/reel_detail_screen.dart`):
+1. A long press on a tile calls `start(clipId)`; **Select clips** in the ⋮ menu calls `begin()` (choosing with 0 chosen). Both only work for a clip that is in the reel's list and not missing (the list is `reelClipsProvider(reelId)`); before that list is read nothing can be chosen.
+2. While `state.selecting`: the page shows `TtAppBar(selection: true)` (close, "{n} selected", Add to another reel, Move to another reel, Remove from this reel, ⋮ → **Select all**) and every `TtClipTile` has `selected` set. A tap or long press calls `toggle(clipId)` and never opens the viewer. `toggle` on the last chosen clip clears the selection (`selecting` false). A missing tile is not selectable; its **Remove** works as before. **Select all** calls `selectAll()`: every clip that is not missing.
+3. The selection follows the list: when `reelClipsProvider` emits, chosen clips that are now missing or no longer in the reel are dropped; an emptied selection that had clips ends.
+4. `PopScope(canPop: !selecting)` makes Back, the system back and **Close** call `clear()` instead of leaving the page.
+
+**Add / Move** (`_pickReels(mode)` on the page; the sheet is `views/reel_picker_sheet.dart › showReelPicker`):
+1. The page copies the chosen ids, looks up `ReelSnacks`, `ReelClipActions` and the selection notifier **before awaiting**, and opens the picker with `clipCount`, `excludeReelId = reelId` and `perform`.
+2. The sheet watches `reelSummariesProvider` (`ReelsRepository.watchReelSummaries`, D-84) and `reelByIdProvider(excludeReelId)`; `pickerSections(summaries, excludeReelId)` drops the current reel and splits **Collecting** from **Other reels**. Rows are `TtReelPickRow` (cover from `clipThumbnail`, "{n} clips"); `togglePick` keeps the picks (add: several, in tap order; move: one).
+3. **New reel** opens an inline `TtTextField`. **Create** calls `ReelFormController(null).save(name:)` (the same validation as the New reel sheet: "Give this reel a name", "You already have a reel called {name}"; single-flight). A refused name shows under the field. On success `pickedAfterCreate` picks the new reel and the field closes. Another failure shows `SheetFailure` in the sheet.
+4. **Confirm** (disabled with no pick and while it runs) calls `perform(pickedIds)`: add → `ReelClipActions.addToReels` (one `ClipsRepository.addClipsToReel` per reel, in pick order; if one fails the done ones are undone and it throws); move → `moveToReel` (one `moveClips` from this reel to the picked one). On success the sheet pops with the ids. On a throw it stays open, keeps the picks and shows "Something went wrong. Try again." above its buttons until the next pick or confirm.
+5. After the sheet has closed the page shows the snack on the root messenger: "Added to {A}[ and {B} | , {B} and {n} more]" or "Moved to {A}", with **Undo** (`ReelSnacks.showUndoAll`: every record undone last to first, `ReelsRepository.undo`; "Couldn't undo. Try again." if one failed). An action that changed nothing shows the plain snack with no Undo. Then `clear()` ends the selection. If the sheet was dragged away while the action ran, `perform` shows the snack itself when it finishes.
+
+**Remove** (`_removeChosen`): `ReelClipActions.removeFromReel(reelId, ids)` → one `ClipsRepository.removeClipsFromReel` (the orphan sweep may delete a clip that was only here; the record keeps it). A non-empty record → "{n} clips removed from {reel}. The videos are still in your gallery." (singular for one clip) with **Undo**, then `clear()`. A second tap while it runs does nothing. A failure shows "Something went wrong. Try again." and keeps the selection.
+
+**In tests:** `test/features/reels/views/reel_selection_screen_test.dart` (the whole page with a real in-memory database), `view_models/reel_selection_test.dart`, `reel_picker_test.dart`, `reel_clip_actions_test.dart`; `flagForTest` in `test/support/reel_videos.dart` flags clips missing.
 
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 

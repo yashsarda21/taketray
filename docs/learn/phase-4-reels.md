@@ -550,7 +550,7 @@ It ends with `All tests passed!`. Now, in `app/lib/features/shell/views/root_mes
 - **Loading** is a skeleton day header and nine skeleton tiles. **No clips** is an illustration, "No clips yet" and a **Go to To tag** button.
 - Opening the page **checks that the videos still exist**. A reel that is deleted while you look at it (or a link to one that never existed) sends you back to Reels.
 
-Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select clips** and a long press do nothing yet: Task 9 fills them in.
+Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select clips** and a long press start choosing clips: section 9 explains that.
 
 **Why TakeTray needs it:** this is where a creator decides whether a reel is ready. If a video was deleted from the gallery, the page must say so instead of showing a tile that cannot play (spec §4: a wrong or missing video is the worst bug). If a clip was filmed in London and tagged in India, it has to sit on its London day at its London time (spec §8.3a). And a long reel name or a big text size must never cut anything off.
 
@@ -628,7 +628,58 @@ It ends with `All tests passed!`. Now in `reel_detail_controller.dart` comment o
 
 ## 9. Multi-select and the reel picker
 
-*To be written in Task 9.*
+**What we built:** the way to work on several clips of a reel at once.
+
+- **Choosing.** Long press a tile, or use **Select clips** in the ⋮ menu. The app bar turns into a coloured selection bar: a close button, "3 selected", and three buttons: **Add to another reel**, **Move to another reel** and **Remove from this reel**. A ⋮ has **Select all**. While choosing, a tap chooses or un-chooses a tile (it does not open the viewer), and Back ends choosing before it leaves the page.
+- **The reel picker** is a sheet. It says "Add 3 clips to reels" (or "Move 3 clips to") and whether the clips stay or leave. It lists **New reel**, then your **Collecting** reels, then **Other reels**, each with a cover and "12 clips". The reel you are in is not listed. Add lets you tick several reels; Move lets you pick one.
+- **New reel** turns into a name field with **Create**: the reel is made and ticked.
+- **Every action ends with a snack and Undo:** "Added to London and Paris", "Moved to London", "2 clips removed from Goa. The videos are still in your gallery."
+
+**Why TakeTray needs it:** after a day of shooting, the creator sorts: this clip also belongs in the Paris reel, those three were filed in the wrong reel, that one is bad. Doing it one clip at a time would be slow, and a misplaced tap must never lose a video, so every action can be undone, even after leaving the page.
+
+**Key ideas:**
+
+- **A rule lives in one small place.** What can be chosen is decided by `ReelSelection`, not by the tiles. It asks "is this clip in the reel's list and not missing?" and ignores anything else, so a missing tile cannot be chosen by a tap, a long press or Select all:
+
+  ```dart
+  void toggle(int clipId) {
+    final next = {...state.selected};
+    if (!next.remove(clipId)) {
+      if (!_live.contains(clipId)) return;   // missing or not in this reel
+      next.add(clipId);
+    }
+    state = next.isEmpty ? const ReelSelectionState() : ReelSelectionState(selecting: true, selected: next);
+  }
+  ```
+
+- **A selection follows the data.** `ref.listen(reelClipsProvider(reelId), ...)` drops chosen clips that stop being valid (a verify finds a video gone). Otherwise the bar could say "3 selected" and run the action on a clip that is not there.
+- **Pure functions for the picker's rules.** `pickerSections` removes the current reel and splits Collecting from the rest; `togglePick` is add (several, in tap order) or move (one). They are tested without a widget, and the mutation "move as multi-select" fails both a unit test and a screen test.
+- **Reuse, don't copy.** The inline name field uses Task 7's `ReelFormController`, so "empty", "too long" and "already have a reel called" are checked in one place, and `reelNameErrorText` turns the problem into words for both the New reel sheet and the picker.
+- **A sheet tells its own failure.** A snack shown while a sheet is open is hidden behind the sheet. So `showReelPicker` takes a `perform` function: confirm runs it, and if it throws the sheet stays open and shows the red line above its buttons. The page shows the success snack only after the sheet has closed:
+
+  ```dart
+  await widget.perform?.call(picked);
+  if (mounted) navigator.pop(picked);
+  ```
+
+- **All or nothing across reels.** Adding to three reels is three database calls (each is its own transaction). `ReelClipActions.addToReels` undoes the ones that worked if a later one fails, so an error never leaves the clip in some of the reels and not others. The snack's **Undo** undoes every record, last to first (`ReelSnacks.showUndoAll`).
+- **Look things up before you wait.** The page gets the snack helper, the actions and the selection notifier before it awaits the sheet. The page may be gone by the time the work finishes, but the snack (on the app's root messenger) and its Undo still work.
+
+**Where it lives:**
+
+- `app/lib/features/reels/view_models/`: `reel_selection.dart`, `reel_picker.dart` (pure rules), `reel_clip_actions.dart`.
+- `app/lib/features/reels/views/`: `reel_detail_screen.dart` (the selection bar and the three actions), `reel_picker_sheet.dart` (`showReelPicker`, `addedToText`), `undo_snacks.dart` (`showUndoAll`), `reel_form_sheet.dart` (`reelNameErrorText`).
+- Tests: `app/test/features/reels/view_models/reel_selection_test.dart`, `reel_picker_test.dart`, `reel_clip_actions_test.dart`, and `views/reel_selection_screen_test.dart`.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/features/reels/view_models/reel_selection_test.dart test/features/reels/views/reel_selection_screen_test.dart)
+```
+
+It ends with `All tests passed!`. Now in `reel_selection.dart` change `selected: _live` in `selectAll` to choose every clip, missing ones too, and run it again: `select all skips missing` fails with `Expected: Set:[1, 2]  Actual: Set:[1, 2, 3]`. Put it back. In `reel_picker.dart` delete the `if (s.reel.id != excludeReelId)` test: `picker excludes the current reel` fails with `has too many elements (3 > 2)`.
+
+**Decisions:** D-88 (all of the above); D-84 (`addClipsToReel`, `moveClips`, `removeClipsFromReel`, `undo` and the records), D-85 (`ReelSnacks`, `SheetFailure`, `ReelFormController`), D-82 (`TtReelPickRow`, `TtReelPickNewRow`, `TtAppBar(selection: true)`), D-87 (the page).
 
 ## 10. The clip viewer
 

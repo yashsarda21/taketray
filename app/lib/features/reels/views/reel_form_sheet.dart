@@ -51,6 +51,24 @@ Future<void> showReelForm(BuildContext context, {Reel? reel}) {
   );
 }
 
+/// What to tell the user about the name problem of [form], or null for none:
+/// "Give this reel a name", "Use {max} characters or fewer" or "You already
+/// have a reel called {name}". [typed] is the text in the field, used when
+/// the other reel's stored name is not known. The reel picker's inline field
+/// says the same words.
+String? reelNameErrorText(
+  AppLocalizations l10n,
+  ReelFormState form,
+  String typed,
+) => switch (form.nameError) {
+  null => null,
+  ReelNameProblem.empty => l10n.reelNameEmpty,
+  ReelNameProblem.tooLong => l10n.reelNameTooLong(reelNameMaxLength),
+  ReelNameProblem.duplicate => l10n.reelNameDuplicate(
+    form.clashingName ?? normalizeName(typed),
+  ),
+};
+
 class _ReelFormSheet extends ConsumerStatefulWidget {
   const new({
     required this.reel,
@@ -121,14 +139,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
     final tt = context.tt;
     final edit = widget.reel != null;
     final form = ref.watch(reelFormControllerProvider(widget.reel?.id));
-    final nameError = switch (form.nameError) {
-      null => null,
-      ReelNameProblem.empty => l10n.reelNameEmpty,
-      ReelNameProblem.tooLong => l10n.reelNameTooLong(reelNameMaxLength),
-      ReelNameProblem.duplicate => l10n.reelNameDuplicate(
-        form.clashingName ?? normalizeName(_name.text),
-      ),
-    };
+    final nameError = reelNameErrorText(l10n, form, _name.text);
     final descriptionError = switch (form.descriptionError) {
       null => null,
       ReelDescriptionProblem.tooLong => l10n.reelDescriptionTooLong(
