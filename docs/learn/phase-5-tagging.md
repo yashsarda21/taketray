@@ -342,7 +342,60 @@ It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repo
 
 ## 5. Scenes, the tag queue and time ranges
 
-_Filled in by Task 5._
+**What we built:** three small pieces of logic, with no screen yet, that To tag (Task 8) and the tag player (Tasks 6 and 7) build on:
+
+- **`groupIntoScenes`** cuts a list of clips into *scenes*: runs of clips shot close together, each with a start time, an end time and a day.
+- **`TagQueue`** is the player's "which clip next?" The clips in a tagging session are fixed when it starts, but some leave To tag as you go. The queue finds the next and previous clip that is still waiting.
+- **`timeRangeText`** writes a scene's times for its header: "1:05–1:20 PM". **`minutesText`** writes a length for the summary: "45 s", "12 min", "1 h 5 min".
+
+**Why TakeTray needs it:** a creator who filmed a market for twenty minutes does not want forty separate clips; they want "the market" as one thing to tag with one tap. A pause in filming is the natural edge of a scene. And tagging is a loop: after each clip the player must go to the next one that still needs a tag, even if one of the clips changed meanwhile (tagged somewhere else, or taken out by the verifier).
+
+**Key ideas:**
+
+- **The gap runs from the end of one clip to the start of the next.** Two clips are in one scene unless there are 10 minutes or more between them:
+
+  ```dart
+  final previousEnd = previous.fingerprint.dateTakenUtc.add(
+    Duration(milliseconds: previous.fingerprint.durationMs),
+  );
+  final apart = next.fingerprint.dateTakenUtc.difference(previousEnd);
+  return apart >= gap || !sameDay;
+  ```
+
+  Why the end? A 5-minute clip that starts at 10:00 and a clip started at 10:12 are 12 minutes apart start to start but only 7 minutes apart in real time, so they belong together. If two clips overlap, the gap is *negative*, and a negative number is less than 10 minutes, so they stay in one scene with no special case. The gap is measured on UTC instants (real moments), so a clip in another zone is placed by when it really happened.
+
+- **A new day is always a new scene,** and "day" means the day where the clip was shot. `ClipLocalTime.wallClock` (Phase 4) is a UTC-flagged `DateTime` whose fields are the clock on the wall. A scene compares those fields, `year`, `month` and `day`, and never calls `toLocal()` on them. So 23:55 and 00:02 are seven minutes apart but two scenes, and a clip shot at 19:02 in New York (00:02 UTC) joins a 23:55 UTC clip from London, because it was still "the 28th" there. If the phone does not know a clip's zone yet, the phone's local time is used, written in the same shape, so every `Scene.start` is a wall-clock value.
+
+- **A scene's range is first start to last start.** `end` is when the last clip *started*, not when it finished; the header matches the times on the tiles. Clips are first put in shooting order (`inShootingOrder`: oldest first, then the lower id), so clips with the same second keep a steady order.
+
+- **The queue stores a fixed list, and asks what is still pending.** The session is the clip ids, in order, at the moment "Start tagging" was tapped. The queue never changes. What changes is a set of ids still in To tag:
+
+  ```dart
+  int? next(int from, Set<int> pending) {
+    for (var i = from < -1 ? 0 : from + 1; i < session.length; i++) {
+      if (pending.contains(session[i])) return i;
+    }
+    return null;
+  }
+  ```
+
+  A clip tagged elsewhere is simply not in `pending`, so it is passed over. New clips from a scan are not in the session, so they never appear in the middle of a run. `afterAction` is the prototype's `advance`: `next(from, pending) ?? next(-1, pending)`, the next waiting clip, else the first waiting clip from the start (one the user skipped past with "Previous"), else `null`, which is the "All done!" screen.
+
+- **A range shares the AM/PM only when it is true and the locale allows it.** "1:05–1:20 PM" is one period for two times. The first time is the locale's own 12-hour pattern with the period cut off (`h:mm a` becomes `h:mm`), so the separators stay the locale's. "11:50 AM–12:10 PM" crosses noon, so both are written in full. On a 24-hour phone it is "13:05–13:20". If the locale writes the period first (Korean: "오후 1:05"), cutting it would be wrong, so both times are written in full. Under a minute apart, the range is just one time.
+
+- **No new strings for lengths.** The Reels banner already wrote "45 s / 3 min / 1 h 5 min" (`waitingDurationText`, Phase 3). `minutesText` is that function under the name this screen uses; two copies could drift apart.
+
+**Where it lives:** `app/lib/domain/rules/scenes.dart`, `tag_queue.dart` and `shooting_order.dart` (`inShootingOrder` moved here from `pending_clips.dart`, which still exports it); `app/lib/features/tagging/views/time_range_text.dart`. Tests: `app/test/domain/rules/scenes_test.dart` and `tag_queue_test.dart`, `app/test/features/tagging/views/time_range_text_test.dart`. `scenes_test.dart` also runs in London time inside `tool/check`.
+
+**Try it yourself:** make the gap run from start to start and watch the right tests fail. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/domain/rules/scenes_test.dart)
+```
+
+It ends with `All tests passed!`. Now open `app/lib/domain/rules/scenes.dart`, find `_startsNewScene`, and replace `previousEnd` in the `difference` call with `previous.fingerprint.dateTakenUtc`. Run the command again. `gap is measured from the previous clip's end` fails with `Expected: [[1, 2]]  Actual: [[1], [2]]`, because a 5-minute clip and the one 12 minutes after its start were wrongly cut apart. Put the file back with `git checkout -- app/lib/domain/rules/scenes.dart` (once committed) and check with `git status` that nothing is left over.
+
+**Decisions:** D-95 (all of this section), extending D-83 (times where shot) and D-76 (time helpers, `waitingDurationText`).
 
 ## 6. The tag session
 
