@@ -66,7 +66,10 @@ Future<VideoPlayerController> clipPlayer(Ref ref, Uri uri) async {
     rethrow;
   }
   await _setSound(controller, muted: ref.read(viewerMutedProvider));
-  await controller.play();
+  // The app may have gone to the background while the video was opening:
+  // the observer found nothing to pause then, and the plugin's own check is
+  // off, so playing now would be heard from the background.
+  if (!pauser.inBackground) await controller.play();
   return controller;
 }
 
@@ -78,21 +81,38 @@ Future<void> _setSound(
   await controller.setVolume(muted ? 0 : 1);
 }
 
-/// Pauses [_controller] when the app leaves the screen.
+/// Pauses [_controller] when the app leaves the screen, and remembers that it
+/// is away until it is back, so a video that finishes opening in the
+/// background is not started.
 class _PauseInBackground with WidgetsBindingObserver {
   _PauseInBackground(this._controller);
 
   final VideoPlayerController _controller;
 
-  void start() => WidgetsBinding.instance.addObserver(this);
+  /// Whether the app is hidden or paused (not just inactive).
+  bool inBackground = false;
+
+  void start() {
+    final binding = WidgetsBinding.instance..addObserver(this);
+    final now = binding.lifecycleState;
+    inBackground =
+        now == AppLifecycleState.paused || now == AppLifecycleState.hidden;
+  }
 
   void stop() => WidgetsBinding.instance.removeObserver(this);
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      if (_controller.value.isInitialized) unawaited(_controller.pause());
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        inBackground = true;
+        if (_controller.value.isInitialized) unawaited(_controller.pause());
+      case AppLifecycleState.resumed:
+        inBackground = false;
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.detached:
+        break;
     }
   }
 }

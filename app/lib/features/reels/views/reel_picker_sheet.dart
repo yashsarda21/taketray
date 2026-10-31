@@ -7,11 +7,13 @@ import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_form_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_picker.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/sheet_failure.dart';
+import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -59,6 +61,82 @@ Future<List<int>?> showReelPicker(
     perform: perform,
   ),
 );
+
+/// **Add to reel** / **Move** for [clipIds], which are in reel [fromReelId]:
+/// opens the picker, does the work inside it, and shows the snack once it has
+/// closed (D-88, D-89). Returns what the action did, or null when it did not
+/// run (cancelled, or it failed).
+///
+/// - **Confirm runs the action** (`ReelClipActions.addToReels` / `moveToReel`)
+///   through the picker's `perform`, so a failure is told in the sheet and
+///   the sheet stays open (D-85).
+/// - **The snack comes after the sheet closes**, with **Undo** for everything
+///   the action changed (`ReelSnacks.showUndoAll`); an action that changed
+///   nothing (the clips were there already) shows the plain snack. If the
+///   sheet was dragged away while the action ran, nothing is modal any more,
+///   so `perform` shows the snack itself when it finishes (or the failure
+///   snack). [onSnack] is called after a success snack, for the caller to end
+///   what it was doing (the reel page ends choosing).
+///
+/// Everything the snack needs ([actions], [snacks], and the words from
+/// [l10n]) is passed in, looked up by the caller before this awaits, so it
+/// works after the caller's screen has gone.
+Future<ClipActionOutcome?> pickAndPerform(
+  BuildContext context, {
+  required ReelPickerMode mode,
+  required Set<int> clipIds,
+  required int fromReelId,
+  required ReelClipActions actions,
+  required ReelSnacks snacks,
+  required AppLocalizations l10n,
+  VoidCallback? onSnack,
+}) async {
+  ClipActionOutcome? outcome;
+  var closed = false;
+  void tell(ClipActionOutcome done) {
+    final message = mode == ReelPickerMode.add
+        ? addedToText(l10n, done.reelNames)
+        : l10n.movedToSnack(done.reelNames.single);
+    // Nothing changed (the clips were there already): nothing to undo.
+    if (done.isEmpty) {
+      snacks.show(message);
+    } else {
+      snacks.showUndoAll(message, done.records);
+    }
+    onSnack?.call();
+  }
+
+  await showReelPicker(
+    context,
+    mode: mode,
+    clipCount: clipIds.length,
+    excludeReelId: fromReelId,
+    perform: (reelIds) async {
+      try {
+        final done = mode == ReelPickerMode.add
+            ? await actions.addToReels(clipIds: clipIds, reelIds: reelIds)
+            : await actions.moveToReel(
+                fromReelId: fromReelId,
+                toReelId: reelIds.single,
+                clipIds: clipIds,
+              );
+        outcome = done;
+        // The sheet was dragged away while this ran: it is not modal any
+        // more, so the snack is seen now.
+        if (closed) tell(done);
+      } on Object {
+        // The actions logged the type. In the sheet it tells the user
+        // itself; after it closed, a snack does.
+        if (!closed) rethrow;
+        snacks.show(l10n.reelActionFailed, done: false);
+      }
+    },
+  );
+  closed = true;
+  final done = outcome;
+  if (done != null) tell(done);
+  return done;
+}
 
 /// The snack after an add: "Added to {A}", "Added to {A} and {B}" or "Added
 /// to {A}, {B} and {n} more" (owner-approved, 2026-10-30), for the names of

@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
+import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import '../../../support/fake_video_player.dart';
 
@@ -12,7 +13,13 @@ void main() {
   final first = Uri.parse('content://media/external_primary/video/media/1');
   final second = Uri.parse('content://media/external_primary/video/media/2');
 
-  setUp(() => platform = FakeVideoPlayerPlatform.install());
+  setUp(() {
+    platform = FakeVideoPlayerPlatform.install();
+    // The binding is shared by the tests of this file: start in front.
+    TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+      AppLifecycleState.resumed,
+    );
+  });
 
   /// A container that keeps [uri]'s player open, like the screen does.
   ProviderContainer open(Uri uri, {ProviderContainer? into}) {
@@ -117,6 +124,64 @@ void main() {
       );
       await pumpEventQueue();
       expect(platform.player(1).playing, isFalse);
+      c.dispose();
+    });
+
+    test('the app leaving while the video opens: it never plays', () async {
+      platform.hold = true;
+      final c = open(first);
+      await pumpEventQueue();
+      expect(platform.live, hasLength(1));
+
+      // Home is pressed while the video is still opening.
+      TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+        AppLifecycleState.paused,
+      );
+      platform
+          .player(1)
+          .events
+          .add(
+            VideoEvent(
+              eventType: VideoEventType.initialized,
+              duration: platform.duration,
+            ),
+          );
+      final player = await c.read(clipPlayerProvider(first).future);
+      await pumpEventQueue();
+
+      expect(player.value.isInitialized, isTrue);
+      expect(platform.calls.where((c) => c.startsWith('play:')), isEmpty);
+      expect(platform.player(1).playing, isFalse);
+
+      // Back in the app it still waits for a tap.
+      TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      await pumpEventQueue();
+      expect(platform.player(1).playing, isFalse);
+      c.dispose();
+    });
+
+    test('a video that opens while the app is in front plays', () async {
+      platform.hold = true;
+      final c = open(first);
+      await pumpEventQueue();
+      TestWidgetsFlutterBinding.instance
+        ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+        ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      platform
+          .player(1)
+          .events
+          .add(
+            VideoEvent(
+              eventType: VideoEventType.initialized,
+              duration: platform.duration,
+            ),
+          );
+
+      await c.read(clipPlayerProvider(first).future);
+
+      expect(platform.player(1).playing, isTrue);
       c.dispose();
     });
 

@@ -531,50 +531,18 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     final actions = ref.read(reelClipActionsProvider);
     final notifier = ref.read(reelSelectionProvider(reelId).notifier);
 
-    ClipActionOutcome? outcome;
-    var closed = false;
-    void tell(ClipActionOutcome done) {
-      final message = mode == ReelPickerMode.add
-          ? addedToText(l10n, done.reelNames)
-          : l10n.movedToSnack(done.reelNames.single);
-      // Nothing changed (the clips were there already): nothing to undo.
-      if (done.isEmpty) {
-        snacks.show(message);
-      } else {
-        snacks.showUndoAll(message, done.records);
-      }
-      if (mounted) notifier.clear();
-    }
-
-    await showReelPicker(
+    await pickAndPerform(
       context,
       mode: mode,
-      clipCount: chosen.length,
-      excludeReelId: reelId,
-      perform: (reelIds) async {
-        try {
-          final done = mode == ReelPickerMode.add
-              ? await actions.addToReels(clipIds: chosen, reelIds: reelIds)
-              : await actions.moveToReel(
-                  fromReelId: reelId,
-                  toReelId: reelIds.single,
-                  clipIds: chosen,
-                );
-          outcome = done;
-          // The sheet was dragged away while this ran: it is not modal any
-          // more, so the snack is seen now.
-          if (closed) tell(done);
-        } on Object {
-          // The actions logged the type. In the sheet it tells the user
-          // itself; after it closed, a snack does.
-          if (!closed) rethrow;
-          snacks.show(l10n.reelActionFailed, done: false);
-        }
+      clipIds: chosen,
+      fromReelId: reelId,
+      actions: actions,
+      snacks: snacks,
+      l10n: l10n,
+      onSnack: () {
+        if (mounted) notifier.clear();
       },
     );
-    closed = true;
-    final done = outcome;
-    if (done != null) tell(done);
   }
 
   /// **Remove from this reel**: takes the chosen clips out of the reel and

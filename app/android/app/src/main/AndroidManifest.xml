@@ -5,6 +5,12 @@
          declare it for hot reload and the debugger. Checked by
          tool/check_release_permissions. -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
+    <!-- The video player's ExoPlayer (media3) merges these two in. The viewer
+         plays a local file: video_player never sets a wake mode and media3
+         treats the network state as optional (D-89). Checked by
+         tool/check_release_permissions. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove"/>
 
     <!-- Reading videos (D-68). Android 11-12 read through READ_EXTERNAL_STORAGE
          (so it stops at maxSdkVersion 32); 13 has READ_MEDIA_VIDEO; 14+ adds

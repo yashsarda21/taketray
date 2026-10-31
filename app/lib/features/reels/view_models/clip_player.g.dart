@@ -192,7 +192,7 @@ final class ClipPlayerProvider
   }
 }
 
-String _$clipPlayerHash() => r'733dba195509a860d6b11e95fa18d56fbf9fd853';
+String _$clipPlayerHash() => r'8f993f426243d37c24a9c02a7b9d869312439447';
 
 /// The player of the clip at [uri] (D-89): one `VideoPlayerController`
 /// (ExoPlayer, from the gallery by its `content://` address, never copied),
