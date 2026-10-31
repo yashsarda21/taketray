@@ -17,6 +17,7 @@ import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_selection.dart';
 import 'package:taketray/features/reels/views/delete_reel_dialog.dart';
+import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/reel_picker_sheet.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
@@ -108,18 +109,18 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// does not open a second one.
   bool _picking = false;
 
-  /// The viewer is open (or opening), so a second tap on a tile, even in the
-  /// same frame, does not open a second one. Free again when it returns.
-  bool _openingViewer = false;
+  /// Opens the viewer once however fast the taps: a second tap on a tile,
+  /// even in the same frame, does not open a second one (a short window, not
+  /// the push's future, which a `go` never completes).
+  final OpenOnce _viewer = OpenOnce();
 
-  Future<void> _openViewer(int clipId) async {
-    if (_openingViewer) return;
-    _openingViewer = true;
-    try {
-      await context.push(Routes.clip(widget.reelId, clipId));
-    } finally {
-      _openingViewer = false;
-    }
+  void _openViewer(int clipId) =>
+      _viewer.open(() => context.push(Routes.clip(widget.reelId, clipId)));
+
+  @override
+  void dispose() {
+    _viewer.dispose();
+    super.dispose();
   }
 
   /// Goes to Reels, after this frame (the router must not be told during
@@ -468,7 +469,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       // does not open the viewer.
       onTap: selection.selecting
           ? () => notifier.toggle(clip.id)
-          : () => unawaited(_openViewer(clip.id)),
+          : () => _openViewer(clip.id),
       onLongPress: () => selection.selecting
           ? notifier.toggle(clip.id)
           : notifier.start(clip.id),

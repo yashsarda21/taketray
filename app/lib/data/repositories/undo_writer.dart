@@ -223,15 +223,12 @@ class UndoWriter {
               createdAt: session.createdAt,
             ),
           );
-      var leftOut = 0;
       for (final copy in record.vnCopies) {
-        // A swept clip that could not come back (mapped to null) must not
-        // get a copy row: its old id has no clip, or holds another one. A
-        // clip that was not swept keeps its id.
-        if (ids.containsKey(copy.clipId) && ids[copy.clipId] == null) {
-          leftOut++;
-          continue;
-        }
+        // Every copy row comes back (D-54): it is the app's only record of a
+        // file in `Movies/TakeTray/` and may outlive its clip. A swept clip
+        // that came back under another id takes that id; one that could not
+        // come back keeps its old id, which no clip will ever hold again
+        // (ids are AUTOINCREMENT, never reused).
         final clipId = ids[copy.clipId] ?? copy.clipId;
         await _db
             .into(_db.vnCopies)
@@ -245,12 +242,6 @@ class UndoWriter {
               ),
               mode: InsertMode.insertOrIgnore,
             );
-      }
-      if (leftOut > 0) {
-        _log.warning(
-          'Undo delete of reel ${reel.id}: $leftOut VN copy rows left out, '
-          'their clips could not come back',
-        );
       }
     }
     _log.info(

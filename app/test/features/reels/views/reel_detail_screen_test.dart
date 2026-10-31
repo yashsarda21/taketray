@@ -995,6 +995,36 @@ void main() {
       expect(find.text(clipRouteMarker(goa.id, ids.first)), findsOneWidget);
     });
 
+    testApp('after the viewer is left with a go (not a pop), a tile still '
+        'opens it', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      );
+      await open(tester, goa.id);
+
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text(clipRouteMarker(goa.id, ids.first)), findsOneWidget);
+
+      // The viewer's fallback when it cannot pop: `context.go` back to the
+      // reel's page. The tile's push never completes.
+      GoRouter.of(tester.element(find.text(clipRouteMarker(goa.id, ids.first))))
+          .go('/');
+      await tester.pumpAndSettle();
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(
+        find.text(clipRouteMarker(goa.id, ids.first), skipOffstage: false),
+        findsNothing,
+      );
+
+      await tester.tap(find.byType(TtClipTile).last);
+      await tester.pumpAndSettle();
+
+      expect(find.text(clipRouteMarker(goa.id, ids.last)), findsOneWidget);
+    });
+
     testApp('a long press starts choosing and opens nothing', (tester) async {
       final goa = await newReel(tester, 'Goa');
       await real(

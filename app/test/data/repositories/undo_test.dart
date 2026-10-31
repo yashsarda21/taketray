@@ -771,72 +771,65 @@ void main() {
       },
     );
 
-    test(
-      'undo delete leaves out a VN copy row whose clip cannot come back',
-      () async {
-        final goa = await reels.create('Goa');
-        final paris = await reels.create('Paris');
-        final [kept, lost] = await clips.addNewClipsToReel(goa.id, [
-          shot(10),
-          picked('content://picker/1'),
-        ]);
-        final vn = VnRepository(db, clock);
-        await vn.startSession(goa.id, 'Goa');
-        for (final (clipId, number) in [(kept, 900), (lost, 901)]) {
-          await vn.addCopy(
-            VnCopy(
-              reelId: goa.id,
-              clipId: clipId,
-              copyMediaStoreId: number,
-              fileName: 'copy$number.mp4',
-              sizeBytes: 1000,
-            ),
-          );
-        }
-        final record = await reels.delete(goa.id);
-        expect(record.sweptClips.map((c) => c.id), [kept, lost]);
-        // The picker address now belongs to another video (another
-        // fingerprint), so the picked clip cannot come back (D-84 point 7).
-        final other = (await clips.addNewClipsToReel(paris.id, [
-          NewClip.picker(
-            pickerUri: 'content://picker/1',
-            fingerprint: ClipFingerprint(
-              sizeBytes: 3000,
-              durationMs: 9000,
-              dateTakenUtc: _t0.add(_minute),
-              displayName: 'other.mp4',
-            ),
-            width: 720,
-            height: 1280,
-            mimeType: 'video/mp4',
-          ),
-        ])).single;
-
-        final warnings = await warningsOf(() => reels.undo(record));
-
-        expect(await reels.getById(goa.id), isNotNull);
-        expect(await reelIdsOf(kept), {goa.id});
-        expect(await reelIdsOf(other), {paris.id});
-        expect(await clipIds(), [kept, other]);
-        // The restored clip's copy is back; the lost clip's copy is left out,
-        // never pointing at an id that has no clip (or at another clip).
-        expect(
-          [
-            for (final c in await db.select(db.vnCopies).get())
-              (c.clipId, c.copyMediaStoreId),
-          ],
-          [(kept, 900)],
-        );
-        expect(await db.select(db.vnSessions).get(), hasLength(1));
-        expect(
-          warnings,
-          contains(
-            'Undo delete of reel ${goa.id}: 1 VN copy rows left out, their '
-            'clips could not come back',
+    test('undo delete keeps every VN copy row, also one whose clip cannot come '
+        'back (D-54)', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final [kept, lost] = await clips.addNewClipsToReel(goa.id, [
+        shot(10),
+        picked('content://picker/1'),
+      ]);
+      final vn = VnRepository(db, clock);
+      await vn.startSession(goa.id, 'Goa');
+      for (final (clipId, number) in [(kept, 900), (lost, 901)]) {
+        await vn.addCopy(
+          VnCopy(
+            reelId: goa.id,
+            clipId: clipId,
+            copyMediaStoreId: number,
+            fileName: 'copy$number.mp4',
+            sizeBytes: 1000,
           ),
         );
-      },
-    );
+      }
+      final record = await reels.delete(goa.id);
+      expect(record.sweptClips.map((c) => c.id), [kept, lost]);
+      // The picker address now belongs to another video (another
+      // fingerprint), so the picked clip cannot come back (D-84 point 7).
+      final other = (await clips.addNewClipsToReel(paris.id, [
+        NewClip.picker(
+          pickerUri: 'content://picker/1',
+          fingerprint: ClipFingerprint(
+            sizeBytes: 3000,
+            durationMs: 9000,
+            dateTakenUtc: _t0.add(_minute),
+            displayName: 'other.mp4',
+          ),
+          width: 720,
+          height: 1280,
+          mimeType: 'video/mp4',
+        ),
+      ])).single;
+
+      final warnings = await warningsOf(() => reels.undo(record));
+
+      expect(await reels.getById(goa.id), isNotNull);
+      expect(await reelIdsOf(kept), {goa.id});
+      expect(await reelIdsOf(other), {paris.id});
+      expect(await clipIds(), [kept, other]);
+      // Both copy rows are back: they are the app's only record of the copy
+      // files (D-54). The lost clip's row keeps its old id, which no clip
+      // holds and none ever will (ids are never reused), so it never
+      // points at another clip.
+      expect([
+        for (final c in await db.select(db.vnCopies).get())
+          (c.clipId, c.copyMediaStoreId),
+      ], unorderedEquals([(kept, 900), (lost, 901)]));
+      expect(other, isNot(lost));
+      expect(await clips.clipsByIds([lost]), isEmpty);
+      expect(await db.select(db.vnSessions).get(), hasLength(1));
+      expect(warnings.where((w) => w.contains('VN copy')), isEmpty);
+    });
 
     test('an unknown id gives a record that restores nothing', () async {
       await reels.create('Goa');

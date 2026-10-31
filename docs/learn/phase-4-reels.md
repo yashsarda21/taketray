@@ -345,7 +345,7 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
 
   so a record holds exactly what the row holds, and `undo_test.dart`'s clock is 123 µs past the minute, so this kind of bug fails a test.
 
-- **A VN copy row never points at a clip that did not come back.** A deleted reel's VN copy rows come back with it, but one whose clip could not be restored (another video now holds its address) is left out with a warning, rather than restored pointing at an id that has no clip, or at another clip.
+- **Every VN copy row comes back.** A deleted reel's VN copy rows come back with it, even one whose clip could not be restored (another video now holds its address). The row is the app's only record of a copy file in `Movies/TakeTray/`, so it may outlive its clip (D-54), and its old clip id is safe: ids are `AUTOINCREMENT` and never given to another clip.
 
 - **Move adds before it removes.** The removal step runs the global orphan sweep, so the target link must exist first:
 
@@ -480,19 +480,17 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
 
 - **Why a test timer needs care.** The test binding fails a test that ends with a `Timer` pending, and it checks *before* the tear-downs run. Riverpod disposes an unused provider later, through a scope that is already gone. So `pumpScreen` gives widget tests an inert `localDayProvider` (a stream that never emits), and a test about the midnight tick passes `midnightTick: true`, which disposes the container as the tree comes down. Whole-app tests (`tearDownApp`) dispose the containers they find. If you add a provider that owns a timer and a test fails with "A Timer is still pending even after the widget tree was disposed", this is why.
 
-- **A double tap opens one page (final-review fix wave).** `tester.tap` twice in one frame reaches the card twice before the new page is built, so two `context.push` calls would stack two reel pages and Back would need two presses. `_openReel` keeps a flag while the pushed route is open and frees it when the route's future completes (the user came back):
+- **A double tap opens one page (final-review fix wave).** `tester.tap` twice in one frame reaches the card twice before the new page is built, so two `context.push` calls would stack two reel pages and Back would need two presses. `OpenOnce` ignores taps for a short window after the one that opened a page:
 
   ```dart
-  if (_openingReel) return;
-  _openingReel = true;
-  try {
-    await context.push(Routes.reel(reelId));
-  } finally {
-    _openingReel = false;
+  void open(Future<Object?> Function() push) {
+    if (_window != null) return;
+    _window = Timer(_settle, () => _window = null);
+    unawaited(push());
   }
   ```
 
-  For it `ReelsScreen` became a stateful widget. The test counts the routes with `skipOffstage: false`, because a route under another one is offstage and a plain `find.text` would find one either way.
+  The first version freed the guard when the push's future completed, "when the user comes back". But go_router completes that future only on a **pop**. Deleting a reel leaves its page with `router.go(Routes.reels)`, which never completes it, so after a delete no card opened again until the app restarted. A window needs no answer from the router. By the time it ends, the new page covers the old one and the old one cannot be tapped. For the guard `ReelsScreen` became a stateful widget, whose `dispose` cancels the timer. The test counts the routes with `skipOffstage: false`, because a route under another one is offstage and a plain `find.text` would find one either way.
 
 **Where it lives:**
 
@@ -665,7 +663,7 @@ Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select cli
 
 - **The name belongs in the body.** An app bar clamps its title to one line at large text. The page's app bar has no title; `TtReelHeader` shows the name with no line limit, so even 40 emoji can be read.
 
-- **A tile opens one viewer (final-review fix wave).** The same guard as Home's cards: `_openViewer` ignores a tap while the viewer it opened has not returned, so a double tap does not open two viewers on one clip (sharing one player).
+- **A tile opens one viewer (final-review fix wave).** The same `OpenOnce` as Home's cards, so a double tap does not open two viewers on one clip (sharing one player). The viewer can leave with `context.go` (its fallback), which never completes the push's future, so a guard tied to that future would block every later tile. A test does exactly that and then taps a tile.
 
 **Where it lives:**
 

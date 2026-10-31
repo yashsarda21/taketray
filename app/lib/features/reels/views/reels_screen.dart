@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,6 +5,7 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
+import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
@@ -50,18 +49,18 @@ class ReelsScreen extends ConsumerStatefulWidget {
 }
 
 class _ReelsScreenState extends ConsumerState<ReelsScreen> {
-  /// A reel page is open (or opening), so a second tap on a card, even in
-  /// the same frame, does not open a second one. Free again when it returns.
-  bool _openingReel = false;
+  /// Opens a reel's page once however fast the taps: a second tap on a card,
+  /// even in the same frame, does not open a second one (a short window, not
+  /// the push's future, which the delete's `go` never completes).
+  final OpenOnce _reel = OpenOnce();
 
-  Future<void> _openReel(int reelId) async {
-    if (_openingReel) return;
-    _openingReel = true;
-    try {
-      await context.push(Routes.reel(reelId));
-    } finally {
-      _openingReel = false;
-    }
+  void _openReel(int reelId) =>
+      _reel.open(() => context.push(Routes.reel(reelId)));
+
+  @override
+  void dispose() {
+    _reel.dispose();
+    super.dispose();
   }
 
   @override
@@ -235,7 +234,7 @@ class _ReelCard extends StatelessWidget {
   final ImageProvider? cover;
 
   /// Opens the reel's page (once, however fast the taps).
-  final Future<void> Function(int reelId) onOpen;
+  final ValueChanged<int> onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -266,7 +265,7 @@ class _ReelCard extends StatelessWidget {
               missing,
             )
           : l10n.reelCardSemantics(reel.name, status, summary.clipCount),
-      onTap: () => unawaited(onOpen(reel.id)),
+      onTap: () => onOpen(reel.id),
     );
   }
 }

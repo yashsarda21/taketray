@@ -69,7 +69,6 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 ## Phase 8 (editor handoff)
 
 - Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
-- Undo of a reel delete leaves out a VN copy row whose clip could not come back (D-84 point 9c). That row was the app's only record of a copy file in `Movies/TakeTray/`, so the file is then not cleaned up by the session. When VN sessions exist, decide how such a copy is found and deleted (for example the session's folder scan).
 
 - Sanitise a reel name before using it as a VN folder name (`/`, `:` and other characters Android storage rejects); `uniqueFolderName` only handles clashes.
 

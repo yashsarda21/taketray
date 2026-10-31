@@ -190,6 +190,41 @@ void main() {
     expect(find.byType(ReelDetailScreen), findsNothing);
   });
 
+  testApp('after a reel is deleted from its page (a go, not a pop), a card '
+      'still opens', (tester) async {
+    await reels.create('Paris');
+    final goa = await reels.create('Goa');
+    await pumpApp(tester);
+
+    // Goa is the newest, so the first card.
+    await tester.tap(find.byType(TtReelCard).first);
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<ReelDetailScreen>(find.byType(ReelDetailScreen)).reelId,
+      goa.id,
+    );
+
+    // Delete it: the dialog sends the app to Reels with `router.go`, which
+    // never completes the card's push.
+    await tester.tap(
+      find.byWidgetPredicate(
+        (w) => w is TtIconButton && w.semanticLabel == 'More options',
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete reel'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete reel'));
+    await settleApp(tester);
+    expect(find.byType(ReelDetailScreen), findsNothing);
+    expect(find.byType(TtReelCard), findsOneWidget);
+
+    await tester.tap(find.byType(TtReelCard));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+  });
+
   testApp('the shell keeps the Reels tab scroll position while another tab '
       'is open (the shell, not the screen)', (tester) async {
     for (var i = 1; i <= 25; i++) {

@@ -123,7 +123,7 @@ Every remove, move, add-to-reel and reel delete returns an `UndoRecord` (`lib/do
    - `RemoveUndo`: clips (3), links (4), `updatedAt` (5).
    - `MoveUndo`: first the source links (4), then each created target link is deleted if it still has the `addedAt` the move gave it and the clip has another place (a link or a list); a clip with no other place keeps it (its source reel may be gone), so undoing a move never deletes a clip. Then both `updatedAt`s (5). No sweep.
    - `AddUndo`: first puts back each deleted `inbox` row with its state and `addedAt` if the clip still exists, is in no list, and has no link except the ones this add created; then deletes each created link (same `addedAt` only) whose clip keeps another place, as for a move, so undoing an add never deletes a clip. No sweep. Then `updatedAt` (5).
-   - `DeleteReelUndo`: inserts the reel row with its old id and every field (no duplicate-name check: restoring wins, D-80), then clips (3), links (4), references with their ids (a new id only if a backup gave the old one away), the VN session and its copy rows. A copy row whose clip was swept and could not come back (3 gave null) is left out, with a warning holding the reel id and the count; it never points at the old id.
+   - `DeleteReelUndo`: inserts the reel row with its old id and every field (no duplicate-name check: restoring wins, D-80), then clips (3), links (4), references with their ids (a new id only if a backup gave the old one away), the VN session and its copy rows. Every copy row comes back (D-54: the row is the only record of a copy file and may outlive its clip); a swept clip that came back under another id gives the row that id, and one that could not come back leaves the row with its old id, which no clip will hold (ids are never reused).
 7. The transaction commits; the log line holds the record type, reel ids and counts only (D-10). The streams that read those tables emit again.
 
 ### References, VN folders, settings and time zones
@@ -491,7 +491,7 @@ No baseline is read or written.
 
 ### Opening a reel (`lib/features/reels/`, `lib/router/`, D-87)
 
-**Getting there:** a card on Home does `context.push(Routes.reel(id))` through `_ReelsScreenState._openReel`, single-flight (`_openingReel`, freed when the route returns), so a double tap opens one page (`/reels/:id`, a child of the Reels branch, so the nav pill stays and the Reels tab stays selected). `app_router.dart` accepts only a positive whole number for the id; anything else goes to `/reels`. A tile on the page does `context.push(Routes.clip(reelId, clipId))` through `_openViewer`, single-flight in the same way (`/reels/:id/clip/:clipId`, the clip viewer, see "Watching a clip"), with the same rule for the clip id.
+**Getting there:** a card on Home does `context.push(Routes.reel(id))` through `OpenOnce.open` (`views/open_once.dart`): a tap in the window after the first (`kThemeAnimationDuration * 2`) does nothing, so a double tap opens one page; the window is not the push's future, which a `go` (the delete) never completes (`/reels/:id`, a child of the Reels branch, so the nav pill stays and the Reels tab stays selected). `app_router.dart` accepts only a positive whole number for the id; anything else goes to `/reels`. A tile on the page does `context.push(Routes.clip(reelId, clipId))` through `OpenOnce` in the same way (`/reels/:id/clip/:clipId`, the clip viewer, see "Watching a clip"), with the same rule for the clip id.
 
 **Building the page** (`views/reel_detail_screen.dart › ReelDetailScreen`, `view_models/reel_detail_controller.dart`):
 1. `build` watches `reelDetailControllerProvider(reelId)`, `thumbnailCacheProvider`, `localDayProvider` (so a day's year follows the calendar) and the phone's 24-hour setting.
@@ -541,7 +541,7 @@ No baseline is read or written.
 
 ### Watching a clip (`lib/features/reels/`, `lib/platform/media_bridge.dart`, `lib/router/`, D-89)
 
-**Getting there:** a tile on the reel's page does `context.push(Routes.clip(reelId, clipId))` (once however fast the taps: `_openViewer` is single-flight until the viewer returns). The route (`/reels/:id/clip/:clipId`, a child of the reel's route) has `parentNavigatorKey: rootNavigatorKey`, so it is drawn on the router's root navigator **above the tab shell** (no nav pill) while the reel's page stays under it. Anything but a positive whole number for either id goes to `/reels`. Paths below are relative to `app/lib/`.
+**Getting there:** a tile on the reel's page does `context.push(Routes.clip(reelId, clipId))` (once however fast the taps: `OpenOnce`, a short window after the tap). The route (`/reels/:id/clip/:clipId`, a child of the reel's route) has `parentNavigatorKey: rootNavigatorKey`, so it is drawn on the router's root navigator **above the tab shell** (no nav pill) while the reel's page stays under it. Anything but a positive whole number for either id goes to `/reels`. Paths below are relative to `app/lib/`.
 
 **Opening** (`features/reels/view_models/clip_viewer_controller.dart › ClipViewerController(reelId, clipId)`, watched by `views/clip_viewer_screen.dart › ClipViewerScreen`):
 1. It awaits `reelByIdProvider(reelId)` and `reelClipsProvider(reelId)`, and **reads without awaiting** `reelClipTimesProvider(reelId)` (so the viewer opens at once; `times` is empty until `ClipTimeService.localTimes` answers).
