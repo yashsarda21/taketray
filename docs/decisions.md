@@ -1019,3 +1019,18 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Why: the owner added videos, the row vanished, and it came back only after turning Shooting mode off and on, which they found wrong. Earlier videos are worth adding whether or not a Shooting session runs, and a second add after a first is normal (another day, a video the first range missed).
 - Alternatives considered: keeping the row only while on (the owner asked for off too); bringing it back after Undo (still one use); a different off look, such as the on card's frosted band on the light card (no contrast on a light surface); keeping `earlierAdded` stored but unused (dead state).
 - Consequences: on a 600 dp test screen the empty Reels tab's **New reel** button is now below the fold with full access (the off card is a row taller); `reels_tab_test.dart` scrolls to it. The CI goldens for `shooting_mode_card_off_rows` must be made by the "update goldens" workflow and pulled with `tool/pull_ci_goldens` (no `goldens/ci/` image was touched here). Patrol's `media_scan_test.dart` uses the To tag menu, not the card, so it is unaffected.
+
+### D-91 · Phase 5 scope: To tag with scenes, the tag player, Skip, Skip all and Skipped; sticky Pick several; Ready and Published reels folded; Undo goes back to the clip; the prototype's video scrim
+- Date: 2026-10-31 · Phase: 5 · Plan `docs/superpowers/plans/2026-10-31-phase-5-tagging.md` (owner approved 2026-10-31)
+- Decision:
+  1. **Built now:** To tag v2 (scenes and day headers, the summary row, Tag scene, Start tagging, tap a tile to tag from it, long-press multi-select with Tag and Skip, the ⋮ menu with Add earlier videos, Select clips, Skipped (n) and Skip all, the Skip all dialog with Undo, an error state); the tag player (muted autoplay, one tap tags and moves on, Pick several, long-press a chip, Same as previous, Skip, + New reel, "n of N" with the scene, previous and next without tagging, Undo, All done); the Skipped list (by day, Restore one or several, with Undo); the reel picker's tag mode (parked in D-80).
+  2. **Waits:** Add videos and the photo picker in Manual mode (Phase 7); the new-clips notification and the evening reminder (Phase 6); editing (Phase 8).
+  3. **Owner rulings (plan review, 2026-10-31):**
+     - **Pick several is sticky** (spec §3): it stays on from clip to clip until Cancel; the picks clear at each clip. This overrides the prototype, which resets it.
+     - **Other reels** holds Ready to edit and Published reels, folded by default; Collecting reels are always open; with no Collecting reel, Other reels is open. As the reel picker does (D-88).
+     - **Undo in the player goes back:** it puts the clip back in To tag, and the open player returns to that clip.
+     - **The video scrim** uses the prototype's values (top 0.78, bottom 0.6, solid fade), not the tokens' (0.7 / 0.55).
+     - **To tag's error state:** "Couldn't load your clips", "Your videos are safe in your gallery.", **Try again**.
+  4. **The clip on screen leaving To tag** without the player acting (a verify, a tag from elsewhere) moves the player on to the next waiting clip. Clips that arrive while the player is open are not added to its session.
+- Why: tagging is the app's core loop (spec §4: fast, no lost tags, never the wrong clip). Sticky Pick several helps runs of clips that go into two reels; Undo that goes back lets the user correct a wrong tap at once.
+- Consequences: Tasks 2–10 of the plan each add their own decision from D-92 on.
