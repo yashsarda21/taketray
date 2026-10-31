@@ -806,6 +806,16 @@ It walks through these steps in order:
 
 It ends with `No issues found!`. With the phone connected, unlocked and on the home screen: `tool/patrol test -d RZCY80PHWCZ -t patrol_test/reels_test.dart`, then reinstall the debug build as `docs/dev-setup.md` says.
 
-**Result:** see the run in Task 11. This section says what the test checks; it does not say it passed. The controller runs it on the phone and reports the result.
+**Result (S24 Ultra, Android 16, 2026-10-31):**
+- **The reels test passed** three times in a row. The video played in the viewer: its position moved past 0.
+- **The whole Patrol suite passed:** 8 tests passed, plus 1 skipped on purpose (limited access).
+
+**One fix was needed on the way.** The first run passed every step, then failed after the test ended with a `ConcurrentModificationError` in drift's `StreamQueryStore.close`:
+- The clean-up read the reels through a stream (`watchAll().first`).
+- That stream was still being cancelled when the app closed its database straight after the clean-up.
+- The fix: the clean-up now uses a one-off read (`db.select(db.reels).get()`).
+- The lesson: in a tear-down, read with a `Future`, not a stream.
+
+After a Patrol run, the normal debug build was reinstalled, so TakeTray Dev opens normally again.
 
 **Decisions:** D-77 (the debug-only test-media channel: one folder, owner-only delete), D-89 (the viewer's player), D-84 (Undo records), D-85 (the root messenger for snacks).

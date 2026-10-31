@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
@@ -56,7 +58,8 @@ void main() {
       final bridge = container.read(mediaBridgeProvider);
       // Whatever happens below, the test's reels go (the app's own database;
       // this app's data is cleared at the start of every test anyway).
-      addTearDown(() => _deleteTestReels(reels));
+      final db = container.read(appDatabaseProvider);
+      addTearDown(() => _deleteTestReels(db, reels));
 
       // 0. Only our folder watched, before anything else.
       await container
@@ -390,11 +393,16 @@ Future<void> _expectVideoPlays(PatrolIntegrationTester $) async {
 /// Deletes the reels this test makes, by their two names, in the app's own
 /// database. Never throws: the clean-up of the test video does not depend on
 /// it, and the app's data is cleared at the start of the next test.
-Future<void> _deleteTestReels(ReelsRepository reels) async {
+Future<void> _deleteTestReels(AppDatabase db, ReelsRepository reels) async {
   try {
-    final all = await reels.watchAll().first.timeout(
-      const Duration(seconds: 10),
-    );
+    // A one-off read, not a stream: a stream opened here is still being
+    // cancelled when the app closes its database straight after the
+    // tear-down, and drift then fails the test with a
+    // ConcurrentModificationError (seen on the S24, 2026-10-31).
+    final all = await db
+        .select(db.reels)
+        .get()
+        .timeout(const Duration(seconds: 10));
     for (final reel in all) {
       if (reel.name == _reelName || reel.name == _renamed) {
         await reels.delete(reel.id);
