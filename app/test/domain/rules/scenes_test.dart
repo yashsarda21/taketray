@@ -163,9 +163,12 @@ void main() {
 
     test("unknown time uses the phone's local day", () {
       // Built from local times, so the answer does not depend on the zone
-      // the test runs in: 23:55 and 00:02 on the phone's clock.
-      final a = clip(1, DateTime(2026, 10, 28, 23, 55).toUtc());
-      final b = clip(2, DateTime(2026, 10, 29, 0, 2).toUtc());
+      // the test runs in: 23:55 and 00:02 on the phone's clock. July, so that
+      // under TZ=Europe/London (BST, UTC+1) the local fields differ from the
+      // UTC ones; a copy of the UTC fields would join the two clips (22:55 and
+      // 23:02 UTC, one UTC day) and fail there.
+      final a = clip(1, DateTime(2026, 7, 15, 23, 55).toUtc());
+      final b = clip(2, DateTime(2026, 7, 16, 0, 2).toUtc());
 
       final scenes = groupIntoScenes([a, b], const {});
 
@@ -174,9 +177,11 @@ void main() {
         [2],
       ]);
       // Wall-clock values: UTC-flagged, holding the phone's local fields.
-      expect(scenes[0].start, DateTime.utc(2026, 10, 28, 23, 55));
+      expect(scenes[0].start, DateTime.utc(2026, 7, 15, 23, 55));
       expect(scenes[0].start.isUtc, isTrue);
-      expect(scenes[1].day, DateTime.utc(2026, 10, 29));
+      expect(scenes[0].day, DateTime.utc(2026, 7, 15));
+      expect(scenes[1].start, DateTime.utc(2026, 7, 16, 0, 2));
+      expect(scenes[1].day, DateTime.utc(2026, 7, 16));
     });
 
     test('equal times keep id order', () {
