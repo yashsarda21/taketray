@@ -46,12 +46,13 @@ class ReelFormState {
 ///
 /// [save] checks the name and the description, both at once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
-/// ago counts), and the repository's own `duplicate` is the backstop if
-/// another reel took the name between that check and the write. A problem is
-/// not thrown: [save] returns null and the state holds `nameError` /
-/// `descriptionError`, for the view to show. Anything else that goes wrong (a
-/// database error, the reel being gone) is logged by type and rethrown, for
-/// the view to tell the user.
+/// ago counts; when editing, the reel's own name in any case is always
+/// fine, as in `ReelsRepository.rename`), and the repository's own
+/// `duplicate` is the backstop if another reel took the name between that
+/// check and the write. A problem is not thrown: [save] returns null and the
+/// state holds `nameError` / `descriptionError`, for the view to show.
+/// Anything else that goes wrong (a database error, the reel being gone) is
+/// logged by type and rethrown, for the view to tell the user.
 ///
 /// Saving is single-flight: a second call while one runs returns the first
 /// call's future (a double tap on Save makes one reel).
@@ -103,7 +104,7 @@ class ReelFormController extends _$ReelFormController {
     _set(const ReelFormState(saving: true));
     try {
       final reels = await repository.watchAll().first;
-      final clash = _clashWith(reels, name, except: id);
+      final clash = _clashWith(reels, name, editing: id);
       final nameProblem =
           checkReelName(name) ??
           (clash == null ? null : ReelNameProblem.duplicate);
@@ -138,7 +139,7 @@ class ReelFormController extends _$ReelFormController {
           descriptionError: problem.problem is ReelDescriptionProblem
               ? problem.problem as ReelDescriptionProblem
               : null,
-          clashingName: _clashWith(reels, name, except: id)?.name,
+          clashingName: _clashWith(reels, name, editing: id)?.name,
         ),
       );
       return null;
@@ -175,10 +176,19 @@ class ReelFormController extends _$ReelFormController {
     return (await repository.getById(id))!;
   }
 
-  Reel? _clashWith(List<Reel> reels, String name, {required int? except}) {
+  /// The other reel that already has [name], or null. When this form edits
+  /// reel [editing], its own name in any case is never a clash, even while
+  /// another reel has it too (an Undo of a delete or a backup import can
+  /// bring two): the same rule as `ReelsRepository.rename` (D-84 point 1),
+  /// or neither reel could be saved without a rename.
+  Reel? _clashWith(List<Reel> reels, String name, {required int? editing}) {
     final key = reelNameKey(name);
+    if (editing != null &&
+        reels.any((r) => r.id == editing && reelNameKey(r.name) == key)) {
+      return null;
+    }
     for (final reel in reels) {
-      if (reel.id != except && reelNameKey(reel.name) == key) return reel;
+      if (reel.id != editing && reelNameKey(reel.name) == key) return reel;
     }
     return null;
   }

@@ -1402,7 +1402,7 @@ as int,
 /// @nodoc
 mixin _$ShootingState {
 
- bool get on; Map<String, VolumeBaseline> get baselines; DateTime? get since; bool get earlierAdded;
+ bool get on; Map<String, VolumeBaseline> get baselines; DateTime? get since;
 /// Create a copy of ShootingState
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1416,20 +1416,20 @@ $ShootingStateCopyWith<ShootingState> get copyWith => _$ShootingStateCopyWithImp
 @override
 bool operator ==(Object other) {
   final _this = this as ShootingState;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShootingState&&(identical(other.on, _this.on) || other.on == _this.on)&&const DeepCollectionEquality().equals(other.baselines, _this.baselines)&&(identical(other.since, _this.since) || other.since == _this.since)&&(identical(other.earlierAdded, _this.earlierAdded) || other.earlierAdded == _this.earlierAdded));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ShootingState&&(identical(other.on, _this.on) || other.on == _this.on)&&const DeepCollectionEquality().equals(other.baselines, _this.baselines)&&(identical(other.since, _this.since) || other.since == _this.since));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as ShootingState;
-  return Object.hash(runtimeType,_this.on,const DeepCollectionEquality().hash(_this.baselines),_this.since,_this.earlierAdded);
+  return Object.hash(runtimeType,_this.on,const DeepCollectionEquality().hash(_this.baselines),_this.since);
 }
 
 @override
 String toString() {
   final _this = this as ShootingState;
-  return 'ShootingState(on: ${_this.on}, baselines: ${_this.baselines}, since: ${_this.since}, earlierAdded: ${_this.earlierAdded})';
+  return 'ShootingState(on: ${_this.on}, baselines: ${_this.baselines}, since: ${_this.since})';
 }
 
 
@@ -1440,7 +1440,7 @@ abstract mixin class $ShootingStateCopyWith<$Res>  {
   factory $ShootingStateCopyWith(ShootingState value, $Res Function(ShootingState) _then) = _$ShootingStateCopyWithImpl;
 @useResult
 $Res call({
- bool on, Map<String, VolumeBaseline> baselines, DateTime? since, bool earlierAdded
+ bool on, Map<String, VolumeBaseline> baselines, DateTime? since
 });
 
 
@@ -1457,13 +1457,12 @@ class _$ShootingStateCopyWithImpl<$Res>
 
 /// Create a copy of ShootingState
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? on = null,Object? baselines = null,Object? since = freezed,Object? earlierAdded = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? on = null,Object? baselines = null,Object? since = freezed,}) {
   return _then(ShootingState(
 on: null == on ? _self.on : on // ignore: cast_nullable_to_non_nullable
 as bool,baselines: null == baselines ? _self.baselines : baselines // ignore: cast_nullable_to_non_nullable
 as Map<String, VolumeBaseline>,since: freezed == since ? _self.since : since // ignore: cast_nullable_to_non_nullable
-as DateTime?,earlierAdded: null == earlierAdded ? _self.earlierAdded : earlierAdded // ignore: cast_nullable_to_non_nullable
-as bool,
+as DateTime?,
   ));
 }
 
@@ -1548,10 +1547,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since,  bool earlierAdded)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ShootingState() when $default != null:
-return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
+return $default(_that.on,_that.baselines,_that.since);case _:
   return orElse();
 
 }
@@ -1569,10 +1568,10 @@ return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since,  bool earlierAdded)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since)  $default,) {final _that = this;
 switch (_that) {
 case _ShootingState():
-return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
+return $default(_that.on,_that.baselines,_that.since);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1589,10 +1588,10 @@ return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since,  bool earlierAdded)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( bool on,  Map<String, VolumeBaseline> baselines,  DateTime? since)?  $default,) {final _that = this;
 switch (_that) {
 case _ShootingState() when $default != null:
-return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
+return $default(_that.on,_that.baselines,_that.since);case _:
   return null;
 
 }
@@ -1604,7 +1603,7 @@ return $default(_that.on,_that.baselines,_that.since,_that.earlierAdded);case _:
 @JsonSerializable()
 
 class _ShootingState extends ShootingState {
-  const _ShootingState({required this.on, required  Map<String, VolumeBaseline> baselines, this.since, this.earlierAdded = false}): _baselines = baselines,super._();
+  const _ShootingState({required this.on, required  Map<String, VolumeBaseline> baselines, this.since}): _baselines = baselines,super._();
   factory _ShootingState.fromJson(Map<String, dynamic> json) => _$ShootingStateFromJson(json);
 
 @override final  bool on;
@@ -1616,7 +1615,6 @@ class _ShootingState extends ShootingState {
 }
 
 @override final  DateTime? since;
-@override@JsonKey() final  bool earlierAdded;
 
 /// Create a copy of ShootingState
 /// with the given fields replaced by the non-null parameter values.
@@ -1631,18 +1629,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShootingState&&(identical(other.on, on) || other.on == on)&&const DeepCollectionEquality().equals(other.baselines, _baselines)&&(identical(other.since, since) || other.since == since)&&(identical(other.earlierAdded, earlierAdded) || other.earlierAdded == earlierAdded));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ShootingState&&(identical(other.on, on) || other.on == on)&&const DeepCollectionEquality().equals(other.baselines, _baselines)&&(identical(other.since, since) || other.since == since));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,on,const DeepCollectionEquality().hash(_baselines),since,earlierAdded);
+    return Object.hash(runtimeType,on,const DeepCollectionEquality().hash(_baselines),since);
 }
 
 @override
 String toString() {
-    return 'ShootingState(on: $on, baselines: $baselines, since: $since, earlierAdded: $earlierAdded)';
+    return 'ShootingState(on: $on, baselines: $baselines, since: $since)';
 }
 
 
@@ -1653,7 +1651,7 @@ abstract mixin class _$ShootingStateCopyWith<$Res> implements $ShootingStateCopy
   factory _$ShootingStateCopyWith(_ShootingState value, $Res Function(_ShootingState) _then) = __$ShootingStateCopyWithImpl;
 @override @useResult
 $Res call({
- bool on, Map<String, VolumeBaseline> baselines, DateTime? since, bool earlierAdded
+ bool on, Map<String, VolumeBaseline> baselines, DateTime? since
 });
 
 
@@ -1670,13 +1668,12 @@ class __$ShootingStateCopyWithImpl<$Res>
 
 /// Create a copy of ShootingState
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? on = null,Object? baselines = null,Object? since = freezed,Object? earlierAdded = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? on = null,Object? baselines = null,Object? since = freezed,}) {
   return _then(_ShootingState(
 on: null == on ? _self.on : on // ignore: cast_nullable_to_non_nullable
 as bool,baselines: null == baselines ? _self._baselines : baselines // ignore: cast_nullable_to_non_nullable
 as Map<String, VolumeBaseline>,since: freezed == since ? _self.since : since // ignore: cast_nullable_to_non_nullable
-as DateTime?,earlierAdded: null == earlierAdded ? _self.earlierAdded : earlierAdded // ignore: cast_nullable_to_non_nullable
-as bool,
+as DateTime?,
   ));
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -319,6 +320,26 @@ void main() {
       await tester.tap(find.byType(TtReelCard).at(2));
       await tester.pumpAndSettle();
 
+      expect(find.text(reelRouteMarker(3)), findsOneWidget);
+    });
+
+    testWidgets('a double tap on a card opens one reel page', (tester) async {
+      await pumpHome(tester, reels: mixed());
+
+      // Two taps in one frame: both reach the card before the page is built.
+      await tester.tap(find.byType(TtReelCard).at(2));
+      await tester.tap(find.byType(TtReelCard).at(2));
+      await tester.pumpAndSettle();
+
+      final page = find.text(reelRouteMarker(3), skipOffstage: false);
+      expect(page, findsOneWidget);
+
+      // One Back is enough, and the guard is free again once it returns.
+      GoRouter.of(tester.element(find.text(reelRouteMarker(3)))).pop();
+      await tester.pumpAndSettle();
+      expect(page, findsNothing);
+      await tester.tap(find.byType(TtReelCard).at(2));
+      await tester.pumpAndSettle();
       expect(find.text(reelRouteMarker(3)), findsOneWidget);
     });
 

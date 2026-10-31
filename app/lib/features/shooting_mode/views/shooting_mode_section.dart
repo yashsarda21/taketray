@@ -24,10 +24,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// The top of the Reels tab: the access banner, then the Shooting mode card
 /// (D-75, D-76).
 ///
-/// - **Off:** the hairline card with the switch, and, when clips wait, the
-///   attention banner below it ("N clips to tag", "M min of video waiting";
-///   it opens To tag). The on card has its own strip instead, so the two are
-///   never shown together.
+/// - **Off:** the hairline card with the switch, the **Add earlier videos**
+///   row ("From your camera folder", D-90) while access is full, and, when
+///   clips wait, the attention banner below it ("N clips to tag", "M min of
+///   video waiting"; it opens To tag). The on card has its own strip
+///   instead, so the two are never shown together.
 /// - **On:** the dark card with "On since {time}" (and, when access is not
 ///   full, " · Manual mode: add clips yourself"), the **Open camera** button,
 ///   the latest waiting clip's thumbnail behind it (when nothing waits, the
@@ -35,13 +36,15 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   there is no such clip), and rows at the bottom (D-79: the card's `rows`
 ///   slot holds References first, then Add earlier videos, then the strip):
 ///   - **Add earlier videos** (history icon, "Shot before Shooting mode was
-///     on", a chevron), only while access is full and the session has not
-///     used it yet (`earlierAdded`, D-73); it opens the sheet;
+///     on", a chevron), while access is full; it opens the sheet, and stays
+///     after an add (D-90);
 ///   - "N clips to tag · Tag now", when any wait; it opens To tag.
 ///
 /// The card is not drawn until the stored Shooting mode has been read, so it
 /// never flashes "off" first. If that read fails it shows "off", and the
-/// switch still works.
+/// switch still works. The Add earlier videos row shows only once both the
+/// Shooting state and the access level are known (and access is full): not
+/// while either loads, not after a failed read, never in Manual mode.
 ///
 /// **Open camera** tells the user when the camera cannot open
 /// (`openCameraOrSay`, D-86). The card watches `localDayProvider`, so "On
@@ -68,6 +71,23 @@ class ShootingModeSection extends ConsumerWidget {
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final controller = ref.read(shootingModeControllerProvider.notifier);
+    final full = access?.level == MediaAccessLevel.full;
+    // D-90: on and off alike, whenever access is full and the stored state
+    // was really read (not the "off" shown after a failed read).
+    final earlierRow = full && shootingState.hasValue && shooting != null
+        ? TtCardRow(
+            kind: TtCardRowKind.link,
+            icon: Symbols.history_rounded,
+            title: l10n.addEarlierVideos,
+            subtitle: shooting.on
+                ? l10n.earlierCardRowSubtitle
+                : l10n.earlierCardRowSubtitleOff,
+            semanticLabel: shooting.on
+                ? l10n.earlierCardRowLabel
+                : l10n.earlierCardRowLabelOff,
+            onPressed: () => showAddEarlierVideos(context),
+          )
+        : null;
 
     final Widget card;
     if (shooting == null) {
@@ -80,6 +100,7 @@ class ShootingModeSection extends ConsumerWidget {
         semanticLabel: l10n.shootingModeCardSemantics('off'),
         switchSemanticLabel: l10n.shootingSwitchLabel,
         onChanged: controller.setOn,
+        rows: [?earlierRow],
       );
     } else {
       final time = shootingTimeText(
@@ -88,7 +109,6 @@ class ShootingModeSection extends ConsumerWidget {
         locale: locale,
         use24Hour: use24Hour,
       );
-      final full = access?.level == MediaAccessLevel.full;
       // Unknown access (not read yet, or the read failed) says nothing about
       // Manual mode.
       final limited = access != null && !full;
@@ -115,17 +135,7 @@ class ShootingModeSection extends ConsumerWidget {
         cameraLabel: l10n.shootingOpenCamera,
         onOpenCamera: () => unawaited(openCameraOrSay(context, ref)),
         // References (Phase 4/5) will come first in this list.
-        rows: [
-          if (full && !shooting.earlierAdded)
-            TtCardRow(
-              kind: TtCardRowKind.link,
-              icon: Symbols.history_rounded,
-              title: l10n.addEarlierVideos,
-              subtitle: l10n.earlierCardRowSubtitle,
-              semanticLabel: l10n.earlierCardRowLabel,
-              onPressed: () => showAddEarlierVideos(context),
-            ),
-        ],
+        rows: [?earlierRow],
         toTagStrip: pending.isEmpty
             ? null
             : TtCardRow(

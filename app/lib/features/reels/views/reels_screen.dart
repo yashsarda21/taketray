@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -38,12 +40,32 @@ const int _columns = 2;
 /// While the first list is being read nothing below the Shooting mode card
 /// is shown (neither "no reels" nor the floating button), so a phone with
 /// reels never flashes the first-time screen. The scroll position is kept
-/// while another tab is open (the shell keeps the tab built).
-class ReelsScreen extends ConsumerWidget {
+/// while another tab is open (the shell keeps the tab built). A double tap
+/// on a card opens one reel page.
+class ReelsScreen extends ConsumerStatefulWidget {
   const new({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ReelsScreen> createState() => _ReelsScreenState();
+}
+
+class _ReelsScreenState extends ConsumerState<ReelsScreen> {
+  /// A reel page is open (or opening), so a second tap on a card, even in
+  /// the same frame, does not open a second one. Free again when it returns.
+  bool _openingReel = false;
+
+  Future<void> _openReel(int reelId) async {
+    if (_openingReel) return;
+    _openingReel = true;
+    try {
+      await context.push(Routes.reel(reelId));
+    } finally {
+      _openingReel = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final home = ref.watch(homeControllerProvider).value;
@@ -125,6 +147,7 @@ class ReelsScreen extends ConsumerWidget {
                       key: ValueKey(home.reels[index].reel.id),
                       summary: home.reels[index],
                       cover: home.covers[home.reels[index].reel.id],
+                      onOpen: _openReel,
                     ),
                   ),
                 ),
@@ -201,10 +224,18 @@ class _FilterChips extends StatelessWidget {
 /// One reel on Home (`h.reelCard` in the prototype, without the VN pill and
 /// the references badge, which are Phases 8 and 9).
 class _ReelCard extends StatelessWidget {
-  const new({required this.summary, required this.cover, super.key});
+  const new({
+    required this.summary,
+    required this.cover,
+    required this.onOpen,
+    super.key,
+  });
 
   final ReelSummary summary;
   final ImageProvider? cover;
+
+  /// Opens the reel's page (once, however fast the taps).
+  final Future<void> Function(int reelId) onOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -235,7 +266,7 @@ class _ReelCard extends StatelessWidget {
               missing,
             )
           : l10n.reelCardSemantics(reel.name, status, summary.clipCount),
-      onTap: () => context.push(Routes.reel(reel.id)),
+      onTap: () => unawaited(onOpen(reel.id)),
     );
   }
 }

@@ -68,6 +68,10 @@ void main() {
     expect(find.text('Plan your first reel'), findsOneWidget);
     expect(find.byType(TtFab), findsNothing);
 
+    // With full access the off card has its Add earlier videos row (D-90),
+    // so on the test's 600 dp screen the button is below the fold.
+    await tester.ensureVisible(find.widgetWithText(TtButton, 'New reel'));
+    await tester.pumpAndSettle();
     await tester.tap(find.widgetWithText(TtButton, 'New reel'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(EditableText).first, 'London Food');

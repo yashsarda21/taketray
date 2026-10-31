@@ -172,6 +172,11 @@ void main() {
       l10n.earlierCardRowLabel,
       'Add earlier videos, shot before Shooting mode was on',
     );
+    expect(l10n.earlierCardRowSubtitleOff, 'From your camera folder');
+    expect(
+      l10n.earlierCardRowLabelOff,
+      'Add earlier videos, from your camera folder',
+    );
     expect(l10n.earlierChooseSubtitle, 'Up to 10 years back');
     expect(
       l10n.earlierChecking('8 Oct – 10 Oct'),

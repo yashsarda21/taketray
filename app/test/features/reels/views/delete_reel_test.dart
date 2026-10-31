@@ -47,10 +47,10 @@ class _CountingReels extends ReelsRepository {
   }
 
   @override
-  Future<void> undo(UndoRecord record) async {
+  Future<void> undoAll(List<UndoRecord> records) async {
     undos++;
     if (undoFails) throw StateError('disk full');
-    await super.undo(record);
+    await super.undoAll(records);
   }
 }
 
@@ -320,7 +320,8 @@ void main() {
                           onPressed: () async {
                             record = await reels.delete(goa.id);
                             if (!context.mounted) return;
-                            showUndoSnack(context, 'Goa deleted', record);
+                            ReelSnacks.of(context)
+                                .showUndo('Goa deleted', record);
                             Navigator.of(context).pop();
                           },
                         ),

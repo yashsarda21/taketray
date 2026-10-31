@@ -108,6 +108,20 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// does not open a second one.
   bool _picking = false;
 
+  /// The viewer is open (or opening), so a second tap on a tile, even in the
+  /// same frame, does not open a second one. Free again when it returns.
+  bool _openingViewer = false;
+
+  Future<void> _openViewer(int clipId) async {
+    if (_openingViewer) return;
+    _openingViewer = true;
+    try {
+      await context.push(Routes.clip(widget.reelId, clipId));
+    } finally {
+      _openingViewer = false;
+    }
+  }
+
   /// Goes to Reels, after this frame (the router must not be told during
   /// a build).
   void _leave() {
@@ -454,7 +468,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       // does not open the viewer.
       onTap: selection.selecting
           ? () => notifier.toggle(clip.id)
-          : () => unawaited(context.push(Routes.clip(widget.reelId, clip.id))),
+          : () => unawaited(_openViewer(clip.id)),
       onLongPress: () => selection.selecting
           ? notifier.toggle(clip.id)
           : notifier.start(clip.id),

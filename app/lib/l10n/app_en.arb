@@ -296,6 +296,14 @@
   "@earlierCardRowLabel": {
     "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
   },
+  "earlierCardRowSubtitleOff": "From your camera folder",
+  "@earlierCardRowSubtitleOff": {
+    "description": "Line under the Add earlier videos row on the Shooting mode card while Shooting mode is off (D-90)."
+  },
+  "earlierCardRowLabelOff": "Add earlier videos, from your camera folder",
+  "@earlierCardRowLabelOff": {
+    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card while Shooting mode is off."
+  },
   "earlierChooseSubtitle": "Up to 10 years back",
   "@earlierChooseSubtitle": {
     "description": "Line under Choose dates… in the Add earlier videos sheet."

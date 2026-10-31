@@ -12,12 +12,13 @@ part of 'reel_form_controller.dart';
 ///
 /// [save] checks the name and the description, both at once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
-/// ago counts), and the repository's own `duplicate` is the backstop if
-/// another reel took the name between that check and the write. A problem is
-/// not thrown: [save] returns null and the state holds `nameError` /
-/// `descriptionError`, for the view to show. Anything else that goes wrong (a
-/// database error, the reel being gone) is logged by type and rethrown, for
-/// the view to tell the user.
+/// ago counts; when editing, the reel's own name in any case is always
+/// fine, as in `ReelsRepository.rename`), and the repository's own
+/// `duplicate` is the backstop if another reel took the name between that
+/// check and the write. A problem is not thrown: [save] returns null and the
+/// state holds `nameError` / `descriptionError`, for the view to show.
+/// Anything else that goes wrong (a database error, the reel being gone) is
+/// logged by type and rethrown, for the view to tell the user.
 ///
 /// Saving is single-flight: a second call while one runs returns the first
 /// call's future (a double tap on Save makes one reel).
@@ -32,12 +33,13 @@ final reelFormControllerProvider = ReelFormControllerFamily._();
 ///
 /// [save] checks the name and the description, both at once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
-/// ago counts), and the repository's own `duplicate` is the backstop if
-/// another reel took the name between that check and the write. A problem is
-/// not thrown: [save] returns null and the state holds `nameError` /
-/// `descriptionError`, for the view to show. Anything else that goes wrong (a
-/// database error, the reel being gone) is logged by type and rethrown, for
-/// the view to tell the user.
+/// ago counts; when editing, the reel's own name in any case is always
+/// fine, as in `ReelsRepository.rename`), and the repository's own
+/// `duplicate` is the backstop if another reel took the name between that
+/// check and the write. A problem is not thrown: [save] returns null and the
+/// state holds `nameError` / `descriptionError`, for the view to show.
+/// Anything else that goes wrong (a database error, the reel being gone) is
+/// logged by type and rethrown, for the view to tell the user.
 ///
 /// Saving is single-flight: a second call while one runs returns the first
 /// call's future (a double tap on Save makes one reel).
@@ -50,12 +52,13 @@ final class ReelFormControllerProvider
   ///
   /// [save] checks the name and the description, both at once, then writes. The
   /// name is checked against the reels as they are now (a reel made a moment
-  /// ago counts), and the repository's own `duplicate` is the backstop if
-  /// another reel took the name between that check and the write. A problem is
-  /// not thrown: [save] returns null and the state holds `nameError` /
-  /// `descriptionError`, for the view to show. Anything else that goes wrong (a
-  /// database error, the reel being gone) is logged by type and rethrown, for
-  /// the view to tell the user.
+  /// ago counts; when editing, the reel's own name in any case is always
+  /// fine, as in `ReelsRepository.rename`), and the repository's own
+  /// `duplicate` is the backstop if another reel took the name between that
+  /// check and the write. A problem is not thrown: [save] returns null and the
+  /// state holds `nameError` / `descriptionError`, for the view to show.
+  /// Anything else that goes wrong (a database error, the reel being gone) is
+  /// logged by type and rethrown, for the view to tell the user.
   ///
   /// Saving is single-flight: a second call while one runs returns the first
   /// call's future (a double tap on Save makes one reel).
@@ -107,18 +110,19 @@ final class ReelFormControllerProvider
 }
 
 String _$reelFormControllerHash() =>
-    r'702b27e28391fd15bb27b977aa98e95a4903c0b5';
+    r'da762838350d46d92ab3119811e14a1c8de0ca6e';
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
 /// [save] checks the name and the description, both at once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
-/// ago counts), and the repository's own `duplicate` is the backstop if
-/// another reel took the name between that check and the write. A problem is
-/// not thrown: [save] returns null and the state holds `nameError` /
-/// `descriptionError`, for the view to show. Anything else that goes wrong (a
-/// database error, the reel being gone) is logged by type and rethrown, for
-/// the view to tell the user.
+/// ago counts; when editing, the reel's own name in any case is always
+/// fine, as in `ReelsRepository.rename`), and the repository's own
+/// `duplicate` is the backstop if another reel took the name between that
+/// check and the write. A problem is not thrown: [save] returns null and the
+/// state holds `nameError` / `descriptionError`, for the view to show.
+/// Anything else that goes wrong (a database error, the reel being gone) is
+/// logged by type and rethrown, for the view to tell the user.
 ///
 /// Saving is single-flight: a second call while one runs returns the first
 /// call's future (a double tap on Save makes one reel).
@@ -148,12 +152,13 @@ final class ReelFormControllerFamily extends $Family
   ///
   /// [save] checks the name and the description, both at once, then writes. The
   /// name is checked against the reels as they are now (a reel made a moment
-  /// ago counts), and the repository's own `duplicate` is the backstop if
-  /// another reel took the name between that check and the write. A problem is
-  /// not thrown: [save] returns null and the state holds `nameError` /
-  /// `descriptionError`, for the view to show. Anything else that goes wrong (a
-  /// database error, the reel being gone) is logged by type and rethrown, for
-  /// the view to tell the user.
+  /// ago counts; when editing, the reel's own name in any case is always
+  /// fine, as in `ReelsRepository.rename`), and the repository's own
+  /// `duplicate` is the backstop if another reel took the name between that
+  /// check and the write. A problem is not thrown: [save] returns null and the
+  /// state holds `nameError` / `descriptionError`, for the view to show.
+  /// Anything else that goes wrong (a database error, the reel being gone) is
+  /// logged by type and rethrown, for the view to tell the user.
   ///
   /// Saving is single-flight: a second call while one runs returns the first
   /// call's future (a double tap on Save makes one reel).
@@ -172,12 +177,13 @@ final class ReelFormControllerFamily extends $Family
 ///
 /// [save] checks the name and the description, both at once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
-/// ago counts), and the repository's own `duplicate` is the backstop if
-/// another reel took the name between that check and the write. A problem is
-/// not thrown: [save] returns null and the state holds `nameError` /
-/// `descriptionError`, for the view to show. Anything else that goes wrong (a
-/// database error, the reel being gone) is logged by type and rethrown, for
-/// the view to tell the user.
+/// ago counts; when editing, the reel's own name in any case is always
+/// fine, as in `ReelsRepository.rename`), and the repository's own
+/// `duplicate` is the backstop if another reel took the name between that
+/// check and the write. A problem is not thrown: [save] returns null and the
+/// state holds `nameError` / `descriptionError`, for the view to show.
+/// Anything else that goes wrong (a database error, the reel being gone) is
+/// logged by type and rethrown, for the view to tell the user.
 ///
 /// Saving is single-flight: a second call while one runs returns the first
 /// call's future (a double tap on Save makes one reel).

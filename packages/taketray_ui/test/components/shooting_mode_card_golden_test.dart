@@ -61,6 +61,21 @@ void main() {
       ),
     ],
   );
+
+  // The off card with its Add earlier videos row (D-90). Its own images, so
+  // the ones above are unchanged.
+  ttGoldenTest(
+    'Shooting mode card, off with a row',
+    fileName: 'shooting_mode_card_off_rows',
+    width: _full,
+    scenarios: const [
+      TtScenario('off, earlier', _Card(on: false, earlier: true)),
+      TtScenario(
+        'off, long subtitle, earlier',
+        _Card(on: false, subtitle: _longSubtitle, earlier: true),
+      ),
+    ],
+  );
 }
 
 class _Card extends StatelessWidget {
@@ -108,7 +123,9 @@ class _Card extends StatelessWidget {
           kind: TtCardRowKind.link,
           icon: Symbols.history_rounded,
           title: 'Add earlier videos',
-          subtitle: 'Shot before Shooting mode was on',
+          subtitle: on
+              ? 'Shot before Shooting mode was on'
+              : 'From your camera folder',
           onPressed: () {},
         ),
     ],

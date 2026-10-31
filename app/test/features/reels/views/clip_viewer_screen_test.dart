@@ -250,6 +250,40 @@ void main() {
       expect(title(tester), '2 of 3 · Goa');
     });
 
+    testApp('a swipe pauses the outgoing video at once: two never sound '
+        'together', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+      expect(platform.player(1).playing, isTrue);
+
+      // Past the middle, the finger still down: the page has changed and the
+      // next video plays, while the outgoing one is still on the screen.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(PageView)),
+      );
+      await gesture.moveBy(const Offset(-40, 0));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.runAsync(settle);
+      await tester.pump();
+      await tester.runAsync(settle);
+      await tester.pump();
+      expect(title(tester), '2 of 2 · Goa');
+      expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
+      expect(platform.player(1).disposed, isFalse);
+
+      // Only the incoming one is playing; the outgoing one keeps its frame,
+      // paused.
+      expect(platform.player(2).playing, isTrue);
+      expect(platform.player(1).playing, isFalse);
+      expect(platform.calls, contains('pause:1'));
+
+      await gesture.up();
+      await settleApp(tester);
+      expect(platform.live.map((p) => p.id), [2]);
+      expect(platform.player(2).playing, isTrue);
+    });
+
     testApp('a swipe that returns to the first page leaves one player', (
       tester,
     ) async {
@@ -273,6 +307,11 @@ void main() {
       expect(platform.live, hasLength(1));
       expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
       expect(find.byKey(const ValueKey('fake-video-2')), findsNothing);
+      // Paused when the swipe passed the middle, and playing again now that
+      // its page is back.
+      expect(platform.calls, contains('pause:1'));
+      expect(platform.live.single.id, 1);
+      expect(platform.live.single.playing, isTrue);
     });
 
     testApp('a disabled arrow does nothing', (tester) async {

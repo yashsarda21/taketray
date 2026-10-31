@@ -90,7 +90,7 @@ class ReferencesRepository {
               url: url.toString(),
               source: referenceSourceOf(url),
               label: Value(_cleanLabel(label)),
-              createdAt: _clock.now(),
+              createdAt: _clock.storedNow(),
             ),
           );
       await _touchReel(reelId);
@@ -182,7 +182,7 @@ class ReferencesRepository {
   /// to the top of Home (D-58). Run inside a transaction.
   Future<void> _touchReel(int reelId) =>
       (_db.update(_db.reels)..where((r) => r.id.equals(reelId))).write(
-        ReelsCompanion(updatedAt: Value(_clock.now())),
+        ReelsCompanion(updatedAt: Value(_clock.storedNow())),
       );
 
   Future<void> _requireReel(int reelId) async {

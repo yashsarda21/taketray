@@ -12,6 +12,10 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 5 (tagging and the player)
 
+- Phase 4 left these (final review M-6, D-80):
+  - The reel picker's **tag mode** (hidden in Phase 4).
+  - The empty reel's copy says "Tag clips from To tag…", which only makes sense once tagging exists; check it then.
+  - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
 - Phase 3 left these (D-76):
   - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
 - Scrub bar:
@@ -46,6 +50,10 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 7 (add videos and Manual mode)
 
+- Phase 4 left these (final review M-6, D-80):
+  - **Add videos** on the reel page (hidden in Phase 4).
+  - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
+
 Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
 
 - **Friends' videos.** Pick up videos the owner didn't shoot, such as WhatsApp downloads and Quick Share, behind a Settings switch. Today only `DCIM/Camera` is watched, so these never reach To tag. This may be done through Phase 10's editable watched folders. Open risks:
@@ -60,12 +68,16 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 8 (editor handoff)
 
+- Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
+- Undo of a reel delete leaves out a VN copy row whose clip could not come back (D-84 point 9c). That row was the app's only record of a copy file in `Movies/TakeTray/`, so the file is then not cleaned up by the session. When VN sessions exist, decide how such a copy is found and deleted (for example the session's folder scan).
+
 - Sanitise a reel name before using it as a VN folder name (`/`, `:` and other characters Android storage rejects); `uniqueFolderName` only handles clashes.
 
 - Removing a clip from a reel during a VN session (or deleting it as an orphan) must delete its VN copy file first. The `vn_copies` row survives the clip (D-54), so the storage screen can still find the file, but the normal flow should not rely on that.
 
 ## Phase 9 (references)
 
+- Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas).
 - The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it.
 - The reference card's "Open" button takes half the row at 2×.
 - The banner margin is not configurable (`refs.js` overrides it).
@@ -88,6 +100,13 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 - The disabled-on `TtSwitch` tick is at full opacity.
 
 ## Phase 11 (polish and release)
+
+- **Accessibility and the phone pass** (Phase 4 final review M-6; check each on the S24 with TalkBack):
+  - the reel page's app bar has an empty title until it scrolls (the name is in the body): what TalkBack reads there;
+  - focus order of the chips in Home's filter row;
+  - a text field's error (the Reel details form) may be read twice;
+  - the screen stays on while a long clip plays in the viewer;
+  - the sound at the start of a swipe in the viewer (the outgoing clip now pauses at the middle of the swipe; check nothing is heard from both before that).
 
 - `packages/taketray_ui/test/components/buttons_test.dart` has four tests that fail when `flutter test` is run from the repo root but pass from the package folder, which is how `tool/check` runs them ("TtButton at large text a stacked TtButtonRow button wraps too", "... wraps to two lines from the large-text scale", "TtButton the dialog size has 12 dp sides and wraps to two lines", "TtButtonRow puts buttons side by side, equal widths, 8 dp apart"). They fail at HEAD too (before Task 3). The cause has not been diagnosed; find it, and make the tests independent of the working folder.
 

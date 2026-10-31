@@ -247,6 +247,15 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
                   controller: pages,
                   itemCount: state.clips.length,
                   onPageChanged: (index) {
+                    // The outgoing page keeps its frame until the swipe
+                    // settles, but not its sound: it pauses now, so two
+                    // videos are never heard at once while the finger holds
+                    // the swipe past the middle.
+                    _pause(clipVideoUri(current.clip));
+                    // A swipe that turns back before it settles comes back to
+                    // a page whose player is still open (and was just
+                    // paused): it plays again, as a page reached plays.
+                    _resume(clipVideoUri(state.clips[index].clip));
                     setState(() => _outgoingClipId = current.clip.id);
                     ref.read(_provider.notifier).goTo(index);
                   },
@@ -325,6 +334,33 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
         ],
       ),
     );
+  }
+
+  /// The open player of the clip at [uri], or null. Never opens one.
+  VideoPlayerController? _openPlayer(Uri? uri) {
+    if (uri == null || !ref.exists(clipPlayerProvider(uri))) return null;
+    final controller = ref.read(clipPlayerProvider(uri)).value;
+    return controller != null && controller.value.isInitialized
+        ? controller
+        : null;
+  }
+
+  /// Pauses the player of the clip at [uri], if one is open and playing.
+  void _pause(Uri? uri) {
+    final controller = _openPlayer(uri);
+    if (controller != null && controller.value.isPlaying) {
+      unawaited(controller.pause());
+    }
+  }
+
+  /// Plays the player of the clip at [uri] again, if one is still open (a
+  /// page swiped back to before the swipe settled). A new page's player
+  /// starts by itself when it opens.
+  void _resume(Uri? uri) {
+    final controller = _openPlayer(uri);
+    if (controller != null && !controller.value.isPlaying) {
+      unawaited(controller.play());
+    }
   }
 
   /// The viewer's frame: the video theme, and a Scaffold of its own.

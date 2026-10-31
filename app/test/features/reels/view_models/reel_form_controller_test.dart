@@ -292,6 +292,32 @@ void main() {
       expect(stateOf(goa.id).hasErrors, isFalse);
     });
 
+    test(
+      'a reel sharing its name with a restored one can still be edited',
+      () async {
+        // Delete Goa, make a new Goa, then Undo the delete: two reels are
+        // called Goa (D-80: the restore wins over the rule).
+        final record = await reels.delete(goa.id);
+        final second = await reels.create('Goa');
+        await reels.undo(record);
+        expect((await allReels()).map((r) => r.name), ['Goa', 'Goa']);
+
+        for (final id in [goa.id, second.id]) {
+          final saved = await form(id)
+              .save(name: 'Goa', description: 'new beaches $id');
+          expect(saved, isNotNull, reason: 'reel $id');
+          expect(stateOf(id).hasErrors, isFalse, reason: 'reel $id');
+          expect((await reels.getById(id))!.description, 'new beaches $id');
+        }
+        // Its own name in another case, and the status, save too.
+        final saved = await form(second.id)
+            .save(name: ' goa ', status: ReelStatus.ready);
+        expect(saved!.name, 'goa');
+        expect(saved.status, ReelStatus.ready);
+        expect((await reels.getById(goa.id))!.name, 'Goa');
+      },
+    );
+
     test('a different reel has that name: a clash', () async {
       await reels.create('Paris');
       final saved = await form(goa.id).save(name: 'paris');

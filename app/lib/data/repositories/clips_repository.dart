@@ -67,7 +67,7 @@ class ClipsRepository {
     required bool Function(Clip stored, NewClip incoming) sameVideo,
   }) async {
     final result = await _db.transaction(() async {
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final ids = <int>[];
       final inserted = <int>[];
       final detached = <int>{};
@@ -125,7 +125,7 @@ class ClipsRepository {
   Future<List<int>> addNewClipsToReel(int reelId, List<NewClip> clips) async {
     final ids = await _db.transaction(() async {
       await _requireReel(reelId);
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final ids = <int>[];
       for (final clip in clips) {
         ids.add(await _findId(clip) ?? await _insertClip(clip, now));
@@ -155,7 +155,7 @@ class ClipsRepository {
     final changed = await _db.transaction(() async {
       await _requireClip(clipId);
       await _requireReels(reelIds);
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final current = await _reelIdsOf(clipId);
       final gained = reelIds.difference(current);
       final lost = current.difference(reelIds);
@@ -188,7 +188,7 @@ class ClipsRepository {
   Future<void> untagToInbox(int clipId) async {
     await _db.transaction(() async {
       await _requireClip(clipId);
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final reelIds = await _reelIdsOf(clipId);
       await (_db.delete(
         _db.clipReels,
@@ -276,7 +276,7 @@ class ClipsRepository {
     final inbox = ids.isEmpty
         ? const <InboxRow>[]
         : await (_db.select(_db.inbox)..where((i) => i.clipId.isIn(ids))).get();
-    final now = _clock.now();
+    final now = _clock.storedNow();
     final created = await _link(reelId, ids, now);
     return AddUndo(
       reelId: reelId,
@@ -318,7 +318,7 @@ class ClipsRepository {
     final record = await _db.transaction(() async {
       await _requireReel(reelId);
       final before = (await _undo.updatedAtOf(reelId))!;
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final (removed, swept) = await _unlinkAndSweep(reelId, ids, now);
       return RemoveUndo(
         reelId: reelId,
@@ -362,7 +362,7 @@ class ClipsRepository {
       await _requireReels({fromReelId, toReelId});
       final beforeFrom = (await _undo.updatedAtOf(fromReelId))!;
       final beforeTo = (await _undo.updatedAtOf(toReelId))!;
-      final now = _clock.now();
+      final now = _clock.storedNow();
       final inSource = ids.isEmpty
           ? const <int>{}
           : {
@@ -409,6 +409,11 @@ class ClipsRepository {
   /// ids, in one transaction (D-84). Idempotent; a reel that is gone gets
   /// nothing back. See `UndoWriter.undo`.
   Future<void> undo(UndoRecord record) => _undo.undo(record);
+
+  /// Puts back what every one of [records] changed, last to first, in one
+  /// transaction: all of them or, on a failure, none (then the list can be
+  /// undone again). See `UndoWriter.undoAll`.
+  Future<void> undoAll(List<UndoRecord> records) => _undo.undoAll(records);
 
   /// The MediaStore clips on volume [volumeName] that still hold a MediaStore
   /// id: the ones a verifier or a rebuild match can look for. Detached clips
@@ -536,7 +541,7 @@ class ClipsRepository {
     if (match.remap.isEmpty && match.lost.isEmpty) return;
 
     final applied = await _db.transaction(() async {
-      final now = _clock.now();
+      final now = _clock.storedNow();
       // Only attached MediaStore clips of this volume take part: a clip that
       // is detached already (a stale match), a picked clip, a clip of another
       // volume and an unknown id are ignored.
@@ -667,7 +672,7 @@ class ClipsRepository {
     }
     if (found.isEmpty && gone.isEmpty && otherVideo.isEmpty) return 0;
     final deleted = await _db.transaction(() async {
-      final now = _clock.now();
+      final now = _clock.storedNow();
       await _markDetached(otherVideo, now);
       await _markVerified(gone, isMissing: true, at: now);
       await _markVerified(found, isMissing: false, at: now);

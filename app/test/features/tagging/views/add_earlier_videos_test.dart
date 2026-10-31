@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
@@ -1691,7 +1693,7 @@ void main() {
       },
     );
 
-    testWidgets('the card link opens the sheet; it is gone after adding', (
+    testWidgets('the card link opens the sheet; it stays after adding (D-90)', (
       tester,
     ) async {
       await tester.runAsync(h.media.turnOnNow);
@@ -1718,12 +1720,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('1 clip added to To tag'), findsOneWidget);
-      // markEarlierAdded hides the link; the strip now counts the clip.
-      expect(find.text('Add earlier videos'), findsNothing);
+      // The link stays (it is no longer one use per session); the strip now
+      // counts the clip.
+      expect(find.text('Add earlier videos'), findsOneWidget);
       expect(find.text('1 clip to tag'), findsOneWidget);
     });
 
-    testWidgets('adding a chosen range also hides the card link', (
+    testWidgets('adding a chosen range also keeps the card link', (
       tester,
     ) async {
       await tester.runAsync(h.media.turnOnNow);
@@ -1745,7 +1748,69 @@ void main() {
       await tapAdd(tester);
 
       expect(find.text('2 clips added to To tag'), findsOneWidget);
-      expect(find.text('Add earlier videos'), findsNothing);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+    });
+
+    testWidgets('with Shooting mode off the card link opens the sheet too, '
+        'and stays after adding', (tester) async {
+      await pumpScreen(
+        tester,
+        const Scaffold(
+          body: SingleChildScrollView(child: ShootingModeSection()),
+        ),
+        overrides: h.appOverrides,
+      );
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('From your camera folder'), findsOneWidget);
+
+      await tester.tap(find.text('Add earlier videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSheet), findsOneWidget);
+
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 clip added to To tag'), findsOneWidget);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.text('From your camera folder'), findsOneWidget);
+    });
+
+    testWidgets('a Shooting state stored with earlierAdded: true (before '
+        'D-90) still loads and shows the link', (tester) async {
+      // What an older version wrote after an add in this session.
+      await tester.runAsync(
+        () => h.media.db
+            .into(h.media.db.settings)
+            .insertOnConflictUpdate(
+              SettingsCompanion.insert(
+                key: PhoneStateRepository.shootingModeKey,
+                value: jsonEncode({
+                  'on': true,
+                  'baselines': <String, Object>{},
+                  'since': '2026-10-28T09:41:00.000Z',
+                  'earlierAdded': true,
+                }),
+              ),
+            ),
+      );
+      await pumpScreen(
+        tester,
+        const Scaffold(
+          body: SingleChildScrollView(child: ShootingModeSection()),
+        ),
+        overrides: h.appOverrides,
+      );
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Shooting mode on'), findsOneWidget);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.text('Shot before Shooting mode was on'), findsOneWidget);
     });
   });
 }

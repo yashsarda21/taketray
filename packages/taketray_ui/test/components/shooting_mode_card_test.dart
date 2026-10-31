@@ -133,6 +133,103 @@ void main() {
       await tester.tap(find.byType(TtSwitch));
       expect(values, [true]);
     });
+
+    testWidgets('shows its rows under the top, in the hairline look (D-90)', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        ttTestApp(
+          _card(
+            on: false,
+            subtitle: 'Off. Turn on before filming',
+            earlier: true,
+            onEarlier: () => taps++,
+          ),
+        ),
+      );
+      final row = find.byType(TtCardRow);
+      expect(row, findsOneWidget);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.byIcon(Symbols.history_rounded), findsOneWidget);
+      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+      // Under the top, the card's full width.
+      expect(
+        tester.getTopLeft(find.text('Add earlier videos')).dy,
+        greaterThan(tester.getBottomLeft(find.byType(TtSwitch)).dy),
+      );
+      expect(
+        tester.getSize(row).width,
+        tester.getSize(find.byType(TtShootingModeCard)).width,
+      );
+
+      // The off card's look: no frosted dark band, a hairline above, and
+      // the surface's text colours.
+      final context = tester.element(find.byType(TtShootingModeCard));
+      final tt = context.tt;
+      final scheme = context.scheme;
+      expect(
+        find.descendant(of: row, matching: find.byType(BackdropFilter)),
+        findsNothing,
+      );
+      final border =
+          tester
+                  .widgetList<DecoratedBox>(
+                    find.descendant(
+                      of: row,
+                      matching: find.byType(DecoratedBox),
+                    ),
+                  )
+                  .map((d) => d.decoration)
+                  .whereType<BoxDecoration>()
+                  .single
+                  .border!
+              as Border;
+      expect(border.top.color, tt.colors.hairline);
+      expect(
+        tester.widget<Text>(find.text('Add earlier videos')).style!.color,
+        scheme.onSurface,
+      );
+      expect(
+        tester
+            .widget<Text>(find.text('Shot before Shooting mode was on'))
+            .style!
+            .color,
+        scheme.onSurfaceVariant,
+      );
+
+      await tester.tap(find.text('Add earlier videos'));
+      expect(taps, 1);
+    });
+
+    testWidgets('never shows the to-tag strip', (tester) async {
+      await tester.pumpWidget(ttTestApp(_card(on: false, rows: true)));
+      expect(find.text('References · 4'), findsOneWidget);
+      expect(find.text('3 clips to tag'), findsNothing);
+    });
+
+    testWidgets('with a row: a button with its label, accessible, fits at '
+        '2x', (tester) async {
+      final semantics = tester.ensureSemantics();
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(on: false, earlier: true),
+            brightness: brightness,
+            textScale: 2,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        final node = tester.getSemantics(
+          find.bySemanticsLabel(
+            'Add earlier videos, shot before Shooting mode was on',
+          ),
+        );
+        expect(node.getSemanticsData().flagsCollection.isButton, isTrue);
+        await expectTtAccessible(tester);
+      }
+      semantics.dispose();
+    });
   });
 
   group('TtShootingModeCard, on', () {

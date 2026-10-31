@@ -23,6 +23,13 @@ import '../../support/test_database.dart';
 final DateTime _t0 = DateTime.utc(2026, 10, 26, 9);
 const Duration _minute = Duration(minutes: 1);
 
+/// The part of a real clock's time that the database drops: `DateTime.now()`
+/// has microseconds, the database keeps milliseconds. The test clock carries
+/// it, so a record that held the in-memory time instead of the stored one
+/// would not match its own rows (I-2 of the Phase 4 final review). Stored
+/// times are still `_t0` plus whole minutes.
+const Duration _subMillisecond = Duration(microseconds: 123);
+
 late AppDatabase db;
 late FixedClock clock;
 late ClipsRepository clips;
@@ -62,7 +69,7 @@ void main() {
   setUp(() {
     db = testDatabase();
     addTearDown(db.close);
-    clock = FixedClock(_t0);
+    clock = FixedClock(_t0.add(_subMillisecond));
     clips = ClipsRepository(db, clock);
     reels = ReelsRepository(db, clock);
   });
@@ -632,6 +639,29 @@ void main() {
       expect(await inbox(), {id: (InboxState.pending, _t0)});
     });
 
+    test(
+      'add undo puts a To tag clip back with a real clock (microseconds)',
+      () async {
+        // The reviewer's probe: the clock is a minute and 123 µs on, as
+        // `DateTime.now()` would be, and the clip comes from To tag.
+        final goa = await reels.create('Goa');
+        final id = (await clips.saveDetected([shot(10)])).single;
+        clock.advance(_minute + _subMillisecond);
+        final record = await clips.addClipsToReel(goa.id, [id]);
+        expect(await inbox(), isEmpty);
+        expect(await linksOf(goa.id), [(id, goa.id, _t0.add(_minute))]);
+        // The record holds the time as the database stores it.
+        expect(record.createdLinks.single.addedAt, _t0.add(_minute));
+        expect(record.touch!.after, _t0.add(_minute));
+
+        await clips.undo(record);
+
+        expect(await inbox(), {id: (InboxState.pending, _t0)});
+        expect(await linksOf(goa.id), isEmpty);
+        expect(await clipIds(), [id]);
+      },
+    );
+
     test('add undo leaves a clip put in another reel since', () async {
       final goa = await reels.create('Goa');
       final paris = await reels.create('Paris');
@@ -741,6 +771,73 @@ void main() {
       },
     );
 
+    test(
+      'undo delete leaves out a VN copy row whose clip cannot come back',
+      () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final [kept, lost] = await clips.addNewClipsToReel(goa.id, [
+          shot(10),
+          picked('content://picker/1'),
+        ]);
+        final vn = VnRepository(db, clock);
+        await vn.startSession(goa.id, 'Goa');
+        for (final (clipId, number) in [(kept, 900), (lost, 901)]) {
+          await vn.addCopy(
+            VnCopy(
+              reelId: goa.id,
+              clipId: clipId,
+              copyMediaStoreId: number,
+              fileName: 'copy$number.mp4',
+              sizeBytes: 1000,
+            ),
+          );
+        }
+        final record = await reels.delete(goa.id);
+        expect(record.sweptClips.map((c) => c.id), [kept, lost]);
+        // The picker address now belongs to another video (another
+        // fingerprint), so the picked clip cannot come back (D-84 point 7).
+        final other = (await clips.addNewClipsToReel(paris.id, [
+          NewClip.picker(
+            pickerUri: 'content://picker/1',
+            fingerprint: ClipFingerprint(
+              sizeBytes: 3000,
+              durationMs: 9000,
+              dateTakenUtc: _t0.add(_minute),
+              displayName: 'other.mp4',
+            ),
+            width: 720,
+            height: 1280,
+            mimeType: 'video/mp4',
+          ),
+        ])).single;
+
+        final warnings = await warningsOf(() => reels.undo(record));
+
+        expect(await reels.getById(goa.id), isNotNull);
+        expect(await reelIdsOf(kept), {goa.id});
+        expect(await reelIdsOf(other), {paris.id});
+        expect(await clipIds(), [kept, other]);
+        // The restored clip's copy is back; the lost clip's copy is left out,
+        // never pointing at an id that has no clip (or at another clip).
+        expect(
+          [
+            for (final c in await db.select(db.vnCopies).get())
+              (c.clipId, c.copyMediaStoreId),
+          ],
+          [(kept, 900)],
+        );
+        expect(await db.select(db.vnSessions).get(), hasLength(1));
+        expect(
+          warnings,
+          contains(
+            'Undo delete of reel ${goa.id}: 1 VN copy rows left out, their '
+            'clips could not come back',
+          ),
+        );
+      },
+    );
+
     test('an unknown id gives a record that restores nothing', () async {
       await reels.create('Goa');
       final record = await reels.delete(99);
@@ -804,6 +901,31 @@ void main() {
       await expectLater(clips.undo(record), throwsA(isA<StateError>()));
       expect(await dump(), removed);
       await clips.undo(record);
+      expect(await dump(), start);
+    });
+
+    test('undoing several records is one transaction: a failure part way '
+        'leaves nothing undone, and the retry works', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final ids = await clips.saveDetected([shot(10), shot(11)]);
+      await clips.skip([ids.last]);
+      clock.advance(_minute);
+      final start = await dump();
+      final records = await clips.addClipsToReels({goa.id, paris.id}, ids);
+      final added = await dump();
+
+      // Last to first: Paris's links go, then Goa's first step (its To tag
+      // and Skipped rows back) fails.
+      log.failWhen = (sql) => sql.startsWith('INSERT INTO "inbox"');
+      await expectLater(clips.undoAll(records), throwsA(isA<StateError>()));
+      expect(await dump(), added);
+
+      // Nothing was marked undone, so the same list can be undone again.
+      await reels.undoAll(records);
+      expect(await dump(), start);
+      // And once only.
+      await clips.undoAll(records);
       expect(await dump(), start);
     });
   });

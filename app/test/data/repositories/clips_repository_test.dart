@@ -684,7 +684,9 @@ void main() {
           mediaStoreClip(11),
         ]);
         await repo.skip([ids.last]);
-        clock.advance(_minute);
+        // With microseconds, as a real clock has: the records must hold the
+        // times the database stores (milliseconds), or undo misreads them.
+        clock.advance(_minute + const Duration(microseconds: 123));
         final before = await state();
 
         final records = await repo.addClipsToReels({goa.id, paris.id}, ids);

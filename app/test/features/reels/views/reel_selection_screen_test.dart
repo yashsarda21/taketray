@@ -44,6 +44,19 @@ class _FailingCreate extends ReelsRepository {
       Future.error(StateError('disk full'));
 }
 
+/// A reels repository that notes every list handed to `undoAll`.
+class _RecordingUndo extends ReelsRepository {
+  _RecordingUndo(VmHarness h) : super(h.media.db, h.media.clock);
+
+  final List<List<UndoRecord>> undone = [];
+
+  @override
+  Future<void> undoAll(List<UndoRecord> records) {
+    undone.add(records);
+    return super.undoAll(records);
+  }
+}
+
 void main() {
   late VmHarness h;
   late ReelsRepository reels;
@@ -756,6 +769,40 @@ void main() {
       await tester.tap(find.text('Undo'));
       await settleApp(tester);
 
+      expect(await clipIdsOf(tester, london.id), isEmpty);
+      expect(await clipIdsOf(tester, paris.id), isEmpty);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+    });
+
+    testApp('Undo of an add to several reels undoes every record in one go', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      final paris = await newReel(tester, 'Paris');
+      final ids = await reelWithClips(tester, goa, 1);
+      final recording = _RecordingUndo(h);
+      await open(
+        tester,
+        goa.id,
+        overrides: [reelsRepositoryProvider.overrideWithValue(recording)],
+      );
+      await select(tester, 1);
+      await tester.tap(barButton('Add to another reel'));
+      await settleApp(tester);
+      await tester.tap(find.text('London'));
+      await tester.tap(find.text('Paris'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Add to 2 reels'));
+      await settleApp(tester);
+
+      await tester.tap(find.text('Undo'));
+      await settleApp(tester);
+
+      // One call with both records (one transaction: all or nothing), not
+      // one call for each reel.
+      expect(recording.undone, hasLength(1));
+      expect(recording.undone.single, hasLength(2));
       expect(await clipIdsOf(tester, london.id), isEmpty);
       expect(await clipIdsOf(tester, paris.id), isEmpty);
       expect(await clipIdsOf(tester, goa.id), ids.toSet());

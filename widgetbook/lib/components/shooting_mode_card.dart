@@ -5,7 +5,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtShootingModeCard`: off (quiet) or on (the black media hero).
+/// `TtShootingModeCard`: off (quiet) or on (the black media hero). The rows
+/// show in both (D-90); the to-tag strip and the camera button only on.
 final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
   name: 'TtShootingModeCard',
   useCases: [
@@ -34,7 +35,7 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
           initialValue: true,
         );
         final earlier = context.knobs.boolean(
-          label: 'add earlier videos row',
+          label: 'add earlier videos row (on and off)',
           initialValue: true,
         );
         final toTag = context.knobs.boolean(
@@ -72,9 +73,12 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
                   kind: TtCardRowKind.link,
                   icon: Symbols.history_rounded,
                   title: 'Add earlier videos',
-                  subtitle: 'Shot before Shooting mode was on',
-                  semanticLabel:
-                      'Add earlier videos, shot before Shooting mode was on',
+                  subtitle: on
+                      ? 'Shot before Shooting mode was on'
+                      : 'From your camera folder',
+                  semanticLabel: on
+                      ? 'Add earlier videos, shot before Shooting mode was on'
+                      : 'Add earlier videos, from your camera folder',
                   onPressed: () {},
                 ),
             ],

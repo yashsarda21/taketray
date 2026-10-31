@@ -26,7 +26,9 @@ class ClipActionOutcome {
   /// moved to, or the reel removed from. In the order they were picked.
   final List<String> reelNames;
 
-  /// How many clips were taken out of the reel (remove only; 0 otherwise).
+  /// How many clips the action was about: an add, every clip asked for
+  /// (also those a reel had already); a move or a remove, how many links it
+  /// took out of the source reel.
   final int clipCount;
 
   /// Whether nothing changed (every clip was there already), so Undo would

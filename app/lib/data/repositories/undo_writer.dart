@@ -65,33 +65,47 @@ class UndoWriter {
   ///
   /// Idempotent: a second undo of the same record changes nothing. A failed
   /// undo changes nothing and can be tried again.
-  Future<void> undo(UndoRecord record) async {
-    var marked = false;
+  Future<void> undo(UndoRecord record) => undoAll([record]);
+
+  /// Puts back what every one of [records] changed, **last to first**, in
+  /// **one** transaction, as [undo] does for one (an add to three reels is
+  /// three records, D-84 point 8). If any step fails, the transaction rolls
+  /// back, so nothing of any record stays undone, none is marked, and the
+  /// same list can be undone again. A record undone already is skipped.
+  Future<void> undoAll(List<UndoRecord> records) async {
+    final marked = <UndoRecord>[];
     try {
       await _db.transaction(() async {
-        // Undo calls run one after another (a transaction each), so a double
-        // tap sees the first one's mark.
-        if (_undone[record] ?? false) {
-          _log.info('Undo of a ${record.runtimeType} that was undone already');
-          return;
+        for (final record in records.reversed) {
+          // Undo calls run one after another (a transaction each), so a
+          // double tap sees the first one's marks.
+          if (_undone[record] ?? false) {
+            _log.info(
+              'Undo of a ${record.runtimeType} that was undone already',
+            );
+            continue;
+          }
+          switch (record) {
+            case RemoveUndo():
+              await _undoRemove(record);
+            case MoveUndo():
+              await _undoMove(record);
+            case AddUndo():
+              await _undoAdd(record);
+            case DeleteReelUndo():
+              await _undoDelete(record);
+          }
+          _undone[record] = true;
+          marked.add(record);
         }
-        switch (record) {
-          case RemoveUndo():
-            await _undoRemove(record);
-          case MoveUndo():
-            await _undoMove(record);
-          case AddUndo():
-            await _undoAdd(record);
-          case DeleteReelUndo():
-            await _undoDelete(record);
-        }
-        _undone[record] = marked = true;
       });
     } on Object {
       // The transaction rolled back (the commit itself can fail after the
-      // mark), so the record can be undone again. A call that found it
-      // undone already leaves the mark alone.
-      if (marked) _undone[record] = null;
+      // marks), so every record can be undone again. One found undone
+      // already keeps its mark.
+      for (final record in marked) {
+        _undone[record] = null;
+      }
       rethrow;
     }
   }
@@ -209,7 +223,15 @@ class UndoWriter {
               createdAt: session.createdAt,
             ),
           );
+      var leftOut = 0;
       for (final copy in record.vnCopies) {
+        // A swept clip that could not come back (mapped to null) must not
+        // get a copy row: its old id has no clip, or holds another one. A
+        // clip that was not swept keeps its id.
+        if (ids.containsKey(copy.clipId) && ids[copy.clipId] == null) {
+          leftOut++;
+          continue;
+        }
         final clipId = ids[copy.clipId] ?? copy.clipId;
         await _db
             .into(_db.vnCopies)
@@ -223,6 +245,12 @@ class UndoWriter {
               ),
               mode: InsertMode.insertOrIgnore,
             );
+      }
+      if (leftOut > 0) {
+        _log.warning(
+          'Undo delete of reel ${reel.id}: $leftOut VN copy rows left out, '
+          'their clips could not come back',
+        );
       }
     }
     _log.info(
@@ -290,7 +318,7 @@ class UndoWriter {
           _clipCompanion(clip).copyWith(
             mediaStoreId: Value(-clip.id),
             missing: const Value(true),
-            lastVerifiedAt: Value(_clock.now()),
+            lastVerifiedAt: Value(_clock.storedNow()),
           ),
           mode: InsertMode.insertOrAbort,
         );

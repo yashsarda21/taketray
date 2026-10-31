@@ -401,9 +401,9 @@ class MediaScanner {
   });
 
   /// Adds the videos shot in [range] that TakeTray does not know yet to To
-  /// tag, and returns the ids of the new clips (for Undo). Notes the use in
-  /// the Shooting session when something was added (D-73). Never reads or
-  /// moves a baseline. Throws [StateError] without full access and
+  /// tag, and returns the ids of the new clips (for Undo). Writes nothing
+  /// to the Shooting state (D-90 dropped the one-use mark), and never reads
+  /// or moves a baseline. Throws [StateError] without full access and
   /// [ArgumentError] for an impossible range (see [countEarlierIn]).
   Future<List<int>> addEarlier(EarlierRange range) => _queue.run(() async {
     final now = _clock.now();
@@ -420,7 +420,6 @@ class MediaScanner {
     final timeline = await _zones.all();
     final currentZone = await _bridge.currentZoneId();
     final saved = await _save(videos, timeline, currentZone, now);
-    await _phone.markEarlierAdded();
     _log.info(
       'Earlier videos (${_kind(range)}): added ${saved.inserted.length}, '
       '${saved.detached.length} stored clips were other videos',

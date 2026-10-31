@@ -332,6 +332,21 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
 
 - **Idempotent, twice over.** Every restore step is "insert if it is not there", so running it again changes nothing. On top of that, an `Expando` (a side table keyed by object identity that does not keep the object alive) marks a record once its undo commits. That matters for "delete, Undo, delete again, then the first Undo once more": without the mark, the first record would bring the reel back a second time.
 
+- **Several records, one transaction (final-review fix wave).** An add to three reels gives three records, and the snack's Undo hands all three to `undoAll(records)`, which goes through them last to first inside **one** `_db.transaction`. If the second one fails, the first one's changes roll back too, no record is marked, and the same list can be undone again. `undo(record)` is just `undoAll([record])`.
+
+- **Store what you compare (final-review fix wave).** The database keeps times in milliseconds (`UtcMillisConverter`), but `DateTime.now()` has microseconds. An add used to put `now` into its record (`ClipLink.addedAt`), so the record said `09:01:00.000123` while the row said `09:01:00.000`. Comparisons in SQL went through the converter and matched; the one comparison in Dart (`_hasOtherLink`: "does the clip have a link other than the one this add made?") did not, so undoing an add of a To tag clip never put it back in To tag. The tests missed it because their clock sat on whole minutes. Now every repository takes its time from `Clock.storedNow()`:
+
+  ```dart
+  DateTime storedNow() => DateTime.fromMillisecondsSinceEpoch(
+    now().millisecondsSinceEpoch,
+    isUtc: true,
+  );
+  ```
+
+  so a record holds exactly what the row holds, and `undo_test.dart`'s clock is 123 µs past the minute, so this kind of bug fails a test.
+
+- **A VN copy row never points at a clip that did not come back.** A deleted reel's VN copy rows come back with it, but one whose clip could not be restored (another video now holds its address) is left out with a warning, rather than restored pointing at an id that has no clip, or at another clip.
+
 - **Move adds before it removes.** The removal step runs the global orphan sweep, so the target link must exist first:
 
   ```dart
@@ -348,7 +363,7 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
 **Where it lives:**
 
 - `app/lib/domain/models/undo_record.dart`, `reel_summary.dart`, `reel_clip.dart`; `app/lib/domain/rules/text_limits.dart` (`reelNameKey`, `checkReelDescription`).
-- `app/lib/data/repositories/undo_writer.dart` (`UndoWriter`: snapshots and `undo`), `reels_repository.dart` (`watchReelSummaries`, the name and description checks, `delete`), `clips_repository.dart` (`moveClips`, `watchReelClips`, the records), `app/lib/data/database/housekeeping.dart` (`selectOrphanClips`), `app/lib/data/database/clip_rules.dart` (`hasPicture`).
+- `app/lib/core/clock.dart` (`Clock.storedNow`); `app/lib/data/repositories/undo_writer.dart` (`UndoWriter`: snapshots, `undo` and `undoAll`), `reels_repository.dart` (`watchReelSummaries`, the name and description checks, `delete`), `clips_repository.dart` (`moveClips`, `watchReelClips`, the records), `app/lib/data/database/housekeeping.dart` (`selectOrphanClips`), `app/lib/data/database/clip_rules.dart` (`hasPicture`).
 - Tests: `app/test/data/repositories/undo_test.dart`, new groups in `reels_repository_test.dart` and `clips_repository_test.dart`, and `import with duplicate names still loads` in `backup_service_test.dart`. `app/test/support/statement_log.dart` counts statements and injects failures.
 
 **Try it yourself:**
@@ -359,7 +374,7 @@ It ends with `All tests passed!`. Now, in `app/lib/domain/rules/shooting_days.da
 
 It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer.dart`, delete the line `id: Value(clip.id),` in `_clipCompanion` and run it again. `undo remove restores an orphan-swept clip with its id and every field` fails with `Bad state: No element`: the clip came back under a new id, so nothing is found under the old one, and its link (which still names the old id) is not restored either. Undo your edit with `git checkout -- app/lib/data/repositories/undo_writer.dart`.
 
-**Decisions:** D-84 (all of the above), which amends D-56 (names, the description, delete) and D-57 (the record-returning actions and `ReelClip`); D-80 (the owner's rules for names, the cap and Undo); D-71 (why a detached clip holds `-id` and has no identity to match).
+**Decisions:** D-84 (all of the above; point 9 is the final-review fix wave: `undoAll`, `storedNow`, the VN copy rows), which amends D-56 (names, the description, delete) and D-57 (the record-returning actions and `ReelClip`); D-80 (the owner's rules for names, the cap and Undo); D-71 (why a detached clip holds `-id` and has no identity to match).
 
 ## 6. Home
 
@@ -465,6 +480,20 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
 
 - **Why a test timer needs care.** The test binding fails a test that ends with a `Timer` pending, and it checks *before* the tear-downs run. Riverpod disposes an unused provider later, through a scope that is already gone. So `pumpScreen` gives widget tests an inert `localDayProvider` (a stream that never emits), and a test about the midnight tick passes `midnightTick: true`, which disposes the container as the tree comes down. Whole-app tests (`tearDownApp`) dispose the containers they find. If you add a provider that owns a timer and a test fails with "A Timer is still pending even after the widget tree was disposed", this is why.
 
+- **A double tap opens one page (final-review fix wave).** `tester.tap` twice in one frame reaches the card twice before the new page is built, so two `context.push` calls would stack two reel pages and Back would need two presses. `_openReel` keeps a flag while the pushed route is open and frees it when the route's future completes (the user came back):
+
+  ```dart
+  if (_openingReel) return;
+  _openingReel = true;
+  try {
+    await context.push(Routes.reel(reelId));
+  } finally {
+    _openingReel = false;
+  }
+  ```
+
+  For it `ReelsScreen` became a stateful widget. The test counts the routes with `skipOffstage: false`, because a route under another one is offstage and a plain `find.text` would find one either way.
+
 **Where it lives:**
 
 - `app/lib/features/reels/view_models/reel_filters.dart` (`ReelFilter`, `filterCounts`, `applyFilter`) and `home_controller.dart` (`HomeState`, `reelSummariesProvider`, `HomeController`, `homeCoverSize`).
@@ -492,7 +521,7 @@ Both end with `All tests passed!`. Now, in `app/lib/features/reels/view_models/r
 - **The New reel / Reel details sheet** (`showReelForm`): a name (up to 40 characters, a counter), "Shot ideas" (up to 1,000, a counter that appears from 900), and, when editing, three status radios. **Create reel** or **Save** closes the sheet and shows "{name} created" or "Saved".
 - **The status menu** (`reelStatusItems`, `changeReelStatus`): Collecting, Ready to edit, Published, each with its pill's icon and a line saying what it means, the current one checked. Choosing one shows "Marked as {status}".
 - **The delete dialog** (`showDeleteReelDialog`): "Delete {name}?", a green "Your videos stay in your gallery" line, **Cancel** and **Delete reel**. Confirming goes to Reels and shows "{name} deleted" with **Undo**.
-- **`showUndoSnack`**: one helper that every Undo snack in the phase uses (remove, move, add and delete).
+- **`ReelSnacks`**: the one snack helper every Undo snack in the phase uses (remove, move, add and delete): `ReelSnacks.of(context).showUndo(message, record)`, or `showUndoAll` for several records.
 
 Home (Task 6) and the reel page (Task 8) call these; this task builds them and tests them without those screens.
 
@@ -525,7 +554,14 @@ Home (Task 6) and the reel page (Task 8) call these; this task builds them and t
 
   The slot is cleared when the future ends, whether it returned or threw. `ReelActions.confirmDelete` does the same, per reel id (a map from id to the running delete). Two tricks keep it correct. The clearing goes through `run.then(ok, onError: ignore).then(clear)`, so a failed save does not make a second, unhandled copy of its error. And `_set` only touches the state `if (ref.mounted)`, because the sheet (the provider's only listener) can be dragged away while a save runs; the save still finishes.
 
-- **Write only what changed, the refusable write first.** An edit has up to three writes (`rename`, `setDescription`, `setStatus`). The name goes first because it is the one that can still be refused (a clash after the check). If it is refused, nothing else was written, so the reel is not half edited. Saving a reel under its own name in another case ("goa" to "GOA") is allowed, because the clash check skips the reel being edited (`except: id`) and `rename` allows its own name (D-84).
+- **Write only what changed, the refusable write first.** An edit has up to three writes (`rename`, `setDescription`, `setStatus`). The name goes first because it is the one that can still be refused (a clash after the check). If it is refused, nothing else was written, so the reel is not half edited. Saving a reel under its own name in another case ("goa" to "GOA") is allowed, because the clash check skips the reel's own name and `rename` allows it (D-84). The check skips the *name*, not just the reel's id: after "delete Goa, make a new Goa, Undo the delete" two reels are called Goa (a restore wins over the rule), and each must still be able to save its Shot ideas. Skipping only the id would find the other Goa and refuse (the final review's I-1):
+
+  ```dart
+  if (editing != null &&
+      reels.any((r) => r.id == editing && reelNameKey(r.name) == key)) {
+    return null;
+  }
+  ```
 
 - **A snack that outlives its screen has to be on the root messenger.** Every `Scaffold` registers with the nearest `ScaffoldMessenger`; the one `MaterialApp.router` makes is the root. A page that wraps itself in its own `ScaffoldMessenger` takes its snacks with it when it pops. So the app owns the key:
 
@@ -534,7 +570,7 @@ Home (Task 6) and the reel page (Task 8) call these; this task builds them and t
   scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
   ```
 
-  and `ReelSnacks.of(context)` looks the messenger up **once, while the context is alive**, along with the `ProviderContainer` and the words, and afterwards needs no context. This is why `showDeleteReelDialog` captures everything before it awaits the delete: by the time the delete ends, the screen may be gone. Undo calls `container.read(reelsRepositoryProvider).undo(record)`, which does not depend on any widget either. `showTtSnackOn(messenger, ...)` is the half of the package's `showTtSnack` that takes a messenger instead of a context, so it can run late.
+  and `ReelSnacks.of(context)` looks the messenger up **once, while the context is alive**, along with the `ProviderContainer` and the words, and afterwards needs no context. This is why `showDeleteReelDialog` captures everything before it awaits the delete: by the time the delete ends, the screen may be gone. Undo calls `container.read(reelsRepositoryProvider).undoAll(records)`, which does not depend on any widget either. `showTtSnackOn(messenger, ...)` is the half of the package's `showTtSnack` that takes a messenger instead of a context, so it can run late.
 
 - **Delete returns what Undo needs.** `ReelActions.confirmDelete` returns the `DeleteReelUndo` from Task 5. The snack holds that one object and hands it to `undo`. An empty record (`isEmpty`, the reel was already gone) shows no snack: there is nothing to take back.
 
@@ -545,7 +581,7 @@ Home (Task 6) and the reel page (Task 8) call these; this task builds them and t
 **Where it lives:**
 
 - `app/lib/features/reels/view_models/reel_form_controller.dart` (state, validation, single-flight), `reel_actions.dart` (`setStatus`, `confirmDelete`).
-- `app/lib/features/reels/views/reel_form_sheet.dart`, `reel_status_menu.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart` (`ReelSnacks`, `showUndoSnack`), `sheet_failure.dart` (`SheetFailure`, `SheetFooter`).
+- `app/lib/features/reels/views/reel_form_sheet.dart`, `reel_status_menu.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart` (`ReelSnacks`), `sheet_failure.dart` (`SheetFailure`, `SheetFooter`).
 - `app/lib/features/shell/views/root_messenger.dart` (`rootMessengerKeyProvider`, `rootMessengerOf`), used by `app/lib/app.dart`.
 - `packages/taketray_ui/lib/src/components/snack.dart` (`showTtSnackOn`) and `dialog.dart` (`TtDialog.icon`, `TtDialogNote`).
 - Tests: `app/test/features/reels/view_models/reel_form_controller_test.dart`, `reel_actions_test.dart`, and `views/reel_forms_test.dart`, `views/delete_reel_test.dart`.
@@ -629,6 +665,8 @@ Tapping a tile opens a stand-in for the viewer (Task 10 builds it). **Select cli
 
 - **The name belongs in the body.** An app bar clamps its title to one line at large text. The page's app bar has no title; `TtReelHeader` shows the name with no line limit, so even 40 emoji can be read.
 
+- **A tile opens one viewer (final-review fix wave).** The same guard as Home's cards: `_openViewer` ignores a tap while the viewer it opened has not returned, so a double tap does not open two viewers on one clip (sharing one player).
+
 **Where it lives:**
 
 - `app/lib/features/reels/view_models/reel_detail_controller.dart` (`ReelDetailController`, `ReelDetailState`, `reelByIdProvider`, `reelClipsProvider`, `reelClipTimesProvider`).
@@ -690,7 +728,7 @@ It ends with `All tests passed!`. Now in `reel_detail_controller.dart` comment o
 **Where it lives:**
 
 - `app/lib/features/reels/view_models/`: `reel_selection.dart`, `reel_picker.dart` (pure rules), `reel_clip_actions.dart`.
-- `app/lib/features/reels/views/`: `reel_detail_screen.dart` (the selection bar and the three actions), `reel_picker_sheet.dart` (`showReelPicker`, `addedToText`), `undo_snacks.dart` (`showUndoAll`), `reel_form_sheet.dart` (`reelNameErrorText`).
+- `app/lib/features/reels/views/`: `reel_detail_screen.dart` (the selection bar and the three actions), `reel_picker_sheet.dart` (`showReelPicker`, `addedToText`), `undo_snacks.dart` (`showUndoAll`, which undoes every record in one transaction), `reel_form_sheet.dart` (`reelNameErrorText`).
 - Tests: `app/test/features/reels/view_models/reel_selection_test.dart`, `reel_picker_test.dart`, `reel_clip_actions_test.dart`, and `views/reel_selection_screen_test.dart`.
 
 **Try it yourself:**
@@ -753,7 +791,7 @@ It ends with `All tests passed!`. Now in `reel_selection.dart` change `selected:
 
 - **Pause when the app is left.** The provider registers a `WidgetsBindingObserver` that pauses on `paused`. The plugin has one too, but it starts the video again when you come back; we turn it off (`allowBackgroundPlayback: true`, which only does that) and use ours, which does not.
 - **Time where it was shot, never converted.** The header uses `ClipLocalTime.wallClock` as it is (D-83) and says the city only when `!isPhoneZone`. Until the zone answer arrives the line is empty: the phone's time would be wrong, and a wrong time is worse than none for a moment. But if the answer *fails* (an error, not "still loading") it will never come, so the line then shows the phone's own time, as the reel page's tiles do (`ClipViewerState.timesFailed`).
-- **A swipe does not black out the page going away.** A `PageView` calls `onPageChanged` at the *middle* of a swipe, and the viewer then moves to the new clip. If only the page showing had its video, the half-visible old page would turn black at that moment. So the viewer remembers the clip it is leaving (`_outgoingClipId`) and keeps that page's player until the pager says the scroll has ended (`ScrollEndNotification`). For those few hundred milliseconds two players exist; after that, one. Each page's own **Remove** acts on *its* clip, not on "the clip showing", so a button on the old page cannot remove the new clip.
+- **A swipe does not black out the page going away.** A `PageView` calls `onPageChanged` at the *middle* of a swipe, and the viewer then moves to the new clip. If only the page showing had its video, the half-visible old page would turn black at that moment. So the viewer remembers the clip it is leaving (`_outgoingClipId`) and keeps that page's player until the pager says the scroll has ended (`ScrollEndNotification`). For those few hundred milliseconds two players exist; after that, one. The old one is **paused** in the same `onPageChanged`, so its picture stays but its sound stops, and two clips are never heard together while a finger holds the swipe past the middle. If the finger brings the swipe back before it settles, the first page's player is still there, so it is played again. Each page's own **Remove** acts on *its* clip, not on "the clip showing", so a button on the old page cannot remove the new clip.
 - **The "In" row does not blink.** The names of the reels a clip is in come from a provider made for each clip, so a new clip starts as "loading" and the row would disappear for a frame. The screen keeps the last names it showed and uses them until the new ones arrive.
 - **The stage says what it is doing.** For a screen reader the video is a button with the label "Clip 2 of 5", the state "Playing" or "Paused", and the hint "Pause" or "Play": `Semantics(value: ..., hint: ...)`.
 - **A clip that goes missing while you watch it** (a verify finds the video gone) leaves the pager like a removed clip: the viewer moves to its neighbour, which starts playing.

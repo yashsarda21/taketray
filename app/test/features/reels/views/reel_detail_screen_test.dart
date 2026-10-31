@@ -964,6 +964,37 @@ void main() {
       expect(find.text(clipRouteMarker(goa.id, ids.last)), findsOneWidget);
     });
 
+    testApp('a double tap on a tile opens one viewer', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      );
+      await open(tester, goa.id);
+
+      // Two taps in one frame: both reach the tile before the viewer is
+      // built.
+      await tester.tap(find.byType(TtClipTile).last);
+      await tester.tap(find.byType(TtClipTile).last);
+      await tester.pumpAndSettle();
+
+      final viewer = find.text(
+        clipRouteMarker(goa.id, ids.last),
+        skipOffstage: false,
+      );
+      expect(viewer, findsOneWidget);
+
+      // One Back is enough, and the guard is free again once it returns.
+      GoRouter.of(tester.element(find.text(clipRouteMarker(goa.id, ids.last))))
+          .pop();
+      await tester.pumpAndSettle();
+      expect(viewer, findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text(clipRouteMarker(goa.id, ids.first)), findsOneWidget);
+    });
+
     testApp('a long press starts choosing and opens nothing', (tester) async {
       final goa = await newReel(tester, 'Goa');
       await real(

@@ -50,7 +50,7 @@ class ReelsRepository {
     _checkDescription(description);
     final row = await _db.transaction(() async {
       await _checkUnique(name);
-      final now = _clock.now();
+      final now = _clock.storedNow();
       return await _db
           .into(_db.reels)
           .insertReturning(
@@ -161,6 +161,11 @@ class ReelsRepository {
   /// Puts back what a remove, move, add or reel delete changed (D-84); the
   /// same as `ClipsRepository.undo`. See `UndoWriter.undo`.
   Future<void> undo(UndoRecord record) => _undo.undo(record);
+
+  /// Puts back what every one of [records] changed, last to first, in one
+  /// transaction: all of them or, on a failure, none (then the list can be
+  /// undone again). See `UndoWriter.undoAll`.
+  Future<void> undoAll(List<UndoRecord> records) => _undo.undoAll(records);
 
   /// Reel [id], or null when there is none.
   Future<Reel?> getById(int id) async {
@@ -285,7 +290,7 @@ class ReelsRepository {
 
   Future<void> _update(int id, ReelsCompanion changes) async {
     final updated = await (_db.update(_db.reels)..where((r) => r.id.equals(id)))
-        .write(changes.copyWith(updatedAt: Value(_clock.now())));
+        .write(changes.copyWith(updatedAt: Value(_clock.storedNow())));
     if (updated == 0) throw StateError('No reel with id $id');
   }
 }
