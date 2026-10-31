@@ -614,6 +614,52 @@ void main() {
       expect(s.taggedPerReel, {london.id: 1});
     });
 
+    test('undo after the player closed restores the clip', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start();
+      final tagged = session.tapReel(goa.id);
+      holds.fireAll();
+      final outcome = (await tagged)!;
+      expect(c.read(lastTagsProvider), [goa.id]);
+
+      // The player closes; the snack, on the root messenger, stays.
+      sub.close();
+      await settle();
+      expect(c.exists(tagSessionControllerProvider(null)), isFalse);
+
+      await session.undo(outcome.records, outcome.clipId);
+
+      expect(await pendingIds(), ids.toSet());
+      expect(await reelsOf(ids[0]), isEmpty);
+      expect(c.read(lastTagsProvider), isEmpty);
+    });
+
+    test('an action after close does nothing and does not throw', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start();
+      sub.close();
+      await settle();
+
+      expect(await session.tapReel(goa.id), isNull);
+      expect(await session.skip(), isNull);
+      expect(await session.confirmPicks(), isNull);
+      expect(await session.sameAsPrevious(), isNull);
+      expect(await session.createReelAndTag('Paris'), isNull);
+      session
+        ..longPressReel(goa.id)
+        ..setMulti(true)
+        ..togglePick(goa.id)
+        ..next()
+        ..previous();
+
+      expect(holds.made, isEmpty);
+      expect(spy.addCalls, isEmpty);
+      expect(await pendingIds(), ids.toSet());
+      expect(await reels.watchAll().first, hasLength(1));
+    });
+
     test('undo after done reopens the session', () async {
       final ids = await waiting(1);
       final session = await start();

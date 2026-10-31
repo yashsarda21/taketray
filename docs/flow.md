@@ -581,7 +581,7 @@ The view model behind the tag player (the screen is Phase 5 Task 7). All in `tag
 3. Without waiting: `ClipTimeService.localTimes(clips)` (D-83); when it answers, `times` and `scenes` are set again with the real times. A failure is logged by type.
 4. Every later answer of the same stream goes to `_onPending`: `pending` = the session's ids still in it, the rows of those clips replaced (fresh identity, D-89), then `_followed`: if the clip at `index` is not pending and no write runs, `index` = `TagQueue.afterAction(index, pending)`, or `done` when null. Clips not in the session are ignored.
 
-**One action at a time** (`_idle`): an action starts only when the state is loaded, not done, no action runs (`_running`) and no chip is held (`confirmingReelId`); otherwise it returns null at once. It reads `session[index]` and `index` before awaiting anything.
+**One action at a time** (`_idle`): an action starts only when the player is still open (`ref.mounted`, checked first: reading `state` after dispose throws), the state is loaded, not done, no action runs (`_running`) and no chip is held (`confirmingReelId`); otherwise it returns null at once. It reads `session[index]` and `index` before awaiting anything.
 
 **Tap a chip** (`tapReel(reelId, {reducedMotion})`):
 1. `_idle` and not `multi`; the action begins; `confirmingReelId` = `reelId`.
@@ -599,7 +599,7 @@ The view model behind the tag player (the screen is Phase 5 Task 7). All in `tag
 
 **A failure** in `_act`: logged by type (ids only, D-10), `busy` off, `confirmingReelId` null, nothing moves, rethrown to the screen ("Something went wrong. Try again.").
 
-**Undo** (`undo(records, clipId)`): waits for the state, then for any running action (`_running`); begins its own; `busy` on → `ClipsRepository.undoAll(records)` (last to first, one transaction, D-84) → `watchInbox(pending).first` → `_uncount` (what this session counted for those records, once, by identity; `LastTags.undo` puts the previous last tag back unless a later tag replaced it) → if `clipId` is pending and in the session, `index` = its position and `done = false`. Then `busy` off and `_followed`. A failure is rethrown and moves nothing.
+**Undo** (`undo(records, clipId)`): works after the player closed too (the repositories and `LastTags` are held from `build`; `ref.mounted` is checked before `state`, and state updates are skipped). Waits for the state while it is still loading, then for any running action (`_running`); begins its own; `busy` on → `ClipsRepository.undoAll(records)` (last to first, one transaction, D-84) → `watchInbox(pending).first` → `_uncount` (what this session counted for those records, once, by identity; `LastTags.undo` puts the previous last tag back unless a later tag replaced it) → if `clipId` is pending and in the session, `index` = its position and `done = false`. Then `busy` off and `_followed`. A failure is rethrown and moves nothing.
 
 **The player** (`features/reels/view_models/clip_player.dart › clipPlayerProvider(uri, use: ClipPlayerUse.tagging)`): as "Watching a clip" above, but the volume follows `tag_player_muted.dart › TagPlayerMuted` (kept alive, starts `true`, `toggle()`) and `setLooping(true)` is called after opening. `ClipPlayerUse.viewer` (the default) is unchanged.
 

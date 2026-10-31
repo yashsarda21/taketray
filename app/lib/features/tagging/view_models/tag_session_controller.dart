@@ -414,7 +414,8 @@ class TagSessionController extends _$TagSessionController {
   /// after "All done!". A failure is thrown, and nothing moves. After the
   /// player has closed it still undoes (the snack outlives it).
   Future<void> undo(List<UndoRecord> records, int clipId) async {
-    if (state.value == null && ref.mounted) await future;
+    // `state` throws once the player has closed: check `ref.mounted` first.
+    if (ref.mounted && state.value == null) await future;
     while (_running != null) {
       await _running!.future;
     }
@@ -449,9 +450,12 @@ class TagSessionController extends _$TagSessionController {
 
   // ---------------------------------------------------------------- helpers
 
-  /// The state, when an action may start now: loaded, not done, nothing
-  /// running and no chip held. Else null, and the action is ignored.
+  /// The state, when an action may start now: the player open, loaded, not
+  /// done, nothing running and no chip held. Else null, and the action is
+  /// ignored.
   TagSessionState? _idle() {
+    // After the player closed, `state` throws; an action then does nothing.
+    if (!ref.mounted) return null;
     final s = state.value;
     if (s == null || s.done || s.session.isEmpty) return null;
     if (_running != null || s.busy || s.confirmingReelId != null) return null;

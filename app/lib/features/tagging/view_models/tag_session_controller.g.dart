@@ -183,7 +183,7 @@ final class TagSessionControllerProvider
 }
 
 String _$tagSessionControllerHash() =>
-    r'b47665dd81f8bc0b7f9688f597ada82551ce4192';
+    r'6c346af55b3f0a512380697cfed2d18d109bfd2f';
 
 /// The tag player's session (D-96): the clips to tag, one at a time, and
 /// what each tap does.
