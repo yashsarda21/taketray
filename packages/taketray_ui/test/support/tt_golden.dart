@@ -8,8 +8,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// One state of a widget in a golden image.
 class TtScenario {
   /// A scenario called [name] showing [child], [width] dp wide (the golden's
-  /// width when null).
-  const new(this.name, this.child, {this.width});
+  /// width when null), or [largeWidth] dp wide at text scale 1.5 and up
+  /// (when given), for a widget whose parent gives it another width at large
+  /// text, such as a tag panel chip.
+  const new(this.name, this.child, {this.width, this.largeWidth});
 
   /// Label drawn above the scenario.
   final String name;
@@ -19,6 +21,9 @@ class TtScenario {
 
   /// Width of the scenario, or null for the golden's width.
   final double? width;
+
+  /// Width at text scale 1.5 and up, or null to use [width].
+  final double? largeWidth;
 }
 
 /// The text scales every scenario is drawn at (spec §7 rule 2).
@@ -32,6 +37,9 @@ const ttGoldenTextScales = [1.0, 2.0];
 /// tree are decoded before the shot; images that fail to decode are left to
 /// their error builders. An overflow fails the test.
 ///
+/// With [brightnesses] only the listed themes are written, for a surface
+/// that is the same in both (the tag player is always dark).
+///
 /// [pumpBeforeTest] replaces the default (decode images, then settle) for a
 /// widget that never settles, such as an endless animation.
 void ttGoldenTest(
@@ -39,9 +47,10 @@ void ttGoldenTest(
   required String fileName,
   required List<TtScenario> scenarios,
   double width = 360,
+  List<Brightness> brightnesses = Brightness.values,
   PumpAction? pumpBeforeTest,
 }) {
-  for (final brightness in Brightness.values) {
+  for (final brightness in brightnesses) {
     final theme = brightness == Brightness.light
         ? TakeTrayTheme.light()
         : TakeTrayTheme.dark();
@@ -62,7 +71,9 @@ void ttGoldenTest(
                   child: _Scaled(
                     scale: scale,
                     child: SizedBox(
-                      width: scenario.width ?? width,
+                      width: scale >= 1.5
+                          ? scenario.largeWidth ?? scenario.width ?? width
+                          : scenario.width ?? width,
                       child: scenario.child,
                     ),
                   ),

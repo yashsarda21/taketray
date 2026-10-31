@@ -18,11 +18,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
 - Phase 3 left these (D-76):
   - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
-- `TtTagPanel`:
-  - make it a semantics group
-  - budget its height cap of up to 520 dp at large text
-  - add the "Other reels" label, the empty state and the dashed "New reel" chip (R8)
-- Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
 
 ## Phase 6 (background detection)
 

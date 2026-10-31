@@ -1432,6 +1432,103 @@ abstract final class TtMetrics {
   // proto.css: .rchip.done .cv .ms { 'wght' 700 }
   static const double reelChipDoneIconWeight = 700;
 
+  // ---- New reel chip ----
+
+  /// Width of the dashed outline of the "New reel" chip.
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipBorder = 1.5;
+
+  /// Length of a dash in that outline (3 x the width, as in the
+  /// add-reference tile).
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipDash = 4.5;
+
+  /// Gap between dashes in that outline.
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipDashGap = 3;
+
+  /// Size of the plus in the "New reel" chip's cover.
+  // proto.css: .rchip .cv .ms { font-size: 20px }
+  static const double newReelChipIconSize = 20;
+
+  // ---- Other reels toggle ----
+
+  /// Height of the drawn row of the "Other reels" toggle. Its tap target is
+  /// the touch target (48 dp), with this row centred in it.
+  // proto.css: the toggle's inline `min-height: 36px`
+  static const double otherReelsToggleHeight = 36;
+
+  /// Corner radius of the toggle's highlight.
+  // proto.css: the toggle's inline `border-radius: 8px`
+  static const double otherReelsToggleRadius = 8;
+
+  /// Gap between the toggle's label and its arrow.
+  // proto.css: the toggle's inline `gap: 4px`
+  static const double otherReelsToggleGap = 4;
+
+  // ---- Tag done ----
+
+  /// Side of the round check badge.
+  // proto.css: .done-scr .big { width: 96px; height: 96px }
+  static const double tagDoneBadgeSize = 96;
+
+  /// Size of the check in the badge.
+  // screens.js: icon('check', 's48')
+  static const double tagDoneBadgeIconSize = 48;
+
+  /// Scale the badge starts from when it pops in.
+  // proto.css: @keyframes pop { from { transform: scale(.4) } }
+  static const double tagDoneBadgePopScale = 0.4;
+
+  /// Space between the stacked parts of the screen.
+  // proto.css: .done-scr { gap: 10px }
+  static const double tagDoneGap = 10;
+
+  /// Space above the title, in addition to the gap.
+  // proto.css: .done-scr h2 { margin: 8px 0 0 }
+  static const double tagDoneTitleTop = 8;
+
+  /// Opacity of the body line under the title.
+  // proto.css: .done-scr p { color: rgba(255,255,255,.75) }
+  static const double tagDoneBodyOpacity = 0.75;
+
+  /// Widest the summary list grows.
+  // proto.css: .done-scr .sum { max-width: 300px }
+  static const double tagDoneSummaryMaxWidth = 300;
+
+  /// Opacity of the summary's white fill.
+  // proto.css: .done-scr .sum { background: rgba(255,255,255,.08) }
+  static const double tagDoneSummaryFillOpacity = 0.08;
+
+  /// Corner radius of the summary.
+  // tt-style.css: .style-tt .done-scr .sum { border-radius: 22px }
+  static const double tagDoneSummaryRadius = 22;
+
+  /// Padding above and below the rows of the summary.
+  // proto.css: .done-scr .sum { padding: 6px 16px }
+  static const double tagDoneSummaryPaddingVertical = 6;
+
+  /// Space above the summary (below it is the same plus the button gap).
+  // proto.css: .done-scr .sum { margin: 10px 0 16px }
+  static const double tagDoneSummaryMarginTop = 10;
+
+  /// Space under the summary.
+  // proto.css: .done-scr .sum { margin: 10px 0 16px }
+  static const double tagDoneSummaryMarginBottom = 16;
+
+  /// Padding above and below the text of a summary row.
+  // proto.css: .done-scr .sum div { padding: 10px 0 }
+  static const double tagDoneRowPaddingVertical = 10;
+
+  /// Gap between a row's name and its count.
+  // proto.css: .done-scr .sum div { gap: 12px }
+  static const double tagDoneRowGap = 12;
+
+  /// Opacity of the white line between summary rows.
+  // proto.css: .done-scr .sum div { border-bottom: 1px solid
+  // rgba(255,255,255,.1) }
+  static const double tagDoneDividerOpacity = 0.1;
+
   // ---- Grouped rows and list rows ----
 
   /// Corner radius of the outer corners of a group of rows.

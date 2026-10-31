@@ -26,6 +26,22 @@ final WidgetbookComponent ttTagPanelComponent = WidgetbookComponent(
         );
         final footer = context.knobs.boolean(label: 'footer button');
         final multi = context.knobs.boolean(label: 'multi-select chips');
+        final newReel = context.knobs.object.dropdown<_NewReel>(
+          label: 'new reel chip',
+          options: _NewReel.values,
+          labelBuilder: (v) => v.name,
+        );
+        final others = context.knobs.object.dropdown<_Others>(
+          label: 'other reels',
+          options: _Others.values,
+          labelBuilder: (v) => v.name,
+        );
+        final foldedCount = context.knobs.int.slider(
+          label: 'other reels (chips)',
+          initialValue: 4,
+          max: 30,
+        );
+        final empty = context.knobs.boolean(label: 'empty text (no reels)');
         return TtVideoSurface(
           child: Stack(
             fit: StackFit.expand,
@@ -35,6 +51,28 @@ final WidgetbookComponent ttTagPanelComponent = WidgetbookComponent(
                 alignment: Alignment.bottomCenter,
                 child: TtTagPanel(
                   title: title,
+                  semanticLabel: 'Reels',
+                  emptyText: empty
+                      ? "You don't have any reels yet. Create one and this "
+                            'clip goes into it.'
+                      : null,
+                  toggle: switch (others) {
+                    _Others.none => null,
+                    _Others.folded => TtOtherReelsToggle(
+                      label: 'Other reels ($foldedCount)',
+                      expanded: false,
+                      onToggle: () {},
+                    ),
+                    _Others.open => TtOtherReelsToggle(
+                      label: 'Other reels',
+                      expanded: true,
+                      onToggle: () {},
+                    ),
+                  },
+                  foldedChips: [
+                    for (var i = 0; i < foldedCount; i++)
+                      _chip('Other reel ${i + 1}', i + 3, multi: multi),
+                  ],
                   headerAction: action
                       ? TtButton(
                           label: 'Pick several',
@@ -58,6 +96,15 @@ final WidgetbookComponent ttTagPanelComponent = WidgetbookComponent(
                         i,
                         multi: multi,
                       ),
+                    if (newReel != _NewReel.none)
+                      TtNewReelChip(
+                        title: 'New reel',
+                        subtitle: newReel == _NewReel.cell
+                            ? 'Add this clip to it'
+                            : null,
+                        fullWidth: newReel == _NewReel.fullWidth,
+                        onTap: () {},
+                      ),
                   ],
                 ),
               ),
@@ -68,6 +115,10 @@ final WidgetbookComponent ttTagPanelComponent = WidgetbookComponent(
     ),
   ],
 );
+
+enum _NewReel { none, cell, fullWidth }
+
+enum _Others { none, folded, open }
 
 TtReelChip _chip(String name, int i, {required bool multi}) => TtReelChip(
   name: name,
@@ -128,6 +179,37 @@ final WidgetbookComponent ttSameAsPreviousButtonComponent = WidgetbookComponent(
                   semanticLabel: 'Same as previous: ${detail ?? ''}',
                   onPressed: enabled ? () {} : null,
                 ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  ],
+);
+
+/// `TtOtherReelsToggle`: the "Other reels" row of the tag panel.
+final WidgetbookComponent ttOtherReelsToggleComponent = WidgetbookComponent(
+  name: 'TtOtherReelsToggle',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final expanded = context.knobs.boolean(label: 'expanded');
+        final count = context.knobs.int.slider(
+          label: 'folded reels',
+          initialValue: 4,
+          max: 30,
+        );
+        return TtVideoSurface(
+          child: Padding(
+            padding: EdgeInsets.all(context.tt.spacing.m),
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: TtOtherReelsToggle(
+                label: expanded ? 'Other reels' : 'Other reels ($count)',
+                expanded: expanded,
+                onToggle: () {},
               ),
             ),
           ),

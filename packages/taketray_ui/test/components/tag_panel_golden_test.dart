@@ -14,6 +14,7 @@ void main() {
         _overPhoto(
           TtTagPanel(
             title: 'Add to reel',
+            semanticLabel: 'Reels',
             chips: _chips(),
             headerAction: TtButton(
               label: 'Pick several',
@@ -30,6 +31,7 @@ void main() {
         _overPhoto(
           TtTagPanel(
             title: 'Pick reels for this clip',
+            semanticLabel: 'Reels',
             chips: _chips(multi: true),
             headerAction: TtButton(
               label: 'Cancel',
@@ -47,12 +49,85 @@ void main() {
       ),
       TtScenario(
         'panel, long names',
-        _overPhoto(TtTagPanel(title: 'Add to reel', chips: _chips(long: true))),
+        _overPhoto(
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            chips: _chips(long: true),
+          ),
+        ),
       ),
       TtScenario(
         'panel, names that share a first word',
         _overPhoto(
-          TtTagPanel(title: 'Add to reel', chips: _chips(shared: true)),
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            chips: _chips(shared: true),
+          ),
+        ),
+      ),
+      TtScenario(
+        'panel, new reel chip and Other reels folded',
+        _overPhoto(
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            chips: [..._chips().take(3), _newReel()],
+            headerAction: _pickSeveral(),
+            toggle: TtOtherReelsToggle(
+              label: 'Other reels (4)',
+              expanded: false,
+              onToggle: () {},
+            ),
+            foldedChips: _chips().skip(3).toList(),
+          ),
+        ),
+      ),
+      TtScenario(
+        'panel, Other reels open',
+        _overPhoto(
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            chips: [..._chips().take(2), _newReel()],
+            headerAction: _pickSeveral(),
+            toggle: TtOtherReelsToggle(
+              label: 'Other reels',
+              expanded: true,
+              onToggle: () {},
+            ),
+            foldedChips: _chips().skip(2).toList(),
+          ),
+        ),
+      ),
+      TtScenario(
+        'panel, no reels yet',
+        _overPhoto(
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            emptyText:
+                "You don't have any reels yet. Create one and this clip goes "
+                'into it.',
+            chips: [_newReel(fullWidth: true)],
+          ),
+        ),
+      ),
+      TtScenario(
+        'panel, 25 reels (capped, scrolls)',
+        _overPhoto(
+          TtTagPanel(
+            title: 'Add to reel',
+            semanticLabel: 'Reels',
+            headerAction: _pickSeveral(),
+            chips: [for (var i = 0; i < 5; i++) ..._chips(), _newReel()],
+            toggle: TtOtherReelsToggle(
+              label: 'Other reels (20)',
+              expanded: false,
+              onToggle: () {},
+            ),
+          ),
         ),
       ),
       TtScenario(
@@ -180,3 +255,18 @@ List<Widget> _chips({
       ),
   ];
 }
+
+Widget _newReel({bool fullWidth = false}) => TtNewReelChip(
+  title: 'New reel',
+  subtitle: fullWidth ? null : 'Add this clip to it',
+  fullWidth: fullWidth,
+  onTap: () {},
+);
+
+Widget _pickSeveral() => TtButton(
+  label: 'Pick several',
+  icon: Symbols.library_add_check_rounded,
+  kind: TtButtonKind.text,
+  size: TtButtonSize.small,
+  onPressed: () {},
+);

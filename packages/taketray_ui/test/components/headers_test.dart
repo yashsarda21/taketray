@@ -41,6 +41,73 @@ void main() {
       expect(taps, 1);
     });
 
+    group('selection variant', () {
+      Widget selecting({
+        required String label,
+        VoidCallback? onPressed,
+        double textScale = 1,
+        Brightness brightness = Brightness.light,
+      }) => ttTestApp(
+        TtSceneHeader(
+          title: '9:41 – 10:05 AM',
+          subtitle: '8 clips · 2:14',
+          action: TtButton(
+            label: label,
+            kind: TtButtonKind.text,
+            size: TtButtonSize.small,
+            onPressed: onPressed,
+          ),
+        ),
+        textScale: textScale,
+        brightness: brightness,
+      );
+
+      for (final label in ['Select all', 'Unselect']) {
+        testWidgets('shows a text "$label" button at the end of the row and '
+            'taps it', (tester) async {
+          var taps = 0;
+          await tester.pumpWidget(
+            selecting(label: label, onPressed: () => taps++),
+          );
+          expect(find.text(label), findsOneWidget);
+          expect(find.text('Tag scene'), findsNothing);
+          final header = tester.getRect(find.byType(TtSceneHeader));
+          final button = tester.getRect(find.byType(TextButton));
+          expect(button.right, lessThanOrEqualTo(header.right - 16));
+          expect(
+            button.left,
+            greaterThan(tester.getRect(find.text('8 clips · 2:14')).left),
+          );
+          expect(button.height, greaterThanOrEqualTo(36));
+          await tester.tap(find.text(label));
+          expect(taps, 1);
+        });
+      }
+
+      testWidgets('at 2x the title and the button both fit', (tester) async {
+        await tester.pumpWidget(
+          selecting(label: 'Select all', onPressed: () {}, textScale: 2),
+        );
+        expect(tester.takeException(), isNull);
+        expect(find.text('Select all'), findsOneWidget);
+        expect(find.text('9:41 – 10:05 AM'), findsOneWidget);
+      });
+
+      for (final brightness in Brightness.values) {
+        testWidgets('passes the accessibility guidelines '
+            '(${brightness.name})', (tester) async {
+          await tester.pumpWidget(
+            selecting(
+              label: 'Unselect',
+              onPressed: () {},
+              brightness: brightness,
+            ),
+          );
+          await expectTtAccessible(tester);
+        });
+      }
+    });
+
     testWidgets('is at least 48 dp high with 16 dp gutters', (tester) async {
       await tester.pumpWidget(header(onTag: () {}));
       final box = tester.getRect(find.byType(TtSceneHeader));

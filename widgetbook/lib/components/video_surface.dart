@@ -169,6 +169,7 @@ class _ComposedPlayer extends StatelessWidget {
               ),
             ),
             TtTagPanel(
+              semanticLabel: 'Reels',
               title: multi ? 'Pick reels for this clip' : 'Add to reel',
               headerAction: TtButton(
                 label: multi ? 'Cancel' : 'Pick several',

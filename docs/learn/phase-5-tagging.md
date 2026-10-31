@@ -139,7 +139,105 @@ It ends with `All tests passed!`. Now open `design/tools/build_tokens.py`, chang
 
 ## 3. The tag panel, done summary and info bar
 
-_Filled in by Task 3._
+**What we built:** the pieces of the tag player's bottom half and its last screen, in `packages/taketray_ui`, before the screens that use them (Tasks 7 to 9):
+
+- **The tag panel is a named group with room for everything the player needs.** Besides the reel chips it now has a slot for a message ("You don't have any reels yet..."), for an **Other reels (4)** row that folds more chips away, and for the folded chips themselves.
+- **`TtNewReelChip`:** the dashed "New reel" chip, in a normal cell or across the whole row when there are no reels yet.
+- **`TtOtherReelsToggle`:** the "Other reels" row, which says whether it is open.
+- **`TtTagDone`:** the "All done!" screen: a green check, a title, a line, a summary list ("Lisbon trip +5") and two buttons.
+- **`TtInfoBar`:** the one-line note the Skipped list will show. It was already built, so this task only checked it.
+- **`TtSceneHeader`:** a test that its action can be the text **Select all** / **Unselect** button.
+- **The reel chip's pictures at 2x text** now show the width the panel really gives (336 dp), not 164 dp.
+
+**Why TakeTray needs it:** tagging is a loop of one tap per clip. A creator with 25 reels must not see 25 chips push the video away, so the reels they are collecting into stay open and the rest fold into one row (the owner's ruling, D-91). A creator with no reels yet needs a clear way to make the first one. A blind user needs the panel read as "Reels", with each chip a separate button, and needs to hear whether "Other reels" is open. And the end of a session should say what was sorted, in words and numbers a screen reader reads in the right order.
+
+**Key ideas:**
+
+- **A group is a name, not a merge.** To read the panel as one thing without gluing all its chips into one sentence, the panel is a *container* whose children stay separate:
+
+  ```dart
+  Semantics(
+    container: true,
+    explicitChildNodes: true,
+    label: semanticLabel,   // "Reels", written by the caller (D-81)
+    child: SizedBox(...
+  ```
+
+  `container: true` makes the panel one node; `explicitChildNodes: true` says "keep my children as nodes of their own". Without the second line a screen reader would hear one long label. The test `panel is one semantics group` walks the node tree and checks the label is only "Reels" and the chips, the title and the footer are all below it, each with its own label.
+
+- **A folded group is shown only when its toggle says so.** The toggle is a widget the panel can read, and the panel decides what to draw:
+
+  ```dart
+  final folded = toggle?.expanded ?? true;
+  ...
+  if (folded) ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
+  ```
+
+  So the app cannot pass "expanded: false" to the toggle and still draw the chips, and what a screen reader hears ("collapsed") always matches the screen. With no toggle the folded chips are simply shown.
+
+- **Two columns, except when the chip says otherwise.** Chips go two to a row. The no-reels chip must take the whole row, and the chip before it, if alone, must not leave a hole. `_gridRows` keeps one chip waiting for a partner:
+
+  ```dart
+  if (chip is TtNewReelChip && chip.fullWidth) {
+    if (waiting != null) rows.add(pair(waiting, null));
+    waiting = null;
+    rows.add(chip);
+  } else if (waiting == null) { waiting = chip; }
+  else { rows.add(pair(waiting, chip)); waiting = null; }
+  ```
+
+  From text scale 1.5 (D-47) it skips all this and returns one chip per row. A test counts the rows with every slot present at 2x: no two share a top.
+
+- **The height cap, and why it scrolls inside.** The panel's job is to leave the video its space. It never grows past 340 dp (up to 520 dp at 2x text), and the part between the header and the footer scrolls. `ConstrainedBox` takes the smaller of its own limit and the parent's, so a short parent also wins. The test `panel caps its height at 2x and scrolls` puts 30 chips, the new chip, the toggle and 10 folded chips in a 2x panel on a 780 dp screen and checks the height is exactly 520, the title does not move when you scroll, and the last folded chip can still be tapped.
+
+- **A small look, a big target.** The "Other reels" row is drawn 36 dp high, but a finger needs 48 dp. In Flutter a widget cannot be tapped outside its own box, so the *outer* box is the 48 dp one and holds the `InkWell`; the 36 dp row is drawn inside it:
+
+  ```dart
+  InkWell(
+    onTap: onToggle,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minHeight: tt.sizes.touchTarget),      // 48
+      child: Center(heightFactor: 1, child: ConstrainedBox(
+        key: const ValueKey('tt-other-reels-row'),
+        constraints: const BoxConstraints(minHeight: TtMetrics.otherReelsToggleHeight), // 36
+  ```
+
+  `heightFactor: 1` stops `Center` from growing to fill a tall parent (a first version did, and the test saw 600 dp). My first attempt put the `InkWell` on the 36 dp row; the test that taps 2 dp from the top of the 48 dp box found it did nothing.
+
+- **"Expanded" is a flag of its own.** `Semantics(expanded: expanded, button: true, ...)` makes TalkBack say "collapsed" or "expanded" after the label, so the label is only "Other reels (4)". The test reads `flagsCollection.isExpanded` as a three-state value (true, false, or not applicable).
+
+- **A dashed outline is a painter, not a border.** CSS has `border: 1.5px dashed`; Flutter does not. The chip uses the shared `DashedBorderPainter` (Task 2), drawn over the chip as a `foregroundPainter`:
+
+  ```dart
+  CustomPaint(
+    foregroundPainter: DashedBorderPainter(
+      color: scheme.outline, radius: TtMetrics.reelChipRadius,
+      width: TtMetrics.newReelChipBorder, dash: TtMetrics.newReelChipDash, gap: TtMetrics.newReelChipDashGap),
+  ```
+
+  The chip keeps the 1 dp inset of a normal chip, so it is exactly as tall (58 dp) and the cover lines up with the chips beside it. The prototype's border is half a dp thicker; the difference is invisible, and keeping two chips of one height in a row is not.
+
+- **One screen that cannot be light.** `TtTagDone` wraps itself in `TtVideoSurface`, which applies the dark video theme, so even in the light app theme the test finds black and white text. Its white "Back to To tag" button is not hand-coloured: the button reads the theme's *primary* colour, so that button gets a copy of the theme where primary is white.
+
+- **Order for the ears.** Each summary row is a `MergeSemantics` of two texts, so a screen reader says "Lisbon trip, plus 5" as one item, name first. The test `done rows read name then count` checks the merged label is `'Lisbon trip\n+5'` (Flutter joins merged texts with a new line). The green badge is decoration, so it is hidden from screen readers; the title is a heading. Under "remove animations" the badge shows at full size at once (`tt.motion.long2` is zero then), and a test starts a fresh widget to prove it, because Flutter keeps the animation state of a widget it reuses.
+
+- **Show a test what the screen really does.** The reel chip used to be photographed at 164 dp in the 2x column, a size that cannot happen: at 2x the panel gives it 336 dp. The golden helper now takes a `largeWidth` per scenario, so each picture shows the real width. The overflow test is run at 336 dp, and the 164 dp case is kept but named as a squeeze test, so nobody mistakes it for a screen.
+
+- **Look before building.** `TtInfoBar` was already in `banners.dart` with its tests, its golden and its Widgetbook entry. The task text listed it as new, but a second copy would only drift from the first. Check what exists first; say so in the record (D-93) when the plan was wrong.
+
+- **Tests that can fail.** The new tests were run before the code and failed to compile, because the names did not exist. Three changes were then undone one at a time to see the right test fail: the height cap removed, the toggle's expanded flag dropped, and the dashed painter taken off the new chip. The `Select all` test passes at once, since the header already took any widget; it was proved the same way, by removing the action from the row.
+
+**Where it lives:** `packages/taketray_ui/lib/src/components/tag_panel.dart` (`TtTagPanel`, `TtOtherReelsToggle`, `TtSameAsPreviousButton`), `reel_chip.dart` (`TtNewReelChip`), `tag_done.dart` (`TtTagDone`, `TtTagDoneRow`), `banners.dart` (`TtInfoBar`), `headers.dart` (`TtSceneHeader`), the measurements in `lib/src/theme/tt_metrics.dart` (`newReelChip*`, `otherReelsToggle*`, `tagDone*`). Tests and pictures: `test/components/tag_panel_test.dart`, `reel_chip_test.dart`, `tag_done_test.dart`, `headers_test.dart` and the `*_golden_test.dart` files; `test/support/tt_golden.dart` (`largeWidth`, `brightnesses`). Catalogue: `widgetbook/lib/components/tag_panel.dart`, `reel_chip.dart`, `tag_done.dart`, `headers.dart`.
+
+**Try it yourself:** remove the cap and watch the test notice. From the repo root:
+
+```bash
+(cd packages/taketray_ui && ../../tool/flutter test test/components/tag_panel_test.dart --plain-name "panel caps its height at 2x and scrolls")
+```
+
+It ends with `All tests passed!`. Now open `packages/taketray_ui/lib/src/components/tag_panel.dart`, find the line `constraints: BoxConstraints(maxHeight: maxHeight),` and change `maxHeight` to `double.infinity`. Run the same command: it fails with `Expected: <520>` and `Actual: <780.0>` (the whole screen). Put the file back with `git checkout -- packages/taketray_ui/lib/src/components/tag_panel.dart` and check with `git status` that nothing is left over.
+
+**Decisions:** D-93 (all of this section), amending D-47 (the panel's layout), with D-81 (the caller's words), D-91 (folded Other reels, Pick several) and D-92 (the shared dashed painter) as background.
 
 ## 4. Skip, skip all and restore with undo
 
