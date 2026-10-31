@@ -100,6 +100,9 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 11 (polish and release)
 
+- **Shooting card rows clamp to one line at 2× text.** "Add earlier vid…", "References · 4" and "3 clips… Tag now" are cut short. This was true of the on card since Phase 1/3, and is now true of the off card too (D-90). Let a row wrap to two lines at large text, or stack its trailing part, and check it with TalkBack.
+- **Empty Reels at large text.** The off card is one row taller now (D-90), so on a short screen at a large font the empty Home's **New reel** button can sit below the fold. It can still be scrolled to. Check it on the S24 and one small screen.
+
 - **Accessibility and the phone pass** (Phase 4 final review M-6; check each on the S24 with TalkBack):
   - the reel page's app bar has an empty title until it scrolls (the name is in the body): what TalkBack reads there;
   - focus order of the chips in Home's filter row;
