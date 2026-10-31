@@ -762,4 +762,50 @@ It ends with `All tests passed!`. Now in `clipVideoUri` delete the `if (clip.mis
 
 ## 11. On the phone
 
-*To be written in Task 11.*
+**What we built:** one on-device test, `app/patrol_test/reels_test.dart`, that drives the real app on the Samsung S24 through the reel flows of this phase. The controller runs it on the phone; the unit and widget tests cannot prove the parts that need Android (a real video playing, the real media library, the real touch screen).
+
+It walks through these steps in order:
+
+1. From an empty Home, **New reel**, type "Patrol Reel", **Create reel**. The card shows on Home with the status Collecting.
+2. Open the reel, then three dots > **Reel details**, rename it to "Patrol Reel Edited" and **Save**. Tap the status pill and choose **Ready to edit**; the pill changes.
+3. Back on Home, one test video is put into the phone's media library and added to the reel. Open the reel: the **Day 1 · …** header and exactly one tile are there.
+4. Tap the tile. The viewer says **1 of 1**, and the video plays: the position of the app's own player moves past 0 within 5 seconds.
+5. Back on the reel, long press the tile, tap **Remove from this reel**. The reel is empty. Tap **Undo**: the tile is back, and it is the same clip (same id), not a second one.
+6. Three dots > **Delete reel** > **Delete reel**. Home has no card. **Undo**: the card is back, with its clip. Then delete it again and let the message go: it is gone for good. The test video is deleted.
+
+**Why TakeTray needs it:** two of the phase's worst bugs can only be seen on a phone. One is playing the wrong video, or none. The other is an Undo that quietly makes a second copy of a clip. A test with a fake player cannot see either. This test reads the real `VideoPlayerController` that the viewer is drawing, so "plays" means the player's own clock moved, not just that a widget was on the screen.
+
+**Key ideas:**
+
+- **Only its own video, in only its own folder (D-77).** The video is the 2-second fixture from `tool/make_test_video`. It goes into `Movies/TakeTray Test/` through a debug-only channel that deletes only files TakeTray Dev made. `TestMedia.start` registers the clean-up before anything can fail, so the video is deleted even if a step throws. The reel is deleted in a tear-down as well (in TakeTray Dev's own database).
+- **Nothing broad is asked of the phone.** The watched folder is set to the test folder first. The test never asks for the photo permission, so the app stays in Manual mode: it does not scan, and opening a reel does not verify (the verifier does nothing without full access). The one MediaStore read is the test video's own row, by its id; the test also checks that the row is in the test folder before it uses it:
+
+  ```dart
+  final row = await rowOf(bridge, video);
+  expect(_isTestFolder(row!.relativePath), isTrue);
+  ```
+
+- **The app's own words.** The test looks things up with `AppLocalizations` (`_l10n.reelsNewReel`, `_l10n.viewerTitle(1, 1, name)`), so a changed word changes the test, not the other way round. Icon buttons have no text, so they are found by the label a screen reader gives them:
+
+  ```dart
+  find.byWidgetPredicate((w) => w is TtIconButton && w.semanticLabel == label)
+  ```
+
+- **The clip is added the way Phase 7 will add one.** `ClipsRepository.addNewClipsToReel` with the video's real row (`newClipFrom`), through the app's own provider container, the way the other Patrol tests reach providers.
+- **"Plays" is a number.** The test finds the `VideoPlayer` widget on the viewer, takes its `controller` and watches `value.position`. The video is only 2 seconds long and the player stops at its end, so a listener keeps the largest position seen, and the test fails with the player's state if it stays at 0 for 5 seconds. It never prints the player's error text, which can contain a content address (D-10).
+- **No waiting for the screen to settle.** Like `media_scan_test`, it waits for each thing it needs with `waitFor` instead of `pumpAndSettle`, because a playing video and a counting-down snack never let a screen settle.
+- **Snacks are timed.** A message with **Undo** stays for 6 seconds, so the test taps Undo straight after checking the result.
+
+**Where it lives:** `app/patrol_test/reels_test.dart`; the helpers are in `app/patrol_test/support/` (`test_media.dart`, `waiting.dart`) and the video in `app/patrol_test/fixtures/test_video.dart`. How to run it, and the reminder to reinstall the normal debug build afterwards, are in `docs/dev-setup.md` ("Phase 4 check").
+
+**Try it yourself:** you cannot run this one without the phone, but the compile check is the same as for the other Patrol tests:
+
+```bash
+(cd app && ../tool/flutter analyze patrol_test)
+```
+
+It ends with `No issues found!`. With the phone connected, unlocked and on the home screen: `tool/patrol test -d RZCY80PHWCZ -t patrol_test/reels_test.dart`, then reinstall the debug build as `docs/dev-setup.md` says.
+
+**Result:** see the run in Task 11. This section says what the test checks; it does not say it passed. The controller runs it on the phone and reports the result.
+
+**Decisions:** D-77 (the debug-only test-media channel: one folder, owner-only delete), D-89 (the viewer's player), D-84 (Undo records), D-85 (the root messenger for snacks).
