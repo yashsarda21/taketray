@@ -7,7 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
-import 'package:taketray/features/reels/views/clip_viewer_placeholder.dart';
+import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -15,6 +15,8 @@ import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import '../support/fake_video_player.dart';
+import '../support/reel_videos.dart';
 import '../support/test_app.dart';
 import '../support/vm_harness.dart';
 
@@ -38,6 +40,9 @@ Future<void> _settle(WidgetTester tester) async {
   await tester.runAsync(settle);
   await tester.pump();
   await tester.pumpAndSettle();
+  // What the redraw let go of (a player to dispose) finishes in real time.
+  await tester.runAsync(settle);
+  await tester.pump();
 }
 
 void main() {
@@ -138,27 +143,121 @@ void main() {
     expect(find.byType(ReelsScreen), findsOneWidget);
   });
 
-  testApp('a clip location opens the viewer above the reel and back returns '
-      'to the reel', (tester) async {
-    final h = VmHarness();
+  testApp('a clip location opens the viewer above the shell, with no nav pill, '
+      'and back returns to the reel', (tester) async {
+    final platform = FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final ids = (await tester.runAsync(
+      () => putInReel(h, reel.id, [reelVideo(1), reelVideo(2)]),
+    ))!;
+    final (_, router) = await _pumpApp(tester, harness: h);
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+    expect(find.byType(TtNavPill), findsOneWidget);
+
+    unawaited(router.push(Routes.clip(reel.id, ids[1])));
+    await _settle(tester);
+
+    expect(find.byType(ClipViewerScreen), findsOneWidget);
+    final viewer = tester.widget<ClipViewerScreen>(
+      find.byType(ClipViewerScreen),
+    );
+    expect((viewer.reelId, viewer.clipId), (reel.id, ids[1]));
+    // Above the tab shell: its nav pill is not on the screen.
+    expect(find.byType(TtNavPill), findsNothing);
+    expect(platform.uris, ['content://media/external_primary/video/media/2']);
+
+    // The viewer is a route of the root navigator; Back leaves it for the
+    // reel's page, which was kept under it in the Reels tab, with the pill.
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    expect(find.byType(ClipViewerScreen), findsNothing);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(find.byType(TtNavPill), findsOneWidget);
+    expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+    expect(platform.live, isEmpty);
+  });
+
+  testApp('moving the last clip from the viewer closes the viewer, not only '
+      'the picker', (tester) async {
+    FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final reels = h.container.read(reelsRepositoryProvider);
+    final goa = await reels.create('Goa');
+    await reels.create('London');
+    final ids = (await tester.runAsync(
+      () => putInReel(h, goa.id, [reelVideo(1)]),
+    ))!;
+    final (_, router) = await _pumpApp(tester, harness: h);
+    router.go(Routes.reel(goa.id));
+    await _settle(tester);
+    unawaited(router.push(Routes.clip(goa.id, ids.single)));
+    await _settle(tester);
+    expect(find.byType(ClipViewerScreen), findsOneWidget);
+
+    await tester.tap(find.text('Move'));
+    await _settle(tester);
+    await tester.tap(find.text('London'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TtButton, 'Move'));
+    await _settle(tester);
+
+    // The picker is closed and so is the viewer; the reel's page is under it.
+    expect(find.byType(TtSheet), findsNothing);
+    expect(find.byType(ClipViewerScreen), findsNothing);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(find.text('Moved to London'), findsOneWidget);
+  });
+
+  testApp('a clip that goes while the picker is open leaves the picker open '
+      'and closes the viewer after it', (tester) async {
+    FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final reels = h.container.read(reelsRepositoryProvider);
+    final goa = await reels.create('Goa');
+    await reels.create('London');
+    final ids = (await tester.runAsync(
+      () => putInReel(h, goa.id, [reelVideo(1)]),
+    ))!;
+    final (_, router) = await _pumpApp(tester, harness: h);
+    router.go(Routes.reel(goa.id));
+    await _settle(tester);
+    unawaited(router.push(Routes.clip(goa.id, ids.single)));
+    await _settle(tester);
+    await tester.tap(find.text('Move'));
+    await _settle(tester);
+    expect(find.byType(TtSheet), findsOneWidget);
+
+    // The video turns out to be gone while the picker is up: the pager is
+    // empty, but a pop now would close the picker, not the viewer.
+    await tester.runAsync(() => flagForTest(h, {ids.single}, missing: true));
+    await _settle(tester);
+    expect(find.byType(TtSheet), findsOneWidget);
+    expect(find.byType(ClipViewerScreen), findsOneWidget);
+
+    await tester.tap(find.text('Cancel'));
+    await _settle(tester);
+    expect(find.byType(TtSheet), findsNothing);
+    expect(find.byType(ClipViewerScreen), findsNothing);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+  });
+
+  testApp('the viewer on a clip that is not in the reel goes back to the '
+      'reel', (tester) async {
+    final platform = FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
     final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
     final (_, router) = await _pumpApp(tester, harness: h);
     router.go(Routes.reel(reel.id));
     await _settle(tester);
 
     unawaited(router.push(Routes.clip(reel.id, 5)));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(ClipViewerPlaceholder), findsOneWidget);
-    final viewer = tester.widget<ClipViewerPlaceholder>(
-      find.byType(ClipViewerPlaceholder),
-    );
-    expect((viewer.reelId, viewer.clipId), (reel.id, 5));
-
-    await tester.binding.handlePopRoute();
     await _settle(tester);
-    expect(find.byType(ClipViewerPlaceholder), findsNothing);
+
+    expect(find.byType(ClipViewerScreen), findsNothing);
     expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(platform.players, isEmpty);
   });
 
   for (final location in [
@@ -176,7 +275,7 @@ void main() {
       router.go(location);
       await _settle(tester);
 
-      expect(find.byType(ClipViewerPlaceholder), findsNothing);
+      expect(find.byType(ClipViewerScreen), findsNothing);
       expect(find.byType(ReelsScreen), findsOneWidget);
     });
   }

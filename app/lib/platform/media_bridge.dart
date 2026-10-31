@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/zone_entry.dart';
 import 'package:taketray/platform/media_api.g.dart';
@@ -85,6 +87,41 @@ abstract interface class MediaBridge {
 
   /// Opens the phone's camera in video mode; false when no app could.
   Future<bool> openVideoCamera();
+}
+
+/// The address the viewer plays [clip] from, or null when it must not be
+/// played (D-89).
+///
+/// - A MediaStore clip: `content://media/{volumeName}/video/media/{id}`, from
+///   its stored identity only. A clip with no volume, or an id that is not a
+///   real row (0, negative, unknown), has none.
+/// - A picked clip: its picker address, as it was stored.
+/// - **A clip flagged `missing` has none**, whatever its identity says: its
+///   video is gone, and MediaStore may have given the number to another one.
+///   Playing it would show the wrong video, the worst bug there is (spec §4).
+///
+/// Pure: no channel, nothing is read or checked on the phone. Never log the
+/// result (D-10).
+Uri? clipVideoUri(Clip clip) {
+  if (clip.missing) return null;
+  switch (clip.source) {
+    case ClipSource.mediaStore:
+      final id = clip.mediaStoreId;
+      final volume = clip.volumeName;
+      if (id == null || id <= 0 || volume == null || volume.isEmpty) {
+        return null;
+      }
+      return Uri(
+        scheme: 'content',
+        host: 'media',
+        pathSegments: [volume, 'video', 'media', '$id'],
+      );
+    case ClipSource.picker:
+      final picked = clip.pickerUri;
+      if (picked == null || picked.isEmpty) return null;
+      // An address that does not parse is as unusable as none.
+      return Uri.tryParse(picked);
+  }
 }
 
 /// The [MediaBridge] that talks to Kotlin through the Pigeon-generated

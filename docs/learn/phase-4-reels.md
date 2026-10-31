@@ -683,7 +683,74 @@ It ends with `All tests passed!`. Now in `reel_selection.dart` change `selected:
 
 ## 10. The clip viewer
 
-*To be written in Task 10.*
+**What we built:** the full-screen viewer that opens when you tap a clip on a reel's page.
+
+- **It plays the original video** straight from your gallery, with sound. Tap to pause and play, drag the bar to seek, and use the speaker button to mute (the viewer stays muted for the rest of the session).
+- **Swipe left or right**, or use the ‹ › arrows, to move between the reel's clips. A clip that is missing from the phone is skipped. The arrows are dimmed at the first and last clip.
+- **The top** says "2 of 5 · Goa" and, under it, the day and time where the clip was shot. A clip shot in London and looked at in India says "Wed, Jul 1 · 1:00 PM · London time".
+- **The bottom** shows the scrubber, which reels the clip is in ("In  Goa  London"), and three actions: **Add to reel**, **Move** and **Remove**. Move and Remove carry on to the next clip (or the one before, at the end), and close the viewer when it was the last. Each ends with a snack with **Undo**.
+- **"This video can't be played"** appears when the phone cannot play the file, with **Remove from reel**. It never plays another video instead.
+- It is always dark and covers the whole screen, so the nav pill is not there.
+
+**Why TakeTray needs it:** the creator checks a take before putting it in a reel or deciding it is bad. The one thing the viewer must never do is show the wrong video, so it plays only from the clip's stored identity and a missing clip is never played.
+
+**Key ideas:**
+
+- **A pure function decides what may play.** `clipVideoUri` builds `content://media/{volume}/video/media/{id}` from the clip's stored identity, and returns null when there is no usable identity or the clip is flagged missing. MediaStore numbers can be reused by another video after a delete, so a clip we know is gone has no address at all:
+
+  ```dart
+  Uri? clipVideoUri(Clip clip) {
+    if (clip.missing) return null;
+    switch (clip.source) {
+      case ClipSource.mediaStore:
+        final id = clip.mediaStoreId;
+        final volume = clip.volumeName;
+        if (id == null || id <= 0 || volume == null || volume.isEmpty) return null;
+        return Uri(scheme: 'content', host: 'media', pathSegments: [volume, 'video', 'media', '$id']);
+      case ClipSource.picker:
+        ...
+  ```
+
+- **The pager is a view of the database, not a copy.** `ClipViewerController` takes the reel's clips from the same stream as the reel page and drops the missing ones. It remembers which clip it is on by *id*, and looks up its index each time. So when you remove the clip you are on, it is no longer in the list, and the controller simply picks the clip that took its place (or the last one, or nothing, which closes the screen). The same code handles Undo, another screen removing the clip, and a verify finding the video gone:
+
+  ```dart
+  var index = live.indexWhere((rc) => rc.clip.id == (_currentId ?? clipId));
+  if (index < 0) {
+    if (!_opened || live.isEmpty) return null;   // the asked-for clip cannot play, or none is left
+    index = math.min(_lastIndex, live.length - 1);
+  }
+  ```
+
+  The first clip is different on purpose: if the clip you tapped is not playable, the answer is `null` (go back), never "the nearest clip".
+- **One player, owned by a provider.** `clipPlayerProvider(uri)` makes a `VideoPlayerController`, opens it and plays. Only the page showing watches it. When the page changes nobody watches the old one any more, Riverpod disposes it, and the `onDispose` callback disposes the controller. Popping the screen does the same. That is the whole "one controller at a time" rule, with no manual bookkeeping:
+
+  ```dart
+  ref.onDispose(() { pauser.stop(); unawaited(controller.dispose()); });
+  await controller.initialize();   // throws for a video that cannot be played
+  ```
+
+- **Pause when the app is left.** The provider registers a `WidgetsBindingObserver` that pauses on `paused`. The plugin has one too, but it starts the video again when you come back; we turn it off (`allowBackgroundPlayback: true`, which only does that) and use ours, which does not.
+- **Time where it was shot, never converted.** The header uses `ClipLocalTime.wallClock` as it is (D-83) and says the city only when `!isPhoneZone`. Until the zone answer arrives the line is empty: the phone's time would be wrong, and a wrong time is worse than none for a moment.
+- **A fake player for tests.** `FakeVideoPlayerPlatform` replaces the plugin's platform layer, so the tests drive the real `VideoPlayerController` with no ExoPlayer. It records which addresses were opened and which players are still alive, so "disposed on page change" and "never played another clip" are plain assertions.
+- **Snacks need a Scaffold.** The Undo snack is shown by the Scaffolds under the app's root messenger. The viewer covers the tab shell, so it has a Scaffold of its own, with the controls as its bottom bar so a snack sits above them.
+- **A pop closes the top route.** The reel picker and the viewer are routes of the same navigator. If the viewer decided to go back while the picker was open, the pop would close the picker. So the viewer waits until the picker has closed.
+
+**Where it lives:**
+
+- `app/lib/platform/media_bridge.dart` (`clipVideoUri`).
+- `app/lib/features/reels/view_models/`: `clip_viewer_controller.dart` (the pager, the leave rule, `clipReelNamesProvider`), `clip_player.dart` (`clipPlayerProvider`, `viewerMutedProvider`).
+- `app/lib/features/reels/views/clip_viewer_screen.dart`; the route is in `app/lib/router/app_router.dart` (`parentNavigatorKey`).
+- Tests: `app/test/platform/clip_video_uri_test.dart`, `app/test/features/reels/view_models/clip_viewer_controller_test.dart`, `clip_player_test.dart`, `views/clip_viewer_screen_test.dart`, `app/test/router/app_router_test.dart`, and the fake in `app/test/support/fake_video_player.dart`.
+
+**Try it yourself:**
+
+```bash
+(cd app && ../tool/flutter test test/platform/clip_video_uri_test.dart test/features/reels/views/clip_viewer_screen_test.dart)
+```
+
+It ends with `All tests passed!`. Now in `clipVideoUri` delete the `if (clip.missing) return null;` line and run it again: `missing flag gives null` fails with `Expected: null  Actual: Uri:<content://media/...>`. Put it back. In `clip_player.dart` replace `unawaited(controller.dispose());` with a comment: `one controller alive; disposed on page change and on pop` fails with `Expected: contains 'dispose:1'`. In `clip_viewer_screen.dart` delete `!shot.isPhoneZone &&` and `header shows London time only when the zone differs` fails with `Actual: 'Thu, Jul 2 · 5:30 PM · Kolkata time'`.
+
+**Decisions:** D-89 (all of the above); D-83 (`ClipLocalTime`, `zoneCity`), D-84 (`watchReelClips`, `watchReelIdsOf`, the undo records), D-85 (the root messenger and `ReelSnacks`), D-87 (the route and the reel page), D-88 (the picker and `ReelClipActions`), D-82 (`TtPlayerHeader`, `TtStageArrow`, `TtScrubBar`, `TtVideoSurface`, `TtReelTagRow`, `TtViewerActions`).
 
 ## 11. On the phone
 

@@ -490,7 +490,7 @@ No baseline is read or written.
 
 ### Opening a reel (`lib/features/reels/`, `lib/router/`, D-87)
 
-**Getting there:** a card on Home does `context.push(Routes.reel(id))` (`/reels/:id`, a child of the Reels branch, so the nav pill stays and the Reels tab stays selected). `app_router.dart` accepts only a positive whole number for the id; anything else goes to `/reels`. A tile on the page does `context.push(Routes.clip(reelId, clipId))` (`/reels/:id/clip/:clipId`, `ClipViewerPlaceholder` until Task 10), with the same rule for the clip id.
+**Getting there:** a card on Home does `context.push(Routes.reel(id))` (`/reels/:id`, a child of the Reels branch, so the nav pill stays and the Reels tab stays selected). `app_router.dart` accepts only a positive whole number for the id; anything else goes to `/reels`. A tile on the page does `context.push(Routes.clip(reelId, clipId))` (`/reels/:id/clip/:clipId`, the clip viewer, see "Watching a clip"), with the same rule for the clip id.
 
 **Building the page** (`views/reel_detail_screen.dart › ReelDetailScreen`, `view_models/reel_detail_controller.dart`):
 1. `build` watches `reelDetailControllerProvider(reelId)`, `thumbnailCacheProvider`, `localDayProvider` (so a day's year follows the calendar) and the phone's 24-hour setting.
@@ -537,6 +537,35 @@ No baseline is read or written.
 **Remove** (`_removeChosen`): `ReelClipActions.removeFromReel(reelId, ids)` → one `ClipsRepository.removeClipsFromReel` (the orphan sweep may delete a clip that was only here; the record keeps it). A non-empty record → "{n} clips removed from {reel}. The videos are still in your gallery." (singular for one clip) with **Undo**, then `clear()`. A second tap while it runs does nothing. A failure shows "Something went wrong. Try again." and keeps the selection.
 
 **In tests:** `test/features/reels/views/reel_selection_screen_test.dart` (the whole page with a real in-memory database), `view_models/reel_selection_test.dart`, `reel_picker_test.dart`, `reel_clip_actions_test.dart`; `flagForTest` in `test/support/reel_videos.dart` flags clips missing.
+
+### Watching a clip (`lib/features/reels/`, `lib/platform/media_bridge.dart`, `lib/router/`, D-89)
+
+**Getting there:** a tile on the reel's page does `context.push(Routes.clip(reelId, clipId))`. The route (`/reels/:id/clip/:clipId`, a child of the reel's route) has `parentNavigatorKey: rootNavigatorKey`, so it is drawn on the router's root navigator **above the tab shell** (no nav pill) while the reel's page stays under it. Anything but a positive whole number for either id goes to `/reels`. Paths below are relative to `app/lib/`.
+
+**Opening** (`features/reels/view_models/clip_viewer_controller.dart › ClipViewerController(reelId, clipId)`, watched by `views/clip_viewer_screen.dart › ClipViewerScreen`):
+1. It awaits `reelByIdProvider(reelId)` and `reelClipsProvider(reelId)`, and **reads without awaiting** `reelClipTimesProvider(reelId)` (so the viewer opens at once; `times` is empty until `ClipTimeService.localTimes` answers).
+2. The reel is gone → state `null`. Else the pager is the clips with `missing == false`, in the list's order (shot first, then id).
+3. The clip to show is `_currentId ?? clipId`. Not in the pager: on the first build (`_opened` false) or with an empty pager → `null` (the tapped clip is missing, or not in this reel: **never another clip**). Otherwise (the clip on screen left the pager) → `min(_lastIndex, length - 1)`: the clip now in its place, the previous one if the last was left.
+4. State `null` makes the screen, once and after the frame, `context.pop()` (or `go(Routes.reel(reelId))` when nothing can pop, a link). While the reel picker is up it waits: a pop then would close the picker, not the viewer; `_leaveIfGone()` runs when the picker has closed.
+
+**Paging** (`ClipViewerScreen`): a `PageView.builder` (one page for each clip, keyed by the clip id). `onPageChanged` calls `goTo(index)`, which sets `_currentId` and the state's index; the ‹ › `TtStageArrow`s call `animateToPage` (`jumpToPage` when animations are off), and are disabled at the first and last page. When the index changes without a swipe (a clip left), `_followIndex` jumps the page controller to it after the frame.
+
+**Playing** (`views/clip_viewer_screen.dart › _Stage`, `view_models/clip_player.dart › clipPlayerProvider(Uri)`):
+1. The current clip's address is `clipVideoUri(clip)` (`platform/media_bridge.dart`): `null` for a missing clip, a MediaStore clip with `mediaStoreId <= 0` or no volume, a picked clip with no (or an unparsable) address; else `content://media/{volume}/video/media/{id}` or the picker address. `null` shows the can't-play state and makes no player.
+2. Only the page showing watches `clipPlayerProvider(uri)` (the bottom scrubber watches the same one). Building it: `VideoPlayerController.contentUri(uri, VideoPlayerOptions(allowBackgroundPlayback: true))`, a `WidgetsBindingObserver` that pauses on `paused` and `hidden`, and `ref.onDispose` (observer removed, controller disposed). Then `initialize()`, the volume from `viewerMutedProvider`, `play()`. An exception from `initialize` is the provider's error (logged by type) and the screen's can't-play state.
+3. When the page changes the screen stops watching the old address: its provider is disposed (the controller with it) and the new page's is made. When the screen is popped the same happens. Mute: `viewerMutedProvider` (kept for the session) is followed by every live player.
+4. The stage is the video fitted whole (`AspectRatio(value.aspectRatio)`); a tap plays or pauses (`value.isPlaying`); a play mark shows while paused. `value.hasError` (an error while playing) shows the can't-play state. The scrubber (`TtScrubBar`) shows the player's position and length and seeks with `seekTo`; before the player is open it shows 0:00 and the clip's own length.
+5. The app going to the background pauses the video; coming back does not play it again.
+
+**The header** (`TtPlayerHeader`): "{i} of {n} · {reel}"; under it the time where the clip was shot: `ttDayWeekdayText(wallClock)` · `wallClockTimeText(wallClock)` (the phone's 24-hour setting), then " · {city} time" if `!isPhoneZone && zoneCity(zoneId) != null`. Empty until the clip's `ClipLocalTime` is known. `wallClock` is never converted (D-83). The "In" row is `clipReelNamesProvider(clipId)`: `watchReelIdsOf` and `watchAll`, names by reel id.
+
+**Add to reel / Move** (`_pickReels`): the same as the reel page (see "Managing clips in a reel") for one clip: `showReelPicker(mode, clipCount: 1, excludeReelId: reelId, perform)`, `ReelClipActions.addToReels` / `moveToReel`, the snack after the sheet has closed with **Undo**. A move changes the reel's clips, so the controller applies step 3 of "Opening" and the viewer goes on.
+
+**Remove / Remove from reel** (`_remove`): `ReelClipActions.removeFromReel(reelId, {clipId})` → "Removed from {reel}. The video is still in your gallery." with **Undo** (`ReelSnacks.showUndoAll`) on the root messenger; a second tap while it runs does nothing; a failure shows "Something went wrong. Try again.". The viewer then follows step 3 of "Opening" (next clip, previous at the end, back when none is left). Undo works after the viewer has closed.
+
+**Snacks:** `ClipViewerScreen` builds its own `Scaffold` (video theme) with the controls as its bottom bar, because the root messenger shows a snack in each Scaffold under it and the tab shell's is covered by this route.
+
+**In tests:** `test/support/fake_video_player.dart › FakeVideoPlayerPlatform.install()` (no ExoPlayer; `uris`, `live`, `calls`, `failUris`, `failPlayer`, `hold`), `test/features/reels/views/clip_viewer_screen_test.dart`, `view_models/clip_viewer_controller_test.dart`, `view_models/clip_player_test.dart`, `test/platform/clip_video_uri_test.dart`, and the viewer routes in `test/router/app_router_test.dart`. A widget test that checks `platform.live` settles in real time after `pumpAndSettle` (`tester.runAsync(settle)`), because the disposal runs on the event loop.
 
 ### Thumbnails (`lib/data/media/thumbnail_cache.dart`, `lib/features/clips/widgets/clip_thumbnail_image.dart`, D-74)
 
@@ -598,6 +627,8 @@ Run manually (slow: full release build), at the end of every phase. Not part of 
 8. Test-only code (D-77): `tool/check_release_permissions` unpacks every `classes*.dex` of the APK into a temporary folder and `grep`s them (no pipe: a `grep -q` at the end of a pipe can end early and fail the pipeline) for `TestMedia` and `test_media`; each hit is a problem (`test-only code found in the release dex`). The scan first has to find `app/taketray/MainActivity` in the dex, otherwise that is a problem too (`the dex scan could not find ... so it cannot be trusted`), and no `classes*.dex` at all is a problem. R8 renames classes in release builds, so a class called `TestMedia` would be `lh` in the dex while the string `test_media` is never renamed: the script therefore also greps R8's `app/build/app/outputs/mapping/release/mapping.txt` (original names) for `TestMedia` when that file exists (`test-only code named in the release R8 mapping`). When it does not exist and the dex also lacks an app class that R8 would rename (`app/taketray/media/MediaHostApiImpl` by its real name), the class-name check could not see a renamed `TestMedia`, so that is a problem too (`no R8 mapping file ... the class-name check cannot run`) instead of a silent skip. The debug classes are in `src/debug` and the release and profile `DebugHooks` register nothing, so a clean build has neither.
 9. If there are problems: prints the permission list, then one `RELEASE CHECK FAILED: <problem>` line each, to stderr, exit 1.
 10. Otherwise prints the permission list, `No test-only code in the release dex (TestMedia test_media)` and `RELEASE PERMISSIONS OK`, exit 0.
+
+**Plugins that add permissions** (D-89): `video_player` (ExoPlayer / media3) adds `WAKE_LOCK` and `ACCESS_NETWORK_STATE` to the merged release manifest. They are not forbidden by the check; `INTERNET` is still removed by item 1.
 
 ### Error logging
 

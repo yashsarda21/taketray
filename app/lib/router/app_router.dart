@@ -1,7 +1,8 @@
+import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:taketray/features/reels/views/clip_viewer_placeholder.dart';
+import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
@@ -30,7 +31,14 @@ int? _reelId(GoRouterState state) => _id(state, Routes.reelIdParameter);
 /// frame.
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
+  // The navigator above the tab shell. A full-screen route (the clip viewer)
+  // names it as its `parentNavigatorKey` to be drawn over the shell, with no
+  // nav pill. One key for each router, so two apps never share one.
+  final rootNavigatorKey = GlobalKey<NavigatorState>(
+    debugLabel: 'root navigator',
+  );
   final router = GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: Routes.reels,
     // Any location no route matches (an old deep link, `/reels/stale`, a
     // typo) goes to Reels instead of go_router's error page. The location is
@@ -64,6 +72,10 @@ GoRouter appRouter(Ref ref) {
                     routes: [
                       GoRoute(
                         path: 'clip/:${Routes.clipIdParameter}',
+                        // Full screen, above the shell and its nav pill (D-89).
+                        // The reel's page stays under it in the tab, so Back
+                        // returns to it.
+                        parentNavigatorKey: rootNavigatorKey,
                         // Like a reel's id, a clip's is a positive whole
                         // number; anything else is unknown.
                         redirect: (context, state) {
@@ -73,7 +85,7 @@ GoRouter appRouter(Ref ref) {
                           _log.warning('Unknown location; showing Reels');
                           return Routes.reels;
                         },
-                        builder: (context, state) => ClipViewerPlaceholder(
+                        builder: (context, state) => ClipViewerScreen(
                           reelId: _reelId(state)!,
                           clipId: _id(state, Routes.clipIdParameter)!,
                         ),

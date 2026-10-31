@@ -1136,5 +1136,112 @@
         "type": "String"
       }
     }
+  },
+  "viewerTitle": "{index} of {count} · {reel}",
+  "@viewerTitle": {
+    "description": "The first line of the clip viewer: which clip of the reel it is on, and the reel.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerWhen": "{date} · {time}",
+  "@viewerWhen": {
+    "description": "The second line of the clip viewer: the day and the time where the clip was shot.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerWhenInCity": "{date} · {time} · {city} time",
+  "@viewerWhenInCity": {
+    "description": "The second line of the clip viewer for a clip shot in another time zone than the phone is in: the day, the time, and the city whose time it is, such as \"Wed, Oct 28 · 9:41 AM · London time\".",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "time": {
+        "type": "String"
+      },
+      "city": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerMute": "Mute",
+  "@viewerMute": {
+    "description": "The clip viewer button that turns the sound off."
+  },
+  "viewerUnmute": "Unmute",
+  "@viewerUnmute": {
+    "description": "The clip viewer button that turns the sound back on."
+  },
+  "viewerPrevious": "Previous clip",
+  "@viewerPrevious": {
+    "description": "The clip viewer arrow to the clip before this one."
+  },
+  "viewerNext": "Next clip",
+  "@viewerNext": {
+    "description": "The clip viewer arrow to the clip after this one."
+  },
+  "viewerIn": "In",
+  "@viewerIn": {
+    "description": "The word before the reels a clip is in, in the clip viewer (\"In  Goa  London\")."
+  },
+  "viewerAddToReel": "Add to reel",
+  "@viewerAddToReel": {
+    "description": "The clip viewer action that also puts the clip in other reels."
+  },
+  "viewerMove": "Move",
+  "@viewerMove": {
+    "description": "The clip viewer action that moves the clip to another reel."
+  },
+  "viewerRemove": "Remove",
+  "@viewerRemove": {
+    "description": "The clip viewer action that takes the clip out of the reel."
+  },
+  "viewerRemovedSnack": "Removed from {reel}. The video is still in your gallery.",
+  "@viewerRemovedSnack": {
+    "description": "Snack after the clip viewer takes a clip out of a reel, with an Undo button.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerStage": "Clip {index} of {count}",
+  "@viewerStage": {
+    "description": "What a screen reader says for the video in the clip viewer; tapping it plays or pauses.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "viewerCantPlayTitle": "This video can't be played",
+  "@viewerCantPlayTitle": {
+    "description": "The clip viewer when the video cannot be played."
+  },
+  "viewerCantPlayBody": "It may be damaged, or in a format your phone doesn't support. The file is still in your gallery.",
+  "@viewerCantPlayBody": {
+    "description": "The explanation under the title when the video cannot be played."
+  },
+  "viewerRemoveFromReel": "Remove from reel",
+  "@viewerRemoveFromReel": {
+    "description": "The button under the \"can't be played\" message that takes the clip out of the reel."
   }
 }
