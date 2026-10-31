@@ -475,7 +475,80 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/view_models
 
 ## 7. The tag player screen and All done
 
-_Filled in by Task 7._
+**What we built:** the screen you will use most, on top of Section 6's brain:
+
+- the **tag player**: a progress bar of segments, a header ("3 of 12", "Scene 1 of 2 · 9:01–9:20 AM"), the clip itself with ‹ › arrows, a scrub bar, **Skip** and **Same as previous**, and the panel of reel chips, with **New reel**, **Other reels** and **Pick several**;
+- the **snacks** ("Added to London Food", "Skipped") with an Undo that takes you back to the clip;
+- the **"All done!"** screen: how many clips you sorted, what went into each reel, and two buttons;
+- a **New reel** form made for the player, which makes the reel *and* tags the clip.
+
+It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. Task 8 adds the buttons that open it.
+
+**Why TakeTray needs it:** tagging is one tap per clip, and everything on this screen is there to make that tap safe and quick. The worst things it can do are to play the wrong video, tag the wrong clip, or lose a tag. So the video address comes from one function, the tag goes to the clip that was showing when you tapped, and Undo puts back exactly what that tap did.
+
+**Key ideas:**
+
+- **The video comes from one place.** The stage never builds an address itself. It asks `clipVideoUri(clip)` for the clip the session is showing, and that function returns nothing for a clip that is flagged missing or has no usable identity:
+
+  ```dart
+  final uri = clip == null ? null : clipVideoUri(clip);
+  ...
+  if (clip == null || address == null) {
+    video = const _CantPlay();
+  }
+  ```
+
+  No address means "This video can't be played", never another video. The stage is also keyed by the clip *and* its address (`ValueKey((clip?.id, uri))`), so a new clip is a new stage with its own player, and nothing from the last clip carries over.
+
+- **One clip ahead, paused.** Opening a video takes a moment, so while you look at clip 4 the player opens clip 5 in the background. But `clipPlayer` normally *plays* as soon as it opens, and a clip you cannot see must not make a sound. So it got a flag, `autoplay`, and the tag player always asks with `autoplay: false`, for the clip showing and the clip ahead alike. That matters: both are the same entry in Riverpod's family, so when clip 5 comes up, it is the controller that was already opened, not a second one. The stage plays it once, when it appears:
+
+  ```dart
+  if (!away && widget.controller.value.isInitialized) {
+    unawaited(widget.controller.play());
+  }
+  ```
+
+  Which clip is "ahead"? The one the player will go to after a tag or a skip, which is `TagQueue.afterAction(index, pending − current)`, not just `index + 1`: after the last clip it wraps to the first one still waiting. At most two controllers are alive (the one showing and the one ahead); the one left behind is disposed with its stage.
+
+- **The check mark belongs to the clip you tapped.** When you tap a chip it shows a check for 400 ms. If that clip is tagged from somewhere else during those 400 ms, Section 6's controller moves on to the next clip but still tags the clip you tapped. The controller's `confirmingReelId` is about the *reel*, so if the screen showed the check whenever it was set, the *new* clip's chip would show a check it did not earn. The screen remembers the clip that was tapped:
+
+  ```dart
+  final held =
+      state.confirmingReelId == id && state.currentClipId == _heldClipId;
+  ```
+
+- **Snacks that say what happened, with an Undo that goes back.** `showTagOutcome` builds the words from the `TagOutcome` of that action ("Added to London Food and Goa" or "Skipped"), never from what is on screen now. Its Undo calls `TagSessionController.undo(records, clipId)`, which puts the clip back in To tag and shows it again. The screen reads the controller's notifier *before* it awaits the tag, so the snack still holds it after you close the player; Section 6's `undo` knows it may run after the player has gone. A new snack replaces the old one (`showTtSnackOn` hides the one showing first), so only the latest action can be undone. That rule comes from Section 4: an old skip's Undo could otherwise pull back a clip that has since been skipped, restored and skipped again.
+
+- **Look things up before `await`.** `_act` is the one function Skip, Same as previous and Pick several go through. It reads the snack's messenger, the words and the session notifier first, then awaits the action, so it works even if the player closed in between:
+
+  ```dart
+  final snacks = ReelSnacks.of(context);
+  final session = ref.read(_provider.notifier);
+  try {
+    final outcome = await action();
+  ```
+
+- **Everything the screen watches is read at the top of `build`.** Riverpod's `ref.watch` and `ref.listen` only work while the widget itself is building. The screen wraps its body in a `Theme(TakeTrayTheme.video())` and a `Builder`, and the `Builder`'s callback runs later, so the watches happen before the `Theme`, and the `Builder` only receives the values.
+
+- **A form that tags.** "New reel" from the player opens the Phase 4 form with `forClip: true`: a different subtitle ("This clip will be added to it."), only the name field, and **Create and add**. The form still checks the name (empty, too long, already taken) and tells you under the field. When the name is fine it does not call `ReelsRepository.create` but a function the player hands it, `createReelAndTag`, which makes the reel and tags the clip in one go, then the form closes. If the form had created the reel itself and the player had tagged afterwards, a failure in between would leave a reel with no clip and a second try would be told that the name is taken.
+
+- **The panel may not eat the video.** At 2x text the tag panel is allowed 520 dp, which would leave nothing for the video on a phone. The screen puts the panel (and the controls under it) in a box of at most 45 % of the screen's height; the panel already scrolls inside its box, and its header and footer stay put.
+
+- **Screenshots only on your Mac.** The eight screens (first clip, mid-scene, Pick several, no reels, loading, a long clip, a horizontal clip, All done!) are compared as images in `app/test/features/tagging/views/goldens/macos/`, at 1x and 2x text. They are skipped on GitHub's CI, which has no images for the app's screens (Section 2's image sets are for components). A fake video platform draws a coloured gradient where the video would be, and real thumbnails are served, so the images show where things are.
+
+- **Tests that can fail.** The screen's 58 widget tests were run first against a screen that was an empty black box: 56 failed (the two that passed do so by nature: "nothing is offered" and the accessibility check of a blank page). Then three mistakes were made on purpose, one at a time, and each was caught: an Undo that does not go through the session (the player stayed on clip 2 after "Undo"), Other reels open by default (25 chips instead of 5), and the preload taken out (one player instead of two).
+
+**Where it lives:** `app/lib/features/tagging/views/tag_player_screen.dart` (`TagPlayerScreen`), `tag_done_view.dart`, `tagging_snacks.dart`; `app/lib/features/clips/widgets/clip_scrubber.dart`; `app/lib/features/reels/views/reel_form_sheet.dart` (`forClip`) and `reel_form_controller.dart` (`createWith`); `app/lib/features/reels/views/undo_snacks.dart` (`undo:`); `clip_player.dart` (`autoplay`); `app/lib/router/` (`Routes.tagPlayer`, `Routes.tagFrom`). Tests: `app/test/features/tagging/views/tag_player_screen_test.dart`, `tag_player_golden_test.dart`, and the "from the tag player" group of `app/test/features/reels/views/reel_forms_test.dart`. Flow: "The tag player screen and All done" in `docs/flow.md`.
+
+**Try it yourself:** take the preload out and watch a test notice. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/features/tagging/views/tag_player_screen_test.dart --plain-name "the clip one ahead is open, muted and never playing")
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/tag_player_screen.dart`, find `build`, and delete the line `_preload(state);` (the one under the comment "After the clip showing"). Run the command again. It fails with `Expected: an object with length of <2>  Actual: [Instance of 'FakePlayer']`: without the preload only the clip showing has a player. Put the file back with `git checkout -- app/lib/features/tagging/views/tag_player_screen.dart` (if you have not committed your own changes to it) and check with `git status`.
+
+**Decisions:** D-97 (all of this section), with D-96 (the session), D-93 (the panel and the done screen), D-92 (the scrub bar), D-89 (the viewer, `clipVideoUri`, the can't-play state), D-85 (snacks on the root messenger, the form's failure line) and D-86 (`OpenOnce`) as background.
 
 ## 8. To tag with scenes, and the picker's tag mode
 

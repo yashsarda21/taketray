@@ -97,6 +97,13 @@ abstract class _$ViewerMuted extends $Notifier<bool> {
 ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
 ///   clip keeps playing while the user decides.
 ///
+/// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+///   switch says, looping for the tag player): the tag player keeps the next
+///   clip open one ahead, and it must not be heard or move off screen. The
+///   tag player always asks with it off, for the clip showing and the one
+///   ahead alike (the same family entry, so the clip that comes up is the
+///   controller that was opened), and plays the one showing itself.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
 
@@ -126,6 +133,13 @@ final clipPlayerProvider = ClipPlayerFamily._();
 ///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
 ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
 ///   clip keeps playing while the user decides.
+///
+/// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+///   switch says, looping for the tag player): the tag player keeps the next
+///   clip open one ahead, and it must not be heard or move off screen. The
+///   tag player always asks with it off, for the clip showing and the one
+///   ahead alike (the same family entry, so the clip that comes up is the
+///   controller that was opened), and plays the one showing itself.
 ///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
@@ -164,11 +178,18 @@ final class ClipPlayerProvider
   ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
   ///   clip keeps playing while the user decides.
   ///
+  /// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+  ///   switch says, looping for the tag player): the tag player keeps the next
+  ///   clip open one ahead, and it must not be heard or move off screen. The
+  ///   tag player always asks with it off, for the clip showing and the one
+  ///   ahead alike (the same family entry, so the clip that comes up is the
+  ///   controller that was opened), and plays the one showing itself.
+  ///
   /// Auto-disposes, and never retries: a video that failed once would open
   /// again and again. The address is not logged.
   ClipPlayerProvider._({
     required ClipPlayerFamily super.from,
-    required (Uri, {ClipPlayerUse use}) super.argument,
+    required (Uri, {ClipPlayerUse use, bool autoplay}) super.argument,
   }) : super(
          retry: noRetry,
          name: r'clipPlayerProvider',
@@ -195,8 +216,13 @@ final class ClipPlayerProvider
 
   @override
   FutureOr<VideoPlayerController> create(Ref ref) {
-    final argument = this.argument as (Uri, {ClipPlayerUse use});
-    return clipPlayer(ref, argument.$1, use: argument.use);
+    final argument = this.argument as (Uri, {ClipPlayerUse use, bool autoplay});
+    return clipPlayer(
+      ref,
+      argument.$1,
+      use: argument.use,
+      autoplay: argument.autoplay,
+    );
   }
 
   @override
@@ -210,7 +236,7 @@ final class ClipPlayerProvider
   }
 }
 
-String _$clipPlayerHash() => r'45bf45da39a0ba217a98141b1e73b6c84a0361f4';
+String _$clipPlayerHash() => r'381094b1be7b8f03ec973401502c6a24d97c02b2';
 
 /// The player of the clip at [uri] (D-89): one `VideoPlayerController`
 /// (ExoPlayer, from the gallery by its `content://` address, never copied),
@@ -236,6 +262,13 @@ String _$clipPlayerHash() => r'45bf45da39a0ba217a98141b1e73b6c84a0361f4';
 ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
 ///   clip keeps playing while the user decides.
 ///
+/// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+///   switch says, looping for the tag player): the tag player keeps the next
+///   clip open one ahead, and it must not be heard or move off screen. The
+///   tag player always asks with it off, for the clip showing and the one
+///   ahead alike (the same family entry, so the clip that comes up is the
+///   controller that was opened), and plays the one showing itself.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
 
@@ -243,7 +276,7 @@ final class ClipPlayerFamily extends $Family
     with
         $FunctionalFamilyOverride<
           FutureOr<VideoPlayerController>,
-          (Uri, {ClipPlayerUse use})
+          (Uri, {ClipPlayerUse use, bool autoplay})
         > {
   ClipPlayerFamily._()
     : super(
@@ -278,13 +311,24 @@ final class ClipPlayerFamily extends $Family
   ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
   ///   clip keeps playing while the user decides.
   ///
+  /// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+  ///   switch says, looping for the tag player): the tag player keeps the next
+  ///   clip open one ahead, and it must not be heard or move off screen. The
+  ///   tag player always asks with it off, for the clip showing and the one
+  ///   ahead alike (the same family entry, so the clip that comes up is the
+  ///   controller that was opened), and plays the one showing itself.
+  ///
   /// Auto-disposes, and never retries: a video that failed once would open
   /// again and again. The address is not logged.
 
   ClipPlayerProvider call(
     Uri uri, {
     ClipPlayerUse use = ClipPlayerUse.viewer,
-  }) => ClipPlayerProvider._(argument: (uri, use: use), from: this);
+    bool autoplay = true,
+  }) => ClipPlayerProvider._(
+    argument: (uri, use: use, autoplay: autoplay),
+    from: this,
+  );
 
   @override
   String toString() => r'clipPlayerProvider';

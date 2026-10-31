@@ -48,6 +48,13 @@ class ViewerMuted extends _$ViewerMuted {
 ///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
 ///   clip keeps playing while the user decides.
 ///
+/// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+///   switch says, looping for the tag player): the tag player keeps the next
+///   clip open one ahead, and it must not be heard or move off screen. The
+///   tag player always asks with it off, for the clip showing and the one
+///   ahead alike (the same family entry, so the clip that comes up is the
+///   controller that was opened), and plays the one showing itself.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
 
@@ -56,6 +63,7 @@ Future<VideoPlayerController> clipPlayer(
   Ref ref,
   Uri uri, {
   ClipPlayerUse use = ClipPlayerUse.viewer,
+  bool autoplay = true,
 }) async {
   final mutedSwitch = switch (use) {
     ClipPlayerUse.viewer => viewerMutedProvider,
@@ -86,7 +94,7 @@ Future<VideoPlayerController> clipPlayer(
   // The app may have gone to the background while the video was opening:
   // the observer found nothing to pause then, and the plugin's own check is
   // off, so playing now would be heard from the background.
-  if (!pauser.inBackground) await controller.play();
+  if (autoplay && !pauser.inBackground) await controller.play();
   return controller;
 }
 

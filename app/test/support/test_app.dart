@@ -14,11 +14,15 @@ import 'vm_harness.dart';
 /// The clean-up never hides the test's own failure: if the body threw, that
 /// error is what the test reports, and a clean-up error is only printed. If
 /// the body passed, a clean-up error fails the test.
+///
+/// [skip] is passed on to `testWidgets` (a golden that only the owner's Mac
+/// makes, D-61).
 void testApp(
   String description,
-  Future<void> Function(WidgetTester tester) body,
-) {
-  testWidgets(description, (tester) async {
+  Future<void> Function(WidgetTester tester) body, {
+  bool? skip,
+}) {
+  testWidgets(skip: skip, description, (tester) async {
     Object? bodyError;
     StackTrace? bodyStack;
     try {

@@ -52,6 +52,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// How long every video is.
   Duration duration = const Duration(seconds: 10);
 
+  /// The size every video reports (a vertical phone video by default; a
+  /// horizontal test sets 1920 x 1080).
+  Size size = const Size(1080, 1920);
+
   /// Addresses whose player reports an error instead of initializing.
   final Set<String> failUris = {};
 
@@ -97,7 +101,7 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
         VideoEvent(
           eventType: VideoEventType.initialized,
           duration: duration,
-          size: const Size(1080, 1920),
+          size: size,
         ),
       );
     }
@@ -160,9 +164,31 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
 
   @override
   Widget buildViewWithOptions(VideoViewOptions options) =>
-      SizedBox.expand(key: ValueKey('fake-video-${options.playerId}'));
+      _picture(options.playerId);
 
   @override
-  Widget buildView(int playerId) =>
-      SizedBox.expand(key: ValueKey('fake-video-$playerId'));
+  Widget buildView(int playerId) => _picture(playerId);
+
+  /// A surface for the "picture": a gradient that differs by player, so a
+  /// golden shows where the video is. Tests find it by its key.
+  Widget _picture(int playerId) {
+    const colors = [
+      [Color(0xFF3A6EA5), Color(0xFF1B2A41)],
+      [Color(0xFFC06C3A), Color(0xFF3B1F14)],
+      [Color(0xFF4F8F6B), Color(0xFF13261C)],
+    ];
+    final pair = colors[playerId % colors.length];
+    return SizedBox.expand(
+      key: ValueKey('fake-video-$playerId'),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: pair,
+          ),
+        ),
+      ),
+    );
+  }
 }

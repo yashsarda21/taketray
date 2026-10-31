@@ -80,6 +80,8 @@ void main() {
   Future<void> pumpHost(
     WidgetTester tester, {
     Reel? reel,
+    bool forClip = false,
+    Future<void> Function(String name)? createForClip,
     double textScale = 1,
     Brightness brightness = Brightness.light,
     Size size = const Size(360, 800),
@@ -90,7 +92,12 @@ void main() {
         body: Builder(
           builder: (context) => TtButton(
             label: 'open',
-            onPressed: () => showReelForm(context, reel: reel),
+            onPressed: () => showReelForm(
+              context,
+              reel: reel,
+              forClip: forClip,
+              onCreateForClip: createForClip,
+            ),
           ),
         ),
       ),
@@ -415,6 +422,119 @@ void main() {
         await expectTtAccessible(tester);
         expect(tester.takeException(), isNull);
       }
+    });
+  });
+
+  group('from the tag player (forClip)', () {
+    testApp('has the clip copy: only the name, Create and add', (tester) async {
+      await pumpHost(tester, forClip: true, createForClip: (_) async {});
+      await openForm(tester);
+
+      expect(find.text('New reel'), findsOneWidget);
+      expect(find.text('This clip will be added to it.'), findsOneWidget);
+      expect(field('Reel name'), findsOneWidget);
+      expect(field('Shot ideas (optional)'), findsNothing);
+      expect(find.text('Create and add'), findsOneWidget);
+      expect(find.text('Create reel'), findsNothing);
+    });
+
+    testApp('Create and add checks the name, then runs the callback', (
+      tester,
+    ) async {
+      final names = <String>[];
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (name) async {
+          names.add(name);
+          await reels.create(name);
+        },
+      );
+      await openForm(tester);
+
+      await typeName(tester, '  London Food ');
+      await tapAndSettle(tester, find.text('Create and add'));
+
+      // The name as typed, once (the repository trims it), and the reel was
+      // made in the callback, not in the form (one reel, not two).
+      // The callback and the lookup of the reel it made take a few more
+      // turns than a plain create.
+      await settleApp(tester);
+      expect(names, ['  London Food ']);
+      expect((await storedReels(tester)).map((r) => r.name), ['London Food']);
+      expect(find.byType(TtSheet), findsNothing);
+      // The caller says what happened ("Added to ..."): no "created" snack.
+      expect(find.text('London Food created'), findsNothing);
+      expect(find.byType(TtSnack), findsNothing);
+    });
+
+    testApp('an empty name is told and the callback is not run', (
+      tester,
+    ) async {
+      var ran = false;
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (_) async => ran = true,
+      );
+      await openForm(tester);
+
+      await tapAndSettle(tester, find.text('Create and add'));
+
+      expect(find.text('Give this reel a name'), findsOneWidget);
+      expect(ran, isFalse);
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('a taken name is told and the callback is not run', (tester) async {
+      await tester.runAsync(() => reels.create('Goa'));
+      var ran = false;
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (_) async => ran = true,
+      );
+      await openForm(tester);
+
+      await typeName(tester, 'goa');
+      await tapAndSettle(tester, find.text('Create and add'));
+
+      expect(find.text('You already have a reel called Goa'), findsOneWidget);
+      expect(ran, isFalse);
+    });
+
+    testApp('a failure of the callback is told in the sheet', (tester) async {
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (_) async => throw StateError('disk'),
+      );
+      await openForm(tester);
+
+      await typeName(tester, 'Goa');
+      await tapAndSettle(tester, find.text('Create and add'));
+
+      expect(
+        find.text('Something went wrong. Try again.').hitTestable(),
+        findsOneWidget,
+      );
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('the sheet is accessible at 2x text, light and dark', (
+      tester,
+    ) async {
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (_) async {},
+        textScale: 2,
+        brightness: Brightness.dark,
+      );
+      await openForm(tester);
+
+      await expectTtAccessible(tester);
+      expect(tester.takeException(), isNull);
     });
   });
 

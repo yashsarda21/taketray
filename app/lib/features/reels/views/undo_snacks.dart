@@ -63,24 +63,36 @@ class ReelSnacks {
   /// three reels is three records): all of them or none. If it fails,
   /// nothing was undone and "Couldn't undo. Try again." is shown. Null when
   /// the app is gone.
+  ///
+  /// [undo] replaces the plain put-back for a screen that must do more with
+  /// it (the tag player's Undo also takes the player back to the clip, D-97);
+  /// it gets the same failure handling.
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? showUndoAll(
     String message,
-    List<UndoRecord> records,
-  ) {
+    List<UndoRecord> records, {
+    Future<void> Function()? undo,
+  }) {
     if (!_messenger.mounted) return null;
     return showTtSnackOn(
       _messenger,
       message: message,
       icon: Symbols.check_circle_rounded,
       actionLabel: _l10n.undo,
-      onAction: () => unawaited(_undo(records)),
+      onAction: () => unawaited(_undo(records, undo)),
       persist: _persistActions,
     );
   }
 
-  Future<void> _undo(List<UndoRecord> records) async {
+  Future<void> _undo(
+    List<UndoRecord> records,
+    Future<void> Function()? undo,
+  ) async {
     try {
-      await _container.read(reelsRepositoryProvider).undoAll(records);
+      if (undo != null) {
+        await undo();
+      } else {
+        await _container.read(reelsRepositoryProvider).undoAll(records);
+      }
     } on Object catch (error) {
       _log.warning('Undo failed: ${error.runtimeType}');
       show(_l10n.undoFailed, done: false);

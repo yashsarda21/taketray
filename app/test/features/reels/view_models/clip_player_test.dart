@@ -284,6 +284,70 @@ void main() {
       c.dispose();
     });
 
+    test(
+      'autoplay off opens the clip without playing it (the preload)',
+      () async {
+        final c = ProviderContainer.test()
+          ..listen(
+            clipPlayerProvider(
+              first,
+              use: ClipPlayerUse.tagging,
+              autoplay: false,
+            ),
+            (_, _) {},
+          );
+
+        final player = await c.read(
+          clipPlayerProvider(
+            first,
+            use: ClipPlayerUse.tagging,
+            autoplay: false,
+          ).future,
+        );
+
+        // Opened, muted, looping: ready to play, but not heard and not moving.
+        expect(player.value.isInitialized, isTrue);
+        expect(platform.player(1).volume, 0);
+        expect(platform.player(1).looping, isTrue);
+        expect(platform.calls, isNot(contains('play:1')));
+        expect(platform.player(1).playing, isFalse);
+        c.dispose();
+      },
+    );
+
+    test('autoplay is a different player from the default one', () async {
+      // The tag player always asks with autoplay off, so the preloaded clip
+      // and the clip showing are the same provider.
+      final c = ProviderContainer.test()
+        ..listen(
+          clipPlayerProvider(first, use: ClipPlayerUse.tagging),
+          (_, _) {},
+        )
+        ..listen(
+          clipPlayerProvider(
+            first,
+            use: ClipPlayerUse.tagging,
+            autoplay: false,
+          ),
+          (_, _) {},
+        );
+      await c.read(
+        clipPlayerProvider(first, use: ClipPlayerUse.tagging).future,
+      );
+      await c.read(
+        clipPlayerProvider(
+          first,
+          use: ClipPlayerUse.tagging,
+          autoplay: false,
+        ).future,
+      );
+
+      expect(platform.players, hasLength(2));
+      expect(platform.player(1).playing, isTrue);
+      expect(platform.player(2).playing, isFalse);
+      c.dispose();
+    });
+
     test('the viewer does not loop', () async {
       final c = open(first);
 

@@ -1183,6 +1183,47 @@ abstract final class TtMetrics {
   // proto.css: .stat-strip { padding: 0 8px 0 16px }
   static const double statStripPaddingEnd = 8;
 
+  // ---- Tag player stage ----
+
+  /// Blur of the thumbnail behind the tag player's video.
+  // proto.css: .stage .blur { filter: blur(22px) brightness(.45) }
+  static const double tagStageBlur = 22;
+
+  /// Opacity of black over that blurred thumbnail (`brightness(.45)` leaves
+  /// 45 % of the light, so 55 % black).
+  static const double tagStageDimOpacity = 0.55;
+
+  /// How much that thumbnail is scaled up, so the blur's soft edge is off
+  /// the stage.
+  // proto.css: .stage .blur { transform: scale(1.1) }
+  static const double tagStageBlurScale = 1.1;
+
+  /// Corner radius of the tag player's video.
+  // tt-style.css: .style-tt .stage .vid { border-radius: 18px }
+  static const double tagStageVideoRadius = 18;
+
+  /// Blur radius of the shadow under the tag player's video.
+  // proto.css: .stage .vid { box-shadow: 0 10px 30px rgba(0,0,0,.5) }
+  static const double tagStageVideoShadowBlur = 30;
+
+  /// How far down that shadow falls.
+  static const double tagStageVideoShadowOffset = 10;
+
+  /// Opacity of that shadow's black.
+  static const double tagStageVideoShadowOpacity = 0.5;
+
+  /// How far a new clip slides in, as a share of its width.
+  // proto.css: @keyframes clipIn { from { transform: translateX(70%)
+  // scale(.9); opacity: 0 } }
+  static const double tagStageSlideDistance = 0.7;
+
+  /// The scale a new clip starts at while it slides in.
+  static const double tagStageSlideScale = 0.9;
+
+  /// Opacity of black behind the spinner over a loading video.
+  // proto.css: .stage .vid .ld { background: rgba(0,0,0,.35) }
+  static const double tagStageLoadingOpacity = 0.35;
+
   // ---- Video surface ----
 
   /// Height of the gradient scrim under the top controls on video.

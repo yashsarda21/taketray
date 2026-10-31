@@ -7,14 +7,13 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/zone_city.dart';
+import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
 import 'package:taketray/features/reels/view_models/clip_viewer_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/views/reel_picker_sheet.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
-import 'package:taketray/features/tagging/views/to_tag_screen.dart'
-    show formatClipDuration;
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray/router/routes.dart';
@@ -616,9 +615,8 @@ class _CantPlay extends StatelessWidget {
   }
 }
 
-/// The scrubber of the page showing: the time so far, the length, and seek.
-/// Before the player has opened the video (or when it cannot) it shows 0:00
-/// and the clip's length, and does not seek.
+/// The scrubber of the page showing: the player of its clip, if it has one,
+/// in a [ClipScrubber].
 class _Scrubber extends ConsumerWidget {
   const new({required this.uri, required this.clip});
 
@@ -631,51 +629,6 @@ class _Scrubber extends ConsumerWidget {
     final controller = address == null
         ? null
         : ref.watch(clipPlayerProvider(address)).value;
-    final l10n = AppLocalizations.of(context);
-    final fallback = formatClipDuration(clip.fingerprint.durationMs);
-    if (controller == null) {
-      return TtScrubBar(
-        progress: 0,
-        positionText: formatClipDuration(0),
-        durationText: fallback,
-        semanticLabel: l10n.viewerScrubLabel,
-        semanticValue: l10n.viewerScrubValue(formatClipDuration(0), fallback),
-      );
-    }
-    return ValueListenableBuilder<VideoPlayerValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final length = value.duration.inMilliseconds;
-        final ready = value.isInitialized && !value.hasError && length > 0;
-        final position = value.position.inMilliseconds;
-        final durationText = ready ? formatClipDuration(length) : fallback;
-        // What a screen reader hears after a 5 % step either way (the bar
-        // does the stepping, `TtMetrics.scrubSemanticStep`).
-        int stepped(double by) =>
-            ((position / length + by).clamp(0.0, 1.0) * length).round();
-        String valueAt(int ms) =>
-            l10n.viewerScrubValue(formatClipDuration(ms), durationText);
-        return TtScrubBar(
-          progress: ready ? position / length : 0,
-          positionText: formatClipDuration(position),
-          durationText: durationText,
-          semanticLabel: l10n.viewerScrubLabel,
-          semanticValue: valueAt(position),
-          semanticIncreasedValue: ready
-              ? valueAt(stepped(TtMetrics.scrubSemanticStep))
-              : null,
-          semanticDecreasedValue: ready
-              ? valueAt(stepped(-TtMetrics.scrubSemanticStep))
-              : null,
-          onSeek: ready
-              ? (fraction) => unawaited(
-                  controller.seekTo(
-                    Duration(milliseconds: (length * fraction).round()),
-                  ),
-                )
-              : null,
-        );
-      },
-    );
+    return ClipScrubber(controller: controller, clip: clip);
   }
 }

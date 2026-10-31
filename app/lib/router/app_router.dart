@@ -7,6 +7,7 @@ import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
+import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/routes.dart';
 
@@ -18,6 +19,12 @@ final Logger _log = Logger('router');
 /// whole number.
 int? _id(GoRouterState state, String name) {
   final id = int.tryParse(state.pathParameters[name] ?? '');
+  return id != null && id > 0 ? id : null;
+}
+
+/// [text] as a positive whole number, or null.
+int? _positive(String? text) {
+  final id = int.tryParse(text ?? '');
   return id != null && id > 0 ? id : null;
 }
 
@@ -101,6 +108,22 @@ GoRouter appRouter(Ref ref) {
               GoRoute(
                 path: Routes.toTag,
                 builder: (context, state) => const ToTagScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'play',
+                    // Full screen, above the shell and its nav pill, like
+                    // the clip viewer (D-89, D-97). To tag stays under it in
+                    // the tab, so Back returns to it.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => TagPlayerScreen(
+                      // A start that is not a positive whole number is as
+                      // good as none: the first waiting clip.
+                      startClipId: _positive(
+                        state.uri.queryParameters[Routes.tagFromParameter],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
