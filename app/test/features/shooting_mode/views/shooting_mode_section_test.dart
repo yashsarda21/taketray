@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
@@ -212,14 +213,34 @@ void main() {
       expect(findPlain('On since 10:00 PM'), findsNothing);
     });
 
-    testWidgets('a card that is off has nothing to change', (tester) async {
+    testWidgets('a card that is off is drawn the same after midnight', (
+      tester,
+    ) async {
       final clock = FixedClock(DateTime(2026, 10, 28, 23, 59));
-      await pump(tester, clock: clock, midnightTick: true);
+      final p = await pump(tester, clock: clock, midnightTick: true);
+      // The card is subscribed to the tick; this listener only counts it.
+      final days = <DateTime>[];
+      p.container.listen<AsyncValue<DateTime>>(localDayProvider, (_, next) {
+        final day = next.value;
+        if (day != null) days.add(day);
+      }, fireImmediately: true);
+      const offText =
+          'Off. Turn on before you start filming, and new videos wait in '
+          'To tag.';
+      expect(find.text(offText), findsOneWidget);
 
       clock.advance(const Duration(minutes: 2));
       await tester.pump(const Duration(minutes: 2));
 
+      // The day did turn over, and nothing on the card says so.
+      expect(days, [DateTime(2026, 10, 28), DateTime(2026, 10, 29)]);
       expect(find.text('Shooting mode'), findsOneWidget);
+      expect(find.text(offText), findsOneWidget);
+      expect(card(tester).on, isFalse);
+      expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
+      expect(find.textContaining('On since'), findsNothing);
+      expect(find.textContaining('Oct'), findsNothing);
+      expect(find.byType(TtCardRow), findsNothing);
       expect(tester.takeException(), isNull);
     });
   });

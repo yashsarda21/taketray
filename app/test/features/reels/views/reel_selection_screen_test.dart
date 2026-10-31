@@ -19,13 +19,15 @@ import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
 
-/// A clips repository whose `addClipsToReel` and `moveClips` fail.
+/// A clips repository whose `addClipsToReels` and `moveClips` fail.
 class _FailingWrites extends ClipsRepository {
   _FailingWrites(VmHarness h) : super(h.media.db, h.media.clock);
 
   @override
-  Future<AddUndo> addClipsToReel(int reelId, Iterable<int> clipIds) =>
-      Future.error(StateError('disk full'));
+  Future<List<AddUndo>> addClipsToReels(
+    Set<int> reelIds,
+    Iterable<int> clipIds,
+  ) => Future.error(StateError('disk full'));
 
   @override
   Future<MoveUndo> moveClips(int from, int to, Iterable<int> clipIds) =>
@@ -154,6 +156,25 @@ void main() {
       expect(find.text('1 selected'), findsOneWidget);
       expect(tiles(tester).map((t) => t.selected), [false, true, false]);
       expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).selection, isTrue);
+    });
+
+    testApp('the count is announced when it changes', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final goa = await newReel(tester, 'Goa');
+      await reelWithClips(tester, goa, 3);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      bool live(String title) => tester
+          .getSemantics(find.text(title))
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion;
+      expect(live('1 selected'), isTrue);
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+      expect(live('2 selected'), isTrue);
+      semantics.dispose();
     });
 
     testApp('the bar has the three actions and Select all only', (
@@ -810,6 +831,60 @@ void main() {
       expect(tiles(tester), hasLength(2));
       expect(await clipIdsOf(tester, goa.id), ids.toSet());
       expect(await clipIdsOf(tester, london.id), isEmpty);
+    });
+
+    testApp('Add and Move open one picker however often they are tapped', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await reelWithClips(tester, goa, 1);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      for (final label in ['Add to another reel', 'Move to another reel']) {
+        // Two presses before a frame is drawn (a tap cannot do that: the
+        // sheet's barrier takes the second one once it is on screen).
+        final press = tester.widget<TtIconButton>(barButton(label)).onPressed!;
+        press();
+        press();
+        await settleApp(tester);
+        expect(find.byType(TtSheet), findsOneWidget, reason: label);
+        await tester.tap(find.text('Cancel'));
+        await settleApp(tester);
+        expect(find.byType(TtSheet), findsNothing, reason: label);
+      }
+      // The guard is released when a picker closes: the next tap works.
+      await tester.tap(barButton('Add to another reel'));
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('a move of clips that already left shows nothing', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      final paris = await newReel(tester, 'Paris');
+      final ids = await reelWithClips(tester, goa, 2);
+      await open(tester, goa.id);
+      await select(tester, 1);
+      await tester.tap(barButton('Move to another reel'));
+      await settleApp(tester);
+      await tester.tap(find.text('London'));
+      await tester.pumpAndSettle();
+      // The chosen clip is moved to Paris meanwhile (by another screen).
+      await real(tester, () => clips.moveClips(goa.id, paris.id, {ids.first}));
+      await settleApp(tester);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Move'));
+      await settleApp(tester);
+
+      expect(find.byType(SnackBar), findsNothing);
+      expect(find.textContaining('Moved to'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+      expect(await clipIdsOf(tester, london.id), isEmpty);
+      expect(await clipIdsOf(tester, paris.id), {ids.first});
+      // The choice ends, as after a remove that removed nothing.
+      expect(find.textContaining('selected'), findsNothing);
     });
 
     testApp('a failed move says so in the sheet', (tester) async {

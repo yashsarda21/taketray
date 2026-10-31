@@ -46,6 +46,27 @@ class _Opener extends StatelessWidget {
   );
 }
 
+/// The label, value and hint of [node] and everything under it, in order.
+List<String> _spoken(SemanticsNode node) {
+  final spoken = <String>[];
+  void visit(SemanticsNode n) {
+    final data = n.getSemanticsData();
+    for (final text in [data.label, data.value, data.hint]) {
+      if (text.isNotEmpty) spoken.add(text);
+    }
+    n.visitChildren((child) {
+      visit(child);
+      return true;
+    });
+  }
+
+  visit(node);
+  return spoken;
+}
+
+/// How [icon] would be spoken if it had a node: its glyph, or a label.
+String _glyph(IconData icon) => String.fromCharCode(icon.codePoint);
+
 TtButton _button(WidgetTester tester, String label) =>
     tester.widget<TtButton>(find.widgetWithText(TtButton, label));
 
@@ -84,6 +105,66 @@ void main() {
         TextAlign.center,
       );
       expect(find.bySemanticsLabel('Delete Goa?'), findsWidgets);
+    });
+
+    testWidgets('the icon has no semantics node: only the title and the '
+        'actions are spoken', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialog<String>(
+              title: 'Delete Goa?',
+              icon: Symbols.delete_rounded,
+              actions: [TtDialogAction<String>('ok', 'OK')],
+            ),
+          ),
+        ),
+      );
+
+      final spoken = _spoken(
+        tester.getSemantics(find.byType(TtDialog<String>)),
+      );
+
+      expect(spoken, isNotEmpty);
+      expect(
+        spoken.any((text) => text.contains(_glyph(Symbols.delete_rounded))),
+        isFalse,
+        reason: 'the glyph is not read out',
+      );
+      expect(
+        spoken.every((text) => text == 'Delete Goa?' || text == 'OK'),
+        isTrue,
+        reason: 'nothing but the title and the action: $spoken',
+      );
+      semantics.dispose();
+    });
+
+    testWidgets('an icon and a note pass the accessibility guidelines', (
+      tester,
+    ) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(
+              child: TtDialog<String>(
+                title: 'Delete Goa?',
+                icon: Symbols.delete_rounded,
+                body: 'Its clips stay in your gallery.',
+                content: TtDialogNote(
+                  text: 'Your videos stay in your gallery.',
+                ),
+                actions: [
+                  TtDialogAction<String>('cancel', 'Cancel'),
+                  TtDialogAction<String>('delete', 'Delete', destructive: true),
+                ],
+              ),
+            ),
+            brightness: brightness,
+          ),
+        );
+        await expectTtAccessible(tester);
+      }
     });
 
     testWidgets('without an icon the title stays at the start', (tester) async {
@@ -474,6 +555,23 @@ void main() {
         find.bySemanticsLabel('Your videos stay in your gallery.'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('the shield has no semantics node: only the sentence is '
+        'spoken', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(
+          const Center(
+            child: TtDialogNote(text: 'Your videos stay in your gallery.'),
+          ),
+        ),
+      );
+
+      final spoken = _spoken(tester.getSemantics(find.byType(TtDialogNote)));
+
+      expect(spoken, ['Your videos stay in your gallery.']);
+      semantics.dispose();
     });
 
     testWidgets('a long sentence wraps at 2x text without overflow', (

@@ -54,8 +54,8 @@ class ReelClipActions {
 
   /// Adds [clipIds] to every reel of [reelIds] (they stay where they are).
   ///
-  /// All or nothing, as far as the user can tell: if one reel fails (or is
-  /// gone), the adds that were done are undone before this throws. Throws
+  /// All or nothing: the repository adds to every reel in one transaction,
+  /// so if one reel fails (or is gone), nothing was added to any. Throws
   /// [ArgumentError] for no reels.
   Future<ClipActionOutcome> addToReels({
     required Set<int> clipIds,
@@ -63,30 +63,20 @@ class ReelClipActions {
   }) async {
     if (reelIds.isEmpty) throw ArgumentError.value(reelIds, 'reelIds');
     final names = [for (final id in reelIds) await _nameOf(id)];
-    final records = <UndoRecord>[];
     try {
-      for (final id in reelIds) {
-        records.add(await _clips.addClipsToReel(id, clipIds));
-      }
+      final records = await _clips.addClipsToReels(reelIds.toSet(), clipIds);
+      return ClipActionOutcome(
+        records: records,
+        reelNames: names,
+        clipCount: clipIds.length,
+      );
     } on Object catch (error) {
       _log.warning(
-        'Adding ${clipIds.length} clips to ${reelIds.length} reels failed '
-        'after ${records.length}: ${error.runtimeType}',
+        'Adding ${clipIds.length} clips to ${reelIds.length} reels failed: '
+        '${error.runtimeType}',
       );
-      for (final record in records.reversed) {
-        try {
-          await _clips.undo(record);
-        } on Object catch (undoError) {
-          _log.warning('Taking an add back failed: ${undoError.runtimeType}');
-        }
-      }
       rethrow;
     }
-    return ClipActionOutcome(
-      records: records,
-      reelNames: names,
-      clipCount: clipIds.length,
-    );
   }
 
   /// Moves [clipIds] from [fromReelId] to [toReelId]. Throws [StateError]

@@ -23,6 +23,13 @@ part of 'midnight_tick.dart';
 /// shows the same day (it fired a moment early, or the clock was set back),
 /// nothing is emitted and the timer is set again. The timer is cancelled when
 /// nothing watches the provider any more.
+///
+/// **When the app returns to the screen** (`resumed`) the day is read again:
+/// on Android a timer can fire late, or not before the user looks, after the
+/// phone has slept through midnight. A new day is emitted at once and the
+/// timer is set again from the clock as it is then. Coming back on the same
+/// day changes nothing. (A change of the phone's time zone while the app was
+/// away is picked up the same way.)
 
 @ProviderFor(localDay)
 final localDayProvider = LocalDayProvider._();
@@ -42,6 +49,13 @@ final localDayProvider = LocalDayProvider._();
 /// shows the same day (it fired a moment early, or the clock was set back),
 /// nothing is emitted and the timer is set again. The timer is cancelled when
 /// nothing watches the provider any more.
+///
+/// **When the app returns to the screen** (`resumed`) the day is read again:
+/// on Android a timer can fire late, or not before the user looks, after the
+/// phone has slept through midnight. A new day is emitted at once and the
+/// timer is set again from the clock as it is then. Coming back on the same
+/// day changes nothing. (A change of the phone's time zone while the app was
+/// away is picked up the same way.)
 
 final class LocalDayProvider
     extends
@@ -62,6 +76,13 @@ final class LocalDayProvider
   /// shows the same day (it fired a moment early, or the clock was set back),
   /// nothing is emitted and the timer is set again. The timer is cancelled when
   /// nothing watches the provider any more.
+  ///
+  /// **When the app returns to the screen** (`resumed`) the day is read again:
+  /// on Android a timer can fire late, or not before the user looks, after the
+  /// phone has slept through midnight. A new day is emitted at once and the
+  /// timer is set again from the clock as it is then. Coming back on the same
+  /// day changes nothing. (A change of the phone's time zone while the app was
+  /// away is picked up the same way.)
   LocalDayProvider._()
     : super(
         from: null,
@@ -87,4 +108,4 @@ final class LocalDayProvider
   }
 }
 
-String _$localDayHash() => r'9b310120171c480ad0b972a2dded1157a859e90d';
+String _$localDayHash() => r'318985c90156fb0581b8eed25ab4658c03330c1e';

@@ -107,7 +107,7 @@ final class ReelFormControllerProvider
 }
 
 String _$reelFormControllerHash() =>
-    r'4ec551ffb30530349091d21e7c2f4ffae7e5cc6e';
+    r'702b27e28391fd15bb27b977aa98e95a4903c0b5';
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///

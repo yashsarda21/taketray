@@ -71,12 +71,15 @@ Future<List<int>?> showReelPicker(
 ///   through the picker's `perform`, so a failure is told in the sheet and
 ///   the sheet stays open (D-85).
 /// - **The snack comes after the sheet closes**, with **Undo** for everything
-///   the action changed (`ReelSnacks.showUndoAll`); an action that changed
-///   nothing (the clips were there already) shows the plain snack. If the
+///   the action changed (`ReelSnacks.showUndoAll`); an add that changed
+///   nothing (the clips were there already) shows the plain snack, and a
+///   move that moved nothing (every chosen clip had left the reel meanwhile)
+///   shows none, as a remove of nothing does. If the
 ///   sheet was dragged away while the action ran, nothing is modal any more,
 ///   so `perform` shows the snack itself when it finishes (or the failure
-///   snack). [onSnack] is called after a success snack, for the caller to end
-///   what it was doing (the reel page ends choosing).
+///   snack). [onSnack] is called after a success (also when no snack was
+///   shown), for the caller to end what it was doing (the reel page ends
+///   choosing).
 ///
 /// Everything the snack needs ([actions], [snacks], and the words from
 /// [l10n]) is passed in, looked up by the caller before this awaits, so it
@@ -97,12 +100,14 @@ Future<ClipActionOutcome?> pickAndPerform(
     final message = mode == ReelPickerMode.add
         ? addedToText(l10n, done.reelNames)
         : l10n.movedToSnack(done.reelNames.single);
-    // Nothing changed (the clips were there already): nothing to undo.
-    if (done.isEmpty) {
-      snacks.show(message);
-    } else {
+    if (!done.isEmpty) {
       snacks.showUndoAll(message, done.records);
+    } else if (mode == ReelPickerMode.add) {
+      // Nothing changed (the clips were there already): nothing to undo.
+      snacks.show(message);
     }
+    // A move that moved nothing (every chosen clip had left the reel
+    // meanwhile) says nothing, as a remove that removed nothing does.
     onSnack?.call();
   }
 

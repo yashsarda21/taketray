@@ -231,43 +231,71 @@ class ClipsRepository {
   /// exist.
   Future<AddUndo> addClipsToReel(int reelId, Iterable<int> clipIds) async {
     final ids = clipIds.toSet();
-    final record = await _db.transaction(() async {
-      await _requireReel(reelId);
-      for (final id in ids) {
-        await _requireClip(id);
-      }
-      final before = (await _undo.updatedAtOf(reelId))!;
-      final inbox = ids.isEmpty
-          ? const <InboxRow>[]
-          : await (_db.select(
-              _db.inbox,
-            )..where((i) => i.clipId.isIn(ids))).get();
-      final now = _clock.now();
-      final created = await _link(reelId, ids, now);
-      return AddUndo(
-        reelId: reelId,
-        createdLinks: [
-          for (final clipId in created)
-            ClipLink(clipId: clipId, reelId: reelId, addedAt: now),
-        ],
-        removedInbox: [
-          for (final row in inbox)
-            InboxEntry(
-              clipId: row.clipId,
-              state: row.state,
-              addedAt: row.addedAt,
-            ),
-        ],
-        touch: created.isEmpty
-            ? null
-            : ReelTouch(reelId: reelId, before: before, after: now),
-      );
-    });
+    final record = await _db.transaction(() => _addToReel(reelId, ids));
     _log.info(
       'Added ${ids.length} clips to reel $reelId, '
       '${record.createdLinks.length} new',
     );
     return record;
+  }
+
+  /// Adds existing clips to every reel of [reelIds], as [addClipsToReel] does
+  /// for one, in **one** transaction (D-84 point 8): if any reel or clip is
+  /// gone, or any write fails, nothing is added to any reel and the error is
+  /// thrown.
+  ///
+  /// Returns one record for each reel, in the order of [reelIds]. Undo them
+  /// last to first: the first record is the one that holds the `inbox` rows
+  /// the add deleted, and the later ones only link the clips.
+  Future<List<AddUndo>> addClipsToReels(
+    Set<int> reelIds,
+    Iterable<int> clipIds,
+  ) async {
+    final ids = clipIds.toSet();
+    final records = await _db.transaction(() async {
+      final records = <AddUndo>[];
+      for (final reelId in reelIds) {
+        records.add(await _addToReel(reelId, ids));
+      }
+      return records;
+    });
+    _log.info(
+      'Added ${ids.length} clips to ${reelIds.length} reels, '
+      '${records.fold<int>(0, (sum, r) => sum + r.createdLinks.length)} new',
+    );
+    return records;
+  }
+
+  /// The body of an add, inside the caller's transaction.
+  Future<AddUndo> _addToReel(int reelId, Set<int> ids) async {
+    await _requireReel(reelId);
+    for (final id in ids) {
+      await _requireClip(id);
+    }
+    final before = (await _undo.updatedAtOf(reelId))!;
+    final inbox = ids.isEmpty
+        ? const <InboxRow>[]
+        : await (_db.select(_db.inbox)..where((i) => i.clipId.isIn(ids))).get();
+    final now = _clock.now();
+    final created = await _link(reelId, ids, now);
+    return AddUndo(
+      reelId: reelId,
+      createdLinks: [
+        for (final clipId in created)
+          ClipLink(clipId: clipId, reelId: reelId, addedAt: now),
+      ],
+      removedInbox: [
+        for (final row in inbox)
+          InboxEntry(
+            clipId: row.clipId,
+            state: row.state,
+            addedAt: row.addedAt,
+          ),
+      ],
+      touch: created.isEmpty
+          ? null
+          : ReelTouch(reelId: reelId, before: before, after: now),
+    );
   }
 
   /// Removes clips from reel [reelId], sets the reel's `updatedAt` to now when

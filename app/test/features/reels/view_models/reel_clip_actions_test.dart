@@ -1,7 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
@@ -10,16 +13,35 @@ import '../../../support/clip_setup.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/vm_harness.dart';
 
-/// A clips repository whose `addClipsToReel` fails for one reel.
-class _FailingAdd extends ClipsRepository {
-  _FailingAdd(VmHarness h, this.failFor) : super(h.media.db, h.media.clock);
+/// A reels repository where [vanishes] is deleted (by someone else) just
+/// after its name was read, so the add finds the reel gone.
+class _VanishingReel extends ReelsRepository {
+  // ignore: use_super_parameters, the parameters of ReelsRepository are private
+  _VanishingReel(AppDatabase db, Clock clock, this.vanishes) : super(db, clock);
 
-  final int failFor;
+  final int vanishes;
 
   @override
-  Future<AddUndo> addClipsToReel(int reelId, Iterable<int> clipIds) {
-    if (reelId == failFor) return Future.error(StateError('disk full'));
-    return super.addClipsToReel(reelId, clipIds);
+  Future<Reel?> getById(int id) async {
+    final reel = await super.getById(id);
+    if (id == vanishes) await delete(id);
+    return reel;
+  }
+}
+
+/// A clips repository that counts its add calls.
+class _CountingClips extends ClipsRepository {
+  _CountingClips(VmHarness h) : super(h.media.db, h.media.clock);
+
+  int calls = 0;
+
+  @override
+  Future<List<AddUndo>> addClipsToReels(
+    Set<int> reelIds,
+    Iterable<int> clipIds,
+  ) {
+    calls++;
+    return super.addClipsToReels(reelIds, clipIds);
   }
 }
 
@@ -112,12 +134,16 @@ void main() {
       expect(await clipIdsOf(london.id), isEmpty);
     });
 
-    test('a failure on the second reel takes the first back', () async {
+    test('a reel that vanishes after its name was read leaves nothing added '
+        'to the others', () async {
       final goa = await reels.create('Goa');
       final london = await reels.create('London');
       final paris = await reels.create('Paris');
       final ids = await putInReel(h, goa.id, [reelVideo(1)]);
-      final failing = ReelClipActions(reels, _FailingAdd(h, paris.id));
+      final failing = ReelClipActions(
+        _VanishingReel(h.media.db, h.media.clock, paris.id),
+        clips,
+      );
 
       await expectLater(
         failing.addToReels(
@@ -128,7 +154,22 @@ void main() {
       );
 
       expect(await clipIdsOf(london.id), isEmpty);
-      expect(await clipIdsOf(paris.id), isEmpty);
+      expect(await clipIdsOf(goa.id), ids.toSet());
+    });
+
+    test('the add is one repository call, not one per reel', () async {
+      final goa = await reels.create('Goa');
+      final london = await reels.create('London');
+      final paris = await reels.create('Paris');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final counting = _CountingClips(h);
+
+      await ReelClipActions(
+        reels,
+        counting,
+      ).addToReels(clipIds: ids.toSet(), reelIds: [london.id, paris.id]);
+
+      expect(counting.calls, 1);
     });
 
     test('no reels is an error', () async {

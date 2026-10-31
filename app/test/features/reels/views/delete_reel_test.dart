@@ -220,6 +220,24 @@ void main() {
       expect(await allReels(tester), hasLength(1));
     });
 
+    testApp('the dialog is announced when it opens, by its name', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpHost(tester);
+      await openDialog(tester);
+
+      final data = tester
+          .getSemantics(find.byType(TtDialog<bool>))
+          .getSemanticsData();
+      // A screen reader says "Delete Goa?" as the new window opens, and keeps
+      // its focus inside it.
+      expect(data.label, 'Delete Goa?');
+      expect(data.flagsCollection.namesRoute, isTrue);
+      expect(data.flagsCollection.scopesRoute, isTrue);
+      semantics.dispose();
+    });
+
     testApp('the dialog is accessible, light and dark, at 2x text', (
       tester,
     ) async {

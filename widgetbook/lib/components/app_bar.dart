@@ -19,6 +19,9 @@ final WidgetbookComponent ttAppBarComponent = WidgetbookComponent(
         );
         final large = context.knobs.boolean(label: 'large');
         final selection = context.knobs.boolean(label: 'selection');
+        final liveRegion = context.knobs.boolean(
+          label: 'liveRegion (selection only)',
+        );
         final back = context.knobs.boolean(
           label: 'leading button',
           initialValue: true,
@@ -40,6 +43,7 @@ final WidgetbookComponent ttAppBarComponent = WidgetbookComponent(
             subtitle: subtitle.isEmpty ? null : subtitle,
             large: large,
             selection: selection,
+            liveRegion: liveRegion,
             leading: back
                 ? TtIconButton(
                     icon: Symbols.arrow_back_rounded,

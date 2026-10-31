@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 
@@ -20,6 +21,13 @@ part 'midnight_tick.g.dart';
 /// shows the same day (it fired a moment early, or the clock was set back),
 /// nothing is emitted and the timer is set again. The timer is cancelled when
 /// nothing watches the provider any more.
+///
+/// **When the app returns to the screen** (`resumed`) the day is read again:
+/// on Android a timer can fire late, or not before the user looks, after the
+/// phone has slept through midnight. A new day is emitted at once and the
+/// timer is set again from the clock as it is then. Coming back on the same
+/// day changes nothing. (A change of the phone's time zone while the app was
+/// away is picked up the same way.)
 @riverpod
 Stream<DateTime> localDay(Ref ref) {
   final clock = ref.watch(clockProvider);
@@ -28,6 +36,7 @@ Stream<DateTime> localDay(Ref ref) {
   DateTime? lastDay;
 
   void tick() {
+    timer?.cancel();
     final now = clock.now().toLocal();
     final today = DateTime(now.year, now.month, now.day);
     if (today != lastDay) {
@@ -38,10 +47,25 @@ Stream<DateTime> localDay(Ref ref) {
     timer = Timer(nextMidnight.difference(now), tick);
   }
 
+  final observer = _ResumeObserver(tick);
+  WidgetsBinding.instance.addObserver(observer);
   ref.onDispose(() {
+    WidgetsBinding.instance.removeObserver(observer);
     timer?.cancel();
     unawaited(days.close());
   });
   tick();
   return days.stream;
+}
+
+/// Calls [_onResumed] each time the app comes back to the foreground.
+class _ResumeObserver with WidgetsBindingObserver {
+  _ResumeObserver(this._onResumed);
+
+  final VoidCallback _onResumed;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _onResumed();
+  }
 }

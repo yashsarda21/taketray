@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/intl.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -197,6 +200,81 @@ void main() {
       expect(platform.uris, [_uri(1), _uri(2), _uri(3), _uri(2), _uri(1)]);
     });
 
+    testApp('a swipe keeps the outgoing page until it settles', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2, 3]);
+      await open(tester, goa.id, ids[0]);
+      expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
+
+      // Past the middle of the first page: the pager has changed its page
+      // (the header already says 2 of 3) while the finger is still down.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(PageView)),
+      );
+      await gesture.moveBy(const Offset(-40, 0));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.runAsync(settle);
+      await tester.pump();
+      await tester.runAsync(settle);
+      await tester.pump();
+      expect(title(tester), '2 of 3 · Goa');
+
+      // Both pages show their video: the outgoing one is not black.
+      expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('fake-video-2')), findsOneWidget);
+      expect(platform.player(1).disposed, isFalse);
+
+      await gesture.up();
+      await settleApp(tester);
+
+      // Settled: one page, one player.
+      expect(find.byKey(const ValueKey('fake-video-1')), findsNothing);
+      expect(find.byKey(const ValueKey('fake-video-2')), findsOneWidget);
+      expect(platform.live.map((p) => p.id), [2]);
+      expect(platform.calls, contains('dispose:1'));
+
+      // The page that went out is not kept for later: a small drag back,
+      // short of the middle, shows the first page black and starts no
+      // player for it.
+      final back = await tester.startGesture(
+        tester.getCenter(find.byType(PageView)),
+      );
+      await back.moveBy(const Offset(40, 0));
+      await back.moveBy(const Offset(40, 0));
+      await tester.runAsync(settle);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('fake-video-1')), findsNothing);
+      expect(platform.players, hasLength(2));
+      await back.up();
+      await settleApp(tester);
+      expect(title(tester), '2 of 3 · Goa');
+    });
+
+    testApp('a swipe that returns to the first page leaves one player', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(PageView)),
+      );
+      await gesture.moveBy(const Offset(-40, 0));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.runAsync(settle);
+      await tester.pump();
+      await gesture.moveBy(const Offset(200, 0));
+      await tester.pump();
+      await gesture.up();
+      await settleApp(tester);
+
+      expect(title(tester), '1 of 2 · Goa');
+      expect(platform.live, hasLength(1));
+      expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
+      expect(find.byKey(const ValueKey('fake-video-2')), findsNothing);
+    });
+
     testApp('a disabled arrow does nothing', (tester) async {
       final goa = await real(tester, () => reels.create('Goa'));
       final ids = await reelWith(tester, goa.id, [1, 2]);
@@ -312,6 +390,36 @@ void main() {
       expect(subtitle(tester), 'Wed, Jul 1 · 1:00 PM · London time');
     });
 
+    testApp("the phone's time shows when the clip times fail (not while "
+        'they load)', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final shot = DateTime.utc(2026, 7, 1, 12);
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1, shot: shot)]),
+      );
+      await open(
+        tester,
+        goa.id,
+        ids.single,
+        overrides: [
+          reelClipTimesProvider(
+            goa.id,
+          ).overrideWith((ref) async => throw StateError('the service failed')),
+        ],
+      );
+
+      // The phone's own zone, as the tiles show it in this case (D-87).
+      final local = shot.toLocal();
+      expect(
+        subtitle(tester),
+        '${_plain(DateFormat.MMMEd('en_US').format(local))} · '
+        '${_plain(DateFormat.jm('en_US').format(local))}',
+      );
+      // No city: the phone's own time is not "somewhere else".
+      expect(subtitle(tester), isNot(contains('time')));
+    });
+
     testApp('in-reels chips', (tester) async {
       final goa = await real(tester, () => reels.create('Goa'));
       final london = await real(tester, () => reels.create('London'));
@@ -332,6 +440,38 @@ void main() {
       await tester.tap(arrow(TtArrowSide.next));
       await settleApp(tester);
       expect(chips(), ['Goa']);
+    });
+
+    testApp("the In row stays while the next clip's reels load", (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final london = await real(tester, () => reels.create('London'));
+      final paris = await real(tester, () => reels.create('Paris'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(tester, () => clips.addClipsToReel(london.id, {ids[0]}));
+      await real(tester, () => clips.addClipsToReel(paris.id, {ids[1]}));
+      await open(tester, goa.id, ids[0]);
+
+      List<String> chips() => [
+        for (final t in tester.widgetList<TtReelTag>(find.byType(TtReelTag)))
+          t.name,
+      ];
+      expect(chips(), ['Goa', 'London']);
+
+      await tester.tap(arrow(TtArrowSide.next));
+      // Frame by frame, with real time between them for the database: the
+      // row is never absent.
+      for (var frame = 0; frame < 8; frame++) {
+        await tester.pump();
+        expect(find.byType(TtReelTagRow), findsOneWidget, reason: '$frame');
+        expect(find.text('In'), findsOneWidget, reason: '$frame');
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 5)),
+        );
+      }
+      await settleApp(tester);
+      expect(chips(), ['Goa', 'Paris']);
     });
 
     testApp('mute toggle label', (tester) async {
@@ -653,6 +793,31 @@ void main() {
       await settleApp(tester);
     }
 
+    testApp('Add and Move open one picker however often they are pressed', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      await real(tester, () => reels.create('London'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+
+      for (final label in ['Add to reel', 'Move']) {
+        // Two presses before a frame is drawn.
+        final press = tester
+            .widget<TtViewerActions>(find.byType(TtViewerActions))
+            .actions
+            .firstWhere((a) => a.label == label)
+            .onPressed;
+        press();
+        press();
+        await settleApp(tester);
+        expect(find.byType(TtSheet), findsOneWidget, reason: label);
+        await tester.tap(find.text('Cancel'));
+        await settleApp(tester);
+        expect(find.byType(TtSheet), findsNothing, reason: label);
+      }
+    });
+
     testApp('Add to reel puts the clip in another reel and stays', (
       tester,
     ) async {
@@ -846,6 +1011,32 @@ void main() {
       await open(tester, goa.id, ids[0]);
 
       await expectTtAccessible(tester);
+    });
+
+    testApp('the stage says what a tap does and the state', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+      final semantics = tester.ensureSemantics();
+
+      SemanticsData stage() => tester
+          .getSemantics(find.bySemanticsLabel('Clip 1 of 1'))
+          .getSemanticsData();
+
+      expect(stage().hint, 'Pause');
+      expect(stage().value, 'Playing');
+      expect(stage().flagsCollection.isButton, isTrue);
+
+      await tester.tap(find.byKey(const ValueKey('fake-video-1')));
+      await settleApp(tester);
+      expect(stage().hint, 'Play');
+      expect(stage().value, 'Paused');
+      expect(stage().label, 'Clip 1 of 1');
+
+      await tester.tap(find.byKey(const ValueKey('fake-video-1')));
+      await settleApp(tester);
+      expect(stage().hint, 'Pause');
+      semantics.dispose();
     });
 
     testApp('semantics: arrows, scrubber and the clip label', (tester) async {

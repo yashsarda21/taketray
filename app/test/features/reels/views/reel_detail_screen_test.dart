@@ -37,6 +37,9 @@ class _RecordingVerifier implements MediaVerifier {
   Future<VerifyOutcome> verifyAll() => throw UnimplementedError();
 }
 
+/// The no-break spaces a time or a date is written with.
+final RegExp _spaces = RegExp('[\u202f\u00a0]');
+
 void main() {
   late VmHarness h;
   late ReelsRepository reels;
@@ -270,11 +273,14 @@ void main() {
         'time where the clip was shot', (tester) async {
       final goa = await newReel(tester, 'Goa');
       final shot = DateTime.utc(2026, 7, 1, 23, 30);
+      // A zone no phone is in (UTC+13:37), so the clip's own time can never
+      // be the same as the machine's, whatever zone this test runs in.
+      const odd = 'Test/Odd_Offset';
+      h.bridge.zoneRules[odd] = (_) =>
+          const Duration(hours: 13, minutes: 37).inMilliseconds;
       await real(
         tester,
-        () => putInReel(h, goa.id, [
-          reelVideo(1, shot: shot),
-        ], zoneId: 'Europe/London'),
+        () => putInReel(h, goa.id, [reelVideo(1, shot: shot)], zoneId: odd),
       );
       final held = h.bridge.gate('zoneOffsetsMs');
 
@@ -292,16 +298,85 @@ void main() {
       final phone = DateFormat.jm('en_US').format(shot.toLocal());
       expect(tiles(tester), hasLength(1));
       expect(
-        tiles(tester).single.timeText?.replaceAll(' ', ' '),
-        phone.replaceAll(' ', ' '),
+        tiles(tester).single.timeText?.replaceAll(_spaces, ' '),
+        phone.replaceAll(_spaces, ' '),
       );
       expect(find.byType(TtClipTileSkeleton), findsNothing);
 
       held.complete();
       await settleApp(tester);
 
-      expect(tiles(tester).single.timeText?.replaceAll(' ', ' '), '12:30 AM');
+      // 23:30 UTC is 13:07 on the next day at UTC+13:37.
+      final switched = tiles(tester).single.timeText?.replaceAll(_spaces, ' ');
+      expect(switched, '1:07 PM');
+      expect(
+        switched,
+        isNot(phone.replaceAll(_spaces, ' ')),
+        reason: 'it moved',
+      );
       expect(dayHeaders(tester), [('Day 1 · Thu, Jul 2', '1 clip')]);
+    });
+
+    testApp('a regroup when the times arrive keeps the scroll position and '
+        'shows no skeleton', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      // 60 clips an hour and ten minutes apart, so the days split in other
+      // places in the clip's zone than in the phone's.
+      const odd = 'Test/Odd_Offset';
+      h.bridge.zoneRules[odd] = (_) =>
+          const Duration(hours: 13, minutes: 37).inMilliseconds;
+      final first = DateTime.utc(2026, 7, 1, 3, 20);
+      await real(
+        tester,
+        () => putInReel(h, goa.id, [
+          for (var i = 0; i < 60; i++)
+            reelVideo(i + 1, shot: first.add(Duration(minutes: 70 * i))),
+        ], zoneId: odd),
+      );
+      final held = h.bridge.gate('zoneOffsetsMs');
+      await open(
+        tester,
+        goa.id,
+        overrides: [
+          mediaVerifierProvider.overrideWithValue(_RecordingVerifier()),
+        ],
+      );
+      ScrollPosition position() => tester
+          .state<ScrollableState>(
+            find
+                .descendant(
+                  of: find.byType(ReelDetailScreen),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          )
+          .position;
+      final firstTime = tiles(tester).first.timeText;
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -700));
+      await tester.pumpAndSettle();
+      final scrolled = position().pixels;
+      expect(scrolled, greaterThan(500), reason: 'the page is scrolled down');
+
+      held.complete();
+      // Frame by frame while the times arrive: never a skeleton, never a jump.
+      for (var frame = 0; frame < 8; frame++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 10)),
+        );
+        await tester.pump();
+        expect(find.byType(TtClipTileSkeleton), findsNothing, reason: '$frame');
+        expect(position().pixels, scrolled, reason: 'frame $frame');
+      }
+      await settleApp(tester);
+
+      expect(position().pixels, scrolled);
+      expect(find.byType(TtClipTileSkeleton), findsNothing);
+      // The times did arrive: scrolled back to the top, the first tile is
+      // drawn in the clip's zone now.
+      position().jumpTo(0);
+      await tester.pump();
+      expect(tiles(tester).first.timeText, isNot(firstTime));
     });
 
     testApp('in-2-reels badge and label', (tester) async {

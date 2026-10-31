@@ -222,7 +222,9 @@ String _$_allReelsHash() => r'1a4c3242fac725609744ecd4df8f81ee167f5b33';
 ///   when the last was left. With none left the state is `null`: the screen
 ///   goes back.
 /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-///   and a clip's time appears when `ClipTimeService` has answered.
+///   and a clip's time appears when `ClipTimeService` has answered. If
+///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+///   screen shows the phone's time (never while they are only loading).
 ///
 /// [goTo] is the page changing. Auto-disposes with the screen.
 
@@ -246,7 +248,9 @@ final clipViewerControllerProvider = ClipViewerControllerFamily._();
 ///   when the last was left. With none left the state is `null`: the screen
 ///   goes back.
 /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-///   and a clip's time appears when `ClipTimeService` has answered.
+///   and a clip's time appears when `ClipTimeService` has answered. If
+///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+///   screen shows the phone's time (never while they are only loading).
 ///
 /// [goTo] is the page changing. Auto-disposes with the screen.
 final class ClipViewerControllerProvider
@@ -268,7 +272,9 @@ final class ClipViewerControllerProvider
   ///   when the last was left. With none left the state is `null`: the screen
   ///   goes back.
   /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-  ///   and a clip's time appears when `ClipTimeService` has answered.
+  ///   and a clip's time appears when `ClipTimeService` has answered. If
+  ///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+  ///   screen shows the phone's time (never while they are only loading).
   ///
   /// [goTo] is the page changing. Auto-disposes with the screen.
   ClipViewerControllerProvider._({
@@ -308,7 +314,7 @@ final class ClipViewerControllerProvider
 }
 
 String _$clipViewerControllerHash() =>
-    r'156a8efc35e14a3752a4b77a86328746bf607855';
+    r'051b133fe57033aa51a0e4e82ef948da9e52f12a';
 
 /// The clip viewer of reel [reelId], opened on clip [clipId] (D-89).
 ///
@@ -327,7 +333,9 @@ String _$clipViewerControllerHash() =>
 ///   when the last was left. With none left the state is `null`: the screen
 ///   goes back.
 /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-///   and a clip's time appears when `ClipTimeService` has answered.
+///   and a clip's time appears when `ClipTimeService` has answered. If
+///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+///   screen shows the phone's time (never while they are only loading).
 ///
 /// [goTo] is the page changing. Auto-disposes with the screen.
 
@@ -366,7 +374,9 @@ final class ClipViewerControllerFamily extends $Family
   ///   when the last was left. With none left the state is `null`: the screen
   ///   goes back.
   /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-  ///   and a clip's time appears when `ClipTimeService` has answered.
+  ///   and a clip's time appears when `ClipTimeService` has answered. If
+  ///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+  ///   screen shows the phone's time (never while they are only loading).
   ///
   /// [goTo] is the page changing. Auto-disposes with the screen.
 
@@ -394,7 +404,9 @@ final class ClipViewerControllerFamily extends $Family
 ///   when the last was left. With none left the state is `null`: the screen
 ///   goes back.
 /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-///   and a clip's time appears when `ClipTimeService` has answered.
+///   and a clip's time appears when `ClipTimeService` has answered. If
+///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+///   screen shows the phone's time (never while they are only loading).
 ///
 /// [goTo] is the page changing. Auto-disposes with the screen.
 

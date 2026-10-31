@@ -421,6 +421,7 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
 
   ```dart
   void tick() {
+    timer?.cancel();
     final now = clock.now().toLocal();
     final today = DateTime(now.year, now.month, now.day);
     if (today != lastDay) {
@@ -435,6 +436,8 @@ It ends with `All tests passed!`. Now, in `app/lib/data/repositories/undo_writer
   Two details carry the weight. `DateTime(y, m, d + 1)` is how Dart asks for "the start of tomorrow": it normalises the day number, so `d + 1` on the 31st is the 1st of the next month, and it lands on *local* midnight even when the day was 23 or 25 hours long (the night the clocks change in London). A timer of `Duration(hours: 24)` would be an hour out on those two nights a year. And when the timer fires but the clock still shows the same day (a timer can fire a moment early, or the clock was set back), nothing is emitted and the timer is set again, so a day is never announced twice. `ref.onDispose` cancels the timer when nothing watches the provider.
 
   `ShootingModeSection` and `ToTagScreen` just `ref.watch(localDayProvider)` and ignore the value: the watch is what makes them rebuild at midnight, and the rebuild reads the clock again.
+
+  **A timer can be late.** On Android a phone that slept through midnight may not run the timer until later. So the provider also adds a `WidgetsBindingObserver` that calls `tick()` when the app is `resumed`: the new day is emitted at once. That is why `tick()` starts with `timer?.cancel()`: a resume must replace the pending timer, not add a second one. The test sets a clock by hand, never lets a timer fire, resumes the app and expects the new day.
 
 - **Testing a timer: fake time, and a clock that follows it.** `fakeAsync` runs a block with a fake clock for `Timer`s: `async.elapse(Duration(hours: 8, minutes: 29, seconds: 59))` moves time forward and fires the timers due. But `Clock.now()` in the app is `DateTime.now()`, which fake time does not move. So the test makes a `Clock` that adds `async.elapsed` to a start time. The two London cases (`the London night in October is 25 hours long`, `... in March is 23 hours long`) only mean something when the computer's zone is London, so `tool/check` runs this file a second time with `TZ=Europe/London` (it is in `DST_TESTS`); in UTC they are skipped.
 
@@ -662,7 +665,8 @@ It ends with `All tests passed!`. Now in `reel_detail_controller.dart` comment o
   if (mounted) navigator.pop(picked);
   ```
 
-- **All or nothing across reels.** Adding to three reels is three database calls (each is its own transaction). `ReelClipActions.addToReels` undoes the ones that worked if a later one fails, so an error never leaves the clip in some of the reels and not others. The snack's **Undo** undoes every record, last to first (`ReelSnacks.showUndoAll`).
+- **All or nothing across reels.** Adding to three reels is **one** database transaction: `ClipsRepository.addClipsToReels(reelIds, clipIds)` loops over the reels inside a single `_db.transaction`. If the third reel is gone, or a write fails, the transaction rolls back and the first two reels have nothing added either, so an error never leaves the clip in some of the reels and not others, and nothing has to be undone by hand. (The first version added reel by reel and undid the done ones after a failure; an undo that can itself fail is a weaker promise than a transaction.) It returns one `AddUndo` per reel, and the snack's **Undo** undoes every record, last to first (`ReelSnacks.showUndoAll`).
+- **A double tap opens one picker, and a move of nothing says nothing.** `_picking` on the page ignores a second tap on Add or Move while a picker is open, as `_removing` does for Remove. If every chosen clip left the reel while the picker was open, the move moved nothing, so no "Moved to London" snack is shown (it would have had no Undo). The selection bar's title "3 selected" is a *live region* (`TtAppBar(liveRegion: true)`, only in selection mode), so a screen reader reads each new count.
 - **Look things up before you wait.** The page gets the snack helper, the actions and the selection notifier before it awaits the sheet. The page may be gone by the time the work finishes, but the snack (on the app's root messenger) and its Undo still work.
 
 **Where it lives:**
@@ -730,7 +734,11 @@ It ends with `All tests passed!`. Now in `reel_selection.dart` change `selected:
   ```
 
 - **Pause when the app is left.** The provider registers a `WidgetsBindingObserver` that pauses on `paused`. The plugin has one too, but it starts the video again when you come back; we turn it off (`allowBackgroundPlayback: true`, which only does that) and use ours, which does not.
-- **Time where it was shot, never converted.** The header uses `ClipLocalTime.wallClock` as it is (D-83) and says the city only when `!isPhoneZone`. Until the zone answer arrives the line is empty: the phone's time would be wrong, and a wrong time is worse than none for a moment.
+- **Time where it was shot, never converted.** The header uses `ClipLocalTime.wallClock` as it is (D-83) and says the city only when `!isPhoneZone`. Until the zone answer arrives the line is empty: the phone's time would be wrong, and a wrong time is worse than none for a moment. But if the answer *fails* (an error, not "still loading") it will never come, so the line then shows the phone's own time, as the reel page's tiles do (`ClipViewerState.timesFailed`).
+- **A swipe does not black out the page going away.** A `PageView` calls `onPageChanged` at the *middle* of a swipe, and the viewer then moves to the new clip. If only the page showing had its video, the half-visible old page would turn black at that moment. So the viewer remembers the clip it is leaving (`_outgoingClipId`) and keeps that page's player until the pager says the scroll has ended (`ScrollEndNotification`). For those few hundred milliseconds two players exist; after that, one. Each page's own **Remove** acts on *its* clip, not on "the clip showing", so a button on the old page cannot remove the new clip.
+- **The "In" row does not blink.** The names of the reels a clip is in come from a provider made for each clip, so a new clip starts as "loading" and the row would disappear for a frame. The screen keeps the last names it showed and uses them until the new ones arrive.
+- **The stage says what it is doing.** For a screen reader the video is a button with the label "Clip 2 of 5", the state "Playing" or "Paused", and the hint "Pause" or "Play": `Semantics(value: ..., hint: ...)`.
+- **A clip that goes missing while you watch it** (a verify finds the video gone) leaves the pager like a removed clip: the viewer moves to its neighbour, which starts playing.
 - **A fake player for tests.** `FakeVideoPlayerPlatform` replaces the plugin's platform layer, so the tests drive the real `VideoPlayerController` with no ExoPlayer. It records which addresses were opened and which players are still alive, so "disposed on page change" and "never played another clip" are plain assertions.
 - **Snacks need a Scaffold.** The Undo snack is shown by the Scaffolds under the app's root messenger. The viewer covers the tab shell, so it has a Scaffold of its own, with the controls as its bottom bar so a snack sits above them.
 - **A pop closes the top route.** The reel picker and the viewer are routes of the same navigator. If the viewer decided to go back while the picker was open, the pop would close the picker. So the viewer waits until the picker has closed.

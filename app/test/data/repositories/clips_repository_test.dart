@@ -605,6 +605,118 @@ void main() {
       },
     );
 
+    group('addClipsToReels (several reels, one transaction)', () {
+      Future<String> state() async => [
+        for (final l in await db.select(db.clipReels).get())
+          'link ${l.clipId} ${l.reelId} ${l.addedAt}',
+        for (final i in await inboxRows())
+          'inbox ${i.clipId} ${i.state} ${i.addedAt}',
+        for (final r in await db.select(db.reels).get())
+          'reel ${r.id} ${r.updatedAt}',
+      ].join('\n');
+
+      test(
+        'adds to every reel and gives one record per reel, in order',
+        () async {
+          final goa = await reels.create('Goa');
+          final paris = await reels.create('Paris');
+          final lisbon = await reels.create('Lisbon');
+          final ids = await repo.saveDetected([
+            mediaStoreClip(10),
+            mediaStoreClip(11),
+          ]);
+
+          final records = await repo.addClipsToReels({
+            lisbon.id,
+            goa.id,
+            paris.id,
+          }, ids);
+
+          expect(records.map((r) => r.reelId), [lisbon.id, goa.id, paris.id]);
+          for (final record in records) {
+            expect(record.createdLinks.map((l) => l.clipId), ids);
+          }
+          for (final reel in [goa, paris, lisbon]) {
+            expect(await repo.watchReelClips(reel.id).first, hasLength(2));
+          }
+          // The clips left To tag once, by the first reel's record.
+          expect(await inboxRows(), isEmpty);
+        },
+      );
+
+      test('a reel that is gone, second in line, leaves nothing added '
+          'to the first', () async {
+        final goa = await reels.create('Goa');
+        final ids = await repo.saveDetected([mediaStoreClip(10)]);
+        clock.advance(_minute);
+        final before = await state();
+
+        await expectLater(
+          repo.addClipsToReels({goa.id, 99}, ids),
+          throwsStateError,
+        );
+
+        expect(await state(), before);
+        expect(await db.select(db.clipReels).get(), isEmpty);
+        expect(await inboxRows(), hasLength(1));
+        expect(await updatedAt(goa.id), _t0);
+      });
+
+      test('a clip that is gone fails before any reel changes', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
+        final before = await state();
+
+        await expectLater(
+          repo.addClipsToReels({goa.id, paris.id}, [id, 99]),
+          throwsStateError,
+        );
+
+        expect(await state(), before);
+      });
+
+      test('undoing the records last to first restores everything', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final ids = await repo.saveDetected([
+          mediaStoreClip(10),
+          mediaStoreClip(11),
+        ]);
+        await repo.skip([ids.last]);
+        clock.advance(_minute);
+        final before = await state();
+
+        final records = await repo.addClipsToReels({goa.id, paris.id}, ids);
+        expect(await state(), isNot(before));
+        for (final record in records.reversed) {
+          await repo.undo(record);
+        }
+
+        expect(await state(), before);
+      });
+
+      test('a clip a reel has already makes an empty record for it', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final ids = await repo.addNewClipsToReel(goa.id, [mediaStoreClip(10)]);
+
+        final records = await repo.addClipsToReels({goa.id, paris.id}, ids);
+
+        expect(records.first.isEmpty, isTrue);
+        expect(records.last.createdLinks, hasLength(1));
+      });
+
+      test('no reels gives no records and changes nothing', () async {
+        final ids = await repo.saveDetected([mediaStoreClip(10)]);
+        final before = await state();
+
+        expect(await repo.addClipsToReels(const {}, ids), isEmpty);
+
+        expect(await state(), before);
+      });
+    });
+
     test(
       'removing a clip from its last reel deletes it (no inbox row)',
       () async {

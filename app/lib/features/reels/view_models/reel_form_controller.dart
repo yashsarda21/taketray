@@ -146,6 +146,10 @@ class ReelFormController extends _$ReelFormController {
       _log.warning('Saving a reel failed: ${error.runtimeType}');
       _set(const ReelFormState());
       rethrow;
+    } finally {
+      // Whatever way this ends, `saving` does not stay on: the handler for a
+      // refused name reads the reels again, and that read can fail too.
+      if (ref.mounted && state.saving) state = const ReelFormState();
     }
   }
 

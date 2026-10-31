@@ -126,6 +126,46 @@ void main() {
     );
   });
 
+  testApp('the camera snack can be seen and touched above the nav pill and '
+      'the FAB', (tester) async {
+    await reels.create('Goa');
+    h.bridge.cameraOpens = false;
+    await pumpApp(tester);
+    await tester.tap(find.byType(TtSwitch));
+    // Shooting mode on has a blinking dot, so nothing settles: run the
+    // database, then let the time pass by hand.
+    await tester.runAsync(settle);
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(TtFab), findsOneWidget);
+
+    await tester.tap(find.text('Open camera'));
+    await tester.runAsync(settle);
+    // The snack starts sliding in after the frame that built it.
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 500));
+
+    // The real shell: the snack is on the root messenger, over the tab's
+    // Scaffold, the nav pill and the FAB, and a touch reaches it.
+    final snack = find.text("Couldn't open the camera.");
+    expect(snack.hitTestable(), findsOneWidget);
+    final snackRect = tester.getRect(find.byType(TtSnack));
+    expect(
+      snackRect.bottom,
+      lessThanOrEqualTo(tester.getTopLeft(find.byType(TtNavPill)).dy + 0.01),
+      reason: 'the snack sits above the nav pill',
+    );
+    final fab = find
+        .descendant(of: find.byType(TtFab), matching: find.byType(Material))
+        .first;
+    expect(
+      tester.getRect(fab).bottom,
+      lessThanOrEqualTo(snackRect.top),
+      reason: 'the FAB rose over the snack',
+    );
+    expect(h.bridge.calls, contains('openVideoCamera'));
+  });
+
   testApp('a card opens the reel route and back comes home', (tester) async {
     final goa = await reels.create('Goa');
     await pumpApp(tester);
@@ -146,7 +186,8 @@ void main() {
     expect(find.byType(ReelDetailScreen), findsNothing);
   });
 
-  testApp('the tab keeps its scroll position', (tester) async {
+  testApp('the shell keeps the Reels tab scroll position while another tab '
+      'is open (the shell, not the screen)', (tester) async {
     for (var i = 1; i <= 25; i++) {
       await reels.create('Reel $i');
       h.media.clock.advance(const Duration(minutes: 1));

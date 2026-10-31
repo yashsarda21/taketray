@@ -136,6 +136,51 @@ void main() {
       semantics.dispose();
     });
 
+    group('ensureVisible on a chip', () {
+      Widget tabs({required bool inColumnScroll}) {
+        final row = TtPillTabs<String>(
+          tabs: const [
+            TtPillTab<String>('all', 'All 12'),
+            TtPillTab<String>('collecting', 'Collecting 5'),
+            TtPillTab<String>('ready', 'Ready to edit 4'),
+            TtPillTab<String>('published', 'Published 3'),
+          ],
+          value: 'all',
+          onChanged: (_) {},
+        );
+        return ttTestApp(
+          inColumnScroll
+              ? ListView(children: [const SizedBox(height: 40), row])
+              : row,
+        );
+      }
+
+      for (final inColumnScroll in [false, true]) {
+        testWidgets('settles on the last chip'
+            '${inColumnScroll ? ' inside a vertical list' : ''}', (
+          tester,
+        ) async {
+          tester.view.physicalSize = const Size(360, 800);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(tabs(inColumnScroll: inColumnScroll));
+          expect(
+            tester.getRect(find.text('Published 3')).right,
+            greaterThan(360),
+            reason: 'the last chip starts out of view',
+          );
+
+          await tester.ensureVisible(find.text('Published 3'));
+          await tester.pumpAndSettle();
+
+          expect(
+            tester.getRect(find.text('Published 3')).right,
+            lessThanOrEqualTo(360),
+          );
+        });
+      }
+    });
+
     testWidgets('scrolls horizontally when the tabs do not fit', (
       tester,
     ) async {

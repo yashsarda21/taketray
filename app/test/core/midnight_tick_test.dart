@@ -1,4 +1,5 @@
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
@@ -15,6 +16,17 @@ class _FakeAsyncClock extends Clock {
 
   @override
   DateTime now() => _start.add(_async.elapsed).subtract(behind).toUtc();
+}
+
+/// A clock the test sets, whatever the fake timers did: the phone slept
+/// through midnight with its timer, and the clock is now past it.
+class _SetClock extends Clock {
+  _SetClock(this.local);
+
+  DateTime local;
+
+  @override
+  DateTime now() => local.toUtc();
 }
 
 bool get _inLondon {
@@ -207,6 +219,114 @@ void main() {
 
         expect(async.pendingTimers, isEmpty);
         container.dispose();
+      });
+    });
+  });
+
+  group('localDayProvider after the app was asleep', () {
+    /// Runs [body] with a clock the test sets and a tick that never fired.
+    void whileAsleep(
+      DateTime start,
+      void Function(
+        FakeAsync async,
+        _SetClock clock,
+        ProviderContainer container,
+        List<DateTime> days,
+      )
+      body,
+    ) {
+      fakeAsync((async) {
+        final clock = _SetClock(start);
+        final container = ProviderContainer(
+          overrides: [clockProvider.overrideWithValue(clock)],
+        );
+        final days = <DateTime>[];
+        container.listen<AsyncValue<DateTime>>(localDayProvider, (_, next) {
+          final value = next.value;
+          if (value != null) days.add(value);
+        }, fireImmediately: true);
+        async.flushMicrotasks();
+        try {
+          body(async, clock, container, days);
+        } finally {
+          container.dispose();
+        }
+      });
+    }
+
+    void resume(FakeAsync async) {
+      TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+        AppLifecycleState.resumed,
+      );
+      async.flushMicrotasks();
+    }
+
+    test('resumed after midnight, with no timer fired, gives the new day', () {
+      whileAsleep(DateTime(2026, 10, 28, 23, 50), (async, clock, _, days) {
+        expect(days, [DateTime(2026, 10, 28)]);
+
+        // Midnight passed while the phone slept: no timer ran.
+        clock.local = DateTime(2026, 10, 29, 6, 30);
+        resume(async);
+
+        expect(days, [DateTime(2026, 10, 28), DateTime(2026, 10, 29)]);
+      });
+    });
+
+    test('resumed on the same day emits nothing', () {
+      whileAsleep(DateTime(2026, 10, 28, 9), (async, clock, _, days) {
+        clock.local = DateTime(2026, 10, 28, 21);
+        resume(async);
+
+        expect(days, [DateTime(2026, 10, 28)]);
+      });
+    });
+
+    test('a resume sets the timer again: one new day at the next midnight, '
+        'not two', () {
+      whileAsleep(DateTime(2026, 10, 28, 23, 50), (async, clock, _, days) {
+        final timers = async.pendingTimers.length;
+        clock.local = DateTime(2026, 10, 29, 6, 30);
+        resume(async);
+        expect(async.pendingTimers, hasLength(timers));
+
+        // The old timer (set for the 28th's midnight) is gone: the clock
+        // still reads the 29th when it would have fired.
+        async.elapse(const Duration(minutes: 11));
+        expect(days, [DateTime(2026, 10, 28), DateTime(2026, 10, 29)]);
+
+        clock.local = DateTime(2026, 10, 30, 0, 1);
+        async.elapse(const Duration(hours: 18));
+        expect(days.last, DateTime(2026, 10, 30));
+        expect(days, hasLength(3));
+      });
+    });
+
+    test('the other states do not re-check', () {
+      whileAsleep(DateTime(2026, 10, 28, 23, 50), (async, clock, _, days) {
+        clock.local = DateTime(2026, 10, 29, 6, 30);
+        for (final state in [
+          AppLifecycleState.inactive,
+          AppLifecycleState.hidden,
+          AppLifecycleState.paused,
+        ]) {
+          TestWidgetsFlutterBinding.instance.handleAppLifecycleStateChanged(
+            state,
+          );
+          async.flushMicrotasks();
+        }
+
+        expect(days, [DateTime(2026, 10, 28)]);
+      });
+    });
+
+    test('after dispose a resume does nothing and does not throw', () {
+      whileAsleep(DateTime(2026, 10, 28, 23, 50), (async, clock, container, _) {
+        container.dispose();
+        clock.local = DateTime(2026, 10, 29, 6, 30);
+
+        expect(() => resume(async), returnsNormally);
+        expect(async.pendingTimers, isEmpty);
       });
     });
   });

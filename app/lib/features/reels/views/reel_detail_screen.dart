@@ -104,6 +104,10 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// A remove is running, so a second tap on its button does nothing.
   bool _removing = false;
 
+  /// A reel picker is open (Add or Move), so a second tap on either button
+  /// does not open a second one.
+  bool _picking = false;
+
   /// Goes to Reels, after this frame (the router must not be told during
   /// a build).
   void _leave() {
@@ -147,7 +151,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       },
       child: Scaffold(
         appBar: selection.selecting
-            ? _selectionBar(context, selection, state?.clipCount ?? 0)
+            ? _selectionBar(context, selection)
             : TtAppBar(
                 title: '',
                 leading: TtIconButton(
@@ -462,13 +466,14 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   PreferredSizeWidget _selectionBar(
     BuildContext context,
     ReelSelectionState selection,
-    int clipCount,
   ) {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(reelSelectionProvider(widget.reelId).notifier);
     final any = selection.selected.isNotEmpty;
     return TtAppBar(
       selection: true,
+      // The count is read out each time it changes.
+      liveRegion: true,
       title: l10n.selectionCount(selection.selected.length),
       leading: TtIconButton(
         icon: Symbols.close_rounded,
@@ -523,6 +528,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// **confirm** does the work inside the sheet (a failure stays in the
   /// sheet), and the snack with **Undo** is shown once the sheet has closed.
   Future<void> _pickReels(ReelPickerMode mode) async {
+    if (_picking) return;
     final reelId = widget.reelId;
     final chosen = {...ref.read(reelSelectionProvider(reelId)).selected};
     if (chosen.isEmpty) return;
@@ -531,18 +537,23 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     final actions = ref.read(reelClipActionsProvider);
     final notifier = ref.read(reelSelectionProvider(reelId).notifier);
 
-    await pickAndPerform(
-      context,
-      mode: mode,
-      clipIds: chosen,
-      fromReelId: reelId,
-      actions: actions,
-      snacks: snacks,
-      l10n: l10n,
-      onSnack: () {
-        if (mounted) notifier.clear();
-      },
-    );
+    _picking = true;
+    try {
+      await pickAndPerform(
+        context,
+        mode: mode,
+        clipIds: chosen,
+        fromReelId: reelId,
+        actions: actions,
+        snacks: snacks,
+        l10n: l10n,
+        onSnack: () {
+          if (mounted) notifier.clear();
+        },
+      );
+    } finally {
+      _picking = false;
+    }
   }
 
   /// **Remove from this reel**: takes the chosen clips out of the reel and

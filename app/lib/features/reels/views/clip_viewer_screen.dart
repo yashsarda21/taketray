@@ -38,6 +38,8 @@ const double _bottomMaxFraction = 0.6;
 /// - **One player at a time**, for the page showing (`clipPlayerProvider`):
 ///   it is disposed when the page changes and when the screen is popped, and
 ///   it pauses when the app goes to the background.
+/// - **During a swipe** the page going out keeps its video until the swipe has
+///   settled (it is half on screen when the pager changes page).
 /// - **Top:** Back; "{i} of {n} · {reel}" over the day and time where the
 ///   clip was shot (`ClipLocalTime.wallClock`, never converted) and " ·
 ///   {city} time" only when that is not the phone's zone; the mute switch.
@@ -76,6 +78,17 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
 
   /// A remove is running, so a second tap does nothing.
   bool _removing = false;
+
+  /// The clip whose page the user is swiping away from, until the swipe
+  /// settles. The pager moves the viewer to the next clip at the middle of
+  /// the swipe, but the page going out is still half on screen: it keeps its
+  /// video (and its player) until the scroll ends, instead of turning black.
+  int? _outgoingClipId;
+
+  /// The reel names the "In" row showed last, kept while the clip that has
+  /// just come up has not answered yet, so the row does not vanish for a
+  /// frame at each page change.
+  List<String>? _lastNames;
 
   ClipViewerControllerProvider get _provider =>
       clipViewerControllerProvider(widget.reelId, widget.clipId);
@@ -155,7 +168,12 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
     final today =
         ref.watch(localDayProvider).value ??
         ref.watch(clockProvider).now().toLocal();
-    final names = ref.watch(clipReelNamesProvider(current.clip.id)).value;
+    final namesNow = ref.watch(clipReelNamesProvider(current.clip.id));
+    // Loading (this clip has not answered yet): the row stays as it was.
+    final names = namesNow.isLoading && !namesNow.hasValue
+        ? _lastNames
+        : namesNow.value;
+    _lastNames = names;
     final last = state.clips.length - 1;
 
     // "Remove animations" makes the duration zero, which `animateToPage`
@@ -191,7 +209,7 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
             TtViewerAction(
               icon: Symbols.playlist_remove_rounded,
               label: l10n.viewerRemove,
-              onPressed: () => unawaited(_remove(state)),
+              onPressed: () => unawaited(_remove(current.clip.id)),
             ),
           ],
         ),
@@ -216,28 +234,44 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
           Positioned.fill(
             child: TtVideoSurface(
               scrims: true,
-              child: PageView.builder(
-                controller: pages,
-                itemCount: state.clips.length,
-                onPageChanged: ref.read(_provider.notifier).goTo,
-                itemBuilder: (context, index) {
-                  final clip = state.clips[index].clip;
-                  // Only the page showing has a player; the others are black
-                  // until they are reached.
-                  return KeyedSubtree(
-                    key: ValueKey(clip.id),
-                    child: index == state.index
-                        ? _Stage(
-                            uri: uri,
-                            label: l10n.viewerStage(
-                              index + 1,
-                              state.clips.length,
-                            ),
-                            onRemove: () => unawaited(_remove(state)),
-                          )
-                        : const SizedBox.expand(),
-                  );
+              child: NotificationListener<ScrollEndNotification>(
+                // The swipe has settled (or a jump is done): the page that
+                // went out can let go of its player.
+                onNotification: (end) {
+                  if (end.depth == 0 && _outgoingClipId != null) {
+                    setState(() => _outgoingClipId = null);
+                  }
+                  return false;
                 },
+                child: PageView.builder(
+                  controller: pages,
+                  itemCount: state.clips.length,
+                  onPageChanged: (index) {
+                    setState(() => _outgoingClipId = current.clip.id);
+                    ref.read(_provider.notifier).goTo(index);
+                  },
+                  itemBuilder: (context, index) {
+                    final clip = state.clips[index].clip;
+                    // The page showing has a player, and so does the one
+                    // just swiped away from until the swipe ends; the others
+                    // are black until they are reached.
+                    final live =
+                        index == state.index || clip.id == _outgoingClipId;
+                    return KeyedSubtree(
+                      key: ValueKey(clip.id),
+                      child: live
+                          ? _Stage(
+                              uri: clipVideoUri(clip),
+                              label: l10n.viewerStage(
+                                index + 1,
+                                state.clips.length,
+                              ),
+                              onRemove: () => unawaited(_remove(clip.id)),
+                            )
+                          : const SizedBox.expand(),
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -306,17 +340,30 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
   );
 
   /// The second line of the header: the day and time where the clip was shot,
-  /// plus the city when that is not where the phone is. Null until the time
-  /// is known: the phone's would be the wrong one.
+  /// plus the city when that is not where the phone is. Null while the time
+  /// is still being read (the phone's would be the wrong one); the phone's own
+  /// time, with no city, when reading it failed.
   String? _when(BuildContext context, ClipViewerState state, DateTime today) {
     final shot = state.currentTime;
-    if (shot == null) return null;
     final l10n = AppLocalizations.of(context);
+    final locale = Localizations.localeOf(context).toString();
+    final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
+    if (shot == null) {
+      // Still being read: nothing, the phone's time would be the wrong one.
+      if (!state.timesFailed) return null;
+      // It could not be read, and never will be: the phone's own time, as the
+      // reel page's tiles show it, with no city.
+      final taken = state.current.clip.fingerprint.dateTakenUtc;
+      return l10n.viewerWhen(
+        ttDayWeekdayText(context, taken.toLocal(), today: today),
+        timeOfDayText(taken, locale: locale, use24Hour: use24Hour),
+      );
+    }
     final date = ttDayWeekdayText(context, shot.wallClock, today: today);
     final time = wallClockTimeText(
       shot.wallClock,
-      locale: Localizations.localeOf(context).toString(),
-      use24Hour: MediaQuery.alwaysUse24HourFormatOf(context),
+      locale: locale,
+      use24Hour: use24Hour,
     );
     final zone = shot.zoneId;
     final city = !shot.isPhoneZone && zone != null ? zoneCity(zone) : null;
@@ -331,6 +378,8 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
   /// A move takes the clip out of this reel, so the viewer goes on to the
   /// clip that takes its place.
   Future<void> _pickReels(ClipViewerState state, ReelPickerMode mode) async {
+    // A second tap before the picker is up does not open a second one.
+    if (_pickerOpen) return;
     final reelId = widget.reelId;
     final clipIds = {state.current.clip.id};
     final l10n = AppLocalizations.of(context);
@@ -357,7 +406,7 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
   /// **Remove** (and **Remove from reel** under "can't be played"): takes the
   /// clip out of this reel and says so, with **Undo**. The video stays in the
   /// gallery. The viewer goes on to the clip that takes its place.
-  Future<void> _remove(ClipViewerState state) async {
+  Future<void> _remove(int clipId) async {
     if (_removing) return;
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
@@ -366,7 +415,7 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
     try {
       final done = await actions.removeFromReel(
         reelId: widget.reelId,
-        clipIds: {state.current.clip.id},
+        clipIds: {clipId},
       );
       if (!done.isEmpty) {
         snacks.showUndoAll(
@@ -433,10 +482,15 @@ class _Playing extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
+    final l10n = AppLocalizations.of(context);
+    final playing = value.isPlaying;
     return Semantics(
       container: true,
       button: true,
       label: label,
+      // The state, and what a tap does about it.
+      value: playing ? l10n.viewerStagePlaying : l10n.viewerStagePaused,
+      hint: playing ? l10n.viewerStageHintPause : l10n.viewerStageHintPlay,
       // The tap comes from the detector below: giving the same action twice
       // would split the label and the tap into two nodes.
       child: GestureDetector(

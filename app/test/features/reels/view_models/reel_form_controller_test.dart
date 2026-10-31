@@ -27,9 +27,19 @@ class _CountingReels extends ReelsRepository {
   /// after the form looked).
   List<Reel>? staleOnce;
 
+  /// When set, the [watchAll] after the stale one fails (the read the form
+  /// does when the repository refuses a name).
+  Error? failAfterStale;
+  bool _wasStale = false;
+
   @override
   Stream<List<Reel>> watchAll() {
+    if (_wasStale && failAfterStale != null) {
+      _wasStale = false;
+      return Stream.error(failAfterStale!);
+    }
     final stale = staleOnce;
+    if (stale != null) _wasStale = true;
     if (stale == null) return super.watchAll();
     staleOnce = null;
     return Stream.value(stale);
@@ -150,6 +160,25 @@ void main() {
       // The backstop looked again and names the reel as stored.
       expect(stateOf(null).clashingName, 'Goa');
       expect(await allReels(), hasLength(1));
+    });
+
+    test('a failed re-read after the repository refused a name still '
+        'unblocks the form', () async {
+      await reels.create('Goa');
+      reels
+        ..staleOnce = []
+        ..failAfterStale = StateError('disk full');
+      final controller = form(null);
+
+      await expectLater(
+        controller.save(name: 'goa'),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(stateOf(null).saving, isFalse);
+      // The form takes a new save.
+      reels.failAfterStale = null;
+      expect(await controller.save(name: 'Paris'), isNotNull);
     });
 
     test('a name and a description problem are both reported', () async {

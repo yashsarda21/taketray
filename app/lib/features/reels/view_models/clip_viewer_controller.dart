@@ -20,6 +20,7 @@ class ClipViewerState {
     required this.clips,
     required this.index,
     required this.times,
+    this.timesFailed = false,
   }) : assert(index >= 0 && index < clips.length, 'index is in the pager');
 
   final Reel reel;
@@ -35,14 +36,24 @@ class ClipViewerState {
   /// here yet has no time shown (the phone's would be the wrong one).
   final Map<int, ClipLocalTime> times;
 
+  /// Whether reading the times **failed** (not: is still going on). The
+  /// viewer then shows the phone's own time for a clip, as the reel page's
+  /// tiles do, instead of an empty line for good.
+  final bool timesFailed;
+
   /// The clip showing.
   ReelClip get current => clips[index];
 
   /// The time where the clip showing was shot, once known.
   ClipLocalTime? get currentTime => times[current.clip.id];
 
-  ClipViewerState _movedTo(int next) =>
-      ClipViewerState(reel: reel, clips: clips, index: next, times: times);
+  ClipViewerState _movedTo(int next) => ClipViewerState(
+    reel: reel,
+    clips: clips,
+    index: next,
+    times: times,
+    timesFailed: timesFailed,
+  );
 }
 
 /// The reels (by name) that clip [clipId] is in, in the order the reels were
@@ -83,7 +94,9 @@ Stream<List<Reel>> _allReels(Ref ref) =>
 ///   when the last was left. With none left the state is `null`: the screen
 ///   goes back.
 /// - **The times never hold it back** (as in D-87): the viewer opens at once,
-///   and a clip's time appears when `ClipTimeService` has answered.
+///   and a clip's time appears when `ClipTimeService` has answered. If
+///   reading them **fails**, [ClipViewerState.timesFailed] is set and the
+///   screen shows the phone's time (never while they are only loading).
 ///
 /// [goTo] is the page changing. Auto-disposes with the screen.
 @Riverpod(retry: noRetry)
@@ -102,9 +115,9 @@ class ClipViewerController extends _$ClipViewerController {
     final reelFuture = ref.watch(reelByIdProvider(reelId).future);
     final clipsFuture = ref.watch(reelClipsProvider(reelId).future);
     // Never awaited: the viewer shows without the times.
-    final times =
-        ref.watch(reelClipTimesProvider(reelId)).value ??
-        const <int, ClipLocalTime>{};
+    final timesNow = ref.watch(reelClipTimesProvider(reelId));
+    final times = timesNow.value ?? const <int, ClipLocalTime>{};
+    final timesFailed = timesNow.hasError && !timesNow.hasValue;
 
     final reel = await reelFuture;
     if (reel == null) return null;
@@ -122,7 +135,13 @@ class ClipViewerController extends _$ClipViewerController {
     _opened = true;
     _currentId = live[index].clip.id;
     _lastIndex = index;
-    return ClipViewerState(reel: reel, clips: live, index: index, times: times);
+    return ClipViewerState(
+      reel: reel,
+      clips: live,
+      index: index,
+      times: times,
+      timesFailed: timesFailed,
+    );
   }
 
   /// Moves to page [index] of the pager. Ignores an index that is not there

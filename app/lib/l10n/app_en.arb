@@ -1232,6 +1232,22 @@
       }
     }
   },
+  "viewerStagePlaying": "Playing",
+  "@viewerStagePlaying": {
+    "description": "The state a screen reader hears for the clip viewer's video while it plays."
+  },
+  "viewerStagePaused": "Paused",
+  "@viewerStagePaused": {
+    "description": "The state a screen reader hears for the clip viewer's video while it is paused."
+  },
+  "viewerStageHintPause": "Pause",
+  "@viewerStageHintPause": {
+    "description": "What a tap on the clip viewer's video does while it plays, as a screen reader hint."
+  },
+  "viewerStageHintPlay": "Play",
+  "@viewerStageHintPlay": {
+    "description": "What a tap on the clip viewer's video does while it is paused, as a screen reader hint."
+  },
   "viewerCantPlayTitle": "This video can't be played",
   "@viewerCantPlayTitle": {
     "description": "The clip viewer when the video cannot be played."
