@@ -2,7 +2,25 @@
 
 This guide explains how TakeTray shows and manages reels: the Reels tab (Home), creating, editing and deleting a reel, the reel's page with its clips grouped by the day they were shot, selecting several clips, and the full-screen clip viewer. It also explains how every remove, move and delete can be undone, and how a clip's time is shown in the place where it was shot.
 
-Each section is filled in by the step that builds it, and Task 12 turns them into one read-through. The shape of every section is the same as in Phase 3: **what we built**, **why TakeTray needs it**, **key ideas** (with short snippets of real code), **where it lives**, **try it yourself** and **decisions**.
+Every snippet is real code from this repository. You don't need to know Flutter well to follow it; basic programming knowledge is enough.
+
+## How to read this guide
+
+- **The big picture first.** Phase 3 taught TakeTray to find your videos. Phase 4 lets you organise them:
+  - a reel is a plan ("London Food");
+  - a clip is a pointer to a video in your gallery, never a copy;
+  - one clip can be in several reels.
+
+  The screens read the database through **streams**, so when something changes, every screen showing it redraws by itself. Every change that removes something returns an **undo record**, so the message at the bottom can offer **Undo**.
+- **Order.** The sections follow the order the phase was built, from Section 2 on. Step 1 was the plan and decision D-80 (what Phase 4 builds now and what waits for later phases), so it has no section here.
+  - the design-system pieces (2, 3);
+  - the time where a clip was shot (4);
+  - the data and Undo (5);
+  - the screens: Home (6), the reel forms (7), the reel page (8), selecting several clips (9) and the viewer (10);
+  - the proof on the phone (11).
+- **Names you will meet.** `D-xx` is an entry in `docs/decisions.md`; this phase's are D-80 to D-89. "Spec §8.4" is a section of `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`.
+- **Commands.** Run them from the repository root, through the wrappers in `tool/` (`tool/flutter`, `tool/check`). Run a single test file from `app/` (`cd app && ../tool/flutter test test/...`). From the repository root, the large-text tests can't find the font.
+- **Every section has the same shape:** **what we built**, **why TakeTray needs it**, **key ideas** (with short snippets of real code), **where it lives**, **try it yourself** and **decisions**.
 
 ## Contents
 
