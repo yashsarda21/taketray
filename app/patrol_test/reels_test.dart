@@ -8,7 +8,6 @@ import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
-import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
@@ -62,9 +61,9 @@ void main() {
       addTearDown(() => _deleteTestReels(db, reels));
 
       // 0. Only our folder watched, before anything else.
-      await container
-          .read(settingsRepositoryProvider)
-          .save(const AppSettings(watchedFolders: [testFolder]));
+      final restoreFolders = await watchOnlyTestFolder(
+        container.read(settingsRepositoryProvider),
+      );
 
       // 1. Create "Patrol Reel" from the empty Home.
       final home = $(ReelsScreen);
@@ -275,6 +274,10 @@ void main() {
       // The test video goes too (the tear-down would, this proves it).
       expect(await media.delete(video), isTrue);
       expect(await rowOf(bridge, video), isNull);
+
+      // The camera folder is watched again (not a tear-down: see
+      // watchOnlyTestFolder).
+      await restoreFolders();
     },
   );
 }
