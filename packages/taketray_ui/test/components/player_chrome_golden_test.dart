@@ -28,6 +28,16 @@ void main() {
           ),
         ),
       ),
+      TtScenario(
+        'header, subtitle that wraps at large text',
+        _onVideo(
+          _header(
+            title: '5 of 12',
+            subtitle: '11:50 AM–12:10 PM and a long tail',
+            wrapSubtitle: true,
+          ),
+        ),
+      ),
       TtScenario('arrows enabled', _onVideo(_arrows(enabled: true))),
       TtScenario('arrows disabled', _onVideo(_arrows(enabled: false))),
       TtScenario(
@@ -101,24 +111,28 @@ Widget _bar({required int total, required int current}) => _onVideo(
   ),
 );
 
-Widget _header({required String title, required String subtitle}) =>
-    TtPlayerHeader(
-      leading: TtIconButton(
-        icon: Symbols.close_rounded,
-        semanticLabel: 'Close tagging',
-        style: TtIconButtonStyle.onVideo,
-        onPressed: () {},
-      ),
-      title: title,
-      subtitle: subtitle,
-      trailing: TtIconButton(
-        icon: Symbols.volume_up_rounded,
-        semanticLabel: 'Mute',
-        style: TtIconButtonStyle.onVideo,
-        pressed: true,
-        onPressed: () {},
-      ),
-    );
+Widget _header({
+  required String title,
+  required String subtitle,
+  bool wrapSubtitle = false,
+}) => TtPlayerHeader(
+  leading: TtIconButton(
+    icon: Symbols.close_rounded,
+    semanticLabel: 'Close tagging',
+    style: TtIconButtonStyle.onVideo,
+    onPressed: () {},
+  ),
+  title: title,
+  subtitle: subtitle,
+  wrapSubtitle: wrapSubtitle,
+  trailing: TtIconButton(
+    icon: Symbols.volume_up_rounded,
+    semanticLabel: 'Mute',
+    style: TtIconButtonStyle.onVideo,
+    pressed: true,
+    onPressed: () {},
+  ),
+);
 
 Widget _arrows({required bool enabled}) => Padding(
   padding: const EdgeInsets.all(8),

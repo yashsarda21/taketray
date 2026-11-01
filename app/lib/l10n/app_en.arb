@@ -1558,6 +1558,30 @@
   "@toTagSceneUnselect": {
     "description": "Button in a scene header on To tag, while choosing clips, that un-chooses every clip of the scene."
   },
+  "toTagSceneSelectAllSemantics": "Select all, {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagSceneSelectAllSemantics": {
+    "description": "What a screen reader says for the Select all button of a scene header on To tag: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSceneUnselectSemantics": "Unselect, {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagSceneUnselectSemantics": {
+    "description": "What a screen reader says for the Unselect button of a scene header on To tag: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "toTagSelectionSkip": "Skip",
   "@toTagSelectionSkip": {
     "description": "Button of the selection bar on To tag that skips the chosen clips."

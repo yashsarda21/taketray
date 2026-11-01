@@ -180,7 +180,7 @@ void main() {
     expect(shownIds(), [1]);
   });
 
-  test('closing at once does not throw out of the verify', () async {
+  test('closing at once: the verify runs, or fails quietly by type', () async {
     final records = captureLogs();
     await skipped([1]);
     open().close();
@@ -188,8 +188,19 @@ void main() {
 
     await settle();
 
-    // Whether or not the step got to run, nothing escaped.
-    expect(logText(records), isNot(contains('Unhandled')));
+    // An error that escaped the step would fail this test on its own (the
+    // test zone reports it). Here: either the check ran, or its failure
+    // (reading `ref` after the provider went) was logged as one line with
+    // the error's type only (D-10).
+    final failures = [
+      for (final r in records)
+        if (r.loggerName == 'skipped') r.message,
+    ];
+    final ran = records.any((r) => r.loggerName == 'verifier');
+    expect(ran || failures.isNotEmpty, isTrue);
+    for (final message in failures) {
+      expect(message, matches(RegExp(r'^The verify failed: \w+$')));
+    }
   });
 
   group('SkippedSelection', () {

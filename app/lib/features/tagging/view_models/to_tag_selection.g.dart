@@ -19,8 +19,9 @@ part of 'to_tag_selection.dart';
 ///   leave it so (a scene's **Unselect** is not the last tap of a choice).
 /// - **It follows the list.** A chosen clip that leaves To tag (a verify
 ///   takes it out, a scan, the tag player or a Skip tags it) is un-chosen;
-///   when that empties a selection that had clips, choosing ends. The ids
-///   are never kept for a clip that is gone.
+///   when that empties a selection that had clips, choosing ends, and so
+///   does choosing with nothing chosen once the list is empty. The ids are
+///   never kept for a clip that is gone.
 ///
 /// Auto-disposes with the screen.
 
@@ -38,8 +39,9 @@ final toTagSelectionProvider = ToTagSelectionProvider._();
 ///   leave it so (a scene's **Unselect** is not the last tap of a choice).
 /// - **It follows the list.** A chosen clip that leaves To tag (a verify
 ///   takes it out, a scan, the tag player or a Skip tags it) is un-chosen;
-///   when that empties a selection that had clips, choosing ends. The ids
-///   are never kept for a clip that is gone.
+///   when that empties a selection that had clips, choosing ends, and so
+///   does choosing with nothing chosen once the list is empty. The ids are
+///   never kept for a clip that is gone.
 ///
 /// Auto-disposes with the screen.
 final class ToTagSelectionProvider
@@ -55,8 +57,9 @@ final class ToTagSelectionProvider
   ///   leave it so (a scene's **Unselect** is not the last tap of a choice).
   /// - **It follows the list.** A chosen clip that leaves To tag (a verify
   ///   takes it out, a scan, the tag player or a Skip tags it) is un-chosen;
-  ///   when that empties a selection that had clips, choosing ends. The ids
-  ///   are never kept for a clip that is gone.
+  ///   when that empties a selection that had clips, choosing ends, and so
+  ///   does choosing with nothing chosen once the list is empty. The ids are
+  ///   never kept for a clip that is gone.
   ///
   /// Auto-disposes with the screen.
   ToTagSelectionProvider._()
@@ -86,7 +89,7 @@ final class ToTagSelectionProvider
   }
 }
 
-String _$toTagSelectionHash() => r'0cc1f944ef51f4e7957fe14fb887cba4557689b1';
+String _$toTagSelectionHash() => r'e8f9f76e66af71e700bfc2ea9cbc2dd6b1621a7b';
 
 /// Choosing clips on To tag (D-98; `app.js`: `startSel`, `toggleSel`,
 /// `selScene`, `clearSel`), the way the reel page chooses (`ReelSelection`,
@@ -99,8 +102,9 @@ String _$toTagSelectionHash() => r'0cc1f944ef51f4e7957fe14fb887cba4557689b1';
 ///   leave it so (a scene's **Unselect** is not the last tap of a choice).
 /// - **It follows the list.** A chosen clip that leaves To tag (a verify
 ///   takes it out, a scan, the tag player or a Skip tags it) is un-chosen;
-///   when that empties a selection that had clips, choosing ends. The ids
-///   are never kept for a clip that is gone.
+///   when that empties a selection that had clips, choosing ends, and so
+///   does choosing with nothing chosen once the list is empty. The ids are
+///   never kept for a clip that is gone.
 ///
 /// Auto-disposes with the screen.
 

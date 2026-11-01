@@ -70,6 +70,9 @@ final WidgetbookComponent ttPlayerHeaderComponent = WidgetbookComponent(
           initialValue: true,
         );
         final muted = context.knobs.boolean(label: 'muted');
+        final wrap = context.knobs.boolean(
+          label: 'subtitle wraps at large text',
+        );
         return TtVideoSurface(
           child: Align(
             alignment: Alignment.topCenter,
@@ -82,6 +85,7 @@ final WidgetbookComponent ttPlayerHeaderComponent = WidgetbookComponent(
               ),
               title: title,
               subtitle: withSubtitle ? subtitle : null,
+              wrapSubtitle: wrap,
               trailing: withTrailing
                   ? TtIconButton(
                       icon: muted

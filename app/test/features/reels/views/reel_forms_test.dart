@@ -81,7 +81,7 @@ void main() {
     WidgetTester tester, {
     Reel? reel,
     bool forClip = false,
-    Future<void> Function(String name)? createForClip,
+    Future<Reel?> Function(String name)? createForClip,
     double textScale = 1,
     Brightness brightness = Brightness.light,
     Size size = const Size(360, 800),
@@ -427,7 +427,7 @@ void main() {
 
   group('from the tag player (forClip)', () {
     testApp('has the clip copy: only the name, Create and add', (tester) async {
-      await pumpHost(tester, forClip: true, createForClip: (_) async {});
+      await pumpHost(tester, forClip: true, createForClip: _notRun);
       await openForm(tester);
 
       expect(find.text('New reel'), findsOneWidget);
@@ -447,7 +447,7 @@ void main() {
         forClip: true,
         createForClip: (name) async {
           names.add(name);
-          await reels.create(name);
+          return await reels.create(name);
         },
       );
       await openForm(tester);
@@ -457,8 +457,7 @@ void main() {
 
       // The name as typed, once (the repository trims it), and the reel was
       // made in the callback, not in the form (one reel, not two).
-      // The callback and the lookup of the reel it made take a few more
-      // turns than a plain create.
+      // The callback takes a few more turns than a plain create.
       await settleApp(tester);
       expect(names, ['  London Food ']);
       expect((await storedReels(tester)).map((r) => r.name), ['London Food']);
@@ -468,6 +467,36 @@ void main() {
       expect(find.byType(TtSnack), findsNothing);
     });
 
+    testApp('Create and add takes the reel the callback returns', (
+      tester,
+    ) async {
+      // The callback's reel is the one saved, whatever it is called: the
+      // form does not look it up by the name typed.
+      await pumpHost(
+        tester,
+        forClip: true,
+        createForClip: (_) => reels.create('Made by the player'),
+      );
+      await openForm(tester);
+
+      await typeName(tester, 'London Food');
+      await tapAndSettle(tester, find.text('Create and add'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+    });
+
+    testApp('the name field says Done on the keyboard', (tester) async {
+      await pumpHost(tester, forClip: true, createForClip: _notRun);
+      await openForm(tester);
+
+      expect(
+        tester.widget<TextField>(input('Reel name')).textInputAction,
+        TextInputAction.done,
+      );
+    });
+
     testApp('an empty name is told and the callback is not run', (
       tester,
     ) async {
@@ -475,7 +504,10 @@ void main() {
       await pumpHost(
         tester,
         forClip: true,
-        createForClip: (_) async => ran = true,
+        createForClip: (_) async {
+          ran = true;
+          return null;
+        },
       );
       await openForm(tester);
 
@@ -492,7 +524,10 @@ void main() {
       await pumpHost(
         tester,
         forClip: true,
-        createForClip: (_) async => ran = true,
+        createForClip: (_) async {
+          ran = true;
+          return null;
+        },
       );
       await openForm(tester);
 
@@ -527,7 +562,7 @@ void main() {
       await pumpHost(
         tester,
         forClip: true,
-        createForClip: (_) async {},
+        createForClip: _notRun,
         textScale: 2,
         brightness: Brightness.dark,
       );
@@ -816,3 +851,6 @@ void main() {
     expect(reelDescriptionMaxLength, 1000);
   });
 }
+
+/// A callback a test never expects to run.
+Future<Reel?> _notRun(String name) => fail('the callback ran for "$name"');

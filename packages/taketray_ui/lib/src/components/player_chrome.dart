@@ -98,11 +98,14 @@ class TtSegmentBar extends StatelessWidget {
 /// The row above the video in the tag player: a [leading] control, a centred
 /// [title] over an optional [subtitle], and a [trailing] control.
 ///
-/// At least 56 dp high with 4 dp at the sides. The title and subtitle are
-/// one line each with an ellipsis; at large text sizes the header grows
-/// rather than clip. The text is a live region, so a screen reader says the
-/// new position each time the clip changes. Without a [trailing] control the
-/// title stays centred.
+/// At least 56 dp high with 4 dp at the sides. The title is one line with an
+/// ellipsis; so is the subtitle, except with [wrapSubtitle] from
+/// [TtMetrics.largeTextScale] up, where it may wrap to two lines (the tag
+/// player's time range must not be cut; the viewer's header sits over the
+/// video, where a second line would leave its scrim). At large text sizes
+/// the header grows rather than clip. The text is a live region, so a
+/// screen reader says the new position each time the clip changes. Without
+/// a [trailing] control the title stays centred.
 class TtPlayerHeader extends StatelessWidget {
   /// A header showing [title] and [subtitle] between two controls.
   const new({
@@ -110,6 +113,7 @@ class TtPlayerHeader extends StatelessWidget {
     required this.title,
     this.subtitle,
     this.trailing,
+    this.wrapSubtitle = false,
     super.key,
   });
 
@@ -126,10 +130,17 @@ class TtPlayerHeader extends StatelessWidget {
   /// centred.
   final Widget? trailing;
 
+  /// Whether the subtitle may wrap to two lines at large text (otherwise it
+  /// is one line with an ellipsis).
+  final bool wrapSubtitle;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final sub = subtitle;
+    final wrap =
+        wrapSubtitle &&
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     // proto.css: .player .ptop, .ptop .mid b / span
     return ConstrainedBox(
       constraints: const BoxConstraints(
@@ -161,7 +172,7 @@ class TtPlayerHeader extends StatelessWidget {
                     if (sub != null)
                       Text(
                         sub,
-                        maxLines: 1,
+                        maxLines: wrap ? 2 : 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
                         style: tt.text.material.bodySmall!.copyWith(

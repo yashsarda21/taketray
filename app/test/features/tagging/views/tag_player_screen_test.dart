@@ -2,11 +2,13 @@ import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart' show ClipsCompanion;
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
@@ -30,6 +32,19 @@ class _FlakyClips extends ClipsRepository {
   _FlakyClips(VmHarness h) : super(h.media.db, h.media.clock);
 
   Exception? failNext;
+
+  /// When set, the next watch of To tag fails at once (the player cannot
+  /// load).
+  bool failWatch = false;
+
+  @override
+  Stream<List<Clip>> watchInbox(InboxState state) {
+    if (failWatch && state == InboxState.pending) {
+      failWatch = false;
+      return Stream.error(const FileSystemException('disk'));
+    }
+    return super.watchInbox(state);
+  }
 
   @override
   Future<List<AddUndo>> addClipsToReels(
@@ -468,6 +483,37 @@ void main() {
       expect(title(tester), '2 of 3');
     });
 
+    testApp('a short quick flick does not change the clip', (tester) async {
+      await waiting(tester, 3);
+      await open(tester);
+      const middle = Offset(180, 300);
+
+      // Fast, but only 60 dp: a jitter, not a swipe.
+      await tester.flingFrom(middle, const Offset(-60, 0), 1500);
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+
+      // Far enough: it moves.
+      await tester.flingFrom(middle, const Offset(-120, 0), 1500);
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+    });
+
+    testApp('the gesture edges move the swipe area, not the video', (
+      tester,
+    ) async {
+      await waiting(tester, 3);
+      await open(tester);
+      final video = find.byKey(const ValueKey('fake-video-1'));
+      final before = tester.getRect(video);
+
+      tester.view.systemGestureInsets = const FakeViewPadding(left: 24 * 1.0);
+      addTearDown(tester.view.resetSystemGestureInsets);
+      await tester.pump();
+
+      expect(tester.getRect(video), before);
+    });
+
     testApp('the clip one ahead is open, muted and never playing', (
       tester,
     ) async {
@@ -805,9 +851,7 @@ void main() {
       expect(find.text('Undo'), findsOneWidget);
     });
 
-    testApp('the snack names what was tagged when the clip left in the hold', (
-      tester,
-    ) async {
+    testApp('a clip leaving during the hold cancels the tap', (tester) async {
       final goa = await newReel(tester, 'Goa');
       final london = await newReel(tester, 'London');
       final ids = await waiting(tester, 3);
@@ -815,20 +859,27 @@ void main() {
 
       await tester.tap(chip('Goa'));
       await tester.pump();
+      expect(chipState(tester, 'Goa'), TtReelChipState.done);
       // The clip showing is tagged from somewhere else during the hold.
       await real(tester, () => clips.addClipsToReels({london.id}, [ids[0]]));
       await settleApp(tester);
       expect(title(tester), '2 of 3');
-      // The new clip's chip does not show the check.
+      // The tap is dropped: no check on the new clip, and nothing to say.
       expect(chipState(tester, 'Goa'), TtReelChipState.idle);
+      expect(holds.made.single.cancelled, isTrue);
 
       holds.fireAll();
       await settleApp(tester);
 
-      expect(await reelsOf(tester, ids[0]), {goa.id, london.id});
+      expect(await reelsOf(tester, ids[0]), {london.id});
       expect(await reelsOf(tester, ids[1]), isEmpty);
-      expect(find.text('Added to Goa'), findsOneWidget);
+      expect(find.text('Added to Goa'), findsNothing);
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
       expect(title(tester), '2 of 3');
+
+      // The next tap tags the clip now showing.
+      await tagInto(tester, 'Goa');
+      expect(await reelsOf(tester, ids[1]), {goa.id});
     });
 
     testApp('close during the hold tags nothing', (tester) async {
@@ -1164,6 +1215,52 @@ void main() {
       expect((await real(tester, () => reels.watchAll().first)).length, 1);
     });
 
+    testApp('a new reel goes to the clip the sheet opened on, or to none', (
+      tester,
+    ) async {
+      final london = await newReel(tester, 'London');
+      final ids = await waiting(tester, 3);
+      await open(tester);
+
+      await tester.tap(find.byType(TtNewReelChip));
+      await settleApp(tester);
+      // While the sheet is open the clip it is about leaves To tag.
+      await real(tester, () => clips.addClipsToReels({london.id}, [ids[0]]));
+      await settleApp(tester);
+      await tester.enterText(find.byType(TextField), 'Tokyo');
+      await tester.pump();
+      await tester.tap(button('Create and add'));
+      await tester.pump();
+      await settleApp(tester);
+
+      final made = (await real(
+        tester,
+        () => reels.watchAll().first,
+      )).firstWhere((r) => r.name == 'Tokyo');
+      // The reel is made; the clip that left and the clip showing now are
+      // not put in it.
+      expect(await reelsOf(tester, ids[0]), {london.id});
+      expect(await reelsOf(tester, ids[1]), isEmpty);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.text('Tokyo created'), findsOneWidget);
+      expect(made.name, 'Tokyo');
+      expect(title(tester), '2 of 3');
+    });
+
+    testApp('the name field says Done on the keyboard', (tester) async {
+      await waiting(tester, 1);
+      await open(tester);
+
+      await tester.tap(find.byType(TtNewReelChip));
+      await settleApp(tester);
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).textInputAction,
+        TextInputAction.done,
+      );
+    });
+
     testApp('in Pick several the new reel is picked, not tagged', (
       tester,
     ) async {
@@ -1186,6 +1283,24 @@ void main() {
       expect(title(tester), '1 of 2');
       expect(chipState(tester, 'Tokyo'), TtReelChipState.picked);
       expect(button('Add to 1 reel & next'), findsOneWidget);
+    });
+  });
+
+  group('loading', () {
+    testApp('a player that cannot load offers Try again', (tester) async {
+      await waiting(tester, 2);
+      clips.failWatch = true;
+      await open(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(button('Try again'), findsOneWidget);
+      expect(find.byType(TtPlayerHeader), findsNothing);
+
+      await tester.tap(button('Try again'));
+      await settleApp(tester);
+
+      expect(title(tester), '1 of 2');
+      expect(button('Try again'), findsNothing);
     });
   });
 
@@ -1284,6 +1399,36 @@ void main() {
       // The video keeps room.
       final video = tester.getSize(find.byKey(const ValueKey('fake-video-1')));
       expect(video.height, greaterThan(120));
+    });
+
+    testApp('2x text: the scene range and Same as previous are whole', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await waiting(tester, 3);
+      await open(tester, textScale: 2);
+      // A tag first, so Same as previous shows the reel under its label.
+      await tagInto(tester, 'Goa');
+
+      expect(tester.takeException(), isNull);
+      bool cut(Finder text) =>
+          tester.renderObject<RenderParagraph>(text).didExceedMaxLines;
+      // At large text the header gives the range alone, not "Scene 1 of 1".
+      expect(subtitle(tester), isNot(contains('Scene')));
+      expect(subtitle(tester), contains('–'));
+      final header = find.descendant(
+        of: find.byType(TtPlayerHeader),
+        matching: find.text(
+          tester.widget<TtPlayerHeader>(find.byType(TtPlayerHeader)).subtitle!,
+        ),
+      );
+      expect(header, findsOneWidget);
+      expect(cut(header), isFalse);
+      expect(cut(find.text('Same as previous')), isFalse);
+      // The video keeps at least 200 dp.
+      final video = tester.getSize(find.byKey(const ValueKey('fake-video-2')));
+      expect(video.height, greaterThanOrEqualTo(200));
     });
 
     testApp('2x text on a small phone: no overflow, video keeps room', (

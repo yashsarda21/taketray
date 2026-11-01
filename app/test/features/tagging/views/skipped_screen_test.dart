@@ -131,6 +131,7 @@ void main() {
     Brightness brightness = Brightness.light,
     Override? controller,
     bool verify = false,
+    Map<int, ClipLocalTime> times = const {},
   }) async {
     final container = await pumpScreen(
       tester,
@@ -141,9 +142,7 @@ void main() {
         if (!verify && controller == null)
           skippedControllerProvider.overrideWith(DbSkipped.new),
         toTagControllerProvider.overrideWith(DbToTag.new),
-        skippedTimesProvider.overrideWith(
-          (ref) async => const <int, ClipLocalTime>{},
-        ),
+        skippedTimesProvider.overrideWith((ref) async => times),
         ...overrides,
       ],
       textScale: textScale,
@@ -238,6 +237,51 @@ void main() {
     expect(await skippedIds(tester), [ids[0], ids[1], ids[2], ids[3]]);
     expect(tile(ids[2]), findsOneWidget);
     expect(find.text('Restored to To tag'), findsNothing);
+  });
+
+  testApp("a clip shot in another zone shows that zone's time and day", (
+    tester,
+  ) async {
+    final ids = await skipped(tester, [DateTime.utc(2026, 10, 28, 12, 1)]);
+    // Shot where the clock read 01:31 the next morning (13 h 30 ahead).
+    await open(
+      tester,
+      times: {
+        ids.single: ClipLocalTime(
+          wallClock: DateTime.utc(2026, 10, 29, 1, 31),
+          zoneId: 'Pacific/Chatham',
+          isPhoneZone: false,
+        ),
+      },
+    );
+
+    expect(dayHeaders(tester), ['Yesterday · Thu, Oct 29|1 clip']);
+    expect(tiles(tester).single.timeText!.replaceAll('\u202f', ' '), '1:31 AM');
+  });
+
+  testApp("a tap's restore leaves a choice begun meanwhile alone", (
+    tester,
+  ) async {
+    final ids = await threeDays(tester);
+    final counting = _CountingRestores(h)..gate = Completer<void>();
+    await open(
+      tester,
+      overrides: [clipsRepositoryProvider.overrideWithValue(counting)],
+    );
+
+    // A tap restores one clip; while it writes, another is long-pressed.
+    await tester.tap(tile(ids[0]));
+    await tester.pump();
+    await tester.longPress(tile(ids[2]));
+    await tester.pump();
+    expect(find.text('1 selected'), findsOneWidget);
+    counting.gate!.complete();
+    await settleApp(tester);
+
+    // The tap's restore is done, and the new choice is still there.
+    expect(await pendingIds(tester), [ids[0]]);
+    expect(find.text('1 selected'), findsOneWidget);
+    expect(tester.widget<TtClipTile>(tile(ids[2])).selected, isTrue);
   });
 
   testApp('select and restore several', (tester) async {
@@ -343,9 +387,7 @@ void main() {
     expect(all, hasLength(2));
 
     await open(tester, verify: true);
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 200)),
-    );
+    // The verify runs on the media queue after the screen opens.
     await settleApp(tester);
 
     // The one whose video is gone has left the list, and the database.

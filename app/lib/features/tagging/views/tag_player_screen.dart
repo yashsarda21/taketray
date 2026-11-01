@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart' show kMinFlingVelocity;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, kMinFlingVelocity, kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -33,13 +34,25 @@ import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 import 'package:video_player/video_player.dart';
 
-/// How much of the screen's height the reel panel and the controls over it
-/// may take before the panel scrolls: the video keeps the rest, also at large
-/// text (the panel's own cap grows with the text, up to 520 dp).
+/// How much of the screen's height the reel panel may take before it
+/// scrolls: the video keeps the rest, also at large text (the panel's own
+/// cap grows with the text, up to 520 dp).
 const double _panelMaxFraction = 0.45;
+
+/// [_panelMaxFraction] from `TtMetrics.largeTextScale` up, where the quick
+/// row and the header are taller: the panel scrolls sooner so the video keeps
+/// at least 200 dp on a 360 × 800 phone.
+const double _panelMaxFractionLarge = 0.4;
 
 /// A clip longer than this has the large scrub bar with "Drag to skim".
 const int _longClipMs = 120000;
+
+/// How far a swipe must travel, as well as how fast, to change the clip: a
+/// quick jitter of the thumb is not a swipe.
+const double _swipeMinDistance = kTouchSlop * 4;
+
+/// A clip's shape (width / height) until its own size is known: portrait.
+const double _portraitShape = 9 / 16;
 
 /// The tag player (`routes.player`, D-97): the screen the owner uses most.
 /// Opened from To tag on a clip ([startClipId], or the first one) over the
@@ -85,12 +98,6 @@ class TagPlayerScreen extends ConsumerStatefulWidget {
 class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   /// A second tap on New reel while its sheet is arriving opens no second one.
   final OpenOnce _openOnce = OpenOnce();
-
-  /// The clip whose chip is showing its check: set when a tap is accepted.
-  /// If that clip leaves To tag during the hold the player moves on but the
-  /// tag still goes to it (D-96), so the new clip's chip must not show the
-  /// check.
-  int? _heldClipId;
 
   /// The user turned Other reels open or shut; null: the default (shut,
   /// unless no reel is Collecting).
@@ -172,7 +179,11 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                     player,
                   ),
             body: state == null
-                ? _Waiting(failed: session.hasError, onClose: _close)
+                ? _Waiting(
+                    failed: session.hasError,
+                    onClose: _close,
+                    onRetry: () => ref.invalidate(_provider),
+                  )
                 : state.done
                 ? TagDoneView(
                     session: state,
@@ -202,18 +213,23 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     final scene = state.sceneOf(state.index);
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
-    final subtitle = scene == null
+    final range = scene == null
         ? null
-        : l10n.tagPlayerScene(
-            scene.$1,
-            scene.$2,
-            timeRangeText(
-              scene.$3.start,
-              scene.$3.end,
-              locale: locale,
-              use24Hour: use24Hour,
-            ),
+        : timeRangeText(
+            scene.$3.start,
+            scene.$3.end,
+            locale: locale,
+            use24Hour: use24Hour,
           );
+    // At large text only the range, so it stays whole without taking the
+    // video's room (the header may still wrap it to two lines).
+    final large =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    final subtitle = scene == null || range == null
+        ? null
+        : large
+        ? range
+        : l10n.tagPlayerScene(scene.$1, scene.$2, range);
 
     // No `scrims:` (none by default): they belong to the viewer, whose
     // controls sit over the video (proto.css `.viewer .vtop` / `.vbot`).
@@ -244,6 +260,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
               ),
               title: l10n.tagPlayerTitle(state.index + 1, state.session.length),
               subtitle: subtitle,
+              wrapSubtitle: true,
               trailing: TtIconButton(
                 icon: muted
                     ? Symbols.volume_off_rounded
@@ -457,7 +474,11 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
             ConstrainedBox(
               constraints: BoxConstraints(
                 maxHeight:
-                    MediaQuery.sizeOf(context).height * _panelMaxFraction,
+                    MediaQuery.sizeOf(context).height *
+                    (MediaQuery.textScalerOf(context).scale(1) >=
+                            TtMetrics.largeTextScale
+                        ? _panelMaxFractionLarge
+                        : _panelMaxFraction),
               ),
               child: _panel(context, state, summaries, cache),
             ),
@@ -491,8 +512,9 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     Widget chip(ReelSummary summary) {
       final id = summary.reel.id;
       final name = summary.reel.name;
-      final held =
-          state.confirmingReelId == id && state.currentClipId == _heldClipId;
+      // A hold whose clip leaves To tag is cancelled (D-96), so the check
+      // never shows on another clip.
+      final held = state.confirmingReelId == id;
       final picked = multi && state.picked.contains(id);
       return TtReelChip(
         key: ValueKey(id),
@@ -612,23 +634,28 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
         !before.busy &&
         !before.multi &&
         before.confirmingReelId == null) {
-      _heldClipId = before.currentClipId;
       unawaited(HapticFeedback.lightImpact());
     }
     return _act(() => session.tapReel(reelId, reducedMotion: reduced));
   }
 
   /// **New reel**: the sheet asks for a name, makes the reel and tags the
-  /// clip (or picks the reel in Pick several); the snack comes from here.
-  Future<void> _newReel() {
+  /// clip that was showing when it opened, if that clip is still waiting (or
+  /// picks the reel in Pick several); the snack comes from here: "Added to
+  /// {name}", or "{name} created" when the reel was only made.
+  Future<void> _newReel() async {
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
     final session = ref.read(_provider.notifier);
-    return showReelForm(
+    final clipId = ref.read(_provider).value?.currentClipId;
+    if (clipId == null) return;
+    await showReelForm(
       context,
       forClip: true,
       onCreateForClip: (name) async {
-        final outcome = await session.createReelAndTag(name);
+        final made = await session.createReelAndTag(name, clipId: clipId);
+        if (made == null) return null;
+        final outcome = made.outcome;
         if (outcome != null) {
           showTagOutcome(
             snacks: snacks,
@@ -636,19 +663,31 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
             outcome: outcome,
             session: session,
           );
+        } else if (!mounted ||
+            !(ref.read(_provider).value?.picked.contains(made.reel.id) ??
+                false)) {
+          // Only made: the clip had left To tag (in Pick several the picked
+          // chip says it).
+          snacks.show(l10n.reelCreatedSnack(made.reel.name));
         }
+        return made.reel;
       },
     );
   }
 }
 
 /// The player before the session has loaded (or when it could not): black,
-/// with the way out.
+/// with the way out, and when it failed, the message and **Try again**.
 class _Waiting extends StatelessWidget {
-  const new({required this.failed, required this.onClose});
+  const new({
+    required this.failed,
+    required this.onClose,
+    required this.onRetry,
+  });
 
   final bool failed;
   final VoidCallback onClose;
+  final VoidCallback onRetry;
 
   @override
   Widget build(BuildContext context) {
@@ -668,11 +707,21 @@ class _Waiting extends StatelessWidget {
             if (failed)
               Expanded(
                 child: Center(
-                  child: Text(
-                    l10n.reelActionFailed,
-                    textAlign: TextAlign.center,
-                    style: tt.text.material.titleMedium!.copyWith(
-                      color: tt.colors.onVideo,
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: tt.spacing.m),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      spacing: tt.spacing.m,
+                      children: [
+                        Text(
+                          l10n.reelActionFailed,
+                          textAlign: TextAlign.center,
+                          style: tt.text.material.titleMedium!.copyWith(
+                            color: tt.colors.onVideo,
+                          ),
+                        ),
+                        TtButton(label: l10n.tryAgain, onPressed: onRetry),
+                      ],
                     ),
                   ),
                 ),
@@ -791,33 +840,25 @@ class _Stage extends ConsumerWidget {
               ),
             ),
           ),
+        _SlideIn(
+          from: slide,
+          child: Padding(
+            padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
+            child: video,
+          ),
+        ),
         // A swipe changes the clip, except from the edges the system keeps
-        // for its back gesture.
+        // for its back gesture: only this layer is inset, not the video.
+        // Taps go through it to the video.
         Padding(
           padding: EdgeInsets.only(
             left: gestureInsets.left,
             right: gestureInsets.right,
           ),
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragEnd: (details) {
-              final v = details.primaryVelocity ?? 0;
-              if (v.abs() < kMinFlingVelocity) return;
-              // A swipe towards the end is Next; right-to-left text mirrors.
-              final towardsEnd = rtl ? v > 0 : v < 0;
-              if (towardsEnd) {
-                if (hasNext) onNext();
-              } else if (hasPrevious) {
-                onPrevious();
-              }
-            },
-            child: _SlideIn(
-              from: slide,
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
-                child: video,
-              ),
-            ),
+          child: _SwipeArea(
+            rtl: rtl,
+            onNext: hasNext ? onNext : null,
+            onPrevious: hasPrevious ? onPrevious : null,
           ),
         ),
         Align(
@@ -841,6 +882,52 @@ class _Stage extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+/// The layer over the stage that turns a horizontal swipe into Next or
+/// Previous: fast enough ([kMinFlingVelocity]) and far enough
+/// ([_swipeMinDistance], measured from where the finger went down). A swipe
+/// towards the end is Next; right-to-left text mirrors it. It takes no taps:
+/// they reach the video under it.
+class _SwipeArea extends StatefulWidget {
+  const new({
+    required this.rtl,
+    required this.onNext,
+    required this.onPrevious,
+  });
+
+  final bool rtl;
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
+
+  @override
+  State<_SwipeArea> createState() => _SwipeAreaState();
+}
+
+class _SwipeAreaState extends State<_SwipeArea> {
+  /// How far the finger has moved since it went down, along the swipe.
+  double _travel = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      // From the finger's first touch, so the distance includes the slop.
+      dragStartBehavior: DragStartBehavior.down,
+      onHorizontalDragStart: (_) => _travel = 0,
+      onHorizontalDragUpdate: (details) => _travel += details.primaryDelta ?? 0,
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v.abs() < kMinFlingVelocity) return;
+        if (_travel.abs() < _swipeMinDistance) return;
+        // The travel and the speed must agree on the way.
+        if (_travel.sign != v.sign) return;
+        final towardsEnd = widget.rtl ? v > 0 : v < 0;
+        (towardsEnd ? widget.onNext : widget.onPrevious)?.call();
+      },
+      child: const SizedBox.expand(),
     );
   }
 }
@@ -914,8 +1001,9 @@ class _SlideInState extends State<_SlideIn>
 }
 
 /// How wide the clip is: its own picture's shape until the player knows.
-double _shapeOf(Clip clip) =>
-    clip.width > 0 && clip.height > 0 ? clip.width / clip.height : 9 / 16;
+double _shapeOf(Clip clip) => clip.width > 0 && clip.height > 0
+    ? clip.width / clip.height
+    : _portraitShape;
 
 /// The rounded video box with the shadow of the prototype.
 class _VideoBox extends StatelessWidget {

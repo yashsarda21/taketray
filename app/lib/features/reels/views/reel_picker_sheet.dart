@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
+import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
@@ -91,7 +92,8 @@ Future<List<int>?> showReelPicker(
 /// transaction (`ReelClipActions.addToReels`; they leave To tag), remembers
 /// the picked reels as the last tag (`LastTags`, so the player's **Same as
 /// previous** follows it) and the snack says "{n} clips added to {names}"
-/// with **Undo**, which takes the tag back and puts `LastTags` back to what
+/// ({n}: the clips that got a new place, from the records) with
+/// **Undo**, which takes the tag back and puts `LastTags` back to what
 /// it was unless another tag has been remembered since.
 ///
 /// - **Confirm runs the action** (`ReelClipActions.addToReels` / `moveToReel`)
@@ -140,8 +142,14 @@ Future<ClipActionOutcome?> pickAndPerform(
     final message = switch (mode) {
       ReelPickerMode.add => addedToText(l10n, done.reelNames),
       ReelPickerMode.move => l10n.movedToSnack(done.reelNames.single),
+      // The clips really added (a clip a picked reel had already is not
+      // counted), as the skip snacks count what moved.
       ReelPickerMode.tag => l10n.tagClipsAddedSnack(
-        done.clipCount,
+        {
+          for (final record in done.records)
+            if (record is AddUndo)
+              for (final link in record.createdLinks) link.clipId,
+        }.length,
         joinedNamesText(l10n, done.reelNames),
       ),
     };

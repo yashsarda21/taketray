@@ -11,14 +11,11 @@ import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/rules/skipped_days.dart';
-import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
-import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/view_models/skipped_controller.dart';
 import 'package:taketray/features/tagging/view_models/skipped_selection.dart';
+import 'package:taketray/features/tagging/views/clip_tile_row.dart';
 import 'package:taketray/features/tagging/views/day_header_text.dart';
-import 'package:taketray/features/tagging/views/to_tag_screen.dart'
-    show formatClipDuration;
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -234,7 +231,7 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
     final tt = context.tt;
     return SliverGrid.builder(
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: _columns,
+        crossAxisCount: clipGridColumns,
         mainAxisSpacing: tt.spacing.gridGap,
         crossAxisSpacing: tt.spacing.gridGap,
         childAspectRatio: tt.sizes.clipTileAspect,
@@ -260,7 +257,7 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
     final rows = <_Row>[
       for (final day in days) ...[
         _DayRow(day),
-        for (var from = 0; from < day.clips.length; from += _columns)
+        for (var from = 0; from < day.clips.length; from += clipGridColumns)
           _TilesRow(day, from),
       ],
     ];
@@ -273,7 +270,10 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
         ),
         _TilesRow(:final day, :final from) => _tileRow(
           context,
-          day.clips.sublist(from, math.min(from + _columns, day.clips.length)),
+          day.clips.sublist(
+            from,
+            math.min(from + clipGridColumns, day.clips.length),
+          ),
           times: times,
           cache: cache,
           locale: locale,
@@ -293,98 +293,27 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
     required bool use24Hour,
     required SkippedSelectionState selection,
   }) {
-    final tt = context.tt;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        tt.spacing.gutter,
-        tt.spacing.none,
-        tt.spacing.gutter,
-        tt.spacing.gridGap,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: tt.spacing.gridGap,
-        children: [
-          for (var i = 0; i < _columns; i++)
-            Expanded(
-              child: i < clips.length
-                  ? AspectRatio(
-                      aspectRatio: tt.sizes.clipTileAspect,
-                      child: _tile(
-                        context,
-                        clips[i],
-                        localTime: times[clips[i].id],
-                        cache: cache,
-                        locale: locale,
-                        use24Hour: use24Hour,
-                        selection: selection,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tile(
-    BuildContext context,
-    Clip clip, {
-    required ClipLocalTime? localTime,
-    required ThumbnailCache? cache,
-    required String locale,
-    required bool use24Hour,
-    required SkippedSelectionState selection,
-  }) {
     final l10n = AppLocalizations.of(context);
-    // The verifier takes a missing clip out of Skipped (D-72), so this is a
-    // safety net: nothing to restore, and it cannot be chosen.
-    if (clip.missing) {
-      return TtMissingClipTile(key: ValueKey(clip.id), label: l10n.clipMissing);
-    }
-    // Where it was shot (D-83); the phone's time until that is known.
-    final time = localTime != null
-        ? wallClockTimeText(
-            localTime.wallClock,
-            locale: locale,
-            use24Hour: use24Hour,
-          )
-        : timeOfDayText(
-            clip.fingerprint.dateTakenUtc,
-            locale: locale,
-            use24Hour: use24Hour,
-          );
-    final length = formatClipDuration(clip.fingerprint.durationMs);
-    // The picture is asked for at the tile's height, the longer side.
-    final tileWidth =
-        (MediaQuery.sizeOf(context).width -
-            2 * context.tt.spacing.gutter -
-            (_columns - 1) * context.tt.spacing.gridGap) /
-        _columns;
     final notifier = ref.read(skippedSelectionProvider.notifier);
-    return TtClipTile(
-      key: ValueKey(clip.id),
-      thumbnail: clipThumbnail(
-        clip: clip,
-        logicalSize: tileWidth / context.tt.sizes.clipTileAspect,
-        cache: cache,
-      ),
-      timeText: time,
-      durationText: length,
+    return ClipTileRow(
+      clips: clips,
+      times: times,
+      cache: cache,
+      locale: locale,
+      use24Hour: use24Hour,
+      selected: (clip) =>
+          selection.selecting ? selection.selected.contains(clip.id) : null,
+      onTap: (clip) => selection.selecting
+          ? notifier.toggle(clip.id)
+          : unawaited(_restore({clip.id}, single: true)),
+      onLongPress: (clip) => selection.selecting
+          ? notifier.toggle(clip.id)
+          : notifier.start(clip.id),
       // A tap restores the clip, so a screen reader is told; while choosing a
       // tap only chooses.
       semanticLabel: selection.selecting
-          ? l10n.clipTileSemantics(time, length)
-          : l10n.skippedTileSemantics(time, length),
-      selected: selection.selecting
-          ? selection.selected.contains(clip.id)
-          : null,
-      onTap: selection.selecting
-          ? () => notifier.toggle(clip.id)
-          : () => unawaited(_restore({clip.id}, single: true)),
-      onLongPress: () => selection.selecting
-          ? notifier.toggle(clip.id)
-          : notifier.start(clip.id),
+          ? l10n.clipTileSemantics
+          : l10n.skippedTileSemantics,
     );
   }
 
@@ -399,10 +328,10 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
     if (todo.isEmpty) return;
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
-    final controller = ref.read(skippedControllerProvider.notifier);
-    final selection = ref.read(skippedSelectionProvider.notifier);
     _restoring.addAll(todo);
     try {
+      final controller = ref.read(skippedControllerProvider.notifier);
+      final selection = ref.read(skippedSelectionProvider.notifier);
       final record = await controller.restore(todo);
       // Some of them may have left Skipped meanwhile (tagged elsewhere); the
       // snack counts what moved, and says nothing when nothing did.
@@ -414,7 +343,9 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
           [record],
         );
       }
-      if (mounted) selection.clear();
+      // Only a batch restore ends choosing: a tap restores one clip outside
+      // a choice, and must not end one begun while it wrote.
+      if (!single && mounted) selection.clear();
     } on Object catch (error) {
       // The choice is kept to try again.
       _log.warning(
@@ -439,15 +370,12 @@ class _DayRow extends _Row {
   const _DayRow(super.day);
 }
 
-/// Up to [_columns] tiles of a day, starting at clip number [from].
+/// Up to [clipGridColumns] tiles of a day, starting at clip number [from].
 class _TilesRow extends _Row {
   const _TilesRow(super.day, this.from);
 
   final int from;
 }
-
-/// Columns of the clip grid (proto.css: `.grid3`).
-const int _columns = 3;
 
 /// Skeleton tiles shown while the list loads (the prototype shows 6).
 const int _skeletonTiles = 6;

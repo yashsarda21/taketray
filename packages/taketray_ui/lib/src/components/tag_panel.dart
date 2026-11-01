@@ -279,9 +279,10 @@ class _TopHighlight extends CustomPainter {
 ///
 /// A translucent white pill, 48 dp high at least, with a repeat icon and two
 /// lines: [label] over a smaller [detail] (such as the reel names). Both
-/// lines are one line with an ellipsis, so the button keeps whatever width it
-/// is given (put it in an `Expanded`). A null [onPressed] disables it and
-/// dims it.
+/// are one line with an ellipsis (the label may take two from
+/// [TtMetrics.largeTextScale] up, and the button grows), so the button keeps
+/// whatever width it is given (put it in an `Expanded`). A null [onPressed]
+/// disables it and dims it.
 class TtSameAsPreviousButton extends StatelessWidget {
   /// A button showing [label] and [detail].
   const new({
@@ -309,6 +310,8 @@ class TtSameAsPreviousButton extends StatelessWidget {
     final tt = context.tt;
     final enabled = onPressed != null;
     final second = detail;
+    final large =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     // proto.css: .qrow .btn.same; disabled follows .btn[disabled] with white
     // in place of on-surface.
     final content = tt.colors.onVideo.withValues(
@@ -356,7 +359,7 @@ class TtSameAsPreviousButton extends StatelessWidget {
                       children: [
                         Text(
                           label,
-                          maxLines: 1,
+                          maxLines: large ? 2 : 1,
                           overflow: TextOverflow.ellipsis,
                           style: tt.text.material.labelLarge!.copyWith(
                             color: content,

@@ -34,10 +34,12 @@ const int _descriptionCounterFrom = 900;
 ///
 /// - **From the tag player ([forClip], D-97):** "New reel", "This clip will be
 ///   added to it.", only the name, and **Create and add**. The name is checked
-///   as above, then [onCreateForClip] makes the reel and puts the clip in it
-///   (the player's `createReelAndTag`); the sheet closes when it is done and
-///   the player says "Added to {name}", so there is no "created" snack. A
-///   failure of it is told in the sheet like any other.
+///   as above, then [onCreateForClip] makes the reel, puts the clip in it
+///   (the player's `createReelAndTag`) and returns the reel; the sheet
+///   closes when it is done and the player says what happened, so the form
+///   shows no "created" snack of its own. A failure of it is told in the
+///   sheet like any other. The name field's keyboard action is Done (it is
+///   the only field).
 ///
 /// The success snacks are on the root messenger, so they show after the sheet
 /// has closed, even if the sheet was dragged away while it saved.
@@ -45,7 +47,7 @@ Future<void> showReelForm(
   BuildContext context, {
   Reel? reel,
   bool forClip = false,
-  Future<void> Function(String name)? onCreateForClip,
+  Future<Reel?> Function(String name)? onCreateForClip,
 }) {
   assert(
     !forClip || (reel == null && onCreateForClip != null),
@@ -103,7 +105,7 @@ class _ReelFormSheet extends ConsumerStatefulWidget {
 
   final Reel? reel;
   final bool forClip;
-  final Future<void> Function(String name)? createForClip;
+  final Future<Reel?> Function(String name)? createForClip;
   final ValueChanged<Reel> onSaved;
   final VoidCallback onFailedAfterClose;
 
@@ -230,7 +232,9 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
             maxLength: reelNameMaxLength,
             counterText: l10n.reelCounter,
             autofocus: true,
-            textInputAction: TextInputAction.next,
+            textInputAction: widget.forClip
+                ? TextInputAction.done
+                : TextInputAction.next,
             onChanged: typing,
             onSubmitted: (_) => unawaited(_save()),
           ),

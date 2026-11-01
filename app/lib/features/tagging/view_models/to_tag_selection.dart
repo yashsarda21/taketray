@@ -39,8 +39,9 @@ class ToTagSelectionState {
 ///   leave it so (a scene's **Unselect** is not the last tap of a choice).
 /// - **It follows the list.** A chosen clip that leaves To tag (a verify
 ///   takes it out, a scan, the tag player or a Skip tags it) is un-chosen;
-///   when that empties a selection that had clips, choosing ends. The ids
-///   are never kept for a clip that is gone.
+///   when that empties a selection that had clips, choosing ends, and so
+///   does choosing with nothing chosen once the list is empty. The ids are
+///   never kept for a clip that is gone.
 ///
 /// Auto-disposes with the screen.
 @riverpod
@@ -63,7 +64,14 @@ class ToTagSelection extends _$ToTagSelection {
       _liveIds(ref.read(toTagControllerProvider).value ?? const []);
 
   void _prune(Set<int> live) {
-    if (state.selected.isEmpty) return;
+    if (state.selected.isEmpty) {
+      // Choosing with nothing chosen (Select clips) ends when nothing is
+      // left to choose.
+      if (state.selecting && live.isEmpty) {
+        state = const ToTagSelectionState();
+      }
+      return;
+    }
     final kept = state.selected.intersection(live);
     if (kept.length == state.selected.length) return;
     state = kept.isEmpty

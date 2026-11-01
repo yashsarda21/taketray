@@ -78,14 +78,15 @@ class ReelFormController extends _$ReelFormController {
   ///
   /// [createWith] (a new reel only) makes the reel itself, in place of the
   /// repository's `create`, after the same checks: the tag player's New reel
-  /// (D-97) makes it and puts the clip in it in one go. The saved reel is
-  /// then looked up by its name. A name problem it throws
-  /// (`InvalidInputException`) is shown like one found here.
+  /// (D-97) makes it and puts the clip in it in one go, and returns the reel
+  /// it made (null only when the player has closed, and with it the sheet).
+  /// A name problem it throws (`InvalidInputException`) is shown like one
+  /// found here.
   Future<Reel?> save({
     required String name,
     String? description,
     ReelStatus? status,
-    Future<void> Function(String name)? createWith,
+    Future<Reel?> Function(String name)? createWith,
   }) {
     final running = _inFlight;
     if (running != null) return running;
@@ -105,7 +106,7 @@ class ReelFormController extends _$ReelFormController {
     String name,
     String? description,
     ReelStatus? status,
-    Future<void> Function(String name)? createWith,
+    Future<Reel?> Function(String name)? createWith,
   ) async {
     final repository = ref.read(reelsRepositoryProvider);
     final id = reelId;
@@ -129,11 +130,12 @@ class ReelFormController extends _$ReelFormController {
       }
       final Reel saved;
       if (id == null && createWith != null) {
-        await createWith(name);
-        final key = reelNameKey(name);
-        saved = (await repository.watchAll().first).firstWhere(
-          (reel) => reelNameKey(reel.name) == key,
-        );
+        final made = await createWith(name);
+        if (made == null) {
+          _set(const ReelFormState());
+          return null;
+        }
+        saved = made;
       } else if (id == null) {
         saved = await repository.create(name, description: description);
       } else {

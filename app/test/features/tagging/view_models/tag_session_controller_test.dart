@@ -43,25 +43,41 @@ class SpyClips extends ClipsRepository {
   }
 }
 
+/// The real reels repository, with a gate a test can close: `create` waits
+/// for it before it writes.
+class SpyReels extends ReelsRepository {
+  SpyReels(VmHarness h) : super(h.media.db, h.media.clock);
+
+  Completer<void>? gate;
+
+  @override
+  Future<Reel> create(String name, {String? description}) async {
+    final wait = gate;
+    if (wait != null) await wait.future;
+    return await super.create(name, description: description);
+  }
+}
+
 void main() {
   late VmHarness h;
   late FakeHolds holds;
   late SpyClips spy;
   late ProviderContainer c;
-  late ReelsRepository reels;
+  late SpyReels reels;
 
   setUp(() {
     h = reelHarness();
     holds = FakeHolds();
     spy = SpyClips(h);
+    reels = SpyReels(h);
     c = ProviderContainer.test(
       overrides: [
         ...h.overrides,
         holdTimerProvider.overrideWithValue(holds.call),
         clipsRepositoryProvider.overrideWithValue(spy),
+        reelsRepositoryProvider.overrideWithValue(reels),
       ],
     );
-    reels = c.read(reelsRepositoryProvider);
   });
 
   /// Puts [count] clips in To tag, shot a minute apart, oldest first.
@@ -224,18 +240,53 @@ void main() {
       final session = await start();
 
       final tagged = session.tapReel(goa.id);
-      // During the hold the clip is tagged elsewhere: the player moves on.
-      await h.media.clips.addClipsToReel(london.id, [ids[0]]);
+      // During the hold another clip of the session (the next one) leaves To
+      // tag: the hold goes on, and the tap still means the clip showing.
+      await h.media.clips.addClipsToReel(london.id, [ids[1]]);
       await settle();
-      expect(stateOf().index, 1);
+      expect(stateOf().index, 0);
+      expect(holds.made.single.cancelled, isFalse);
       holds.fireAll();
       final outcome = (await tagged)!;
 
       expect(outcome.clipId, ids[0]);
-      expect(await reelsOf(ids[0]), {goa.id, london.id});
+      expect(await reelsOf(ids[0]), {goa.id});
+      expect(await reelsOf(ids[1]), {london.id});
+      expect(await pendingIds(), {ids[2]});
+      expect(stateOf().index, 2);
+    });
+
+    test('a clip leaving during the hold cancels the tap', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      final session = await start();
+
+      final tagged = session.tapReel(goa.id);
+      // During the hold the clip showing is tagged elsewhere: the tap is
+      // dropped as if it never happened, and the player moves on.
+      await h.media.clips.addClipsToReel(london.id, [ids[0]]);
+      await settle();
+
+      expect(holds.made.single.cancelled, isTrue);
+      expect(await tagged, isNull);
+      final s = stateOf();
+      expect(s.index, 1);
+      expect(s.confirmingReelId, isNull);
+      expect(s.busy, isFalse);
+      expect(s.taggedPerReel, isEmpty);
+      holds.fireAll();
+      await settle();
+      expect(spy.addCalls, isEmpty);
+      expect(await reelsOf(ids[0]), {london.id});
       expect(await reelsOf(ids[1]), isEmpty);
       expect(await pendingIds(), {ids[1], ids[2]});
-      expect(stateOf().index, 1);
+
+      // The next tap is taken, on the new clip.
+      final again = session.tapReel(goa.id);
+      expect(holds.made, hasLength(2));
+      holds.made.last.fire();
+      expect((await again)!.clipId, ids[1]);
     });
 
     test('same as previous while a tag writes is ignored', () async {
@@ -379,6 +430,52 @@ void main() {
       expect(await reelsOf(ids[0]), {goa.id, london.id});
       expect(c.read(lastTagsProvider), [london.id, goa.id]);
       expect(stateOf().taggedPerReel, {london.id: 1, goa.id: 1});
+    });
+
+    test(
+      'a picked reel deleted elsewhere is dropped from the confirm',
+      () async {
+        final ids = await waiting(2);
+        final goa = await reel('Goa');
+        final london = await reel('London');
+        final session = await start()
+          ..setMulti(true)
+          ..togglePick(goa.id)
+          ..togglePick(london.id);
+        await reels.delete(london.id);
+
+        final outcome = (await session.confirmPicks())!;
+
+        expect(outcome.reelIds, [goa.id]);
+        expect(spy.addCalls.single.$1, [goa.id]);
+        expect(await reelsOf(ids[0]), {goa.id});
+        expect(stateOf().index, 1);
+        expect(stateOf().taggedPerReel, {goa.id: 1});
+      },
+    );
+
+    test('every picked reel deleted elsewhere: confirm does nothing', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start()
+        ..setMulti(true)
+        ..togglePick(goa.id);
+      await reels.delete(goa.id);
+
+      expect(await session.confirmPicks(), isNull);
+
+      final s = stateOf();
+      expect(s.index, 0);
+      expect(s.busy, isFalse);
+      // The pick of the reel that is gone goes too: the footer is disabled.
+      expect(s.picked, isEmpty);
+      expect(s.multi, isTrue);
+      expect(spy.addCalls, isEmpty);
+      expect(await pendingIds(), ids.toSet());
+      // And the next confirm still works once a reel is picked.
+      final paris = await reel('Paris');
+      session.togglePick(paris.id);
+      expect(await session.confirmPicks(), isNotNull);
     });
 
     test('confirm with nothing picked does nothing', () async {
@@ -565,6 +662,106 @@ void main() {
       expect(s.taggedPerReel, {london.id: 1});
     });
 
+    test(
+      'undo during a chip hold waits, the held tag lands, then goes back',
+      () async {
+        final ids = await waiting(3);
+        final goa = await reel('Goa');
+        final london = await reel('London');
+        final session = await start();
+        final first = session.tapReel(goa.id);
+        holds.fireAll();
+        final outcome = (await first)!;
+
+        final second = session.tapReel(london.id);
+        await settle();
+        expect(stateOf().confirmingReelId, london.id);
+        var undoneYet = false;
+        final undone = session
+            .undo(outcome.records, outcome.clipId)
+            .then((_) => undoneYet = true);
+        await settle();
+        // Undo waits for the hold: nothing is undone yet.
+        expect(undoneYet, isFalse);
+        expect(await reelsOf(ids[0]), {goa.id});
+
+        holds.made.last.fire();
+        expect((await second)!.clipId, ids[1]);
+        await undone;
+
+        expect(await reelsOf(ids[0]), isEmpty);
+        expect(await reelsOf(ids[1]), {london.id});
+        final s = stateOf();
+        expect(s.index, 0);
+        expect(s.taggedPerReel, {london.id: 1});
+        expect(s.busy, isFalse);
+      },
+    );
+
+    test('closing during a hold lets a queued undo run', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      final session = await start();
+      final first = session.tapReel(goa.id);
+      holds.fireAll();
+      final outcome = (await first)!;
+
+      final second = session.tapReel(london.id);
+      final undone = session.undo(outcome.records, outcome.clipId);
+      await settle();
+      sub.close();
+      await settle();
+
+      expect(await second, isNull);
+      await undone.timeout(const Duration(seconds: 5));
+      expect(await reelsOf(ids[0]), isEmpty);
+      expect(await reelsOf(ids[1]), isEmpty);
+      expect(await pendingIds(), ids.toSet());
+    });
+
+    test('undo counts back only a skip it really undid', () async {
+      final ids = await waiting(2);
+      final london = await reel('London');
+      final session = await start();
+      final outcome = (await session.skip())!;
+      expect(stateOf().skipped, 1);
+      // Elsewhere: restored from Skipped, then tagged.
+      await spy.restoreClips([ids[0]]);
+      await spy.addClipsToReel(london.id, [ids[0]]);
+      await settle();
+
+      await session.undo(outcome.records, outcome.clipId);
+
+      // The Undo found nothing to put back: the count stays.
+      expect(await reelsOf(ids[0]), {london.id});
+      expect(stateOf().skipped, 1);
+      expect(stateOf().index, 1);
+    });
+
+    test('undo counts back only the reels the clip has left', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      final session = await start()
+        ..setMulti(true)
+        ..togglePick(goa.id)
+        ..togglePick(london.id);
+      final outcome = (await session.confirmPicks())!;
+      expect(stateOf().taggedPerReel, {goa.id: 1, london.id: 1});
+      // Elsewhere: taken out of Goa. London is now its only place, and Undo
+      // never takes a clip's last place (D-84), so the Undo changes nothing.
+      await spy.removeClipsFromReel(goa.id, [ids[0]]);
+      await settle();
+
+      await session.undo(outcome.records, outcome.clipId);
+
+      // Still in London, so London keeps its +1; Goa's is no longer true.
+      expect(await reelsOf(ids[0]), {london.id});
+      expect(stateOf().taggedPerReel, {london.id: 1});
+      expect(stateOf().index, 1);
+    });
+
     test('undo after the player closed restores the clip', () async {
       final ids = await waiting(2);
       final goa = await reel('Goa');
@@ -597,7 +794,7 @@ void main() {
       expect(await session.skip(), isNull);
       expect(await session.confirmPicks(), isNull);
       expect(await session.sameAsPrevious(), isNull);
-      expect(await session.createReelAndTag('Paris'), isNull);
+      expect(await session.createReelAndTag('Paris', clipId: ids[0]), isNull);
       session
         ..longPressReel(goa.id)
         ..setMulti(true)
@@ -667,10 +864,12 @@ void main() {
       final ids = await waiting(2);
       final session = await start();
 
-      final outcome = (await session.createReelAndTag('Goa'))!;
+      final made = (await session.createReelAndTag('Goa', clipId: ids[0]))!;
 
       final goa = (await reels.watchAll().first).single;
       expect(goa.name, 'Goa');
+      expect(made.reel.id, goa.id);
+      final outcome = made.outcome!;
       expect(outcome.reelNames, ['Goa']);
       expect(outcome.clipId, ids[0]);
       expect(await reelsOf(ids[0]), {goa.id});
@@ -679,7 +878,7 @@ void main() {
 
       // A name that is taken is thrown to the form, and nothing moves.
       await expectLater(
-        session.createReelAndTag('goa'),
+        session.createReelAndTag('goa', clipId: ids[1]),
         throwsA(isA<InvalidInputException>()),
       );
       expect(stateOf().index, 1);
@@ -693,15 +892,86 @@ void main() {
         ..setMulti(true)
         ..togglePick(goa.id);
 
-      expect(await session.createReelAndTag('Paris'), isNull);
+      final made = (await session.createReelAndTag('Paris', clipId: ids[0]))!;
 
-      final paris = (await reels.watchAll().first).firstWhere(
-        (r) => r.name == 'Paris',
-      );
-      expect(stateOf().picked, [goa.id, paris.id]);
+      expect(made.outcome, isNull);
+      expect(made.reel.name, 'Paris');
+      expect(stateOf().picked, [goa.id, made.reel.id]);
       expect(stateOf().index, 0);
       expect(stateOf().busy, isFalse);
       expect(await reelsOf(ids[0]), isEmpty);
+    });
+
+    test('the clip leaving while a reel is made to pick moves on', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      final session = await start()
+        ..setMulti(true)
+        ..togglePick(goa.id);
+
+      final gate = reels.gate = Completer<void>();
+      final made = session.createReelAndTag('Paris', clipId: ids[0]);
+      await settle();
+      // The clip showing is tagged elsewhere while the reel is made.
+      await spy.addClipsToReel(london.id, [ids[0]]);
+      await settle();
+      gate.complete();
+      await made;
+      await settle();
+
+      final s = stateOf();
+      expect(s.index, 1);
+      expect(s.busy, isFalse);
+      expect(s.multi, isTrue);
+      // The picks were for the clip that left.
+      expect(s.picked, isEmpty);
+      expect(await session.confirmPicks(), isNull);
+      expect(await reelsOf(ids[0]), {london.id});
+      expect(await reelsOf(ids[1]), isEmpty);
+    });
+
+    test('a new reel goes to the clip the sheet was opened on', () async {
+      final ids = await waiting(3);
+      final london = await reel('London');
+      final session = await start();
+      // The sheet opened on the first clip; it left To tag meanwhile and the
+      // player moved on.
+      await spy.addClipsToReel(london.id, [ids[0]]);
+      await settle();
+      expect(stateOf().index, 1);
+
+      final made = (await session.createReelAndTag('Paris', clipId: ids[0]))!;
+
+      // The reel is made (the user asked for it), and nothing is tagged:
+      // not the clip that left, and not the one showing now.
+      expect(made.reel.name, 'Paris');
+      expect(made.outcome, isNull);
+      expect(await reelsOf(ids[0]), {london.id});
+      expect(await reelsOf(ids[1]), isEmpty);
+      expect(stateOf().index, 1);
+      expect(stateOf().busy, isFalse);
+    });
+
+    test('a new reel while a hold runs waits for it, then is made', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final session = await start();
+
+      final tagged = session.tapReel(goa.id);
+      final made = session.createReelAndTag('Paris', clipId: ids[0]);
+      await settle();
+      expect((await reels.watchAll().first).map((r) => r.name), ['Goa']);
+      holds.fireAll();
+      expect((await tagged)!.clipId, ids[0]);
+      final result = (await made)!;
+
+      // The hold tagged the clip, so the new reel is only made.
+      expect(result.reel.name, 'Paris');
+      expect(result.outcome, isNull);
+      expect(await reelsOf(ids[0]), {goa.id});
+      expect(await reelsOf(ids[1]), isEmpty);
+      expect(stateOf().index, 1);
     });
   });
 

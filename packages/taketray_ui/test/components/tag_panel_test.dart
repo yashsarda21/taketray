@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -763,10 +763,11 @@ void main() {
     });
 
     testWidgets('both lines ellipsise instead of overflowing', (tester) async {
+      const label = 'Same as the previous clip you tagged a moment ago';
       await tester.pumpWidget(
         ttTestApp(
           _same(
-            label: 'Same as the previous clip you tagged a moment ago',
+            label: label,
             detail:
                 'Lisbon trip, Autumn recipes, Summer weekend, Garden, '
                 'Birthday party, Saturday morning market walk',
@@ -783,9 +784,32 @@ void main() {
           matching: find.byType(Text),
         ),
       )) {
-        expect(text.maxLines, 1);
+        // At large text the label may take two lines, the detail one.
+        expect(text.maxLines, text.data == label ? 2 : 1);
         expect(text.overflow, TextOverflow.ellipsis);
       }
+    });
+
+    testWidgets('at 2x the label grows to two lines instead of clipping', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(_same(width: 200, onPressed: () {}), textScale: 2),
+      );
+      expect(tester.takeException(), isNull);
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text('Same as previous'),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(
+        tester.getSize(find.byType(TtSameAsPreviousButton)).height,
+        greaterThanOrEqualTo(48),
+      );
+    });
+
+    testWidgets('below large text the label is one line', (tester) async {
+      await tester.pumpWidget(ttTestApp(_same(onPressed: () {})));
+      expect(tester.widget<Text>(find.text('Same as previous')).maxLines, 1);
     });
 
     testWidgets('works without a detail', (tester) async {

@@ -9,6 +9,7 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/scenes.dart';
 import 'package:taketray/domain/rules/shooting_order.dart';
@@ -217,9 +218,11 @@ class TagSessionController extends _$TagSessionController {
   /// The action running (a hold and its write, a write, an Undo), or null.
   Completer<void>? _running;
 
-  /// The chip hold while it lasts, and what its tap waits for.
+  /// The chip hold while it lasts, what its tap waits for, and the clip it
+  /// was tapped on.
   Timer? _hold;
   Completer<TagOutcome?>? _holdResult;
+  int? _heldClipId;
 
   /// What each record of this session counted, by identity.
   final Map<UndoRecord, _Counted> _counted = Map.identity();
@@ -286,11 +289,13 @@ class TagSessionController extends _$TagSessionController {
     _begin();
     _set(s.copyWith(confirmingReelId: reelId));
     final result = _holdResult = Completer<TagOutcome?>();
+    _heldClipId = clipId;
     _hold = ref.read(holdTimerProvider)(
       reducedMotion ? tagHoldReduced : tagHold,
       () {
         _hold = null;
         _holdResult = null;
+        _heldClipId = null;
         result.complete(_tag(clipId, from, (_) => [reelId]));
       },
     );
@@ -324,13 +329,33 @@ class TagSessionController extends _$TagSessionController {
   }
 
   /// "Add to {k} reels & next": the clip showing goes into every picked
-  /// reel, in one transaction. Null when nothing is picked.
-  Future<TagOutcome?> confirmPicks() {
+  /// reel, in one transaction. A picked reel deleted meanwhile is left out;
+  /// when none is left (or nothing is picked) nothing is tagged, the picks
+  /// of deleted reels go, and the result is null.
+  Future<TagOutcome?> confirmPicks() async {
     final s = _idle();
-    if (s == null || !s.multi || s.picked.isEmpty) return Future.value();
+    if (s == null || !s.multi || s.picked.isEmpty) return null;
     final picked = s.picked;
+    var live = <int>{};
     _begin();
-    return _tag(s.session[s.index], s.index, (_) => picked);
+    final outcome = await _tag(s.session[s.index], s.index, (existing) {
+      live = existing;
+      return [
+        for (final id in picked)
+          if (existing.contains(id)) id,
+      ];
+    });
+    if (outcome == null) {
+      _update(
+        (now) => now.copyWith(
+          picked: [
+            for (final id in now.picked)
+              if (live.contains(id)) id,
+          ],
+        ),
+      );
+    }
+    return outcome;
   }
 
   /// "Same as previous": the clip showing goes into the reels of the last
@@ -378,32 +403,52 @@ class TagSessionController extends _$TagSessionController {
   void next() => _moveTo(_queue.next);
 
   /// "+ New reel" from the player: creates the reel [name], then picks it in
-  /// "Pick several" (and returns null) or tags the clip showing into it. A
-  /// name that is not acceptable throws `InvalidInputException` for the form
+  /// "Pick several" or tags clip [clipId] into it: the clip that was showing
+  /// when the sheet opened, and only while it is still waiting (one that
+  /// left To tag meanwhile is not tagged, and neither is the clip showing
+  /// now). Waits for an action that is running (a hold, a write) first: the
+  /// user asked for the reel. Returns the reel and, when the clip was tagged,
+  /// the outcome for the snack; null only when the player has closed. A name
+  /// that is not acceptable throws `InvalidInputException` for the form
   /// (D-85); nothing is created and nothing moves.
-  Future<TagOutcome?> createReelAndTag(String name) async {
-    final s = _idle();
-    if (s == null) return null;
-    _begin();
-    if (!s.multi) {
-      return await _tag(
-        s.session[s.index],
-        s.index,
-        (_) => const [],
-        create: name,
-      );
+  Future<({Reel reel, TagOutcome? outcome})?> createReelAndTag(
+    String name, {
+    required int clipId,
+  }) async {
+    if (ref.mounted && state.value == null) await future;
+    while (_running != null) {
+      await _running!.future;
     }
-    _set(s.copyWith(busy: true));
+    if (!ref.mounted) return null;
+    final s = state.value;
+    if (s == null) return null;
+    final at = s.session.indexOf(clipId);
+    if (!s.multi && !s.done && at >= 0 && s.pending.contains(clipId)) {
+      _begin();
+      Reel? made;
+      final outcome = await _act(clipId, at, () async {
+        final reel = made = await _reels.create(name);
+        _log.info('Created reel ${reel.id} to tag into');
+        return await _write(clipId, [reel.id], {reel.id: reel.name});
+      });
+      return (reel: made!, outcome: outcome);
+    }
+    _begin();
+    _update((now) => now.copyWith(busy: true));
     try {
       final reel = await _reels.create(name);
-      _log.info('Created reel ${reel.id} to pick');
-      _update((now) => now.copyWith(picked: [...now.picked, reel.id]));
-      return null;
+      if (s.multi) {
+        _log.info('Created reel ${reel.id} to pick');
+        _update((now) => now.copyWith(picked: [...now.picked, reel.id]));
+      } else {
+        _log.info('Created reel ${reel.id}; clip $clipId is not waiting');
+      }
+      return (reel: reel, outcome: null);
     } on Object catch (error) {
-      _log.warning('Creating a reel to pick failed: ${error.runtimeType}');
+      _log.warning('Creating a reel failed: ${error.runtimeType}');
       rethrow;
     } finally {
-      _update((now) => now.copyWith(busy: false));
+      _update((now) => _followed(now.copyWith(busy: false)));
       _end();
     }
   }
@@ -425,7 +470,6 @@ class TagSessionController extends _$TagSessionController {
       await _clips.undoAll(records);
       final waiting = await _clips.watchInbox(InboxState.pending).first;
       _log.info('Undid ${records.length} records of clip $clipId');
-      _uncount(records);
       _update((now) {
         final pending = _pendingOf(now, waiting);
         final at = now.session.indexOf(clipId);
@@ -439,6 +483,12 @@ class TagSessionController extends _$TagSessionController {
         }
         return now.copyWith(pending: pending);
       });
+      // After the player has gone back, so the counts never hold it up.
+      _uncount(
+        records,
+        waiting: waiting.any((clip) => clip.id == clipId),
+        reels: await _clips.watchReelIdsOf(clipId).first,
+      );
     } on Object catch (error) {
       _log.warning('Undo of clip $clipId failed: ${error.runtimeType}');
       rethrow;
@@ -471,31 +521,31 @@ class TagSessionController extends _$TagSessionController {
   }
 
   /// Tags clip [clipId] (at [from]) into the reels [choose] picks from the
-  /// ids of the reels that exist now; or, with [create], into a reel made
-  /// with that name first.
+  /// ids of the reels that exist now. Nothing chosen: null, nothing written.
   Future<TagOutcome?> _tag(
     int clipId,
     int from,
-    List<int> Function(Set<int> existing) choose, {
-    String? create,
-  }) => _act(clipId, from, () async {
-    final List<int> reelIds;
-    final Map<int, String> names;
-    if (create != null) {
-      final reel = await _reels.create(create);
-      _log.info('Created reel ${reel.id} to tag into');
-      reelIds = [reel.id];
-      names = {reel.id: reel.name};
-    } else {
-      names = {
-        for (final reel in await _reels.watchAll().first) reel.id: reel.name,
-      };
-      reelIds = choose(names.keys.toSet());
-      if (reelIds.isEmpty) return null;
-      for (final id in reelIds) {
-        if (!names.containsKey(id)) throw StateError('No reel with id $id');
-      }
+    List<int> Function(Set<int> existing) choose,
+  ) => _act(clipId, from, () async {
+    final names = {
+      for (final reel in await _reels.watchAll().first) reel.id: reel.name,
+    };
+    final reelIds = choose(names.keys.toSet());
+    if (reelIds.isEmpty) return null;
+    for (final id in reelIds) {
+      if (!names.containsKey(id)) throw StateError('No reel with id $id');
     }
+    return await _write(clipId, reelIds, names);
+  });
+
+  /// Puts clip [clipId] into [reelIds] (one transaction), remembers them for
+  /// "Same as previous" and what to count back on Undo. [names] holds at
+  /// least their names.
+  Future<TagOutcome> _write(
+    int clipId,
+    List<int> reelIds,
+    Map<int, String> names,
+  ) async {
     final records = await _clips.addClipsToReels(reelIds.toSet(), [clipId]);
     final before = _lastTags.current;
     final after = _lastTags.set(reelIds);
@@ -515,7 +565,7 @@ class TagSessionController extends _$TagSessionController {
       clipId: clipId,
       skipped: false,
     );
-  });
+  }
 
   /// Runs [write] for clip [clipId] (at [from]) with `busy` on, then counts
   /// it and moves on. The caller began the action; it ends here.
@@ -565,9 +615,17 @@ class TagSessionController extends _$TagSessionController {
   }
 
   /// After the Undo of [records]: takes back what this session counted for
-  /// them, once, and puts "Same as previous" back unless a later tag has
-  /// changed it.
-  void _uncount(List<UndoRecord> records) {
+  /// them, once, as far as it is no longer true now that the clip is
+  /// [waiting] in To tag (or not) and in [reels]: a skip only when the clip
+  /// is back in To tag, a reel's "+1" only when the clip is no longer in that
+  /// reel (Undo never takes a clip's last place, D-84, so it may restore
+  /// nothing). "Same as previous" goes back unless a later tag has changed
+  /// it.
+  void _uncount(
+    List<UndoRecord> records, {
+    required bool waiting,
+    required Set<int> reels,
+  }) {
     final undone = <_Counted>{};
     for (final record in records) {
       final counted = _counted.remove(record);
@@ -582,8 +640,9 @@ class TagSessionController extends _$TagSessionController {
       final tagged = {...now.taggedPerReel};
       var skipped = now.skipped;
       for (final counted in undone) {
-        if (counted.skip) skipped--;
+        if (counted.skip && waiting) skipped--;
         for (final id in counted.reelIds) {
+          if (reels.contains(id)) continue;
           final n = (tagged[id] ?? 0) - 1;
           if (n > 0) {
             tagged[id] = n;
@@ -608,6 +667,14 @@ class TagSessionController extends _$TagSessionController {
   /// the player moves on if the clip showing has left (not while a write
   /// runs: the action moves it then).
   void _onPending(List<Clip> waiting) {
+    final held = _heldClipId;
+    if (held != null && !waiting.any((clip) => clip.id == held)) {
+      // The held clip left To tag before the hold ended: the tap is dropped
+      // as if it never happened (D-96 point 8).
+      _log.info('Clip $held left To tag during its hold; tap dropped');
+      _cancelHold();
+      _update((now) => now.copyWith(confirmingReelId: null));
+    }
     _update((now) {
       final fresh = {
         for (final clip in waiting)
@@ -659,10 +726,12 @@ class TagSessionController extends _$TagSessionController {
     }
   }
 
-  /// The player closed: a chip hold ends without a tag.
+  /// The player closed, or the held clip left To tag: a chip hold ends
+  /// without a tag, its tap completes with null, and a queued Undo may run.
   void _cancelHold() {
     _hold?.cancel();
     _hold = null;
+    _heldClipId = null;
     final result = _holdResult;
     _holdResult = null;
     if (result != null && !result.isCompleted) {

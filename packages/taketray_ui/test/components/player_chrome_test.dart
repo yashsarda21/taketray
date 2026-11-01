@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -46,6 +46,7 @@ Widget _header({
   String? subtitle = 'Scene 2 of 4 · 0:12–0:48',
   Widget? trailing,
   bool withTrailing = true,
+  bool wrapSubtitle = false,
 }) => _onVideo(
   TtPlayerHeader(
     leading: TtIconButton(
@@ -56,6 +57,7 @@ Widget _header({
     ),
     title: title,
     subtitle: subtitle,
+    wrapSubtitle: wrapSubtitle,
     trailing: withTrailing
         ? trailing ??
               TtIconButton(
@@ -294,6 +296,32 @@ void main() {
         tester.getSize(find.byType(TtPlayerHeader)).height,
         greaterThanOrEqualTo(56),
       );
+    });
+
+    testWidgets('at 2x a wrapping subtitle takes two lines instead of '
+        'clipping', (tester) async {
+      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM';
+      await tester.pumpWidget(
+        ttTestApp(_header(subtitle: sub, wrapSubtitle: true), textScale: 2),
+      );
+      expect(tester.takeException(), isNull);
+      final text = tester.widget<Text>(find.text(sub));
+      expect(text.maxLines, 2);
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
+      expect(paragraph.didExceedMaxLines, isFalse);
+      // The title stays one line.
+      expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+    });
+
+    testWidgets('below large text, or without wrapping, the subtitle is one '
+        'line', (tester) async {
+      const sub = 'Scene 2 of 4 · 0:12–0:48';
+      await tester.pumpWidget(
+        ttTestApp(_header(wrapSubtitle: true), textScale: 1.3),
+      );
+      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
+      await tester.pumpWidget(ttTestApp(_header(), textScale: 2));
+      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
     });
 
     testWidgets('passes the accessibility guidelines', (tester) async {

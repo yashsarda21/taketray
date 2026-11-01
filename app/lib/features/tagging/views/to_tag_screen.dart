@@ -13,7 +13,6 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/scenes.dart';
-import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
@@ -29,6 +28,7 @@ import 'package:taketray/features/tagging/view_models/to_tag_scenes.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_selection.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
+import 'package:taketray/features/tagging/views/clip_tile_row.dart';
 import 'package:taketray/features/tagging/views/day_header_text.dart';
 import 'package:taketray/features/tagging/views/skip_all_dialog.dart';
 import 'package:taketray/features/tagging/views/time_range_text.dart';
@@ -128,6 +128,9 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   /// not the push's future.
   final OpenOnce _player = OpenOnce();
 
+  /// Opens the Skipped page once however fast the taps.
+  final OpenOnce _skippedPage = OpenOnce();
+
   /// A Tag, Skip or Skip all is running (its picker or dialog is open, or its
   /// write is), so a second tap on any of them does nothing.
   bool _busy = false;
@@ -141,6 +144,9 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   /// How each tile that is leaving fades and, when its whole row goes, how the
   /// row folds up: fractions (0 to 1) of [_leave]'s run, by clip id.
   Map<int, _Span> _spans = const {};
+
+  /// The leave run is the reduced-motion one: the tiles fade, no row folds.
+  bool _fadeOnly = false;
 
   /// The run of the tiles leaving after a tag (the prototype's "Scene
   /// tagging": each tile fades and folds up 250 ms, 30 ms after the one
@@ -157,6 +163,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _player.dispose();
+    _skippedPage.dispose();
     _leave.dispose();
     super.dispose();
   }
@@ -183,7 +190,8 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   void _openPlayer(int clipId) =>
       _player.open(() => context.push<void>(Routes.tagFrom(clipId)));
 
-  void _openSkipped() => unawaited(context.push<void>(Routes.skipped));
+  void _openSkipped() =>
+      _skippedPage.open(() => context.push<void>(Routes.skipped));
 
   @override
   Widget build(BuildContext context) {
@@ -311,12 +319,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
                       ),
                     )
                   else if (!ready)
-                    SliverPadding(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: tt.spacing.gutter,
-                      ),
-                      sliver: _skeletons(context),
-                    )
+                    _skeletons(context)
                   else if (waitingCount == 0)
                     SliverToBoxAdapter(
                       child: Column(
@@ -473,6 +476,13 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   ) {
     final l10n = AppLocalizations.of(context);
     final any = selection.selected.isNotEmpty;
+    final skip = any ? () => unawaited(_skipChosen()) : null;
+    final tag = any ? () => unawaited(_tag(selection.selected.toSet())) : null;
+    // The bar draws its title no larger than this; past it the title and two
+    // labelled buttons no longer fit side by side.
+    final compact =
+        MediaQuery.textScalerOf(context).scale(1) >
+        TtMetrics.appBarMaxTextScale;
     return TtAppBar(
       selection: true,
       // The count is read out each time it changes.
@@ -484,22 +494,38 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
         style: TtIconButtonStyle.circle,
         onPressed: ref.read(toTagSelectionProvider.notifier).clear,
       ),
-      actions: [
-        TtButton(
-          label: l10n.toTagSelectionSkip,
-          kind: TtButtonKind.text,
-          onPressed: any ? () => unawaited(_skipChosen()) : null,
-        ),
-        TtButton(
-          label: l10n.toTagSelectionTag,
-          icon: Symbols.sell_rounded,
-          size: TtButtonSize.small,
-          onPressed: any
-              ? () => unawaited(_tag(selection.selected.toSet()))
-              : null,
-        ),
-        SizedBox(width: context.tt.spacing.xs),
-      ],
+      // At large text the count ("12 selected") must stay whole, so Skip
+      // and Tag give up their words for icons and keep their names for a
+      // screen reader (as Skipped's Restore does, D-99).
+      actions: compact
+          ? [
+              TtIconButton(
+                icon: Symbols.redo_rounded,
+                semanticLabel: l10n.toTagSelectionSkip,
+                onPressed: skip,
+              ),
+              TtIconButton(
+                icon: Symbols.sell_rounded,
+                semanticLabel: l10n.toTagSelectionTag,
+                filled: true,
+                onPressed: tag,
+              ),
+              SizedBox(width: context.tt.spacing.xs),
+            ]
+          : [
+              TtButton(
+                label: l10n.toTagSelectionSkip,
+                kind: TtButtonKind.text,
+                onPressed: skip,
+              ),
+              TtButton(
+                label: l10n.toTagSelectionTag,
+                icon: Symbols.sell_rounded,
+                size: TtButtonSize.small,
+                onPressed: tag,
+              ),
+              SizedBox(width: context.tt.spacing.xs),
+            ],
     );
   }
 
@@ -549,18 +575,58 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     );
   }
 
-  /// The skeleton tiles shown while the list loads.
+  /// The loading state, as the prototype's: a summary line, then two scenes
+  /// of a header line over [_skeletonTiles] skeleton tiles.
   Widget _skeletons(BuildContext context) {
     final tt = context.tt;
-    return SliverGrid.builder(
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: _columns,
-        mainAxisSpacing: tt.spacing.gridGap,
-        crossAxisSpacing: tt.spacing.gridGap,
-        childAspectRatio: tt.sizes.clipTileAspect,
+    // proto.css: .sumrow (padding 0 8px 0 16px; min-height 48px).
+    Widget line(double widthFactor, EdgeInsetsGeometry padding) =>
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: padding,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: tt.sizes.touchTarget),
+              child: Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: TtSkeletonLine(widthFactor: widthFactor),
+              ),
+            ),
+          ),
+        );
+    // proto.css: .sec-h (padding 16px 16px 8px; min-height 48px).
+    final header = EdgeInsetsDirectional.fromSTEB(
+      tt.spacing.gutter,
+      tt.spacing.m,
+      tt.spacing.gutter,
+      tt.spacing.xs,
+    );
+    Widget grid() => SliverPadding(
+      padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
+      sliver: SliverGrid.builder(
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: clipGridColumns,
+          mainAxisSpacing: tt.spacing.gridGap,
+          crossAxisSpacing: tt.spacing.gridGap,
+          childAspectRatio: tt.sizes.clipTileAspect,
+        ),
+        itemCount: _skeletonTiles,
+        itemBuilder: (_, _) => const TtClipTileSkeleton(),
       ),
-      itemCount: _skeletonTiles,
-      itemBuilder: (_, _) => const TtClipTileSkeleton(),
+    );
+    return SliverMainAxisGroup(
+      slivers: [
+        line(
+          _skeletonSummaryWidth,
+          EdgeInsetsDirectional.only(
+            start: tt.spacing.gutter,
+            end: tt.spacing.xs,
+          ),
+        ),
+        line(_skeletonSceneWidth, header),
+        grid(),
+        line(_skeletonSecondSceneWidth, header),
+        grid(),
+      ],
     );
   }
 
@@ -596,7 +662,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
         _TilesRow(:final scene, :final from) => () {
           final clips = scene.clips.sublist(
             from,
-            math.min(from + _columns, scene.clips.length),
+            math.min(from + clipGridColumns, scene.clips.length),
           );
           return _folding(
             _foldSpan(clips),
@@ -623,7 +689,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
       if (days.length > 1 && scene.day != lastDay) rows.add(_DayRow(scene));
       lastDay = scene.day;
       rows.add(_SceneRow(scene));
-      for (var from = 0; from < scene.clips.length; from += _columns) {
+      for (var from = 0; from < scene.clips.length; from += clipGridColumns) {
         rows.add(_TilesRow(scene, from));
       }
     }
@@ -657,6 +723,9 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
       final all = ids.isNotEmpty && selection.selected.containsAll(ids);
       action = TtButton(
         label: all ? l10n.toTagSceneUnselect : l10n.toTagSceneSelectAll,
+        semanticLabel: all
+            ? l10n.toTagSceneUnselectSemantics(range, scene.clips.length)
+            : l10n.toTagSceneSelectAllSemantics(range, scene.clips.length),
         kind: TtButtonKind.text,
         size: TtButtonSize.small,
         onPressed: () =>
@@ -692,101 +761,31 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     required bool use24Hour,
     required ToTagSelectionState selection,
   }) {
-    final tt = context.tt;
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        tt.spacing.gutter,
-        tt.spacing.none,
-        tt.spacing.gutter,
-        tt.spacing.gridGap,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: tt.spacing.gridGap,
-        children: [
-          for (var i = 0; i < _columns; i++)
-            Expanded(
-              child: i < clips.length
-                  ? AspectRatio(
-                      aspectRatio: tt.sizes.clipTileAspect,
-                      child: _tile(
-                        context,
-                        clips[i],
-                        localTime: times[clips[i].id],
-                        cache: cache,
-                        locale: locale,
-                        use24Hour: use24Hour,
-                        selection: selection,
-                      ),
-                    )
-                  : const SizedBox.shrink(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tile(
-    BuildContext context,
-    Clip clip, {
-    required ClipLocalTime? localTime,
-    required ThumbnailCache? cache,
-    required String locale,
-    required bool use24Hour,
-    required ToTagSelectionState selection,
-  }) {
     final l10n = AppLocalizations.of(context);
-    // The prototype's `tile.miss`. The verifier takes a missing clip out of
-    // To tag (D-72), so this is a safety net, without the Remove button.
-    if (clip.missing) {
-      return TtMissingClipTile(key: ValueKey(clip.id), label: l10n.clipMissing);
-    }
-    // Where it was shot (D-83); the phone's time until that is known.
-    final time = localTime != null
-        ? wallClockTimeText(
-            localTime.wallClock,
-            locale: locale,
-            use24Hour: use24Hour,
-          )
-        : timeOfDayText(
-            clip.fingerprint.dateTakenUtc,
-            locale: locale,
-            use24Hour: use24Hour,
-          );
-    final length = formatClipDuration(clip.fingerprint.durationMs);
-    // The picture is asked for at the tile's height, the longer side.
-    final tileWidth =
-        (MediaQuery.sizeOf(context).width -
-            2 * context.tt.spacing.gutter -
-            (_columns - 1) * context.tt.spacing.gridGap) /
-        _columns;
     final notifier = ref.read(toTagSelectionProvider.notifier);
-    final tile = TtClipTile(
-      key: ValueKey(clip.id),
-      thumbnail: clipThumbnail(
-        clip: clip,
-        logicalSize: tileWidth / context.tt.sizes.clipTileAspect,
-        cache: cache,
-      ),
-      timeText: time,
-      durationText: length,
-      semanticLabel: l10n.clipTileSemantics(time, length),
-      selected: selection.selecting
-          ? selection.selected.contains(clip.id)
-          : null,
+    return ClipTileRow(
+      clips: clips,
+      times: times,
+      cache: cache,
+      locale: locale,
+      use24Hour: use24Hour,
+      selected: (clip) =>
+          selection.selecting ? selection.selected.contains(clip.id) : null,
       // While choosing, a tap (or a long press) chooses or un-chooses; it
       // does not open the player.
-      onTap: selection.selecting
-          ? () => notifier.toggle(clip.id)
-          : () => _openPlayer(clip.id),
-      onLongPress: () => selection.selecting
+      onTap: (clip) =>
+          selection.selecting ? notifier.toggle(clip.id) : _openPlayer(clip.id),
+      onLongPress: (clip) => selection.selecting
           ? notifier.toggle(clip.id)
           : notifier.start(clip.id),
+      semanticLabel: l10n.clipTileSemantics,
+      decorate: (clip, tile) {
+        final span = _spans[clip.id];
+        return span == null
+            ? tile
+            : FadeTransition(opacity: _fadeOut(span), child: tile);
+      },
     );
-    final span = _spans[clip.id];
-    return span == null
-        ? tile
-        : FadeTransition(opacity: _fadeOut(span), child: tile);
   }
 
   /// 1 down to 0 over [span] of the leave run, on the standard curve.
@@ -806,7 +805,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   /// starting to fade to the last one gone. Null unless every one of them is
   /// leaving (a row that keeps a tile keeps its height).
   _Span? _foldSpan(List<Clip> clips) {
-    if (_spans.isEmpty) return null;
+    if (_spans.isEmpty || _fadeOnly) return null;
     var begin = 1.0;
     var end = 0.0;
     for (final clip in clips) {
@@ -871,9 +870,10 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
 
   /// Plays the tagged tiles out of [scenes] (the prototype's "Scene
   /// tagging"): each of [ids] fades and its row folds up over the leave run,
-  /// 30 ms after the one before it, the whole run squeezed into
-  /// [_leaveRunMax] for a long list; with [reduced] they fade together in
-  /// 150 ms. Returns when the run is over.
+  /// `TtMotion.stagger` (30 ms) after the one before it, the whole run
+  /// squeezed into [_leaveRunMax] for a long list; with [reduced] they only
+  /// fade, together, in 150 ms (no row folds, nothing moves). Returns when
+  /// the run is over.
   Future<void> _tilesLeave(
     List<Scene> scenes,
     Set<int> ids, {
@@ -907,7 +907,10 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     _leave
       ..duration = total
       ..value = 0;
-    setState(() => _spans = spans);
+    setState(() {
+      _spans = spans;
+      _fadeOnly = reduced;
+    });
     try {
       await _leave.forward().orCancel;
     } on TickerCanceled {
@@ -945,11 +948,19 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     }
   }
 
-  /// **Skip all**: asks, then moves every waiting clip to Skipped in one
-  /// transaction and says so, with **Undo**. **Cancel** changes nothing.
+  /// **Skip all**: asks about the clips waiting when it opens, then moves
+  /// those to Skipped in one transaction and says how many moved, with
+  /// **Undo** (one that left meanwhile is not counted). **Cancel** changes
+  /// nothing.
   Future<void> _skipAll() async {
     if (_busy) return;
-    final count = ref.read(toTagControllerProvider).value?.length ?? 0;
+    // The clips the dialog counts are the ones skipped: one that arrives
+    // while it is open waits for the next Skip all.
+    final ids = {
+      for (final clip in ref.read(toTagControllerProvider).value ?? <Clip>[])
+        clip.id,
+    };
+    final count = ids.length;
     if (count == 0) return;
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
@@ -959,7 +970,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     try {
       final confirmed = await showSkipAllDialog(context, count: count);
       if (confirmed != true) return;
-      final record = await clips.skipAllPending();
+      final record = await clips.skipClips(ids);
       if (!record.isEmpty) {
         snacks.showUndoAll(l10n.toTagClipsSkippedSnack(record.before.length), [
           record,
@@ -1002,18 +1013,21 @@ class _SceneRow extends _ListRow {
   const _SceneRow(super.scene);
 }
 
-/// Up to [_columns] tiles of a scene, starting at clip number [from].
+/// Up to [clipGridColumns] tiles of a scene, starting at clip number [from].
 class _TilesRow extends _ListRow {
   const _TilesRow(super.scene, this.from);
 
   final int from;
 }
 
-/// Columns of the clip grid (proto.css: `.grid3`).
-const int _columns = 3;
-
-/// Skeleton tiles shown while the list loads (the prototype shows 6).
+/// Skeleton tiles under each skeleton scene header (the prototype's 6).
 const int _skeletonTiles = 6;
+
+/// The skeleton lines' widths, as shares of a 360 dp phone's row (the
+/// prototype's 140, 110 and 90 px skeleton lines).
+const double _skeletonSummaryWidth = 0.43;
+const double _skeletonSceneWidth = 0.34;
+const double _skeletonSecondSceneWidth = 0.28;
 
 /// A clip's length as the tile shows it: `m:ss`, or `h:mm:ss` from an hour,
 /// rounded to the nearest second (the prototype's `fmt.dur`).

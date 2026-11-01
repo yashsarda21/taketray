@@ -338,6 +338,25 @@ void main() {
       expect(container.read(lastTagsProvider), [42]);
     });
 
+    testApp('the tag snack counts the clips really added', (tester) async {
+      await waiting(tester);
+      final goa = await newReel(tester, 'Goa');
+      await open(tester);
+
+      await tester.tap(tagScene(0));
+      await settleApp(tester);
+      // While the picker is open, the first clip goes into Goa elsewhere.
+      await real(tester, () => clips.addClipsToReel(goa.id, [ids[0]]));
+      await tester.tap(pickRow('Goa'));
+      await tester.pumpAndSettle();
+      await tester.tap(sheetButton('Tag 3 clips'));
+      await settleApp(tester);
+
+      // Two clips got a new place in Goa; the first was there already.
+      expect(find.text('2 clips added to Goa'), findsOneWidget);
+      expect(await clipIdsOf(tester, goa.id), {ids[0], ids[1], ids[2]});
+    });
+
     testApp('cancel changes nothing', (tester) async {
       await waiting(tester);
       await newReel(tester, 'London Food');
@@ -480,6 +499,7 @@ void main() {
       await waiting(tester);
       await newReel(tester, 'London Food');
       await open(tester);
+      final scenesTop = tester.getTopLeft(find.byType(TtSceneHeader).last).dy;
 
       await tagFirstScene(tester);
       expect(fading(tester), [1.0, 1.0, 1.0]);
@@ -491,6 +511,8 @@ void main() {
       expect(mid[0], closeTo(mid[1], 1e-9));
       expect(mid[1], closeTo(mid[2], 1e-9));
       expect(mid[0], inExclusiveRange(0, 1));
+      // A fade only: no row folds, so nothing below moves during the run.
+      expect(tester.getTopLeft(find.byType(TtSceneHeader).last).dy, scenesTop);
 
       await tester.pump(const Duration(milliseconds: 100));
       await tester.pumpAndSettle();
@@ -697,6 +719,32 @@ void main() {
       expect(await skippedIds(tester), isEmpty);
       expect(await pendingIds(tester), ids);
       expect(tiles(tester), hasLength(5));
+    });
+
+    testApp('skip all skips the clips the dialog counted', (tester) async {
+      await waiting(tester);
+      await open(tester);
+
+      await openSkipAll(tester);
+      expect(find.text('Skip all 5 clips?'), findsOneWidget);
+      // A scan adds a clip while the dialog is open.
+      final late = await real(
+        tester,
+        () =>
+            h.media.store([reelVideo(6, shot: DateTime.utc(2026, 10, 28, 16))]),
+      );
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtDialog<bool>),
+          matching: find.text('Skip all'),
+        ),
+      );
+      await settleApp(tester);
+
+      // The five it asked about, and the snack agrees; the new one waits.
+      expect(find.text('5 clips skipped'), findsOneWidget);
+      expect(await skippedIds(tester), ids);
+      expect(await pendingIds(tester), late);
     });
 
     testApp('cancel skip all changes nothing', (tester) async {
