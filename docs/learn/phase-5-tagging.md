@@ -762,4 +762,43 @@ It ends with `All tests passed!`. Now open `app/lib/domain/rules/skipped_days.da
 
 ## 10. On the S24
 
-_Filled in by Task 10._
+**What we built:** the proof on the owner's phone. A new on-device test, `app/patrol_test/tagging_test.dart`, taps through the real app on the Samsung Galaxy S24 Ultra: it puts 40 short test videos into the phone's `Movies/TakeTray Test/` folder, opens the tag player and tags the whole day, then checks that every clip is where it should be. Four smaller tests do the same for Undo, Skip all with the Skipped list, Tag scene, and the Undo that survives a change of tab. While it runs it also stops a clock: how long from a tap on a reel to the next clip playing.
+
+**Why TakeTray needs it:** a widget test runs on your Mac with a fake video player. The tag player's whole job is to keep up with a person who taps once per clip, so only the real phone, with the real video decoder, can say whether "the next clip is already playing" is true. And "wrong video is the worst bug" (Section 7) is a promise about what the phone really shows, so the test also checks that the video on screen was opened from the address of the clip the player says it is showing.
+
+**Key ideas:**
+
+- **A plan, written down as the test goes.** For each tap the test notes which clip was showing and which reels it should end up in. At the end it asks the database what each reel holds and compares the two lists clip by clip. A count alone (23 and 23) would pass if two clips swapped places; the lists cannot.
+
+  ```dart
+  Future<void> tagInto(String kind, Set<int> reels, Future<void> Function() tap) async {
+    final id = player.currentId!;
+    plan[id] = reels;
+    await player.act(kind, tap);
+  }
+  ```
+
+- **Raw taps in the player.** Patrol's own `$().tap()` waits for the screen to "settle" after the tap, up to two seconds. The player never settles (a video plays and the scrub bar moves), so every tap would cost two seconds, and the clock would measure the wait instead of the app. The test taps with `tester.tap(finder)`, which does not wait, and then pumps frames in a loop of 4 ms until the app has moved on.
+- **What "playing" means.** After a tap the test waits for the player to show the next clip, then for a `VideoPlayer` on screen whose controller was opened from that clip's address, is initialised and is playing. The plugin's `isPlaying` flips as soon as `play()` is called, so the test then asks ExoPlayer itself, over the channel, for its position until it is past zero. That second number is the honest "frames are moving".
+- **Counting controllers.** At most two video controllers should be alive (the clip showing and the one ahead, Section 7). The test asks the Riverpod container whether `clipPlayerProvider` exists for each of the session's clips, on every poll, and keeps the highest count.
+- **Clean-up at the end of the body.** The reels and videos are deleted in a `finally` at the end of the test body, the watched folders are put back there too, and never in a tear-down, because by then the app has closed its database (Phase 4 found that the hard way). The reels are found with a one-off `select`, not a stream, for the same reason.
+- **A read that outlives its screen.** The first version of two tests read "how many clips wait" from `toTagControllerProvider`, which only lives while To tag is on screen. Off screen the provider is created, read, and thrown away again before its first value arrives, so the test saw 0 and failed. The test now reads the database directly (`watchInbox(pending).first`); the provider is for screens.
+
+**Where it lives:** `app/patrol_test/tagging_test.dart` (the five tests and the `_Player` that taps and times), `app/patrol_test/support/test_media.dart` (`insertMany`), `docs/dev-setup.md` ("Phase 5 check", "Running `tagging_test.dart`").
+
+**Try it yourself:** with the S24 connected, unlocked, on its home screen:
+
+```
+tool/patrol test -d RZCY80PHWCZ -t patrol_test/tagging_test.dart
+```
+
+It ends with `Successful: 5`. Then make it fail: in `_tagScene` change `expect((await env.reelClipIds(env.a)).length, total);` to `total + 1` and run again. One test fails with `Expected: <5>  Actual: <4>` and the other four pass. Put the line back. Afterwards run the three commands in "After a Patrol run" (`docs/dev-setup.md`) so TakeTray Dev is the normal debug app again.
+
+**What the phone said (2026-11-01):**
+
+- All five tests pass. The 40-clip day takes **47 s from Start tagging to All done** (40 actions), and about a minute with the set-up (40 videos inserted and scanned).
+- A tap on a reel chip to the next clip playing: **519 ms on average (p95 564, worst 598)**. Of that, 400 ms is the deliberate check on the chip (`tagHold`); the write and the move on take about 110 ms. ExoPlayer's position is past zero 560 ms after the tap (worst 686). Pick several's confirm, Same as previous and Skip have no hold: 94 to 133 ms on average.
+- Not one of the 39 clip changes took a second (target: under 1 s). The next clip's player was always already open: from the moment the player showed the next clip to the moment it was playing, 0 ms.
+- At most **two** clip controllers were alive at any sample; the third that the design allows for a moment was never seen (it would have to fall between two polls 4 ms and 20 ms apart).
+
+**Decisions:** D-100 (all of this section), with D-77 (the debug channel), D-96 and D-97 (the session and the player this test drives) and D-91 (Pick several is sticky).
