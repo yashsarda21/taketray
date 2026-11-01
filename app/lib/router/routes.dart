@@ -4,7 +4,7 @@ abstract final class Routes {
   static const toTag = '/to-tag';
   static const settings = '/settings';
 
-  /// The Skipped clips (D-98; the screen is Task 9's), inside the To tag tab
+  /// The Skipped clips (D-98, D-99), inside the To tag tab
   /// so the nav pill stays; Back returns to To tag.
   static const skipped = '/to-tag/skipped';
 

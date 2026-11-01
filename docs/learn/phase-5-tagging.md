@@ -660,7 +660,88 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/to_ta
 
 ## 9. The Skipped list
 
-_Filled in by Task 9._
+**What we built:** the screen behind **Skipped ({n})** on To tag. Until now it was a bar with a back button and nothing under it. Now it shows every skipped clip, grouped by the day it was shot, newest day first ("Today · Fri, Oct 30", "Yesterday · …", "Wed, Oct 28"), each day with "{n} clips". Under the bar is a one-line note: "Skipped clips are still in your gallery. Restore any you want to tag."
+
+- **Tap a clip** and it goes back to To tag; a message says "Restored to To tag" and offers **Undo**.
+- **Select** (or a long press) lets you pick several; the bar shows "{n} selected" and **Restore**, and the message says "3 clips restored to To tag" with **Undo**.
+- With nothing skipped there is an empty state: "No skipped clips".
+- When you open the screen, TakeTray checks that the skipped clips still exist on the phone, as To tag does. A skipped clip whose video was deleted leaves the list.
+
+**Why TakeTray needs it:** **Skip** and **Skip all** (Sections 4 and 8) only feel safe if getting a clip back is as easy as skipping it. Nothing here deletes a video: a skip moves one row in the database, and a restore moves it back, so the clip lands in To tag where it was, in shooting order.
+
+**Key ideas:**
+
+- **A pure rule for the days.** Cutting a list into days is a small rule, so it lives in `domain/` and has its own tests. The day is the date where the clip was shot (Section 5), not where the phone is now. The only subtle line is that days are keyed by *date*:
+
+  ```dart
+  final byDay = <DateTime, List<Clip>>{};
+  for (final clip in newestFirst) {
+    (byDay[_dayOf(clip, times)] ??= []).add(clip);
+  }
+  final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));
+  ```
+
+  Why not just start a new day whenever the date changes while walking the list? Because the list is sorted by the *instant* a clip was shot. A clip shot in India at 07:00 on the 29th and one shot in New York at 21:00 on the 29th are 19 hours apart as instants, with a clip from another day sometimes in between. Walking in order would show "Thu, Oct 29" twice. A map keyed by date cannot.
+
+- **Newest first, also inside a day.** To tag lists a day oldest first, because you tag in the order you shot. Skipped is a pile you dig through for one clip, and the prototype sorts it newest first and then cuts it into days, so each day's clips are newest first too. The controller hands the screen the database's list reversed:
+
+  ```dart
+  return clips
+      .watchInbox(InboxState.skipped)
+      .map((oldestFirst) => oldestFirst.reversed.toList(growable: false));
+  ```
+
+- **One restore for each clip at a time.** A double tap on a tile must not write twice. The screen keeps the set of clips it is restoring right now and leaves those out:
+
+  ```dart
+  final todo = ids.difference(_restoring);
+  if (todo.isEmpty) return;
+  ...
+  _restoring.addAll(todo);
+  try {
+    final record = await controller.restore(todo);
+  ```
+
+  A set (not one yes/no flag) means a second, different tile does not have to wait for the first. The database would also say "nothing moved" for a clip that is not skipped any more, but the guard stops the second call before it is made, which the test checks by counting calls.
+
+- **Look things up before you wait.** `_restore` fetches the messenger for the message (`ReelSnacks.of(context)`), the controller and the selection *before* the `await`. After an `await` the screen may be gone (the user pressed Back), and a lost `context` or a disposed provider throws. Because the message lives on the app's root messenger and holds the undo record itself (Section 4's `InboxUndo`), **Undo still works after you have left the screen**. A test leaves the screen and then taps Undo.
+
+  The message also counts what *really* moved: `record.before.length`. If the clip was restored or tagged somewhere else a moment before, nothing moved and no message is shown, which is better than a "Restored" that is not true.
+
+- **The selection follows the list, and ends with it.** `SkippedSelection` is To tag's selection (Section 8) on this list: a clip that leaves Skipped (restored, or removed by the check) is dropped from the choice. One case is new. If the whole list empties while you are choosing, choosing ends, even with nothing chosen, because there is nothing left to choose:
+
+  ```dart
+  void _prune(Set<int> live) {
+    if (live.isEmpty) {
+      clear();
+      return;
+    }
+  ```
+
+- **A count that stays readable at big text.** The selection bar draws its title at most 1.5 times larger. To tag's bar has two buttons next to the count, and at 2x text it showed "2 sele…". Here there is only **Restore**, so above 1.5x it becomes an icon with the label "Restore" for a screen reader, and "{n} selected" fits whole:
+
+  ```dart
+  final compact =
+      MediaQuery.textScalerOf(context).scale(1) > TtMetrics.appBarMaxTextScale;
+  ```
+
+  Two other ways were tried first and rejected (D-99 point 5): letting the title wrap, which the Scaffold's fixed-height bar clips, and putting the bar in the body, which broke the word in the middle ("sele-cted").
+
+- **A tap that moves a clip says so to a screen reader.** The tile is announced "Skipped clip, 5:14 PM, 0:24. Restores it to To tag", because a tap that silently moves something would be a surprise. While you are choosing it is the plain "Clip, …".
+
+- **Tests that can fail.** The seven screen tests of the plan were first run against the old stand-in screen, with the new screen's tests written: 27 of 29 failed (the two that passed only check that the empty bar fits and that Back leaves). Then five mistakes were made on purpose, one at a time: a tap with no message (`tap restores with undo` caught it), oldest day first (`newest day first` and four tests of the rule caught it), no check on open (`missing skipped clip is verified away` and two controller tests caught it), no double-tap guard (two tests caught it, by counting the repository's restore calls) and the list not reversed (the controller test caught it).
+
+**Where it lives:** `app/lib/features/tagging/views/skipped_screen.dart` (`SkippedScreen`); `app/lib/features/tagging/view_models/skipped_controller.dart` (`SkippedController`, `skippedTimes`, `skippedDays`) and `skipped_selection.dart`; `app/lib/domain/rules/skipped_days.dart` (`groupIntoDays`); the route `Routes.skipped` in `app/lib/router/`. Tests: `app/test/features/tagging/views/skipped_screen_test.dart` (the screen over a real in-memory database), `skipped_golden_test.dart` (macOS images in `goldens/macos/`), `app/test/features/tagging/view_models/skipped_controller_test.dart` and `app/test/domain/rules/skipped_days_test.dart`. Flow: "Skipped" under "To tag, the Shooting mode card and Add earlier videos" in `docs/flow.md`.
+
+**Try it yourself:** break the day order and watch two tests notice. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/domain/rules/skipped_days_test.dart)
+```
+
+It ends with `All tests passed!`. Now open `app/lib/domain/rules/skipped_days.dart`, find `final days = byDay.keys.toList()..sort((a, b) => b.compareTo(a));` and change `b.compareTo(a)` to `a.compareTo(b)`. Run the command again. It fails, with lines like `Expected: ['2026-10-29: [4]', '2026-10-28: [3, 2]', '2026-10-27: [1]']` and `Actual: ['2026-10-27: [1]', '2026-10-28: [3, 2]', '2026-10-29: [4]']`: the oldest day came first. Put the file back with `git checkout -- app/lib/domain/rules/skipped_days.dart` (if you have not committed your own changes to it) and check with `git status`.
+
+**Decisions:** D-99 (all of this section), with D-98 (the stand-in it replaces, the selection it copies, `toTagDayText`), D-94 (`restoreClips` and the `InboxUndo`), D-72 (the check on open), D-85 (messages on the root messenger), D-87 (day headers) and D-83 (the time where a clip was shot) as background.
 
 ## 10. On the S24
 

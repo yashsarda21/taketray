@@ -101,8 +101,8 @@ final Logger _log = Logger('toTag');
 /// Remove button and not selectable; the verifier already takes missing clips
 /// that are only in To tag out of the list (D-72), so none should reach it.
 ///
-/// **Not built here:** "Add videos" and picking clips yourself (Phase 7), and
-/// the Skipped screen's list (Task 9; the button opens its stand-in).
+/// **Not built here:** "Add videos" and picking clips yourself (Phase 7).
+/// **Skipped ({n})** opens the Skipped screen (`SkippedScreen`, D-99).
 ///
 /// **Open camera** (the strip and "All caught up") tells the user when the
 /// camera cannot open (`openCameraOrSay`, D-86), and the screen watches

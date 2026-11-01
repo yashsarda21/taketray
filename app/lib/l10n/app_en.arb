@@ -1630,6 +1630,51 @@
   "@skippedTitle": {
     "description": "Title of the screen that lists the skipped clips."
   },
+  "skippedSelect": "Select",
+  "@skippedSelect": {
+    "description": "Button on the Skipped screen's app bar that starts choosing clips."
+  },
+  "skippedInfo": "Skipped clips are still in your gallery. Restore any you want to tag.",
+  "@skippedInfo": {
+    "description": "The note above the list on the Skipped screen."
+  },
+  "skippedRestore": "Restore",
+  "@skippedRestore": {
+    "description": "Button on the Skipped screen's selection bar that moves the chosen clips back to To tag."
+  },
+  "skippedRestoredOne": "Restored to To tag",
+  "@skippedRestoredOne": {
+    "description": "Snack after one skipped clip is tapped and moved back to To tag, with an Undo button."
+  },
+  "skippedRestoredMany": "{count, plural, one{1 clip restored to To tag} other{{count} clips restored to To tag}}",
+  "@skippedRestoredMany": {
+    "description": "Snack after the chosen skipped clips are moved back to To tag, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "skippedEmptyTitle": "No skipped clips",
+  "@skippedEmptyTitle": {
+    "description": "Title of the Skipped screen when nothing is skipped."
+  },
+  "skippedEmptyBody": "Clips you skip in To tag show up here, in case you change your mind.",
+  "@skippedEmptyBody": {
+    "description": "Line under the title of the Skipped screen when nothing is skipped."
+  },
+  "skippedTileSemantics": "Skipped clip, {time}, {duration}. Restores it to To tag",
+  "@skippedTileSemantics": {
+    "description": "What a screen reader says for a tile on the Skipped screen when a tap restores it.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "pickerTitleTag": "{count, plural, one{Tag 1 clip} other{Tag {count} clips}}",
   "@pickerTitleTag": {
     "description": "Title of the reel picker when it tags waiting clips.",
