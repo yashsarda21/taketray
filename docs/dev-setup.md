@@ -85,7 +85,7 @@ tool/adb install -r app/build/app/outputs/flutter-apk/app-debug.apk
 tool/adb shell pm clear app.taketray.dev
 ```
 
-Then open TakeTray Dev and allow video access again. Do this before the Phase 3 check below, and before any other hand check in TakeTray Dev.
+Do these after **every** Patrol run, also when you re-run straight away (a second run on top of the first run's leftovers starts from the wrong state). Then open TakeTray Dev and allow video access again. Do this before the Phase 3 check below, and before any other hand check in TakeTray Dev.
 - **The reinstall:** found by the owner, 2026-10-29.
 - **The `pm clear`:** found by the owner, 2026-10-31. The tests make TakeTray Dev watch only `Movies/TakeTray Test`, so that no query ever names a folder with your videos, and that setting survives `install -r`. The tests now put the camera folder back at the end, but a run that fails halfway cannot. Without the clear, To tag and "Add earlier videos" find nothing in TakeTray Dev.
 
@@ -165,7 +165,7 @@ Phase 5 is tagging: To tag in scenes, the tag player (one clip at a time, with t
 
 1. **To tag in scenes.** Open To tag. Under the title, "{n} clips · {s} scenes · {time}". Each scene has a header with its times ("1:05–1:20 pm"), "{n} clips · {m:ss}" and a **Tag scene** button. Clips shot more than 10 minutes apart are in separate scenes; a new day starts a new scene and has its own day header.
 2. **Start tagging.** Tap **Start tagging** (the floating button), or tap a clip. The tag player opens on black: "1 of {N}" with "Scene 1 of {S} · {times}" at the top, the video playing (muted) and looping, the reel panel at the bottom. Tap the video: it pauses; tap again: it plays. Tap the speaker: it is heard. Swipe sideways, or use the ‹ › arrows: the previous and next clip.
-3. **Tag with one tap.** Tap a reel chip. The chip shows a check for a moment, "Added to {reel}" appears with **Undo**, and the next clip is already playing (it should start straight away, under a second). Tap **Undo**: the player goes **back to that clip**, and it is in To tag again.
+3. **Tag with one tap.** Tap a reel chip. The chip shows a check for a moment, "Added to {reel}" appears with **Undo**, and the next clip is already playing (it should start straight away, under a second). The Patrol test only proves this for its tiny 160 x 90 clips, so this step, on your own 1080p or 4K clips, is the real proof of how it feels: note it if a clip is slow to start or shows a black frame. Tap **Undo**: the player goes **back to that clip**, and it is in To tag again.
 4. **Pick several, Same as previous, Skip.** Tap **Pick several**: the panel says "Pick reels for this clip". Tap two reels, then "Add to 2 reels & next". The next clip is still picking (it stays on until you tap **Cancel**). Tap **Cancel**. Tap **Same as previous**: the clip goes into the same two reels (their names are under the button). Tap **Skip**: "Skipped" with **Undo**. Long press a chip: it turns on Pick several.
 5. **New reel.** In the panel tap **New reel**, type a name, **Create and add**: the clip goes into the new reel.
 6. **All done.** Tag or skip the last clip: "All done!", "{n} clips sorted. Nice work.", a row for each reel with "+{n}" and a "Skipped" row. **See your reels** opens Reels (the clips are in them); **Back to To tag** goes back.
@@ -183,4 +183,4 @@ tool/patrol test -d RZCY80PHWCZ -t patrol_test/tagging_test.dart
 
 The phone must be unlocked, on the home screen, with USB debugging allowed, and it must stay connected for the whole run (about 3 minutes; a cable that drops mid-run makes the next run find no tests). The test sets TakeTray Dev to watch only `Movies/TakeTray Test/` **before** it asks for the photo permission (it taps **Allow full access** and "Allow all" as you do), turns Shooting mode on, and puts the test videos in through the debug channel (D-77). It creates two reels, taps through the flows, then deletes the reels and the videos and puts the watched folders back at the end of each test body. It never reads another folder. The limited-access test stays skipped.
 
-**After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above.
+**After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above. Do them after **every** run, also when you start another run straight away.
