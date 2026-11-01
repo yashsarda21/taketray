@@ -3,12 +3,12 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
-import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/shots.dart';
 import '../../support/statement_log.dart';
 
 // Undo of Skip, Skip all and Restore (D-94): each row goes back to its state
@@ -30,21 +30,8 @@ late ClipsRepository clips;
 late ReelsRepository reels;
 
 /// A detected clip with MediaStore number [number].
-NewClip shot(int number) => NewClip.mediaStore(
-  mediaStoreId: number,
-  volumeName: 'external_primary',
-  fingerprint: ClipFingerprint(
-    sizeBytes: 1000 + number,
-    durationMs: 4000 + number,
-    dateTakenUtc: _t0.subtract(Duration(minutes: number)),
-    displayName: 'VID_$number.mp4',
-  ),
-  width: 1080,
-  height: 1920,
-  mimeType: 'video/mp4',
-  timeZoneId: 'Asia/Kolkata',
-  generationAdded: 40 + number,
-);
+NewClip shot(int number) =>
+    mediaStoreShot(number, at: _t0.subtract(Duration(minutes: number)));
 
 void main() {
   setUp(() {
@@ -185,7 +172,10 @@ void main() {
     await clips.undoAll([record]);
     expect(await dump(), skippedAgain);
 
-    // A double tap on Undo: both calls queue, the second changes nothing.
+    // A double tap on Undo: both calls run without an error and the clip is
+    // back in To tag once. (That the second call is skipped, not just
+    // harmless, is what the first half shows: a rerun of `record` changed
+    // nothing even though its row was there to change.)
     await Future.wait([clips.undo(again), clips.undo(again)]);
     expect(await inbox(), {
       a: (InboxState.pending, _t0),

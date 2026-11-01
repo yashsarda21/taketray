@@ -242,6 +242,20 @@ void main() {
       expect((top + bottom) / 2, closeTo(390, 40));
     });
 
+    testWidgets('the count is bold with tabular figures, the name is not', (
+      tester,
+    ) async {
+      // proto.css: .done-scr .sum b (a <b>: bold, tabular-nums).
+      await tester.pumpWidget(ttTestApp(_done()));
+      await tester.pumpAndSettle();
+      final count = tester.widget<Text>(find.text('+5')).style!;
+      final name = tester.widget<Text>(find.text('Lisbon trip')).style!;
+      expect(count.fontWeight, FontWeight.w700);
+      expect(count.fontVariations, contains(const FontVariation('wght', 700)));
+      expect(count.fontFeatures, contains(const FontFeature.tabularFigures()));
+      expect(name.fontWeight, isNot(FontWeight.w700));
+    });
+
     testWidgets('a long reel name wraps and the count keeps its place', (
       tester,
     ) async {

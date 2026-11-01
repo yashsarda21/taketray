@@ -124,7 +124,7 @@ class TtTagPanel extends StatelessWidget {
       TtMetrics.tagPanelMaxHeight * math.max(1, scale),
       TtMetrics.tagPanelMaxHeightLarge,
     );
-    final folded = toggle?.expanded ?? true;
+    final showFolded = toggle?.expanded ?? true;
     final message = emptyText;
     final rows = <Widget>[
       if (message != null)
@@ -146,7 +146,8 @@ class TtTagPanel extends StatelessWidget {
         ),
       ..._gridRows(chips, large: large, gap: tt.spacing.xs),
       ?toggle,
-      if (folded) ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
+      if (showFolded)
+        ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
     ];
 
     return Semantics(

@@ -37,6 +37,24 @@ void main() {
       expect(range(wall(13, 5), wall(13, 6)), '1:05–1:06 PM');
     });
 
+    test('an end before the start is the start alone', () {
+      // Mixed zones: the last clip's wall clock can read earlier than the
+      // first's (a London clip after an Indian one).
+      expect(range(wall(13, 20), wall(13, 5)), '1:20 PM');
+      expect(range(wall(13, 20), wall(9, 0), use24Hour: true), '13:20');
+    });
+
+    test('the same locale and setting give the same text again', () {
+      // The formats are made once per locale and clock setting.
+      expect(range(wall(13, 5), wall(13, 20)), '1:05–1:20 PM');
+      expect(range(wall(13, 5), wall(13, 20), use24Hour: true), '13:05–13:20');
+      expect(range(wall(13, 5), wall(13, 20)), '1:05–1:20 PM');
+      expect(
+        range(wall(13, 5), wall(13, 20), locale: 'ja'),
+        isNot('1:05–1:20 PM'),
+      );
+    });
+
     test('24-hour range', () {
       expect(range(wall(13, 5), wall(13, 20), use24Hour: true), '13:05–13:20');
       expect(range(wall(9, 5), wall(13, 20), use24Hour: true), '09:05–13:20');

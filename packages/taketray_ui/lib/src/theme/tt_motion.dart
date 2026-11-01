@@ -22,6 +22,7 @@ class TtMotion {
     required this.medium4,
     required this.long1,
     required this.long2,
+    required this.stagger,
     this.standard = TtMotionTokens.standard,
     this.standardDecelerate = TtMotionTokens.standardDecelerate,
     this.standardAccelerate = TtMotionTokens.standardAccelerate,
@@ -41,6 +42,8 @@ class TtMotion {
     medium4: TtMotionTokens.medium4,
     long1: TtMotionTokens.long1,
     long2: TtMotionTokens.long2,
+    // The prototype's Motion note ("Scene tagging").
+    stagger: Duration(milliseconds: 30),
   );
 
   /// "Remove animations": every duration is zero; the curves are unchanged.
@@ -55,6 +58,7 @@ class TtMotion {
     medium4: Duration.zero,
     long1: Duration.zero,
     long2: Duration.zero,
+    stagger: Duration.zero,
   );
 
   /// 50 ms.
@@ -87,6 +91,10 @@ class TtMotion {
   /// 500 ms.
   final Duration long2;
 
+  /// The delay between one item of a staggered run and the next (30 ms),
+  /// such as tiles leaving a list one after another.
+  final Duration stagger;
+
   /// Standard easing: begins and ends on screen.
   final Curve standard;
 
@@ -118,6 +126,7 @@ class TtMotion {
       other.medium4 == medium4 &&
       other.long1 == long1 &&
       other.long2 == long2 &&
+      other.stagger == stagger &&
       other.standard == standard &&
       other.standardDecelerate == standardDecelerate &&
       other.standardAccelerate == standardAccelerate &&
@@ -136,6 +145,7 @@ class TtMotion {
     medium4,
     long1,
     long2,
+    stagger,
     standard,
     standardDecelerate,
     standardAccelerate,

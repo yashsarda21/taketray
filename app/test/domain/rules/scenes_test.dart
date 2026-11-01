@@ -107,6 +107,50 @@ void main() {
       ]);
     });
 
+    test('a 0 ms clip ends where it starts', () {
+      // Nothing to add for its length: the gap is start to start.
+      final a = clip(1, t0, seconds: 0);
+      final near = clip(2, t0.add(const Duration(minutes: 9, seconds: 59)));
+      final far = clip(3, t0.add(const Duration(minutes: 10)));
+
+      expect(ids(groupIntoScenes([a, near], utcTimes([a, near]))), [
+        [1, 2],
+      ]);
+      expect(ids(groupIntoScenes([a, far], utcTimes([a, far]))), [
+        [1],
+        [3],
+      ]);
+    });
+
+    test('a 2-hour clip keeps a clip shot an hour after it started', () {
+      // 1 runs 10:00 to 12:00; 2 starts at 11:00, inside it.
+      final a = clip(1, t0, seconds: 2 * 60 * 60);
+      final b = clip(2, t0.add(const Duration(hours: 1)));
+
+      expect(ids(groupIntoScenes([a, b], utcTimes([a, b]))), [
+        [1, 2],
+      ]);
+    });
+
+    test('the gap is from the previous clip, not the longest one', () {
+      // 1 runs 10:00 to 11:00. 2 is a 5 s clip at 10:05, inside it. 3 starts
+      // 15 min after 2 ended (10:20:05), still inside 1: measured from 2,
+      // the clip just before, it starts a new scene.
+      final a = clip(1, t0, seconds: 60 * 60);
+      final b = clip(2, t0.add(const Duration(minutes: 5)));
+      final c = clip(
+        3,
+        t0
+            .add(const Duration(minutes: 5, seconds: 5))
+            .add(const Duration(minutes: 15)),
+      );
+
+      expect(ids(groupIntoScenes([a, b, c], utcTimes([a, b, c]))), [
+        [1, 2],
+        [3],
+      ]);
+    });
+
     test('midnight splits a scene', () {
       // 23:55 and 00:02 are 7 minutes apart: the gap alone would join them.
       final a = clip(1, DateTime.utc(2026, 10, 28, 23, 55));

@@ -891,7 +891,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
         ? Duration.zero
         : Duration(
             microseconds: math.min(
-              _leaveStagger.inMicroseconds,
+              motion.stagger.inMicroseconds,
               _leaveRunMax.inMicroseconds ~/ (leaving.length - 1),
             ),
           );
@@ -977,11 +977,6 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
 
 /// A leaving tile's part of the run, as fractions (0 to 1) of its duration.
 typedef _Span = ({double begin, double end});
-
-/// How long after the one before it each tagged tile starts to leave (the
-/// prototype's 30 ms stagger).
-// style-check: allow the prototype's stagger step (Motion, Scene tagging)
-const Duration _leaveStagger = Duration(milliseconds: 30);
 
 /// The longest the stagger of a long list is spread over: 300 clips would
 /// otherwise take nine seconds to leave.

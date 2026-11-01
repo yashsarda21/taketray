@@ -48,6 +48,10 @@ class TagQueue {
   /// is none, the first pending clip from the start of the session (a clip
   /// the user went back past); and null when nothing is pending, which is
   /// the done screen.
+  ///
+  /// [pending] must already leave out the clip just tagged or skipped:
+  /// otherwise, as the only pending clip, it would be picked again by the
+  /// wrap to the start.
   int? afterAction(int from, Set<int> pending) =>
       next(from, pending) ?? next(-1, pending);
 }

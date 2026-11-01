@@ -32,7 +32,7 @@ Widget _newReel({bool fullWidth = false, VoidCallback? onTap}) => TtNewReelChip(
   onTap: onTap ?? () {},
 );
 
-Widget _toggle({
+TtOtherReelsToggle _toggle({
   bool expanded = false,
   String? label,
   VoidCallback? onToggle,
@@ -53,7 +53,7 @@ Widget _panel({
   bool newReel = false,
   bool newReelFull = false,
   String? emptyText,
-  Widget? toggle,
+  TtOtherReelsToggle? toggle,
   int folded = 0,
 }) => Align(
   alignment: Alignment.bottomLeft,
@@ -67,7 +67,7 @@ Widget _panel({
           title: title,
           semanticLabel: 'Reels',
           emptyText: emptyText,
-          toggle: toggle is TtOtherReelsToggle ? toggle : null,
+          toggle: toggle,
           foldedChips: [
             for (var i = 0; i < folded; i++)
               _chipFor('Other reel $i', onTap: () => onChip?.call(100 + i)),

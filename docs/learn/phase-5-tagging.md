@@ -168,9 +168,9 @@ It ends with `All tests passed!`. Now open `design/tools/build_tokens.py`, chang
 - **A folded group is shown only when its toggle says so.** The toggle is a widget the panel can read, and the panel decides what to draw:
 
   ```dart
-  final folded = toggle?.expanded ?? true;
+  final showFolded = toggle?.expanded ?? true;
   ...
-  if (folded) ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
+  if (showFolded) ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
   ```
 
   So the app cannot pass "expanded: false" to the toggle and still draw the chips, and what a screen reader hears ("collapsed") always matches the screen. With no toggle the folded chips are simply shown.

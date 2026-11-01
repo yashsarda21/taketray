@@ -14,6 +14,7 @@ import 'package:taketray/domain/models/vn_copy.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/shots.dart';
 import '../../support/statement_log.dart';
 import '../../support/test_database.dart';
 
@@ -36,21 +37,8 @@ late ClipsRepository clips;
 late ReelsRepository reels;
 
 /// A detected clip with MediaStore number [number], every optional field set.
-NewClip shot(int number, {DateTime? at}) => NewClip.mediaStore(
-  mediaStoreId: number,
-  volumeName: 'external_primary',
-  fingerprint: ClipFingerprint(
-    sizeBytes: 1000 + number,
-    durationMs: 4000 + number,
-    dateTakenUtc: at ?? _t0.subtract(Duration(hours: number)),
-    displayName: 'VID_$number.mp4',
-  ),
-  width: 1080,
-  height: 1920,
-  mimeType: 'video/mp4',
-  timeZoneId: 'Asia/Kolkata',
-  generationAdded: 40 + number,
-);
+NewClip shot(int number, {DateTime? at}) =>
+    mediaStoreShot(number, at: at ?? _t0.subtract(Duration(hours: number)));
 
 NewClip picked(String uri) => NewClip.picker(
   pickerUri: uri,

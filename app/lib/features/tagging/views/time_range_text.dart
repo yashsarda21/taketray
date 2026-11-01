@@ -1,5 +1,4 @@
 import 'package:intl/intl.dart';
-import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/shooting_mode/views/waiting_duration_text.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 
@@ -26,34 +25,58 @@ String timeRangeText(
   required String locale,
   required bool use24Hour,
 }) {
-  String full(DateTime t) =>
-      wallClockTimeText(t, locale: locale, use24Hour: use24Hour);
+  final formats = _RangeFormats.of(locale, use24Hour: use24Hour);
 
   // `inMinutes` truncates: 59.9 seconds is 0 minutes.
-  if (end.difference(start).inMinutes < 1) return full(start);
+  if (end.difference(start).inMinutes < 1) return formats.full.format(start);
 
-  if (!use24Hour && _isPm(start) == _isPm(end)) {
-    final withoutPeriod = _jmWithoutTrailingPeriod(locale);
-    if (withoutPeriod != null) {
-      return '${DateFormat(withoutPeriod, locale).format(start)}'
-          '–${full(end)}';
-    }
+  final withoutPeriod = formats.withoutPeriod;
+  if (withoutPeriod != null && _isPm(start) == _isPm(end)) {
+    return '${withoutPeriod.format(start)}–${formats.full.format(end)}';
   }
-  return '${full(start)}–${full(end)}';
+  return '${formats.full.format(start)}–${formats.full.format(end)}';
 }
 
 bool _isPm(DateTime wallClock) => wallClock.hour >= 12;
 
-/// The locale's 12-hour time pattern without its period, or null when the
+/// The period at the end of a 12-hour pattern, with the spaces around it.
+final RegExp _trailingPeriod = RegExp(r'[\s  ]*a[\s  ]*$');
+
+/// The formats of one locale and clock setting, made once: To tag writes a
+/// range per scene header on every build.
+class _RangeFormats {
+  _RangeFormats._(String locale, {required bool use24Hour})
+    // The same formats as `wallClockTimeText` (D-76).
+    : full = use24Hour ? DateFormat.Hm(locale) : DateFormat.jm(locale),
+      withoutPeriod = use24Hour ? null : _jmWithoutTrailingPeriod(locale);
+
+  factory _RangeFormats.of(String locale, {required bool use24Hour}) =>
+      _cache.putIfAbsent((
+        locale,
+        use24Hour,
+      ), () => _RangeFormats._(locale, use24Hour: use24Hour));
+
+  static final Map<(String, bool), _RangeFormats> _cache = {};
+
+  /// One time in full: "1:05 PM", or "13:05".
+  final DateFormat full;
+
+  /// The 12-hour time without its period, for the first time of a range
+  /// that shares one; null in 24-hour time or when the locale does not put
+  /// the period last.
+  final DateFormat? withoutPeriod;
+}
+
+/// The locale's 12-hour time format without its period, or null when the
 /// period is not at the end of the pattern (or there is none), where it
 /// cannot be written once after the second time.
-String? _jmWithoutTrailingPeriod(String locale) {
+DateFormat? _jmWithoutTrailingPeriod(String locale) {
   final pattern = DateFormat.jm(locale).pattern;
   if (pattern == null) return null;
-  final match = RegExp(r'[\s  ]*a[\s  ]*$').firstMatch(pattern);
+  final match = _trailingPeriod.firstMatch(pattern);
   if (match == null) return null;
   final rest = pattern.substring(0, match.start);
-  return rest.contains('a') || rest.isEmpty ? null : rest;
+  return rest.contains('a') || rest.isEmpty ? null : DateFormat(rest, locale);
 }
 
 /// A length for the To tag summary ("{n} clips · {s} scenes · {mins}") in the

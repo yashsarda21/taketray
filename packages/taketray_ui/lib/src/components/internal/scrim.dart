@@ -25,22 +25,28 @@ class Scrim extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final clear = color.withValues(alpha: 0);
+    // A plain fade is always written top to bottom, so a bottom scrim
+    // rasterises exactly as a hand-written clear-to-colour gradient (the
+    // reel card's goldens were drawn that way). A fade with a solid part is
+    // written from its edge, where the stops read as in the CSS.
     final edge = top ? Alignment.topCenter : Alignment.bottomCenter;
     final inner = top ? Alignment.bottomCenter : Alignment.topCenter;
+    final gradient = solid == 0
+        ? LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: top ? [color, clear] : [clear, color],
+          )
+        : LinearGradient(
+            begin: edge,
+            end: inner,
+            colors: [color, color, clear],
+            stops: [0, solid, 1],
+          );
     return ExcludeSemantics(
       child: IgnorePointer(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: edge,
-              end: inner,
-              colors: solid == 0
-                  ? [color, color.withValues(alpha: 0)]
-                  : [color, color, color.withValues(alpha: 0)],
-              stops: solid == 0 ? null : [0, solid, 1],
-            ),
-          ),
-        ),
+        child: DecoratedBox(decoration: BoxDecoration(gradient: gradient)),
       ),
     );
   }

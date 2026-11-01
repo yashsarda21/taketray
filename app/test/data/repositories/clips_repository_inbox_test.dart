@@ -1,20 +1,19 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart'
-    show ApplyInterceptor, QueryExecutor, QueryInterceptor;
-import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show QueryExecutor;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
-import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/shots.dart';
+import '../../support/statement_log.dart';
 
 // Skip, Skip all and Restore (D-94): each moves `inbox` rows between
 // `pending` and `skipped` in one transaction, keeps their `addedAt`, and
@@ -27,12 +26,10 @@ const Duration _minute = Duration(minutes: 1);
 /// `undo_test.dart`): stored times are still `_t0` plus whole minutes.
 const Duration _subMillisecond = Duration(microseconds: 123);
 
-/// Records every write, and runs [armed] once, right after the next `SELECT`
-/// from `inbox` and before its rows go back to the caller: the moment
-/// between a read and the write that follows it.
-class _InboxHook extends QueryInterceptor {
-  final List<String> writes = [];
-
+/// Records every statement (as [StatementLog] does), and runs [armed] once,
+/// right after the next `SELECT` from `inbox` and before its rows go back to
+/// the caller: the moment between a read and the write that follows it.
+class _InboxHook extends StatementLog {
   /// Runs once, then clears itself.
   Future<void> Function()? armed;
 
@@ -42,43 +39,13 @@ class _InboxHook extends QueryInterceptor {
     String statement,
     List<Object?> args,
   ) async {
-    final rows = await executor.runSelect(statement, args);
+    final rows = await super.runSelect(executor, statement, args);
     final hook = armed;
     if (hook != null && statement.contains('FROM "inbox"')) {
       armed = null;
       await hook();
     }
     return rows;
-  }
-
-  @override
-  Future<int> runInsert(
-    QueryExecutor executor,
-    String statement,
-    List<Object?> args,
-  ) {
-    writes.add(statement);
-    return executor.runInsert(statement, args);
-  }
-
-  @override
-  Future<int> runUpdate(
-    QueryExecutor executor,
-    String statement,
-    List<Object?> args,
-  ) {
-    writes.add(statement);
-    return executor.runUpdate(statement, args);
-  }
-
-  @override
-  Future<int> runDelete(
-    QueryExecutor executor,
-    String statement,
-    List<Object?> args,
-  ) {
-    writes.add(statement);
-    return executor.runDelete(statement, args);
   }
 }
 
@@ -89,21 +56,8 @@ late ClipsRepository clips;
 late ReelsRepository reels;
 
 /// A detected clip with MediaStore number [number].
-NewClip shot(int number) => NewClip.mediaStore(
-  mediaStoreId: number,
-  volumeName: 'external_primary',
-  fingerprint: ClipFingerprint(
-    sizeBytes: 1000 + number,
-    durationMs: 4000 + number,
-    dateTakenUtc: _t0.subtract(Duration(minutes: number)),
-    displayName: 'VID_$number.mp4',
-  ),
-  width: 1080,
-  height: 1920,
-  mimeType: 'video/mp4',
-  timeZoneId: 'Asia/Kolkata',
-  generationAdded: 40 + number,
-);
+NewClip shot(int number) =>
+    mediaStoreShot(number, at: _t0.subtract(Duration(minutes: number)));
 
 InboxEntry pendingAt(int clipId, DateTime at) =>
     InboxEntry(clipId: clipId, state: InboxState.pending, addedAt: at);
@@ -114,7 +68,7 @@ InboxEntry skippedAt(int clipId, DateTime at) =>
 void main() {
   setUp(() {
     _hook = _InboxHook();
-    db = AppDatabase(NativeDatabase.memory().interceptWith(_hook));
+    db = loggedTestDatabase(_hook);
     addTearDown(db.close);
     clock = FixedClock(_t0.add(_subMillisecond));
     clips = ClipsRepository(db, clock);

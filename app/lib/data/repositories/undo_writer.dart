@@ -190,9 +190,11 @@ class UndoWriter {
   /// Each row goes back to its state and `addedAt` before the skip or
   /// restore, only while it is still exactly as the action left it: in
   /// `after`, with the same `addedAt` (the action moved only the state). A
-  /// clip tagged since has no row; one restored, skipped or put back in To tag
-  /// since is in another state or has a new `addedAt`: each keeps what
-  /// happened to it (D-94).
+  /// clip tagged since has no row; one restored since (for a skip record),
+  /// skipped since (for a restore record) or put back in To tag since is in
+  /// another state or has a new `addedAt`: each keeps what happened to it. A
+  /// row that went back and forth to exactly `after` again still matches;
+  /// only the latest action's snack offers Undo, so that is accepted (D-94).
   Future<void> _undoInbox(InboxUndo record) async {
     if (record.isEmpty) return;
     var back = 0;
@@ -204,12 +206,8 @@ class UndoWriter {
                     i.state.equalsValue(record.after) &
                     i.addedAt.equalsValue(entry.addedAt),
               ))
-              .write(
-                InboxCompanion(
-                  state: Value(entry.state),
-                  addedAt: Value(entry.addedAt),
-                ),
-              );
+              // The WHERE has matched `addedAt` already; only the state moves.
+              .write(InboxCompanion(state: Value(entry.state)));
     }
     _log.info(
       'Undid a move to ${record.after.name}: $back of '

@@ -3,6 +3,7 @@ import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/video_surface.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
+import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// One line of the summary on the "All done!" screen: a reel and how many
@@ -243,7 +244,13 @@ class _Summary extends StatelessWidget {
                         spacing: TtMetrics.tagDoneRowGap,
                         children: [
                           Expanded(child: Text(rows[i].name, style: text)),
-                          Text(rows[i].count, style: tt.text.numeric(text)),
+                          // proto.css: .done-scr .sum b (bold, tabular).
+                          Text(
+                            rows[i].count,
+                            style: tt.text
+                                .numeric(text)
+                                .merge(TtTextStyles.weight(FontWeight.w700)),
+                          ),
                         ],
                       ),
                     ),

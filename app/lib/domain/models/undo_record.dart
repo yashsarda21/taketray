@@ -196,8 +196,13 @@ final class AddUndo extends UndoRecord {
 /// `addedAt`), and [after] the state the action gave them all. The action
 /// moves only the state, so a row it left is in [after] with the same
 /// `addedAt`. Undo puts back only the rows that are still exactly that: a
-/// clip tagged, restored, skipped or put back in To tag since keeps what
-/// happened to it, and a clip that arrived later is not in the record.
+/// clip tagged since, restored since (after a skip), skipped since (after a
+/// restore) or put back in To tag since keeps what happened to it, and a
+/// clip that arrived later is not in the record. A row that went back and
+/// forth to exactly [after] again (skipped, restored, skipped) matches, and
+/// an old record would still undo it; that is accepted because each action's
+/// Undo snack replaces the one before, so only the latest action offers Undo
+/// (D-94).
 final class InboxUndo extends UndoRecord {
   InboxUndo({required List<InboxEntry> before, required this.after})
     : before = List.unmodifiable(before);
