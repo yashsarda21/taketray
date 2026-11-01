@@ -26,6 +26,13 @@ Stream<DateTime> _noTick(Ref ref) => const Stream.empty();
 /// What the To tag route shows in a test that only has one screen.
 const toTagRouteMarker = 'the To tag route';
 
+/// What the tag player's route shows in a test that only has one screen:
+/// the clip id it was opened on ("null" for none).
+String tagPlayerRouteMarker(Object? from) => 'the tag player from $from';
+
+/// What the Skipped route shows in a test that only has one screen.
+const skippedRouteMarker = 'the Skipped route';
+
 /// What the Reels route shows in a test that only has one screen.
 const reelsRouteMarker = 'the Reels route';
 
@@ -40,7 +47,9 @@ String clipRouteMarker(Object reelId, Object clipId) =>
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
 /// [toTagRouteMarker], a `/reels` route that shows [reelsRouteMarker] and a
 /// `/reels/<id>` route that shows [reelRouteMarker], and a
-/// `/reels/<id>/clip/<clipId>` route that shows [clipRouteMarker])
+/// `/reels/<id>/clip/<clipId>` route that shows [clipRouteMarker], and a
+/// `/to-tag/play` route that shows [tagPlayerRouteMarker] and a
+/// `/to-tag/skipped` route that shows [skippedRouteMarker])
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -107,6 +116,23 @@ Future<ProviderContainer> pumpScreen(
         path: Routes.toTag,
         builder: (context, state) =>
             const Scaffold(body: Text(toTagRouteMarker)),
+        routes: [
+          GoRoute(
+            path: 'play',
+            builder: (context, state) => Scaffold(
+              body: Text(
+                tagPlayerRouteMarker(
+                  state.uri.queryParameters[Routes.tagFromParameter],
+                ),
+              ),
+            ),
+          ),
+          GoRoute(
+            path: 'skipped',
+            builder: (context, state) =>
+                const Scaffold(body: Text(skippedRouteMarker)),
+          ),
+        ],
       ),
     ],
   );

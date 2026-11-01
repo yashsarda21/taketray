@@ -281,6 +281,29 @@ void main() {
       expect(await clips.watchPendingCount().first, count);
     });
 
+    test('watchSkippedCount follows skip, restore and skip all', () async {
+      final [a, b, c] = await clips.saveDetected([shot(1), shot(2), shot(3)]);
+      final counts = <int>[];
+      final sub = clips.watchSkippedCount().listen(counts.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+      expect(counts.last, 0);
+
+      await clips.skipClips([a]);
+      await pumpEventQueue();
+      expect(counts.last, 1);
+
+      await clips.skipAllPending();
+      await pumpEventQueue();
+      expect(counts.last, 3);
+
+      await clips.restoreClips([b, c]);
+      await pumpEventQueue();
+      expect(counts.last, 1);
+      // Pending clips are not counted, and the pending count is its own.
+      expect(await clips.watchPendingCount().first, 2);
+    });
+
     test('skip, skip all and restore log ids and counts only', () async {
       final [a, b] = await clips.saveDetected([shot(1), shot(2)]);
       final lines = <String>[];

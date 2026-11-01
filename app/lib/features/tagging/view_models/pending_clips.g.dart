@@ -66,6 +66,47 @@ final class PendingClipsProvider
 
 String _$pendingClipsHash() => r'2ad7ae7aa6f19a44eb7baa14a3059bc24836c8a0';
 
+/// How many clips are in Skipped, for To tag's **Skipped ({n})** button
+/// (D-98). Only reads, like [pendingClips].
+
+@ProviderFor(skippedCount)
+final skippedCountProvider = SkippedCountProvider._();
+
+/// How many clips are in Skipped, for To tag's **Skipped ({n})** button
+/// (D-98). Only reads, like [pendingClips].
+
+final class SkippedCountProvider
+    extends $FunctionalProvider<AsyncValue<int>, int, Stream<int>>
+    with $FutureModifier<int>, $StreamProvider<int> {
+  /// How many clips are in Skipped, for To tag's **Skipped ({n})** button
+  /// (D-98). Only reads, like [pendingClips].
+  SkippedCountProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'skippedCountProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$skippedCountHash();
+
+  @$internal
+  @override
+  $StreamProviderElement<int> $createElement($ProviderPointer pointer) =>
+      $StreamProviderElement(pointer);
+
+  @override
+  Stream<int> create(Ref ref) {
+    return skippedCount(ref);
+  }
+}
+
+String _$skippedCountHash() => r'9416815c6f5f68609dfc5aa6855ef6e4cd976c7b';
+
 /// The first stored clip that has a picture (`watchFirstShowableClip`): what
 /// the Shooting mode card's backdrop falls back to when no clip waits in To
 /// tag, as the prototype does (D-76). Null when there is none.

@@ -18,6 +18,12 @@ part 'pending_clips.g.dart';
 Stream<List<Clip>> pendingClips(Ref ref) =>
     ref.watch(clipsRepositoryProvider).watchInbox(InboxState.pending);
 
+/// How many clips are in Skipped, for To tag's **Skipped ({n})** button
+/// (D-98). Only reads, like [pendingClips].
+@riverpod
+Stream<int> skippedCount(Ref ref) =>
+    ref.watch(clipsRepositoryProvider).watchSkippedCount();
+
 /// The first stored clip that has a picture (`watchFirstShowableClip`): what
 /// the Shooting mode card's backdrop falls back to when no clip waits in To
 /// tag, as the prototype does (D-76). Null when there is none.

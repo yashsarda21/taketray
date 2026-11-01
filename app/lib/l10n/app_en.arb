@@ -1496,5 +1496,199 @@
   "reelFormCreateAndAdd": "Create and add",
   "@reelFormCreateAndAdd": {
     "description": "The New reel sheet's button when it is opened from the tag player."
+  },
+  "toTagSummary": "{clips} · {scenes} · {duration}",
+  "@toTagSummary": {
+    "description": "The row at the top of To tag: how many clips wait, in how many scenes, and their total length, such as \"12 clips · 3 scenes · 4 min\".",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "scenes": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagSceneCount": "{count, plural, one{1 scene} other{{count} scenes}}",
+  "@toTagSceneCount": {
+    "description": "How many scenes the waiting clips are in.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSkippedButton": "Skipped ({count})",
+  "@toTagSkippedButton": {
+    "description": "Button on To tag that opens the Skipped clips, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagStartTagging": "Start tagging",
+  "@toTagStartTagging": {
+    "description": "The button on To tag that opens the tag player on the first waiting clip."
+  },
+  "toTagTagScene": "Tag scene",
+  "@toTagTagScene": {
+    "description": "Button in a scene header on To tag that opens the reel picker for the whole scene."
+  },
+  "toTagTagSceneSemantics": "Tag scene {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagTagSceneSemantics": {
+    "description": "What a screen reader says for the Tag scene button: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSceneSelectAll": "Select all",
+  "@toTagSceneSelectAll": {
+    "description": "Button in a scene header on To tag, while choosing clips, that chooses every clip of the scene."
+  },
+  "toTagSceneUnselect": "Unselect",
+  "@toTagSceneUnselect": {
+    "description": "Button in a scene header on To tag, while choosing clips, that un-chooses every clip of the scene."
+  },
+  "toTagSelectionSkip": "Skip",
+  "@toTagSelectionSkip": {
+    "description": "Button of the selection bar on To tag that skips the chosen clips."
+  },
+  "toTagSelectionTag": "Tag",
+  "@toTagSelectionTag": {
+    "description": "Button of the selection bar on To tag that opens the reel picker for the chosen clips."
+  },
+  "toTagMenuSkipAll": "Skip all",
+  "@toTagMenuSkipAll": {
+    "description": "Item of the menu on To tag that asks to skip every waiting clip."
+  },
+  "toTagDayToday": "Today · {date}",
+  "@toTagDayToday": {
+    "description": "Day header on To tag for today, with the date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagDayYesterday": "Yesterday · {date}",
+  "@toTagDayYesterday": {
+    "description": "Day header on To tag for yesterday, with the date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagClipsSkippedSnack": "{count, plural, one{1 clip skipped} other{{count} clips skipped}}",
+  "@toTagClipsSkippedSnack": {
+    "description": "Snack after clips are skipped in To tag, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagLoadFailedTitle": "Couldn't load your clips",
+  "@toTagLoadFailedTitle": {
+    "description": "Title of To tag when the list of waiting clips could not be read."
+  },
+  "toTagLoadFailedBody": "Your videos are safe in your gallery.",
+  "@toTagLoadFailedBody": {
+    "description": "Line under the title when To tag could not read the waiting clips."
+  },
+  "skipAllTitle": "{count, plural, one{Skip 1 clip?} other{Skip all {count} clips?}}",
+  "@skipAllTitle": {
+    "description": "Title of the dialog that asks whether to skip every waiting clip.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "skipAllBody": "They move to Skipped, and you can restore them any time.",
+  "@skipAllBody": {
+    "description": "Text in the Skip all dialog."
+  },
+  "skipAllSafe": "Your videos stay in your gallery.",
+  "@skipAllSafe": {
+    "description": "Reassurance in the Skip all dialog."
+  },
+  "skipAllConfirm": "Skip all",
+  "@skipAllConfirm": {
+    "description": "Button of the Skip all dialog that skips the clips."
+  },
+  "skippedTitle": "Skipped",
+  "@skippedTitle": {
+    "description": "Title of the screen that lists the skipped clips."
+  },
+  "pickerTitleTag": "{count, plural, one{Tag 1 clip} other{Tag {count} clips}}",
+  "@pickerTitleTag": {
+    "description": "Title of the reel picker when it tags waiting clips.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleTag": "Pick one or more reels.",
+  "@pickerSubtitleTag": {
+    "description": "Line under the title of the reel picker when it tags clips."
+  },
+  "pickerTagIntoReels": "Tag into {count} reels",
+  "@pickerTagIntoReels": {
+    "description": "Button of the reel picker that tags the clips into two or more picked reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagClipsAddedSnack": "{count, plural, one{1 clip added to {names}} other{{count} clips added to {names}}}",
+  "@tagClipsAddedSnack": {
+    "description": "Snack after clips are tagged from the reel picker, with an Undo button. The names are the reels, joined into one phrase.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNamesTwo": "{first} and {second}",
+  "@reelNamesTwo": {
+    "description": "Two reel names joined into one phrase.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNamesMore": "{first}, {second} and {more} more",
+  "@reelNamesMore": {
+    "description": "The first two reel names and how many more there are, joined into one phrase.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
   }
 }

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
@@ -14,10 +15,11 @@ import 'package:taketray/features/reels/view_models/reel_picker.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/sheet_failure.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
+import 'package:taketray/features/tagging/view_models/last_tags.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
-/// What the reel picker picks reels for. Tag mode is Phase 5.
+/// What the reel picker picks reels for.
 enum ReelPickerMode {
   /// Also put the clips in other reels; they stay where they are. Several
   /// reels can be picked.
@@ -25,11 +27,22 @@ enum ReelPickerMode {
 
   /// Take the clips out of this reel and put them in one other reel.
   move,
+
+  /// Tag clips that are waiting in To tag (D-98): they are in no reel yet, so
+  /// nothing is left out of the list. Several reels can be picked; the
+  /// clips leave To tag.
+  tag,
 }
 
 /// Opens the reel picker (`screens.js`: `sheets.picker`, D-88) for
 /// [clipCount] clips that are in reel [excludeReelId], and returns the ids of
 /// the reels picked, or null when it was cancelled or dragged away.
+///
+/// [excludeReelId] is the reel the clips are in, which is not listed; add and
+/// move need it (asserted). **Tag mode** (D-98) passes null: the clips are in
+/// To tag, so every reel is listed, and the title, the line under it and the
+/// confirm button are "Tag {n} clips", "Pick one or more reels." and "Tag {n}
+/// clips" / "Tag into {k} reels".
 ///
 /// From the top: a title and a line saying whether the clips stay or leave,
 /// **New reel** (a row that becomes a name field with **Create**: the reel is
@@ -50,22 +63,36 @@ Future<List<int>?> showReelPicker(
   BuildContext context, {
   required ReelPickerMode mode,
   required int clipCount,
-  required int excludeReelId,
+  required int? excludeReelId,
   Future<void> Function(List<int> reelIds)? perform,
-}) => showTtSheet<List<int>>(
-  context,
-  builder: (_) => _ReelPickerSheet(
-    mode: mode,
-    clipCount: clipCount,
-    excludeReelId: excludeReelId,
-    perform: perform,
-  ),
-);
+}) {
+  assert(
+    mode == ReelPickerMode.tag || excludeReelId != null,
+    'add and move need the reel the clips are in',
+  );
+  return showTtSheet<List<int>>(
+    context,
+    builder: (_) => _ReelPickerSheet(
+      mode: mode,
+      clipCount: clipCount,
+      excludeReelId: excludeReelId,
+      perform: perform,
+    ),
+  );
+}
 
 /// **Add to reel** / **Move** for [clipIds], which are in reel [fromReelId]:
 /// opens the picker, does the work inside it, and shows the snack once it has
 /// closed (D-88, D-89). Returns what the action did, or null when it did not
 /// run (cancelled, or it failed).
+///
+/// **Tag** (D-98) is for clips waiting in To tag, so [fromReelId] is null
+/// (asserted for add and move). Confirm adds them to every picked reel in one
+/// transaction (`ReelClipActions.addToReels`; they leave To tag), remembers
+/// the picked reels as the last tag (`LastTags`, so the player's **Same as
+/// previous** follows it) and the snack says "{n} clips added to {names}"
+/// with **Undo**, which takes the tag back and puts `LastTags` back to what
+/// it was unless another tag has been remembered since.
 ///
 /// - **Confirm runs the action** (`ReelClipActions.addToReels` / `moveToReel`)
 ///   through the picker's `perform`, so a failure is told in the sheet and
@@ -88,21 +115,54 @@ Future<ClipActionOutcome?> pickAndPerform(
   BuildContext context, {
   required ReelPickerMode mode,
   required Set<int> clipIds,
-  required int fromReelId,
+  required int? fromReelId,
   required ReelClipActions actions,
   required ReelSnacks snacks,
   required AppLocalizations l10n,
   VoidCallback? onSnack,
 }) async {
+  assert(
+    mode == ReelPickerMode.tag || fromReelId != null,
+    'add and move need the reel the clips are in',
+  );
+  // Looked up now, before anything is awaited: the snack's Undo outlives the
+  // screen that raised it.
+  final container = ProviderScope.containerOf(context, listen: false);
+  final lastTags = mode == ReelPickerMode.tag
+      ? container.read(lastTagsProvider.notifier)
+      : null;
   ClipActionOutcome? outcome;
+  // What `LastTags` held before this tag set it, and what it set, for Undo.
+  List<int>? tagBefore;
+  List<int>? tagSet;
   var closed = false;
   void tell(ClipActionOutcome done) {
-    final message = mode == ReelPickerMode.add
-        ? addedToText(l10n, done.reelNames)
-        : l10n.movedToSnack(done.reelNames.single);
+    final message = switch (mode) {
+      ReelPickerMode.add => addedToText(l10n, done.reelNames),
+      ReelPickerMode.move => l10n.movedToSnack(done.reelNames.single),
+      ReelPickerMode.tag => l10n.tagClipsAddedSnack(
+        done.clipCount,
+        joinedNamesText(l10n, done.reelNames),
+      ),
+    };
     if (!done.isEmpty) {
-      snacks.showUndoAll(message, done.records);
-    } else if (mode == ReelPickerMode.add) {
+      if (mode == ReelPickerMode.tag) {
+        final before = tagBefore;
+        final set = tagSet;
+        snacks.showUndoAll(
+          message,
+          done.records,
+          undo: () async {
+            await container.read(reelsRepositoryProvider).undoAll(done.records);
+            if (lastTags != null && before != null && set != null) {
+              lastTags.undo(current: set, previous: before);
+            }
+          },
+        );
+      } else {
+        snacks.showUndoAll(message, done.records);
+      }
+    } else if (mode != ReelPickerMode.move) {
       // Nothing changed (the clips were there already): nothing to undo.
       snacks.show(message);
     }
@@ -118,13 +178,17 @@ Future<ClipActionOutcome?> pickAndPerform(
     excludeReelId: fromReelId,
     perform: (reelIds) async {
       try {
-        final done = mode == ReelPickerMode.add
-            ? await actions.addToReels(clipIds: clipIds, reelIds: reelIds)
-            : await actions.moveToReel(
-                fromReelId: fromReelId,
+        final done = mode == ReelPickerMode.move
+            ? await actions.moveToReel(
+                fromReelId: fromReelId!,
                 toReelId: reelIds.single,
                 clipIds: clipIds,
-              );
+              )
+            : await actions.addToReels(clipIds: clipIds, reelIds: reelIds);
+        if (lastTags != null) {
+          tagBefore = lastTags.current;
+          tagSet = lastTags.set(reelIds);
+        }
         outcome = done;
         // The sheet was dragged away while this ran: it is not modal any
         // more, so the snack is seen now.
@@ -154,6 +218,16 @@ String addedToText(AppLocalizations l10n, List<String> names) =>
       _ => l10n.addedToMoreSnack(names[0], names[1], names.length - 2),
     };
 
+/// The reel names of a tag, joined as [addedToText] joins them: "A", "A and
+/// B", "A, B and {k} more" (D-98), for "{n} clips added to {names}".
+String joinedNamesText(AppLocalizations l10n, List<String> names) =>
+    switch (names.length) {
+      0 => throw ArgumentError.value(names, 'names', 'must not be empty'),
+      1 => names[0],
+      2 => l10n.reelNamesTwo(names[0], names[1]),
+      _ => l10n.reelNamesMore(names[0], names[1], names.length - 2),
+    };
+
 class _ReelPickerSheet extends ConsumerStatefulWidget {
   const new({
     required this.mode,
@@ -164,7 +238,7 @@ class _ReelPickerSheet extends ConsumerStatefulWidget {
 
   final ReelPickerMode mode;
   final int clipCount;
-  final int excludeReelId;
+  final int? excludeReelId;
   final Future<void> Function(List<int> reelIds)? perform;
 
   @override
@@ -185,7 +259,8 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
   /// A confirm is running; the buttons wait.
   bool _busy = false;
 
-  bool get _multi => widget.mode == ReelPickerMode.add;
+  /// Add and tag pick several reels (check boxes); move picks one.
+  bool get _multi => widget.mode != ReelPickerMode.move;
 
   @override
   void dispose() {
@@ -247,24 +322,41 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
     final tt = context.tt;
     final summaries = ref.watch(reelSummariesProvider).value ?? const [];
     final cache = ref.watch(thumbnailCacheProvider).value;
-    final current = ref.watch(reelByIdProvider(widget.excludeReelId)).value;
+    final excluded = widget.excludeReelId;
+    final current = excluded == null
+        ? null
+        : ref.watch(reelByIdProvider(excluded)).value;
     final form = ref.watch(reelFormControllerProvider(null));
     final sections = pickerSections(
       summaries,
       excludeReelId: widget.excludeReelId,
     );
     final count = widget.clipCount;
-    final title = _multi
-        ? l10n.pickerTitleAdd(count)
-        : l10n.pickerTitleMove(count);
-    final subtitle = _multi
-        ? l10n.pickerSubtitleAdd(count)
-        : l10n.pickerSubtitleMove(count, current?.name ?? l10n.pickerThisReel);
-    final confirmLabel = _multi
-        ? (_picked.isEmpty
-              ? l10n.pickerAdd
-              : l10n.pickerAddToReels(_picked.length))
-        : l10n.pickerMove;
+    final title = switch (widget.mode) {
+      ReelPickerMode.add => l10n.pickerTitleAdd(count),
+      ReelPickerMode.move => l10n.pickerTitleMove(count),
+      ReelPickerMode.tag => l10n.pickerTitleTag(count),
+    };
+    final subtitle = switch (widget.mode) {
+      ReelPickerMode.add => l10n.pickerSubtitleAdd(count),
+      ReelPickerMode.move => l10n.pickerSubtitleMove(
+        count,
+        current?.name ?? l10n.pickerThisReel,
+      ),
+      ReelPickerMode.tag => l10n.pickerSubtitleTag,
+    };
+    final confirmLabel = switch (widget.mode) {
+      ReelPickerMode.add =>
+        _picked.isEmpty
+            ? l10n.pickerAdd
+            : l10n.pickerAddToReels(_picked.length),
+      ReelPickerMode.move => l10n.pickerMove,
+      // One reel (or none yet): "Tag 5 clips"; more: "Tag into 2 reels".
+      ReelPickerMode.tag =>
+        _picked.length > 1
+            ? l10n.pickerTagIntoReels(_picked.length)
+            : l10n.pickerTitleTag(count),
+    };
 
     Widget row(ReelSummary summary) {
       final clips = l10n.reelCardClips(summary.clipCount);

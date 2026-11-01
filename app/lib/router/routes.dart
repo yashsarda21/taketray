@@ -4,6 +4,10 @@ abstract final class Routes {
   static const toTag = '/to-tag';
   static const settings = '/settings';
 
+  /// The Skipped clips (D-98; the screen is Task 9's), inside the To tag tab
+  /// so the nav pill stays; Back returns to To tag.
+  static const skipped = '/to-tag/skipped';
+
   /// The tag player (D-97), above the tab shell. It is a child of To tag, so
   /// Back returns there.
   static const tagPlayer = '/to-tag/play';

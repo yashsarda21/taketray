@@ -6,18 +6,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 4
 
-- Phase 3 left these (D-76):
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
-
-## Phase 5 (tagging and the player)
-
-- Phase 4 left these (final review M-6, D-80):
-  - The reel picker's **tag mode** (hidden in Phase 4).
-  - The empty reel's copy says "Tag clips from To tag…", which only makes sense once tagging exists; check it then.
-  - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
-- Phase 3 left these (D-76):
-  - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
 
 ## Phase 6 (background detection)
 
@@ -35,7 +25,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 7 (add videos and Manual mode)
 
-- Phase 4 left these (final review M-6, D-80):
   - **Add videos** on the reel page (hidden in Phase 4).
   - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
 
@@ -53,7 +42,6 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 8 (editor handoff)
 
-- Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
 
 - Sanitise a reel name before using it as a VN folder name (`/`, `:` and other characters Android storage rejects); `uniqueFolderName` only handles clashes.
 
@@ -61,7 +49,6 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 9 (references)
 
-- Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas).
 - The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it.
 - The reference card's "Open" button takes half the row at 2×.
 - The banner margin is not configurable (`refs.js` overrides it).

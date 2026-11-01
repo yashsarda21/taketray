@@ -818,11 +818,17 @@ class ClipsRepository {
   }
 
   /// How many clips are waiting in To tag, again after every change.
-  Stream<int> watchPendingCount() {
+  Stream<int> watchPendingCount() => _watchInboxCount(InboxState.pending);
+
+  /// How many clips are in Skipped, again after every change (D-98: the
+  /// **Skipped ({n})** button on To tag).
+  Stream<int> watchSkippedCount() => _watchInboxCount(InboxState.skipped);
+
+  Stream<int> _watchInboxCount(InboxState state) {
     final count = _db.inbox.clipId.count();
     final query = _db.selectOnly(_db.inbox)
       ..addColumns([count])
-      ..where(_db.inbox.state.equalsValue(InboxState.pending));
+      ..where(_db.inbox.state.equalsValue(state));
     return query.map((row) => row.read(count) ?? 0).watchSingle();
   }
 

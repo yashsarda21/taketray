@@ -7,6 +7,7 @@ import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
+import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/routes.dart';
@@ -109,6 +110,10 @@ GoRouter appRouter(Ref ref) {
                 path: Routes.toTag,
                 builder: (context, state) => const ToTagScreen(),
                 routes: [
+                  GoRoute(
+                    path: 'skipped',
+                    builder: (context, state) => const SkippedScreen(),
+                  ),
                   GoRoute(
                     path: 'play',
                     // Full screen, above the shell and its nav pill, like

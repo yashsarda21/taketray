@@ -561,7 +561,102 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/tag_p
 
 ## 8. To tag with scenes, and the picker's tag mode
 
-_Filled in by Task 8._
+**What we built:** the To tag tab, grown up. It used to be a plain grid of clips that did nothing when you tapped them. Now:
+
+- the clips are grouped into **scenes** (Section 5), each under a header with its time range ("9:41–9:50 AM"), its clip count and length, and a **Tag scene** button; when the clips come from more than one day there is a **day header** too ("Today · Wed, Oct 28");
+- a **summary row** on top: "8 clips · 3 scenes · 3 min", with **Skipped (n)** beside it when anything is skipped;
+- a **tile tap** opens the tag player (Section 7) on that clip, and a **Start tagging** button opens it on the first one;
+- **choosing**: a long press on a tile (or **Select clips** in the ⋮ menu) turns the top bar into "2 selected" with **Skip** and **Tag**; each scene header becomes **Select all** / **Unselect**;
+- **Skip all** (with a question first) and **Skip** both put clips in Skipped, with an Undo;
+- the **reel picker's tag mode**: "Tag 3 clips", "Pick one or more reels.", and a snack "3 clips added to London Food" with Undo;
+- an **error state** ("Couldn't load your clips", **Try again**) and a small stand-in **Skipped** screen (Section 9 fills it).
+
+**Why TakeTray needs it:** most days, a shoot is a handful of scenes, and most scenes belong to one reel. Tagging a scene is one tap and one pick, which is far faster than one tap per clip; the player is for the clips that need a closer look. The selection is for the odd clips that do not follow the scene. And because nothing here deletes a video (a skip only moves a row, a tag only adds a link), every action can offer **Undo**.
+
+**Key ideas:**
+
+- **The scenes never wait for the times.** Each clip is placed by the time where it was shot (Section 5), but that answer comes from the phone and can be slow. `toTagScenesProvider` takes whatever times it has and falls back to the phone's own time for the rest, so the list shows at once and regroups in place when the answer arrives:
+
+  ```dart
+  final clips = ref.watch(toTagControllerProvider).value;
+  if (clips == null) return null;
+  final times = ref.watch(toTagTimesProvider).value ?? const {};
+  return groupIntoScenes(clips, times);
+  ```
+
+  `null` means "not read yet", which the screen shows as skeleton tiles.
+
+- **One flat list, so it stays lazy.** 300 clips over 60 scenes must not build 300 tiles. A grid for each scene would make 180 slivers whose headers are all built at once. So the screen turns the scenes into one flat list of rows and gives it to a single `SliverList.builder`, which builds only the rows on screen:
+
+  ```dart
+  for (final scene in scenes) {
+    if (days.length > 1 && scene.day != lastDay) rows.add(_DayRow(scene));
+    lastDay = scene.day;
+    rows.add(_SceneRow(scene));
+    for (var from = 0; from < scene.clips.length; from += _columns) {
+      rows.add(_TilesRow(scene, from));
+    }
+  }
+  ```
+
+  The condition `days.length > 1` is the whole rule for "day headers only when the clips span days". One day, however many scenes, shows none.
+
+- **The selection follows the list.** `ToTagSelection` is the reel page's selection (Phase 4) on the waiting clips. The important part is that it *listens* to the list and drops what has left it:
+
+  ```dart
+  ref.listen(toTagControllerProvider, (_, next) {
+    final clips = next.value;
+    if (clips != null) _prune(_liveIds(clips));
+  });
+  ```
+
+  Without that, a clip that you tagged in the player would stay "chosen" in an invisible way, and **Skip** or **Tag** would act on a clip that is no longer there. Also: a missing clip can never be chosen, and un-choosing the last clip ends choosing (but a scene's **Unselect** may leave 0 chosen, because it is not the last tap of a choice).
+
+- **Ask first, then skip.** Skip all moves every waiting clip, so it asks. The dialog is a separate function that returns `true` only for the **Skip all** button; **Cancel**, a tap outside and the back button all give `false` or `null`:
+
+  ```dart
+  final confirmed = await showSkipAllDialog(context, count: count);
+  if (confirmed != true) return;
+  final record = await clips.skipAllPending();
+  ```
+
+  The snack counts what really moved (`record.before.length`), not what you saw on screen, and **Undo** uses the record from Section 4, which only puts back rows that are still exactly as the skip left them.
+
+- **Tag mode is the picker with nothing excluded.** The reel picker (Phase 4) was made for clips that are already in a reel, so it hid that reel. Clips in To tag are in no reel, so tag mode passes `null` for the reel to hide, and add and move assert that they got one. Confirming calls the same `addToReels` as the player, so several reels are one transaction, and then remembers the reels for **Same as previous**:
+
+  ```dart
+  if (lastTags != null) {
+    tagBefore = lastTags.current;
+    tagSet = lastTags.set(reelIds);
+  }
+  ```
+
+  The snack's Undo does what the player's does: takes the tag back, and puts the remembered reels back unless a later tag has replaced them.
+
+- **The tagged tiles leave one by one.** The prototype's "Scene tagging" motion makes the scene's tiles fade, 30 ms after one another. There is a catch: the database drops the clips the instant you confirm, which is *before* the sheet has closed, so the tiles would be gone before anyone could see them go. So the screen keeps the list as it was (`_held`) from the moment a tag begins, and plays the tagged tiles out when the sheet has closed. Each tile gets its own slice of one animation:
+
+  ```dart
+  spans[leaving[i]] = (
+    begin: begin.inMicroseconds / total.inMicroseconds,
+    end: (begin + each).inMicroseconds / total.inMicroseconds,
+  );
+  ```
+
+  A row whose tiles are all leaving also folds up. With "remove animations" they fade together over 150 ms. Taps are ignored while this plays.
+
+- **Tests that can fail.** The new screen tests were first run against the old screen: 30 of the 101 in `to_tag_screen_test.dart` failed (the others check what did not change, such as the access banner), and all 27 of the first version of `to_tag_actions_test.dart` failed. Then three mistakes were made on purpose, one at a time: day headers always shown (the "one day has none" test caught it), the selection not following the list (the "selection drops a clip that leaves To tag" test caught it) and Skip all without the dialog (seven tests caught it, because the dialog and "nothing moved" are both asserted). A fourth, for the motion: with no stagger, the tiles all faded together and the "one tile after another" test caught it.
+
+**Where it lives:** `app/lib/features/tagging/views/to_tag_screen.dart` (`ToTagScreen`), `skip_all_dialog.dart`, `day_header_text.dart`, `skipped_screen.dart` (the stand-in); `app/lib/features/tagging/view_models/to_tag_scenes.dart`, `to_tag_selection.dart`, `to_tag_controller.dart` (`retry`), `pending_clips.dart` (`skippedCountProvider`); `app/lib/features/reels/views/reel_picker_sheet.dart` (`ReelPickerMode.tag`, `pickAndPerform`, `joinedNamesText`) and `view_models/reel_picker.dart`; `app/lib/router/` (`Routes.skipped`). Tests: `app/test/features/tagging/views/to_tag_screen_test.dart` (the display, with fake view models), `to_tag_actions_test.dart` (tagging, skipping and the motion, over a real in-memory database), `to_tag_golden_test.dart` (macOS images in `goldens/macos/`), and `app/test/router/app_router_test.dart`. Flow: "To tag, the Shooting mode card and Add earlier videos" and "Managing clips in a reel" in `docs/flow.md`.
+
+**Try it yourself:** break the day-header rule and watch a test notice. From the repo root:
+
+```bash
+(cd app && ../tool/flutter test test/features/tagging/views/to_tag_screen_test.dart --plain-name "one day has none")
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/to_tag_screen.dart`, find `_rows`, and change `if (days.length > 1 && scene.day != lastDay) rows.add(_DayRow(scene));` to `if (scene.day != lastDay) rows.add(_DayRow(scene));`. Run the command again. It fails with `Expected: no matching candidates` and `Found 1 widget with type "TtDayHeader"`: with one day, a header still shows. Put the file back with `git checkout -- app/lib/features/tagging/views/to_tag_screen.dart` (if you have not committed your own changes to it) and check with `git status`.
+
+**Decisions:** D-98 (all of this section), with D-95 (the scenes), D-94 (skip and its Undo), D-96 (`LastTags`), D-97 (the player the tiles open), D-88 (the picker and the selection it copies), D-87 (day headers), D-86 (`OpenOnce`), D-85 (snacks on the root messenger, the failure in the sheet), D-82 (the button that lifts over a snack) and D-76 (the first To tag) as background.
 
 ## 9. The Skipped list
 
