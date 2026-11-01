@@ -29,6 +29,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - Phase 4 left these (final review M-6, D-80):
   - **Add videos** on the reel page (hidden in Phase 4).
   - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
+- Phase 5 left this (minors batch, item 44): the reel picker's clip ids are fixed while it is open. If a verify deletes one of them, every confirm fails until Cancel (Phase 4's picker has the same). Drop the ids that are gone before writing.
 
 Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
 
@@ -86,6 +87,12 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
   - the screen stays on while a long clip plays in the viewer;
   - the sound at the start of a swipe in the viewer (the outgoing clip now pauses at the middle of the swipe; check nothing is heard from both before that).
 
+- Phase 5's minors batch left these:
+  - **Cross-feature imports** (items 19 and 26). `tagging/views/time_range_text.dart` uses `shooting_mode/views/waiting_duration_text.dart` (and repeats `wallClockTimeText`'s `Hm` / `jm` choice in its cached formats), `tagging/views/clip_tile_row.dart` uses `shooting_mode/views/shooting_time_text.dart`, and `reels/view_models/clip_player.dart` uses `tagging/view_models/tag_player_muted.dart`. Move the shared time helpers and the player mute providers to `lib/core/` or a shared `features/media/` folder.
+  - **Split the two big screens** (items 32 and 43). `tag_player_screen.dart` (stage widgets → `tag_stage.dart`) and `to_tag_screen.dart` (the leave motion and the scene rows) are both over 1,000 lines.
+  - **To tag at 2x, contrast** (item 41). The 2x contrast case in `to_tag_screen_test` was avoided by a layout change in the test; check it with TalkBack and the contrast checker on the S24.
+  - **`ClipsRepository.skipAllPending` has no caller in `lib/`.** Skip all now skips the ids its dialog counted (`skipClips`). Remove `skipAllPending` and its tests, or use it again if a "skip everything now" action comes back.
+  - **Recheck on the phone (Task 10):** the transient third video controller during a clip change (going back), ruled acceptable in Task 7.
 - `packages/taketray_ui/test/components/buttons_test.dart` has four tests that fail when `flutter test` is run from the repo root but pass from the package folder, which is how `tool/check` runs them ("TtButton at large text a stacked TtButtonRow button wraps too", "... wraps to two lines from the large-text scale", "TtButton the dialog size has 12 dp sides and wraps to two lines", "TtButtonRow puts buttons side by side, equal widths, 8 dp apart"). They fail at HEAD too (before Task 3). The cause has not been diagnosed; find it, and make the tests independent of the working folder.
 
 - The Play Console declaration for video access (`READ_MEDIA_VIDEO`). The Phase 3 research rates approval at about 50/50. The case to make: TakeTray's core feature is continuous detection of new camera clips as they are shot, which the one-off system photo picker cannot do. Say too that Manual mode (limited or denied access) already works without the permission, so a refusal costs the automatic detection and leaves the rest of the app working (spec: Play policy).

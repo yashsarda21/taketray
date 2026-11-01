@@ -117,7 +117,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
   });
   ```
 
-  The clip tile and the add-reference tile call it with their own constants. The pill tabs' dashed painter draws a stadium (a different path), and the reel card's scrim uses a colour of its own, so those two stay as they are; D-92 says why.
+  The clip tile and the add-reference tile call it with their own constants. The pill tabs' dashed painter draws a stadium (a different path), so it stays as it is. The reel card's scrim, first kept apart for its own colour, now uses `Scrim` too (minors batch). A fade with no solid part is always written top to bottom, because a gradient written the other way round lands a few pixels differently, and the reel card's goldens had to stay the same to prove the swap changed nothing. `scrim_test.dart` and `dashed_border_test.dart` test the two directly (the plain fade, the solid part, the `assert`, and `shouldRepaint` for each value).
 
 - **A shadow is a token, too.** The CSS gives the snack `box-shadow: var(--elev-3)`, which is two layers. Rather than copy two numbers by hand into a component, the token script now writes all six elevation levels as `TtElevationTokens` and the snack uses `boxShadow: TtElevationTokens.level3`. A test reads the two layers back (offsets, blur, spread, opacity).
 
@@ -164,6 +164,8 @@ It ends with `All tests passed!`. Now open `design/tools/build_tokens.py`, chang
   ```
 
   `container: true` makes the panel one node; `explicitChildNodes: true` says "keep my children as nodes of their own". Without the second line a screen reader would hear one long label. The test `panel is one semantics group` walks the node tree and checks the label is only "Reels" and the chips, the title and the footer are all below it, each with its own label.
+
+- **Large text gets a second line where a word must not be cut** (minors batch). `TtSameAsPreviousButton` lets its label take two lines from the 1.5x text scale, so "Same as previous" is never "Same as pre…", and `TtPlayerHeader` takes `wrapSubtitle` (the tag player sets it; the viewer, whose header sits over the video, does not). The done screen's count is bold, as the prototype's `<b>`: `tt.text.numeric(text).merge(TtTextStyles.weight(FontWeight.w700))`.
 
 - **A folded group is shown only when its toggle says so.** The toggle is a widget the panel can read, and the panel decides what to draw:
 
@@ -296,7 +298,7 @@ Tagging needed no new data code: the player tags with `addClipsToReels`, built i
 
   Why it matters: the scanner can save a new clip at any moment. If the read ran *before* the transaction, a clip saved between the read and the write would be skipped but missing from the record, and Undo could never bring it back. Inside the transaction, the scan waits until skip all is finished, so its clip stays in To tag. The count check says the same thing in code: the write must move exactly the rows the read saw.
 
-- **Undo only what is still yours.** Between the skip and the Undo, the user may have tagged the clip, restored it, or skipped it again. Undo updates a row only while it is still exactly as the action left it: in the state the action set (`after`) and with the same `addedAt`:
+- **Undo only what is still yours.** Between the skip and the Undo, the user may have tagged the clip, or restored it (for a restore's Undo: skipped it). Undo updates a row only while it is still exactly as the action left it: in the state the action set (`after`) and with the same `addedAt`:
 
   ```dart
   await (_db.update(_db.inbox)..where(
@@ -305,10 +307,12 @@ Tagging needed no new data code: the player tags with `addClipsToReels`, built i
             i.state.equalsValue(record.after) &
             i.addedAt.equalsValue(entry.addedAt),
       ))
-      .write(InboxCompanion(state: Value(entry.state), addedAt: Value(entry.addedAt)));
+      .write(InboxCompanion(state: Value(entry.state)));
   ```
 
-  A clip tagged since has no `inbox` row, so the update finds nothing. That is why it is an `UPDATE` and never an insert: an insert would give a clip in a reel a second place. A clip a scan added after skip all is not in the record at all. The task's brief asked only for the state check; the `addedAt` check was added because `untagToInbox` can put a clip back in To tag as `pending` with a new `addedAt`, and undoing an older restore must not pull that clip into Skipped (D-94).
+  A clip tagged since has no `inbox` row, so the update finds nothing. That is why it is an `UPDATE` and never an insert: an insert would give a clip in a reel a second place. A clip a scan added after skip all is not in the record at all. The task's brief asked only for the state check; the `addedAt` check was added because `untagToInbox` can put a clip back in To tag as `pending` with a new `addedAt`, and undoing an older restore must not pull that clip into Skipped (D-94). Only the state is written: the `WHERE` already matched `addedAt`.
+
+  One case still matches: a row that went back and forth to exactly the state the action left (skipped, restored, skipped again, with the same `addedAt`). An old record would undo it. That is accepted because each action's snack replaces the one before, so only the latest action offers Undo.
 
 - **A second Undo does nothing.** `undoAll` marks each record it has undone in an `Expando` (a side table keyed by the object, which does not keep it alive; D-84). A double tap, or the same snack's Undo after the clip was skipped again by a new action, finds the mark and skips the record. The test `undo is idempotent` covers both.
 
@@ -455,7 +459,11 @@ Two small providers come with it: **`LastTags`** (the reels of the last tag, for
 
   Ignoring it would be worse: the snack disappears when tapped, so the user would believe the wrong tag was gone. Undo after "All done!" reopens the session on that clip.
 
-- **A clip can leave under you.** If the clip showing leaves To tag without the player doing it (the verifier found its video gone, or it was tagged from the reel picker), the stream tells the controller and it moves on, as after a tag. That happens even during a hold, and the held tap still tags the clip it was tapped on, because its id was read first.
+- **A clip can leave under you.** If the clip showing leaves To tag without the player doing it (the verifier found its video gone, or it was tagged from the reel picker), the stream tells the controller and it moves on, as after a tag. During a hold the tap is cancelled instead (minors batch ruling): the clip you tapped is gone from To tag, so the tap is treated as if it never happened, nothing is tagged, and a queued Undo may run. Another clip of the session leaving during the hold does not touch it.
+
+- **New reel tags the clip the sheet was opened for.** `createReelAndTag(name, clipId:)` gets the clip that was showing when the sheet opened. If that clip has left To tag by the time you tap **Create and add**, the reel is still made (you asked for it) and nothing is tagged, not even the clip showing now. It returns the reel, so the form never has to look it up by its name.
+
+- **Undo counts back only what is no longer true.** After the Undo the controller asks where the clip is: a skip comes off the done screen's count only if the clip is back in To tag, and a reel's "+1" only if the clip has left that reel. Undo never takes a clip's last place, so sometimes it changes nothing, and then the counts stay.
 
 - **Muted by default, looping.** The design prompt asks for muted autoplay. `TagPlayerMuted` starts `true` and keeps the choice until the app restarts. The tag player's `clipPlayer` also loops the clip, so a 3-second clip keeps playing while you decide.
 
@@ -463,13 +471,13 @@ Two small providers come with it: **`LastTags`** (the reels of the last tag, for
 
 **Where it lives:** `app/lib/features/tagging/view_models/tag_session_controller.dart` (`TagSessionController`, `TagSessionState`, `TagOutcome`, `tagHold`, `holdTimerProvider`), `last_tags.dart`, `tag_player_muted.dart`; `app/lib/features/reels/view_models/clip_player.dart` (`ClipPlayerUse`). Tests: `app/test/features/tagging/view_models/tag_session_controller_test.dart` and the "tagging" group of `app/test/features/reels/view_models/clip_player_test.dart`. Flow: "The tag player's session" in `docs/flow.md`.
 
-**Try it yourself:** make the tag read the clip after the hold, and watch the test catch it. From the repo root:
+**Try it yourself:** let a hold outlive its clip, and watch the test catch it. From the repo root:
 
 ```bash
-(cd app && ../tool/flutter test test/features/tagging/view_models/tag_session_controller_test.dart --plain-name "tag goes to the clip shown when tapped")
+(cd app && ../tool/flutter test test/features/tagging/view_models/tag_session_controller_test.dart --plain-name "a clip leaving during the hold cancels the tap")
 ```
 
-It ends with `All tests passed!`. Now open `app/lib/features/tagging/view_models/tag_session_controller.dart`, find `tapReel`, and inside the timer's callback replace `_tag(clipId, from, (_) => [reelId])` with `_tag(state.value!.session[state.value!.index], state.value!.index, (_) => [reelId])`. Run the command again. It fails with `Expected: <1>  Actual: <2>`: during the hold the clip was tagged elsewhere, the player moved on to clip 2, and the tap that was meant for clip 1 went to clip 2. Put the file back with `git checkout -- app/lib/features/tagging/view_models/tag_session_controller.dart`, and check with `git status` that nothing is left over.
+It ends with `All tests passed!`. Now open `app/lib/features/tagging/view_models/tag_session_controller.dart`, find `_onPending`, and delete the two lines `_cancelHold();` and `_update((now) => now.copyWith(confirmingReelId: null));`. Run the command again. It fails with `Expected: true  Actual: <false>`: the clip was tagged elsewhere during the hold, and the hold was not cancelled, so the tap would still have tagged it. Put the file back with `git checkout -- app/lib/features/tagging/view_models/tag_session_controller.dart`, and check with `git status` that nothing is left over.
 
 **Decisions:** D-96 (all of this section), with D-91 (sticky Pick several, Undo goes back, a clip leaving moves on), D-94 (`InboxUndo`, tagging through `addClipsToReels`), D-95 (`TagQueue`, scenes), D-89 (`clipPlayer`) and D-85 (a failure is "Something went wrong. Try again.") as background.
 
@@ -519,12 +527,15 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
 
   wrapped so that a controller that was let go in the meantime is no problem. The clip ahead is therefore never heard and never moves; it waits at the start.
 
-- **The check mark belongs to the clip you tapped.** When you tap a chip it shows a check for 400 ms. If that clip is tagged from somewhere else during those 400 ms, Section 6's controller moves on to the next clip but still tags the clip you tapped. The controller's `confirmingReelId` is about the *reel*, so if the screen showed the check whenever it was set, the *new* clip's chip would show a check it did not earn. The screen remembers the clip that was tapped:
+- **The check mark belongs to the clip you tapped.** When you tap a chip it shows a check for 400 ms. If that clip is tagged from somewhere else during those 400 ms, Section 6's controller cancels the hold and clears `confirmingReelId` before it moves on, so the *new* clip's chip never shows a check it did not earn. (Task 7 first kept a `_heldClipId` in the screen for this; the minors batch moved the rule into the controller, where it also stops the tag.)
 
   ```dart
-  final held =
-      state.confirmingReelId == id && state.currentClipId == _heldClipId;
+  final held = state.confirmingReelId == id;
   ```
+
+- **A swipe is far and fast** (minors batch). A quick jitter of the thumb can be fast enough to count as a fling, so `_SwipeArea` also wants the finger to travel `kTouchSlop * 4` (72 dp) from where it touched down. It is a layer over the video, and only that layer stays out of the system's back-gesture edges: the video itself is not moved. Taps go through it to the video.
+
+- **Room for the video at 2x.** At 1.5x text and up the header says only the time range (it may wrap), Same as previous may take two lines, and the reel panel stops at 40 % of the screen instead of 45 %, so on a 360 × 800 phone the video keeps at least 200 dp. If the session cannot load, the player says so and offers **Try again**.
 
 - **Snacks that say what happened, with an Undo that goes back.** `showTagOutcome` builds the words from the `TagOutcome` of that action ("Added to London Food and Goa" or "Skipped"), never from what is on screen now. Its Undo calls `TagSessionController.undo(records, clipId)`, which puts the clip back in To tag and shows it again. The screen reads the controller's notifier *before* it awaits the tag, so the snack still holds it after you close the player; Section 6's `undo` knows it may run after the player has gone. A new snack replaces the old one (`showTtSnackOn` hides the one showing first), so only the latest action can be undone. That rule comes from Section 4: an old skip's Undo could otherwise pull back a clip that has since been skipped, restored and skipped again.
 
@@ -617,10 +628,10 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/tag_p
   ```dart
   final confirmed = await showSkipAllDialog(context, count: count);
   if (confirmed != true) return;
-  final record = await clips.skipAllPending();
+  final record = await clips.skipClips(ids);
   ```
 
-  The snack counts what really moved (`record.before.length`), not what you saw on screen, and **Undo** uses the record from Section 4, which only puts back rows that are still exactly as the skip left them.
+  `ids` are the clips waiting when the dialog opened (minors batch): a clip a scan adds while you read the question stays in To tag, so "Skip all 5 clips?" and "5 clips skipped" agree. The snack counts what really moved (`record.before.length`), not what you saw on screen, and **Undo** uses the record from Section 4, which only puts back rows that are still exactly as the skip left them.
 
 - **Tag mode is the picker with nothing excluded.** The reel picker (Phase 4) was made for clips that are already in a reel, so it hid that reel. Clips in To tag are in no reel, so tag mode passes `null` for the reel to hide, and add and move assert that they got one. Confirming calls the same `addToReels` as the player, so several reels are one transaction, and then remembers the reels for **Same as previous**:
 
@@ -642,7 +653,9 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/tag_p
   );
   ```
 
-  A row whose tiles are all leaving also folds up. With "remove animations" they fade together over 150 ms. Taps are ignored while this plays.
+  The 30 ms step is the design token `TtMotion.stagger` (zero under reduced motion). A row whose tiles are all leaving also folds up. With "remove animations" they only fade, together, over 150 ms, and no row folds, so nothing on screen moves. Taps are ignored while this plays.
+
+- **Small things the minors batch added.** Above the app bar's text cap, **Skip** and **Tag** become icon buttons that keep their names for a screen reader, so "2 selected" stays whole; **Select all** / **Unselect** are announced with the scene ("Select all, 9:41–9:50 AM, 3 clips"); choosing with nothing chosen ends when the list empties; the tag snack counts the clips that really got a new place; the loading state has the prototype's summary and scene-header lines; and To tag and Skipped share one tile row widget, `ClipTileRow`.
 
 - **Tests that can fail.** The new screen tests were first run against the old screen: 30 of the 101 in `to_tag_screen_test.dart` failed (the others check what did not change, such as the access banner), and all 27 of the first version of `to_tag_actions_test.dart` failed. Then three mistakes were made on purpose, one at a time: day headers always shown (the "one day has none" test caught it), the selection not following the list (the "selection drops a clip that leaves To tag" test caught it) and Skip all without the dialog (seven tests caught it, because the dialog and "nothing moved" are both asserted). A fourth, for the motion: with no stagger, the tiles all faded together and the "one tile after another" test caught it.
 
@@ -699,12 +712,16 @@ It ends with `All tests passed!`. Now open `app/lib/features/tagging/views/to_ta
   ...
   _restoring.addAll(todo);
   try {
+    final controller = ref.read(skippedControllerProvider.notifier);
+    final selection = ref.read(skippedSelectionProvider.notifier);
     final record = await controller.restore(todo);
   ```
 
+  (The two lookups sit inside the `try`, so if one of them throws, the clips are still taken out of `_restoring` in the `finally`.) Only the selection's **Restore** ends choosing afterwards: a tap restores one clip outside a choice, and must not end a choice you began while it wrote.
+
   A set (not one yes/no flag) means a second, different tile does not have to wait for the first. The database would also say "nothing moved" for a clip that is not skipped any more, but the guard stops the second call before it is made, which the test checks by counting calls.
 
-- **Look things up before you wait.** `_restore` fetches the messenger for the message (`ReelSnacks.of(context)`), the controller and the selection *before* the `await`. After an `await` the screen may be gone (the user pressed Back), and a lost `context` or a disposed provider throws. Because the message lives on the app's root messenger and holds the undo record itself (Section 4's `InboxUndo`), **Undo still works after you have left the screen**. A test leaves the screen and then taps Undo.
+- **Look things up before you wait.** `_restore` fetches the messenger for the message (`ReelSnacks.of(context)`), the controller and the selection *before* the `await` on the write. After an `await` the screen may be gone (the user pressed Back), and a lost `context` or a disposed provider throws. Because the message lives on the app's root messenger and holds the undo record itself (Section 4's `InboxUndo`), **Undo still works after you have left the screen**. A test leaves the screen and then taps Undo.
 
   The message also counts what *really* moved: `record.before.length`. If the clip was restored or tagged somewhere else a moment before, nothing moved and no message is shown, which is better than a "Restored" that is not true.
 
