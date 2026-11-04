@@ -493,14 +493,12 @@ class _Env {
     required this.container,
     required this.a,
     required this.b,
-    required this.restoreFolders,
   });
 
   final TestMedia media;
   final ProviderContainer container;
   final Reel a;
   final Reel b;
-  final Future<void> Function() restoreFolders;
 
   ClipsRepository get clips => container.read(clipsRepositoryProvider);
   ReelsRepository get reels => container.read(reelsRepositoryProvider);
@@ -520,7 +518,9 @@ class _Env {
 
 /// Sets the app up, runs [body], and always cleans up at the end of the test
 /// body (the reels, the videos, the watched folders; the order is the one the
-/// other Patrol tests use).
+/// other Patrol tests use). Everything after the watched folders were changed
+/// is inside the `try`, so a failure while giving access, turning Shooting
+/// mode on or making the reels still cleans up.
 ///
 /// Set-up, as a user would: only the test folder watched, full access from
 /// To tag's own button, Shooting mode on, two reels, [clips] test videos
@@ -539,35 +539,31 @@ Future<void> _scenario(
   );
   final toTag = $(ToTagScreen);
 
-  // Full access, the way a user gives it.
-  await $(TtNavPill).$(_l10n.navToTag).tap();
-  await waitFor(
-    $,
-    () => toTag.$('Manual mode').exists,
-    what: 'the Manual mode banner on To tag',
-  );
-  await toTag.$('Allow full access').tap();
-  await allowAllInDialog($);
-  await waitFor(
-    $,
-    () => !toTag.$('Manual mode').exists,
-    what: 'the Manual mode banner to go after Allow all',
-  );
-
-  // Shooting mode on, two reels, the videos.
-  await $(TtNavPill).$(_l10n.navReels).tap();
-  await _setShootingMode($, container, on: true);
-  final reels = container.read(reelsRepositoryProvider);
-  final a = await reels.create(_nameA);
-  final b = await reels.create(_nameB);
-  final env = _Env(
-    media: media,
-    container: container,
-    a: a,
-    b: b,
-    restoreFolders: restoreFolders,
-  );
+  // The test's own failure: reported after the clean-up, which runs anyway.
+  (Object, StackTrace)? failure;
   try {
+    // Full access, the way a user gives it.
+    await $(TtNavPill).$(_l10n.navToTag).tap();
+    await waitFor(
+      $,
+      () => toTag.$('Manual mode').exists,
+      what: 'the Manual mode banner on To tag',
+    );
+    await toTag.$('Allow full access').tap();
+    await allowAllInDialog($);
+    await waitFor(
+      $,
+      () => !toTag.$('Manual mode').exists,
+      what: 'the Manual mode banner to go after Allow all',
+    );
+
+    // Shooting mode on, two reels, the videos.
+    await $(TtNavPill).$(_l10n.navReels).tap();
+    await _setShootingMode($, container, on: true);
+    final reels = container.read(reelsRepositoryProvider);
+    final a = await reels.create(_nameA);
+    final b = await reels.create(_nameB);
+    final env = _Env(media: media, container: container, a: a, b: b);
     await media.insertMany(clips);
 
     // To tag finds all of them (it scans when it opens).
@@ -586,9 +582,10 @@ Future<void> _scenario(
     );
 
     await body(env);
-  } finally {
-    await _cleanUp(env);
+  } on Object catch (error, stack) {
+    failure = (error, stack);
   }
+  await _cleanUp(container, media, restoreFolders, failure: failure);
 }
 
 /// Waits until exactly [count] clips are waiting in the database.
@@ -612,26 +609,51 @@ Future<void> _waitForPending(
 }
 
 /// The end of the test body: the test reels, the test videos, and the camera
-/// folders watched again. The reels go first, with a one-off select (a
-/// stream opened here would fail with a `ConcurrentModificationError` when
-/// the app closes its database).
-Future<void> _cleanUp(_Env env) async {
+/// folders watched again. Each step runs even when one before it threw (the
+/// folders above all), and then the first error is thrown: the test's own
+/// [failure] when there is one, so a clean-up error never hides it.
+Future<void> _cleanUp(
+  ProviderContainer container,
+  TestMedia media,
+  Future<void> Function() restoreFolders, {
+  (Object, StackTrace)? failure,
+}) async {
+  var first = failure;
+  Future<void> step(Future<void> Function() run) async {
+    try {
+      await run();
+    } on Object catch (error, stack) {
+      first ??= (error, stack);
+    }
+  }
+
+  await step(() => _deleteTestReels(container));
+  await step(media.cleanUp);
+  await step(restoreFolders);
+  if (first case (final error, final stack)) {
+    Error.throwWithStackTrace(error, stack);
+  }
+}
+
+/// Deletes the two test reels, with a one-off select (a stream opened here
+/// would fail with a `ConcurrentModificationError` when the app closes its
+/// database). A failure is printed by type and the clean-up goes on.
+Future<void> _deleteTestReels(ProviderContainer container) async {
   try {
-    final db = env.container.read(appDatabaseProvider);
+    final db = container.read(appDatabaseProvider);
     final all = await db
         .select(db.reels)
         .get()
         .timeout(const Duration(seconds: 10));
+    final reels = container.read(reelsRepositoryProvider);
     for (final reel in all) {
       if (reel.name == _nameA || reel.name == _nameB) {
-        await env.reels.delete(reel.id);
+        await reels.delete(reel.id);
       }
     }
   } on Object catch (error) {
     debugPrint('Cleaning up the reels failed: ${error.runtimeType}');
   }
-  await env.media.cleanUp();
-  await env.restoreFolders();
 }
 
 /// Taps the Shooting mode switch on the Reels tab and waits until the stored
