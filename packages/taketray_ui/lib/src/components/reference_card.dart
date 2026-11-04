@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/dashed_border.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -310,9 +311,12 @@ class TtAddReferenceTile extends StatelessWidget {
       label: semanticLabel,
       onTap: onPressed,
       child: CustomPaint(
-        foregroundPainter: _DashedBorderPainter(
+        foregroundPainter: DashedBorderPainter(
           color: scheme.outlineVariant,
           radius: tt.radii.xl,
+          width: TtMetrics.addReferenceBorder,
+          dash: TtMetrics.addReferenceDash,
+          gap: TtMetrics.addReferenceDashGap,
         ),
         child: Material(
           type: MaterialType.transparency,
@@ -359,42 +363,4 @@ class TtAddReferenceTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Strokes a dashed rounded-rectangle outline just inside its bounds.
-class _DashedBorderPainter extends CustomPainter {
-  const new({required this.color, required this.radius});
-
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const width = TtMetrics.addReferenceBorder;
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          (Offset.zero & size).deflate(width / 2),
-          Radius.circular(radius - width / 2),
-        ),
-      );
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width;
-    for (final metric in path.computeMetrics()) {
-      var at = 0.0;
-      while (at < metric.length) {
-        canvas.drawPath(
-          metric.extractPath(at, at + TtMetrics.addReferenceDash),
-          paint,
-        );
-        at += TtMetrics.addReferenceDash + TtMetrics.addReferenceDashGap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.radius != radius;
 }

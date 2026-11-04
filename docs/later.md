@@ -10,30 +10,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
-## Phase 5 (tagging and the player)
-
-- Phase 4 left these (final review M-6, D-80):
-  - The reel picker's **tag mode** (hidden in Phase 4).
-  - The empty reel's copy says "Tag clips from To tag…", which only makes sense once tagging exists; check it then.
-  - Until tagging exists, clips get into a reel only from code (tests, a backup import): no screen in Phase 4 puts a To tag clip into a reel. The first caller of `addClipsToReel` with a To tag clip is the tag mode (its undo puts the clip back in To tag, D-84 point 9).
-- Phase 3 left these (D-76):
-  - To tag has no error state when its list stream fails (a database error): skeletons stay. Needs copy and a design for an error state.
-- Scrub bar:
-  - it reads `position / duration` as "slash"
-  - its semantics lack `value` and `increasedValue`
-
-  Fix before the player ships.
-- Scrub row: it is 48 dp (the CSS says 22). Also: the quick-row padding, a redundant `SizedBox`, and the thumb sits half outside the gesture area.
-- Video scrim: the tokens (.7 / .55, linear) disagree with the CSS (.78 / .6, solid). **The owner picks one.**
-- `TtTagPanel`:
-  - make it a semantics group
-  - budget its height cap of up to 520 dp at large text
-  - add the "Other reels" label, the empty state and the dashed "New reel" chip (R8)
-- Before the dashed "New reel" chip, deduplicate the dashed-outline painters and the scrim widgets into `internal/`.
-- The nav badge's spoken label drops the tab name ("7 clips to tag" instead of "To tag, 7 clips").
-- The snack has no drop shadow. Add one or record why in D-48.
-- Add `expectTtAccessible` to `video_surface_test`. Relabel or drop the reel-chip 164 dp scenarios that can't happen at 2×.
-
 ## Phase 6 (background detection)
 
 - Phase 3 left this (D-71, D-72): the background job reuses `ZoneChangeStore` (the native zone list) and the baselines. The baselines exist only in the database (the `shootingMode` setting), which native code cannot read, and nothing writes them to native state yet. `BackgroundApi` must write them there (with Shooting mode on or off and the watched folders, spec §8.2), and keep them in step whenever Dart moves a baseline (`PhoneStateRepository.advanceBaseline`, compare-and-set) or turns Shooting mode on or off.
@@ -53,6 +29,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - Phase 4 left these (final review M-6, D-80):
   - **Add videos** on the reel page (hidden in Phase 4).
   - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
+- Phase 5 left this (minors batch, item 44): the reel picker's clip ids are fixed while it is open. If a verify deletes one of them, every confirm fails until Cancel (Phase 4's picker has the same). Drop the ids that are gone before writing.
 
 Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
 
@@ -110,6 +87,19 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
   - the screen stays on while a long clip plays in the viewer;
   - the sound at the start of a swipe in the viewer (the outgoing clip now pauses at the middle of the swipe; check nothing is heard from both before that).
 
+- Phase 5's minors batch left these:
+  - **Cross-feature imports** (items 19 and 26). `tagging/views/time_range_text.dart` uses `shooting_mode/views/waiting_duration_text.dart` (and repeats `wallClockTimeText`'s `Hm` / `jm` choice in its cached formats), `tagging/views/clip_tile_row.dart` uses `shooting_mode/views/shooting_time_text.dart`, and `reels/view_models/clip_player.dart` uses `tagging/view_models/tag_player_muted.dart`. Move the shared time helpers and the player mute providers to `lib/core/` or a shared `features/media/` folder.
+  - **Split the two big screens** (items 32 and 43). `tag_player_screen.dart` (stage widgets → `tag_stage.dart`) and `to_tag_screen.dart` (the leave motion and the scene rows) are both over 1,000 lines.
+  - **To tag at 2x, contrast** (item 41). The 2x contrast case in `to_tag_screen_test` was avoided by a layout change in the test; check it with TalkBack and the contrast checker on the S24.
+  - **`ClipsRepository.skipAllPending` has no caller in `lib/`.** Skip all now skips the ids its dialog counted (`skipClips`). Remove `skipAllPending` and its tests, or use it again if a "skip everything now" action comes back.
+  - **Recheck on the phone (Task 10):** the transient third video controller during a clip change (going back), ruled acceptable in Task 7.
+- Phase 5's final review left these:
+  - **The tag player's preload polls** (`_openAhead` retries `ref.exists` on a 200 ms timer, D-97 point 4). Replace it with a deterministic signal (the left clip's provider's `onDispose`, then a post-frame callback) or one reusable pair of controllers. Repeated Skip or Same as previous (about 100 ms each) keep restarting the timer, so a clip can come up cold and three controllers can be alive. Check it with rapid Skips in the owner's 1080p / 4K hand check (performance pass).
+  - **New reel from the player advances from the sheet's clip.** If an Undo moved the player to an earlier clip while the New reel sheet was open, the clip that was showing is passed over until the queue wraps.
+  - **A slow predictive-back gesture can still let a chip's hold fire.** `PopScope` ends the hold only when the back gesture commits; a swipe started during the 400 ms hold and dragged longer than the time left lets the tag land and "Added to …" appears over To tag. Fix by listening to `Navigator.userGestureInProgressNotifier` and ending the hold when a gesture starts. Check predictive back during a hold on the S24.
+  - **"{n} clips sorted" counts clips a verify removed or that were tagged elsewhere** (`sortedCount` is the session less what is still waiting). Check the copy.
+  - **An Undo-after-switching-tabs widget test on To tag** (it needs the shell and a real database). The Patrol flow covers it now.
+  - **Patrol `tagging_test.dart` tidy-ups:** the literal 'Manual mode' and 'Allow full access' strings (use l10n); `liveControllers()` called twice in the polling path; `docs/dev-setup.md` step 2 says "or tap a clip", to verify; and a note that full access and Shooting mode stay on in TakeTray Dev after the test (the after-run `pm clear` resets them).
 - `packages/taketray_ui/test/components/buttons_test.dart` has four tests that fail when `flutter test` is run from the repo root but pass from the package folder, which is how `tool/check` runs them ("TtButton at large text a stacked TtButtonRow button wraps too", "... wraps to two lines from the large-text scale", "TtButton the dialog size has 12 dp sides and wraps to two lines", "TtButtonRow puts buttons side by side, equal widths, 8 dp apart"). They fail at HEAD too (before Task 3). The cause has not been diagnosed; find it, and make the tests independent of the working folder.
 
 - The Play Console declaration for video access (`READ_MEDIA_VIDEO`). The Phase 3 research rates approval at about 50/50. The case to make: TakeTray's core feature is continuous detection of new camera clips as they are shot, which the one-off system photo picker cannot do. Say too that Manual mode (limited or denied access) already works without the permission, so a refusal costs the automatic detection and leaves the rest of the app working (spec: Play policy).

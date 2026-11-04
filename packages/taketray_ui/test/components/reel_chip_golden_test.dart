@@ -10,17 +10,26 @@ const _chip = 164.0;
 /// A chip plus 8 dp of panel colour around it.
 const double _cell = _chip + 16;
 
+/// At 2x text the panel gives each chip a whole row: 360 - 2 x 12, plus the
+/// same 8 dp of panel colour around it (D-47, D-93).
+const double _largeCell = 336 + 16;
+
 void main() {
   ttGoldenTest(
     'Reel chip',
     fileName: 'reel_chip',
     width: _cell,
     scenarios: [
-      TtScenario('idle, with cover', _chipOnPanel(cover: fixtureThumb(1))),
-      TtScenario('idle, no cover', _chipOnPanel()),
+      TtScenario(
+        'idle, with cover',
+        _chipOnPanel(cover: fixtureThumb(1)),
+        largeWidth: _largeCell,
+      ),
+      TtScenario('idle, no cover', _chipOnPanel(), largeWidth: _largeCell),
       TtScenario(
         'idle, multi-select',
         _chipOnPanel(cover: fixtureThumb(2), multi: true),
+        largeWidth: _largeCell,
       ),
       TtScenario(
         'picked, multi-select',
@@ -29,10 +38,12 @@ void main() {
           multi: true,
           state: TtReelChipState.picked,
         ),
+        largeWidth: _largeCell,
       ),
       TtScenario(
         'done',
         _chipOnPanel(cover: fixtureThumb(4), state: TtReelChipState.done),
+        largeWidth: _largeCell,
       ),
       TtScenario(
         'long name',
@@ -41,6 +52,7 @@ void main() {
           name: 'Saturday morning market walk with the whole family',
           count: '1234 clips',
         ),
+        largeWidth: _largeCell,
       ),
       TtScenario(
         'long name, picked, multi-select',
@@ -51,21 +63,64 @@ void main() {
           multi: true,
           state: TtReelChipState.picked,
         ),
+        largeWidth: _largeCell,
       ),
-      // The row a chip gets at large text: the whole panel width, 336 dp.
       TtScenario(
-        'full-width row (large-text layout)',
-        _chipOnPanel(
-          cover: fixtureThumb(2),
-          name: 'Lisbon food market with the whole family',
-          multi: true,
-        ),
-        width: 336 + 16,
+        'image fails to load',
+        _chipOnPanel(cover: brokenImage),
+        largeWidth: _largeCell,
       ),
-      TtScenario('image fails to load', _chipOnPanel(cover: brokenImage)),
+    ],
+  );
+
+  ttGoldenTest(
+    'New reel chip',
+    fileName: 'new_reel_chip',
+    width: _cell,
+    scenarios: [
+      TtScenario(
+        'with subtitle',
+        _newChipOnPanel(subtitle: 'Add this clip to it'),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'long title',
+        _newChipOnPanel(
+          title: 'Make a brand new reel for this clip',
+          subtitle: 'Add this clip to it right away',
+        ),
+        largeWidth: _largeCell,
+      ),
+      // The no-reels panel: the chip takes the panel's whole row (336 dp).
+      TtScenario(
+        'full width, no subtitle',
+        _newChipOnPanel(fullWidth: true),
+        width: _largeCell,
+      ),
     ],
   );
 }
+
+Widget _newChipOnPanel({
+  String title = 'New reel',
+  String? subtitle,
+  bool fullWidth = false,
+}) => TtVideoSurface(
+  child: Builder(
+    builder: (context) => ColoredBox(
+      color: context.scheme.surfaceContainer,
+      child: Padding(
+        padding: const EdgeInsets.all(8),
+        child: TtNewReelChip(
+          title: title,
+          subtitle: subtitle,
+          fullWidth: fullWidth,
+          onTap: () {},
+        ),
+      ),
+    ),
+  ),
+);
 
 Widget _chipOnPanel({
   ImageProvider? cover,

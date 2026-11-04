@@ -93,6 +93,7 @@ void main() {
     testWidgets('gives token motion normally', (tester) async {
       final tt = await resolve(tester);
       expect(tt.motion.medium2, const Duration(milliseconds: 300));
+      expect(tt.motion.stagger, const Duration(milliseconds: 30));
       expect(tt.motion, same(TtMotion.standardSet));
     });
 
@@ -101,6 +102,7 @@ void main() {
     ) async {
       final tt = await resolve(tester, disableAnimations: true);
       expect(tt.motion.medium2, Duration.zero);
+      expect(tt.motion.stagger, Duration.zero);
       expect(tt.motion, same(TtMotion.reduced));
       expect(tt.motion.standard, TtMotion.standardSet.standard);
     });

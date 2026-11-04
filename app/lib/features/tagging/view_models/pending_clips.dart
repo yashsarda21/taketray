@@ -2,6 +2,9 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/rules/shooting_order.dart';
+
+export 'package:taketray/domain/rules/shooting_order.dart' show inShootingOrder;
 
 part 'pending_clips.g.dart';
 
@@ -15,22 +18,18 @@ part 'pending_clips.g.dart';
 Stream<List<Clip>> pendingClips(Ref ref) =>
     ref.watch(clipsRepositoryProvider).watchInbox(InboxState.pending);
 
+/// How many clips are in Skipped, for To tag's **Skipped ({n})** button
+/// (D-98). Only reads, like [pendingClips].
+@riverpod
+Stream<int> skippedCount(Ref ref) =>
+    ref.watch(clipsRepositoryProvider).watchSkippedCount();
+
 /// The first stored clip that has a picture (`watchFirstShowableClip`): what
 /// the Shooting mode card's backdrop falls back to when no clip waits in To
 /// tag, as the prototype does (D-76). Null when there is none.
 @riverpod
 Stream<Clip?> firstShowableClip(Ref ref) =>
     ref.watch(clipsRepositoryProvider).watchFirstShowableClip();
-
-/// [clips] in shooting order: oldest date taken first, then the lower id. A
-/// new list; [clips] is not changed.
-List<Clip> inShootingOrder(List<Clip> clips) => [...clips]
-  ..sort((a, b) {
-    final byDate = a.fingerprint.dateTakenUtc.compareTo(
-      b.fingerprint.dateTakenUtc,
-    );
-    return byDate != 0 ? byDate : a.id.compareTo(b.id);
-  });
 
 /// The most recently shot of [clips] (the last in shooting order), or null
 /// when there are none.

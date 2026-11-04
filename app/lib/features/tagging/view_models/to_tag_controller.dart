@@ -36,6 +36,10 @@ class ToTagController extends _$ToTagController {
     return clips.watchInbox(InboxState.pending);
   }
 
+  /// **Try again** on the error state (D-98): reads the list again, and scans
+  /// and verifies again, as opening the screen does.
+  void retry() => ref.invalidateSelf();
+
   /// To tag came back to the front (the app resumed while it is open): scans
   /// and verifies again.
   Future<void> onResume() => _refresh();

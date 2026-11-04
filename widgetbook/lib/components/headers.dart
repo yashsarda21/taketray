@@ -20,16 +20,26 @@ final WidgetbookComponent ttSceneHeaderComponent = WidgetbookComponent(
           label: 'action',
           initialValue: 'Tag scene',
         );
+        final selecting = context.knobs.boolean(
+          label: 'selecting (a text Select all / Unselect button)',
+        );
         return TtSceneHeader(
           title: title,
           subtitle: subtitle,
-          action: TtButton(
-            label: action,
-            icon: Symbols.sell_rounded,
-            kind: TtButtonKind.tonal,
-            size: TtButtonSize.small,
-            onPressed: () {},
-          ),
+          action: selecting
+              ? TtButton(
+                  label: 'Select all',
+                  kind: TtButtonKind.text,
+                  size: TtButtonSize.small,
+                  onPressed: () {},
+                )
+              : TtButton(
+                  label: action,
+                  icon: Symbols.sell_rounded,
+                  kind: TtButtonKind.tonal,
+                  size: TtButtonSize.small,
+                  onPressed: () {},
+                ),
         );
       },
     ),

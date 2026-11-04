@@ -32,18 +32,43 @@ const int _descriptionCounterFrom = 900;
 /// buttons, and the sheet stays open with what was typed (a snack would lie
 /// behind the sheet and its scrim, D-85). It goes at the next Save or edit.
 ///
+/// - **From the tag player ([forClip], D-97):** "New reel", "This clip will be
+///   added to it.", only the name, and **Create and add**. The name is checked
+///   as above, then [onCreateForClip] makes the reel, puts the clip in it
+///   (the player's `createReelAndTag`) and returns the reel; the sheet
+///   closes when it is done and the player says what happened, so the form
+///   shows no "created" snack of its own. A failure of it is told in the
+///   sheet like any other. The name field's keyboard action is Done (it is
+///   the only field).
+///
 /// The success snacks are on the root messenger, so they show after the sheet
 /// has closed, even if the sheet was dragged away while it saved.
-Future<void> showReelForm(BuildContext context, {Reel? reel}) {
+Future<void> showReelForm(
+  BuildContext context, {
+  Reel? reel,
+  bool forClip = false,
+  Future<Reel?> Function(String name)? onCreateForClip,
+}) {
+  assert(
+    !forClip || (reel == null && onCreateForClip != null),
+    'a form for a clip makes a new reel and needs onCreateForClip',
+  );
   final l10n = AppLocalizations.of(context);
   final snacks = ReelSnacks.of(context);
   return showTtSheet<void>(
     context,
     builder: (_) => _ReelFormSheet(
       reel: reel,
-      onSaved: (saved) => snacks.show(
-        reel == null ? l10n.reelCreatedSnack(saved.name) : l10n.reelSavedSnack,
-      ),
+      forClip: forClip,
+      createForClip: onCreateForClip,
+      onSaved: (saved) {
+        if (forClip) return;
+        snacks.show(
+          reel == null
+              ? l10n.reelCreatedSnack(saved.name)
+              : l10n.reelSavedSnack,
+        );
+      },
       // Only used when the sheet is gone: then nothing is modal, and a snack
       // is seen.
       onFailedAfterClose: () => snacks.show(l10n.reelActionFailed, done: false),
@@ -72,11 +97,15 @@ String? reelNameErrorText(
 class _ReelFormSheet extends ConsumerStatefulWidget {
   const new({
     required this.reel,
+    required this.forClip,
+    required this.createForClip,
     required this.onSaved,
     required this.onFailedAfterClose,
   });
 
   final Reel? reel;
+  final bool forClip;
+  final Future<Reel?> Function(String name)? createForClip;
   final ValueChanged<Reel> onSaved;
   final VoidCallback onFailedAfterClose;
 
@@ -117,6 +146,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
         name: _name.text,
         description: _description.text,
         status: widget.reel == null ? null : _status,
+        createWith: widget.createForClip,
       );
       if (reel == null) return; // The sheet shows why.
       if (mounted) navigator.pop();
@@ -165,7 +195,11 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
               onPressed: () => Navigator.of(context).maybePop(),
             ),
             TtButton(
-              label: edit ? l10n.reelSaveButton : l10n.reelCreateButton,
+              label: edit
+                  ? l10n.reelSaveButton
+                  : widget.forClip
+                  ? l10n.reelFormCreateAndAdd
+                  : l10n.reelCreateButton,
               onPressed: form.saving ? null : () => unawaited(_save()),
             ),
           ],
@@ -180,6 +214,16 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
           tt.spacing.s,
         ),
         children: [
+          if (widget.forClip)
+            Padding(
+              padding: EdgeInsets.only(bottom: tt.spacing.xs),
+              child: Text(
+                l10n.reelFormForClipSubtitle,
+                style: tt.text.material.bodyMedium!.copyWith(
+                  color: context.scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           TtTextField(
             label: l10n.reelNameLabel,
             hint: l10n.reelNameHint,
@@ -188,24 +232,27 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
             maxLength: reelNameMaxLength,
             counterText: l10n.reelCounter,
             autofocus: true,
-            textInputAction: TextInputAction.next,
+            textInputAction: widget.forClip
+                ? TextInputAction.done
+                : TextInputAction.next,
             onChanged: typing,
             onSubmitted: (_) => unawaited(_save()),
           ),
-          TtTextField(
-            label: l10n.reelDescriptionLabel,
-            hint: l10n.reelDescriptionHint,
-            helper: l10n.reelDescriptionHelp,
-            controller: _description,
-            error: descriptionError,
-            multiline: true,
-            maxLength: reelDescriptionMaxLength,
-            // Quiet until it is nearly full.
-            counterText: (length, max) => length < _descriptionCounterFrom
-                ? ''
-                : l10n.reelCounter(length, max),
-            onChanged: typing,
-          ),
+          if (!widget.forClip)
+            TtTextField(
+              label: l10n.reelDescriptionLabel,
+              hint: l10n.reelDescriptionHint,
+              helper: l10n.reelDescriptionHelp,
+              controller: _description,
+              error: descriptionError,
+              multiline: true,
+              maxLength: reelDescriptionMaxLength,
+              // Quiet until it is nearly full.
+              counterText: (length, max) => length < _descriptionCounterFrom
+                  ? ''
+                  : l10n.reelCounter(length, max),
+              onChanged: typing,
+            ),
           if (edit) ...[
             SizedBox(height: tt.spacing.m),
             Semantics(

@@ -169,6 +169,7 @@ class _ComposedPlayer extends StatelessWidget {
               ),
             ),
             TtTagPanel(
+              semanticLabel: 'Reels',
               title: multi ? 'Pick reels for this clip' : 'Add to reel',
               headerAction: TtButton(
                 label: multi ? 'Cancel' : 'Pick several',
@@ -225,6 +226,10 @@ class _SeekDemoState extends State<_SeekDemo> {
       progress: _progress,
       positionText: widget.long ? '1:12' : '0:03',
       durationText: widget.long ? '4:32' : '0:12',
+      semanticLabel: 'Playback position',
+      semanticValue: widget.long ? '1:12 of 4:32' : '0:03 of 0:12',
+      semanticIncreasedValue: '5 percent later',
+      semanticDecreasedValue: '5 percent earlier',
       large: widget.long,
       hint: widget.long ? 'Drag to skim · 4:32 clip' : null,
       onSeek: (value) => setState(() => _progress = value),

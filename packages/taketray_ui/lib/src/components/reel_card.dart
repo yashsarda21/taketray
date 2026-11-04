@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/glass.dart';
+import 'package:taketray_ui/src/components/internal/scrim.dart';
 import 'package:taketray_ui/src/components/status_pill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_text_styles.dart';
@@ -378,25 +379,12 @@ class _Scrim extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // tt-style.css: .style-tt .rcard .cover::after
-    return IgnorePointer(
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: FractionallySizedBox(
-          heightFactor: 1 - TtMetrics.reelCardScrimStart,
-          widthFactor: 1,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  context.tt.colors.mediaScrimEnd.withValues(alpha: 0),
-                  context.tt.colors.mediaScrimEnd,
-                ],
-              ),
-            ),
-          ),
-        ),
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: FractionallySizedBox(
+        heightFactor: 1 - TtMetrics.reelCardScrimStart,
+        widthFactor: 1,
+        child: Scrim(top: false, color: context.tt.colors.mediaScrimEnd),
       ),
     );
   }

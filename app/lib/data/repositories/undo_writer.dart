@@ -21,7 +21,8 @@ final Logger _log = Logger('undo');
 /// its snack, and an [Expando] does not keep it alive.
 final Expando<bool> _undone = Expando<bool>('undone');
 
-/// Takes the snapshots that become [UndoRecord]s and puts them back (D-84).
+/// Takes the snapshots that become [UndoRecord]s and puts them back (D-84,
+/// D-94).
 ///
 /// Shared by `ClipsRepository` and `ReelsRepository`; screens call `undo` on
 /// either. Every method except [undo] runs inside the caller's transaction.
@@ -94,6 +95,8 @@ class UndoWriter {
               await _undoAdd(record);
             case DeleteReelUndo():
               await _undoDelete(record);
+            case InboxUndo():
+              await _undoInbox(record);
           }
           _undone[record] = true;
           marked.add(record);
@@ -181,6 +184,34 @@ class UndoWriter {
     _log.info(
       'Undid an add to reel ${record.reelId}: $deleted links removed, '
       '$back back in their list',
+    );
+  }
+
+  /// Each row goes back to its state and `addedAt` before the skip or
+  /// restore, only while it is still exactly as the action left it: in
+  /// `after`, with the same `addedAt` (the action moved only the state). A
+  /// clip tagged since has no row; one restored since (for a skip record),
+  /// skipped since (for a restore record) or put back in To tag since is in
+  /// another state or has a new `addedAt`: each keeps what happened to it. A
+  /// row that went back and forth to exactly `after` again still matches;
+  /// only the latest action's snack offers Undo, so that is accepted (D-94).
+  Future<void> _undoInbox(InboxUndo record) async {
+    if (record.isEmpty) return;
+    var back = 0;
+    for (final entry in record.before) {
+      back +=
+          await (_db.update(_db.inbox)..where(
+                (i) =>
+                    i.clipId.equals(entry.clipId) &
+                    i.state.equalsValue(record.after) &
+                    i.addedAt.equalsValue(entry.addedAt),
+              ))
+              // The WHERE has matched `addedAt` already; only the state moves.
+              .write(InboxCompanion(state: Value(entry.state)));
+    }
+    _log.info(
+      'Undid a move to ${record.after.name}: $back of '
+      '${record.before.length} back',
     );
   }
 

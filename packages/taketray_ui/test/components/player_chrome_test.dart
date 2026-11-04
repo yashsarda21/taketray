@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/semantics.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -46,6 +46,7 @@ Widget _header({
   String? subtitle = 'Scene 2 of 4 · 0:12–0:48',
   Widget? trailing,
   bool withTrailing = true,
+  bool wrapSubtitle = false,
 }) => _onVideo(
   TtPlayerHeader(
     leading: TtIconButton(
@@ -56,6 +57,7 @@ Widget _header({
     ),
     title: title,
     subtitle: subtitle,
+    wrapSubtitle: wrapSubtitle,
     trailing: withTrailing
         ? trailing ??
               TtIconButton(
@@ -88,6 +90,7 @@ Widget _scrub({
   ValueChanged<double>? onSeek,
   String position = '1:12',
   String duration = '4:32',
+  String? value,
 }) => _onVideo(
   TtScrubBar(
     progress: progress,
@@ -96,6 +99,10 @@ Widget _scrub({
     large: large,
     hint: hint,
     onSeek: onSeek,
+    semanticLabel: 'Playback position',
+    semanticValue: value ?? '$position of $duration',
+    semanticIncreasedValue: 'a little later',
+    semanticDecreasedValue: 'a little earlier',
   ),
 );
 
@@ -289,6 +296,32 @@ void main() {
         tester.getSize(find.byType(TtPlayerHeader)).height,
         greaterThanOrEqualTo(56),
       );
+    });
+
+    testWidgets('at 2x a wrapping subtitle takes two lines instead of '
+        'clipping', (tester) async {
+      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM';
+      await tester.pumpWidget(
+        ttTestApp(_header(subtitle: sub, wrapSubtitle: true), textScale: 2),
+      );
+      expect(tester.takeException(), isNull);
+      final text = tester.widget<Text>(find.text(sub));
+      expect(text.maxLines, 2);
+      final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
+      expect(paragraph.didExceedMaxLines, isFalse);
+      // The title stays one line.
+      expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+    });
+
+    testWidgets('below large text, or without wrapping, the subtitle is one '
+        'line', (tester) async {
+      const sub = 'Scene 2 of 4 · 0:12–0:48';
+      await tester.pumpWidget(
+        ttTestApp(_header(wrapSubtitle: true), textScale: 1.3),
+      );
+      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
+      await tester.pumpWidget(ttTestApp(_header(), textScale: 2));
+      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
     });
 
     testWidgets('passes the accessibility guidelines', (tester) async {
@@ -514,30 +547,147 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('semantics: a slider with the times, adjustable by steps', (
+    testWidgets('scrub bar value reads position of duration', (tester) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(ttTestApp(_scrub(progress: 0.5, onSeek: (_) {})));
+      final data = tester
+          .getSemantics(find.byType(TtScrubBar))
+          .getSemanticsData();
+      // The caller composes the sentence (D-81); the bar hands it on as the
+      // slider's value, not folded into its name.
+      expect(data.value, '1:12 of 4:32');
+      expect(data.label, 'Playback position');
+      expect(data.increasedValue, 'a little later');
+      expect(data.decreasedValue, 'a little earlier');
+      expect(data.flagsCollection.isSlider, isTrue);
+      handle.dispose();
+    });
+
+    testWidgets('scrub bar value follows the caller, not the drawn times', (
       tester,
     ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        ttTestApp(_scrub(onSeek: (_) {}, value: 'eins von zwei')),
+      );
+      final data = tester
+          .getSemantics(find.byType(TtScrubBar))
+          .getSemanticsData();
+      expect(data.value, 'eins von zwei');
+      handle.dispose();
+    });
+
+    testWidgets('scrub bar increase seeks forward 5 percent', (tester) async {
       final handle = tester.ensureSemantics();
       final seeks = <double>[];
       await tester.pumpWidget(
         ttTestApp(_scrub(progress: 0.5, onSeek: seeks.add)),
       );
-      final node = tester.getSemantics(find.byType(TtScrubBar));
-      final data = node.getSemanticsData();
-      expect(data.label, contains('1:12'));
-      expect(data.label, contains('4:32'));
-      expect(data.hasAction(SemanticsAction.increase), isTrue);
-      expect(data.hasAction(SemanticsAction.decrease), isTrue);
       tester.semantics.increase(
         find.semantics.byAction(SemanticsAction.increase),
       );
+      expect(seeks, hasLength(1));
+      expect(seeks.single, closeTo(0.55, 1e-9));
       tester.semantics.decrease(
         find.semantics.byAction(SemanticsAction.decrease),
       );
       expect(seeks, hasLength(2));
-      expect(seeks.first, greaterThan(0.5));
-      expect(seeks.last, lessThan(0.5));
+      expect(seeks.last, closeTo(0.45, 1e-9));
       handle.dispose();
+    });
+
+    testWidgets('scrub bar steps stop at the ends of the clip', (tester) async {
+      final handle = tester.ensureSemantics();
+      final seeks = <double>[];
+      await tester.pumpWidget(
+        ttTestApp(_scrub(progress: 0.98, onSeek: seeks.add)),
+      );
+      tester.semantics.increase(
+        find.semantics.byAction(SemanticsAction.increase),
+      );
+      expect(seeks.single, 1.0);
+      seeks.clear();
+      await tester.pumpWidget(
+        ttTestApp(_scrub(progress: 0.02, onSeek: seeks.add)),
+      );
+      tester.semantics.decrease(
+        find.semantics.byAction(SemanticsAction.decrease),
+      );
+      expect(seeks.single, 0.0);
+      handle.dispose();
+    });
+
+    for (final large in [false, true]) {
+      testWidgets('scrub thumb stays inside the gesture area '
+          '(${large ? 'large' : 'normal'})', (tester) async {
+        for (final progress in [0.0, 0.5, 1.0]) {
+          await tester.pumpWidget(
+            ttTestApp(_scrub(progress: progress, large: large, onSeek: (_) {})),
+          );
+          final area = tester.getRect(
+            find.byKey(const ValueKey('tt-scrub-gesture')),
+          );
+          final thumbRect = tester.getRect(thumb());
+          expect(
+            thumbRect.left >= area.left &&
+                thumbRect.right <= area.right &&
+                thumbRect.top >= area.top &&
+                thumbRect.bottom <= area.bottom,
+            isTrue,
+            reason: 'thumb $thumbRect outside gesture area $area at $progress',
+          );
+        }
+      });
+    }
+
+    testWidgets('a tap on the thumb at either end seeks to that end', (
+      tester,
+    ) async {
+      final seeks = <double>[];
+      await tester.pumpWidget(
+        ttTestApp(_scrub(progress: 0, onSeek: seeks.add)),
+      );
+      // The outer edge of the thumb at 0 %: inside the gesture area.
+      final r = tester.getRect(thumb());
+      await tester.tapAt(Offset(r.left + 1, r.center.dy));
+      expect(seeks.last, 0.0);
+      await tester.pumpWidget(
+        ttTestApp(_scrub(progress: 1, onSeek: seeks.add)),
+      );
+      final e = tester.getRect(thumb());
+      await tester.tapAt(Offset(e.right - 1, e.center.dy));
+      expect(seeks.last, 1.0);
+    });
+
+    testWidgets('the drawn track keeps the 10 dp gap to both times', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(_scrub(onSeek: (_) {})));
+      final trackRect = tester.getRect(track());
+      expect(trackRect.left - tester.getRect(find.text('1:12')).right, 10);
+      expect(tester.getRect(find.text('4:32')).left - trackRect.right, 10);
+      // The gesture area ends where the times begin.
+      final area = tester.getRect(
+        find.byKey(const ValueKey('tt-scrub-gesture')),
+      );
+      expect(area.left - tester.getRect(find.text('1:12')).right, 0);
+      expect(tester.getRect(find.text('4:32')).left - area.right, 0);
+    });
+
+    testWidgets('scrub row is 48 dp to touch and 22 dp drawn', (tester) async {
+      await tester.pumpWidget(ttTestApp(_scrub(onSeek: (_) {})));
+      expect(tester.getSize(find.byType(TtScrubBar)).height, 48);
+      final area = tester.getRect(
+        find.byKey(const ValueKey('tt-scrub-gesture')),
+      );
+      expect(area.height, 48);
+      final row = tester.getRect(find.byKey(const ValueKey('tt-scrub-row')));
+      expect(row.height, 22);
+      // The drawn row sits in the middle of the touch area.
+      expect(row.center.dy, closeTo(area.center.dy, 0.01));
+      // The times and the track are drawn on that row.
+      expect(tester.getCenter(find.text('1:12')).dy, closeTo(row.center.dy, 1));
+      expect(tester.getCenter(track()).dy, closeTo(row.center.dy, 0.01));
     });
 
     testWidgets('semantics: not adjustable without onSeek', (tester) async {
@@ -547,6 +697,7 @@ void main() {
           .getSemantics(find.byType(TtScrubBar))
           .getSemanticsData();
       expect(data.hasAction(SemanticsAction.increase), isFalse);
+      expect(data.hasAction(SemanticsAction.decrease), isFalse);
       handle.dispose();
     });
 

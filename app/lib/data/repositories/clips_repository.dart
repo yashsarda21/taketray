@@ -207,15 +207,116 @@ class ClipsRepository {
     _log.info('Moved clip $clipId back to To tag');
   }
 
-  /// Moves clips from To tag to Skipped. A clip with no `inbox` row (one that
-  /// is in a reel) is left alone.
-  Future<void> skip(Iterable<int> clipIds) =>
-      _setInboxState(clipIds, InboxState.skipped);
+  /// Skip (D-94): moves the clips in [clipIds] that are in To tag
+  /// ([InboxState.pending]) to Skipped, in one transaction. A clip that is
+  /// skipped already, in a reel (no `inbox` row) or unknown is left alone.
+  /// Only the state moves: `addedAt` keeps when the clip arrived.
+  ///
+  /// Returns what [undo] needs: the rows it moved, as they were, read in the
+  /// same transaction. Empty when it moved nothing (it then writes nothing).
+  Future<InboxUndo> skipClips(Iterable<int> clipIds) async {
+    final ids = clipIds.toSet();
+    final record = await _moveInbox(
+      ids,
+      from: InboxState.pending,
+      to: InboxState.skipped,
+    );
+    _log.info('Skipped ${record.before.length} of ${ids.length} clips');
+    return record;
+  }
 
-  /// Moves clips from Skipped back to To tag. A clip with no `inbox` row is
-  /// left alone.
-  Future<void> restore(Iterable<int> clipIds) =>
-      _setInboxState(clipIds, InboxState.pending);
+  /// Skip all (D-94): moves every clip in To tag to Skipped, in one
+  /// transaction that reads the rows and writes them, so a clip a scan saves
+  /// meanwhile is either in the record (it was saved first) or still in To
+  /// tag (it waited for this transaction); it is never skipped without being
+  /// in the record. Only the state moves: `addedAt` is kept.
+  ///
+  /// Returns what [undo] needs: the rows it moved, as they were. Empty when
+  /// To tag was empty (it then writes nothing).
+  Future<InboxUndo> skipAllPending() async {
+    final record = await _db.transaction(() async {
+      final rows =
+          await (_db.select(_db.inbox)
+                ..where((i) => i.state.equalsValue(InboxState.pending))
+                ..orderBy([(i) => OrderingTerm.asc(i.clipId)]))
+              .get();
+      if (rows.isNotEmpty) {
+        final moved =
+            await (_db.update(_db.inbox)
+                  ..where((i) => i.state.equalsValue(InboxState.pending)))
+                .write(const InboxCompanion(state: Value(InboxState.skipped)));
+        if (moved != rows.length) {
+          // Cannot happen inside a transaction: both statements see one
+          // state. A row skipped but not in the record could not be undone.
+          throw StateError('Skipped $moved clips but read ${rows.length}');
+        }
+      }
+      return InboxUndo(
+        before: [for (final row in rows) _entryOf(row)],
+        after: InboxState.skipped,
+      );
+    });
+    _log.info('Skipped all ${record.before.length} clips in To tag');
+    return record;
+  }
+
+  /// Restore (D-94): moves the clips in [clipIds] that are in Skipped back to
+  /// To tag ([InboxState.pending]), in one transaction. A clip that is
+  /// pending already, in a reel or unknown is left alone. Only the state
+  /// moves: `addedAt` is kept.
+  ///
+  /// Returns what [undo] needs: the rows it moved, as they were. Empty when
+  /// it moved nothing (it then writes nothing).
+  Future<InboxUndo> restoreClips(Iterable<int> clipIds) async {
+    final ids = clipIds.toSet();
+    final record = await _moveInbox(
+      ids,
+      from: InboxState.skipped,
+      to: InboxState.pending,
+    );
+    _log.info('Restored ${record.before.length} of ${ids.length} clips');
+    return record;
+  }
+
+  /// Moves the `inbox` rows of [ids] that are in state [from] to [to], in one
+  /// transaction (batches of [idBatch]), and returns them as they were, by
+  /// clip id. Writes nothing when no row is in [from].
+  Future<InboxUndo> _moveInbox(
+    Set<int> ids, {
+    required InboxState from,
+    required InboxState to,
+  }) async {
+    if (ids.isEmpty) return InboxUndo(before: const [], after: to);
+    final rows = await _db.transaction(() async {
+      final rows = <InboxRow>[];
+      for (final batch in _batches(ids)) {
+        final found =
+            await (_db.select(_db.inbox)..where(
+                  (i) => i.clipId.isIn(batch) & i.state.equalsValue(from),
+                ))
+                .get();
+        if (found.isEmpty) continue;
+        final moved =
+            await (_db.update(_db.inbox)..where(
+                  (i) => i.clipId.isIn(batch) & i.state.equalsValue(from),
+                ))
+                .write(InboxCompanion(state: Value(to)));
+        if (moved != found.length) {
+          // Cannot happen inside a transaction (see skipAllPending).
+          throw StateError('Moved $moved clips but read ${found.length}');
+        }
+        rows.addAll(found);
+      }
+      return rows..sort((a, b) => a.clipId.compareTo(b.clipId));
+    });
+    return InboxUndo(
+      before: [for (final row in rows) _entryOf(row)],
+      after: to,
+    );
+  }
+
+  InboxEntry _entryOf(InboxRow row) =>
+      InboxEntry(clipId: row.clipId, state: row.state, addedAt: row.addedAt);
 
   /// Adds existing clips to reel [reelId]. A clip the reel already has keeps
   /// its `addedAt`. The reel's `updatedAt` is set to now when a link was
@@ -405,9 +506,9 @@ class ClipsRepository {
     return record;
   }
 
-  /// Puts back what a remove, move, add or reel delete changed, with the same
-  /// ids, in one transaction (D-84). Idempotent; a reel that is gone gets
-  /// nothing back. See `UndoWriter.undo`.
+  /// Puts back what a remove, move, add, reel delete, skip or restore
+  /// changed, with the same ids, in one transaction (D-84, D-94). Idempotent;
+  /// a reel that is gone gets nothing back. See `UndoWriter.undo`.
   Future<void> undo(UndoRecord record) => _undo.undo(record);
 
   /// Puts back what every one of [records] changed, last to first, in one
@@ -717,11 +818,17 @@ class ClipsRepository {
   }
 
   /// How many clips are waiting in To tag, again after every change.
-  Stream<int> watchPendingCount() {
+  Stream<int> watchPendingCount() => _watchInboxCount(InboxState.pending);
+
+  /// How many clips are in Skipped, again after every change (D-98: the
+  /// **Skipped ({n})** button on To tag).
+  Stream<int> watchSkippedCount() => _watchInboxCount(InboxState.skipped);
+
+  Stream<int> _watchInboxCount(InboxState state) {
     final count = _db.inbox.clipId.count();
     final query = _db.selectOnly(_db.inbox)
       ..addColumns([count])
-      ..where(_db.inbox.state.equalsValue(InboxState.pending));
+      ..where(_db.inbox.state.equalsValue(state));
     return query.map((row) => row.read(count) ?? 0).watchSingle();
   }
 
@@ -866,15 +973,6 @@ class ClipsRepository {
       .insert(
         ClipReelsCompanion.insert(clipId: clipId, reelId: reelId, addedAt: now),
       );
-
-  Future<void> _setInboxState(Iterable<int> clipIds, InboxState state) async {
-    final ids = clipIds.toSet();
-    final changed =
-        await (_db.update(_db.inbox)..where((i) => i.clipId.isIn(ids))).write(
-          InboxCompanion(state: Value(state)),
-        );
-    _log.info('Set $changed of ${ids.length} clips to ${state.name}');
-  }
 
   /// Sets `mediaStoreId` (and [verification], when given) of clip [clipId] if
   /// it is a MediaStore clip of [volumeName].

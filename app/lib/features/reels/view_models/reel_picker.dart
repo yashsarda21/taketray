@@ -14,10 +14,11 @@ class PickerSections {
 
 /// Splits [summaries] for the picker: the reel [excludeReelId] (the one the
 /// clips are in) is left out, then Collecting reels come first and the rest
-/// follow, each in the order given.
+/// follow, each in the order given. Tag mode (clips in no reel yet) passes
+/// null and leaves nothing out (D-98).
 PickerSections pickerSections(
   List<ReelSummary> summaries, {
-  required int excludeReelId,
+  required int? excludeReelId,
 }) {
   final shown = [
     for (final s in summaries)

@@ -28,6 +28,7 @@ import 'package:taketray_widgetbook/components/skeleton.dart';
 import 'package:taketray_widgetbook/components/snack.dart';
 import 'package:taketray_widgetbook/components/stat_strip.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
+import 'package:taketray_widgetbook/components/tag_done.dart';
 import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
@@ -96,7 +97,10 @@ final List<WidgetbookNode> ttCatalog = [
       ttStageArrowComponent,
       ttScrubBarComponent,
       ttReelChipComponent,
+      ttNewReelChipComponent,
       ttTagPanelComponent,
+      ttOtherReelsToggleComponent,
+      ttTagDoneComponent,
       ttSameAsPreviousButtonComponent,
       ttReelTagComponent,
       ttViewerActionsComponent,

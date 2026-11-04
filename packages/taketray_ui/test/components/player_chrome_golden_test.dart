@@ -28,6 +28,16 @@ void main() {
           ),
         ),
       ),
+      TtScenario(
+        'header, subtitle that wraps at large text',
+        _onVideo(
+          _header(
+            title: '5 of 12',
+            subtitle: '11:50 AM–12:10 PM and a long tail',
+            wrapSubtitle: true,
+          ),
+        ),
+      ),
       TtScenario('arrows enabled', _onVideo(_arrows(enabled: true))),
       TtScenario('arrows disabled', _onVideo(_arrows(enabled: false))),
       TtScenario(
@@ -37,6 +47,8 @@ void main() {
             progress: 0,
             positionText: '0:00',
             durationText: '0:12',
+            semanticLabel: 'Playback position',
+            semanticValue: '0:00 of 0:12',
           ),
         ),
       ),
@@ -49,9 +61,24 @@ void main() {
               progress: 0.26,
               positionText: '1:12',
               durationText: '4:32',
+              semanticLabel: 'Playback position',
+              semanticValue: '1:12 of 4:32',
               large: true,
               hint: 'Drag to skim · 4:32 clip',
             ),
+          ),
+        ),
+      ),
+      TtScenario(
+        'scrub at 100 %, large',
+        _onVideo(
+          const TtScrubBar(
+            progress: 1,
+            positionText: '4:32',
+            durationText: '4:32',
+            semanticLabel: 'Playback position',
+            semanticValue: '4:32 of 4:32',
+            large: true,
           ),
         ),
       ),
@@ -62,6 +89,8 @@ void main() {
             progress: 0.6,
             positionText: '12:34:56',
             durationText: '23:59:59',
+            semanticLabel: 'Playback position',
+            semanticValue: '12:34:56 of 23:59:59',
           ),
         ),
       ),
@@ -82,24 +111,28 @@ Widget _bar({required int total, required int current}) => _onVideo(
   ),
 );
 
-Widget _header({required String title, required String subtitle}) =>
-    TtPlayerHeader(
-      leading: TtIconButton(
-        icon: Symbols.close_rounded,
-        semanticLabel: 'Close tagging',
-        style: TtIconButtonStyle.onVideo,
-        onPressed: () {},
-      ),
-      title: title,
-      subtitle: subtitle,
-      trailing: TtIconButton(
-        icon: Symbols.volume_up_rounded,
-        semanticLabel: 'Mute',
-        style: TtIconButtonStyle.onVideo,
-        pressed: true,
-        onPressed: () {},
-      ),
-    );
+Widget _header({
+  required String title,
+  required String subtitle,
+  bool wrapSubtitle = false,
+}) => TtPlayerHeader(
+  leading: TtIconButton(
+    icon: Symbols.close_rounded,
+    semanticLabel: 'Close tagging',
+    style: TtIconButtonStyle.onVideo,
+    onPressed: () {},
+  ),
+  title: title,
+  subtitle: subtitle,
+  wrapSubtitle: wrapSubtitle,
+  trailing: TtIconButton(
+    icon: Symbols.volume_up_rounded,
+    semanticLabel: 'Mute',
+    style: TtIconButtonStyle.onVideo,
+    pressed: true,
+    onPressed: () {},
+  ),
+);
 
 Widget _arrows({required bool enabled}) => Padding(
   padding: const EdgeInsets.all(8),

@@ -94,6 +94,18 @@ class TestMedia {
     return video;
   }
 
+  /// Puts [count] test videos into the test folder, one after the other (each
+  /// one a separate row, named `taketray-test-N.mp4`), and returns them in
+  /// the order they were made. Every one is registered for the tear-down, as
+  /// [insert] does.
+  Future<List<InsertedVideo>> insertMany(int count) async {
+    final made = <InsertedVideo>[];
+    for (var i = 0; i < count; i++) {
+      made.add(await insert());
+    }
+    return made;
+  }
+
   /// Deletes [video] from the phone; false if it was gone already.
   Future<bool> delete(InsertedVideo video) async {
     final deleted = await _channel.invokeMethod<bool>('deleteVideo', {

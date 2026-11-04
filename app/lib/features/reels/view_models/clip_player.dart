@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
+import 'package:taketray/features/tagging/view_models/tag_player_muted.dart';
 import 'package:video_player/video_player.dart';
 
 part 'clip_player.g.dart';
@@ -41,10 +42,33 @@ class ViewerMuted extends _$ViewerMuted {
 ///   video the user left.
 /// - **The mute switch** is followed while the player lives.
 ///
+/// - **[use]** says whose player it is: the clip viewer's
+///   ([ClipPlayerUse.viewer], the default, unchanged) or the tag player's
+///   ([ClipPlayerUse.tagging], D-96), which follows its own mute switch
+///   (`TagPlayerMuted`, muted at first) and **loops** the clip, so a short
+///   clip keeps playing while the user decides.
+///
+/// - **[autoplay]** false opens the clip and leaves it paused (muted as the
+///   switch says, looping for the tag player): the tag player keeps the next
+///   clip open one ahead, and it must not be heard or move off screen. The
+///   tag player always asks with it off, for the clip showing and the one
+///   ahead alike (the same family entry, so the clip that comes up is the
+///   controller that was opened), and plays the one showing itself.
+///
 /// Auto-disposes, and never retries: a video that failed once would open
 /// again and again. The address is not logged.
+
 @Riverpod(retry: noRetry)
-Future<VideoPlayerController> clipPlayer(Ref ref, Uri uri) async {
+Future<VideoPlayerController> clipPlayer(
+  Ref ref,
+  Uri uri, {
+  ClipPlayerUse use = ClipPlayerUse.viewer,
+  bool autoplay = true,
+}) async {
+  final mutedSwitch = switch (use) {
+    ClipPlayerUse.viewer => viewerMutedProvider,
+    ClipPlayerUse.tagging => tagPlayerMutedProvider,
+  };
   final controller = VideoPlayerController.contentUri(
     uri,
     videoPlayerOptions: VideoPlayerOptions(allowBackgroundPlayback: true),
@@ -56,7 +80,7 @@ Future<VideoPlayerController> clipPlayer(Ref ref, Uri uri) async {
       unawaited(controller.dispose());
     })
     ..listen<bool>(
-      viewerMutedProvider,
+      mutedSwitch,
       (_, muted) => unawaited(_setSound(controller, muted: muted)),
     );
   try {
@@ -65,12 +89,23 @@ Future<VideoPlayerController> clipPlayer(Ref ref, Uri uri) async {
     _log.warning('A clip could not be opened: ${error.runtimeType}');
     rethrow;
   }
-  await _setSound(controller, muted: ref.read(viewerMutedProvider));
+  await _setSound(controller, muted: ref.read(mutedSwitch));
+  if (use == ClipPlayerUse.tagging) await controller.setLooping(true);
   // The app may have gone to the background while the video was opening:
   // the observer found nothing to pause then, and the plugin's own check is
   // off, so playing now would be heard from the background.
-  if (!pauser.inBackground) await controller.play();
+  if (autoplay && !pauser.inBackground) await controller.play();
   return controller;
+}
+
+/// Whose player a [clipPlayer] is: it picks the mute switch, and whether the
+/// clip loops.
+enum ClipPlayerUse {
+  /// The clip viewer of a reel (D-89): its own mute switch, plays once.
+  viewer,
+
+  /// The tag player (D-96): muted at first, loops.
+  tagging,
 }
 
 Future<void> _setSound(

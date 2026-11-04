@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
+import 'package:taketray/features/tagging/view_models/tag_player_muted.dart';
 import 'package:video_player_platform_interface/video_player_platform_interface.dart';
 
 import '../../../support/fake_video_player.dart';
@@ -246,6 +247,114 @@ void main() {
       final b = ProviderContainer.test();
 
       expect(b.read(viewerMutedProvider), isFalse);
+    });
+  });
+
+  group('tagging (D-96)', () {
+    ProviderContainer openTagging(Uri uri) => ProviderContainer.test()
+      ..listen(clipPlayerProvider(uri, use: ClipPlayerUse.tagging), (_, _) {});
+
+    test('the tag player starts muted and loops the clip', () async {
+      final c = openTagging(first);
+
+      await c.read(
+        clipPlayerProvider(first, use: ClipPlayerUse.tagging).future,
+      );
+
+      expect(platform.uris, [first.toString()]);
+      expect(platform.player(1).volume, 0);
+      expect(platform.player(1).looping, isTrue);
+      expect(platform.player(1).playing, isTrue);
+      c.dispose();
+    });
+
+    test('it follows its own switch, not the viewer one', () async {
+      final c = openTagging(first);
+      await c.read(
+        clipPlayerProvider(first, use: ClipPlayerUse.tagging).future,
+      );
+
+      c.read(viewerMutedProvider.notifier).toggle();
+      await pumpEventQueue();
+      expect(platform.player(1).volume, 0);
+
+      c.read(tagPlayerMutedProvider.notifier).toggle();
+      await pumpEventQueue();
+      expect(platform.player(1).volume, 1);
+      c.dispose();
+    });
+
+    test(
+      'autoplay off opens the clip without playing it (the preload)',
+      () async {
+        final c = ProviderContainer.test()
+          ..listen(
+            clipPlayerProvider(
+              first,
+              use: ClipPlayerUse.tagging,
+              autoplay: false,
+            ),
+            (_, _) {},
+          );
+
+        final player = await c.read(
+          clipPlayerProvider(
+            first,
+            use: ClipPlayerUse.tagging,
+            autoplay: false,
+          ).future,
+        );
+
+        // Opened, muted, looping: ready to play, but not heard and not moving.
+        expect(player.value.isInitialized, isTrue);
+        expect(platform.player(1).volume, 0);
+        expect(platform.player(1).looping, isTrue);
+        expect(platform.calls, isNot(contains('play:1')));
+        expect(platform.player(1).playing, isFalse);
+        c.dispose();
+      },
+    );
+
+    test('autoplay is a different player from the default one', () async {
+      // The tag player always asks with autoplay off, so the preloaded clip
+      // and the clip showing are the same provider.
+      final c = ProviderContainer.test()
+        ..listen(
+          clipPlayerProvider(first, use: ClipPlayerUse.tagging),
+          (_, _) {},
+        )
+        ..listen(
+          clipPlayerProvider(
+            first,
+            use: ClipPlayerUse.tagging,
+            autoplay: false,
+          ),
+          (_, _) {},
+        );
+      await c.read(
+        clipPlayerProvider(first, use: ClipPlayerUse.tagging).future,
+      );
+      await c.read(
+        clipPlayerProvider(
+          first,
+          use: ClipPlayerUse.tagging,
+          autoplay: false,
+        ).future,
+      );
+
+      expect(platform.players, hasLength(2));
+      expect(platform.player(1).playing, isTrue);
+      expect(platform.player(2).playing, isFalse);
+      c.dispose();
+    });
+
+    test('the viewer does not loop', () async {
+      final c = open(first);
+
+      await c.read(clipPlayerProvider(first).future);
+
+      expect(platform.player(1).looping, isFalse);
+      c.dispose();
     });
   });
 }

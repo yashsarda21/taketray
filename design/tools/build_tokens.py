@@ -375,8 +375,10 @@ SIZE = {'touchTarget': 48, 'iconSmall': 18, 'icon': 24, 'iconLarge': 32,
 
 # Tag player and clip viewer: always the dark scheme, on true black, whatever the app theme.
 # Values are CSS colours (hex or rgba) because the JSON carries them as written here.
+# The scrims are the prototype's (proto.css .viewer .vtop rgba(0,0,0,.6) and .vbot
+# rgba(0,0,0,.78), D-92): the owner's ruling over the earlier .55 / .70.
 VIDEO_SURFACE = {
-    'background': '#000000', 'scrimTop': 'rgba(0,0,0,0.55)', 'scrimBottom': 'rgba(0,0,0,0.70)',
+    'background': '#000000', 'scrimTop': 'rgba(0,0,0,0.6)', 'scrimBottom': 'rgba(0,0,0,0.78)',
     'onVideo': '#FFFFFF', 'onVideoVariant': 'rgba(255,255,255,0.78)',
 }
 
@@ -423,7 +425,10 @@ def check_contrast(light=None, dark=None):
             rows.append((theme_name, 'surface', f'{name}.color', round(r, 2), 3.0))
             if r < 3.0:
                 failures.append((theme_name, 'surface', f'{name}.color', r))
-    # White text over video scrim (always-dark player): checked against #000 at 55%
+    # White text over the video scrims (always-dark player) is not checked here.
+    # Worst case is white footage under a scrim: the top scrim (60 % black) leaves
+    # #666666 at its edge, 5.7:1 for white text; the bottom scrim (78 % black)
+    # leaves #383838, 12:1.
     return rows, failures
 
 
@@ -709,6 +714,33 @@ def dart_css_color(css):
     return f'Color(0x{alpha:02X}{int(r):02X}{int(g):02X}{int(b):02X})'
 
 
+def dart_shadows(css):
+    """A CSS box-shadow list ('0 1px 2px rgba(0,0,0,.30), 0 4px 8px 3px rgba(...)') -> Dart BoxShadow lines.
+
+    Each layer is 'x y blur [spread] rgba(r,g,b,a)'; 'none' is an empty list."""
+    if css.strip() == 'none':
+        return []
+    layers = []
+    for layer in css.split('), '):
+        layer = layer if layer.endswith(')') else layer + ')'
+        head, colour = layer.split('rgba(')
+        nums = [float(x.replace('px', '')) for x in head.split()]
+        x, y, blur = nums[:3]
+        spread = nums[3] if len(nums) > 3 else 0
+        args = [f'color: {dart_css_color("rgba(" + colour)}',
+                f'offset: Offset({dart_num(x)}, {dart_num(y)})',
+                f'blurRadius: {dart_num(blur)}']
+        if spread:
+            args.append(f'spreadRadius: {dart_num(spread)}')
+        # What `dart format` writes: one line when it fits in 80 columns, else one argument per line.
+        one_line = f'    BoxShadow({", ".join(args)}),'
+        if len(one_line) <= 80:
+            layers.append(one_line)
+        else:
+            layers += ['    BoxShadow('] + [f'      {a},' for a in args] + ['    ),']
+    return layers
+
+
 def dart_num(v):
     """A Dart double literal without a needless '.0' (16, 0.75, -1.2)."""
     return str(int(v)) if float(v).is_integer() else repr(float(v))
@@ -795,6 +827,14 @@ def write_dart():
             lines.append(f'  static const double {k} = {w} / {h};')
         else:
             lines.append(f'  static const double {k} = {v};')
+    lines += ['}', '', '/// Elevation shadows (the CSS --elev-N), one BoxShadow per layer.',
+              'abstract final class TtElevationTokens {']
+    for k, v in ELEVATION.items():
+        layers = dart_shadows(v['shadow'])
+        if layers:
+            lines += [f'  static const {k} = <BoxShadow>['] + layers + ['  ];']
+        else:
+            lines.append(f'  static const {k} = <BoxShadow>[];')
     lines += ['}', '']
     emit(DART_OUT, '\n'.join(lines))
     return DART_OUT

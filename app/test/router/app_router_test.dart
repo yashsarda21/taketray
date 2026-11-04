@@ -10,6 +10,8 @@ import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/tagging/views/skipped_screen.dart';
+import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
@@ -279,6 +281,121 @@ void main() {
       expect(find.byType(ReelsScreen), findsOneWidget);
     });
   }
+
+  testApp('the tag player opens above the shell, with no nav pill, on the '
+      'clip in ?from, and back returns to To tag', (tester) async {
+    final platform = FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final ids = (await tester.runAsync(
+      () => h.media.store([reelVideo(1), reelVideo(2), reelVideo(3)]),
+    ))!;
+    final (_, router) = await _pumpApp(tester, harness: h);
+    router.go(Routes.toTag);
+    await _settle(tester);
+    expect(find.byType(TtNavPill), findsOneWidget);
+
+    unawaited(router.push(Routes.tagFrom(ids[1])));
+    await _settle(tester);
+
+    expect(find.byType(TagPlayerScreen), findsOneWidget);
+    expect(
+      tester.widget<TagPlayerScreen>(find.byType(TagPlayerScreen)).startClipId,
+      ids[1],
+    );
+    expect(find.byType(TtNavPill), findsNothing);
+    expect(
+      tester.widget<TtPlayerHeader>(find.byType(TtPlayerHeader)).title,
+      '2 of 3',
+    );
+    expect(
+      platform.uris.first,
+      'content://media/external_primary/video/media/2',
+    );
+
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    expect(find.byType(TagPlayerScreen), findsNothing);
+    expect(find.byType(ToTagScreen), findsOneWidget);
+    expect(find.byType(TtNavPill), findsOneWidget);
+    expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 1);
+    expect(platform.live, isEmpty);
+  });
+
+  testApp('a tile on To tag opens the tag player on that clip', (tester) async {
+    FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final ids = (await tester.runAsync(
+      () => h.media.store([reelVideo(1), reelVideo(2), reelVideo(3)]),
+    ))!;
+    final (_, router) = await _pumpApp(tester, harness: h);
+    router.go(Routes.toTag);
+    await _settle(tester);
+
+    await tester.tap(find.byType(TtClipTile).at(2));
+    await _settle(tester);
+
+    expect(
+      tester.widget<TagPlayerScreen>(find.byType(TagPlayerScreen)).startClipId,
+      ids[2],
+    );
+  });
+
+  testApp('Skipped opens inside the To tag tab, and back returns to To tag', (
+    tester,
+  ) async {
+    final (_, router) = await _pumpApp(tester);
+    router.go(Routes.toTag);
+    await _settle(tester);
+
+    unawaited(router.push(Routes.skipped));
+    await _settle(tester);
+
+    expect(find.byType(SkippedScreen), findsOneWidget);
+    expect(find.text('Skipped'), findsOneWidget);
+    // Inside the tab: the nav pill stays, on To tag.
+    expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 1);
+
+    await tester.tap(find.bySemanticsLabel('Back'));
+    await _settle(tester);
+    expect(find.byType(SkippedScreen), findsNothing);
+    expect(find.byType(ToTagScreen), findsOneWidget);
+  });
+
+  test('Routes.skipped is inside the To tag tab', () {
+    expect(Routes.skipped, '/to-tag/skipped');
+    expect(Routes.skipped, startsWith(Routes.toTag));
+  });
+
+  for (final from in ['abc', '0', '-2', '1.5', '']) {
+    testApp('the tag player with ?from=$from starts on the first clip', (
+      tester,
+    ) async {
+      FakeVideoPlayerPlatform.install();
+      final h = reelHarness();
+      await tester.runAsync(() => h.media.store([reelVideo(1), reelVideo(2)]));
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push('${Routes.tagPlayer}?from=$from'));
+      await _settle(tester);
+
+      expect(
+        tester
+            .widget<TagPlayerScreen>(find.byType(TagPlayerScreen))
+            .startClipId,
+        isNull,
+      );
+      expect(
+        tester.widget<TtPlayerHeader>(find.byType(TtPlayerHeader)).title,
+        '1 of 2',
+      );
+    });
+  }
+
+  test('Routes.tagFrom is the tag player location', () {
+    expect(Routes.tagPlayer, '/to-tag/play');
+    expect(Routes.tagFrom(null), '/to-tag/play');
+    expect(Routes.tagFrom(12), '/to-tag/play?from=12');
+  });
 
   test('Routes.clip is the clip location of a reel', () {
     expect(Routes.clip(4, 9), '/reels/4/clip/9');

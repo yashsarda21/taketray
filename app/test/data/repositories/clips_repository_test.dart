@@ -207,7 +207,7 @@ void main() {
 
     test('a skipped clip detected again stays skipped', () async {
       final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
-      await repo.skip([id]);
+      await repo.skipClips([id]);
 
       await repo.saveDetected([mediaStoreClip(10)]);
 
@@ -272,7 +272,7 @@ void main() {
         mediaStoreClip(11),
         mediaStoreClip(12),
       ]);
-      await repo.skip([ids[1]]);
+      await repo.skipClips([ids[1]]);
 
       await repo.addNewClipsToReel(reel.id, [
         mediaStoreClip(10),
@@ -462,7 +462,7 @@ void main() {
     test('removes a skipped clip from Skipped too', () async {
       final reel = await reels.create('Goa');
       final id = (await repo.saveDetected([mediaStoreClip(10)])).single;
-      await repo.skip([id]);
+      await repo.skipClips([id]);
 
       await repo.tagClip(id, {reel.id});
 
@@ -529,11 +529,11 @@ void main() {
         mediaStoreClip(12),
       ]);
 
-      await repo.skip([ids[0], ids[1]]);
+      await repo.skipClips([ids[0], ids[1]]);
       expect(await repo.watchPendingCount().first, 1);
       expect((await repo.watchInbox(InboxState.skipped).first).length, 2);
 
-      await repo.restore([ids[0], ids[1]]);
+      await repo.restoreClips([ids[0], ids[1]]);
       expect(await repo.watchPendingCount().first, 3);
       expect(await repo.watchInbox(InboxState.skipped).first, isEmpty);
     });
@@ -544,8 +544,8 @@ void main() {
         mediaStoreClip(1),
       ])).single;
 
-      await repo.skip([id]);
-      await repo.restore([id]);
+      await repo.skipClips([id]);
+      await repo.restoreClips([id]);
 
       expect(await inboxRows(), isEmpty);
     });
@@ -579,7 +579,7 @@ void main() {
         mediaStoreClip(11),
         mediaStoreClip(12),
       ]);
-      await repo.skip([ids[1]]);
+      await repo.skipClips([ids[1]]);
 
       await repo.addClipsToReel(reel.id, [ids[0], ids[1]]);
 
@@ -683,7 +683,7 @@ void main() {
           mediaStoreClip(10),
           mediaStoreClip(11),
         ]);
-        await repo.skip([ids.last]);
+        await repo.skipClips([ids.last]);
         // With microseconds, as a real clock has: the records must hold the
         // times the database stores (milliseconds), or undo misreads them.
         clock.advance(_minute + const Duration(microseconds: 123));
@@ -989,7 +989,7 @@ void main() {
         'a skipped stored clip that is another video leaves Skipped',
         () async {
           final [a] = await detect([10]);
-          await repo.skip([a]);
+          await repo.skipClips([a]);
 
           await repo.addCheckedClips([otherVideo], sameVideo: sameFingerprint);
 
@@ -1177,7 +1177,7 @@ void main() {
         final [pending, skipped, inReel] = await detect([10, 11, 12]);
         final goa = (await reels.create('Goa')).id;
         await repo.tagClip(inReel, {goa});
-        await repo.skip([skipped]);
+        await repo.skipClips([skipped]);
 
         final deleted = await repo.applyVerification(
           found: {},
@@ -1588,7 +1588,7 @@ void main() {
         final [a, b, c] = await detect([10, 11, 12]);
         final goa = (await reels.create('Goa')).id;
         await repo.tagClip(a, {goa});
-        await repo.skip([c]);
+        await repo.skipClips([c]);
         clock.advance(_minute);
 
         await repo.applyRebuildMatch(
@@ -1620,7 +1620,7 @@ void main() {
           12,
           13,
         ]);
-        await repo.skip([inSkipped]);
+        await repo.skipClips([inSkipped]);
         final goa = (await reels.create('Goa')).id;
         await repo.tagClip(inReel, {goa});
 
@@ -1861,7 +1861,7 @@ void main() {
 
       test('a clip skipped in between survives, still skipped', () async {
         final [added, skipped] = await detect([20, 21]);
-        await repo.skip([skipped]);
+        await repo.skipClips([skipped]);
 
         final removed = await repo.undoEarlierAdd({added, skipped});
 
@@ -2076,7 +2076,7 @@ void main() {
         mediaStoreClip(10),
         mediaStoreClip(11),
       ]);
-      await repo.skip([ids[1]]);
+      await repo.skipClips([ids[1]]);
 
       expect(
         (await repo.watchInbox(InboxState.pending).first).map((c) => c.id),
@@ -2100,7 +2100,7 @@ void main() {
         mediaStoreClip(11),
       ]);
       await pumpEventQueue();
-      await repo.skip([ids[0]]);
+      await repo.skipClips([ids[0]]);
       await pumpEventQueue();
       await repo.tagClip(ids[1], {reel.id});
       await pumpEventQueue();

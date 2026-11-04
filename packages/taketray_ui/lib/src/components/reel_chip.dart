@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/internal/dashed_border.dart';
 import 'package:taketray_ui/src/components/selection.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -228,6 +229,151 @@ class _Cover extends StatelessWidget {
                     excludeFromSemantics: true,
                     errorBuilder: (context, error, stackTrace) => film,
                   ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The dashed "New reel" chip in the tag panel: tap it to make a reel and put
+/// the current clip in it.
+///
+/// Drawn like a [TtReelChip] without a fill: the same size, padding and 34 x
+/// 44 cover (a plus on the secondary container), a 1.5 dp dashed outline in
+/// the outline colour, and the [title] in the primary colour over the smaller
+/// [subtitle]. It is as tall as a reel chip (58 dp at 1x), so the two line up
+/// in a row; the outline is painted over the same 1 dp inset, which is half a
+/// dp less than the prototype's 1.5 dp border and does not move the cover.
+///
+/// With [fullWidth] it is the one chip of the "no reels yet" panel: the panel
+/// gives it a whole row (see `TtTagPanel`) and the cover and title sit in the
+/// middle of it. Leave the [subtitle] out there, as the prototype does. At
+/// large text the title may take two lines, as a reel chip's name does.
+///
+/// One button named [semanticLabel], or [title] when that is null.
+class TtNewReelChip extends StatelessWidget {
+  /// A chip titled [title], with [subtitle] under it when given.
+  const new({
+    required this.title,
+    this.subtitle,
+    this.semanticLabel,
+    this.fullWidth = false,
+    this.onTap,
+    super.key,
+  });
+
+  /// The first line, such as "New reel".
+  final String title;
+
+  /// The smaller line under it, such as "Add this clip to it"; none when null.
+  final String? subtitle;
+
+  /// What a screen reader says, or null to say [title].
+  final String? semanticLabel;
+
+  /// Whether this is the only chip of the panel: it takes a whole row and
+  /// its content is centred.
+  final bool fullWidth;
+
+  /// Called when the chip is tapped; null makes it inert.
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    final text = tt.text.material;
+    final second = subtitle;
+    final large =
+        MediaQuery.textScalerOf(context).scale(1) >=
+        TtMetrics.tagPanelSingleColumnTextScale;
+    const inset = TtMetrics.reelChipPaddingStart + TtMetrics.reelChipBorder;
+    final radius = BorderRadius.circular(TtMetrics.reelChipRadius);
+
+    // proto.css: .rchip.new, .rchip.new .cv
+    final labels = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          maxLines: large ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          style: text.labelLarge!.copyWith(color: scheme.primary),
+        ),
+        if (second != null)
+          Text(
+            second,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: text.bodySmall!.copyWith(color: scheme.onSurfaceVariant),
+          ),
+      ],
+    );
+
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      enabled: onTap != null,
+      label: semanticLabel ?? title,
+      onTap: onTap,
+      child: CustomPaint(
+        foregroundPainter: DashedBorderPainter(
+          color: scheme.outline,
+          radius: TtMetrics.reelChipRadius,
+          width: TtMetrics.newReelChipBorder,
+          dash: TtMetrics.newReelChipDash,
+          gap: TtMetrics.newReelChipDashGap,
+        ),
+        child: Material(
+          color: scheme.surface.withValues(alpha: 0),
+          borderRadius: radius,
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: tt.sizes.reelChip),
+              child: Padding(
+                padding: const EdgeInsetsDirectional.fromSTEB(
+                  inset,
+                  inset,
+                  TtMetrics.reelChipPaddingEnd + TtMetrics.reelChipBorder,
+                  inset,
+                ),
+                child: Row(
+                  mainAxisAlignment: fullWidth
+                      ? MainAxisAlignment.center
+                      : MainAxisAlignment.start,
+                  spacing: TtMetrics.reelChipGap,
+                  children: [
+                    SizedBox(
+                      key: const ValueKey('tt-chip-cover'),
+                      width: TtMetrics.reelChipCoverWidth,
+                      height: TtMetrics.reelChipCoverHeight,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(
+                          TtMetrics.reelChipCoverRadius,
+                        ),
+                        child: ColoredBox(
+                          color: scheme.secondaryContainer,
+                          child: Icon(
+                            Symbols.add_rounded,
+                            size: TtMetrics.newReelChipIconSize,
+                            color: scheme.onSecondaryContainer,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (fullWidth)
+                      Flexible(child: labels)
+                    else
+                      Expanded(child: labels),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),

@@ -1,14 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
+import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -58,10 +62,12 @@ Future<Pumped> pump(
   FixedClock? clock,
   bool cameraOpens = true,
   bool midnightTick = false,
+  int skipped = 0,
+  FakeToTag? toTag,
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
-  final fakeToTag = FakeToTag(clips);
+  final fakeToTag = toTag ?? FakeToTag(clips);
   await pumpScreen(
     tester,
     const ToTagScreen(),
@@ -69,6 +75,7 @@ Future<Pumped> pump(
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
       toTagControllerProvider.overrideWith(() => fakeToTag),
+      skippedCountProvider.overrideWith((ref) => Stream.value(skipped)),
       toTagTimesProvider.overrideWith((ref) {
         if (timesFail) return Future.error(StateError('no times'));
         if (times == null) {
@@ -92,6 +99,50 @@ List<TtClipTile> tiles(WidgetTester tester) =>
     tester.widgetList<TtClipTile>(find.byType(TtClipTile)).toList();
 
 String plain(String s) => s.replaceAll(' ', ' ');
+
+/// [text] with no-break spaces made plain (a day header's date keeps its
+/// spaces together).
+String spaced(String text) => text.replaceAll(' ', ' ');
+
+/// The scene headers on screen.
+List<TtSceneHeader> sceneHeaders(WidgetTester tester) =>
+    tester.widgetList<TtSceneHeader>(find.byType(TtSceneHeader)).toList();
+
+/// The day headers on screen, as text.
+List<String> dayHeaders(WidgetTester tester) => [
+  for (final h in tester.widgetList<TtDayHeader>(find.byType(TtDayHeader)))
+    spaced(h.title),
+];
+
+/// Clips shot at 09:41, 09:45 and 09:50 (one scene) and 13:05 and 13:12
+/// (another), all on 2026-10-28 and 32 seconds long.
+List<Clip> twoScenes() => [
+  testClip(1, shot: DateTime(2026, 10, 28, 9, 41)),
+  testClip(2, shot: DateTime(2026, 10, 28, 9, 45)),
+  testClip(3, shot: DateTime(2026, 10, 28, 9, 50)),
+  testClip(4, shot: DateTime(2026, 10, 28, 13, 5)),
+  testClip(5, shot: DateTime(2026, 10, 28, 13, 12)),
+];
+
+Finder barButton(String label) => find.byWidgetPredicate(
+  (w) => w is TtIconButton && w.semanticLabel == label,
+  description: 'the "$label" button',
+);
+
+/// A [FakeToTag] whose first build fails and later ones show [then].
+class FailsOnce extends FakeToTag {
+  FailsOnce(this.then);
+
+  final List<Clip> then;
+  int builds = 0;
+
+  @override
+  Stream<List<Clip>> build() async* {
+    builds++;
+    if (builds == 1) throw StateError('the database failed');
+    yield then;
+  }
+}
 
 void main() {
   group('the app bar', () {
@@ -548,17 +599,6 @@ void main() {
       ]);
     });
 
-    testWidgets('tapping a tile does nothing yet', (tester) async {
-      await pump(tester, clips: [testClip(1)]);
-
-      await tester.tap(find.byType(TtClipTile));
-      await tester.pumpAndSettle();
-
-      expect(tester.takeException(), isNull);
-      expect(find.byType(TtClipTile), findsOneWidget);
-      expect(find.text(toTagRouteMarker), findsNothing);
-    });
-
     testWidgets('a clip flagged missing shows the Missing tile, no Remove', (
       tester,
     ) async {
@@ -588,11 +628,15 @@ void main() {
       expect(built, lessThan(60));
 
       // Scrolling to the end builds the last clips and drops the first ones.
-      await tester.drag(
-        find.byType(CustomScrollView),
-        const Offset(0, -200000),
-      );
-      await tester.pumpAndSettle();
+      // (The list is built on demand, so its length is an estimate that the
+      // first drag corrects; a second one reaches the end.)
+      for (var i = 0; i < 2; i++) {
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -200000),
+        );
+        await tester.pumpAndSettle();
+      }
       expect(tiles(tester).last.durationText, '8:20');
       expect(find.byType(TtClipTile).evaluate().length, lessThan(60));
     });
@@ -606,6 +650,21 @@ void main() {
       expect(find.byType(TtClipTileSkeleton), findsWidgets);
       expect(find.byType(TtEmptyState), findsNothing);
       expect(find.byType(TtClipTile), findsNothing);
+    });
+
+    testWidgets('the loading state is as the prototype: a summary line, two '
+        'scene headers, six tiles under each', (tester) async {
+      await pump(tester, clips: null, settle: false);
+      await tester.pump();
+
+      final lines = find.byType(TtSkeletonLine);
+      expect(lines, findsNWidgets(3));
+      expect(find.byType(TtClipTileSkeleton), findsNWidgets(12));
+      // The summary line, then a scene header line over the first tiles.
+      final tilesTop = tester.getTopLeft(find.byType(TtClipTileSkeleton).first);
+      expect(tester.getTopLeft(lines.at(0)).dy, lessThan(tilesTop.dy));
+      expect(tester.getTopLeft(lines.at(1)).dy, lessThan(tilesTop.dy));
+      expect(tester.getTopLeft(lines.at(2)).dy, greaterThan(tilesTop.dy));
     });
 
     testWidgets('shows the clips when they arrive', (tester) async {
@@ -740,6 +799,7 @@ void main() {
             () => FakeAccess(MediaAccessLevel.full),
           ),
           toTagControllerProvider.overrideWith(() => fakeToTag),
+          skippedCountProvider.overrideWith((ref) => Stream.value(0)),
           thumbnailCacheForTests,
         ],
       );
@@ -758,6 +818,718 @@ void main() {
       active.value = true;
       await tester.pump();
       expect(fakeToTag.resumes, 1);
+    });
+  });
+
+  group('scenes (D-95, D-98)', () {
+    testWidgets('scenes and summary row', (tester) async {
+      await pump(tester, clips: twoScenes());
+
+      // "5 clips · 2 scenes · 3 min": 5 x 32 s is 160 s, 3 minutes.
+      expect(find.text('5 clips · 2 scenes · 3 min'), findsOneWidget);
+      final headers = sceneHeaders(tester);
+      expect(headers, hasLength(2));
+      expect(plain(headers[0].title), '9:41–9:50 AM');
+      expect(headers[0].subtitle, '3 clips · 1:36');
+      expect(plain(headers[1].title), '1:05–1:12 PM');
+      expect(headers[1].subtitle, '2 clips · 1:04');
+      // Each scene's tiles are under its header, in shooting order.
+      expect(tiles(tester), hasLength(5));
+      expect(find.text('Tag scene'), findsNWidgets(2));
+      // The button says which scene it tags.
+      final labels = [
+        for (final b in tester.widgetList<TtButton>(
+          find.widgetWithText(TtButton, 'Tag scene'),
+        ))
+          plain(b.semanticLabel!),
+      ];
+      expect(labels, [
+        'Tag scene 9:41–9:50 AM, 3 clips',
+        'Tag scene 1:05–1:12 PM, 2 clips',
+      ]);
+      // The summary is above the first scene.
+      expect(
+        tester.getTopLeft(find.byType(TtSceneHeader).first).dy,
+        greaterThan(
+          tester.getBottomLeft(find.text('5 clips · 2 scenes · 3 min')).dy,
+        ),
+      );
+    });
+
+    testWidgets('one clip: 1 clip, 1 scene, one time', (tester) async {
+      await pump(tester, clips: [testClip(1)]);
+
+      expect(find.text('1 clip · 1 scene · 32 s'), findsOneWidget);
+      final header = sceneHeaders(tester).single;
+      expect(plain(header.title), '9:41 AM');
+      expect(header.subtitle, '1 clip · 0:32');
+    });
+
+    testWidgets('24-hour phones read the range as 09:41–09:50', (tester) async {
+      await pump(tester, clips: twoScenes(), use24Hour: true);
+
+      expect(sceneHeaders(tester).first.title, '09:41–09:50');
+      expect(sceneHeaders(tester).last.title, '13:05–13:12');
+    });
+
+    testWidgets('a scene uses the time where its clips were shot', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1, shot: DateTime(2026, 10, 28, 9, 41)),
+          testClip(2, shot: DateTime(2026, 10, 28, 9, 45)),
+        ],
+        times: {
+          1: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 11),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+          2: ClipLocalTime(
+            wallClock: DateTime.utc(2026, 10, 28, 4, 15),
+            zoneId: 'Europe/London',
+            isPhoneZone: false,
+          ),
+        },
+      );
+
+      expect(plain(sceneHeaders(tester).single.title), '4:11–4:15 AM');
+    });
+
+    testWidgets('the scenes do not wait for the times', (tester) async {
+      final later = Completer<Map<int, ClipLocalTime>>();
+      await pump(tester, clips: twoScenes(), times: null, timesLater: later);
+
+      expect(find.byType(TtClipTileSkeleton), findsNothing);
+      expect(sceneHeaders(tester), hasLength(2));
+      expect(plain(sceneHeaders(tester).first.title), '9:41–9:50 AM');
+    });
+
+    testWidgets('day headers only across days', (tester) async {
+      // Three days: Yesterday, Today and an older one, each over its scene.
+      await pump(
+        tester,
+        clips: [
+          testClip(1, shot: DateTime(2026, 10, 26, 18)),
+          testClip(2, shot: DateTime(2026, 10, 27, 20)),
+          testClip(3, shot: DateTime(2026, 10, 27, 20, 3)),
+          testClip(4, shot: DateTime(2026, 10, 28, 9)),
+        ],
+      );
+      expect(dayHeaders(tester), [
+        'Mon, Oct 26',
+        'Yesterday · Tue, Oct 27',
+        'Today · Wed, Oct 28',
+      ]);
+      // A day header is above its scene header, and a day with two scenes
+      // gets one header.
+      expect(sceneHeaders(tester), hasLength(3));
+      expect(
+        tester.getTopLeft(find.byType(TtDayHeader).first).dy,
+        lessThan(tester.getTopLeft(find.byType(TtSceneHeader).first).dy),
+      );
+    });
+
+    testWidgets('day headers only across days: one day has none', (
+      tester,
+    ) async {
+      // One day, two scenes: no day header at all.
+      await pump(tester, clips: twoScenes());
+
+      expect(sceneHeaders(tester), hasLength(2));
+      expect(find.byType(TtDayHeader), findsNothing);
+    });
+
+    testWidgets('a day with two scenes has one day header', (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1, shot: DateTime(2026, 10, 27, 9)),
+          testClip(2, shot: DateTime(2026, 10, 28, 9)),
+          testClip(3, shot: DateTime(2026, 10, 28, 15)),
+        ],
+      );
+
+      expect(dayHeaders(tester), [
+        'Yesterday · Tue, Oct 27',
+        'Today · Wed, Oct 28',
+      ]);
+      expect(sceneHeaders(tester), hasLength(3));
+    });
+
+    testWidgets('a day of another year has its year', (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1, shot: DateTime(2025, 12, 30, 9)),
+          testClip(2, shot: DateTime(2026, 10, 28, 9)),
+        ],
+      );
+
+      expect(dayHeaders(tester).first, 'Tue, Dec 30, 2025');
+    });
+
+    testWidgets('300 clips in 60 scenes build lazily', (tester) async {
+      // 300 clips over 6 days, 10 scenes a day: 60 scenes of 5 clips each.
+      final clips = <Clip>[];
+      var id = 1;
+      for (var day = 0; day < 6; day++) {
+        for (var scene = 0; scene < 10; scene++) {
+          for (var k = 0; k < 5; k++) {
+            clips.add(
+              testClip(
+                id++,
+                shot: DateTime(2026, 10, 23 + day, 8 + scene, k),
+                durationMs: 5000,
+              ),
+            );
+          }
+        }
+      }
+      await pump(tester, clips: clips);
+
+      expect(find.text('300 clips · 60 scenes · 25 min'), findsOneWidget);
+      expect(find.byType(TtClipTile).evaluate().length, lessThan(60));
+      expect(find.byType(TtSceneHeader).evaluate().length, lessThan(12));
+
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -2000000),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(find.byType(TtClipTile).evaluate().length, lessThan(60));
+      expect(find.byType(TtSceneHeader).evaluate().length, lessThan(12));
+      // The last scene of the last day: 17:00 to 17:04.
+      expect(plain(sceneHeaders(tester).last.title), '5:00–5:04 PM');
+      expect(plain(tiles(tester).last.timeText!), '5:04 PM');
+    });
+
+    testWidgets('300 clips build lazily', (tester) async {
+      // 300 clips over 6 days, 5 scenes a day: 30 scenes of 10 clips each.
+      final clips = <Clip>[];
+      var id = 1;
+      for (var day = 0; day < 6; day++) {
+        for (var scene = 0; scene < 5; scene++) {
+          for (var k = 0; k < 10; k++) {
+            clips.add(
+              testClip(
+                id++,
+                shot: DateTime(2026, 10, 23 + day, 8 + scene * 2, k),
+                durationMs: 5000,
+              ),
+            );
+          }
+        }
+      }
+      expect(clips, hasLength(300));
+      await pump(tester, clips: clips);
+
+      expect(find.byType(TtClipTile).evaluate().length, lessThan(60));
+      expect(find.byType(TtSceneHeader).evaluate().length, lessThan(8));
+      expect(find.byType(TtDayHeader).evaluate().length, lessThan(4));
+      expect(find.text('300 clips · 30 scenes · 25 min'), findsOneWidget);
+
+      // Scrolling to the end builds the last clips, and drops the first.
+      for (var i = 0; i < 3; i++) {
+        await tester.drag(
+          find.byType(CustomScrollView),
+          const Offset(0, -2000000),
+        );
+        await tester.pumpAndSettle();
+      }
+      expect(find.byType(TtClipTile).evaluate().length, lessThan(60));
+      // The last clip shot is the last tile: 16:09 on the last day.
+      expect(plain(tiles(tester).last.timeText!), '4:09 PM');
+    });
+  });
+
+  group('opening the player', () {
+    testWidgets('tile tap opens the player on it', (tester) async {
+      await pump(tester, clips: twoScenes());
+
+      await tester.tap(find.byType(TtClipTile).at(3));
+      await tester.pumpAndSettle();
+
+      expect(find.text(tagPlayerRouteMarker(4)), findsOneWidget);
+    });
+
+    testWidgets('start tagging opens on the first clip', (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(7, shot: DateTime(2026, 10, 28, 9)),
+          testClip(3, shot: DateTime(2026, 10, 28, 10)),
+        ],
+      );
+
+      await tester.tap(find.text('Start tagging'));
+      await tester.pumpAndSettle();
+
+      // The first in shooting order, not the lowest id.
+      expect(find.text(tagPlayerRouteMarker(7)), findsOneWidget);
+    });
+
+    testWidgets('start tagging skips a missing first clip', (tester) async {
+      await pump(
+        tester,
+        clips: [
+          testClip(1, shot: DateTime(2026, 10, 28, 9), missing: true),
+          testClip(2, shot: DateTime(2026, 10, 28, 10)),
+        ],
+      );
+
+      await tester.tap(find.text('Start tagging'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(tagPlayerRouteMarker(2)), findsOneWidget);
+    });
+
+    testWidgets('a double tap opens one player', (tester) async {
+      await pump(tester, clips: twoScenes());
+
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.tap(find.byType(TtClipTile).first, warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text(tagPlayerRouteMarker(1)), findsOneWidget);
+
+      // Back goes to To tag, not to a second player.
+      GoRouter.of(tester.element(find.text(tagPlayerRouteMarker(1)))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(TtClipTile), findsWidgets);
+      expect(find.textContaining('the tag player'), findsNothing);
+    });
+
+    testWidgets('start tagging is not there with no clips', (tester) async {
+      await pump(tester);
+
+      expect(find.text('Start tagging'), findsNothing);
+    });
+
+    testWidgets('start tagging is away while choosing', (tester) async {
+      await pump(tester, clips: twoScenes());
+      expect(find.text('Start tagging'), findsOneWidget);
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Start tagging'), findsNothing);
+    });
+
+    testWidgets('start tagging sits above the nav pill and lifts over a '
+        'snack', (tester) async {
+      await pump(tester, clips: twoScenes());
+      final resting = tester.getTopLeft(find.text('Start tagging')).dy;
+      // The same place as the Reels tab's New reel button: a 16 dp step above
+      // the pill's room.
+      expect(
+        tester.getBottomRight(find.byType(TtFab)).dy,
+        tester.view.physicalSize.height -
+            TtNavPill.fabBottom(tester.element(find.byType(TtFab))),
+      );
+
+      ReelSnacks.of(tester.element(find.byType(TtFab))).show('Hello');
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getTopLeft(find.text('Start tagging')).dy,
+        lessThan(resting),
+      );
+    });
+  });
+
+  group('Skipped', () {
+    testWidgets('skipped button shows with a count', (tester) async {
+      await pump(tester, clips: twoScenes(), skipped: 3);
+
+      expect(find.text('Skipped (3)'), findsOneWidget);
+      // On the summary row, after the text.
+      expect(
+        tester.getTopLeft(find.text('Skipped (3)')).dx,
+        greaterThan(tester.getTopLeft(find.textContaining('5 clips')).dx),
+      );
+
+      await tester.tap(find.text('Skipped (3)'));
+      await tester.pumpAndSettle();
+      expect(find.text(skippedRouteMarker), findsOneWidget);
+    });
+
+    testWidgets('a double tap on Skipped opens one page', (tester) async {
+      await pump(tester, clips: twoScenes(), skipped: 3);
+
+      await tester.tap(find.text('Skipped (3)'));
+      await tester.tap(find.text('Skipped (3)'), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text(skippedRouteMarker), findsOneWidget);
+
+      // Back goes to To tag, not to a second Skipped page.
+      GoRouter.of(tester.element(find.text(skippedRouteMarker))).pop();
+      await tester.pumpAndSettle();
+      expect(find.text(skippedRouteMarker), findsNothing);
+      expect(find.byType(TtClipTile), findsWidgets);
+    });
+
+    testWidgets('no button when nothing is skipped', (tester) async {
+      await pump(tester, clips: twoScenes());
+
+      expect(find.textContaining('Skipped'), findsNothing);
+    });
+
+    testWidgets('under All caught up when any are skipped', (tester) async {
+      await pump(tester, shooting: on(), skipped: 2);
+      expect(find.text('All caught up'), findsOneWidget);
+      expect(find.text('Skipped (2)'), findsOneWidget);
+      expect(
+        tester.getTopLeft(find.text('Skipped (2)')).dy,
+        greaterThan(
+          tester
+              .getBottomLeft(
+                find.descendant(
+                  of: find.byType(TtEmptyState),
+                  matching: find.text('Open camera'),
+                ),
+              )
+              .dy,
+        ),
+      );
+    });
+
+    testWidgets('under Nothing to tag when any are skipped', (tester) async {
+      await pump(tester, skipped: 2);
+      expect(find.text('Nothing to tag'), findsOneWidget);
+      await tester.tap(find.text('Skipped (2)'));
+      await tester.pumpAndSettle();
+      expect(find.text(skippedRouteMarker), findsOneWidget);
+    });
+
+    testWidgets('the empty states have no Skipped button with none skipped', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on());
+      expect(find.textContaining('Skipped'), findsNothing);
+    });
+
+    testWidgets('the menu shows Skipped (n) and opens it', (tester) async {
+      await pump(tester, clips: twoScenes(), skipped: 4);
+
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+      // The summary row has one as well; the menu has the other.
+      expect(find.text('Skipped (4)'), findsNWidgets(2));
+      await tester.tap(find.text('Skipped (4)').last);
+      await tester.pumpAndSettle();
+      expect(find.text(skippedRouteMarker), findsOneWidget);
+    });
+  });
+
+  group('the error state', () {
+    testWidgets('error state retries', (tester) async {
+      final toTag = FailsOnce([testClip(1)]);
+      await pump(tester, toTag: toTag);
+
+      expect(find.text("Couldn't load your clips"), findsOneWidget);
+      expect(
+        find.text('Your videos are safe in your gallery.'),
+        findsOneWidget,
+      );
+      expect(find.byType(TtClipTileSkeleton), findsNothing);
+      expect(find.byType(TtClipTile), findsNothing);
+      expect(find.text('Start tagging'), findsNothing);
+
+      await tester.tap(find.text('Try again'));
+      await tester.pumpAndSettle();
+
+      expect(toTag.builds, 2);
+      expect(find.text("Couldn't load your clips"), findsNothing);
+      expect(find.byType(TtClipTile), findsOneWidget);
+    });
+
+    testWidgets('it shows no menu items that need clips', (tester) async {
+      await pump(tester, toTag: FailsOnce(const []), access: null);
+
+      expect(find.byIcon(Symbols.more_vert_rounded), findsNothing);
+    });
+  });
+
+  group('choosing clips (D-98)', () {
+    testWidgets('long press selects and shows the bar', (tester) async {
+      await pump(tester, clips: twoScenes());
+      expect(find.textContaining('selected'), findsNothing);
+
+      await tester.longPress(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(tiles(tester).map((t) => t.selected), [
+        false,
+        true,
+        false,
+        false,
+        false,
+      ]);
+      expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).selection, isTrue);
+      expect(find.text('Skip'), findsOneWidget);
+      expect(find.text('Tag'), findsOneWidget);
+      // The scene buttons read Select all, not Tag scene.
+      expect(find.text('Tag scene'), findsNothing);
+      expect(find.text('Select all'), findsNWidgets(2));
+      // A tap now chooses; it does not open the player.
+      await tester.tap(find.byType(TtClipTile).at(4));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(find.textContaining('the tag player'), findsNothing);
+    });
+
+    testWidgets('the count is announced when it changes', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      bool live(String title) => tester
+          .getSemantics(find.text(title))
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion;
+      expect(live('1 selected'), isTrue);
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+      expect(live('2 selected'), isTrue);
+      semantics.dispose();
+    });
+
+    testWidgets('Select clips in the menu starts with nothing chosen', (
+      tester,
+    ) async {
+      await pump(tester, clips: twoScenes());
+
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('0 selected'), findsOneWidget);
+      // Skip and Tag wait for a choice.
+      for (final label in ['Skip', 'Tag']) {
+        final button = tester.widget<TtButton>(
+          find.widgetWithText(TtButton, label),
+        );
+        expect(button.onPressed, isNull, reason: label);
+      }
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      // Un-choosing the last one ends choosing.
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+    });
+
+    testWidgets('select all in a scene', (tester) async {
+      await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).at(4));
+      await tester.pumpAndSettle();
+
+      // The first scene: Select all chooses its three clips.
+      await tester.tap(find.text('Select all').first);
+      await tester.pumpAndSettle();
+      expect(find.text('4 selected'), findsOneWidget);
+      expect(tiles(tester).map((t) => t.selected), [
+        true,
+        true,
+        true,
+        false,
+        true,
+      ]);
+      expect(find.text('Unselect'), findsOneWidget);
+
+      // Unselect takes just that scene's clips out again.
+      await tester.tap(find.text('Unselect'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(find.text('Unselect'), findsNothing);
+
+      // The second scene is all chosen: Unselect empties the choice, and
+      // choosing goes on.
+      await tester.tap(find.text('Select all').last);
+      await tester.pumpAndSettle();
+      expect(find.text('Unselect'), findsOneWidget);
+      await tester.tap(find.text('Unselect'));
+      await tester.pumpAndSettle();
+      expect(find.text('0 selected'), findsOneWidget);
+    });
+
+    testWidgets('select all leaves a missing clip out', (tester) async {
+      await pump(
+        tester,
+        clips: [testClip(1, missing: true), testClip(2), testClip(3)],
+      );
+      // A long press on the missing tile starts nothing.
+      await tester.longPress(find.byType(TtMissingClipTile));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      await tester.tap(find.text('Select all'));
+      await tester.pumpAndSettle();
+
+      // The two clips on the phone; the missing one is not counted, and the
+      // scene reads Unselect because every chooseable clip is chosen.
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(find.text('Unselect'), findsOneWidget);
+      await tester.tap(find.byType(TtMissingClipTile));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+    });
+
+    testWidgets('back clears selection', (tester) async {
+      await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      // Still on To tag, nothing chosen.
+      expect(find.textContaining('selected'), findsNothing);
+      expect(tiles(tester).map((t) => t.selected), everyElement(isNull));
+      expect(find.text('Start tagging'), findsOneWidget);
+    });
+
+    testWidgets('close ends choosing', (tester) async {
+      await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(barButton('Close'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('selected'), findsNothing);
+    });
+
+    testWidgets('Select all and Unselect name the scene for a screen reader', (
+      tester,
+    ) async {
+      await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).at(4));
+      await tester.pumpAndSettle();
+
+      String label(String text) => plain(
+        tester
+            .widget<TtButton>(find.widgetWithText(TtButton, text).first)
+            .semanticLabel!,
+      );
+      expect(label('Select all'), 'Select all, 9:41–9:50 AM, 3 clips');
+      await tester.tap(find.text('Select all').first);
+      await tester.pumpAndSettle();
+      expect(label('Unselect'), 'Unselect, 9:41–9:50 AM, 3 clips');
+    });
+
+    testWidgets('choosing with nothing chosen ends when the list empties', (
+      tester,
+    ) async {
+      final p = await pump(tester, clips: twoScenes());
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+      expect(find.text('0 selected'), findsOneWidget);
+
+      // Everything is tagged elsewhere: nothing is left to choose.
+      p.toTag.clips.add(const []);
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('selected'), findsNothing);
+      expect(find.text('Nothing to tag'), findsOneWidget);
+    });
+
+    testWidgets('2x text: the count stays whole; Skip and Tag keep their '
+        'names', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await pump(tester, clips: twoScenes(), textScale: 2);
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final count = tester.renderObject<RenderParagraph>(
+        find.text('2 selected'),
+      );
+      expect(count.didExceedMaxLines, isFalse);
+      // Tag gives up its word for its icon and keeps its name.
+      expect(find.bySemanticsLabel('Tag'), findsOneWidget);
+      expect(find.bySemanticsLabel('Skip'), findsOneWidget);
+      semantics.dispose();
+    });
+
+    testWidgets('selection drops a clip that leaves To tag', (tester) async {
+      final p = await pump(tester, clips: twoScenes());
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+      expect(find.text('2 selected'), findsOneWidget);
+
+      // Clip 1 is tagged elsewhere (the player, a verify).
+      p.toTag.clips.add(twoScenes().sublist(1));
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(tiles(tester).first.selected, isTrue);
+      expect(tiles(tester), hasLength(4));
+
+      // The last chosen clip leaves: choosing ends.
+      p.toTag.clips.add(twoScenes().sublist(2));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+      expect(tiles(tester).map((t) => t.selected), everyElement(isNull));
+    });
+  });
+
+  group('the menu (D-98)', () {
+    testWidgets('has Select clips, Skipped and Skip all with clips', (
+      tester,
+    ) async {
+      await pump(tester, clips: twoScenes(), skipped: 2);
+
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.text('Select clips'), findsOneWidget);
+      expect(find.text('Skip all'), findsOneWidget);
+      expect(find.text('Skipped (2)'), findsNWidgets(2));
+    });
+
+    testWidgets('limited access: still Select clips and Skip all', (
+      tester,
+    ) async {
+      await pump(tester, access: MediaAccessLevel.limited, clips: twoScenes());
+
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add earlier videos'), findsNothing);
+      expect(find.text('Select clips'), findsOneWidget);
+      expect(find.text('Skip all'), findsOneWidget);
+    });
+
+    testWidgets('nothing waiting and nothing skipped: only Add earlier '
+        'videos', (tester) async {
+      await pump(tester);
+
+      await tester.tap(barButton('More options'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(find.text('Select clips'), findsNothing);
+      expect(find.text('Skip all'), findsNothing);
     });
   });
 
@@ -827,6 +1599,82 @@ void main() {
 
     testWidgets('at 2x text the empty states fit', (tester) async {
       await pump(tester, access: MediaAccessLevel.denied, textScale: 2);
+
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('${brightness.name}: scenes, accessible', (tester) async {
+        await pump(
+          tester,
+          clips: twoScenes(),
+          skipped: 3,
+          brightness: brightness,
+        );
+
+        await expectTtAccessible(tester);
+      });
+
+      testWidgets('${brightness.name}: selecting, accessible', (tester) async {
+        await pump(tester, clips: twoScenes(), brightness: brightness);
+        await tester.longPress(find.byType(TtClipTile).first);
+        await tester.pumpAndSettle();
+
+        await expectTtAccessible(tester);
+      });
+
+      testWidgets('${brightness.name}: the error state, accessible', (
+        tester,
+      ) async {
+        await pump(tester, toTag: FailsOnce(const []), brightness: brightness);
+
+        await expectTtAccessible(tester);
+      });
+    }
+
+    testWidgets('2x text no overflow', (tester) async {
+      // The summary, the day and scene headers and Start tagging all fit.
+      await pump(
+        tester,
+        clips: [
+          ...twoScenes(),
+          testClip(6, shot: DateTime(2026, 10, 27, 20)),
+        ],
+        skipped: 12,
+        textScale: 2,
+      );
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+
+    testWidgets('2x text no overflow while choosing', (tester) async {
+      await pump(
+        tester,
+        clips: [
+          ...twoScenes(),
+          testClip(6, shot: DateTime(2026, 10, 27, 20)),
+        ],
+        skipped: 12,
+        textScale: 2,
+      );
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+
+    testWidgets('2x text: the error state fits', (tester) async {
+      await pump(tester, toTag: FailsOnce(const []), textScale: 2);
+
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+
+    testWidgets('2x text: the empty Skipped button fits', (tester) async {
+      await pump(tester, skipped: 123, textScale: 2);
 
       expect(tester.takeException(), isNull);
       await expectTtAccessible(tester);

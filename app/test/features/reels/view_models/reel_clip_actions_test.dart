@@ -188,7 +188,7 @@ void main() {
       final ids = await h.media.clips.saveDetected([
         newClipFrom(reelVideo(1), now: reelTestNow, zoneId: null),
       ]);
-      await clips.skip(ids);
+      await clips.skipClips(ids);
 
       final outcome = await actions.addToReels(
         clipIds: ids.toSet(),

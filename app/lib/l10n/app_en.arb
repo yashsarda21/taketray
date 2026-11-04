@@ -16,9 +16,9 @@
   "@navSettings": {
     "description": "Bottom navigation label for settings."
   },
-  "toTagBadgeSemantics": "{count, plural, =0{No clips to tag} =1{1 clip to tag} other{{count} clips to tag}}",
+  "toTagBadgeSemantics": "To tag, {count, plural, =0{no clips} =1{1 clip} other{{count} clips}}",
   "@toTagBadgeSemantics": {
-    "description": "Screen-reader label for the badge on the To tag tab.",
+    "description": "Screen-reader label for the To tag tab while clips are waiting: the tab's name, then the count. It replaces the tab's name for a screen reader, so it starts with it.",
     "placeholders": {
       "count": {
         "type": "int"
@@ -1187,6 +1187,22 @@
       }
     }
   },
+  "viewerScrubLabel": "Playback position",
+  "@viewerScrubLabel": {
+    "description": "Screen-reader name of the seek slider under the video in the clip viewer."
+  },
+  "viewerScrubValue": "{position} of {duration}",
+  "@viewerScrubValue": {
+    "description": "Screen-reader value of the seek slider: how far into the clip it is, such as \"1:12 of 4:32\".",
+    "placeholders": {
+      "position": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
   "viewerMute": "Mute",
   "@viewerMute": {
     "description": "The clip viewer button that turns the sound off."
@@ -1267,5 +1283,481 @@
   "viewerRemoveFromReel": "Remove from reel",
   "@viewerRemoveFromReel": {
     "description": "The button under the \"can't be played\" message that takes the clip out of the reel."
+  },
+  "tagPlayerClose": "Close tagging",
+  "@tagPlayerClose": {
+    "description": "The tag player's close button (screen reader label)."
+  },
+  "tagPlayerTitle": "{index} of {count}",
+  "@tagPlayerTitle": {
+    "description": "The tag player's header: which clip of the session is showing.",
+    "placeholders": {
+      "index": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagPlayerScene": "Scene {number} of {total} · {range}",
+  "@tagPlayerScene": {
+    "description": "The line under the tag player's header: the scene of the clip showing and its time range.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      },
+      "range": {
+        "type": "String"
+      }
+    }
+  },
+  "tagPlayerPauseClip": "Pause clip, {time}, {duration}",
+  "@tagPlayerPauseClip": {
+    "description": "What a screen reader says for the tag player's video while it plays; a tap pauses it. {time} is when the clip was shot.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "tagPlayerPlayClip": "Play clip, {time}, {duration}",
+  "@tagPlayerPlayClip": {
+    "description": "What a screen reader says for the tag player's video while it is paused; a tap plays it. {time} is when the clip was shot.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "tagPlayerDragToSkim": "Drag to skim",
+  "@tagPlayerDragToSkim": {
+    "description": "The hint over the tag player's scrub bar for a long clip."
+  },
+  "tagPlayerSkip": "Skip",
+  "@tagPlayerSkip": {
+    "description": "The tag player's button that skips the clip showing."
+  },
+  "tagPlayerSkipSemantics": "Skip this clip",
+  "@tagPlayerSkipSemantics": {
+    "description": "What a screen reader says for the tag player's Skip button."
+  },
+  "tagPlayerSame": "Same as previous",
+  "@tagPlayerSame": {
+    "description": "The tag player's button that puts the clip in the reels of the last tag."
+  },
+  "tagPlayerSameSemantics": "Same as previous: {names}",
+  "@tagPlayerSameSemantics": {
+    "description": "What a screen reader says for the Same as previous button when there are reels to repeat. {names} is the reel names, joined.",
+    "placeholders": {
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "tagPanelLabel": "Reels",
+  "@tagPanelLabel": {
+    "description": "The group name of the tag player's reel panel (screen reader label)."
+  },
+  "tagPanelTitle": "Add to reel",
+  "@tagPanelTitle": {
+    "description": "The heading of the tag player's reel panel."
+  },
+  "tagPickSeveral": "Pick several",
+  "@tagPickSeveral": {
+    "description": "The button in the tag player's reel panel that lets you pick more than one reel for a clip."
+  },
+  "tagPickTitle": "Pick reels for this clip",
+  "@tagPickTitle": {
+    "description": "The panel heading while Pick several is on."
+  },
+  "tagPickConfirm": "Add to {count, plural, one{1 reel} other{{count} reels}} & next",
+  "@tagPickConfirm": {
+    "description": "The button that tags the clip into the picked reels and goes on to the next clip.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagPickNone": "Pick one or more reels",
+  "@tagPickNone": {
+    "description": "The disabled button text in Pick several before any reel is picked."
+  },
+  "tagNewReel": "New reel",
+  "@tagNewReel": {
+    "description": "The tag panel's chip that makes a reel and puts the clip in it."
+  },
+  "tagNewReelSubtitle": "Add this clip to it",
+  "@tagNewReelSubtitle": {
+    "description": "The line under New reel on the tag panel's chip."
+  },
+  "tagOtherReels": "Other reels",
+  "@tagOtherReels": {
+    "description": "The tag panel's toggle label while the Ready and Published reels are shown."
+  },
+  "tagOtherReelsCount": "Other reels ({count})",
+  "@tagOtherReelsCount": {
+    "description": "The tag panel's toggle label while the Ready and Published reels are folded.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagNoReels": "You don't have any reels yet. Create one and this clip goes into it.",
+  "@tagNoReels": {
+    "description": "The tag panel's message when there is no reel at all."
+  },
+  "tagChipSemantics": "Add to {name}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@tagChipSemantics": {
+    "description": "What a screen reader says for a reel chip in the tag panel.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagChipPickSemantics": "{name}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@tagChipPickSemantics": {
+    "description": "What a screen reader says for a reel chip in Pick several (a check box).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagSkippedSnack": "Skipped",
+  "@tagSkippedSnack": {
+    "description": "The tag player's snack after a clip is skipped, with an Undo button."
+  },
+  "tagDoneTitle": "All done!",
+  "@tagDoneTitle": {
+    "description": "The title of the screen at the end of the tag player."
+  },
+  "tagDoneBody": "{count, plural, one{1 clip sorted. Nice work.} other{{count} clips sorted. Nice work.}}",
+  "@tagDoneBody": {
+    "description": "The line under All done!.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagDoneAdded": "+{count}",
+  "@tagDoneAdded": {
+    "description": "A reel's row on the All done! screen: how many clips went into it.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagDoneSkippedRow": "Skipped",
+  "@tagDoneSkippedRow": {
+    "description": "The row on the All done! screen for the clips that were skipped."
+  },
+  "tagDoneSkippedCount": "{count}",
+  "@tagDoneSkippedCount": {
+    "description": "How many clips were skipped, on the All done! screen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagDoneSeeReels": "See your reels",
+  "@tagDoneSeeReels": {
+    "description": "The All done! button that opens the Reels tab."
+  },
+  "tagDoneBack": "Back to To tag",
+  "@tagDoneBack": {
+    "description": "The All done! button that goes back to To tag."
+  },
+  "reelFormForClipSubtitle": "This clip will be added to it.",
+  "@reelFormForClipSubtitle": {
+    "description": "The line under the New reel sheet's title when it is opened from the tag player."
+  },
+  "reelFormCreateAndAdd": "Create and add",
+  "@reelFormCreateAndAdd": {
+    "description": "The New reel sheet's button when it is opened from the tag player."
+  },
+  "toTagSummary": "{clips} · {scenes} · {duration}",
+  "@toTagSummary": {
+    "description": "The row at the top of To tag: how many clips wait, in how many scenes, and their total length, such as \"12 clips · 3 scenes · 4 min\".",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "scenes": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagSceneCount": "{count, plural, one{1 scene} other{{count} scenes}}",
+  "@toTagSceneCount": {
+    "description": "How many scenes the waiting clips are in.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSkippedButton": "Skipped ({count})",
+  "@toTagSkippedButton": {
+    "description": "Button on To tag that opens the Skipped clips, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagStartTagging": "Start tagging",
+  "@toTagStartTagging": {
+    "description": "The button on To tag that opens the tag player on the first waiting clip."
+  },
+  "toTagTagScene": "Tag scene",
+  "@toTagTagScene": {
+    "description": "Button in a scene header on To tag that opens the reel picker for the whole scene."
+  },
+  "toTagTagSceneSemantics": "Tag scene {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagTagSceneSemantics": {
+    "description": "What a screen reader says for the Tag scene button: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSceneSelectAll": "Select all",
+  "@toTagSceneSelectAll": {
+    "description": "Button in a scene header on To tag, while choosing clips, that chooses every clip of the scene."
+  },
+  "toTagSceneUnselect": "Unselect",
+  "@toTagSceneUnselect": {
+    "description": "Button in a scene header on To tag, while choosing clips, that un-chooses every clip of the scene."
+  },
+  "toTagSceneSelectAllSemantics": "Select all, {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagSceneSelectAllSemantics": {
+    "description": "What a screen reader says for the Select all button of a scene header on To tag: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSceneUnselectSemantics": "Unselect, {range}, {count, plural, one{1 clip} other{{count} clips}}",
+  "@toTagSceneUnselectSemantics": {
+    "description": "What a screen reader says for the Unselect button of a scene header on To tag: the scene's time range and its clip count.",
+    "placeholders": {
+      "range": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagSelectionSkip": "Skip",
+  "@toTagSelectionSkip": {
+    "description": "Button of the selection bar on To tag that skips the chosen clips."
+  },
+  "toTagSelectionTag": "Tag",
+  "@toTagSelectionTag": {
+    "description": "Button of the selection bar on To tag that opens the reel picker for the chosen clips."
+  },
+  "toTagMenuSkipAll": "Skip all",
+  "@toTagMenuSkipAll": {
+    "description": "Item of the menu on To tag that asks to skip every waiting clip."
+  },
+  "toTagDayToday": "Today · {date}",
+  "@toTagDayToday": {
+    "description": "Day header on To tag for today, with the date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagDayYesterday": "Yesterday · {date}",
+  "@toTagDayYesterday": {
+    "description": "Day header on To tag for yesterday, with the date.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "toTagClipsSkippedSnack": "{count, plural, one{1 clip skipped} other{{count} clips skipped}}",
+  "@toTagClipsSkippedSnack": {
+    "description": "Snack after clips are skipped in To tag, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "toTagLoadFailedTitle": "Couldn't load your clips",
+  "@toTagLoadFailedTitle": {
+    "description": "Title of To tag when the list of waiting clips could not be read."
+  },
+  "toTagLoadFailedBody": "Your videos are safe in your gallery.",
+  "@toTagLoadFailedBody": {
+    "description": "Line under the title when To tag could not read the waiting clips."
+  },
+  "skipAllTitle": "{count, plural, one{Skip 1 clip?} other{Skip all {count} clips?}}",
+  "@skipAllTitle": {
+    "description": "Title of the dialog that asks whether to skip every waiting clip.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "skipAllBody": "They move to Skipped, and you can restore them any time.",
+  "@skipAllBody": {
+    "description": "Text in the Skip all dialog."
+  },
+  "skipAllSafe": "Your videos stay in your gallery.",
+  "@skipAllSafe": {
+    "description": "Reassurance in the Skip all dialog."
+  },
+  "skipAllConfirm": "Skip all",
+  "@skipAllConfirm": {
+    "description": "Button of the Skip all dialog that skips the clips."
+  },
+  "skippedTitle": "Skipped",
+  "@skippedTitle": {
+    "description": "Title of the screen that lists the skipped clips."
+  },
+  "skippedSelect": "Select",
+  "@skippedSelect": {
+    "description": "Button on the Skipped screen's app bar that starts choosing clips."
+  },
+  "skippedInfo": "Skipped clips are still in your gallery. Restore any you want to tag.",
+  "@skippedInfo": {
+    "description": "The note above the list on the Skipped screen."
+  },
+  "skippedRestore": "Restore",
+  "@skippedRestore": {
+    "description": "Button on the Skipped screen's selection bar that moves the chosen clips back to To tag."
+  },
+  "skippedRestoredOne": "Restored to To tag",
+  "@skippedRestoredOne": {
+    "description": "Snack after one skipped clip is tapped and moved back to To tag, with an Undo button."
+  },
+  "skippedRestoredMany": "{count, plural, one{1 clip restored to To tag} other{{count} clips restored to To tag}}",
+  "@skippedRestoredMany": {
+    "description": "Snack after the chosen skipped clips are moved back to To tag, with an Undo button.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "skippedEmptyTitle": "No skipped clips",
+  "@skippedEmptyTitle": {
+    "description": "Title of the Skipped screen when nothing is skipped."
+  },
+  "skippedEmptyBody": "Clips you skip in To tag show up here, in case you change your mind.",
+  "@skippedEmptyBody": {
+    "description": "Line under the title of the Skipped screen when nothing is skipped."
+  },
+  "skippedTileSemantics": "Skipped clip, {time}, {duration}. Restores it to To tag",
+  "@skippedTileSemantics": {
+    "description": "What a screen reader says for a tile on the Skipped screen when a tap restores it.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "pickerTitleTag": "{count, plural, one{Tag 1 clip} other{Tag {count} clips}}",
+  "@pickerTitleTag": {
+    "description": "Title of the reel picker when it tags waiting clips.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "pickerSubtitleTag": "Pick one or more reels.",
+  "@pickerSubtitleTag": {
+    "description": "Line under the title of the reel picker when it tags clips."
+  },
+  "pickerTagIntoReels": "Tag into {count} reels",
+  "@pickerTagIntoReels": {
+    "description": "Button of the reel picker that tags the clips into two or more picked reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "tagClipsAddedSnack": "{count, plural, one{1 clip added to {names}} other{{count} clips added to {names}}}",
+  "@tagClipsAddedSnack": {
+    "description": "Snack after clips are tagged from the reel picker, with an Undo button. The names are the reels, joined into one phrase.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "names": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNamesTwo": "{first} and {second}",
+  "@reelNamesTwo": {
+    "description": "Two reel names joined into one phrase.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "reelNamesMore": "{first}, {second} and {more} more",
+  "@reelNamesMore": {
+    "description": "The first two reel names and how many more there are, joined into one phrase.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      },
+      "more": {
+        "type": "int"
+      }
+    }
   }
 }

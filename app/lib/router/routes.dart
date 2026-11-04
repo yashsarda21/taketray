@@ -4,6 +4,22 @@ abstract final class Routes {
   static const toTag = '/to-tag';
   static const settings = '/settings';
 
+  /// The Skipped clips (D-98, D-99), inside the To tag tab
+  /// so the nav pill stays; Back returns to To tag.
+  static const skipped = '/to-tag/skipped';
+
+  /// The tag player (D-97), above the tab shell. It is a child of To tag, so
+  /// Back returns there.
+  static const tagPlayer = '/to-tag/play';
+
+  /// The name of the clip id in the tag player's location.
+  static const tagFromParameter = 'from';
+
+  /// The tag player's location, starting on clip [clipId] (`?from=<id>`), or
+  /// on the first waiting clip when it is null.
+  static String tagFrom(int? clipId) =>
+      clipId == null ? tagPlayer : '$tagPlayer?$tagFromParameter=$clipId';
+
   /// The name of the reel id in a reel's location.
   static const reelIdParameter = 'id';
 

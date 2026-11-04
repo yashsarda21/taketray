@@ -575,6 +575,32 @@ void main() {
       expect(platform.player(1).seeks, [const Duration(seconds: 5)]);
     });
 
+    testApp('the scrubber says position of length and steps by 5 percent', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+      final semantics = tester.ensureSemantics();
+
+      final data = tester
+          .getSemantics(find.byType(TtScrubBar))
+          .getSemanticsData();
+      expect(data.label, 'Playback position');
+      expect(data.value, '0:00 of 0:10');
+      // 5 % of 10 s is half a second, written the way the time is (nearest
+      // whole second): a step back from the start stays at 0:00.
+      expect(data.increasedValue, '0:01 of 0:10');
+      expect(data.decreasedValue, '0:00 of 0:10');
+
+      tester.semantics.increase(
+        find.semantics.byAction(SemanticsAction.increase),
+      );
+      await settleApp(tester);
+      expect(platform.player(1).seeks, [const Duration(milliseconds: 500)]);
+      semantics.dispose();
+    });
+
     testApp('pauses on app pause', (tester) async {
       final goa = await real(tester, () => reels.create('Goa'));
       final ids = await reelWith(tester, goa.id, [1]);
@@ -1086,7 +1112,11 @@ void main() {
       final semantics = tester.ensureSemantics();
       expect(find.bySemanticsLabel('Previous clip'), findsOneWidget);
       expect(find.bySemanticsLabel('Next clip'), findsOneWidget);
-      expect(find.bySemanticsLabel('0:00 / 0:10'), findsOneWidget);
+      expect(find.bySemanticsLabel('Playback position'), findsOneWidget);
+      final scrub = tester
+          .getSemantics(find.byType(TtScrubBar))
+          .getSemanticsData();
+      expect(scrub.value, '0:00 of 0:10');
       expect(find.bySemanticsLabel('Clip 1 of 2'), findsOneWidget);
       expect(find.bySemanticsLabel('Mute'), findsOneWidget);
       expect(find.bySemanticsLabel('Back'), findsOneWidget);

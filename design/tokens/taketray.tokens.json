@@ -127,8 +127,8 @@
   "videoSurface": {
     "$description": "Tag player and clip viewer always use the dark scheme, on true black, whatever the app theme.",
     "background": "#000000",
-    "scrimTop": "rgba(0,0,0,0.55)",
-    "scrimBottom": "rgba(0,0,0,0.70)",
+    "scrimTop": "rgba(0,0,0,0.6)",
+    "scrimBottom": "rgba(0,0,0,0.78)",
     "onVideo": "#FFFFFF",
     "onVideoVariant": "rgba(255,255,255,0.78)"
   },

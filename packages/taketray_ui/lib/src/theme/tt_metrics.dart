@@ -1183,6 +1183,47 @@ abstract final class TtMetrics {
   // proto.css: .stat-strip { padding: 0 8px 0 16px }
   static const double statStripPaddingEnd = 8;
 
+  // ---- Tag player stage ----
+
+  /// Blur of the thumbnail behind the tag player's video.
+  // proto.css: .stage .blur { filter: blur(22px) brightness(.45) }
+  static const double tagStageBlur = 22;
+
+  /// Opacity of black over that blurred thumbnail (`brightness(.45)` leaves
+  /// 45 % of the light, so 55 % black).
+  static const double tagStageDimOpacity = 0.55;
+
+  /// How much that thumbnail is scaled up, so the blur's soft edge is off
+  /// the stage.
+  // proto.css: .stage .blur { transform: scale(1.1) }
+  static const double tagStageBlurScale = 1.1;
+
+  /// Corner radius of the tag player's video.
+  // tt-style.css: .style-tt .stage .vid { border-radius: 18px }
+  static const double tagStageVideoRadius = 18;
+
+  /// Blur radius of the shadow under the tag player's video.
+  // proto.css: .stage .vid { box-shadow: 0 10px 30px rgba(0,0,0,.5) }
+  static const double tagStageVideoShadowBlur = 30;
+
+  /// How far down that shadow falls.
+  static const double tagStageVideoShadowOffset = 10;
+
+  /// Opacity of that shadow's black.
+  static const double tagStageVideoShadowOpacity = 0.5;
+
+  /// How far a new clip slides in, as a share of its width.
+  // proto.css: @keyframes clipIn { from { transform: translateX(70%)
+  // scale(.9); opacity: 0 } }
+  static const double tagStageSlideDistance = 0.7;
+
+  /// The scale a new clip starts at while it slides in.
+  static const double tagStageSlideScale = 0.9;
+
+  /// Opacity of black behind the spinner over a loading video.
+  // proto.css: .stage .vid .ld { background: rgba(0,0,0,.35) }
+  static const double tagStageLoadingOpacity = 0.35;
+
   // ---- Video surface ----
 
   /// Height of the gradient scrim under the top controls on video.
@@ -1192,6 +1233,12 @@ abstract final class TtMetrics {
   /// Height of the gradient scrim under the bottom controls on video.
   // proto.css: .viewer .vbot { padding: 40px 0 28px } around its content
   static const double videoScrimBottomHeight = 168;
+
+  /// The share of the bottom scrim, counted from the bottom edge, that stays
+  /// at full strength before it fades out.
+  // proto.css: .viewer .vbot { background: linear-gradient(transparent,
+  // rgba(0,0,0,.78) 30%) }: clear at the inner end, full from 30 % on.
+  static const double videoScrimBottomSolid = 0.7;
 
   // ---- Segment progress bar ----
 
@@ -1290,6 +1337,17 @@ abstract final class TtMetrics {
   /// Corner radius of the hint.
   // proto.css: .scrub .hint { border-radius: 6px }
   static const double scrubHintRadius = 6;
+
+  /// Height of the drawn scrub row: the track, fill and thumb.
+  // proto.css: .scrub { padding: 10px 16px 0 } around a 12 px line is 22 px
+  // tall. The gesture area is the 48 dp touch target around it (D-92).
+  static const double scrubRowHeight = 22;
+
+  /// How far the scrub bar's gesture area reaches past each end of the track,
+  /// so the thumb at 0 % or 100 % lies inside it. Half the large thumb.
+  // No CSS source: the CSS thumb overhangs the track by half its width and
+  // has no separate touch area (D-92).
+  static const double scrubTrackOverhang = 10;
 
   /// How far a screen reader's increase or decrease moves the scrub bar, as
   /// a fraction of the clip.
@@ -1414,6 +1472,103 @@ abstract final class TtMetrics {
   /// Weight of that check.
   // proto.css: .rchip.done .cv .ms { 'wght' 700 }
   static const double reelChipDoneIconWeight = 700;
+
+  // ---- New reel chip ----
+
+  /// Width of the dashed outline of the "New reel" chip.
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipBorder = 1.5;
+
+  /// Length of a dash in that outline (3 x the width, as in the
+  /// add-reference tile).
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipDash = 4.5;
+
+  /// Gap between dashes in that outline.
+  // proto.css: .rchip.new { border: 1.5px dashed var(--md-outline) }
+  static const double newReelChipDashGap = 3;
+
+  /// Size of the plus in the "New reel" chip's cover.
+  // proto.css: .rchip .cv .ms { font-size: 20px }
+  static const double newReelChipIconSize = 20;
+
+  // ---- Other reels toggle ----
+
+  /// Height of the drawn row of the "Other reels" toggle. Its tap target is
+  /// the touch target (48 dp), with this row centred in it.
+  // proto.css: the toggle's inline `min-height: 36px`
+  static const double otherReelsToggleHeight = 36;
+
+  /// Corner radius of the toggle's highlight.
+  // proto.css: the toggle's inline `border-radius: 8px`
+  static const double otherReelsToggleRadius = 8;
+
+  /// Gap between the toggle's label and its arrow.
+  // proto.css: the toggle's inline `gap: 4px`
+  static const double otherReelsToggleGap = 4;
+
+  // ---- Tag done ----
+
+  /// Side of the round check badge.
+  // proto.css: .done-scr .big { width: 96px; height: 96px }
+  static const double tagDoneBadgeSize = 96;
+
+  /// Size of the check in the badge.
+  // screens.js: icon('check', 's48')
+  static const double tagDoneBadgeIconSize = 48;
+
+  /// Scale the badge starts from when it pops in.
+  // proto.css: @keyframes pop { from { transform: scale(.4) } }
+  static const double tagDoneBadgePopScale = 0.4;
+
+  /// Space between the stacked parts of the screen.
+  // proto.css: .done-scr { gap: 10px }
+  static const double tagDoneGap = 10;
+
+  /// Space above the title, in addition to the gap.
+  // proto.css: .done-scr h2 { margin: 8px 0 0 }
+  static const double tagDoneTitleTop = 8;
+
+  /// Opacity of the body line under the title.
+  // proto.css: .done-scr p { color: rgba(255,255,255,.75) }
+  static const double tagDoneBodyOpacity = 0.75;
+
+  /// Widest the summary list grows.
+  // proto.css: .done-scr .sum { max-width: 300px }
+  static const double tagDoneSummaryMaxWidth = 300;
+
+  /// Opacity of the summary's white fill.
+  // proto.css: .done-scr .sum { background: rgba(255,255,255,.08) }
+  static const double tagDoneSummaryFillOpacity = 0.08;
+
+  /// Corner radius of the summary.
+  // tt-style.css: .style-tt .done-scr .sum { border-radius: 22px }
+  static const double tagDoneSummaryRadius = 22;
+
+  /// Padding above and below the rows of the summary.
+  // proto.css: .done-scr .sum { padding: 6px 16px }
+  static const double tagDoneSummaryPaddingVertical = 6;
+
+  /// Space above the summary (below it is the same plus the button gap).
+  // proto.css: .done-scr .sum { margin: 10px 0 16px }
+  static const double tagDoneSummaryMarginTop = 10;
+
+  /// Space under the summary.
+  // proto.css: .done-scr .sum { margin: 10px 0 16px }
+  static const double tagDoneSummaryMarginBottom = 16;
+
+  /// Padding above and below the text of a summary row.
+  // proto.css: .done-scr .sum div { padding: 10px 0 }
+  static const double tagDoneRowPaddingVertical = 10;
+
+  /// Gap between a row's name and its count.
+  // proto.css: .done-scr .sum div { gap: 12px }
+  static const double tagDoneRowGap = 12;
+
+  /// Opacity of the white line between summary rows.
+  // proto.css: .done-scr .sum div { border-bottom: 1px solid
+  // rgba(255,255,255,.1) }
+  static const double tagDoneDividerOpacity = 0.1;
 
   // ---- Grouped rows and list rows ----
 

@@ -3,6 +3,7 @@ import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/internal/snack_height.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
+import 'package:taketray_ui/src/tokens/tokens.g.dart';
 
 /// The content of a snack bar: a [message] with an optional leading [icon]
 /// and an optional action button such as "Undo".
@@ -66,6 +67,9 @@ class TtSnack extends StatelessWidget {
               alpha: TtMetrics.snackbarOpacity,
             ),
             borderRadius: radius,
+            // proto.css: .snack { box-shadow: var(--elev-3) }; tt-style.css
+            // keeps it (it changes only the fill and the corners).
+            boxShadow: TtElevationTokens.level3,
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: minHeight),

@@ -3,8 +3,10 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/dashed_border.dart';
 import 'package:taketray_ui/src/components/internal/fit_height.dart';
 import 'package:taketray_ui/src/components/internal/fit_or_fallback.dart';
+import 'package:taketray_ui/src/components/internal/scrim.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -143,7 +145,7 @@ class TtClipTile extends StatelessWidget {
                     ),
                   ),
                 ),
-                if (!isSelected) const _Scrim(),
+                if (!isSelected) const _TileScrim(),
                 if (multi)
                   PositionedDirectional(
                     start: TtMetrics.clipTileBadgeInset,
@@ -241,30 +243,21 @@ class _Placeholder extends StatelessWidget {
 
 /// The dark gradient over the bottom of the picture, behind the time and
 /// length.
-class _Scrim extends StatelessWidget {
+class _TileScrim extends StatelessWidget {
   const new();
 
   @override
   Widget build(BuildContext context) {
     // proto.css: .tile .scr-b
-    final black = context.scheme.shadow;
-    return IgnorePointer(
-      child: Align(
-        alignment: Alignment.bottomCenter,
-        child: FractionallySizedBox(
-          heightFactor: TtMetrics.clipTileScrimHeightFactor,
-          widthFactor: 1,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  black.withValues(alpha: 0),
-                  black.withValues(alpha: TtMetrics.clipTileScrimOpacity),
-                ],
-              ),
-            ),
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: FractionallySizedBox(
+        heightFactor: TtMetrics.clipTileScrimHeightFactor,
+        widthFactor: 1,
+        child: Scrim(
+          top: false,
+          color: context.scheme.shadow.withValues(
+            alpha: TtMetrics.clipTileScrimOpacity,
           ),
         ),
       ),
@@ -677,9 +670,12 @@ class TtMissingClipTile extends StatelessWidget {
     return AspectRatio(
       aspectRatio: tt.sizes.clipTileAspect,
       child: CustomPaint(
-        foregroundPainter: _DashedBorderPainter(
+        foregroundPainter: DashedBorderPainter(
           color: scheme.outline,
           radius: tt.radii.m,
+          width: TtMetrics.clipTileMissingBorder,
+          dash: TtMetrics.clipTileMissingDashLength,
+          gap: TtMetrics.clipTileMissingDashGap,
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(tt.radii.m),
@@ -741,44 +737,4 @@ class TtMissingClipTile extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Strokes a dashed rounded-rectangle outline just inside its bounds.
-class _DashedBorderPainter extends CustomPainter {
-  const new({required this.color, required this.radius});
-
-  final Color color;
-  final double radius;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const width = TtMetrics.clipTileMissingBorder;
-    final path = Path()
-      ..addRRect(
-        RRect.fromRectAndRadius(
-          (Offset.zero & size).deflate(width / 2),
-          Radius.circular(radius - width / 2),
-        ),
-      );
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = width;
-    for (final metric in path.computeMetrics()) {
-      var at = 0.0;
-      while (at < metric.length) {
-        canvas.drawPath(
-          metric.extractPath(at, at + TtMetrics.clipTileMissingDashLength),
-          paint,
-        );
-        at +=
-            TtMetrics.clipTileMissingDashLength +
-            TtMetrics.clipTileMissingDashGap;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_DashedBorderPainter oldDelegate) =>
-      oldDelegate.color != color || oldDelegate.radius != radius;
 }

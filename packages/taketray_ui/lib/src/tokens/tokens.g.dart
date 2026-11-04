@@ -111,8 +111,8 @@ abstract final class TtColorTokens {
   static const darkSuccessContainer = Color(0xFF005228);
   static const darkOnSuccessContainer = Color(0xFFA5F4BB);
   static const videoBackground = Color(0xFF000000);
-  static const videoScrimTop = Color(0x8C000000);
-  static const videoScrimBottom = Color(0xB3000000);
+  static const videoScrimTop = Color(0x99000000);
+  static const videoScrimBottom = Color(0xC7000000);
   static const onVideo = Color(0xFFFFFFFF);
   static const onVideoVariant = Color(0xC7FFFFFF);
 }
@@ -313,4 +313,54 @@ abstract final class TtSizeTokens {
   static const double screenGutter = 16;
   static const double gridGap = 4;
   static const double designWidth = 360;
+}
+
+/// Elevation shadows (the CSS --elev-N), one BoxShadow per layer.
+abstract final class TtElevationTokens {
+  static const level0 = <BoxShadow>[];
+  static const level1 = <BoxShadow>[
+    BoxShadow(color: Color(0x4D000000), offset: Offset(0, 1), blurRadius: 2),
+    BoxShadow(
+      color: Color(0x26000000),
+      offset: Offset(0, 1),
+      blurRadius: 3,
+      spreadRadius: 1,
+    ),
+  ];
+  static const level2 = <BoxShadow>[
+    BoxShadow(color: Color(0x4D000000), offset: Offset(0, 1), blurRadius: 2),
+    BoxShadow(
+      color: Color(0x26000000),
+      offset: Offset(0, 2),
+      blurRadius: 6,
+      spreadRadius: 2,
+    ),
+  ];
+  static const level3 = <BoxShadow>[
+    BoxShadow(color: Color(0x4D000000), offset: Offset(0, 1), blurRadius: 3),
+    BoxShadow(
+      color: Color(0x26000000),
+      offset: Offset(0, 4),
+      blurRadius: 8,
+      spreadRadius: 3,
+    ),
+  ];
+  static const level4 = <BoxShadow>[
+    BoxShadow(color: Color(0x4D000000), offset: Offset(0, 2), blurRadius: 3),
+    BoxShadow(
+      color: Color(0x26000000),
+      offset: Offset(0, 6),
+      blurRadius: 10,
+      spreadRadius: 4,
+    ),
+  ];
+  static const level5 = <BoxShadow>[
+    BoxShadow(color: Color(0x4D000000), offset: Offset(0, 4), blurRadius: 4),
+    BoxShadow(
+      color: Color(0x26000000),
+      offset: Offset(0, 8),
+      blurRadius: 12,
+      spreadRadius: 6,
+    ),
+  ];
 }

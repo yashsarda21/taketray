@@ -73,3 +73,52 @@ final WidgetbookComponent ttReelChipComponent = WidgetbookComponent(
     ),
   ],
 );
+
+/// `TtNewReelChip`: the dashed chip that makes a reel for the clip.
+final WidgetbookComponent ttNewReelChipComponent = WidgetbookComponent(
+  name: 'TtNewReelChip',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final title = context.knobs.string(
+          label: 'title',
+          initialValue: 'New reel',
+        );
+        final subtitle = context.knobs.string(
+          label: 'subtitle (empty = none)',
+          initialValue: 'Add this clip to it',
+        );
+        final fullWidth = context.knobs.boolean(label: 'full width');
+        final width = context.knobs.double.slider(
+          label: 'width (164 in the panel, 336 full width)',
+          initialValue: 164,
+          min: 100,
+          max: 336,
+        );
+        return TtVideoSurface(
+          child: Builder(
+            builder: (context) => ColoredBox(
+              color: context.scheme.surfaceContainer,
+              child: Padding(
+                padding: EdgeInsets.all(context.tt.spacing.m),
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: width,
+                    child: TtNewReelChip(
+                      title: title,
+                      subtitle: subtitle.isEmpty ? null : subtitle,
+                      fullWidth: fullWidth,
+                      onTap: () {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  ],
+);

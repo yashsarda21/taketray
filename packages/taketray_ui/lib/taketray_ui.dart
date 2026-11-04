@@ -38,6 +38,7 @@ export 'src/components/skeleton.dart';
 export 'src/components/snack.dart';
 export 'src/components/stat_strip.dart';
 export 'src/components/status_pill.dart';
+export 'src/components/tag_done.dart';
 export 'src/components/tag_panel.dart';
 export 'src/components/text_field.dart';
 export 'src/components/video_surface.dart';
