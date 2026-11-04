@@ -35,8 +35,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 2 | Data layer | ✅ Done |
 | 3 | Finding your videos (Android media bridge) | ✅ Done |
 | 4 | Reels screens | ✅ Done |
-| 5 | Tagging (To tag and the tag player) | Next |
-| 6 | Background detection and notifications | Planned |
+| 5 | Tagging (To tag and the tag player) | ✅ Done |
+| 6 | Background detection and notifications | Next |
 | 7 | Adding friends' videos | Planned |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | Planned |
 | 9 | Reference reels | Planned |
@@ -128,6 +128,30 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
   - the release check now also rejects the network-state and keep-awake permissions that the video player library tries to add; TakeTray never goes online;
   - more date tests run with the clock set to London.
 - **Learning guide**: [docs/learn/phase-4-reels.md](docs/learn/phase-4-reels.md) explains the whole phase in plain English, with the real code.
+
+### Phase 5: Tagging
+- **To tag, grouped into scenes**:
+  - clips shot less than 10 minutes apart on the same day form a scene, with its time range ("1:05–1:20 PM"), clip count and length;
+  - a day header when the clips span several days, and a summary line ("23 clips · 4 scenes · 12 min");
+  - **Tag scene** puts a whole scene into one or more reels at once;
+  - **Start tagging**, or tap any clip to start tagging from it;
+  - long-press to select clips, then **Tag** or **Skip** them;
+  - **Skip all** asks first, then moves everything to Skipped, with **Undo**;
+  - if the list can't load, it says so and offers **Try again**.
+- **The tag player** (full screen, on black):
+  - the clip plays muted (tap to unmute) and loops while you decide;
+  - **one tap on a reel** tags the clip and moves to the next; a short tick on the chip first, so a double tap tags only once;
+  - **Pick several** (or long-press a reel) puts one clip into several reels, and stays on from clip to clip until you turn it off;
+  - **Same as previous** repeats the last clip's reels; **Skip** moves it to Skipped;
+  - **+ New reel** right in the player, and the clip goes into it;
+  - Collecting reels are open; Ready to edit and Published reels are folded under "Other reels";
+  - "4 of 23" with the scene, a progress bar, arrows and swipe to move without tagging;
+  - **Undo** takes the clip back out of the reel and returns you to it, even after you've closed the player;
+  - closing the player during the tick cancels the tap;
+  - **All done!** shows how many clips went into each reel.
+- **Skipped**: skipped clips by day; tap one to put it back in To tag, or select several and **Restore**, each with **Undo**. Your videos stay in your gallery.
+- **Phone tests** on the S24: tag a day of 40 test clips (one tap, Pick several, Same as previous, Skip), Undo going back, Skip all and Restore, Tag scene, and Undo after switching tabs. The whole on-phone suite passes (13 tests, 1 skipped on purpose). On the tiny test clips the next clip starts within about half a second of a tap; real camera clips are checked by hand.
+- **Learning guide**: [docs/learn/phase-5-tagging.md](docs/learn/phase-5-tagging.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 
