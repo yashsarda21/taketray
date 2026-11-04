@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
@@ -25,6 +27,32 @@ class SpyClips extends ClipsRepository {
   final List<(List<int>, List<int>)> addCalls = [];
   Completer<void>? gate;
   Exception? failNext;
+
+  /// When set, the next look at a clip's reels fails (after an Undo has
+  /// been written, it is only for the counts).
+  bool failReelIds = false;
+
+  /// When set, the next watch of To tag fails at once (the session cannot
+  /// load).
+  bool failWatch = false;
+
+  @override
+  Stream<Set<int>> watchReelIdsOf(int clipId) {
+    if (failReelIds) {
+      failReelIds = false;
+      return Stream.error(const FileSystemException('disk'));
+    }
+    return super.watchReelIdsOf(clipId);
+  }
+
+  @override
+  Stream<List<Clip>> watchInbox(InboxState state) {
+    if (failWatch && state == InboxState.pending) {
+      failWatch = false;
+      return Stream.error(const FileSystemException('disk'));
+    }
+    return super.watchInbox(state);
+  }
 
   @override
   Future<List<AddUndo>> addClipsToReels(
@@ -351,6 +379,79 @@ void main() {
       expect(await reelsOf(ids[0]), isEmpty);
       expect(await pendingIds(), ids.toSet());
       expect(spy.addCalls, isEmpty);
+    });
+
+    test('leave in the hold tags nothing, at once', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start();
+
+      final tagged = session.tapReel(goa.id);
+      await settle();
+      expect(stateOf().confirmingReelId, goa.id);
+      // The player starts to close; the session is still alive (the route's
+      // exit transition is running).
+      session.leave();
+
+      expect(holds.made.single.cancelled, isTrue);
+      expect(await tagged, isNull);
+      expect(stateOf().confirmingReelId, isNull);
+      // The hold's timer firing late does nothing either.
+      holds.fireAll();
+      await settle();
+      expect(spy.addCalls, isEmpty);
+      expect(await reelsOf(ids[0]), isEmpty);
+      expect(await pendingIds(), ids.toSet());
+      expect(c.exists(tagSessionControllerProvider(null)), isTrue);
+    });
+
+    test('after leave every action is ignored, and Undo still works', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final session = await start();
+      final skipped = (await session.skip())!;
+      expect(stateOf().index, 1);
+
+      session
+        ..leave()
+        ..leave();
+
+      expect(await session.tapReel(goa.id), isNull);
+      expect(await session.skip(), isNull);
+      expect(await session.sameAsPrevious(), isNull);
+      session
+        ..setMulti(true)
+        ..longPressReel(goa.id)
+        ..next()
+        ..previous();
+      expect(await session.confirmPicks(), isNull);
+      expect(holds.made, isEmpty);
+      expect(spy.addCalls, isEmpty);
+      expect(stateOf().multi, isFalse);
+      expect(stateOf().index, 1);
+      expect(await pendingIds(), {ids[1], ids[2]});
+
+      // The snack outlives the player: its Undo still puts the clip back.
+      await session.undo(skipped.records, skipped.clipId);
+      expect(await pendingIds(), ids.toSet());
+      expect(stateOf().index, 0);
+      expect(stateOf().skipped, 0);
+    });
+
+    test('enter after leave takes actions again', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start()
+        ..leave();
+      expect(await session.skip(), isNull);
+
+      // The player opened again while the old one slides away: same session.
+      session.enter();
+      final tagged = session.tapReel(goa.id);
+      holds.fireAll();
+
+      expect((await tagged)!.clipId, ids[0]);
+      expect(await reelsOf(ids[0]), {goa.id});
     });
 
     test('reduced motion holds 120 ms', () async {
@@ -820,6 +921,45 @@ void main() {
       expect(stateOf().index, 0);
       expect(stateOf().skipped, 0);
       expect(await pendingIds(), {ids[0]});
+    });
+
+    test('a failure after the undo was written is not a failed undo', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final session = await start();
+      final tagged = session.tapReel(goa.id);
+      holds.fireAll();
+      final outcome = (await tagged)!;
+      // The reels of the clip are read after the undo, for the counts only.
+      spy.failReelIds = true;
+
+      await session.undo(outcome.records, outcome.clipId);
+
+      // Done, and said so: the snack does not say "Couldn't undo".
+      expect(await reelsOf(ids[0]), isEmpty);
+      expect(await pendingIds(), ids.toSet());
+      final s = stateOf();
+      expect(s.index, 0);
+      expect(s.busy, isFalse);
+      // Nothing is stuck: the next tap works.
+      final again = session.tapReel(goa.id);
+      holds.fireAll();
+      expect((await again)!.clipId, ids[0]);
+    });
+
+    test('undo works when the session could not load', () async {
+      final ids = await waiting(2);
+      // Skipped before the player opened (its snack is still up).
+      final record = await spy.skipClips([ids[0]]);
+      spy.failWatch = true;
+      sub = c.listen(tagSessionControllerProvider(null), (_, _) {});
+      await settle();
+      expect(c.read(tagSessionControllerProvider(null)).hasError, isTrue);
+      final session = c.read(tagSessionControllerProvider(null).notifier);
+
+      await session.undo([record], ids[0]);
+
+      expect(await pendingIds(), ids.toSet());
     });
   });
 

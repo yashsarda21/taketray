@@ -60,6 +60,27 @@ class _FlakyClips extends ClipsRepository {
   }
 }
 
+/// A page that pushes the tag player over itself as a page route, as the app
+/// does (To tag stays under it): closing the player then runs the route's
+/// exit transition, which outlasts a chip's hold.
+class _UnderThePlayer extends StatelessWidget {
+  const _UnderThePlayer();
+
+  static const String open = 'open the tag player';
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: Center(
+      child: TextButton(
+        onPressed: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(builder: (_) => const TagPlayerScreen()),
+        ),
+        child: const Text(open),
+      ),
+    ),
+  );
+}
+
 void main() {
   late VmHarness h;
   late FakeHolds holds;
@@ -665,6 +686,23 @@ void main() {
       },
     );
 
+    testApp('All done lets the clip ahead go', (tester) async {
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      // Clip 1 showing, clip 2 open ahead.
+      final two = platform.players.where((p) => p.uri == _uri(2)).single;
+      expect(two.disposed, isFalse);
+
+      // Every clip leaves To tag at once (a verify, a Skip all elsewhere):
+      // the session is done in one change.
+      await real(tester, () => clips.skipClips(ids));
+      await settleApp(tester);
+
+      expect(find.text('All done!'), findsOneWidget);
+      expect(two.disposed, isTrue);
+      expect(platform.live, isEmpty);
+    });
+
     testApp('the player is disposed with the screen', (tester) async {
       await waiting(tester, 3);
       await open(tester);
@@ -901,6 +939,25 @@ void main() {
       expect(find.text('Undo'), findsNothing);
     });
 
+    testApp('Close ends the hold at once, before the route has gone', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 3);
+      await open(tester);
+
+      await tester.tap(chip('Goa'));
+      await tester.pump();
+      // The player is the only route here, so Close goes to To tag with
+      // `go`: no pop, and the session is still alive. Nothing pumped yet.
+      await tester.tap(iconButton('Close tagging'));
+
+      expect(holds.made.single.cancelled, isTrue);
+      await settleApp(tester);
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(find.text('Undo'), findsNothing);
+    });
+
     testApp('a failed tag says so and keeps the clip', (tester) async {
       await newReel(tester, 'Goa');
       final ids = await waiting(tester, 3);
@@ -917,6 +974,148 @@ void main() {
       await tagInto(tester, 'Goa');
       expect(title(tester), '2 of 3');
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  // The real hold timer (`Timer.new`, run by the test clock) and animations
+  // on: the route's exit transition outlasts the 400 ms hold, so the hold
+  // ends while the closing screen is still there (final review, item 1).
+  group('leaving during a hold, with the real timer', () {
+    /// Lets the database answer and moves the test clock on by [ms] in
+    /// 50 ms steps: the hold's timer and the route's transition both run.
+    Future<void> run(WidgetTester tester, int ms) async {
+      for (var t = 0; t < ms; t += 50) {
+        await tester.runAsync(settle);
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+    }
+
+    /// To tag's stand-in with the player pushed over it, on clip 1 of
+    /// [count], with a reel "Goa". The ids in order.
+    Future<List<int>> openOverAPage(WidgetTester tester, int count) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, count);
+      await pumpScreen(
+        tester,
+        const _UnderThePlayer(),
+        overrides: [
+          ...h.appOverrides,
+          clipsRepositoryProvider.overrideWithValue(clips),
+        ],
+        animations: true,
+        brightness: Brightness.dark,
+        settle: false,
+      );
+      await run(tester, 200);
+      await tester.tap(find.text(_UnderThePlayer.open));
+      await run(tester, 1500);
+      expect(title(tester), '1 of $count');
+      return ids;
+    }
+
+    /// Nothing was tagged, no snack says so, and the player is gone.
+    Future<void> expectNothingTagged(WidgetTester tester, List<int> ids) async {
+      expect(find.byType(TagPlayerScreen), findsNothing);
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(await pendingIds(tester), ids.toSet());
+      expect(find.text('Added to Goa'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+    }
+
+    testApp('Close tagging in the hold tags nothing', (tester) async {
+      final ids = await openOverAPage(tester, 3);
+
+      await tester.tap(chip('Goa'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(chipState(tester, 'Goa'), TtReelChipState.done);
+      await tester.tap(iconButton('Close tagging'));
+      await run(tester, 1500);
+
+      expect(find.text(_UnderThePlayer.open), findsOneWidget);
+      await expectNothingTagged(tester, ids);
+    });
+
+    testApp('system Back in the hold tags nothing', (tester) async {
+      final ids = await openOverAPage(tester, 3);
+
+      await tester.tap(chip('Goa'));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(await tester.binding.handlePopRoute(), isTrue);
+      await run(tester, 1500);
+
+      expect(find.text(_UnderThePlayer.open), findsOneWidget);
+      await expectNothingTagged(tester, ids);
+    });
+
+    testApp('Close in the hold with nothing to pop (a deep link) tags '
+        'nothing', (tester) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 3);
+      // The player is the only route: Close goes to To tag with `go`, which
+      // is not a pop, so only Close itself can stop the hold.
+      await pumpScreen(
+        tester,
+        const TagPlayerScreen(),
+        overrides: [
+          ...h.appOverrides,
+          clipsRepositoryProvider.overrideWithValue(clips),
+        ],
+        animations: true,
+        brightness: Brightness.dark,
+        settle: false,
+      );
+      await run(tester, 1500);
+      expect(title(tester), '1 of 3');
+
+      await tester.tap(chip('Goa'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(iconButton('Close tagging'));
+      await run(tester, 1500);
+
+      expect(find.text(toTagRouteMarker), findsOneWidget);
+      await expectNothingTagged(tester, ids);
+    });
+
+    testApp('Undo still works after closing', (tester) async {
+      final ids = await openOverAPage(tester, 3);
+      await tester.tap(chip('Goa'));
+      await run(tester, 600);
+      expect(title(tester), '2 of 3');
+      expect(await reelsOf(tester, ids[0]), isNotEmpty);
+
+      await tester.tap(iconButton('Close tagging'));
+      await run(tester, 1500);
+      expect(find.byType(TagPlayerScreen), findsNothing);
+      expect(find.text('Added to Goa'), findsOneWidget);
+      await tester.tap(find.text('Undo'));
+      await run(tester, 500);
+
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(await pendingIds(tester), ids.toSet());
+      expect(find.text("Couldn't undo. Try again."), findsNothing);
+    });
+
+    testApp('opening the player again while it slides away works', (
+      tester,
+    ) async {
+      final ids = await openOverAPage(tester, 3);
+
+      // Closed, and opened again before the old route has gone: the new
+      // screen shares the session (the same family key) and must take taps.
+      await tester.tap(iconButton('Close tagging'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.tap(find.text(_UnderThePlayer.open));
+      await run(tester, 1500);
+      expect(find.byType(TagPlayerScreen), findsOneWidget);
+      expect(title(tester), '1 of 3');
+
+      await tester.tap(chip('Goa'));
+      await run(tester, 600);
+
+      expect(await reelsOf(tester, ids[0]), isNotEmpty);
+      expect(title(tester), '2 of 3');
+      expect(find.text('Added to Goa'), findsOneWidget);
     });
   });
 

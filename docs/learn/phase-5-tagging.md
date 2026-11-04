@@ -246,7 +246,7 @@ It ends with `All tests passed!`. Now open `packages/taketray_ui/lib/src/compone
 **What we built:** the data side of three actions, in `ClipsRepository`, each giving back what Undo needs:
 
 - **`skipClips(ids)`** moves clips from To tag to Skipped (the player's **Skip**, and **Skip** on a selection in To tag);
-- **`skipAllPending()`** moves *every* clip in To tag to Skipped (the menu's **Skip all**);
+- **`skipAllPending()`** moves *every* clip in To tag to Skipped. It was written for the menu's **Skip all**, but since the minors batch **Skip all** calls `skipClips(ids)` with the ids its dialog counted (Section 8), so no screen calls `skipAllPending` now (it waits in `docs/later.md` to be removed or used again);
 - **`restoreClips(ids)`** moves clips from Skipped back to To tag (a tap on a tile in Skipped, or **Restore** on a selection);
 - each returns an **`InboxUndo`**: the rows it moved, as they were, and the state it gave them;
 - **Undo** (`ClipsRepository.undo` / `undoAll`, written in `UndoWriter`) puts those rows back, but only the ones nothing else has touched since.
@@ -280,7 +280,7 @@ Tagging needed no new data code: the player tags with `addClipsToReels`, built i
 
   `UndoRecord` is `sealed`: Dart knows every subclass, so the `switch` in `UndoWriter.undoAll` would not compile until it handled the new one. The snack keeps the record until it closes; nothing stores it.
 
-- **Read and write in one transaction.** A *transaction* is a group of statements the database runs as one: other callers see all of it or none of it, and they wait while it runs. Skip all reads every pending row, then skips them, inside one:
+- **Read and write in one transaction.** A *transaction* is a group of statements the database runs as one: other callers see all of it or none of it, and they wait while it runs. `skipAllPending` reads every pending row, then skips them, inside one (`skipClips`, which **Skip all** uses now, reads and writes its ids in one transaction the same way):
 
   ```dart
   final record = await _db.transaction(() async {
@@ -296,7 +296,7 @@ Tagging needed no new data code: the player tags with `addClipsToReels`, built i
     }
   ```
 
-  Why it matters: the scanner can save a new clip at any moment. If the read ran *before* the transaction, a clip saved between the read and the write would be skipped but missing from the record, and Undo could never bring it back. Inside the transaction, the scan waits until skip all is finished, so its clip stays in To tag. The count check says the same thing in code: the write must move exactly the rows the read saw.
+  Why it matters: the scanner can save a new clip at any moment. If the read ran *before* the transaction, a clip saved between the read and the write would be skipped but missing from the record, and Undo could never bring it back. Inside the transaction, the scan waits until the skip is finished, so its clip stays in To tag. The count check says the same thing in code: the write must move exactly the rows the read saw.
 
 - **Undo only what is still yours.** Between the skip and the Undo, the user may have tagged the clip, or restored it (for a restore's Undo: skipped it). Undo updates a row only while it is still exactly as the action left it: in the state the action set (`after`) and with the same `addedAt`:
 
@@ -340,7 +340,7 @@ Tagging needed no new data code: the player tags with `addClipsToReels`, built i
 (cd app && ../tool/flutter test test/data/repositories/clips_repository_inbox_test.dart --plain-name "skip all takes every pending in one transaction")
 ```
 
-It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repository.dart`, find `skipAllPending`, and move the `final rows = await (_db.select(_db.inbox) ... .get();` statement up, above `final record = await _db.transaction(() async {`. Run the same command again. It fails with `Bad state: Skipped 3 clips but read 2`: the scan's clip was skipped, but the record held only two. Put the file back with `git checkout -- app/lib/data/repositories/clips_repository.dart`, and check with `git status` that nothing is left over.
+It ends with `All tests passed!`. (`skipAllPending` has no caller in the app now, see `docs/later.md`, but its test still guards it, and the lesson is the same for `skipClips`.) Now open `app/lib/data/repositories/clips_repository.dart`, find `skipAllPending`, and move the `final rows = await (_db.select(_db.inbox) ... .get();` statement up, above `final record = await _db.transaction(() async {`. Run the same command again. It fails with `Bad state: Skipped 3 clips but read 2`: the scan's clip was skipped, but the record held only two. Put the file back with `git checkout -- app/lib/data/repositories/clips_repository.dart`, and check with `git status` that nothing is left over.
 
 **Decisions:** D-94 (all of this section), extending D-84 (undo records, the `Expando`, `undoAll`, `Clock.storedNow()`), with D-57 (one place per clip) and D-10 (logs hold ids and counts only) as background.
 
@@ -436,16 +436,18 @@ Two small providers come with it: **`LastTags`** (the reels of the last tag, for
 
   `_running` is set when an action begins and cleared when it ends, success or failure (a `finally`). So a double tap on a chip tags once, and Skip during a tag does nothing.
 
-- **The 400 ms hold.** Tapping a chip doesn't tag at once. The chip shows a check (`confirmingReelId`) for 400 ms, the `medium4` motion token (120 ms when the phone asks for less motion), so the user sees what they tapped before the clip changes. The hold is a `Timer`, and the controller cancels it when it is disposed:
+- **The 400 ms hold.** Tapping a chip doesn't tag at once. The chip shows a check (`confirmingReelId`) for 400 ms, the `medium4` motion token (120 ms when the phone asks for less motion), so the user sees what they tapped before the clip changes. The hold is a `Timer`. Closing the player during the hold must tag nothing, and that needs care: the controller is disposed only when the player's route has finished sliding away, and Android's page transition (about 450 ms) is *longer* than the hold. So waiting for the dispose was not enough: the hold ended while the screen was still sliding out, and the clip was tagged (the final review caught this). Now the screen calls `leave()` the moment the close starts, and `leave()` ends the hold at once and shuts the session to new actions:
 
   ```dart
-  ref.onDispose(() {
-    unawaited(watch.cancel());
+  void leave() {
+    _left = true;
+    ...
     _cancelHold();
-  });
+    _update((now) => now.copyWith(confirmingReelId: null));
+  }
   ```
 
-  Closing the player during the hold therefore tags nothing. The timer comes from a provider (`holdTimerProvider`, normally `Timer.new`), so a test can hold the time still and end the hold when it chooses, while the real in-memory database keeps running.
+  `_idle()` checks `_left`, so nothing new starts after it, while Undo (which does not go through `_idle()`) still works from the snack. If you open the player again while the old one is still sliding out, the new screen gets the *same* controller (same family key), so it calls `enter()` to open it again. The timer comes from a provider (`holdTimerProvider`, normally `Timer.new`), so a test can hold the time still and end the hold when it chooses, while the real in-memory database keeps running.
 
 - **After a tag: next clip, picks cleared, Pick several kept.** `TagQueue.afterAction(from, pending)` gives the next waiting clip, or the first one from the start, or `null` (done). The owner ruled that Pick several is *sticky*: it stays on until Cancel, which helps a run of clips that all go into the same two reels. The picks themselves are cleared at each new clip.
 
@@ -457,7 +459,7 @@ Two small providers come with it: **`LastTags`** (the reels of the last tag, for
   }
   ```
 
-  Ignoring it would be worse: the snack disappears when tapped, so the user would believe the wrong tag was gone. Undo after "All done!" reopens the session on that clip.
+  Ignoring it would be worse: the snack disappears when tapped, so the user would believe the wrong tag was gone. Undo after "All done!" reopens the session on that clip. Only a failure of the undo itself is reported ("Couldn't undo"): once `undoAll` has written, a failure while moving back or counting is logged and the Undo still counts as done, because telling the user it failed when it did not would be worse.
 
 - **A clip can leave under you.** If the clip showing leaves To tag without the player doing it (the verifier found its video gone, or it was tagged from the reel picker), the stream tells the controller and it moves on, as after a tag. During a hold the tap is cancelled instead (minors batch ruling): the clip you tapped is gone from To tag, so the tap is treated as if it never happened, nothing is tagged, and a queued Undo may run. Another clip of the session leaving during the hold does not touch it.
 
@@ -467,7 +469,7 @@ Two small providers come with it: **`LastTags`** (the reels of the last tag, for
 
 - **Muted by default, looping.** The design prompt asks for muted autoplay. `TagPlayerMuted` starts `true` and keeps the choice until the app restarts. The tag player's `clipPlayer` also loops the clip, so a 3-second clip keeps playing while you decide.
 
-- **Tests that can fail.** Each of the brief's 25 tests was run against stubs first and failed on its own assertion (the stub for "same as previous does nothing with none" did nothing, so its red run used a naive version that tags with whatever `LastTags` holds). Then four mistakes were made one at a time, and each was caught: the hold not blocking a second tap (three holds instead of one), the tag reading `index` after the wait (the tag went to clip 2), Pick several turned off after a tag, and an Undo that does not move back.
+- **Tests that can fail.** The final review's fix wave added `leave in the hold tags nothing, at once`, `after leave every action is ignored, and Undo still works`, `enter after leave takes actions again`, `a failure after the undo was written is not a failed undo` and `undo works when the session could not load`; each failed first (with `leave()` emptied, or on the old `undo`). Each of the brief's 25 tests was run against stubs first and failed on its own assertion (the stub for "same as previous does nothing with none" did nothing, so its red run used a naive version that tags with whatever `LastTags` holds). Then four mistakes were made one at a time, and each was caught: the hold not blocking a second tap (three holds instead of one), the tag reading `index` after the wait (the tag went to clip 2), Pick several turned off after a tag, and an Undo that does not move back.
 
 **Where it lives:** `app/lib/features/tagging/view_models/tag_session_controller.dart` (`TagSessionController`, `TagSessionState`, `TagOutcome`, `tagHold`, `holdTimerProvider`), `last_tags.dart`, `tag_player_muted.dart`; `app/lib/features/reels/view_models/clip_player.dart` (`ClipPlayerUse`). Tests: `app/test/features/tagging/view_models/tag_session_controller_test.dart` and the "tagging" group of `app/test/features/reels/view_models/clip_player_test.dart`. Flow: "The tag player's session" in `docs/flow.md`.
 
@@ -516,7 +518,7 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
   }
   ```
 
-  Which clip is "ahead"? The one the player will go to after a tag or a skip, which is `TagQueue.afterAction(index, pending − current)`, not just `index + 1`: after the last clip it wraps to the first one still waiting. It is opened a moment (200 ms) *after* the frame, once the clip that was left has let go of its player; opened inside the build, it would be a third controller for a moment. When settled there are at most two alive (the one showing and the one ahead).
+  Which clip is "ahead"? The one the player will go to after a tag or a skip, which is `TagQueue.afterAction(index, pending − current)`, not just `index + 1`: after the last clip it wraps to the first one still waiting. It is opened by a timer (`_aheadPoll`, 200 ms) *after* the frame, once the clip that was left has let go of its player (the timer checks with `ref.exists` and tries again); opened inside the build, it would be a third controller for a moment. When settled there are at most two alive (the one showing and the one ahead). For a moment there can be three: going back, and when you tap Skip very quickly, because each new clip ahead starts the wait again. On "All done!" nothing comes next, so the clip ahead is let go (`_dropAhead`).
 
 - **A clip you leave must stop.** After Previous (or Undo) the clip you just left becomes the "clip ahead", and its controller can still be alive, still looping. So when a stage goes away it pauses its clip and rewinds it:
 
@@ -525,7 +527,18 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
   await controller.seekTo(Duration.zero);
   ```
 
-  wrapped so that a controller that was let go in the meantime is no problem. The clip ahead is therefore never heard and never moves; it waits at the start.
+  wrapped so that a controller that was let go in the meantime is no problem. The clip ahead is therefore never heard and never moves; it waits at the start. One exception: if you close the player and open it again while the old one is still sliding out, both screens show the same clip with the same controller, and the old stage must not stop the new one. So `_PlayingState` counts the stages showing each controller (`_stages`) and rests a clip only when the last one goes.
+
+- **Closing starts at once.** Close and **See your reels** call `_leave()` before they navigate, and system Back (and Android's predictive back gesture) reaches the same call through a `PopScope` around the screen:
+
+  ```dart
+  return PopScope<Object?>(
+    onPopInvokedWithResult: (didPop, _) {
+      if (didPop) _leave();
+    },
+  ```
+
+  `onPopInvokedWithResult` runs when the route starts to pop, not when it has gone, so a chip's hold ends before the 400 ms are up and nothing is tagged (Section 6). Close needs its own call because with nothing to pop (after a deep link) it uses `go`, which is not a pop.
 
 - **The check mark belongs to the clip you tapped.** When you tap a chip it shows a check for 400 ms. If that clip is tagged from somewhere else during those 400 ms, Section 6's controller cancels the hold and clears `confirmingReelId` before it moves on, so the *new* clip's chip never shows a check it did not earn. (Task 7 first kept a `_heldClipId` in the screen for this; the minors batch moved the rule into the controller, where it also stops the tag.)
 
@@ -556,7 +569,7 @@ It is a route at `/to-tag/play`, drawn above the tab bar like the clip viewer. T
 
 - **Screenshots only on your Mac.** The eight screens (first clip, mid-scene, Pick several, no reels, loading, a long clip, a horizontal clip, All done!) are compared as images in `app/test/features/tagging/views/goldens/macos/`, at 1x and 2x text. They are skipped on GitHub's CI, which has no images for the app's screens (Section 2's image sets are for components). A fake video platform draws a coloured gradient where the video would be, and real thumbnails are served, so the images show where things are.
 
-- **Tests that can fail.** The screen's 58 widget tests were run first against a screen that was an empty black box: 56 failed (the two that passed do so by nature: "nothing is offered" and the accessibility check of a blank page). Then three mistakes were made on purpose, one at a time, and each was caught: an Undo that does not go through the session (the player stayed on clip 2 after "Undo"), Other reels open by default (25 chips instead of 5), and the preload taken out (one player instead of two). A later fix was proved the same way: without the pause-and-rewind, Next then Previous left the clip ahead playing.
+- **Tests that can fail.** The final review found that closing during a hold still tagged, and the test that should have caught it did not: it ended the hold by hand *after* everything had settled, and the player was the only route, so there was no exit transition. The new tests push the player over another page with the real timer and animations on, tap a chip, wait 100 ms, then tap Close (or send system Back), and pump in 50 ms steps through the transition; on the old code the clip was tagged. Each of the two calls to `leave()` is proved by a test that fails without it. The screen's 58 widget tests were run first against a screen that was an empty black box: 56 failed (the two that passed do so by nature: "nothing is offered" and the accessibility check of a blank page). Then three mistakes were made on purpose, one at a time, and each was caught: an Undo that does not go through the session (the player stayed on clip 2 after "Undo"), Other reels open by default (25 chips instead of 5), and the preload taken out (one player instead of two). A later fix was proved the same way: without the pause-and-rewind, Next then Previous left the clip ahead playing.
 
 **Where it lives:** `app/lib/features/tagging/views/tag_player_screen.dart` (`TagPlayerScreen`), `tag_done_view.dart`, `tagging_snacks.dart`; `app/lib/features/clips/widgets/clip_scrubber.dart`; `app/lib/features/reels/views/reel_form_sheet.dart` (`forClip`) and `reel_form_controller.dart` (`createWith`); `app/lib/features/reels/views/undo_snacks.dart` (`undo:`); `clip_player.dart` (`autoplay`); `app/lib/router/` (`Routes.tagPlayer`, `Routes.tagFrom`). Tests: `app/test/features/tagging/views/tag_player_screen_test.dart`, `tag_player_golden_test.dart`, and the "from the tag player" group of `app/test/features/reels/views/reel_forms_test.dart`. Flow: "The tag player screen and All done" in `docs/flow.md`.
 

@@ -72,7 +72,10 @@ String _$holdTimerHash() => r'88563fd65b718b3c254db1da320230b546688440';
 ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
 ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
 ///   second tap in the hold does nothing, and closing the player in the
-///   hold cancels it and tags nothing.
+///   hold cancels it and tags nothing: the screen calls [leave] as it
+///   starts to close (the route's exit transition outlasts the hold), and
+///   no action starts after that until a screen shows the session again
+///   ([enter]).
 /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
 ///   waiting clip, else the first one from the start, else done), clears the
 ///   picks and keeps "Pick several" on.
@@ -103,7 +106,10 @@ final tagSessionControllerProvider = TagSessionControllerFamily._();
 ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
 ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
 ///   second tap in the hold does nothing, and closing the player in the
-///   hold cancels it and tags nothing.
+///   hold cancels it and tags nothing: the screen calls [leave] as it
+///   starts to close (the route's exit transition outlasts the hold), and
+///   no action starts after that until a screen shows the session again
+///   ([enter]).
 /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
 ///   waiting clip, else the first one from the start, else done), clears the
 ///   picks and keeps "Pick several" on.
@@ -132,7 +138,10 @@ final class TagSessionControllerProvider
   ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
   ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
   ///   second tap in the hold does nothing, and closing the player in the
-  ///   hold cancels it and tags nothing.
+  ///   hold cancels it and tags nothing: the screen calls [leave] as it
+  ///   starts to close (the route's exit transition outlasts the hold), and
+  ///   no action starts after that until a screen shows the session again
+  ///   ([enter]).
   /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
   ///   waiting clip, else the first one from the start, else done), clears the
   ///   picks and keeps "Pick several" on.
@@ -183,7 +192,7 @@ final class TagSessionControllerProvider
 }
 
 String _$tagSessionControllerHash() =>
-    r'd9fa5f1c5051a73c45bafe0238e78bc73bfa2758';
+    r'bed3d17797082eb9895e8d1b272dba64bc4368f5';
 
 /// The tag player's session (D-96): the clips to tag, one at a time, and
 /// what each tap does.
@@ -198,7 +207,10 @@ String _$tagSessionControllerHash() =>
 ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
 ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
 ///   second tap in the hold does nothing, and closing the player in the
-///   hold cancels it and tags nothing.
+///   hold cancels it and tags nothing: the screen calls [leave] as it
+///   starts to close (the route's exit transition outlasts the hold), and
+///   no action starts after that until a screen shows the session again
+///   ([enter]).
 /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
 ///   waiting clip, else the first one from the start, else done), clears the
 ///   picks and keeps "Pick several" on.
@@ -244,7 +256,10 @@ final class TagSessionControllerFamily extends $Family
   ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
   ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
   ///   second tap in the hold does nothing, and closing the player in the
-  ///   hold cancels it and tags nothing.
+  ///   hold cancels it and tags nothing: the screen calls [leave] as it
+  ///   starts to close (the route's exit transition outlasts the hold), and
+  ///   no action starts after that until a screen shows the session again
+  ///   ([enter]).
   /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
   ///   waiting clip, else the first one from the start, else done), clears the
   ///   picks and keeps "Pick several" on.
@@ -279,7 +294,10 @@ final class TagSessionControllerFamily extends $Family
 ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
 ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
 ///   second tap in the hold does nothing, and closing the player in the
-///   hold cancels it and tags nothing.
+///   hold cancels it and tags nothing: the screen calls [leave] as it
+///   starts to close (the route's exit transition outlasts the hold), and
+///   no action starts after that until a screen shows the session again
+///   ([enter]).
 /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
 ///   waiting clip, else the first one from the start, else done), clears the
 ///   picks and keeps "Pick several" on.

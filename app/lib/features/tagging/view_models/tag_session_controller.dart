@@ -193,7 +193,10 @@ class _Counted {
 ///   ignored while another runs (`busy`) or a chip is held. A chip tap holds
 ///   for [tagHold] ([tagHoldReduced] with reduced motion) and then tags; a
 ///   second tap in the hold does nothing, and closing the player in the
-///   hold cancels it and tags nothing.
+///   hold cancels it and tags nothing: the screen calls [leave] as it
+///   starts to close (the route's exit transition outlasts the hold), and
+///   no action starts after that until a screen shows the session again
+///   ([enter]).
 /// - **After a tag or a skip** it goes to `TagQueue.afterAction` (the next
 ///   waiting clip, else the first one from the start, else done), clears the
 ///   picks and keeps "Pick several" on.
@@ -226,6 +229,9 @@ class TagSessionController extends _$TagSessionController {
 
   /// What each record of this session counted, by identity.
   final Map<UndoRecord, _Counted> _counted = Map.identity();
+
+  /// The player is closing ([leave]): no new action starts.
+  bool _left = false;
 
   @override
   Future<TagSessionState> build(int? startClipId) async {
@@ -396,6 +402,26 @@ class TagSessionController extends _$TagSessionController {
     });
   }
 
+  /// The player is closing (Close, Back, a predictive back, "See your
+  /// reels"): a chip's hold ends at once without a tag (its tap completes
+  /// with null), the check goes, and every action from now on is ignored.
+  /// A write already running finishes, and Undo still works (its snack
+  /// outlives the player). Called as the close starts, because the route's
+  /// exit transition outlasts the hold and the session is disposed only
+  /// after it. Calling it again does nothing more.
+  void leave() {
+    _left = true;
+    if (_holdResult != null) _log.info('Closed during a hold; tap dropped');
+    _cancelHold();
+    _update((now) => now.copyWith(confirmingReelId: null));
+  }
+
+  /// A player screen shows this session (again): actions are taken again
+  /// after [leave]. The player opened again while the old one slides away
+  /// gets the same session (the same `startClipId`), which must not stay
+  /// shut.
+  void enter() => _left = false;
+
   /// "Previous clip": the nearest waiting clip before this one, untagged.
   void previous() => _moveTo(_queue.previous);
 
@@ -456,56 +482,78 @@ class TagSessionController extends _$TagSessionController {
   /// Undo of a tag or skip of clip [clipId] (its snack's [records]): waits
   /// for the action that is running, puts the records back in one
   /// transaction, and goes back to that clip if it is waiting again, also
-  /// after "All done!". A failure is thrown, and nothing moves. After the
-  /// player has closed it still undoes (the snack outlives it).
+  /// after "All done!". Only a failure of that transaction is thrown (the
+  /// snack says "Couldn't undo"); once it is written, a failure while going
+  /// back or counting is logged and the Undo is done. After the player has
+  /// closed, or when the session could not load, it still undoes (the snack
+  /// outlives it).
   Future<void> undo(List<UndoRecord> records, int clipId) async {
     // `state` throws once the player has closed: check `ref.mounted` first.
-    if (ref.mounted && state.value == null) await future;
+    if (ref.mounted && state.value == null) {
+      try {
+        await future;
+      } on Object {
+        // The session could not load: the records are put back all the same.
+      }
+    }
     while (_running != null) {
       await _running!.future;
     }
     _begin();
     _update((now) => now.copyWith(busy: true));
     try {
-      await _clips.undoAll(records);
-      final waiting = await _clips.watchInbox(InboxState.pending).first;
+      try {
+        await _clips.undoAll(records);
+      } on Object catch (error) {
+        _log.warning('Undo of clip $clipId failed: ${error.runtimeType}');
+        rethrow;
+      }
       _log.info('Undid ${records.length} records of clip $clipId');
-      _update((now) {
-        final pending = _pendingOf(now, waiting);
-        final at = now.session.indexOf(clipId);
-        if (at >= 0 && pending.contains(clipId)) {
-          return now.copyWith(
-            pending: pending,
-            index: at,
-            done: false,
-            picked: const [],
-          );
-        }
-        return now.copyWith(pending: pending);
-      });
-      // After the player has gone back, so the counts never hold it up.
-      _uncount(
-        records,
-        waiting: waiting.any((clip) => clip.id == clipId),
-        reels: await _clips.watchReelIdsOf(clipId).first,
-      );
-    } on Object catch (error) {
-      _log.warning('Undo of clip $clipId failed: ${error.runtimeType}');
-      rethrow;
+      try {
+        await _goBackAfterUndo(records, clipId);
+      } on Object catch (error) {
+        // The undo is written: never report it as failed.
+        _log.warning('After the undo of clip $clipId: ${error.runtimeType}');
+      }
     } finally {
       _update((now) => _followed(now.copyWith(busy: false)));
       _end();
     }
   }
 
+  /// After the records of clip [clipId] are put back: the player goes back
+  /// to the clip if it is waiting again, then the counts are taken back.
+  Future<void> _goBackAfterUndo(List<UndoRecord> records, int clipId) async {
+    final waiting = await _clips.watchInbox(InboxState.pending).first;
+    _update((now) {
+      final pending = _pendingOf(now, waiting);
+      final at = now.session.indexOf(clipId);
+      if (at >= 0 && pending.contains(clipId)) {
+        return now.copyWith(
+          pending: pending,
+          index: at,
+          done: false,
+          picked: const [],
+        );
+      }
+      return now.copyWith(pending: pending);
+    });
+    // After the player has gone back, so the counts never hold it up.
+    _uncount(
+      records,
+      waiting: waiting.any((clip) => clip.id == clipId),
+      reels: await _clips.watchReelIdsOf(clipId).first,
+    );
+  }
+
   // ---------------------------------------------------------------- helpers
 
-  /// The state, when an action may start now: the player open, loaded, not
-  /// done, nothing running and no chip held. Else null, and the action is
-  /// ignored.
+  /// The state, when an action may start now: the player open and not
+  /// closing ([leave]), loaded, not done, nothing running and no chip held.
+  /// Else null, and the action is ignored.
   TagSessionState? _idle() {
     // After the player closed, `state` throws; an action then does nothing.
-    if (!ref.mounted) return null;
+    if (!ref.mounted || _left) return null;
     final s = state.value;
     if (s == null || s.done || s.session.isEmpty) return null;
     if (_running != null || s.busy || s.confirmingReelId != null) return null;
@@ -726,8 +774,9 @@ class TagSessionController extends _$TagSessionController {
     }
   }
 
-  /// The player closed, or the held clip left To tag: a chip hold ends
-  /// without a tag, its tap completes with null, and a queued Undo may run.
+  /// The player closed or is closing, or the held clip left To tag: a chip
+  /// hold ends without a tag, its tap completes with null, and a queued Undo
+  /// may run.
   void _cancelHold() {
     _hold?.cancel();
     _hold = null;

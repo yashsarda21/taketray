@@ -54,6 +54,11 @@ const double _swipeMinDistance = kTouchSlop * 4;
 /// A clip's shape (width / height) until its own size is known: portrait.
 const double _portraitShape = 9 / 16;
 
+/// How often the clip ahead looks again whether the clip left behind has let
+/// go of its player (`_openAhead`): a wait between checks, not an animation.
+// style-check: allow a polling interval, not a motion (D-97 point 4)
+const Duration _aheadPoll = Duration(milliseconds: 200);
+
 /// The tag player (`routes.player`, D-97): the screen the owner uses most.
 /// Opened from To tag on a clip ([startClipId], or the first one) over the
 /// tab shell, with no nav pill, always dark on black, with a `Scaffold` of its
@@ -71,8 +76,11 @@ const double _portraitShape = 9 / 16;
 ///   cannot be played shows "This video can't be played" and never another
 ///   video.
 /// - **One clip ahead:** the next clip's player is opened (paused, never heard)
-///   while this one is tagged, so it starts at once; at most two controllers
-///   are alive, and the one left behind is disposed.
+///   while this one is tagged, so it starts at once. Settled, at most two
+///   controllers are alive (the clip showing and the one ahead); for a moment
+///   there can be three, going back or during quick actions (see
+///   `_preload`). The one left behind is disposed, and on "All done!" the
+///   clip ahead is let go too.
 /// - **Bottom:** the scrub bar (large, with "Drag to skim", over two minutes),
 ///   **Skip** and **Same as previous**, and the reel panel: Collecting reels
 ///   newest first, **New reel**, then **Other reels** (Ready and Published,
@@ -83,8 +91,9 @@ const double _portraitShape = 9 / 16;
 ///   the player back to the clip; only the latest offers it, and the last one
 ///   stays on "All done!" (D-97).
 ///
-/// Back and Close go back to To tag; a hold in progress is cancelled, and
-/// nothing is tagged.
+/// Back (also the predictive back gesture) and Close go back to To tag; a
+/// hold in progress is cancelled as the close starts
+/// (`TagSessionController.leave`), and nothing is tagged.
 class TagPlayerScreen extends ConsumerStatefulWidget {
   const new({this.startClipId, super.key});
 
@@ -112,6 +121,14 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       tagSessionControllerProvider(widget.startClipId);
 
   @override
+  void initState() {
+    super.initState();
+    // The player opened again while the last one slides away shares its
+    // session, which that one shut as it left.
+    ref.read(_provider.notifier).enter();
+  }
+
+  @override
   void dispose() {
     _aheadTimer?.cancel();
     _ahead?.close();
@@ -119,8 +136,15 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     super.dispose();
   }
 
-  /// Back to To tag; a hold in progress is cancelled with the provider.
+  /// The player starts to close: a hold in progress ends now and tags
+  /// nothing. The route's exit transition (and the session, disposed after
+  /// it) outlasts the hold, so this cannot wait for the session to go.
+  void _leave() => ref.read(_provider.notifier).leave();
+
+  /// Back to To tag. A pop also reaches the `PopScope` in [build]; `go` (when
+  /// nothing can be popped, as after a deep link) does not, so leave first.
   void _close() {
+    _leave();
     if (context.canPop()) {
       context.pop();
     } else {
@@ -128,7 +152,10 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     }
   }
 
-  void _seeReels() => context.go(Routes.reels);
+  void _seeReels() {
+    _leave();
+    context.go(Routes.reels);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -141,7 +168,10 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     final muted = ref.watch(tagPlayerMutedProvider);
     final lastTags = ref.watch(lastTagsProvider);
     VideoPlayerController? player;
-    if (state != null && !state.done) {
+    if (state == null || state.done) {
+      // Nothing comes next: the clip ahead is let go (Undo opens it again).
+      _dropAhead();
+    } else {
       _noteClip(state);
       final clip = state.currentClip;
       final uri = clip == null ? null : clipVideoUri(clip);
@@ -159,44 +189,52 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       // After the clip showing, so its player is the first one made.
       _preload(state);
     }
-    return Theme(
-      data: TakeTrayTheme.video(),
-      child: Builder(
-        builder: (context) {
-          final tt = context.tt;
-          return Scaffold(
-            backgroundColor: tt.colors.videoBackground,
-            // The sheet's keyboard must not squash the player behind it.
-            resizeToAvoidBottomInset: false,
-            bottomNavigationBar: state == null || state.done
-                ? null
-                : _bottomBar(
-                    context,
-                    state,
-                    summaries,
-                    cache,
-                    lastTags,
-                    player,
-                  ),
-            body: state == null
-                ? _Waiting(
-                    failed: session.hasError,
-                    onClose: _close,
-                    onRetry: () => ref.invalidate(_provider),
-                  )
-                : state.done
-                ? TagDoneView(
-                    session: state,
-                    reelNames: {
-                      for (final summary in summaries ?? const <ReelSummary>[])
-                        summary.reel.id: summary.reel.name,
-                    },
-                    onSeeReels: _seeReels,
-                    onBack: _close,
-                  )
-                : _top(context, state, muted),
-          );
-        },
+    // System Back and the predictive back gesture: the route pops, and the
+    // hold must end now, not when the session goes after the transition.
+    return PopScope<Object?>(
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) _leave();
+      },
+      child: Theme(
+        data: TakeTrayTheme.video(),
+        child: Builder(
+          builder: (context) {
+            final tt = context.tt;
+            return Scaffold(
+              backgroundColor: tt.colors.videoBackground,
+              // The sheet's keyboard must not squash the player behind it.
+              resizeToAvoidBottomInset: false,
+              bottomNavigationBar: state == null || state.done
+                  ? null
+                  : _bottomBar(
+                      context,
+                      state,
+                      summaries,
+                      cache,
+                      lastTags,
+                      player,
+                    ),
+              body: state == null
+                  ? _Waiting(
+                      failed: session.hasError,
+                      onClose: _close,
+                      onRetry: () => ref.invalidate(_provider),
+                    )
+                  : state.done
+                  ? TagDoneView(
+                      session: state,
+                      reelNames: {
+                        for (final summary
+                            in summaries ?? const <ReelSummary>[])
+                          summary.reel.id: summary.reel.name,
+                      },
+                      onSeeReels: _seeReels,
+                      onBack: _close,
+                    )
+                  : _top(context, state, muted),
+            );
+          },
+        ),
       ),
     );
   }
@@ -342,17 +380,20 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   Timer? _aheadTimer;
 
   /// Keeps the player of the clip after this one open, paused (D-97): the
-  /// clip the player goes to after a tag or a skip. With the one showing
-  /// that is at most two controllers.
+  /// clip the player goes to after a tag or a skip. Settled, with the one
+  /// showing, that is at most two controllers.
   ///
-  /// It is held through a subscription that is changed **a moment after the
-  /// frame** ([kThemeAnimationDuration]), when the stage of the clip left
-  /// behind has gone and let its player go: made during the build, the new
-  /// clip ahead would be opened while the old clip's controller was still
-  /// alive, a third one for a moment. It waits until the left clip's player
-  /// has gone (`ref.exists`), at most a few tries. (Going back is the one case
-  /// left: the clip that comes up is opened in the frame in which the old
-  /// clip ahead is let go, so for those few milliseconds there are three.)
+  /// It is held through a subscription that is changed by a timer
+  /// ([_aheadPoll]) after the frame, once the stage of the clip left behind
+  /// has gone and let its player go: made during the build, the new clip
+  /// ahead would be opened while the old clip's controller was still alive.
+  /// The timer looks whether the left clip's player is still there
+  /// (`ref.exists`) and tries again, at most [_aheadMaxTries] times. Each
+  /// new clip ahead starts the wait again. So there can briefly be three:
+  /// going back (the clip that comes up is opened in the frame the old clip
+  /// ahead is let go), and during quick actions (Skip or Same as previous
+  /// about every 100 ms keep restarting the wait, and a clip can then come
+  /// up before its preload; docs/later.md).
   void _preload(TagSessionState state) {
     final id = state.currentClipId;
     Uri? uri;
@@ -367,7 +408,16 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     _aheadTimer?.cancel();
     _aheadTries = 0;
     _leftGone = false;
-    _aheadTimer = Timer(kThemeAnimationDuration, _openAhead);
+    _aheadTimer = Timer(_aheadPoll, _openAhead);
+  }
+
+  /// Lets the clip ahead go and forgets it: nothing comes next.
+  void _dropAhead() {
+    _aheadTimer?.cancel();
+    _aheadTimer = null;
+    _ahead?.close();
+    _ahead = null;
+    _aheadUri = null;
   }
 
   int _aheadTries = 0;
@@ -388,7 +438,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       );
       if (held || !_leftGone) {
         _leftGone = !held;
-        _aheadTimer = Timer(kThemeAnimationDuration, _openAhead);
+        _aheadTimer = Timer(_aheadPoll, _openAhead);
         return;
       }
     }
@@ -1101,9 +1151,30 @@ class _Playing extends StatefulWidget {
 }
 
 class _PlayingState extends State<_Playing> {
+  /// How many stages show each controller now. Usually one, but the player
+  /// opened again while the last one slides away shares its session and so
+  /// its controllers: the clip is on two stages for a moment, and the one
+  /// going must not stop the one that stays.
+  static final Map<VideoPlayerController, int> _stages = Map.identity();
+
+  static void _shown(VideoPlayerController controller) =>
+      _stages.update(controller, (n) => n + 1, ifAbsent: () => 1);
+
+  /// [controller] leaves this stage: rested when no other stage shows it.
+  static void _gone(VideoPlayerController controller) {
+    final left = (_stages[controller] ?? 1) - 1;
+    if (left > 0) {
+      _stages[controller] = left;
+      return;
+    }
+    _stages.remove(controller);
+    unawaited(_rest(controller));
+  }
+
   @override
   void initState() {
     super.initState();
+    _shown(widget.controller);
     // Not from the background: the user taps to play when the app is back.
     final life = WidgetsBinding.instance.lifecycleState;
     final away =
@@ -1114,11 +1185,21 @@ class _PlayingState extends State<_Playing> {
   }
 
   @override
+  void didUpdateWidget(_Playing old) {
+    super.didUpdateWidget(old);
+    if (old.controller != widget.controller) {
+      _shown(widget.controller);
+      _gone(old.controller);
+    }
+  }
+
+  @override
   void dispose() {
     // The stage of this clip is going: the clip may be kept open (as the clip
     // ahead after Previous or Undo) and must not go on playing, unseen. It
-    // starts from the beginning when it comes back.
-    unawaited(_rest(widget.controller));
+    // starts from the beginning when it comes back, unless another stage
+    // still shows it.
+    _gone(widget.controller);
     super.dispose();
   }
 
