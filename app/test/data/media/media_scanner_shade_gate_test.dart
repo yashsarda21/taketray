@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/shade_actions.dart';
 import 'package:taketray/data/media/media_scanner.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
@@ -19,6 +20,15 @@ MediaVideo _video(int id, int generation) =>
     fakeVideo(id: id, generation: generation, sizeBytes: 1000000 + id);
 
 final DateTime _tap = DateTime.utc(2026, 6, 1, 18);
+
+/// A phone state whose `markStillAnswered` fails like a full disk.
+class _FailingMark extends PhoneStateRepository {
+  _FailingMark(super._db, super._clock);
+
+  @override
+  Future<bool> markStillAnswered(DateTime since) async =>
+      throw StateError('database is full');
+}
 
 late VmHarness h;
 late DateTime since;
@@ -158,6 +168,47 @@ void main() {
     });
   });
 
+  group('a failed stale or keep on step never blocks the scan', () {
+    test('a failing clear for a stale action still scans', () async {
+      _tapTurnOff(forSession: since.subtract(const Duration(days: 3)));
+      h.background.failNext('clearShadeAction');
+      final records = captureLogs();
+
+      expect(await scanner.scan(), _done(added: 4));
+
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      expect(logText(records), contains('PlatformException'));
+      expect(logText(records), isNot(contains('failed on purpose')));
+    });
+
+    test('a failing mark answered for keep on still scans', () async {
+      final m = h.media;
+      final failing = MediaScanner(
+        m.bridge,
+        m.clips,
+        _FailingMark(m.db, m.clock),
+        m.settings,
+        m.zones,
+        m.zoneSync,
+        m.queue,
+        m.clock,
+        m.background,
+      );
+      h.background.shadeAction = ShadeAction(
+        kind: ShadeActionKind.keepOn,
+        since: since,
+        at: _tap,
+        generations: const {},
+      );
+      final records = captureLogs();
+
+      expect(await failing.scan(), _done(added: 4));
+
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), isNot(contains('database is full')));
+    });
+  });
+
   group('the end', () {
     test('a volume failing during the end keeps the session and the '
         'action', () async {
@@ -188,7 +239,7 @@ void main() {
       expect(h.background.shadeAction, isNull);
     });
 
-    test('after 3 failed attempts the session ends anyway', () async {
+    test('three counted failures end the session', () async {
       _tapTurnOff();
       final records = captureLogs();
       for (var i = 0; i < 3; i++) {
@@ -196,8 +247,10 @@ void main() {
       }
 
       await scanner.scan();
+      h.media.clock.advance(const Duration(minutes: 5));
       await scanner.scan();
       expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      h.media.clock.advance(const Duration(minutes: 5));
 
       final third = await scanner.scan();
 
@@ -208,6 +261,33 @@ void main() {
       final text = logText(records);
       expect(text, contains('after 3 attempts'));
       expect(text, isNot(contains('2026')));
+    });
+
+    test('failures 5 minutes apart count; closer ones do not', () async {
+      _tapTurnOff();
+      final records = captureLogs();
+      for (var i = 0; i < 6; i++) {
+        h.bridge.failNext('videosAddedAfter');
+      }
+      Future<bool> stillOn() async =>
+          (await h.media.phoneState.loadShooting()).on;
+
+      await scanner.scan(); // counted: 1
+      h.media.clock.advance(const Duration(minutes: 4, seconds: 59));
+      await scanner.scan(); // too soon: not counted
+      h.media.clock.advance(const Duration(seconds: 1));
+      await scanner.scan(); // 5 minutes after the first: 2
+      h.media.clock.advance(const Duration(minutes: 1));
+      await scanner.scan(); // too soon
+      expect(await stillOn(), isTrue);
+      expect(h.background.shadeAction, isNotNull);
+      expect(logText(records), contains('not counted'));
+
+      h.media.clock.advance(const Duration(minutes: 4));
+      await scanner.scan(); // 5 minutes after the second: 3, ends
+
+      expect(await stillOn(), isFalse);
+      expect(h.background.shadeAction, isNull);
     });
 
     test('no full access at the end: the session ends at once', () async {
@@ -235,7 +315,7 @@ void main() {
       for (final job in <Future<Object?>>[
         scanner.scan(),
         h.container.read(shadeActionsProvider).apply(),
-        scanner.endSessionAt(since: since, generations: const {}),
+        h.container.read(shadeActionsProvider).apply(),
         scanner.countEarlier(),
         sync.flush(),
         scanner.scan(),

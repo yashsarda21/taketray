@@ -423,9 +423,9 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 - **`BackgroundSync`** writes the copy: Shooting mode, its start, the baselines, the watched folders, the evening reminder, when the waiting clips were shot, and whether "Still shooting?" was answered. It writes at every app start and after every change.
 - **`ShadeActions`** applies a **Turn off** or **Keep on** tapped in the shade, only to the Shooting mode session it was for. **Every scan** does the same first, inside its own job, so no trigger can scan past a Turn off.
-- **`MediaScanner.endSessionAt`** is Turn off in Dart: it adds the clips shot before the tap, none after it, then switches Shooting mode off.
+- **The capped end** (`MediaScanner._endCapped`) is Turn off in Dart: it adds the clips shot before the tap, none after it, then switches Shooting mode off. Every scan runs it first when a Turn off is waiting.
 - **`stillAnswered`** is a new field of the stored session; `stillShootingDue` says when the in-app question is due (Task 7 shows it).
-- **The lifecycle** applies shade actions first, and after a scan writes the copy before it removes the "N new clips" notification.
+- **The lifecycle**, after a scan, writes the copy before it removes the "N new clips" notification.
 
 **Why TakeTray needs it:** the Kotlin side can only count and remind with what the copy says. If the copy says Shooting mode is on after the user turned it off, the phone keeps watching; if it holds yesterday's baselines, the notification counts clips the app has already shown in To tag. And a Turn off tapped in the shade only writes a note, because the database is Dart's alone (D-103): until Dart applies it, the clips shot before the tap are not in To tag and the database still says on.
 
@@ -476,7 +476,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   A tap for another session (Shooting mode was turned off and on again since the notification came) is dropped and cleared. Clearing names the tap's own time, so a newer tap waits.
 
-- **Turn off stops at the tap.** The receiver noted each volume's generation at the tap. `endSessionAt` runs the scan's own per-volume code (shared, not copied) with that generation as a cap:
+- **Turn off stops at the tap.** The receiver noted each volume's generation at the tap. The capped end runs the scan's own per-volume code (shared, not copied) with that generation as a cap:
 
   ```dart
   final captured = cap == null
@@ -484,9 +484,9 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
       : min(volume.generation, cap);
   ```
 
-  Rows above `captured` are left out, and the baseline never moves past it. Then, in the same job on the media queue, Shooting mode goes off, but only if it is still that session (`PhoneStateRepository.endSession`, compare-and-set). A volume that does not answer keeps the session and the action, so the next trigger tries again; the third failure in a row ends it with what could be read (`maxEndAttempts`), so a broken SD card cannot keep Shooting mode on forever. Without full access it ends at once: nothing could be read anyway. A recording still pending at the tap is not added: it holds the baseline, and the session is gone before it finishes.
+  Rows above `captured` are left out, and the baseline never moves past it. Then, in the same job on the media queue, Shooting mode goes off, but only if it is still that session (`PhoneStateRepository.endSession`, compare-and-set). A volume that does not answer keeps the session and the action, so the next trigger tries again. A failure counts only 5 minutes or more after the last counted one (`endRetryGap`, by the clock): one app start can try the end three times within a second (the copy's write, the lifecycle's scan, To tag's), and that must not count as three. The third counted failure, at least 10 minutes after the first, ends the session with what could be read (`maxEndAttempts`), so a broken SD card cannot keep Shooting mode on forever. Without full access it ends at once: nothing could be read anyway. A recording still pending at the tap is not added: it holds the baseline, and the session is gone before it finishes.
 
-- **Every scan looks first.** The lifecycle applies the action before its own scan, but it is not the only trigger: To tag scans when it opens and on resume, and a notification can open To tag before the lifecycle's first frame. A scan joins the media queue at once, so it could run before the apply and add the clips shot after the tap. So the check lives inside the scan's own queued job:
+- **Every scan looks first.** The lifecycle's scan is not the only one: To tag scans when it opens and on resume, and a notification can open To tag before the lifecycle's first frame. A scan joins the media queue at once, so an apply queued separately could come too late, after a scan that added the clips shot after the tap. So the check lives inside the scan's own queued job:
 
   ```dart
   final ShadeAction? action;
@@ -505,7 +505,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   return await _scanOnce();
   ```
 
-  A Turn off for this session replaces the scan with the capped end; a Keep on is stored and the scan runs; an action for another session is cleared and the scan runs. When the action cannot be read, nothing at all is scanned (`ScanDeferred`), because a scan that cannot see a waiting Turn off could add a clip shot after it; the next trigger tries again. `ShadeActions.apply()` is the same path without the scan, one job on the same queue, and no job ever waits for another (that would deadlock the queue; the test `no queue job waits on another` would time out).
+  A Turn off for this session replaces the scan with the capped end; a Keep on is stored and the scan runs; an action for another session is cleared and the scan runs. If storing a Keep on or clearing a stale action fails, that is logged and the scan still runs: only a Turn off may hold a scan back. When the action cannot be read, nothing at all is scanned (`ScanDeferred`), because a scan that cannot see a waiting Turn off could add a clip shot after it; the next trigger tries again. `ShadeActions.apply()` is the same path without the scan (the copy's writes use it; the lifecycle no longer needs it), one job on the same queue, and no job ever waits for another (that would deadlock the queue; the test `no queue job waits on another` would time out).
 
 - **Write, then clear.** After a scan the lifecycle removes the notification, but first it flushes the copy. The flush reads the database itself, so it does not wait for the streams:
 
@@ -525,7 +525,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 - **`stillAnswered` lives in the session.** It is part of the stored `ShootingState`, so `advanceBaseline` keeps it (`copyWith`), turning Shooting mode off forgets it, and JSON stored before it existed reads as false. `stillShootingDue` is on, not answered, and at least 14 × 24 hours since the start, the same wait as the phone's `STILL_AFTER_DAYS`.
 
-**Where it lives:** `app/lib/data/background/` (`background_sync.dart`, `shade_actions.dart`), the gate, `applyShadeAction` and `endSessionAt` in `app/lib/data/media/media_scanner.dart`, `markStillAnswered` and `endSession` in `app/lib/data/repositories/phone_state_repository.dart`, `watchPendingShotTimes` in `clips_repository.dart`, `ShootingState.stillAnswered` and `isSession` in `app/lib/domain/models/media.dart`, `app/lib/domain/rules/still_shooting.dart`, the order in `app/lib/app/media_lifecycle.dart`, and `start()` in `app/lib/app.dart`. Tests: `app/test/data/background/`, `app/test/data/media/media_scanner_end_session_test.dart`, `app/test/data/media/media_scanner_shade_gate_test.dart`, `app/test/domain/rules/still_shooting_test.dart`, and additions to `phone_state_repository_test.dart`, `clips_repository_inbox_test.dart`, `media_lifecycle_test.dart` and `app_test.dart`. The step-by-step flows are "Background bridge", "Finding new clips" and "App start and resume" in `docs/flow.md`.
+**Where it lives:** `app/lib/data/background/` (`background_sync.dart`, `shade_actions.dart`), the gate, `applyShadeAction` and the capped end in `app/lib/data/media/media_scanner.dart`, `markStillAnswered` and `endSession` in `app/lib/data/repositories/phone_state_repository.dart`, `watchPendingShotTimes` in `clips_repository.dart`, `ShootingState.stillAnswered` and `isSession` in `app/lib/domain/models/media.dart`, `app/lib/domain/rules/still_shooting.dart`, the order in `app/lib/app/media_lifecycle.dart`, and `start()` in `app/lib/app.dart`. Tests: `app/test/data/background/`, `app/test/data/media/media_scanner_end_session_test.dart`, `app/test/data/media/media_scanner_shade_gate_test.dart`, `app/test/domain/rules/still_shooting_test.dart`, and additions to `phone_state_repository_test.dart`, `clips_repository_inbox_test.dart`, `media_lifecycle_test.dart` and `app_test.dart`. The step-by-step flows are "Background bridge", "Finding new clips" and "App start and resume" in `docs/flow.md`.
 
 **Try it yourself:** see the cap keep a clip shot after the tap out of To tag. From `app/`:
 

@@ -1,13 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/platform/background_bridge.dart';
 
 import '../../support/fake_media_bridge.dart';
 import 'media_harness.dart';
 
-// `MediaScanner.endSessionAt` (D-106): a shade Turn off, applied by Dart. It
-// scans each volume the tap named up to the generation it had at the tap, then
-// turns Shooting mode off, in one job on the media queue.
+// The capped end (D-106): a shade Turn off, applied by Dart in place of the
+// next scan (the gate). It scans each volume the tap named up to the
+// generation it had at the tap, then turns Shooting mode off, in one job on
+// the media queue.
 
 /// A finished video on [volume] with MediaStore id [id] at [generation].
 MediaVideo _video(
@@ -24,6 +26,23 @@ MediaVideo _video(
 );
 
 late MediaHarness h;
+
+final DateTime _tap = DateTime.utc(2026, 6, 1, 18);
+
+/// A Turn off tapped in the shade for the session that started at [since],
+/// with [generations] at the tap, applied by the next scan (the gate).
+Future<ScanOutcome> _end({
+  required DateTime since,
+  required Map<String, int> generations,
+}) {
+  h.background.shadeAction = ShadeAction(
+    kind: ShadeActionKind.turnOff,
+    since: since,
+    at: _tap,
+    generations: generations,
+  );
+  return h.scanner.scan();
+}
 
 RecordingBridge get bridge => h.bridge;
 
@@ -53,10 +72,7 @@ void main() {
   test('clips shot before the tap are added', () async {
     bridge.put([_video(11, 11), _video(12, 12)]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 12},
-    );
+    final outcome = await _end(since: since, generations: {phone: 12});
 
     expect(outcome, _done(added: 2));
     expect(await _toTagIds(), {11, 12});
@@ -72,10 +88,7 @@ void main() {
       _video(14, 14),
     ]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 12},
-    );
+    final outcome = await _end(since: since, generations: {phone: 12});
 
     expect(outcome, _done(added: 2));
     expect(await _toTagIds(), {11, 12});
@@ -93,39 +106,33 @@ void main() {
         _video(100 + i, 12 + i),
     ]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, _done(added: 1));
     expect(await _toTagIds(), {11});
   });
 
-  test('a session that changed is left alone', () async {
+  test('an action for another session leaves the session on', () async {
     bridge.put([_video(11, 11)]);
 
-    final outcome = await h.scanner.endSessionAt(
+    final outcome = await _end(
       since: since.subtract(const Duration(minutes: 1)),
       generations: {phone: 11},
     );
 
-    expect(outcome, isA<ScanShootingOff>());
-    expect(await h.allClips(), isEmpty);
+    // Cleared as stale; the scan then runs as any scan.
+    expect(outcome, _done(added: 1));
     final state = await h.phoneState.loadShooting();
     expect(state.on, isTrue);
     expect(state.since, since);
-    expect(bridge.count('videosAddedAfter'), 0);
+    expect(h.background.shadeAction, isNull);
   });
 
   test('with Shooting mode already off it changes nothing', () async {
     await h.phoneState.turnShootingOff();
     bridge.put([_video(11, 11)]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, isA<ScanShootingOff>());
     expect(await h.allClips(), isEmpty);
@@ -137,7 +144,7 @@ void main() {
     since = (await h.turnOnNow()).since!;
     bridge.put([_video(11, 11)]);
 
-    final outcome = await h.scanner.endSessionAt(
+    final outcome = await _end(
       since: DateTime.fromMillisecondsSinceEpoch(
         since.millisecondsSinceEpoch,
         isUtc: true,
@@ -168,10 +175,7 @@ void main() {
       );
     final records = captureLogs();
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, _done(added: 1));
     expect(await _toTagIds(), {11});
@@ -182,10 +186,7 @@ void main() {
   test('an empty generations map adds nothing and turns off', () async {
     bridge.put([_video(11, 11)]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: const {},
-    );
+    final outcome = await _end(since: since, generations: const {});
 
     expect(outcome, _done(added: 0));
     expect(await h.allClips(), isEmpty);
@@ -205,10 +206,7 @@ void main() {
     ];
     bridge.setVolume(phone, version: 'v2', generation: 3);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, _done(added: 0, resynced: {phone}));
     // The stored clip was found again under its new number; nothing new.
@@ -221,10 +219,7 @@ void main() {
       ..put([_video(11, 11)])
       ..setVolume(phone, version: null);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, _done(added: 0));
     expect(bridge.count('videosAddedAfter'), 0);
@@ -235,10 +230,7 @@ void main() {
       'are', () async {
     bridge.put([_video(11, 11, pending: true), _video(12, 12), _video(13, 13)]);
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 13},
-    );
+    final outcome = await _end(since: since, generations: {phone: 13});
 
     expect(outcome, _done(added: 2));
     expect(await _toTagIds(), {12, 13});
@@ -251,19 +243,13 @@ void main() {
       ..put([_video(11, 11)])
       ..failNext('videosAddedAfter');
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, _done(added: 0, failed: {phone}));
     expect((await h.phoneState.loadShooting()).since, since);
 
     // The next try reads it, and ends.
-    expect(
-      await h.scanner.endSessionAt(since: since, generations: {phone: 11}),
-      _done(added: 1),
-    );
+    expect(await _end(since: since, generations: {phone: 11}), _done(added: 1));
     expect(await h.phoneState.loadShooting(), ShootingState.off);
   });
 
@@ -276,10 +262,7 @@ void main() {
         sdkInt: 34,
       );
 
-    final outcome = await h.scanner.endSessionAt(
-      since: since,
-      generations: {phone: 11},
-    );
+    final outcome = await _end(since: since, generations: {phone: 11});
 
     expect(outcome, isA<ScanNoAccess>());
     expect(await h.allClips(), isEmpty);
@@ -293,7 +276,7 @@ void main() {
       ..failNext('volumes');
 
     await expectLater(
-      h.scanner.endSessionAt(since: since, generations: {phone: 11}),
+      _end(since: since, generations: {phone: 11}),
       throwsA(isA<Exception>()),
     );
 
@@ -301,26 +284,28 @@ void main() {
     expect((await h.phoneState.loadShooting()).since, since);
   });
 
-  test('never shares a run with scan()', () async {
-    bridge.put([_video(11, 11), _video(12, 12)]);
-    final gate = bridge.gate('videosAddedAfter');
+  test(
+    'a turn off tapped while a scan runs is applied by the next scan',
+    () async {
+      bridge.put([_video(11, 11), _video(12, 12)]);
+      final gate = bridge.gate('videosAddedAfter');
 
-    final scan = h.scanner.scan();
-    await until(() => bridge.count('videosAddedAfter') == 1);
-    final end = h.scanner.endSessionAt(since: since, generations: {phone: 11});
-    final scanAgain = h.scanner.scan();
-    await settle();
-    // The end waits for the running scan: one at a time.
-    expect(bridge.count('volumes'), 1);
+      final scan = h.scanner.scan();
+      await until(() => bridge.count('videosAddedAfter') == 1);
+      final end = _end(since: since, generations: {phone: 11});
+      await settle();
+      // One at a time: the end waits for the running scan.
+      expect(bridge.count('volumes'), 1);
 
-    gate.complete();
-    expect(await scan, _done(added: 2));
-    expect(await end, _done(added: 0));
-    // The scan queued after the end is its own run, and finds Shooting mode
-    // off.
-    expect(await scanAgain, isA<ScanShootingOff>());
-    expect(bridge.count('volumes'), 2);
-  });
+      gate.complete();
+      // The running scan read no action: it adds both.
+      expect(await scan, _done(added: 2));
+      // The next one ends the session; its baseline is already past the cap.
+      expect(await end, _done(added: 0));
+      expect(await h.phoneState.loadShooting(), ShootingState.off);
+      expect(bridge.count('volumes'), 2);
+    },
+  );
 
   test(
     'turned off and on again while it runs, the new session stays',
@@ -328,10 +313,7 @@ void main() {
       bridge.put([_video(11, 11)]);
       final gate = bridge.gate('videosAddedAfter');
 
-      final end = h.scanner.endSessionAt(
-        since: since,
-        generations: {phone: 11},
-      );
+      final end = _end(since: since, generations: {phone: 11});
       await until(() => bridge.count('videosAddedAfter') == 1);
       await h.phoneState.turnShootingOff();
       h.clock.advance(const Duration(minutes: 1));
@@ -349,7 +331,7 @@ void main() {
     final records = captureLogs();
     bridge.put([_video(11, 11)]);
 
-    await h.scanner.endSessionAt(since: since, generations: {phone: 11});
+    await _end(since: since, generations: {phone: 11});
 
     final text = logText(records);
     expect(text, contains('Ended the session'));

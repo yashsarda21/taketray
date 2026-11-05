@@ -128,14 +128,22 @@ class MediaScanner {
   /// The scan that is queued but has not started yet, if any.
   Future<ScanOutcome>? _queued;
 
-  /// How many times in a row ending a session from the shade failed, and
-  /// which session (its `since` in milliseconds) they were for.
+  /// How many counted failures in a row ending a session from the shade
+  /// had, which session (its `since` in milliseconds) they were for, and when
+  /// the last one was counted.
   int _failedEnds = 0;
   int? _failedEndsFor;
+  DateTime? _lastCountedFailure;
 
-  /// After this many failed tries in this process, a Turn off from the shade
-  /// ends the session with what could be read (D-106).
+  /// After this many counted failures in this process, a Turn off from the
+  /// shade ends the session with what could be read (D-106).
   static const maxEndAttempts = 3;
+
+  /// A failed end counts toward [maxEndAttempts] only this long after the
+  /// last counted one, so the tries of one start or resume (the lifecycle's
+  /// scan, To tag's, the copy's write) count once, and three counted
+  /// failures mean the volume failed for at least 10 minutes (D-106).
+  static const endRetryGap = Duration(minutes: 5);
 
   /// Looks for new videos on every volume (D-72).
   ///
@@ -148,7 +156,7 @@ class MediaScanner {
   /// Every scan first looks for a shade action, inside its own job, so no
   /// trigger can scan past a Turn off tapped in the shade (D-106):
   /// - a Turn off for the current session is applied in place of the scan
-  ///   (the end capped at the tap, as [endSessionAt]), and its outcome is the
+  ///   (the end capped at the tap), and its outcome is the
   ///   answer;
   /// - a Keep on for the current session is stored, then the scan runs;
   /// - an action for another session is cleared, then the scan runs;
@@ -188,22 +196,29 @@ class MediaScanner {
   /// Turn off for the current session took the place of a scan, else null.
   ///
   /// An action for another session (or with Shooting mode off) is only
-  /// cleared. A Keep on is stored (`markStillAnswered`) and cleared. A Turn
-  /// off ends the session capped at the tap, and is cleared unless the end
-  /// was kept for another try. Clearing names the tap, so a newer one stays.
+  /// cleared. A Keep on is stored (`markStillAnswered`) and cleared. Either
+  /// failing is logged by type and never blocks the scan: the action stays
+  /// for the next try. A Turn off ends the session capped at the tap, and is
+  /// cleared unless the end was kept for another try; only it may block a
+  /// scan. Clearing names the tap, so a newer one stays.
   Future<ScanOutcome?> _applyShade(ShadeAction action) async {
     final kind = action.kind.name;
     final session = await _phone.loadShooting();
     if (!session.isSession(action.since)) {
       _log.info('Shade action $kind dropped: it was for another session');
-      await _shade.clearShadeAction(action.at);
+      await _guardedStep(
+        'Clearing a stale shade action',
+        () => _shade.clearShadeAction(action.at),
+      );
       return null;
     }
     switch (action.kind) {
       case ShadeActionKind.keepOn:
-        await _phone.markStillAnswered(action.since);
-        await _shade.clearShadeAction(action.at);
-        _log.info('Shade action $kind applied');
+        await _guardedStep('Applying shade action $kind', () async {
+          await _phone.markStillAnswered(action.since);
+          await _shade.clearShadeAction(action.at);
+          _log.info('Shade action $kind applied');
+        });
         return null;
       case ShadeActionKind.turnOff:
         final (outcome, kept) = await _endCapped(session, action.generations);
@@ -214,36 +229,15 @@ class MediaScanner {
     }
   }
 
-  /// Ends the Shooting mode session that started at [since], as the shade's
-  /// Turn off asked while the app was closed (D-105, D-106): first the clips
-  /// shot before the tap, then off.
-  ///
-  /// [generations] holds each baselined volume's generation at the tap, by
-  /// volume name. One job on the media queue, never shared with [scan]:
-  /// - if the stored session is not [since] (compared to the millisecond,
-  ///   [ShootingState.isSession]), it returns [ScanShootingOff] and changes
-  ///   nothing;
-  /// - otherwise it scans each volume in [generations] the way [scan] does,
-  ///   with that generation as the cap: rows added after it are left out,
-  ///   and the baseline moves no higher than it. A volume not in the map is
-  ///   left alone (logged);
-  /// - then, in the same job, it switches Shooting mode off, only if the
-  ///   session is still [since] (`PhoneStateRepository.endSession`). A
-  ///   volume that does not answer is logged and does not stop the end;
-  ///   without full access nothing is read, Shooting mode goes off, and the
-  ///   answer is [ScanNoAccess]. When the phone does not answer before the
-  ///   volumes are read, it throws and changes nothing.
-  Future<ScanOutcome> endSessionAt({
-    required DateTime since,
-    required Map<String, int> generations,
-  }) => _queue.run(() async {
-    final session = await _phone.loadShooting();
-    if (!session.isSession(since)) {
-      _log.info('Ending the session skipped: it is not the stored one');
-      return const ScanShootingOff();
+  /// Runs [step]; a failure is logged by type only (never its message, D-10)
+  /// and goes no further.
+  Future<void> _guardedStep(String what, Future<void> Function() step) async {
+    try {
+      await step();
+    } on Object catch (e) {
+      _log.warning('$what failed: ${e.runtimeType}; left for the next try');
     }
-    return (await _endCapped(session, generations)).$1;
-  });
+  }
 
   /// Ends [session] capped at [generations], inside a queue job. Returns the
   /// outcome, and whether the session was kept for another try.
@@ -273,7 +267,12 @@ class MediaScanner {
       }
     } on PlatformException {
       if (_keepAfterFailure(since)) rethrow;
-      outcome = ScanDone(0, const {}, generations.keys.toSet());
+      // Nothing was read: every volume of the session counts as failed, so
+      // the new-clips notification is not cleared for them.
+      outcome = ScanDone(0, const {}, {
+        ...generations.keys,
+        ...session.baselines.keys,
+      });
     }
     if (outcome is ScanDone &&
         outcome.failedVolumes.isNotEmpty &&
@@ -293,6 +292,7 @@ class MediaScanner {
     }
     _failedEnds = 0;
     _failedEndsFor = null;
+    _lastCountedFailure = null;
     final ended = await _phone.endSession(since);
     _log.info(
       'Ended the session from the shade: '
@@ -301,16 +301,26 @@ class MediaScanner {
     return (outcome, false);
   }
 
-  /// Counts one failed end of the session that started at [since]; true
+  /// Notes one failed end of the session that started at [since]; true
   /// while it is to be kept for another try (fewer than [maxEndAttempts]
-  /// failures in a row).
+  /// counted failures in a row). A failure counts only [endRetryGap] or
+  /// more after the last counted one (by the injected clock); a closer one
+  /// is logged and not counted.
   bool _keepAfterFailure(DateTime since) {
     final ms = since.millisecondsSinceEpoch;
     if (_failedEndsFor != ms) {
       _failedEndsFor = ms;
       _failedEnds = 0;
+      _lastCountedFailure = null;
     }
-    _failedEnds++;
+    final now = _clock.now();
+    final last = _lastCountedFailure;
+    if (last == null || now.difference(last) >= endRetryGap) {
+      _failedEnds++;
+      _lastCountedFailure = now;
+    } else {
+      _log.info('Ending the session failed again, too soon: not counted');
+    }
     return _failedEnds < maxEndAttempts;
   }
 
@@ -373,8 +383,8 @@ class MediaScanner {
         still.since!.isAtSameMomentAs(since);
   }
 
-  /// Scans [volumes], one at a time: the per-volume part of [scan] and
-  /// [endSessionAt].
+  /// Scans [volumes], one at a time: the per-volume part of a scan and of
+  /// the capped end.
   ///
   /// With [caps] (volume name to generation), only the volumes in it are
   /// scanned, each up to its cap; any other volume is left alone (logged).
@@ -501,7 +511,7 @@ class MediaScanner {
   ///   A row added after it belongs to the next scan: it is not kept, and a
   ///   page that reaches one is the last. So a scan that pages on after
   ///   Shooting mode went off and on cannot pick up a video shot in between.
-  ///   A [cap] (`endSessionAt`: the generation at the shade's tap) lowers
+  ///   A [cap] (the capped end: the generation at the shade's tap) lowers
   ///   `captured` to it, so a row added after the tap is never kept, and the
   ///   baseline moves no higher than the cap.
   /// - The scan cursor is separate from the baseline. After a full page it

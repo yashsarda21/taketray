@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/background/background_sync.dart';
-import 'package:taketray/data/background/shade_actions.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
@@ -20,21 +19,19 @@ final Logger _log = Logger('mediaLifecycle');
 /// [child] unchanged.
 ///
 /// On the first frame, and on every resume, in this order:
-/// 1. `ShadeActions.apply` (D-106): a Still shooting? button tapped in the
-///    shade while the app was closed. It comes first, so a Turn off ends its
-///    session (with the clips shot before the tap) before the scan below
-///    could add the ones shot after it;
-/// 2. `ZoneSync.sync`: the time zone changes the phone saw meanwhile. The
+/// 1. `ZoneSync.sync`: the time zone changes the phone saw meanwhile. The
 ///    scan (and Add earlier videos) syncs again inside its own queued job,
 ///    right before it reads the timeline, so it never depends on this step
 ///    having finished; a second sync changes nothing that is stored. This one
 ///    stays because with Shooting mode off the scan does nothing, and the
 ///    timeline must still learn the zone;
-/// 3. `MediaAccessController.refresh`: the access may have changed in the
+/// 2. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
-/// 4. `MediaScanner.scan`: new videos, when Shooting mode is on;
-/// 5. after a scan that ran (`ScanDone`, every volume read; an end from the
-///    shade counts), `BackgroundSync.flush` and then
+/// 3. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
+///    shooting? button tapped in the shade needs no step of its own: every
+///    scan applies it first, inside its own job (D-106);
+/// 4. after a scan that read every volume (`ScanDone` with no failed volume;
+///    an end from the shade counts), `BackgroundSync.flush` and then
 ///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
 ///    To tag now. The new baselines reach the phone's copy first, so the
 ///    new-clips job never counts again with the old ones and re-posts.
@@ -101,11 +98,6 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   }
 
   Future<void> _run() async {
-    await guarded(
-      _log,
-      'The shade actions',
-      () => ref.read(shadeActionsProvider).apply(),
-    );
     await guarded(
       _log,
       'The zone sync',

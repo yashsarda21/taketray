@@ -293,9 +293,90 @@ void main() {
       );
       expect(h.background.shadeAction, isNull);
       expect(h.background.calls.first, 'pendingShadeAction');
-      // The scan found Shooting mode off: no clear.
-      expect(clears(), 0);
+      // The scan's own gate ended the session, reading every volume: that
+      // counts as a scan, so the notification is cleared.
+      expect(clears(), 1);
     });
+
+    testWidgets('the lifecycle no longer calls apply before the scan', (
+      tester,
+    ) async {
+      // Shooting mode off: the scan reads the action and stops, so nothing
+      // after it (the copy's flush) reads it too.
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      // One read: the scan's gate. A separate apply would read it again.
+      expect(
+        h.background.calls.where((c) => c == 'pendingShadeAction'),
+        hasLength(1),
+      );
+    });
+
+    testWidgets('one lifecycle run with a failing volume counts one failure', (
+      tester,
+    ) async {
+      final session = await tester.runAsync(h.media.turnOnNow);
+      h.bridge.put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)]);
+      for (var i = 0; i < 20; i++) {
+        h.bridge.failNext('videosAddedAfter');
+      }
+      h.background.shadeAction = ShadeAction(
+        kind: ShadeActionKind.turnOff,
+        since: session!.since!,
+        at: DateTime.utc(2026, 6, 1, 18),
+        generations: const {'external_primary': 6},
+      );
+      Future<bool> stillOn() async =>
+          (await tester.runAsync(h.media.phoneState.loadShooting))!.on;
+
+      await pumpLifecycle(tester); // run 1: counted 1
+      await work(tester);
+      h.media.clock.advance(const Duration(minutes: 5));
+      await resume(tester); // run 2: counted 2
+      await work(tester);
+
+      expect(await stillOn(), isTrue);
+      expect(h.background.shadeAction, isNotNull);
+
+      h.media.clock.advance(const Duration(minutes: 5));
+      await resume(tester); // run 3: counted 3, ends
+      await work(tester);
+      expect(await stillOn(), isFalse);
+    });
+
+    testWidgets(
+      'a 3rd-try end that read nothing does not clear the notification',
+      (tester) async {
+        final session = await tester.runAsync(h.media.turnOnNow);
+        for (var i = 0; i < 20; i++) {
+          h.bridge.failNext('volumes');
+        }
+        // No volume could be read at the tap either.
+        h.background.shadeAction = ShadeAction(
+          kind: ShadeActionKind.turnOff,
+          since: session!.since!,
+          at: DateTime.utc(2026, 6, 1, 18),
+          generations: const {},
+        );
+
+        await pumpLifecycle(tester);
+        await work(tester);
+        for (var i = 0; i < 2; i++) {
+          h.media.clock.advance(const Duration(minutes: 5));
+          await resume(tester);
+          await work(tester);
+        }
+
+        expect(
+          await tester.runAsync(h.media.phoneState.loadShooting),
+          ShootingState.off,
+        );
+        // Nothing was read: the stored clips are still uncounted.
+        expect(clears(), 0);
+      },
+    );
 
     testWidgets('lifecycle clears the notification after a scan', (
       tester,
@@ -379,7 +460,9 @@ void main() {
       expect(clears(), 0);
     });
 
-    testWidgets('a failing shade apply does not stop the scan', (tester) async {
+    testWidgets('a failing shade read defers the scan; the next run scans', (
+      tester,
+    ) async {
       final records = captureLogs();
       await h.media.turnOnNow();
       h.bridge.put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)]);
@@ -389,10 +472,12 @@ void main() {
       await work(tester);
 
       expect(tester.takeException(), isNull);
-      expect(
-        logText(records),
-        contains('The shade actions failed: PlatformException'),
-      );
+      expect(logText(records), contains('Scan deferred'));
+      expect(await tester.runAsync(h.media.toTag), isEmpty);
+      expect(clears(), 0);
+
+      await resume(tester);
+      await work(tester);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
       expect(clears(), 1);
     });
