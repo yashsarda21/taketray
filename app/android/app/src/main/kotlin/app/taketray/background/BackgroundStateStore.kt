@@ -11,9 +11,10 @@ import org.json.JSONObject
  * The background mirror (D-103) in the `taketray_native` preferences, under
  * these keys: [KEY_STATE] (the [BackgroundState] as JSON), [KEY_SHADE_ACTION]
  * (the one waiting shade action as JSON), [KEY_POSTED_NEW_CLIPS] (the count
- * the new-clips notification shows, 0 when none is posted), and the two
- * "handled once" marks of the reminders (D-105): [KEY_STILL_POSTED_SINCE]
- * and [KEY_EVENING_HANDLED_DAY].
+ * the new-clips notification shows, 0 when none is posted), the two
+ * "handled once" marks of the reminders (D-105), [KEY_STILL_POSTED_SINCE]
+ * and [KEY_EVENING_HANDLED_DAY], and the evening the evening alarm stands
+ * for ([KEY_EVENING_ARMED_FOR]).
  *
  * - Every write uses `commit()`, not `apply()`: a receiver or the job may run
  *   in a process that ends right after it returns, and a queued `apply()`
@@ -109,6 +110,23 @@ class BackgroundStateStore(
             Unit
         }
 
+    /**
+     * The evening instant (UTC ms) the evening alarm stands for: the time it
+     * was armed for, even when a catch-up made it fire later. Null when off.
+     */
+    fun eveningArmedFor(): Long? = synchronized(LOCK) { long(KEY_EVENING_ARMED_FOR) }
+
+    /** Written only when it changes (every arming calls it). */
+    fun setEveningArmedFor(atMs: Long?) =
+        synchronized(LOCK) {
+            if (long(KEY_EVENING_ARMED_FOR) != atMs) {
+                val edit = prefs.edit()
+                if (atMs == null) edit.remove(KEY_EVENING_ARMED_FOR) else edit.putLong(KEY_EVENING_ARMED_FOR, atMs)
+                edit.commit()
+            }
+            Unit
+        }
+
     /** The Long under [key]; null when missing or of another type (corrupt). */
     private fun long(key: String): Long? =
         try {
@@ -134,6 +152,7 @@ class BackgroundStateStore(
         const val KEY_POSTED_NEW_CLIPS = "posted_new_clips"
         const val KEY_STILL_POSTED_SINCE = "still_posted_since"
         const val KEY_EVENING_HANDLED_DAY = "evening_handled_day"
+        const val KEY_EVENING_ARMED_FOR = "evening_armed_for"
 
         /** One lock for every store instance (as ZoneChangeStore has). */
         private val LOCK = Any()

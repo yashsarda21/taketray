@@ -197,6 +197,65 @@ class ReminderReceiverTest {
     }
 
     @Test
+    fun `turning the reminder on after the time passed waits for tomorrow`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val clipsToday = on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z")))
+        // On at noon (armed for 21:00), off at 20:00, on again at 21:30.
+        now = ms("2026-11-05T12:00:00Z")
+        arming.apply(app, clipsToday)
+        assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        now = ms("2026-11-05T20:00:00Z")
+        arming.apply(app, clipsToday.copy(eveningEnabled = false))
+        assertNull(alarm(app, ReminderScheduler.ACTION_EVENING))
+        now = ms("2026-11-05T21:30:00Z")
+        arming.apply(app, clipsToday)
+        // Nothing was armed for tonight when it was switched on: no reminder at once.
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `the first state write after the time passed with nothing armed waits for tomorrow`() {
+        // A fresh install (or the first write since the reminder existed), opened at 21:30.
+        val clipsToday = on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z")))
+        store.write(clipsToday)
+        now = ms("2026-11-05T21:30:00Z")
+        Arming.background(nowMs = { now }, zone = { LONDON }).apply(app, clipsToday)
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // A reboot at 22:00 with nothing armed for tonight: the same.
+        now = ms("2026-11-05T22:00:00Z")
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        assertNull(notification(app, Notifier.EVENING))
+    }
+
+    @Test
+    fun `a later evening time set after the old one passed fires at the new time`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val clipsToday = on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z")))
+        now = ms("2026-11-05T12:00:00Z")
+        arming.apply(app, clipsToday)
+        // 21:00 passed, its alarm not delivered yet; the time is moved to 22:00 at 21:30.
+        now = ms("2026-11-05T21:30:00Z")
+        arming.apply(app, clipsToday.copy(eveningMinutes = 22 * 60))
+        assertEquals("2026-11-05T22:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `a clock set back and forward after today ran arms tomorrow`() {
+        store.write(on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z"))))
+        evening()
+        assertNotNull(notification(app, Notifier.EVENING))
+        // Set back to 20:59: 21:00 is ahead again, so it is armed for tonight.
+        now = ms("2026-11-05T20:59:00Z")
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Forward to 21:30: armed for tonight, but tonight has run. Tomorrow's, not a catch-up.
+        now = ms("2026-11-05T21:30:00Z")
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
     fun `a re-arm after today fired arms tomorrow`() {
         // A quiet evening: nothing shot today, so nothing is posted, but today is handled.
         store.write(on)
@@ -320,8 +379,8 @@ class ReminderReceiverTest {
         // A reboot re-arms everything: no second Still shooting? for this session.
         BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNull(alarm(app, ReminderScheduler.ACTION_STILL))
-        // Today's evening has not run yet (21:00 has passed): it is due at once.
-        assertEquals("2026-11-05T21:00:30Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Nothing was armed for tonight in this test: tomorrow's.
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         // Even if an old alarm fires.
         still(since)
         assertNull(notification(app, Notifier.STILL_SHOOTING))

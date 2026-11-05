@@ -23,15 +23,18 @@ class ReminderScheduler(
     private val store = BackgroundStateStore(context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE))
 
     /**
-     * With the evening reminder on, and today's evening time already passed
-     * but today not handled yet ([BackgroundStateStore.eveningHandledDay]):
-     * at [nowMs]. The alarm is inexact and may come late, and a re-arm that
-     * lands between the evening time and that late delivery (the app opened
-     * at 21:01, a clock correction, an update) must not move today's
-     * reminder to tomorrow. Otherwise, and always when [firing] (the
-     * receiver re-arming from the alarm itself), the next evening strictly
-     * after [nowMs]: a reboot just after today's has fired arms tomorrow's.
-     * Off: no alarm.
+     * With the evening reminder on: the next evening strictly after [nowMs],
+     * except for a catch-up. When the alarm was already armed for today's
+     * evening ([BackgroundStateStore.eveningArmedFor] is exactly today's
+     * evening instant), that time has passed and today is not handled yet
+     * ([BackgroundStateStore.eveningHandledDay]), it stays today's, at
+     * max(that instant, [nowMs]): the alarm is inexact and may come late,
+     * and a re-arm in between (the app opened at 21:01, a clock correction,
+     * an update) must not move it to tomorrow. Nothing armed for today (a
+     * fresh install, the reminder just switched on, a new time) never fires
+     * at once. With [firing] (the receiver re-arming from the alarm itself)
+     * there is no catch-up. Remembers the evening it armed for. Off: no
+     * alarm, and nothing armed for.
      */
     fun armEvening(
         state: BackgroundState,
@@ -40,16 +43,19 @@ class ReminderScheduler(
     ) {
         if (!state.eveningEnabled) {
             alarms.cancel(eveningAlarm(context))
+            store.setEveningArmedFor(null)
             return
         }
         if (state.eveningMinutes !in 0..ReminderTimes.LAST_MINUTE) {
             // Dart stores what the settings hold; the value itself is not logged.
             Log.w(LOG_TAG, "evening minutes out of range; clamped")
         }
-        val passed = ReminderTimes.eveningToday(nowMs, state.eveningMinutes, zone) <= nowMs
-        val missed = !firing && passed && store.eveningHandledDay() != ReminderTimes.localDay(nowMs, zone)
-        val at = if (missed) nowMs else ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
-        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, eveningAlarm(context))
+        val today = ReminderTimes.eveningToday(nowMs, state.eveningMinutes, zone)
+        val armedForToday = store.eveningArmedFor() == today
+        val catchUp = !firing && today <= nowMs && armedForToday && store.eveningHandledDay() != ReminderTimes.localDay(nowMs, zone)
+        val armedFor = if (catchUp) today else ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, maxOf(armedFor, nowMs), eveningAlarm(context))
+        store.setEveningArmedFor(armedFor)
     }
 
     /**
