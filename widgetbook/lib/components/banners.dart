@@ -69,6 +69,9 @@ final WidgetbookComponent ttBannerComponent = WidgetbookComponent(
   ],
 );
 
+/// The look of the callout in the playground.
+enum _Look { normal, warning, success }
+
 /// `TtCallout`: a rounded note inside a page.
 final WidgetbookComponent ttCalloutComponent = WidgetbookComponent(
   name: 'TtCallout',
@@ -76,7 +79,11 @@ final WidgetbookComponent ttCalloutComponent = WidgetbookComponent(
     WidgetbookUseCase(
       name: 'Playground',
       builder: (context) {
-        final warning = context.knobs.boolean(label: 'warning');
+        final look = context.knobs.object.dropdown<_Look>(
+          label: 'look',
+          options: _Look.values,
+          labelBuilder: (v) => v.name,
+        );
         final rich = context.knobs.boolean(label: 'rich body (bold word)');
         final title = context.knobs.string(
           label: 'title (empty for none)',
@@ -110,7 +117,8 @@ final WidgetbookComponent ttCalloutComponent = WidgetbookComponent(
                     ],
                   )
                 : null,
-            warning: warning,
+            warning: look == _Look.warning,
+            success: look == _Look.success,
             action: withAction
                 ? TtButton(
                     label: 'Got it',

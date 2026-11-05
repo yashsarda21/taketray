@@ -241,8 +241,10 @@ class TtBanner extends StatelessWidget {
 /// of the two). An optional [action] sits under the text.
 ///
 /// It sits on the high surface container with the icon in the accent colour;
-/// a [warning] callout uses the tertiary container instead. It has no outer
-/// margin (the page decides) and its text wraps at any size.
+/// a [warning] callout uses the tertiary container instead, and a [success]
+/// callout the success container, with the icon in the same colour as the
+/// text. It has no outer margin (the page decides) and its text wraps at any
+/// size.
 class TtCallout extends StatelessWidget {
   /// A callout with the [icon] and the text in [body] or [richBody].
   const new({
@@ -251,11 +253,16 @@ class TtCallout extends StatelessWidget {
     this.body,
     this.richBody,
     this.warning = false,
+    this.success = false,
     this.action,
     super.key,
   }) : assert(
          (body == null) != (richBody == null),
          'Give exactly one of body and richBody',
+       ),
+       assert(
+         !(warning && success),
+         'A callout is a warning or a success, not both',
        );
 
   /// The glyph before the text, drawn filled.
@@ -275,6 +282,11 @@ class TtCallout extends StatelessWidget {
   /// Whether this is the tertiary-container warning look.
   final bool warning;
 
+  /// Whether this is the success-container look, for good news such as
+  /// "Your clips are never lost". Not allowed together with [warning] (an
+  /// assertion fails).
+  final bool success;
+
   /// A widget under the text, usually a text-style `TtButton`, or null.
   final Widget? action;
 
@@ -287,16 +299,25 @@ class TtCallout extends StatelessWidget {
     final body = this.body;
     final richBody = this.richBody;
     final action = this.action;
-    // proto.css: .callout, .callout.warn
-    final fill = warning
-        ? scheme.tertiaryContainer
-        : scheme.surfaceContainerHigh;
-    final content = warning ? scheme.onTertiaryContainer : scheme.onSurface;
-    final iconColor = warning ? scheme.onTertiaryContainer : scheme.primary;
+    // proto.css: .callout, .callout.warn, .callout.ok
+    final colors = tt.colors;
+    final (fill, content, iconColor) = warning
+        ? (
+            scheme.tertiaryContainer,
+            scheme.onTertiaryContainer,
+            scheme.onTertiaryContainer,
+          )
+        : success
+        ? (
+            colors.successContainer,
+            colors.onSuccessContainer,
+            colors.onSuccessContainer,
+          )
+        : (scheme.surfaceContainerHigh, scheme.onSurface, scheme.primary);
     final bodyStyle = text.bodyMedium!.copyWith(color: content);
-    // A warning takes the container's text colour for a text button, for
-    // contrast on the tertiary container.
-    final shownAction = action == null || !warning
+    // A warning or a success takes the container's text colour for a text
+    // button, for contrast on the coloured container.
+    final shownAction = action == null || !(warning || success)
         ? action
         : _inheritColour(context, action, content);
     return Material(

@@ -7,6 +7,7 @@ import 'package:taketray_widgetbook/components/date_range_calendar.dart';
 import 'package:taketray_widgetbook/components/date_range_picker.dart';
 import 'package:taketray_widgetbook/components/dialog.dart';
 import 'package:taketray_widgetbook/components/empty_state.dart';
+import 'package:taketray_widgetbook/components/expand_card.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/grouped_rows.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
@@ -28,6 +29,7 @@ import 'package:taketray_widgetbook/components/skeleton.dart';
 import 'package:taketray_widgetbook/components/snack.dart';
 import 'package:taketray_widgetbook/components/stat_strip.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
+import 'package:taketray_widgetbook/components/step_list.dart';
 import 'package:taketray_widgetbook/components/tag_done.dart';
 import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
@@ -123,6 +125,8 @@ final List<WidgetbookNode> ttCatalog = [
       ttRowSpinnerComponent,
       ttBannerComponent,
       ttCalloutComponent,
+      ttExpandCardComponent,
+      ttStepListComponent,
       ttInfoBarComponent,
       ttProgressBarComponent,
       ttIllustrationComponent,
