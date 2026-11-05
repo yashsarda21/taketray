@@ -13,6 +13,7 @@ import app.taketray.media.MediaAccessChecker
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -129,8 +130,8 @@ class ArmingTest {
         val ran = mutableListOf<String>()
         val arming =
             Arming.of(
-                Arming { _, _ -> ran += "job"; throw IllegalStateException("boom") },
-                Arming { _, _ -> ran += "alarms" },
+                Arming { _, _, _ -> ran += "job"; throw IllegalStateException("boom") },
+                Arming { _, _, _ -> ran += "alarms" },
             )
         try {
             arming.apply(app, on)
@@ -145,5 +146,39 @@ class ArmingTest {
     fun `the background arming arms the job`() {
         Arming.background().apply(app, on)
         assertEquals(NewClipsArming.jobInfo(app), scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+    }
+
+    @Test
+    fun `the background arming arms the alarms`() {
+        val evening = on.copy(eveningEnabled = true, eveningMinutes = 21 * 60, stillReminderEnabled = true)
+        val now = ReminderTestSupport.ms("2026-11-05T12:00:00Z")
+        Arming.background(nowMs = { now }, zone = { ReminderTestSupport.LONDON }).apply(app, evening)
+        assertEquals("2026-11-05T21:00:00Z", ReminderTestSupport.alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // The session began in May: Still shooting? is due, so at once.
+        assertEquals("2026-11-05T12:00:00Z", ReminderTestSupport.alarmAt(app, ReminderScheduler.ACTION_STILL))
+    }
+
+    @Test
+    fun `arming creates the channels before anything is posted`() {
+        assertNull(manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS))
+        Arming.background().apply(app, BackgroundState.OFF)
+        assertEquals("New clips", manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS)?.name)
+        assertEquals("Reminders", manager.getNotificationChannel(Notifier.CHANNEL_REMINDERS)?.name)
+        assertEquals(0, shadowOf(manager).size())
+    }
+
+    @Test
+    fun `keeping new clips stops the job but keeps the notification`() {
+        NewClipsArming().apply(app, on)
+        showNewClips()
+        Arming.background().apply(app, on.copy(shootingOn = false, sinceMs = null), keepNewClips = true)
+        assertNull(scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+        assertNotNull(shadowOf(manager).getNotification(Notifier.NEW_CLIPS))
+        assertEquals(3, store.postedNewClips())
+
+        // Without it (every other caller): removed.
+        Arming.background().apply(app, on.copy(shootingOn = false, sinceMs = null))
+        assertNull(shadowOf(manager).getNotification(Notifier.NEW_CLIPS))
+        assertEquals(0, store.postedNewClips())
     }
 }

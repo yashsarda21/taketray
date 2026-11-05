@@ -39,7 +39,7 @@ class MainActivity : FlutterActivity() {
         media = impl
         MediaHostApi.setUp(messenger, impl)
 
-        // Arming.background(): the new-clips job (D-104); Task 5 adds the alarms.
+        // Arming.background(): the channels, the new-clips job (D-104) and the reminder alarms (D-105).
         val flutterApi = BackgroundFlutterApi(messenger)
         val bg = BackgroundHostApiImpl(this, Arming.background(), LaunchActionRelay(send = flutterApi::onLaunchAction))
         background = bg

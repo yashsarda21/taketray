@@ -75,7 +75,7 @@ class BackgroundHostApiImplTest {
     }
 
     private fun newImpl(ask: ((Activity, Array<String>, Int) -> Unit)? = null): BackgroundHostApiImpl {
-        val arming = Arming { _, state -> armed += state to store.state() }
+        val arming = Arming { _, state, _ -> armed += state to store.state() }
         val relay = LaunchActionRelay(send = {}, scope = CoroutineScope(Dispatchers.Unconfined))
         return if (ask == null) BackgroundHostApiImpl(activity, arming, relay) else BackgroundHostApiImpl(activity, arming, relay, ask)
     }
@@ -98,12 +98,29 @@ class BackgroundHostApiImplTest {
         }
 
     @Test
+    fun `the app's own off write still cancels the new clips notification`() =
+        timed {
+            // The real arming, as MainActivity passes it.
+            val full = if (sdk >= 33) "android.permission.READ_MEDIA_VIDEO" else "android.permission.READ_EXTERNAL_STORAGE"
+            shadowOf(activity.application).grantPermissions(full)
+            shadowOf(notifications).setNotificationsEnabled(true)
+            val real = BackgroundHostApiImpl(activity, Arming.background(), LaunchActionRelay(send = {}, scope = CoroutineScope(Dispatchers.Unconfined)))
+            real.writeState(stateMsg)
+            Notifier(activity).showNewClips(3, null)
+            store.setPostedNewClips(3)
+            // Turned off in the app (not the shade's Turn off): the notification goes with the job.
+            real.writeState(stateMsg.copy(shootingOn = false, sinceMs = null))
+            assertNull(shadowOf(notifications).getNotification(Notifier.NEW_CLIPS))
+            assertEquals(0, store.postedNewClips())
+        }
+
+    @Test
     fun `a failing arming reaches Dart as native-error, with the state stored`() =
         timed {
             val failing =
                 BackgroundHostApiImpl(
                     activity,
-                    { _, _ -> throw IllegalStateException("/storage/emulated/0/DCIM/Camera") },
+                    { _, _, _ -> throw IllegalStateException("/storage/emulated/0/DCIM/Camera") },
                     LaunchActionRelay(send = {}, scope = CoroutineScope(Dispatchers.Unconfined)),
                 )
             try {

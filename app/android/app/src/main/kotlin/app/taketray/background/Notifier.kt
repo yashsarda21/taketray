@@ -14,14 +14,17 @@ import app.taketray.R
 /**
  * TakeTray's notifications, built without a Flutter engine (D-101), with the
  * copy in `res/values/strings.xml`. Two channels: **New clips** (LOW: no
- * sound, no vibration) and **Reminders** (DEFAULT, Task 5). Each notification
- * has a fixed id, so posting again updates it in place.
+ * sound, no vibration) and **Reminders** (DEFAULT: the evening reminder and
+ * Still shooting?, D-105). Each notification has a fixed id, so posting
+ * again updates it in place.
  *
  * Quiet (D-104): one new-clips notification, `setOnlyAlertOnce`, and nothing
  * at all while notifications or its channel are off. Never a file name or a
  * folder in a notification, never a count in the log (D-10).
+ *
+ * Open so a test can make a post throw (the evening reminder re-arms first).
  */
-class Notifier(
+open class Notifier(
     private val context: Context,
 ) {
     private val manager: NotificationManager = context.getSystemService(NotificationManager::class.java)
@@ -106,6 +109,72 @@ class Notifier(
     /** Removes the new-clips notification; the reminders stay. */
     fun cancelNewClips() = manager.cancel(NEW_CLIPS)
 
+    /**
+     * The evening reminder for [count] (at least 1) clips shot today: "You
+     * shot 3 clips today. Tag them?". The body and **Tag now** open To tag.
+     * Returns false, posting nothing, when notifications are not allowed.
+     */
+    open fun showEvening(count: Int): Boolean {
+        require(count > 0) { "the evening reminder needs at least one clip" }
+        ensureChannels()
+        if (!canPost(CHANNEL_REMINDERS)) return false
+        val toTag = LaunchActions.intent(context, LaunchActionMsg.TO_TAG)
+        val notification =
+            Notification
+                .Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(R.drawable.ic_stat_taketray)
+                .setContentTitle(context.resources.getQuantityString(R.plurals.evening_title, count, count))
+                .setContentText(context.getString(R.string.evening_text))
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setContentIntent(activity(REQUEST_EVENING_BODY, toTag))
+                .addAction(action(R.string.action_tag_now, activity(REQUEST_EVENING_TAG_NOW, toTag)))
+                .build()
+        manager.notify(EVENING, notification)
+        return true
+    }
+
+    /**
+     * "Still shooting?" for the session that started at [sinceMs]. The body
+     * opens Reels (where the app asks again); **Turn off** and **Keep on**
+     * are broadcasts to [ShadeActionReceiver] naming the session, and work
+     * without opening the app. Returns false, posting nothing, when
+     * notifications are not allowed.
+     */
+    open fun showStillShooting(sinceMs: Long): Boolean {
+        ensureChannels()
+        if (!canPost(CHANNEL_REMINDERS)) return false
+        val notification =
+            Notification
+                .Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(R.drawable.ic_stat_taketray)
+                .setContentTitle(context.getString(R.string.still_title))
+                .setContentText(context.getString(R.string.still_text))
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setContentIntent(activity(REQUEST_STILL_BODY, LaunchActions.intent(context, LaunchActionMsg.REELS)))
+                .addAction(action(R.string.action_turn_off, shade(REQUEST_STILL_TURN_OFF, ShadeActionReceiver.ACTION_TURN_OFF, sinceMs)))
+                .addAction(action(R.string.action_keep_on, shade(REQUEST_STILL_KEEP_ON, ShadeActionReceiver.ACTION_KEEP_ON, sinceMs)))
+                .build()
+        manager.notify(STILL_SHOOTING, notification)
+        return true
+    }
+
+    fun cancelStillShooting() = manager.cancel(STILL_SHOOTING)
+
+    /** A shade button: an explicit broadcast to [ShadeActionReceiver], which is not exported. */
+    private fun shade(
+        requestCode: Int,
+        action: String,
+        sinceMs: Long,
+    ): PendingIntent =
+        PendingIntent.getBroadcast(
+            context,
+            requestCode,
+            ShadeActionReceiver.intent(context, action, sinceMs),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
     private fun activity(
         requestCode: Int,
         intent: Intent,
@@ -128,11 +197,17 @@ class Notifier(
 
         /**
          * PendingIntent request codes, one per tap target, so no two replace
-         * each other (the body and Tag now carry the same intent). Task 5's
-         * reminders use 2xx and 3xx.
+         * each other (the body and Tag now carry the same intent): 1xx the
+         * new-clips notification, 2xx the evening reminder, 3xx Still
+         * shooting? (the alarms are 200 and 300, in [ReminderScheduler]).
          */
         const val REQUEST_NEW_CLIPS_BODY = 101
         const val REQUEST_NEW_CLIPS_TAG_NOW = 102
         const val REQUEST_NEW_CLIPS_CAMERA = 103
+        const val REQUEST_EVENING_BODY = 201
+        const val REQUEST_EVENING_TAG_NOW = 202
+        const val REQUEST_STILL_BODY = 301
+        const val REQUEST_STILL_TURN_OFF = 302
+        const val REQUEST_STILL_KEEP_ON = 303
     }
 }

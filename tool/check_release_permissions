@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Builds the release APK and checks its merged manifest: no forbidden
 # permission (INTERNET, the network state and wake lock that the video player
-# would merge in, and the media permissions TakeTray never asks for),
-# Google backup off (D-64) and exactly the media permissions TakeTray needs
-# (D-68). It also checks that the on-device test code (the debug-only test
-# media channel, D-77) is not in the release dex. Slow (full release build), so
+# would merge in, the media permissions TakeTray never asks for, exact alarms
+# and foreground services, D-105), Google backup off (D-64), exactly the media
+# permissions TakeTray needs (D-68) and the two background ones (D-101). It
+# also checks that the on-device test code (the debug-only test media channel,
+# D-77, and the background test hooks) is not in the release dex. Slow (full release build), so
 # it is not part of tool/check; run it at the end of every phase. Steps are
 # documented in docs/flow.md ("Release permission check").
 set -euo pipefail
@@ -95,6 +96,10 @@ FORBIDDEN_PERMISSIONS=(
   android.permission.ACCESS_MEDIA_LOCATION
   android.permission.ACCESS_NETWORK_STATE
   android.permission.WAKE_LOCK
+  # The reminders are inexact alarms (D-101, D-105); nothing runs in the foreground.
+  android.permission.SCHEDULE_EXACT_ALARM
+  android.permission.USE_EXACT_ALARM
+  android.permission.FOREGROUND_SERVICE
 )
 for p in "${FORBIDDEN_PERMISSIONS[@]}"; do
   if awk -v p="$p" '$1 == "permission" && $2 == p { found = 1 } END { exit !found }' <<<"$facts"; then
@@ -114,8 +119,15 @@ REQUIRED_PERMISSIONS=(
   android.permission.READ_MEDIA_VISUAL_USER_SELECTED:-
   android.permission.READ_EXTERNAL_STORAGE:32
 )
-if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
-  for entry in "${REQUIRED_PERMISSIONS[@]}"; do
+# The background work's two (D-101): the notifications and re-arming after a
+# reboot (D-105). Always required.
+REQUIRED_BACKGROUND_PERMISSIONS=(
+  android.permission.POST_NOTIFICATIONS:-
+  android.permission.RECEIVE_BOOT_COMPLETED:-
+)
+require_permissions() {
+  local entry name want have
+  for entry in "$@"; do
     name="${entry%%:*}"
     want="${entry##*:}"
     have="$(awk -v p="$name" '$1 == "permission" && $2 == p { print $3 }' <<<"$facts")"
@@ -125,15 +137,20 @@ if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
       problems+=("$name has maxSdkVersion '$have', expected '$want'")
     fi
   done
+}
+if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
+  require_permissions "${REQUIRED_PERMISSIONS[@]}"
 fi
+require_permissions "${REQUIRED_BACKGROUND_PERMISSIONS[@]}"
 
 # --- The on-device test code is not in the release build (D-77). ---
-# The test media channel (src/debug: TestMedia, its channel name test_media) is
-# debug-only. The strings are looked for in every classes*.dex of the APK, and
+# The test media channel (src/debug: TestMedia, its channel name test_media) and
+# the background test hooks (src/debug: DebugBackgroundHooks, its channel name
+# test_background, Phase 6 Task 9) are debug-only. The strings are looked for in every classes*.dex of the APK, and
 # in R8's mapping file when there is one (the dex only holds the renamed class,
 # the mapping holds the real name). The scan itself is proved by finding a
 # class that must be there.
-FORBIDDEN_DEX_STRINGS=(TestMedia test_media)
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background)
 MUST_FIND_IN_DEX="app/taketray/MainActivity"
 dex_dir="$(mktemp -d)"
 trap 'rm -rf "$dex_dir"' EXIT
@@ -148,7 +165,7 @@ else
   fi
   for needle in "${FORBIDDEN_DEX_STRINGS[@]}"; do
     if grep -aqF -- "$needle" "${dex_files[@]}"; then
-      problems+=("test-only code found in the release dex: '$needle' (the debug test media channel must not ship, D-77)")
+      problems+=("test-only code found in the release dex: '$needle' (the debug test channels must not ship, D-77)")
     fi
   done
 fi

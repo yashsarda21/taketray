@@ -284,7 +284,118 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 ## 5. Reminders, shade actions and re-arming
 
-_Filled in by Task 5._
+**What we built:** the reminders, and the code that keeps the background work alive across restarts. All of it is plain Kotlin that Android wakes up while TakeTray is closed.
+
+- **Reminder times** (`ReminderTimes`): pure date arithmetic for "the next 21:00 here" and "the first 10:00 after 14 days".
+- **Two alarms** (`ReminderScheduler`): the **evening reminder** ("You shot 3 clips today. Tag them?") and, 14 days into a Shooting mode session, **"Still shooting?"**.
+- **A receiver for the alarms** (`ReminderReceiver`, with the work in `Reminders`): it counts today's clips or checks the session, and posts.
+- **A receiver for the shade buttons** (`ShadeActionReceiver`): Still shooting?'s **Turn off** and **Keep on** work right in the notification shade, without opening the app.
+- **Re-arming** (`BootReceiver`, and `TimeZoneChangedReceiver` from Phase 3): after a reboot, an app update, a clock change or a time-zone change, everything is armed again.
+
+**Why TakeTray needs it:** a creator who shoots all day should get one gentle nudge in the evening to tag what they shot, and nothing on a day they shot nothing. Shooting mode sends every new video to To tag, so leaving it on for weeks by accident would fill To tag with holiday videos: after 14 days TakeTray asks once whether you are still shooting. Android forgets alarms and jobs at a reboot, and the reminder times are local times, which move when you fly or the clocks change, so all of it must be armed again at the right moments.
+
+**Key ideas:**
+
+- **Time in the phone's local day, with `java.time`.** "21:00" is a wall-clock time, not a fixed number of hours. `ReminderTimes.nextEvening` walks forward one local date at a time and returns the first 21:00 that is **strictly after** now:
+
+  ```kotlin
+  while (true) {
+      val at = instantAt(date.atTime(time), zone)
+      if (at.isAfter(now)) return at.toEpochMilli()
+      date = date.plusDays(1)
+  }
+  ```
+
+  Twice a year a local time can be missing or come twice. When the clocks go forward, 01:30 does not exist, so the reminder fires at the first instant after the gap; when they go back, 01:30 comes twice, and only the first counts:
+
+  ```kotlin
+  val rules = zone.rules
+  if (rules.getValidOffsets(local).isEmpty()) return rules.getTransition(local).instant
+  return ZonedDateTime.ofLocal(local, zone, null).toInstant()
+  ```
+
+  "Strictly after" is what makes the reminder fire once: when the alarm fires at 21:00 and arms the next one, 21:00 today is not after now, so it arms tomorrow's. Change `isAfter` to "not before" and four tests fail, among them `next evening after the time passed is tomorrow` with `expected:<2026-11-0[6]T21:00:00Z> but was:<2026-11-0[5]T21:00:00Z>`.
+
+- **"Still shooting?" waits for the morning.** It is due 14 × 24 hours after Shooting mode went on, but a notification at 03:00 would be rude, so `stillDueAt` moves it to the first 10:00 at or after that moment. On at 03:00 on 1 November gives 10:00 on 15 November; on at 15:00 gives 10:00 on the 16th.
+
+- **Inexact alarms, on purpose.** Both reminders use `AlarmManager.setAndAllowWhileIdle(RTC_WAKEUP, …)`:
+
+  ```kotlin
+  alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, eveningAlarm(context))
+  ```
+
+  `RTC_WAKEUP` is a wall-clock time that wakes the phone; "allow while idle" lets it fire in Doze, Android's deep sleep. It is **inexact**: Android may deliver it a little late to save battery, never early. An exact alarm needs a special permission (`SCHEDULE_EXACT_ALARM`, which Android 14 no longer grants by default, or `USE_EXACT_ALARM`, which Google Play allows only for alarm-clock and calendar apps), and a reminder to tag clips does not need to-the-second timing. WorkManager, the usual library, is ruled out too (D-101): it adds two permissions TakeTray forbids, and it cannot fire at a wall-clock time.
+
+- **Arm tomorrow's evening first.** When the evening alarm fires, the very first thing the receiver does is arm the next one, so nothing that fails later (a broken count, a failed post) can lose tomorrow's:
+
+  ```kotlin
+  val state = store.state()
+  scheduler.armEvening(state, nowMs)
+  if (!state.eveningEnabled) return
+  ```
+
+  The test `evening re-arms before posting` makes the post throw and checks that tomorrow's alarm is set.
+
+- **Only clips shot today.** The count is the clips that wait in To tag (Dart's list in the copy) plus the ones the app has not scanned yet (Section 4's counter), shot since the start of today's local day:
+
+  ```kotlin
+  val today = ReminderTimes.startOfToday(nowMs, zone)
+  val waiting = state.waitingShotMs.count { it >= today }
+  val count = waiting + counter.count(state).shotMs.count { it >= today }
+  ```
+
+  With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one a day: the store remembers the local day it last posted, so moving the clock back or flying west does not bring a second one.
+
+- **Once per session.** Every app start writes the copy and re-arms, and once 14 days have passed the still alarm would be due "at once" every time. So the receiver marks the session as handled **before** it posts, and arming skips a handled session:
+
+  ```kotlin
+  if (store.stillPostedSince() == sinceMs) return
+  store.setStillPostedSince(sinceMs)
+  notifier.showStillShooting(sinceMs)
+  ```
+
+  The test `still posts once per session, even after a reboot` swipes the notification away, reboots, and checks that nothing comes back.
+
+- **A shade button names its session.** **Turn off** and **Keep on** are broadcasts that carry the `sinceMs` of the session they were posted for. If Shooting mode was turned off and on again since, that is a different session, and the old button must not turn off the new one. So the receiver acts only when the session still matches; otherwise it just removes the notification:
+
+  ```kotlin
+  if (since == null || !state.shootingOn || state.sinceMs != since) {
+      notifier.cancelStillShooting()
+      return@inBackground
+  }
+  ```
+
+- **Turn off without the app.** No Dart runs, and the database is Dart's alone. So the receiver writes down what happened and lets Dart apply it at the next start (Section 6): a shade action with the session, the time of the tap and, for each volume, the library's current generation (so clips shot after the tap stay out). Then it writes the copy as off, which stops the job. The "N new clips" notification **stays**: those clips are real and still arrive when you open the app.
+
+  ```kotlin
+  Receivers.arming().apply(context, off, keepNewClips = true)
+  ```
+
+  Everywhere else (turning Shooting mode off in the app, a reboot), arming with Shooting mode off removes that notification, as Section 4 described; the test `the app's own off write still cancels the new clips notification` keeps that true.
+
+- **Only TakeTray can ring these bells.** The reminder and shade receivers are not exported and have no intent filter, so no other app can send them anything; the alarms and the buttons are TakeTray's own explicit, immutable `PendingIntent`s. The manifest test `receivers are not exported` checks it:
+
+  ```xml
+  <receiver
+      android:name=".background.ReminderReceiver"
+      android:exported="false"/>
+  ```
+
+- **Re-arming after a restart.** `BootReceiver` listens for `BOOT_COMPLETED` (a reboot), `MY_PACKAGE_REPLACED` (TakeTray was updated) and `TIME_SET` (the clock was changed). Each arms everything again for the stored copy. A zone change (`TimeZoneChangedReceiver`) records the zone, as before, and re-arms with the zone named in the broadcast, so 21:00 is 21:00 where you landed. A reboot at 21:05 arms tomorrow's 21:00, because the next evening is "strictly after now".
+
+- **Testing alarms as Android fires them.** The tests do not call the receiver's code by hand only: `ReminderTestSupport.fire` takes the alarm Robolectric recorded and sends its `PendingIntent`, which delivers the broadcast to the receiver declared in the manifest. So a wrong action, a wrong component or a missing manifest entry fails a test.
+
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/background/` (`ReminderTimes.kt`, `ReminderScheduler.kt`, `ReminderReceiver.kt` with `Reminders`, `ShadeActionReceiver.kt`, `BootReceiver.kt`, `Receivers.kt`, `Arming.kt` with `ReminderArming`, `Notifier.kt`), `media/TimeZoneChangedReceiver.kt`, the copy in `app/android/app/src/main/res/values/strings.xml`, the receivers and `RECEIVE_BOOT_COMPLETED` in `AndroidManifest.xml`, and `tool/check_release_permissions`. Tests: `app/android/app/src/test/kotlin/app/taketray/background/` (`ReminderTimesTest`, `ReminderSchedulerTest`, `ReminderReceiverTest`, `ShadeActionReceiverTest`, `BootReceiverTest`, `ReminderTestSupport`) and `app/android/app/src/test/kotlin/app/taketray/ManifestTest.kt`. The step-by-step flows are "Reminders" and "Re-arming" in `docs/flow.md`.
+
+**Try it yourself:** watch a test catch a shade button from an old session. From the repo root:
+
+```bash
+tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.background.ShadeActionReceiverTest'
+```
+
+It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/taketray/background/ShadeActionReceiver.kt`, delete ` || state.sinceMs != since` from the session check, and run the same command. `shade action for another session only cancels` fails with `expected null, but was:<ShadeActionMsg(kind=TURN_OFF, ...)>`: an old notification's Turn off would have ended the new session. Put it back and run it again to see it pass.
+
+**Decisions:** D-105 (all of this section), with D-101 (no WorkManager, inexact alarms, the copy), D-103 (the copy and shade actions) and D-104 (the job, `Arming`, the count) as background.
 
 ## 6. Dart keeps the native copy in step
 

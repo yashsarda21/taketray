@@ -9,9 +9,11 @@ import org.json.JSONObject
 
 /**
  * The background mirror (D-103) in the `taketray_native` preferences, under
- * three keys: [KEY_STATE] (the [BackgroundState] as JSON), [KEY_SHADE_ACTION]
- * (the one waiting shade action as JSON) and [KEY_POSTED_NEW_CLIPS] (the count
- * the new-clips notification shows, 0 when none is posted).
+ * these keys: [KEY_STATE] (the [BackgroundState] as JSON), [KEY_SHADE_ACTION]
+ * (the one waiting shade action as JSON), [KEY_POSTED_NEW_CLIPS] (the count
+ * the new-clips notification shows, 0 when none is posted), and the two
+ * "posted once" marks of the reminders (D-105): [KEY_STILL_POSTED_SINCE]
+ * and [KEY_EVENING_POSTED_DAY].
  *
  * - Every write uses `commit()`, not `apply()`: a receiver or the job may run
  *   in a process that ends right after it returns, and a queued `apply()`
@@ -83,6 +85,36 @@ class BackgroundStateStore(
             Unit
         }
 
+    /**
+     * The session (`sinceMs`) whose Still shooting? the reminder receiver has
+     * handled, or null. One per session: re-arming skips a handled session.
+     */
+    fun stillPostedSince(): Long? = synchronized(LOCK) { long(KEY_STILL_POSTED_SINCE) }
+
+    fun setStillPostedSince(sinceMs: Long) =
+        synchronized(LOCK) {
+            prefs.edit().putLong(KEY_STILL_POSTED_SINCE, sinceMs).commit()
+            Unit
+        }
+
+    /** The local day (`LocalDate.toEpochDay`) the evening reminder was last posted, or null. */
+    fun eveningPostedDay(): Long? = synchronized(LOCK) { long(KEY_EVENING_POSTED_DAY) }
+
+    fun setEveningPostedDay(epochDay: Long) =
+        synchronized(LOCK) {
+            prefs.edit().putLong(KEY_EVENING_POSTED_DAY, epochDay).commit()
+            Unit
+        }
+
+    /** The Long under [key]; null when missing or of another type (corrupt). */
+    private fun long(key: String): Long? =
+        try {
+            if (prefs.contains(key)) prefs.getLong(key, 0) else null
+        } catch (e: ClassCastException) {
+            Log.w(LOG_TAG, "background value of the wrong type; treated as missing")
+            null
+        }
+
     /** The string under [key]; null when missing or of another type (corrupt). */
     private fun string(key: String): String? =
         try {
@@ -97,6 +129,8 @@ class BackgroundStateStore(
         const val KEY_STATE = "background_state"
         const val KEY_SHADE_ACTION = "shade_action"
         const val KEY_POSTED_NEW_CLIPS = "posted_new_clips"
+        const val KEY_STILL_POSTED_SINCE = "still_posted_since"
+        const val KEY_EVENING_POSTED_DAY = "evening_posted_day"
 
         /** One lock for every store instance (as ZoneChangeStore has). */
         private val LOCK = Any()

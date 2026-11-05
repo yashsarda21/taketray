@@ -23,4 +23,18 @@
     <string name="new_clips_public_title">TakeTray</string>
     <string name="action_open_camera">Open camera</string>
     <string name="action_tag_now">Tag now</string>
+
+    <!-- The evening reminder (D-105): only clips shot today that are still waiting. -->
+    <plurals name="evening_title">
+        <item quantity="one">You shot %d clip today. Tag it?</item>
+        <item quantity="other">You shot %d clips today. Tag them?</item>
+    </plurals>
+    <string name="evening_text">Takes a few minutes, one tap per clip.</string>
+
+    <!-- Still shooting? (D-105): once per Shooting mode session. Turn off and
+         Keep on work from the shade without opening the app. -->
+    <string name="still_title">Still shooting?</string>
+    <string name="still_text">Shooting mode has been on for 14 days. Turn it off?</string>
+    <string name="action_turn_off">Turn off</string>
+    <string name="action_keep_on">Keep on</string>
 </resources>
