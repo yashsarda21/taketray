@@ -1177,3 +1177,27 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Alternatives considered: Patrol's `$().tap()` (adds the settle wait to every tap); the plugin's `value.position` as the "frames are moving" signal (refreshed every 500 ms, too coarse); reading the controllers' count from the screen (the widget tree holds one `VideoPlayer`, the second controller is held by a subscription); a tear-down for clean-up (the app has closed its database by then, D-77's note).
 - Consequences: a run leaves test videos behind only if the phone disconnects mid-run (the `finally` and the tear-down delete them otherwise); the next `TestMedia.start` then deletes what TakeTray Dev owns and fails on anything it does not; after any Patrol run, `docs/dev-setup.md` "After a Patrol run" applies. The "Phase 5 check" in `docs/dev-setup.md` is the owner's hand check.
 
+
+### D-101 · Phase 6 scope: the new-clips notification, the evening and 14-day reminders, re-arming, the help screen; no WorkManager; Flutter deep linking off; native copy in strings.xml; a private lock-screen version
+- Date: 2026-11-05 · Phase: 6 · Plan `docs/superpowers/plans/2026-11-05-phase-6-background.md` (owner approved 2026-11-05)
+- Decision:
+  1. **Built now:**
+     - a native copy of the state the background code needs, written by Dart at every app start and on every change;
+     - a JobScheduler content-URI job (no Flutter engine) that counts new videos and posts or updates one silent "N new clips to tag" notification (BigPictureStyle, Open camera, Tag now);
+     - the evening reminder and the 14-day "Still shooting?" reminder, with Turn off and Keep on working from the shade;
+     - re-arming after a reboot, an app update, a clock change and a time-zone change;
+     - in the app: notification taps (To tag, Reels), the in-app "Still shooting?" dialog, the notification permission, the "Notifications not arriving?" help screen, and two interim Settings rows (the help screen, the notification permission);
+     - the parked media repairs I-3 and M-8 (D-72).
+  2. **Waits:** the VN 3-day reminder (Phase 8, with the VN copies); the "Remind me to turn it off" switch and the reminder-time form (Phase 10, Settings); onboarding's notification step (Phase 10); M-6 and M-7 (Phase 11).
+  3. **Owner rulings (plan review, 2026-11-05):**
+     - **The evening reminder counts the clips shot today** (the phone's local day) that are still waiting, and is quiet on a day with none, even if older clips wait. So "You shot {n} clips today" is always true and it never nags.
+     - **The notification permission** (Android 13+) is asked once, the first time Shooting mode is turned on, after the video-access question; after that only from the Settings row. Onboarding takes this over in Phase 10.
+     - **Media repairs:** I-3 and M-8 now; M-6 and M-7 move to Phase 11.
+  4. **Controller rulings:**
+     - **No WorkManager** (amends spec §5). Its manifest merges `WAKE_LOCK` and `ACCESS_NETWORK_STATE`, which the release forbids (D-89), and it cannot fire at a wall-clock time. Reminders use `AlarmManager.setAndAllowWhileIdle(RTC_WAKEUP, …)`: inexact, no exact-alarm permission, fires in Doze.
+     - **Flutter's own deep linking is off** (`flutter_deeplinking_enabled` = false). `MainActivity` is exported for the launcher, so with deep linking on any app could open any route. Notifications send an allow-listed launch action instead.
+     - **Notification copy lives in `res/values/strings.xml`** (English, with plurals): notifications are built without a Flutter engine, so they cannot use the ARB. Dart copy stays in `app_en.arb`.
+     - **On the lock screen** the new-clips notification is private: its public version reads "TakeTray" and the count, with no thumbnail.
+     - **The new-clips count** is the videos added since the stored baselines, which the app has not scanned yet (spec §8.3); after a scan in the app, the app clears the notification.
+- Why: spec §9 phase 6 ("notification appears after filming on the S24 Ultra; reminders fire"), §4 (no noisy notifications, no data leaving the phone), §8.3 (the scan on open stays the source of truth) and §11 (OEM background limits).
+- Consequences: Tasks 2–9 of the plan each add their own decision from D-102 on. The release gains exactly two permissions, `POST_NOTIFICATIONS` and `RECEIVE_BOOT_COMPLETED`.
