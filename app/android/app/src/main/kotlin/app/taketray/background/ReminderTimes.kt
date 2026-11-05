@@ -34,8 +34,7 @@ object ReminderTimes {
         minutes: Int,
         zone: ZoneId,
     ): Long {
-        val m = minutes.coerceIn(0, LAST_MINUTE)
-        val time = LocalTime.of(m / 60, m % 60)
+        val time = eveningTime(minutes)
         val now = Instant.ofEpochMilli(nowMs)
         var date = now.atZone(zone).toLocalDate()
         while (true) {
@@ -44,6 +43,30 @@ object ReminderTimes {
             date = date.plusDays(1)
         }
     }
+
+    /**
+     * Today's evening: the instant on [nowMs]'s local date in [zone] when the
+     * local time is [minutes] past midnight (clamped, and a gap or overlap
+     * as in [nextEvening]). It may be before or after [nowMs].
+     */
+    fun eveningToday(
+        nowMs: Long,
+        minutes: Int,
+        zone: ZoneId,
+    ): Long {
+        val date = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        return instantAt(date.atTime(eveningTime(minutes)), zone).toEpochMilli()
+    }
+
+    /**
+     * [nowMs]'s local date in [zone] as `LocalDate.toEpochDay()`: the day the
+     * evening reminder's "handled" mark names. The receiver that sets the
+     * mark and the arming that reads it both use this, in the same zone.
+     */
+    fun localDay(
+        nowMs: Long,
+        zone: ZoneId,
+    ): Long = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().toEpochDay()
 
     /**
      * When "Still shooting?" is due for a session that started at [sinceMs]:
@@ -74,6 +97,12 @@ object ReminderTimes {
             .atStartOfDay(zone)
             .toInstant()
             .toEpochMilli()
+
+    /** [minutes] past midnight, clamped to 0..[LAST_MINUTE]. */
+    private fun eveningTime(minutes: Int): LocalTime {
+        val m = minutes.coerceIn(0, LAST_MINUTE)
+        return LocalTime.of(m / 60, m % 60)
+    }
 
     /**
      * [local] in [zone]: in a gap, the first instant after it (the

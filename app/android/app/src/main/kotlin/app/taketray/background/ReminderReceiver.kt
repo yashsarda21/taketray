@@ -3,7 +3,6 @@ package app.taketray.background
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import java.time.Instant
 import java.time.ZoneId
 
 /**
@@ -45,26 +44,29 @@ class Reminders(
     private val zone: ZoneId,
 ) {
     /**
-     * 1. Arm the next evening first, so nothing below can lose tomorrow's.
-     * 2. If the reminder is on, count today's waiting clips: the scanned ones
+     * 1. Arm the next evening (tomorrow's) first, so nothing below can lose it.
+     * 2. If the reminder is on and today's evening is not handled yet, mark it
+     *    handled (once a local day, posted or not: a re-arm later today then
+     *    arms tomorrow's), and count today's waiting clips: the scanned ones
      *    Dart lists ([BackgroundState.waitingShotMs]) and the ones the app has
      *    not scanned yet ([NewClipsCounter]), shot at or after the start of
      *    the local day.
-     * 3. One or more: post the evening reminder, at most once a local day.
-     *    None: nothing (quiet, even if older clips wait).
+     * 3. One or more: post the evening reminder. None: nothing (quiet, even
+     *    if older clips wait).
      */
     fun evening() {
         val state = store.state()
-        scheduler.armEvening(state, nowMs)
+        scheduler.armEvening(state, nowMs, firing = true)
         if (!state.eveningEnabled) return
-        val day = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().toEpochDay()
-        // Fired already today (the clock moved back, or a trip west): once a day.
-        if (store.eveningPostedDay() == day) return
+        val day = ReminderTimes.localDay(nowMs, zone)
+        // Handled already today (the clock moved back, a trip west): once a day.
+        if (store.eveningHandledDay() == day) return
+        store.setEveningHandledDay(day)
         val today = ReminderTimes.startOfToday(nowMs, zone)
         val waiting = state.waitingShotMs.count { it >= today }
         val count = waiting + counter.count(state).shotMs.count { it >= today }
         if (count < 1) return
-        if (notifier.showEvening(count)) store.setEveningPostedDay(day)
+        notifier.showEvening(count)
     }
 
     /**

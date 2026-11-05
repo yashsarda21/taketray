@@ -326,15 +326,25 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   `RTC_WAKEUP` is a wall-clock time that wakes the phone; "allow while idle" lets it fire in Doze, Android's deep sleep. It is **inexact**: Android may deliver it a little late to save battery, never early. An exact alarm needs a special permission (`SCHEDULE_EXACT_ALARM`, which Android 14 no longer grants by default, or `USE_EXACT_ALARM`, which Google Play allows only for alarm-clock and calendar apps), and a reminder to tag clips does not need to-the-second timing. WorkManager, the usual library, is ruled out too (D-101): it adds two permissions TakeTray forbids, and it cannot fire at a wall-clock time.
 
-- **Arm tomorrow's evening first.** When the evening alarm fires, the very first thing the receiver does is arm the next one, so nothing that fails later (a broken count, a failed post) can lose tomorrow's:
+- **Arm tomorrow's evening first.** When the evening alarm fires, the very first thing the receiver does is arm the next one, so nothing that fails later (a broken count, a failed post) can lose tomorrow's. `firing = true` says "this is the alarm itself": always the next evening strictly after now.
 
   ```kotlin
   val state = store.state()
-  scheduler.armEvening(state, nowMs)
+  scheduler.armEvening(state, nowMs, firing = true)
   if (!state.eveningEnabled) return
   ```
 
   The test `evening re-arms before posting` makes the post throw and checks that tomorrow's alarm is set.
+
+- **A late alarm must not be pushed to tomorrow.** Because the alarm is inexact, 21:00 can pass before Android delivers it. Anything that re-arms in that window (you open the app at 21:01, the phone corrects its clock, TakeTray updates, a reboot) would see that 21:00 has passed and arm tomorrow's in its place, and today's reminder would be lost. So a re-arm checks whether today's evening has been handled yet; if its time has passed and it has not, the alarm is set for now:
+
+  ```kotlin
+  val passed = ReminderTimes.eveningToday(nowMs, state.eveningMinutes, zone) <= nowMs
+  val missed = !firing && passed && store.eveningHandledDay() != ReminderTimes.localDay(nowMs, zone)
+  val at = if (missed) nowMs else ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
+  ```
+
+  The receiver marks the day handled before it counts, whether it posts or not. So a reboot just after the evening has run still arms tomorrow's, and two alarms in one day (a re-arm at once racing the late one) do the work once. The mark means "handled", not "posted", on purpose: a quiet day (nothing shot) would otherwise never be marked, and every tag after 21:00 would fire the alarm again. The tests `a re-arm after the time passed and before it fired still fires today` and `a re-arm after today fired arms tomorrow` cover both sides; drop the `store.eveningHandledDay() != …` check and the second fails with `expected:<2026-11-0[6T21:00]:00Z> but was:<2026-11-0[5T21:05]:00Z>`.
 
 - **Only clips shot today.** The count is the clips that wait in To tag (Dart's list in the copy) plus the ones the app has not scanned yet (Section 4's counter), shot since the start of today's local day:
 
@@ -344,7 +354,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   val count = waiting + counter.count(state).shotMs.count { it >= today }
   ```
 
-  With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one a day: the store remembers the local day it last posted, so moving the clock back or flying west does not bring a second one.
+  With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one a day: the store remembers the local day it last handled, so moving the clock back or flying west does not bring a second one.
 
 - **Once per session.** Every app start writes the copy and re-arms, and once 14 days have passed the still alarm would be due "at once" every time. So the receiver marks the session as handled **before** it posts, and arming skips a handled session:
 
@@ -381,7 +391,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
       android:exported="false"/>
   ```
 
-- **Re-arming after a restart.** `BootReceiver` listens for `BOOT_COMPLETED` (a reboot), `MY_PACKAGE_REPLACED` (TakeTray was updated) and `TIME_SET` (the clock was changed). Each arms everything again for the stored copy. A zone change (`TimeZoneChangedReceiver`) records the zone, as before, and re-arms with the zone named in the broadcast, so 21:00 is 21:00 where you landed. A reboot at 21:05 arms tomorrow's 21:00, because the next evening is "strictly after now".
+- **Re-arming after a restart.** `BootReceiver` listens for `BOOT_COMPLETED` (a reboot), `MY_PACKAGE_REPLACED` (TakeTray was updated) and `TIME_SET` (the clock was changed). Each arms everything again for the stored copy. A zone change (`TimeZoneChangedReceiver`) records the zone, as before, and re-arms with the zone named in the broadcast, so 21:00 is 21:00 where you landed. A reboot at 21:05 arms tomorrow's 21:00 if tonight's has already run, and fires tonight's at once if it has not (the phone was off at 21:00).
 
 - **Testing alarms as Android fires them.** The tests do not call the receiver's code by hand only: `ReminderTestSupport.fire` takes the alarm Robolectric recorded and sends its `PendingIntent`, which delivers the broadcast to the receiver declared in the manifest. So a wrong action, a wrong component or a missing manifest entry fails a test.
 

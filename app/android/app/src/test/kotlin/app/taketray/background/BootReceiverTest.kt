@@ -122,9 +122,14 @@ class BootReceiverTest {
         send(Intent.ACTION_MY_PACKAGE_REPLACED)
         assertArmed(evening = "2026-11-05T21:00:00Z", still = "2026-11-15T10:00:00Z")
 
-        // The clock is moved forward to 22:00: the evening moves to tomorrow.
+        // The clock is moved forward to 22:00, past an evening that has not run: at once.
         nothingArmed()
         now = ms("2026-11-05T22:00:00Z")
+        send(Intent.ACTION_TIME_CHANGED)
+        assertArmed(evening = "2026-11-05T22:00:00Z", still = "2026-11-15T10:00:00Z")
+        // Once it has run, the next clock change arms tomorrow's.
+        ReminderReceiver().onReceive(app, Intent(app, ReminderReceiver::class.java).setAction(ReminderScheduler.ACTION_EVENING))
+        nothingArmed()
         send(Intent.ACTION_TIME_CHANGED)
         assertArmed(evening = "2026-11-06T21:00:00Z", still = "2026-11-15T10:00:00Z")
     }

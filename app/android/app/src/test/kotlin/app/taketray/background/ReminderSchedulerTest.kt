@@ -79,7 +79,8 @@ class ReminderSchedulerTest {
         assertEquals(ComponentName(app, ReminderReceiver::class.java), pending.savedIntent.component)
         assertEquals(ReminderScheduler.REQUEST_EVENING_ALARM, pending.requestCode)
 
-        // Arming again replaces it: one evening alarm.
+        // Arming again replaces it: one evening alarm. (Today's is handled, so tomorrow's.)
+        store.setEveningHandledDay(ReminderTimes.localDay(now, LONDON))
         scheduler.armEvening(on, ms("2026-11-05T22:00:00Z"))
         assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         assertEquals(1, shadowOf(app.getSystemService(AlarmManager::class.java)).scheduledAlarms.size)
@@ -97,6 +98,8 @@ class ReminderSchedulerTest {
     fun `evening minutes out of range are clamped and only that is logged`() {
         scheduler.armEvening(on.copy(eveningMinutes = 5000), now)
         assertEquals("2026-11-05T23:59:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Clamped to midnight, which has passed today: tomorrow's once today is handled.
+        store.setEveningHandledDay(ReminderTimes.localDay(now, LONDON))
         scheduler.armEvening(on.copy(eveningMinutes = -7), now)
         assertEquals("2026-11-06T00:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         val logs = ShadowLog.getLogsForTag(LOG_TAG)

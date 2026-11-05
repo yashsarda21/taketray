@@ -177,6 +177,48 @@ class ReminderReceiverTest {
     }
 
     @Test
+    fun `a re-arm after the time passed and before it fired still fires today`() {
+        store.write(on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z"))))
+        ReminderScheduler(app, LONDON).armEvening(store.state(), ms("2026-11-05T12:00:00Z"))
+        assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+
+        // 21:00 has passed and Android has not delivered the inexact alarm
+        // yet. The app opens at 21:01 and writes the state, which re-arms.
+        now = ms("2026-11-05T21:01:00Z")
+        Arming.background(nowMs = { now }, zone = { LONDON }).apply(app, store.state())
+        assertEquals("today's, at once", "2026-11-05T21:01:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // A clock correction re-arms the same way.
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertEquals("2026-11-05T21:01:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+
+        fire(app, ReminderScheduler.ACTION_EVENING)
+        assertEquals("You shot 1 clip today. Tag it?", eveningTitle())
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `a re-arm after today fired arms tomorrow`() {
+        // A quiet evening: nothing shot today, so nothing is posted, but today is handled.
+        store.write(on)
+        evening()
+        assertNull(notification(app, Notifier.EVENING))
+        assertEquals(ReminderTimes.localDay(now, LONDON), store.eveningHandledDay())
+
+        // The app opens at 21:05: tomorrow's, not a second run tonight.
+        now = ms("2026-11-05T21:05:00Z")
+        Arming.background(nowMs = { now }, zone = { LONDON }).apply(app, store.state())
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+
+        // In India at 16:00 UTC it is 21:30 on the same local date: handled, so tomorrow's 21:00 IST.
+        val kolkata = java.time.ZoneId.of("Asia/Kolkata")
+        now = ms("2026-11-05T16:00:00Z")
+        Arming.background(nowMs = { now }, zone = { kolkata }).apply(app, store.state())
+        assertEquals("2026-11-06T15:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
     fun `evening disabled posts nothing and arms nothing`() {
         store.write(on.copy(eveningEnabled = false, waitingShotMs = listOf(ms("2026-11-05T09:00:00Z"))))
         evening()
@@ -278,7 +320,8 @@ class ReminderReceiverTest {
         // A reboot re-arms everything: no second Still shooting? for this session.
         BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
         assertNull(alarm(app, ReminderScheduler.ACTION_STILL))
-        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Today's evening has not run yet (21:00 has passed): it is due at once.
+        assertEquals("2026-11-05T21:00:30Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         // Even if an old alarm fires.
         still(since)
         assertNull(notification(app, Notifier.STILL_SHOOTING))

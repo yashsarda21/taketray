@@ -111,6 +111,22 @@ class ReminderTimesTest {
     }
 
     @Test
+    fun `evening today and the local day`() {
+        // Before or after now, always on today's local date.
+        assertEquals("2026-11-05T21:00:00Z", at(ReminderTimes.eveningToday(ms("2026-11-05T12:00:00Z"), nine, london)))
+        assertEquals("2026-11-05T21:00:00Z", at(ReminderTimes.eveningToday(ms("2026-11-05T23:30:00Z"), nine, london)))
+        // In India at 20:00 UTC it is already the 6th.
+        assertEquals("2026-11-06T15:30:00Z", at(ReminderTimes.eveningToday(ms("2026-11-05T20:00:00Z"), nine, kolkata)))
+        // The gap and the clamp as nextEvening has them.
+        assertEquals("2026-03-29T01:00:00Z", at(ReminderTimes.eveningToday(ms("2026-03-29T12:00:00Z"), 90, london)))
+        assertEquals(ReminderTimes.eveningToday(ms("2026-11-05T12:00:00Z"), 1439, london), ReminderTimes.eveningToday(ms("2026-11-05T12:00:00Z"), 5000, london))
+
+        val day = java.time.LocalDate.of(2026, 11, 5).toEpochDay()
+        assertEquals(day, ReminderTimes.localDay(ms("2026-11-05T23:59:59Z"), london))
+        assertEquals(day + 1, ReminderTimes.localDay(ms("2026-11-05T20:00:00Z"), kolkata))
+    }
+
+    @Test
     fun `start of today`() {
         assertEquals("2026-11-05T00:00:00Z", at(ReminderTimes.startOfToday(ms("2026-11-05T23:30:00Z"), london)))
         // 20:00 UTC is already 01:30 on the 6th in India, whose day began at 18:30 UTC.

@@ -12,8 +12,8 @@ import org.json.JSONObject
  * these keys: [KEY_STATE] (the [BackgroundState] as JSON), [KEY_SHADE_ACTION]
  * (the one waiting shade action as JSON), [KEY_POSTED_NEW_CLIPS] (the count
  * the new-clips notification shows, 0 when none is posted), and the two
- * "posted once" marks of the reminders (D-105): [KEY_STILL_POSTED_SINCE]
- * and [KEY_EVENING_POSTED_DAY].
+ * "handled once" marks of the reminders (D-105): [KEY_STILL_POSTED_SINCE]
+ * and [KEY_EVENING_HANDLED_DAY].
  *
  * - Every write uses `commit()`, not `apply()`: a receiver or the job may run
  *   in a process that ends right after it returns, and a queued `apply()`
@@ -97,12 +97,15 @@ class BackgroundStateStore(
             Unit
         }
 
-    /** The local day (`LocalDate.toEpochDay`) the evening reminder was last posted, or null. */
-    fun eveningPostedDay(): Long? = synchronized(LOCK) { long(KEY_EVENING_POSTED_DAY) }
+    /**
+     * The local day ([ReminderTimes.localDay]) whose evening reminder the
+     * receiver last handled (posted, or found nothing to post), or null.
+     */
+    fun eveningHandledDay(): Long? = synchronized(LOCK) { long(KEY_EVENING_HANDLED_DAY) }
 
-    fun setEveningPostedDay(epochDay: Long) =
+    fun setEveningHandledDay(epochDay: Long) =
         synchronized(LOCK) {
-            prefs.edit().putLong(KEY_EVENING_POSTED_DAY, epochDay).commit()
+            prefs.edit().putLong(KEY_EVENING_HANDLED_DAY, epochDay).commit()
             Unit
         }
 
@@ -130,7 +133,7 @@ class BackgroundStateStore(
         const val KEY_SHADE_ACTION = "shade_action"
         const val KEY_POSTED_NEW_CLIPS = "posted_new_clips"
         const val KEY_STILL_POSTED_SINCE = "still_posted_since"
-        const val KEY_EVENING_POSTED_DAY = "evening_posted_day"
+        const val KEY_EVENING_HANDLED_DAY = "evening_handled_day"
 
         /** One lock for every store instance (as ZoneChangeStore has). */
         private val LOCK = Any()

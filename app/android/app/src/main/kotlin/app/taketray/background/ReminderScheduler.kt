@@ -22,10 +22,21 @@ class ReminderScheduler(
     private val alarms: AlarmManager = context.getSystemService(AlarmManager::class.java)
     private val store = BackgroundStateStore(context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE))
 
-    /** With the evening reminder on: the next evening strictly after [nowMs]. Off: no alarm. */
+    /**
+     * With the evening reminder on, and today's evening time already passed
+     * but today not handled yet ([BackgroundStateStore.eveningHandledDay]):
+     * at [nowMs]. The alarm is inexact and may come late, and a re-arm that
+     * lands between the evening time and that late delivery (the app opened
+     * at 21:01, a clock correction, an update) must not move today's
+     * reminder to tomorrow. Otherwise, and always when [firing] (the
+     * receiver re-arming from the alarm itself), the next evening strictly
+     * after [nowMs]: a reboot just after today's has fired arms tomorrow's.
+     * Off: no alarm.
+     */
     fun armEvening(
         state: BackgroundState,
         nowMs: Long,
+        firing: Boolean = false,
     ) {
         if (!state.eveningEnabled) {
             alarms.cancel(eveningAlarm(context))
@@ -35,7 +46,9 @@ class ReminderScheduler(
             // Dart stores what the settings hold; the value itself is not logged.
             Log.w(LOG_TAG, "evening minutes out of range; clamped")
         }
-        val at = ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
+        val passed = ReminderTimes.eveningToday(nowMs, state.eveningMinutes, zone) <= nowMs
+        val missed = !firing && passed && store.eveningHandledDay() != ReminderTimes.localDay(nowMs, zone)
+        val at = if (missed) nowMs else ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, eveningAlarm(context))
     }
 
