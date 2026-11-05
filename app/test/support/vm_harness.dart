@@ -25,13 +25,14 @@ class VmHarness {
     DateTime? now,
     RecordingBridge? bridge,
     FakeBackgroundBridge? background,
-  }) : media = MediaHarness(now: now, bridge: bridge),
-       background = background ?? FakeBackgroundBridge() {
+  }) : media = MediaHarness(now: now, bridge: bridge, background: background) {
     container = ProviderContainer.test(overrides: overrides);
   }
 
   final MediaHarness media;
-  final FakeBackgroundBridge background;
+
+  /// The background bridge in the overrides: the harness's own.
+  FakeBackgroundBridge get background => media.background;
   late final ProviderContainer container;
 
   RecordingBridge get bridge => media.bridge;

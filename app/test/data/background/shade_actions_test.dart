@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/background/shade_actions.dart';
-import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
 
@@ -12,38 +11,11 @@ import '../media/media_harness.dart';
 // `ShadeActions.apply` (D-106): the Still shooting? buttons tapped in the
 // shade while the app was closed, applied by Dart only to their own session.
 
-/// A scanner that counts the sessions it was asked to end.
-class SpyScanner extends MediaScanner {
-  SpyScanner(MediaHarness h)
-    : super(
-        h.bridge,
-        h.clips,
-        h.phoneState,
-        h.settings,
-        h.zones,
-        h.zoneSync,
-        h.queue,
-        h.clock,
-      );
-
-  int ends = 0;
-
-  @override
-  Future<ScanOutcome> endSessionAt({
-    required DateTime since,
-    required Map<String, int> generations,
-  }) {
-    ends++;
-    return super.endSessionAt(since: since, generations: generations);
-  }
-}
-
 MediaVideo _video(int id, int generation) =>
     fakeVideo(id: id, generation: generation, sizeBytes: 1000000 + id);
 
 late MediaHarness h;
 late FakeBackgroundBridge shade;
-late SpyScanner scanner;
 late ShadeActions actions;
 late DateTime since;
 
@@ -64,6 +36,10 @@ ShadeAction _keepOn({DateTime? forSession}) => ShadeAction(
   generations: const {},
 );
 
+/// How many ends of a session got past the session check (each asks the
+/// phone for its access first; nothing else here does).
+int _ends() => h.bridge.count('accessReport');
+
 Future<Set<int>> _toTagIds() async => {
   for (final c in await h.toTag()) c.mediaStoreId!,
 };
@@ -71,9 +47,8 @@ Future<Set<int>> _toTagIds() async => {
 void main() {
   setUp(() async {
     h = MediaHarness();
-    shade = FakeBackgroundBridge();
-    scanner = SpyScanner(h);
-    actions = ShadeActions(shade, h.phoneState, scanner);
+    shade = h.background;
+    actions = ShadeActions(h.scanner);
     h.bridge.put([_video(1, 10)]);
     since = (await h.turnOnNow()).since!;
     // 11 and 12 shot before the tap (generation 12 then), 13 after it.
@@ -84,7 +59,7 @@ void main() {
     await actions.apply();
 
     expect(shade.calls, ['pendingShadeAction']);
-    expect(scanner.ends, 0);
+    expect(_ends(), 0);
     expect((await h.phoneState.loadShooting()).on, isTrue);
   });
 
@@ -97,11 +72,11 @@ void main() {
     expect(await h.phoneState.loadShooting(), ShootingState.off);
     expect(shade.clearedShadeActions, [_tap]);
     expect(shade.shadeAction, isNull);
-    expect(scanner.ends, 1);
+    expect(_ends(), 1);
 
     // Applied: a second apply finds nothing.
     await actions.apply();
-    expect(scanner.ends, 1);
+    expect(_ends(), 1);
     expect(await _toTagIds(), {11, 12});
     expect(shade.clearedShadeActions, [_tap]);
   });
@@ -111,7 +86,7 @@ void main() {
 
     await Future.wait([actions.apply(), actions.apply()]);
 
-    expect(scanner.ends, 1);
+    expect(_ends(), 1);
     expect(await _toTagIds(), {11, 12});
     expect(await h.phoneState.loadShooting(), ShootingState.off);
   });
@@ -132,7 +107,7 @@ void main() {
 
     await actions.apply();
 
-    expect(scanner.ends, 0);
+    expect(_ends(), 0);
     expect(await h.allClips(), isEmpty);
     final state = await h.phoneState.loadShooting();
     expect(state.on, isTrue);
@@ -159,7 +134,7 @@ void main() {
 
     await actions.apply();
 
-    expect(scanner.ends, 0);
+    expect(_ends(), 0);
     expect(await h.allClips(), isEmpty);
     expect(shade.shadeAction, isNull);
   });
@@ -176,7 +151,7 @@ void main() {
     expect(state.since, before.since);
     expect(state.baselines, before.baselines);
     expect(await h.allClips(), isEmpty);
-    expect(scanner.ends, 0);
+    expect(_ends(), 0);
     expect(shade.clearedShadeActions, [_tap]);
   });
 
@@ -212,7 +187,7 @@ void main() {
     await actions.apply();
     expect(shade.shadeAction, isNull);
     expect(await _toTagIds(), {11, 12});
-    expect(scanner.ends, 1);
+    expect(_ends(), 1);
   });
 
   test('a failing read changes nothing', () async {
@@ -224,7 +199,7 @@ void main() {
 
     expect((await h.phoneState.loadShooting()).on, isTrue);
     expect(shade.shadeAction, isNotNull);
-    expect(scanner.ends, 0);
+    expect(_ends(), 0);
   });
 
   test('a failing end keeps the action and the session', () async {

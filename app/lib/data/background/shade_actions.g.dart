@@ -8,20 +8,17 @@ part of 'shade_actions.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The one [ShadeActions]. Kept alive: the apply that calls share lives in
-/// it.
+/// The one [ShadeActions].
 
 @ProviderFor(shadeActions)
 final shadeActionsProvider = ShadeActionsProvider._();
 
-/// The one [ShadeActions]. Kept alive: the apply that calls share lives in
-/// it.
+/// The one [ShadeActions].
 
 final class ShadeActionsProvider
     extends $FunctionalProvider<ShadeActions, ShadeActions, ShadeActions>
     with $Provider<ShadeActions> {
-  /// The one [ShadeActions]. Kept alive: the apply that calls share lives in
-  /// it.
+  /// The one [ShadeActions].
   ShadeActionsProvider._()
     : super(
         from: null,
@@ -55,4 +52,4 @@ final class ShadeActionsProvider
   }
 }
 
-String _$shadeActionsHash() => r'76b6ecad00deafa442c32653df208ddc07de4e6e';
+String _$shadeActionsHash() => r'6c0f9089b96c66722df6fc7576c6b9248a8432f6';

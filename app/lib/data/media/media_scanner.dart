@@ -21,6 +21,7 @@ import 'package:taketray/domain/rules/earlier_window.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 import 'package:taketray/domain/rules/zone_lookup.dart';
+import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 part 'media_scanner.g.dart';
@@ -62,6 +63,12 @@ final class ScanDone extends ScanOutcome {
       'ScanDone($added, resynced: $resynced, failed: $failedVolumes)';
 }
 
+/// The scan was put off: the shade action could not be read, so nothing was
+/// read or written (D-106). The next trigger tries again.
+final class ScanDeferred extends ScanOutcome {
+  const ScanDeferred();
+}
+
 /// What every volume of one scan shares: read once per scan.
 class _ScanContext {
   _ScanContext({
@@ -95,6 +102,7 @@ class MediaScanner {
     this._zoneSync,
     this._queue,
     this._clock,
+    this._shade,
   );
 
   final MediaBridge _bridge;
@@ -105,6 +113,9 @@ class MediaScanner {
   final ZoneSync _zoneSync;
   final MediaWorkQueue _queue;
   final Clock _clock;
+
+  /// Where the shade's Still shooting? buttons are read and cleared (D-106).
+  final BackgroundBridge _shade;
   late final LibraryResync _rebuilds = LibraryResync(_bridge, _clips, _phone);
 
   /// Rows asked for per page of `videosAddedAfter`.
@@ -117,6 +128,15 @@ class MediaScanner {
   /// The scan that is queued but has not started yet, if any.
   Future<ScanOutcome>? _queued;
 
+  /// How many times in a row ending a session from the shade failed, and
+  /// which session (its `since` in milliseconds) they were for.
+  int _failedEnds = 0;
+  int? _failedEndsFor;
+
+  /// After this many failed tries in this process, a Turn off from the shade
+  /// ends the session with what could be read (D-106).
+  static const maxEndAttempts = 3;
+
   /// Looks for new videos on every volume (D-72).
   ///
   /// Calls never run side by side. While a scan runs, the first call queues
@@ -124,10 +144,75 @@ class MediaScanner {
   /// starts gets the same future. So any number of triggers during one run
   /// cost exactly one more run, and that run sees everything they wanted it
   /// to see.
+  ///
+  /// Every scan first looks for a shade action, inside its own job, so no
+  /// trigger can scan past a Turn off tapped in the shade (D-106):
+  /// - a Turn off for the current session is applied in place of the scan
+  ///   (the end capped at the tap, as [endSessionAt]), and its outcome is the
+  ///   answer;
+  /// - a Keep on for the current session is stored, then the scan runs;
+  /// - an action for another session is cleared, then the scan runs;
+  /// - when the action cannot be read, nothing is read or written and the
+  ///   answer is [ScanDeferred]: the next trigger tries again.
   Future<ScanOutcome> scan() => _queued ??= _queue.run(() {
     _queued = null;
-    return _scanOnce();
+    return _gatedScan();
   });
+
+  Future<ScanOutcome> _gatedScan() async {
+    final ShadeAction? action;
+    try {
+      action = await _shade.pendingShadeAction();
+    } on Object catch (e) {
+      _log.warning(
+        'Scan deferred: the shade action was not read (${e.runtimeType})',
+      );
+      return const ScanDeferred();
+    }
+    if (action != null) {
+      final ended = await _applyShade(action);
+      if (ended != null) return ended;
+    }
+    return await _scanOnce();
+  }
+
+  /// Applies the waiting shade action, if any, as [scan] does, but scans
+  /// nothing else (`ShadeActions.apply`). One job on the media queue; it
+  /// throws when the phone does not answer, and the action then stays.
+  Future<void> applyShadeAction() => _queue.run(() async {
+    final action = await _shade.pendingShadeAction();
+    if (action != null) await _applyShade(action);
+  });
+
+  /// Applies [action], inside a queue job. Returns the end's outcome when a
+  /// Turn off for the current session took the place of a scan, else null.
+  ///
+  /// An action for another session (or with Shooting mode off) is only
+  /// cleared. A Keep on is stored (`markStillAnswered`) and cleared. A Turn
+  /// off ends the session capped at the tap, and is cleared unless the end
+  /// was kept for another try. Clearing names the tap, so a newer one stays.
+  Future<ScanOutcome?> _applyShade(ShadeAction action) async {
+    final kind = action.kind.name;
+    final session = await _phone.loadShooting();
+    if (!session.isSession(action.since)) {
+      _log.info('Shade action $kind dropped: it was for another session');
+      await _shade.clearShadeAction(action.at);
+      return null;
+    }
+    switch (action.kind) {
+      case ShadeActionKind.keepOn:
+        await _phone.markStillAnswered(action.since);
+        await _shade.clearShadeAction(action.at);
+        _log.info('Shade action $kind applied');
+        return null;
+      case ShadeActionKind.turnOff:
+        final (outcome, kept) = await _endCapped(session, action.generations);
+        if (kept) return outcome;
+        await _shade.clearShadeAction(action.at);
+        _log.info('Shade action $kind applied');
+        return outcome;
+    }
+  }
 
   /// Ends the Shooting mode session that started at [since], as the shade's
   /// Turn off asked while the app was closed (D-105, D-106): first the clips
@@ -157,23 +242,77 @@ class MediaScanner {
       _log.info('Ending the session skipped: it is not the stored one');
       return const ScanShootingOff();
     }
-    final run = await _prepare(session, 'Ending the session');
-    final ScanOutcome outcome;
-    if (run == null) {
-      outcome = const ScanNoAccess();
-    } else if (!await _stillSession(session)) {
-      _log.info('Ending the session stopped: Shooting mode changed meanwhile');
-      return const ScanShootingOff();
-    } else {
-      outcome = await _scanVolumes(run.$1, run.$2, caps: generations);
+    return (await _endCapped(session, generations)).$1;
+  });
+
+  /// Ends [session] capped at [generations], inside a queue job. Returns the
+  /// outcome, and whether the session was kept for another try.
+  ///
+  /// A volume that fails (or a phone that does not answer before the
+  /// volumes are read, which is rethrown) keeps the session, so the next
+  /// trigger tries again; the [maxEndAttempts]th failure in a row for the
+  /// session ends it with what could be read. Without full access it ends
+  /// at once.
+  Future<(ScanOutcome, bool)> _endCapped(
+    ShootingState session,
+    Map<String, int> generations,
+  ) async {
+    final since = session.since!;
+    ScanOutcome outcome;
+    try {
+      final run = await _prepare(session, 'Ending the session');
+      if (run == null) {
+        outcome = const ScanNoAccess();
+      } else if (!await _stillSession(session)) {
+        _log.info(
+          'Ending the session stopped: Shooting mode changed meanwhile',
+        );
+        return (const ScanShootingOff(), false);
+      } else {
+        outcome = await _scanVolumes(run.$1, run.$2, caps: generations);
+      }
+    } on PlatformException {
+      if (_keepAfterFailure(since)) rethrow;
+      outcome = ScanDone(0, const {}, generations.keys.toSet());
     }
+    if (outcome is ScanDone &&
+        outcome.failedVolumes.isNotEmpty &&
+        _keepAfterFailure(since)) {
+      _log.warning(
+        'Ending the session: ${outcome.failedVolumes.length} volumes failed; '
+        'kept for the next try ($_failedEnds of $maxEndAttempts)',
+      );
+      return (outcome, true);
+    }
+    if (_failedEnds >= maxEndAttempts) {
+      _log.warning(
+        'Ending the session after $maxEndAttempts attempts: '
+        '${outcome is ScanDone ? outcome.failedVolumes.length : 0} '
+        'volumes not read',
+      );
+    }
+    _failedEnds = 0;
+    _failedEndsFor = null;
     final ended = await _phone.endSession(since);
     _log.info(
       'Ended the session from the shade: '
       '${ended ? 'off' : 'left on, it had changed'}',
     );
-    return outcome;
-  });
+    return (outcome, false);
+  }
+
+  /// Counts one failed end of the session that started at [since]; true
+  /// while it is to be kept for another try (fewer than [maxEndAttempts]
+  /// failures in a row).
+  bool _keepAfterFailure(DateTime since) {
+    final ms = since.millisecondsSinceEpoch;
+    if (_failedEndsFor != ms) {
+      _failedEndsFor = ms;
+      _failedEnds = 0;
+    }
+    _failedEnds++;
+    return _failedEnds < maxEndAttempts;
+  }
 
   Future<ScanOutcome> _scanOnce() async {
     final session = await _phone.loadShooting();
@@ -653,4 +792,5 @@ MediaScanner mediaScanner(Ref ref) => MediaScanner(
   ref.watch(zoneSyncProvider),
   ref.watch(mediaWorkQueueProvider),
   ref.watch(clockProvider),
+  ref.watch(backgroundBridgeProvider),
 );

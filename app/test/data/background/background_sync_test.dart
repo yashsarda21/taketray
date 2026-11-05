@@ -44,8 +44,8 @@ Future<void> _setMinutes(int minutes) async => await h.settings.save(
 void main() {
   setUp(() {
     h = MediaHarness();
-    native = FakeBackgroundBridge();
-    actions = ShadeActions(native, h.phoneState, h.scanner);
+    native = h.background;
+    actions = ShadeActions(h.scanner);
     sync = _newSync();
     h.bridge.put([_video(1, 10)]);
   });
@@ -465,13 +465,11 @@ void main() {
       expect(native.state!.eveningMinutes, 1301);
     });
 
-    test('a failing apply skips the write and is tried again on the next '
-        'change', () async {
+    test('a failing apply writes the copy off and is tried again on the '
+        'next change', () async {
       sync.start();
       await settle();
-      final before = native.writes.length;
       tapTurnOff();
-      final offCopy = native.state;
       h.bridge.failNext('volumes');
       final records = captureLogs();
 
@@ -479,9 +477,10 @@ void main() {
       await settle();
 
       // The phone's "off" is not overwritten with the database's "on".
-      expect(native.writes, hasLength(before));
-      expect(native.state, offCopy);
+      expect(native.state!.shootingOn, isFalse);
+      expect(native.writes.last.eveningMinutes, 1300);
       expect(native.shadeAction, isNotNull);
+      expect((await h.phoneState.loadShooting()).on, isTrue);
       expect(logText(records), contains('PlatformException'));
 
       await _setMinutes(1301);
@@ -490,6 +489,32 @@ void main() {
       expect(native.state!.shootingOn, isFalse);
       expect(native.shadeAction, isNull);
       expect([for (final c in await h.toTag()) c.mediaStoreId], [11]);
+    });
+
+    test('while a turn off is pending the native copy says off', () async {
+      sync.start();
+      await settle();
+      expect(native.state!.shootingOn, isTrue);
+      tapTurnOff();
+      // The end fails on the volume: the session and the action are kept.
+      h.bridge.failNext('videosAddedAfter');
+
+      await _setMinutes(1300);
+      await settle();
+
+      expect((await h.phoneState.loadShooting()).on, isTrue);
+      expect(native.shadeAction, isNotNull);
+      final last = native.writes.last;
+      expect(last.shootingOn, isFalse);
+      expect(last.since, isNull);
+      expect(last.baselines, isEmpty);
+      expect(last.eveningMinutes, 1300);
+      expect(
+        native.writes.skipWhile((s) => s.eveningMinutes != 1300),
+        everyElement(
+          isA<BackgroundState>().having((s) => s.shootingOn, 'on', isFalse),
+        ),
+      );
     });
 
     test('applying an action does not loop', () async {

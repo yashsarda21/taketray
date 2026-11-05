@@ -245,8 +245,8 @@ void main() {
     expect(await h.phoneState.loadShooting(), ShootingState.off);
   });
 
-  test('a volume that does not answer is logged, and the session still '
-      'ends', () async {
+  test('a volume that does not answer keeps the session for the next '
+      'try', () async {
     bridge
       ..put([_video(11, 11)])
       ..failNext('videosAddedAfter');
@@ -257,6 +257,13 @@ void main() {
     );
 
     expect(outcome, _done(added: 0, failed: {phone}));
+    expect((await h.phoneState.loadShooting()).since, since);
+
+    // The next try reads it, and ends.
+    expect(
+      await h.scanner.endSessionAt(since: since, generations: {phone: 11}),
+      _done(added: 1),
+    );
     expect(await h.phoneState.loadShooting(), ShootingState.off);
   });
 

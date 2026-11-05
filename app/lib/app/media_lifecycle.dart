@@ -33,7 +33,8 @@ final Logger _log = Logger('mediaLifecycle');
 /// 3. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
 /// 4. `MediaScanner.scan`: new videos, when Shooting mode is on;
-/// 5. after a scan that ran (`ScanDone`), `BackgroundSync.flush` and then
+/// 5. after a scan that ran (`ScanDone`, every volume read; an end from the
+///    shade counts), `BackgroundSync.flush` and then
 ///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
 ///    To tag now. The new baselines reach the phone's copy first, so the
 ///    new-clips job never counts again with the old ones and re-posts.
@@ -120,7 +121,10 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       'The scan',
       () => ref.read(mediaScannerProvider).scan(),
     );
-    if (scanned is! ScanDone || !mounted) return;
+    // A volume that failed may still hold clips the job counts.
+    if (scanned is! ScanDone || scanned.failedVolumes.isNotEmpty || !mounted) {
+      return;
+    }
     await guarded(
       _log,
       'Writing the background copy',

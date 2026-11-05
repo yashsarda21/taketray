@@ -354,6 +354,20 @@ void main() {
       expect(clears(), 0);
     });
 
+    testWidgets('the notification is not cleared after a scan with failed '
+        'volumes', (tester) async {
+      await h.media.turnOnNow();
+      h.bridge
+        ..put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)])
+        ..failNext('videosAddedAfter');
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      // The volume that failed still has clips the job counts.
+      expect(clears(), 0);
+    });
+
     testWidgets('no clear when the scan threw', (tester) async {
       await h.media.turnOnNow();
       h.bridge.failNext('volumes');

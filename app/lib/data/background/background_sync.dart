@@ -6,6 +6,7 @@ import 'package:taketray/data/background/shade_actions.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
 
 part 'background_sync.g.dart';
@@ -38,10 +39,13 @@ final Logger _log = Logger('backgroundSync');
 ///   writing the database's "on" over it would re-arm the job. Applying it
 ///   first ends the session, and the write says off. Its own changes to the
 ///   database ask for one more write, which finds the action gone and the
-///   state already written, so it does not loop.
-/// - **Errors:** a failed apply or write is logged by type; nothing is
-///   marked written, so the next change (or [flush]) tries again. A failed
-///   apply skips the write, so the phone's "off" stays.
+///   state already written, so it does not loop. While a Turn off for the
+///   current session is still waiting (its end failed, or could not run),
+///   the copy is written off.
+/// - **Errors:** a failed apply is logged by type and the write goes on
+///   (off while a Turn off waits); a failed read or write is logged by type
+///   and nothing is marked written, so the next change (or [flush]) tries
+///   again. When the action cannot be read, nothing is written.
 class BackgroundSync {
   new(this._bridge, this._phone, this._settings, this._clips, this._shade);
 
@@ -128,8 +132,25 @@ class BackgroundSync {
 
   Future<void> _writeOnce() async {
     try {
-      await _shade.apply();
-      final state = await _read();
+      try {
+        await _shade.apply();
+      } on Object catch (e) {
+        _log.warning('Applying the shade action failed: ${e.runtimeType}');
+      }
+      // A Turn off the apply could not finish (a volume did not answer)
+      // stays waiting: the copy says off meanwhile, as the shade wrote it.
+      final waiting = await _bridge.pendingShadeAction();
+      final shooting = await _phone.loadShooting();
+      var state = await _read(shooting);
+      if (waiting?.kind == ShadeActionKind.turnOff &&
+          shooting.isSession(waiting!.since)) {
+        state = state.copyWith(
+          shootingOn: false,
+          since: null,
+          baselines: const {},
+          stillAnswered: false,
+        );
+      }
       if (state == _written) return;
       _written = null;
       await _bridge.writeState(state);
@@ -140,8 +161,7 @@ class BackgroundSync {
     }
   }
 
-  Future<BackgroundState> _read() async {
-    final shooting = await _phone.loadShooting();
+  Future<BackgroundState> _read(ShootingState shooting) async {
     final settings = await _settings.load();
     final shots = await _clips.pendingShotTimes();
     return BackgroundState(
