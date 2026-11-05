@@ -119,13 +119,16 @@ class PhoneStateRepository {
     return state;
   }
 
-  /// Switches Shooting mode off and forgets the baselines and the start time.
+  /// Switches Shooting mode off and forgets the baselines, the start time and
+  /// the Still shooting? answer.
   Future<void> turnShootingOff() async {
-    await (_db.delete(
-      _db.settings,
-    )..where((s) => s.key.equals(shootingModeKey))).go();
+    await _deleteShooting();
     _log.info('Shooting mode off');
   }
+
+  Future<void> _deleteShooting() => (_db.delete(
+    _db.settings,
+  )..where((s) => s.key.equals(shootingModeKey))).go();
 
   /// Moves [volume]'s baseline to [next], only if nothing changed since the
   /// caller read the state (compare-and-set, D-71). Returns whether it wrote.
@@ -175,6 +178,45 @@ class PhoneStateRepository {
     });
     _log.info(wrote ? 'Moved a baseline' : 'Left the baseline: it had changed');
     return wrote;
+  }
+
+  /// Remembers that "Still shooting?" was answered with Keep on, only in the
+  /// session that started at [since] (compare-and-set, D-106; compared to the
+  /// millisecond, [ShootingState.isSession]). Returns whether it wrote:
+  /// false when Shooting mode is off, in another session, or already
+  /// answered. The baselines and the start time are kept.
+  Future<bool> markStillAnswered(DateTime since) async {
+    final wrote = await _db.transaction(() async {
+      final current = await loadShooting();
+      if (!current.isSession(since) || current.stillAnswered) return false;
+      await _putShooting(current.copyWith(stillAnswered: true));
+      return true;
+    });
+    _log.info(
+      wrote
+          ? 'Still shooting? answered: keep on'
+          : 'Still shooting? answer not stored: another session, or already '
+                'answered',
+    );
+    return wrote;
+  }
+
+  /// Switches Shooting mode off, as [turnShootingOff] does, only if it is on
+  /// in the session that started at [since] (compare-and-set, D-106). Returns
+  /// whether it did. A session switched off and on again meanwhile is never
+  /// ended by an older request.
+  Future<bool> endSession(DateTime since) async {
+    final ended = await _db.transaction(() async {
+      if (!(await loadShooting()).isSession(since)) return false;
+      await _deleteShooting();
+      return true;
+    });
+    _log.info(
+      ended
+          ? 'Shooting mode off (session ended)'
+          : 'Session not ended: changed',
+    );
+    return ended;
   }
 
   /// Whether TakeTray ever saw full access to the videos on this phone.

@@ -486,6 +486,22 @@ void main() {
       expect(fake.clearedShadeActions, [_utc(3), _utc(2)]);
     });
 
+    test('the shade action clears by milliseconds, as on the phone', () async {
+      // The phone keeps `atMs` only: a local DateTime of the same instant,
+      // or one with extra microseconds, names the same tap.
+      final action = ShadeAction(
+        kind: ShadeActionKind.keepOn,
+        since: _utc(1),
+        at: DateTime.fromMicrosecondsSinceEpoch(2000123, isUtc: true),
+        generations: const {},
+      );
+      fake.shadeAction = action;
+      await fake.clearShadeAction(
+        DateTime.fromMillisecondsSinceEpoch(2000).toLocal(),
+      );
+      expect(await fake.pendingShadeAction(), isNull);
+    });
+
     test('the fake emits launch actions, the start action first', () async {
       fake.startAction = LaunchAction.reels;
       final seen = <LaunchAction>[];

@@ -419,7 +419,99 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 ## 6. Dart keeps the native copy in step
 
-_Filled in by Task 6._
+**What we built:** the Dart half of the background work. Sections 3 to 5 built Kotlin code that runs while TakeTray is closed and reads a copy of the state Dart keeps for it. This section keeps that copy right, and brings back what the shade's buttons did.
+
+- **`BackgroundSync`** writes the copy: Shooting mode, its start, the baselines, the watched folders, the evening reminder, when the waiting clips were shot, and whether "Still shooting?" was answered. It writes at every app start and after every change.
+- **`ShadeActions`** applies a **Turn off** or **Keep on** tapped in the shade, only to the Shooting mode session it was for.
+- **`MediaScanner.endSessionAt`** is Turn off in Dart: it adds the clips shot before the tap, none after it, then switches Shooting mode off.
+- **`stillAnswered`** is a new field of the stored session; `stillShootingDue` says when the in-app question is due (Task 7 shows it).
+- **The lifecycle** applies shade actions first, and after a scan writes the copy before it removes the "N new clips" notification.
+
+**Why TakeTray needs it:** the Kotlin side can only count and remind with what the copy says. If the copy says Shooting mode is on after the user turned it off, the phone keeps watching; if it holds yesterday's baselines, the notification counts clips the app has already shown in To tag. And a Turn off tapped in the shade only writes a note, because the database is Dart's alone (D-103): until Dart applies it, the clips shot before the tap are not in To tag and the database still says on.
+
+**Key ideas:**
+
+- **Streams say *when*, the database says *what*.** `BackgroundSync` listens to three streams (Shooting mode, the settings, the waiting clips' shot times), but it never writes what they delivered. Each write reads the database when it starts. Two streams can deliver out of step: new clips can arrive before the moved baseline, so a state built from the events could pair old baselines with new clips. Reading at write time cannot.
+
+- **One write at a time, and only the newest.** A change while a write runs only sets a flag, so ten quick changes cost one more write, of the state as it is then:
+
+  ```dart
+  void _request() {
+    if (_idle != null) {
+      _again = true;
+      return;
+    }
+    _idle = Completer<void>();
+    unawaited(_loop());
+  }
+  ```
+
+- **A shade action first, then the write.** Every write starts with `ShadeActions.apply()`, then reads, and writes only what differs from the last state the phone took:
+
+  ```dart
+  await _shade.apply();
+  final state = await _read();
+  if (state == _written) return;
+  _written = null;
+  await _bridge.writeState(state);
+  _written = state;
+  ```
+
+  Why the apply comes first: say you tap Turn off in the shade while TakeTray is open. The receiver writes the copy "off", but the database still says on. Tag one clip and a plain write would send "on" back, re-arming the job you just turned off. Applying first ends the session, so the write says off. The apply's own changes ask for one more write, which finds no action and nothing new: no loop. `_written = null` before the write matters too: if the write fails, the phone may hold part of it, so the next state is written even if it equals the last good one. The first write after `start()` has no last state, so every app start writes the copy and re-arms the job and the alarms.
+
+- **A session is named to the millisecond.** The phone keeps `sinceMs`; Dart's stored `since` keeps a real clock's microseconds. Comparing them exactly would mean no shade button ever matched on a real phone. The tests' fixed clocks usually have whole milliseconds, so the tests named `a session stored with microseconds matches the tap` set some on purpose. So `ShootingState.isSession` compares milliseconds:
+
+  ```dart
+  return on &&
+      mine != null &&
+      mine.millisecondsSinceEpoch == since.millisecondsSinceEpoch;
+  ```
+
+  A tap for another session (Shooting mode was turned off and on again since the notification came) is dropped and cleared. Clearing names the tap's own time, so a newer tap waits.
+
+- **Turn off stops at the tap.** The receiver noted each volume's generation at the tap. `endSessionAt` runs the scan's own per-volume code (shared, not copied) with that generation as a cap:
+
+  ```dart
+  final captured = cap == null
+      ? volume.generation
+      : min(volume.generation, cap);
+  ```
+
+  Rows above `captured` are left out, and the baseline never moves past it. Then, in the same job on the media queue, Shooting mode goes off, but only if it is still that session (`PhoneStateRepository.endSession`, compare-and-set). A volume that does not answer does not keep the session open: the lifecycle's scan right after would otherwise add clips shot after the tap.
+
+- **Two callers, one apply.** The lifecycle and the sync can both ask at app start. The second shares the running apply, so a session is never ended twice:
+
+  ```dart
+  Future<void> apply() =>
+      _running ??= _applyOnce().whenComplete(() => _running = null);
+  ```
+
+- **Write, then clear.** After a scan the lifecycle removes the notification, but first it flushes the copy. The flush reads the database itself, so it does not wait for the streams:
+
+  ```dart
+  if (scanned is! ScanDone || !mounted) return;
+  await guarded(
+    _log,
+    'Writing the background copy',
+    () => ref.read(backgroundSyncProvider).flush(),
+  );
+  ```
+
+  In the other order, a job could run between the clear and the write, count from the old baselines, and post the clips you are looking at again. Only a scan that ran clears: with Shooting mode off or no access the notification is left alone (and after a shade Turn off, the copy written "off" removes it).
+
+- **`stillAnswered` lives in the session.** It is part of the stored `ShootingState`, so `advanceBaseline` keeps it (`copyWith`), turning Shooting mode off forgets it, and JSON stored before it existed reads as false. `stillShootingDue` is on, not answered, and at least 14 × 24 hours since the start, the same wait as the phone's `STILL_AFTER_DAYS`.
+
+**Where it lives:** `app/lib/data/background/` (`background_sync.dart`, `shade_actions.dart`), `MediaScanner.endSessionAt` in `app/lib/data/media/media_scanner.dart`, `markStillAnswered` and `endSession` in `app/lib/data/repositories/phone_state_repository.dart`, `watchPendingShotTimes` in `clips_repository.dart`, `ShootingState.stillAnswered` and `isSession` in `app/lib/domain/models/media.dart`, `app/lib/domain/rules/still_shooting.dart`, the order in `app/lib/app/media_lifecycle.dart`, and `start()` in `app/lib/app.dart`. Tests: `app/test/data/background/`, `app/test/data/media/media_scanner_end_session_test.dart`, `app/test/domain/rules/still_shooting_test.dart`, and additions to `phone_state_repository_test.dart`, `clips_repository_inbox_test.dart`, `media_lifecycle_test.dart` and `app_test.dart`. The step-by-step flows are "Background bridge", "Finding new clips" and "App start and resume" in `docs/flow.md`.
+
+**Try it yourself:** see the cap keep a clip shot after the tap out of To tag. From `app/`:
+
+```bash
+../tool/flutter test test/data/media/media_scanner_end_session_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/data/media/media_scanner.dart`, replace the three lines that set `captured` in `_scanAfter` with `final captured = volume.generation;`, and run the same command. `clips shot after the tap are not added` fails with ``Which: has `added` with value <4>``: the two clips shot after the tap were added too. Put the lines back and run it again to see it pass.
+
+**Decisions:** D-106 (all of this section), with D-103 (the mirror, shade actions), D-104 (what the count means, the clear) and D-105 (Turn off and Keep on in the shade) as background.
 
 ## 7. Notification taps, Still shooting?, the permission and the help screen
 

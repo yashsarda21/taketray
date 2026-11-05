@@ -42,6 +42,15 @@ void main() {
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
   });
 
+  testApp('writes the background copy once at start', (tester) async {
+    final harness = await _pumpApp(tester);
+    await tester.runAsync(settle);
+
+    expect(harness.background.writes, hasLength(1));
+    expect(harness.background.state!.shootingOn, isFalse);
+    expect(harness.background.state!.stillReminderEnabled, isTrue);
+  });
+
   testApp('starts the media work through the bridge on the first frame', (
     tester,
   ) async {

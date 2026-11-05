@@ -101,7 +101,10 @@ abstract class VolumeBaseline with _$VolumeBaseline {
 /// Shooting mode, as stored between app starts.
 ///
 /// [since] is when it was switched on (UTC); [baselines] holds one
-/// [VolumeBaseline] per volume name.
+/// [VolumeBaseline] per volume name. [stillAnswered] is true once "Still
+/// shooting?" was answered with Keep on in this session (D-106): it lives in
+/// the session, so turning Shooting mode off forgets it, and JSON stored
+/// before it existed reads as false.
 ///
 /// Older versions also stored `earlierAdded` (whether "Add earlier videos"
 /// was used in the session, which hid its link). D-90 dropped it: JSON that
@@ -112,6 +115,7 @@ abstract class ShootingState with _$ShootingState {
     required bool on,
     required Map<String, VolumeBaseline> baselines,
     DateTime? since,
+    @Default(false) bool stillAnswered,
   }) = _ShootingState;
 
   const ShootingState._();
@@ -121,4 +125,17 @@ abstract class ShootingState with _$ShootingState {
 
   /// Shooting mode off: no start time, no baselines.
   static const off = ShootingState(on: false, baselines: {});
+
+  /// Whether this is Shooting mode on, in the session that started at
+  /// [since].
+  ///
+  /// Compared in whole milliseconds: the phone's copy of the state (D-103)
+  /// keeps `sinceMs` only, so a shade action names its session to the
+  /// millisecond, while a stored `since` keeps a real clock's microseconds.
+  bool isSession(DateTime since) {
+    final mine = this.since;
+    return on &&
+        mine != null &&
+        mine.millisecondsSinceEpoch == since.millisecondsSinceEpoch;
+  }
 }

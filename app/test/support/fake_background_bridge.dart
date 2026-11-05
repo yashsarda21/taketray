@@ -8,7 +8,8 @@ import 'package:taketray/platform/background_bridge.dart';
 /// - Every successful `writeState` is recorded in [writes], in order, and
 ///   the last one is [state].
 /// - Settable answers: [shadeAction] (cleared by `clearShadeAction` only for
-///   its own `at`, as on the phone; every argument is logged in
+///   its own `at`, compared in milliseconds as on the phone; every argument
+///   is logged in
 ///   [clearedShadeActions]), [access], [maker], [batteryOpens].
 /// - [onRequestNotificationAccess] gives the result of
 ///   `requestNotificationAccess`, which also becomes the new [access]; by
@@ -18,7 +19,8 @@ import 'package:taketray/platform/background_bridge.dart';
 ///   while the app runs.
 /// - [calls] logs the name of every call, in order, including one that
 ///   fails. [failNext] makes the next call of a method throw a
-///   `PlatformException`.
+///   `PlatformException`. [gate] makes the next call of a method wait; the
+///   call takes effect when the gate opens, as a slow phone would.
 class FakeBackgroundBridge implements BackgroundBridge {
   /// The last state written, or null before any write.
   BackgroundState? state;
@@ -46,6 +48,7 @@ class FakeBackgroundBridge implements BackgroundBridge {
   final List<String> calls = [];
 
   final Map<String, int> _failures = {};
+  final Map<String, Completer<void>> _gates = {};
 
   late final StreamController<LaunchAction> _launches =
       StreamController<LaunchAction>.broadcast(onListen: _start);
@@ -56,11 +59,17 @@ class FakeBackgroundBridge implements BackgroundBridge {
   void failNext(String method) =>
       _failures[method] = (_failures[method] ?? 0) + 1;
 
+  /// The next call of [method] waits until the returned completer completes,
+  /// and only then fails or takes effect. Used up by that one call.
+  Completer<void> gate(String method) => _gates[method] = Completer<void>();
+
   /// A notification tapped while the app runs.
   void emit(LaunchAction action) => _launches.add(action);
 
   Future<T> _call<T>(String method, T Function() answer) async {
     calls.add(method);
+    final gate = _gates.remove(method);
+    if (gate != null) await gate.future;
     final failures = _failures[method] ?? 0;
     if (failures > 0) {
       _failures[method] = failures - 1;
@@ -93,7 +102,11 @@ class FakeBackgroundBridge implements BackgroundBridge {
   @override
   Future<void> clearShadeAction(DateTime at) => _call('clearShadeAction', () {
     clearedShadeActions.add(at);
-    if (shadeAction?.at == at) shadeAction = null;
+    // Milliseconds, as on the phone (`atMs`): not `==`, which also compares
+    // `isUtc` and microseconds.
+    if (shadeAction?.at.millisecondsSinceEpoch == at.millisecondsSinceEpoch) {
+      shadeAction = null;
+    }
   });
 
   @override

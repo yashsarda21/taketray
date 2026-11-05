@@ -5,8 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
+import '../support/fake_background_bridge.dart';
 import '../support/fake_media_bridge.dart';
 import '../support/vm_harness.dart';
 
@@ -18,6 +21,18 @@ class _CountingCache extends ThumbnailCache {
 
   @override
   Future<void> prune() async => prunes++;
+}
+
+/// A background bridge that notes the copy the phone held when the app
+/// cleared the new-clips notification.
+class _ClearRecorder extends FakeBackgroundBridge {
+  final List<BackgroundState?> heldAtClear = [];
+
+  @override
+  Future<void> clearNewClipsNotification() {
+    heldAtClear.add(state);
+    return super.clearNewClipsNotification();
+  }
 }
 
 void main() {
@@ -241,5 +256,151 @@ void main() {
     await work(tester);
 
     expect(tester.takeException(), isNull);
+  });
+  group('the background copy and the shade (D-106)', () {
+    int clears() => h.background.calls
+        .where((c) => c == 'clearNewClipsNotification')
+        .length;
+
+    testWidgets('lifecycle applies shade actions before the scan', (
+      tester,
+    ) async {
+      final session = await tester.runAsync(h.media.turnOnNow);
+      // 2 was shot before the Turn off in the shade (generation 6 then), 3
+      // after it.
+      h.bridge.put([
+        fakeVideo(id: 2, generation: 6, sizeBytes: 2),
+        fakeVideo(id: 3, generation: 7, sizeBytes: 3),
+      ]);
+      h.background.shadeAction = ShadeAction(
+        kind: ShadeActionKind.turnOff,
+        since: session!.since!,
+        at: DateTime.utc(2026, 6, 1, 18),
+        generations: const {'external_primary': 6},
+      );
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      // Had the scan run first, 3 would be in To tag too.
+      expect(
+        (await tester.runAsync(h.media.toTag))!.map((c) => c.mediaStoreId),
+        [2],
+      );
+      expect(
+        await tester.runAsync(h.media.phoneState.loadShooting),
+        ShootingState.off,
+      );
+      expect(h.background.shadeAction, isNull);
+      expect(h.background.calls.first, 'pendingShadeAction');
+      // The scan found Shooting mode off: no clear.
+      expect(clears(), 0);
+    });
+
+    testWidgets('lifecycle clears the notification after a scan', (
+      tester,
+    ) async {
+      await h.media.turnOnNow();
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(clears(), 1);
+      await resume(tester);
+      await work(tester);
+      expect(clears(), 2);
+    });
+
+    testWidgets(
+      'lifecycle writes the new baselines before clearing the notification',
+      (tester) async {
+        final recorder = _ClearRecorder();
+        h = VmHarness(background: recorder);
+        h.bridge.put([fakeVideo(id: 1, generation: 5)]);
+        await h.media.turnOnNow();
+        h.bridge.put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)]);
+
+        await pumpLifecycle(tester);
+        await work(tester);
+
+        expect(recorder.heldAtClear, hasLength(1));
+        expect(
+          recorder.heldAtClear.single,
+          isNotNull,
+          reason: 'the copy is written before the notification is cleared',
+        );
+        final held = recorder.heldAtClear.single!;
+        expect(held.shootingOn, isTrue);
+        expect(held.baselines['external_primary']!.generation, 6);
+        expect(held.waitingShots, hasLength(1));
+      },
+    );
+
+    testWidgets('no clear when the scan was skipped', (tester) async {
+      // Shooting mode off.
+      await pumpLifecycle(tester);
+      await work(tester);
+      expect(clears(), 0);
+
+      // On, but without full access.
+      await h.media.turnOnNow();
+      h.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await resume(tester);
+      await work(tester);
+      expect(clears(), 0);
+    });
+
+    testWidgets('no clear when the scan threw', (tester) async {
+      await h.media.turnOnNow();
+      h.bridge.failNext('volumes');
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(clears(), 0);
+    });
+
+    testWidgets('a failing shade apply does not stop the scan', (tester) async {
+      final records = captureLogs();
+      await h.media.turnOnNow();
+      h.bridge.put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)]);
+      h.background.failNext('pendingShadeAction');
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        logText(records),
+        contains('The shade actions failed: PlatformException'),
+      );
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+      expect(clears(), 1);
+    });
+
+    testWidgets('a failing clear is logged by type, not surfaced', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      await h.media.turnOnNow();
+      h.background.failNext('clearNewClipsNotification');
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        logText(records),
+        contains(
+          'Clearing the new clips notification failed: '
+          'PlatformException',
+        ),
+      );
+    });
   });
 }

@@ -16,11 +16,11 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 
 1. `main.dart › main`: calls `runAppWithLogging(body, logDir: getApplicationSupportDirectory)` and nothing else; `ensureInitialized` happens inside the guarded zone (see "Error logging").
 2. `core/logging/logging_setup.dart › runAppWithLogging`: runs `body` in that zone, which calls `runApp(const ProviderScope(child: TakeTrayApp()))`.
-3. `app.dart › TakeTrayApp.build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider)` (the root messenger that outlives screens, D-85), `AppLocalizations` delegates, locales, `onGenerateTitle` and the TakeTray themes: `theme: TakeTrayTheme.light()`, `darkTheme: TakeTrayTheme.dark()`; `themeMode` is left at its default, `ThemeMode.system`, so the app follows the phone's light/dark setting (D-50).
+3. `app.dart › TakeTrayApp` (a `ConsumerStatefulWidget`): `initState` calls `ref.read(backgroundSyncProvider).start()` once, which writes the phone's copy of the background state now and after every change (D-106, "Background bridge"). `build`: `ref.watch(appRouterProvider)` and builds `MaterialApp.router` with `scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider)` (the root messenger that outlives screens, D-85), `AppLocalizations` delegates, locales, `onGenerateTitle` and the TakeTray themes: `theme: TakeTrayTheme.light()`, `darkTheme: TakeTrayTheme.dark()`; `themeMode` is left at its default, `ThemeMode.system`, so the app follows the phone's light/dark setting (D-50).
 4. `router/app_router.dart › appRouter` (`appRouterProvider`, kept alive): creates the `GoRouter` with `initialLocation: Routes.reels` (the platform's initial route is always `/`, so this applies: `MainActivity.getInitialRoute` returns null and Flutter's deep linking is off, D-103), the `onException` handler and the `StatefulShellRoute.indexedStack` with branches reels, toTag, settings; disposes the router with the provider.
 5. `router/app_router.dart › onException`: called by go_router for any location no route matches (unknown top-level paths such as `/nope` and unknown paths below a tab root such as `/reels/stale` or `/to-tag/a/b`); logs `Logger('router').warning` without the location and calls `router.go(Routes.reels)`, so go_router's error page never shows.
 6. `features/shell/views/app_shell.dart › AppShell.build`: builds a `Scaffold(extendBody: true)` whose body is the active branch (`navigationShell`) and whose `bottomNavigationBar` is the floating `TtNavPill` (items Reels, To tag, Settings with the `navReels`/`navToTag`/`navSettings` labels; the To tag badge count is a constant 0 until phase 5, and its semantics label is `toTagBadgeSemantics`). The body is wrapped in a `MediaQuery` that gives back the device's plain bottom inset, because `extendBody` otherwise adds the pill's height to it and `TtNavPill.reservedHeight` would count the pill twice (D-50). The Reels branch shows `ReelsPlaceholderScreen` (a large `TtAppBar` and `ShootingModeSection`, see "To tag, the Shooting mode card and Add earlier videos"), the To tag branch `ToTagScreen` (D-76), and the Settings branch its placeholder screen (`features/settings/views/settings_placeholder_screen.dart`: a `Scaffold` with a large `TtAppBar` titled with the localized tab name).
-7. `app/media_lifecycle.dart › MediaLifecycle` wraps the `MaterialApp.router` that step 3 builds, and starts the media work on the first frame (see "App start and resume").
+7. `app/media_lifecycle.dart › MediaLifecycle` wraps the `MaterialApp.router` that step 3 builds, and applies shade actions and starts the media work on the first frame (see "App start and resume").
 
 ### Tab navigation
 
@@ -308,13 +308,13 @@ The scanner, the verifier and the zone sync (`lib/data/media/`, the three sectio
 
 ### Background bridge (`lib/platform/background_bridge.dart`, `pigeons/background_api.dart`, D-103)
 
-Dart keeps a mirror of what the code that runs while TakeTray is closed needs (Tasks 4 and 5: the new-clips job, the reminders) in Kotlin's own storage, and gets back two things: a "Still shooting?" button tapped in the shade, and the screen a notification tap asks for. Task 6 writes the mirror; Task 7 listens for the taps. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/`.
+Dart keeps a mirror of what the code that runs while TakeTray is closed needs (Tasks 4 and 5: the new-clips job, the reminders) in Kotlin's own storage, and gets back two things: a "Still shooting?" button tapped in the shade, and the screen a notification tap asks for. `BackgroundSync` writes the mirror and `ShadeActions` applies the shade's buttons (D-106, below); Task 7 listens for the taps. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/`.
 
 **Making the contract:** as for the media bridge ("Native bridge" above), with `pigeons/background_api.dart` → `lib/platform/background_api.g.dart` and `background/BackgroundApi.g.kt` (package `app.taketray.background`); `cd app && ../tool/dart run pigeon --input pigeons/background_api.dart`. `tool/check_generated` regenerates every `pigeons/*.dart`, so it covers this one too. The contract has a host API (`BackgroundHostApi`, Dart calls Kotlin) and a Flutter API (`BackgroundFlutterApi.onLaunchAction`, Kotlin calls Dart: the one native-to-Dart path).
 
 **Writing the mirror** (`writeState`):
 
-1. A caller (Task 6) reads `ref.watch(backgroundBridgeProvider)` (`platform/background_bridge.dart › backgroundBridge`, kept alive), which builds `PigeonBackgroundBridge()` and calls its `dispose` when the provider goes.
+1. The caller, `BackgroundSync` ("Keeping the copy in step" below), reads `ref.watch(backgroundBridgeProvider)` (`platform/background_bridge.dart › backgroundBridge`, kept alive), which builds `PigeonBackgroundBridge()` and calls its `dispose` when the provider goes.
 2. `PigeonBackgroundBridge.writeState(BackgroundState)` builds a `BackgroundStateMsg`: `since` → `sinceMs` (UTC ms, null while off); `baselines` (a map by volume name) → a `VolumeBaselineMsg` list **sorted by volume name**; `waitingShots` → `waitingShotMs` **sorted ascending**; the folders and the reminder fields as they are. **[bridge]**
 3. Kotlin: `BackgroundHostApiImpl.writeState` runs on `Dispatchers.IO` inside `guardedOnIo`: `BackgroundState.from(msg)`, `BackgroundStateStore.write(state)` (**stored first**), then `arming.apply(context, state)`. `MainActivity` passes `Arming.background()`: the channels, the new-clips job's part (`NewClipsArming`, "New clips while TakeTray is closed" below) and the alarms (`ReminderArming`, "Reminders" below). An exception from either step reaches Dart as `native-error`, `"writeState failed: <ExceptionClass>"`; a failed arming leaves the new state stored.
 4. **The store** (`background/BackgroundStateStore.kt`), in the `taketray_native` preferences (`ZoneChangeStore.PREFS_NAME`):
@@ -323,9 +323,29 @@ Dart keeps a mirror of what the code that runs while TakeTray is closed needs (T
    - `posted_new_clips`: an `Int`, 0 when missing or of another type.
    - Every write is `commit()` (a receiver's process can end as soon as it returns, losing a queued `apply()`); every method holds one lock shared by all instances.
 
-**The shade action** (`ShadeActionReceiver` writes it, "Reminders" below; Task 6 applies it): `pendingShadeAction()` → `store.shadeAction()` → `ShadeAction(kind, since, at, generations)` in Dart (`since` and `at` UTC, `generations` a map by volume name). `clearShadeAction(DateTime at)` sends `at.millisecondsSinceEpoch`.
+**The shade action** (`ShadeActionReceiver` writes it, "Reminders" below; `ShadeActions` applies it, below): `pendingShadeAction()` → `store.shadeAction()` → `ShadeAction(kind, since, at, generations)` in Dart (`since` and `at` UTC, `generations` a map by volume name). `clearShadeAction(DateTime at)` sends `at.millisecondsSinceEpoch`.
 
-**The new-clips notification:** `clearNewClipsNotification()` (Dart calls it after a scan) → `Notifier.cancelNewClips()` (cancels id 1, `Notifier.NEW_CLIPS`) and `store.setPostedNewClips(0)`.
+**The new-clips notification:** `clearNewClipsNotification()` (`MediaLifecycle` calls it after a scan that ran, once the new baselines are in the copy: "App start and resume") → `Notifier.cancelNewClips()` (cancels id 1, `Notifier.NEW_CLIPS`) and `store.setPostedNewClips(0)`.
+
+**Keeping the copy in step** (`lib/data/background/background_sync.dart › BackgroundSync`, `backgroundSyncProvider`, kept alive; D-106):
+
+1. `TakeTrayApp.initState` calls `start()` once (a second call does nothing). It listens to `PhoneStateRepository.watchShooting()`, `SettingsRepository.watch()` and `ClipsRepository.watchPendingShotTimes()` (the pending clips' `dateTakenUtc`, oldest first, emitted only when the list changes). Each event asks for a write; the first events ask for the write at app start.
+2. **The write loop:** one pass at a time. A request while a pass runs sets a flag, and exactly one more pass follows however many came (so only the newest state is written after a running one). `dispose()` (the provider goes) cancels the three subscriptions; a pass already running finishes.
+3. **One pass** (`_writeOnce`), all inside one `try`:
+   1. `ShadeActions.apply()` first ("Applying a shade action" below). A Turn off tapped in the shade while the app runs has already written the copy "off"; the database still says on until it is applied, and writing that over the phone's "off" would re-arm the job.
+   2. Read the state from the database **now** (not from the stream events): `loadShooting()`, `SettingsRepository.load()`, `ClipsRepository.pendingShotTimes()` → `BackgroundState(shootingOn, since and baselines only while on, watchedFolders, waitingShots, eveningEnabled, eveningMinutes, stillReminderEnabled: true (Phase 10 adds the switch), stillAnswered)`.
+   3. Equal to the last state the phone took → nothing (no bridge call). Otherwise forget the last state, `writeState(state)`, and remember it. The first pass after `start()` has no last state, so it always writes (every app start re-arms the job and the alarms).
+   4. Any error (the apply, a read, the write) is logged as `Writing the background copy failed: <ErrorType>` and nothing is remembered as written, so the next request writes again. A failed apply skips the write, which leaves the phone's "off" in place.
+4. The apply's own database changes (the session ended, clips added, the answer stored) emit, which asks for one more pass: the action is gone and the state equals the one just written, so it stops there.
+5. **`flush()`** (after a scan, "App start and resume"): asks for a pass and completes when the loop is idle; it never throws. It reads the database itself, so a baseline the scan just moved is in the copy even before the streams deliver it. With nothing new it completes without a write; while writes fail, it completes after logging.
+
+**Applying a shade action** (`lib/data/background/shade_actions.dart › ShadeActions.apply`, `shadeActionsProvider`, kept alive; D-106). Called by `MediaLifecycle` (first step of every run) and by `BackgroundSync` (before every write). A call made while one runs shares it.
+
+1. `pendingShadeAction()`. None → done.
+2. `loadShooting()`. Not `isSession(action.since)` (Shooting mode on, and its `since` equal **to the millisecond**: the phone keeps `sinceMs`, while a stored `since` keeps a real clock's microseconds) → logged as dropped, for another session; go to 4.
+3. Turn off → `MediaScanner.endSessionAt(since: action.since, generations: action.generations)` ("Finding new clips"). Keep on → `PhoneStateRepository.markStillAnswered(action.since)`: compare-and-set on the session; writes `stillAnswered: true` into the `shootingMode` value (kept by `advanceBaseline`, gone with `turnShootingOff`).
+4. `clearShadeAction(action.at)`: the phone removes it only if its `atMs` is still that tap's, so a newer tap stays.
+5. A failure in 1, 3 or 4 throws (the caller logs it by type) and leaves the action for the next try; a Turn off whose session ended by then is dropped in step 2 and cleared.
 
 **Notification permission** (`POST_NOTIFICATIONS`, a runtime permission from Android 13):
 
@@ -346,7 +366,7 @@ Dart keeps a mirror of what the code that runs while TakeTray is closed needs (T
 
 **Errors:** as the media bridge: every handler runs in `guarded` (`bridge/BridgeSupport.kt › guardedWith` with the background `nativeError`), so Dart gets a `PlatformException` with code `native-error` and `"<method> failed: <ExceptionClass>"` (logged at warning level under the tag `TakeTrayBackground`), or the bridge's own codes (`no-activity`, `busy`, `host-gone`). `PigeonBackgroundBridge` does not catch them.
 
-**In tests:** `test/support/fake_background_bridge.dart › FakeBackgroundBridge` records every successful write in `writes` (the last in `state`), answers from settable fields (`shadeAction`, cleared only for its own `at`; `access`, `onRequestNotificationAccess`, `maker`, `batteryOpens`), gives `startAction` as the first event of `launchActions` and sends taps with `emit`, logs every call in `calls`, and fails the next call of a method with `failNext`. `test/platform/background_bridge_test.dart` tests `PigeonBackgroundBridge` against a stub `BackgroundHostApi`, the generated channels with a mock messenger, and the Flutter API through `handlePlatformMessage`. Kotlin: `src/test/kotlin/app/taketray/background/` ("Android unit tests").
+**In tests:** `test/support/fake_background_bridge.dart › FakeBackgroundBridge` records every successful write in `writes` (the last in `state`), answers from settable fields (`shadeAction`, cleared only for its own `at`, compared in milliseconds as on the phone; `access`, `onRequestNotificationAccess`, `maker`, `batteryOpens`), gives `startAction` as the first event of `launchActions` and sends taps with `emit`, logs every call in `calls`, fails the next call of a method with `failNext`, and holds the next call of a method with `gate` (it takes effect when the gate opens). `VmHarness` puts one (`background`) into every container and `ProviderScope` it builds, so no widget or view-model test reaches the phone's channel. `test/data/background/` tests `BackgroundSync` and `ShadeActions` on a real in-memory database. `test/platform/background_bridge_test.dart` tests `PigeonBackgroundBridge` against a stub `BackgroundHostApi`, the generated channels with a mock messenger, and the Flutter API through `handlePlatformMessage`. Kotlin: `src/test/kotlin/app/taketray/background/` ("Android unit tests").
 
 ### New clips while TakeTray is closed (`background/NewClipsJobService.kt`, D-104)
 
@@ -415,10 +435,10 @@ Two reminders run from alarms while TakeTray is closed: the evening reminder (on
 **A shade button** (`ShadeActionReceiver.onReceive` → `inBackground("shade action")`):
 
 1. `store.state()`. No `sinceMs` extra, Shooting mode off, or `state.sinceMs != sinceMs` → only `cancelStillShooting()`. Nothing is recorded.
-2. **Turn off:** `generations(Receivers.volumes(context), state)`: for each baseline, the volume's current generation (`MediaStore.getGeneration`) when its version (`MediaStore.getVersion`) still equals the baseline's; a rebuilt or unmounted volume is left out, and so is one whose read throws (logged `volume generation not read: <Class>`). `store.putShadeAction(ShadeActionMsg(TURN_OFF, sinceMs, now, generations))`; `store.write(state.copy(shootingOn = false, sinceMs = null))`; `Receivers.arming().apply(context, off, keepNewClips = true)`: the job is cancelled, the Still shooting? alarm and notification are cancelled, the evening alarm stays, and the new-clips notification **stays** (those clips arrive when the app opens; its scan clears it).
+2. **Turn off:** `generations(Receivers.volumes(context), state)`: for each baseline, the volume's current generation (`MediaStore.getGeneration`) when its version (`MediaStore.getVersion`) still equals the baseline's; a rebuilt or unmounted volume is left out, and so is one whose read throws (logged `volume generation not read: <Class>`). `store.putShadeAction(ShadeActionMsg(TURN_OFF, sinceMs, now, generations))`; `store.write(state.copy(shootingOn = false, sinceMs = null))`; `Receivers.arming().apply(context, off, keepNewClips = true)`: the job is cancelled, the Still shooting? alarm and notification are cancelled, the evening alarm stays, and the new-clips notification **stays** (those clips arrive when the app opens; its write of the copy, off, then removes it).
 3. **Keep on:** `store.putShadeAction(ShadeActionMsg(KEEP_ON, sinceMs, now, []))`; `store.write(state.copy(stillAnswered = true))`; `ReminderScheduler.cancelStill()`.
 4. In both, `cancelStillShooting()` runs last, even after an error.
-5. Dart applies the stored action at the next app start (Task 6; "Background bridge" above).
+5. Dart applies the stored action at the next app start or resume, or before its next write of the copy if the app is open (`ShadeActions`, D-106; "Background bridge" above). After a Turn off, the app's write of the copy (off) cancels the new-clips notification, once the clips shot before the tap are in To tag.
 
 **The store** (`taketray_native` preferences, `commit()`): `still_posted_since` (Long, the handled session), `evening_handled_day` (Long, `localDay` of the evening the receiver last handled, posted or quiet; the evening's day, not the delivery's) and `evening_armed_for` (Long, the evening instant the evening alarm stands for, kept through a catch-up; absent while the reminder is off); missing or of another type reads as null.
 
@@ -452,7 +472,7 @@ Where times come from: a clip's instant is `fingerprint.dateTakenUtc` (D-69); it
 
 ### Finding new clips (`lib/data/media/media_scanner.dart`, D-72)
 
-Triggered by "App start and resume" (below, D-75): `MediaLifecycle` on the first frame and on resume, `ToTagController` when To tag opens and on resume, the access controller after a grant, and the Shooting mode switch after it turns on. Every media job (scan, Add earlier videos, verify) runs on the one `MediaWorkQueue` (`media_work_queue.dart`, `mediaWorkQueueProvider`, keep-alive): one at a time, in order; a job that throws fails only its own caller.
+Triggered by "App start and resume" (below, D-75): `MediaLifecycle` on the first frame and on resume, `ToTagController` when To tag opens and on resume, the access controller after a grant, and the Shooting mode switch after it turns on. `endSessionAt` (below) is called only by `ShadeActions`. Every media job (scan, end of a session, Add earlier videos, verify) runs on the one `MediaWorkQueue` (`media_work_queue.dart`, `mediaWorkQueueProvider`, keep-alive): one at a time, in order; a job that throws fails only its own caller.
 
 **Calling `scan()`:**
 
@@ -462,27 +482,35 @@ Triggered by "App start and resume" (below, D-75): `MediaLifecycle` on the first
 **One scan** (`_scanOnce`):
 
 1. `PhoneStateRepository.loadShooting()`. Off → `ScanShootingOff`. Nothing else is read.
-2. `bridge.accessReport()`. Not `full` → `ScanNoAccess`; nothing written (the zone sync below does not run either). Full → `markAccessWasFull()` writes `mediaAccessWasFull`.
-3. `ZoneSync.sync()` (see "Zone sync" below) runs first, inside this job, so the timeline read next already holds the zone changes the phone saw while the app was away (D-72, I-2). A failure is logged by the error's type only and the scan goes on with the timeline it has. Then reads once: `SettingsRepository.load().watchedFolders`, `ZoneRepository.all()` (the timeline), `bridge.currentZoneId()`, `clock.now()`, then `bridge.volumes()`. A `PlatformException` in step 2 or 3 is logged with its code (never its message) and rethrown.
-4. `loadShooting()` again: off, or another `since` → `ScanShootingOff`, nothing more written. Then `PhoneStateRepository.volumeVersions()` once.
-5. For each volume, `planVolume(stored baseline, volume)` (`domain/rules/baseline.dart`, D-70):
+2. `_prepare` (shared with `endSessionAt`): `bridge.accessReport()`. Not `full` → `ScanNoAccess`; nothing written (the zone sync below does not run either). Full → `markAccessWasFull()` writes `mediaAccessWasFull`.
+3. Still in `_prepare`: `ZoneSync.sync()` (see "Zone sync" below) runs first, inside this job, so the timeline read next already holds the zone changes the phone saw while the app was away (D-72, I-2). A failure is logged by the error's type only and the scan goes on with the timeline it has. Then reads once: `SettingsRepository.load().watchedFolders`, `ZoneRepository.all()` (the timeline), `bridge.currentZoneId()`, `clock.now()`, then `bridge.volumes()`. A `PlatformException` in step 2 or 3 is logged with its code (never its message) and rethrown.
+4. `_stillSession`: `loadShooting()` again: off, or another `since` → `ScanShootingOff`, nothing more written. Then `_scanVolumes` (steps 5 and 6, shared with `endSessionAt`) reads `PhoneStateRepository.volumeVersions()` once.
+5. For each volume (with caps, `endSessionAt` below, a volume not in them is skipped first and logged as `not in the tap`), `planVolume(stored baseline, volume)` (`domain/rules/baseline.dart`, D-70):
    - `SkipVolume` (not mounted): nothing. A card that is not listed at all is not visited either. Its baseline, version and clips stay.
    - `Resync` (version changed, or generation went back): `LibraryResync.resync` (`lib/data/media/library_resync.dart`): `bridge.allVideos(volume)` → `ClipsRepository.mediaStoreClipsOn(volume)` → `matchAfterRebuild(those clips, rows, volumeName: volume, now)` → `applyRebuildMatch(volume, match)` (writes `clips.mediaStoreId`, `missing`, `lastVerifiedAt`; lost clips leave To tag and Skipped unless they are in a reel, Ruling Y) → `recordVolumeVersion`. Then `advanceBaseline(expected: the stored baseline, next: (version, generation), rebuilt: true)`. No clip is added. If the last write is refused (Shooting mode went off and on meanwhile), the remap stays and nothing else is written.
    - Otherwise, first `LibraryResync.catchUp(volume, recorded versions)`: same version → nothing; none recorded → `recordVolumeVersion`; another version → `resync` as above (the volume is reported in `resynced`). Then:
      - `StartFromNow` (no baseline): `advanceBaseline(volume, expected: null, next: (version, generation))`. No video on it is new.
-     - `ScanAfter(g)`: the paging below.
+     - `ScanAfter(g)`: the paging below (with the volume's cap, if any).
    - A `PlatformException`, or any other error, from any of these puts the volume in `failedVolumes` (logged by volume name and the code or the error's type); its baseline is not written; the next volume runs.
 6. Returns `ScanDone(added, resynced, failedVolumes)`.
 
 **`ScanAfter(g)`, paging one volume** (`_scanAfter`):
 
-1. `captured` = the volume's generation from step 3. `cursor` = `g`, `limit` = 500.
+1. `captured` = the volume's generation from step 3, or the cap when one is given and lower (`endSessionAt`: the generation at the shade's tap). `cursor` = `g`, `limit` = 500.
 2. `bridge.videosAddedAfter(volume, cursor, folders, limit)`. Rows with `generationAdded > captured` are dropped, and the page that held one is the last. The others are kept in a map by MediaStore id (a row that comes back on the next page counts once; the later copy wins).
 3. Fewer rows than `limit`: the last page.
 4. A full page: `next = nextPageCursor(cursor, page)`. Not null: `cursor = next`, `limit = 500`, back to 2. Null (every row in one generation, or no progress): `limit` doubles (1000, 2000, …, 16000) and the same cursor is asked again. Still stalled at 16000: stop, `truncated` = true.
 5. The usable rows (`isUsable`: finished, with a length and a size above 0) → `ClipsRepository.addCheckedClips([newClipFrom(v, now, zoneId: zoneAt(timeline, shotAt(v)) ?? currentZone)], sameVideo: stored clip vs its row)`: a stored clip holding a row's number that is the same video is kept; one that is not is detached (and leaves To tag and Skipped unless it is in a reel, Ruling Y) and the row saved as a new clip; new clips get a `clips` row and an `inbox` row `pending`. All one transaction.
 6. Only after step 5 succeeded: `advanceBaseline(from: g, captured, seen: every kept row, now, truncated)` (`domain/rules/baseline.dart`), which holds just below the oldest row that `holdsBaseline` (pending, or finished without a length or with a size of 0 or unknown, and added at most three hours ago; a row that is not usable yet is read again by every scan in that time, and the cursor still pages past it). If that differs from `g`, `PhoneStateRepository.advanceBaseline(volume, expectedSession, expected: stored baseline, next: (version, generation))`, compare-and-set (a stale scan writes nothing).
 7. Logs the volume name and counts (rows, pages, usable, new, held, detached, whether the baseline moved); a truncated scan logs a warning.
+
+**Ending a session from the shade** (`MediaScanner.endSessionAt(since:, generations:)`, D-106). `ShadeActions` calls it for a Turn off tapped in the shade; `generations` is each baselined volume's generation at the tap (a volume whose version no longer matched its baseline, or that was not mounted, is not in it). One job on `MediaWorkQueue`, queued like any other and never shared with `scan()`'s coalesced run:
+
+1. `loadShooting()`. Not `isSession(since)` (compared to the millisecond) → `ScanShootingOff`; nothing is read or written.
+2. `_prepare` (as the scan's steps 2 and 3, logged as "Ending the session"). Without full access → nothing read; go to 4 and answer `ScanNoAccess`. A `PlatformException` there is logged and rethrown: nothing changes, and the action stays for the next try.
+3. `_stillSession` (another session meanwhile → `ScanShootingOff`, nothing written), then `_scanVolumes` with `caps: generations`: only the volumes in the map, each as the scan does (a rebuilt volume is resynced, an unmounted one skipped), with `captured` lowered to its cap, so a video added after the tap is never kept and the baseline moves no higher. A volume that fails is in `failedVolumes` and does not stop the end. An empty map scans nothing.
+4. `PhoneStateRepository.endSession(since)`: in one transaction, delete `shootingMode` only if it is still that session (a session switched off and on again meanwhile stays). Logged as `Ended the session from the shade: off` (or `left on`).
+5. Returns the `ScanDone` of step 3 (or `ScanNoAccess`).
 
 ### Checking clips still exist (`lib/data/media/media_verifier.dart`, D-72)
 
@@ -521,14 +549,16 @@ No baseline is read or written.
 
 `MediaLifecycle` is a widget in `TakeTrayApp` above the router. It has an `AppLifecycleListener` and shows its child unchanged.
 
-1. **First frame** (`addPostFrameCallback`): starts the prune (step 5) and a run (steps 2 to 4).
-2. **Run, step 1: zone sync.** `ZoneSync.sync()`. This stays even though the scan syncs too: with Shooting mode off the scan does nothing, and the timeline must still learn the zone changes.
-3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state. If the very first read fails the state is an `AsyncError` until a later `refresh()` or `allow()` succeeds; a first read that fails after one of those already published a view hands that view back instead of replacing it.
-4. **Run, step 3: scan.** `MediaScanner.scan()` (see "Finding new clips").
-5. **Prune, once per app start (once per mount of `MediaLifecycle`):** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
-6. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
-7. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune.
-8. **Runs never overlap.** A start or resume while a run is going sets a flag; when the run ends, exactly one more run follows, however many triggers came. The scanner's own coalescing (D-72) and the media queue stay in force underneath.
+1. **First frame** (`addPostFrameCallback`): starts the prune (step 7) and a run (steps 2 to 6).
+2. **Run, step 1: shade actions.** `ShadeActions.apply()` (see "Background bridge", D-106): a Still shooting? button tapped in the shade while the app was closed. First, so a Turn off ends its session (adding the clips shot before the tap) before the scan below could add the ones shot after it.
+3. **Run, step 2: zone sync.** `ZoneSync.sync()`. This stays even though the scan syncs too: with Shooting mode off the scan does nothing, and the timeline must still learn the zone changes.
+4. **Run, step 3: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state. If the very first read fails the state is an `AsyncError` until a later `refresh()` or `allow()` succeeds; a first read that fails after one of those already published a view hands that view back instead of replacing it.
+5. **Run, step 4: scan.** `MediaScanner.scan()` (see "Finding new clips").
+6. **Run, step 5: after a scan that ran** (`ScanDone`; not after `ScanShootingOff`, `ScanNoAccess` or a scan that threw): `BackgroundSync.flush()`, then `BackgroundBridge.clearNewClipsNotification()` (D-106). The flush writes the moved baselines into the phone's copy first, so a new-clips job that runs after the clear counts with them, not the old ones, and cannot post the clips just scanned again. A failed write is logged by the flush, and the clear still runs.
+7. **Prune, once per app start (once per mount of `MediaLifecycle`):** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
+8. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
+9. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune.
+10. **Runs never overlap.** A start or resume while a run is going sets a flag; when the run ends, exactly one more run follows, however many triggers came. The scanner's own coalescing (D-72) and the media queue stay in force underneath.
 
 **Other places that start media work (all guarded, none waited for by the UI):**
 - `ToTagController.build` (when To tag is opened) and `onResume()`: `scan()`, then `verify` of the clips waiting in To tag (`watchInbox(pending).first`). The two are independent: a failed scan does not skip the verify. The list is the database's own (`watchInbox(pending)`) whatever happens.

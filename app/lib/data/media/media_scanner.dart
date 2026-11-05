@@ -129,55 +129,134 @@ class MediaScanner {
     return _scanOnce();
   });
 
+  /// Ends the Shooting mode session that started at [since], as the shade's
+  /// Turn off asked while the app was closed (D-105, D-106): first the clips
+  /// shot before the tap, then off.
+  ///
+  /// [generations] holds each baselined volume's generation at the tap, by
+  /// volume name. One job on the media queue, never shared with [scan]:
+  /// - if the stored session is not [since] (compared to the millisecond,
+  ///   [ShootingState.isSession]), it returns [ScanShootingOff] and changes
+  ///   nothing;
+  /// - otherwise it scans each volume in [generations] the way [scan] does,
+  ///   with that generation as the cap: rows added after it are left out,
+  ///   and the baseline moves no higher than it. A volume not in the map is
+  ///   left alone (logged);
+  /// - then, in the same job, it switches Shooting mode off, only if the
+  ///   session is still [since] (`PhoneStateRepository.endSession`). A
+  ///   volume that does not answer is logged and does not stop the end;
+  ///   without full access nothing is read, Shooting mode goes off, and the
+  ///   answer is [ScanNoAccess]. When the phone does not answer before the
+  ///   volumes are read, it throws and changes nothing.
+  Future<ScanOutcome> endSessionAt({
+    required DateTime since,
+    required Map<String, int> generations,
+  }) => _queue.run(() async {
+    final session = await _phone.loadShooting();
+    if (!session.isSession(since)) {
+      _log.info('Ending the session skipped: it is not the stored one');
+      return const ScanShootingOff();
+    }
+    final run = await _prepare(session, 'Ending the session');
+    final ScanOutcome outcome;
+    if (run == null) {
+      outcome = const ScanNoAccess();
+    } else if (!await _stillSession(session)) {
+      _log.info('Ending the session stopped: Shooting mode changed meanwhile');
+      return const ScanShootingOff();
+    } else {
+      outcome = await _scanVolumes(run.$1, run.$2, caps: generations);
+    }
+    final ended = await _phone.endSession(since);
+    _log.info(
+      'Ended the session from the shade: '
+      '${ended ? 'off' : 'left on, it had changed'}',
+    );
+    return outcome;
+  });
+
   Future<ScanOutcome> _scanOnce() async {
     final session = await _phone.loadShooting();
     if (!session.on) {
       _log.info('Scan skipped: Shooting mode is off');
       return const ScanShootingOff();
     }
-    final _ScanContext context;
-    final List<MediaVolume> volumes;
+    final run = await _prepare(session, 'Scan');
+    if (run == null) return const ScanNoAccess();
+
+    // Shooting mode may have gone off (and on) while the phone answered: then
+    // this scan belongs to no session and writes nothing at all (M6).
+    if (!await _stillSession(session)) {
+      _log.info('Scan stopped: Shooting mode changed while it ran');
+      return const ScanShootingOff();
+    }
+    return await _scanVolumes(run.$1, run.$2);
+  }
+
+  /// What every volume of one run shares, and the volumes, read from the
+  /// phone. Null without full access (logged as [what] skipped). A phone
+  /// that does not answer is logged and rethrown.
+  Future<(_ScanContext, List<MediaVolume>)?> _prepare(
+    ShootingState session,
+    String what,
+  ) async {
     try {
       final access = await _bridge.accessReport();
       if (access.level != MediaAccessLevel.full) {
-        _log.info('Scan skipped: access is ${access.level.name}');
-        return const ScanNoAccess();
+        _log.info('$what skipped: access is ${access.level.name}');
+        return null;
       }
       await _phone.markAccessWasFull();
       // The zone changes the phone saw while the app was away must be in the
       // timeline before it is read, or a new clip gets the old zone for good.
       await _syncZones();
-      context = _ScanContext(
+      final context = _ScanContext(
         session: session,
         folders: (await _settings.load()).watchedFolders,
         timeline: await _zones.all(),
         currentZone: await _bridge.currentZoneId(),
         now: _clock.now(),
       );
-      volumes = await _bridge.volumes();
+      return (context, await _bridge.volumes());
     } on PlatformException catch (e) {
-      _log.warning('Scan stopped: the phone did not answer (${e.code})');
+      _log.warning('$what stopped: the phone did not answer (${e.code})');
       rethrow;
     }
+  }
 
-    // Shooting mode may have gone off (and on) while the phone answered: then
-    // this scan belongs to no session and writes nothing at all (M6).
+  /// Whether [session] is still the stored one.
+  Future<bool> _stillSession(ShootingState session) async {
     final still = await _phone.loadShooting();
     final since = session.since;
-    if (!still.on ||
-        since == null ||
-        still.since == null ||
-        !still.since!.isAtSameMomentAs(since)) {
-      _log.info('Scan stopped: Shooting mode changed while it ran');
-      return const ScanShootingOff();
-    }
+    return still.on &&
+        since != null &&
+        still.since != null &&
+        still.since!.isAtSameMomentAs(since);
+  }
+
+  /// Scans [volumes], one at a time: the per-volume part of [scan] and
+  /// [endSessionAt].
+  ///
+  /// With [caps] (volume name to generation), only the volumes in it are
+  /// scanned, each up to its cap; any other volume is left alone (logged).
+  /// A volume that fails is named in [ScanDone.failedVolumes] and does not
+  /// stop the others.
+  Future<ScanDone> _scanVolumes(
+    _ScanContext context,
+    List<MediaVolume> volumes, {
+    Map<String, int>? caps,
+  }) async {
     final recorded = await _phone.volumeVersions();
 
     var added = 0;
     final resynced = <String>{};
     final failed = <String>{};
     for (final volume in volumes) {
-      final baseline = session.baselines[volume.name];
+      if (caps != null && !caps.containsKey(volume.name)) {
+        _log.info('Volume ${volume.name}: not in the tap, left alone');
+        continue;
+      }
+      final baseline = context.session.baselines[volume.name];
       final plan = planVolume(baseline, volume);
       if (plan is SkipVolume) {
         _log.info('Volume ${volume.name}: not mounted, left alone');
@@ -199,7 +278,13 @@ class MediaScanner {
           case StartFromNow():
             await _startFromNow(context, volume);
           case ScanAfter(:final generation):
-            added += await _scanAfter(context, baseline!, volume, generation);
+            added += await _scanAfter(
+              context,
+              baseline!,
+              volume,
+              generation,
+              cap: caps?[volume.name],
+            );
           case SkipVolume():
           case Resync():
           // Handled above.
@@ -277,6 +362,9 @@ class MediaScanner {
   ///   A row added after it belongs to the next scan: it is not kept, and a
   ///   page that reaches one is the last. So a scan that pages on after
   ///   Shooting mode went off and on cannot pick up a video shot in between.
+  ///   A [cap] (`endSessionAt`: the generation at the shade's tap) lowers
+  ///   `captured` to it, so a row added after the tap is never kept, and the
+  ///   baseline moves no higher than the cap.
   /// - The scan cursor is separate from the baseline. After a full page it
   ///   moves to [nextPageCursor] (one below the page's highest generation,
   ///   because rows written together share one), and rows that come back on
@@ -290,9 +378,12 @@ class MediaScanner {
     _ScanContext context,
     VolumeBaseline baseline,
     MediaVolume volume,
-    int from,
-  ) async {
-    final captured = volume.generation;
+    int from, {
+    int? cap,
+  }) async {
+    final captured = cap == null
+        ? volume.generation
+        : min(volume.generation, cap);
     final seen = <int, MediaVideo>{};
     var cursor = from;
     var limit = pageSize;

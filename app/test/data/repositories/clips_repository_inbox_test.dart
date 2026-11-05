@@ -276,4 +276,52 @@ void main() {
       }
     });
   });
+  group('pending shot times (the background copy, D-106)', () {
+    test('pending shot times ascending and only on change', () async {
+      // shot(n) is shot n minutes before _t0: saved out of order.
+      final [a, b, c] = await clips.saveDetected([shot(2), shot(5), shot(1)]);
+      final seen = <List<DateTime>>[];
+      final sub = clips.watchPendingShotTimes().listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      DateTime at(int n) => _t0.subtract(Duration(minutes: n));
+      expect(seen, [
+        [at(5), at(2), at(1)],
+      ]);
+
+      // A change that leaves the times as they were: no emission.
+      await flagClips(db, {a}, missing: true, at: _t0);
+      await reels.create('Trip');
+      await pumpEventQueue();
+      expect(seen, hasLength(1));
+
+      // Skipped and tagged clips are not waiting.
+      await clips.skipClips([b]);
+      await pumpEventQueue();
+      expect(seen.last, [at(2), at(1)]);
+      final reel = await reels.create('Food');
+      await clips.tagClip(c, {reel.id});
+      await pumpEventQueue();
+      expect(seen.last, [at(2)]);
+      expect(seen, hasLength(3));
+
+      expect(await clips.pendingShotTimes(), [at(2)]);
+    });
+
+    test('equal shot times are all kept', () async {
+      await clips.saveDetected([
+        mediaStoreShot(1, at: _t0),
+        mediaStoreShot(2, at: _t0),
+      ]);
+
+      expect(await clips.watchPendingShotTimes().first, [_t0, _t0]);
+      expect(await clips.pendingShotTimes(), [_t0, _t0]);
+    });
+
+    test('none waiting is an empty list', () async {
+      expect(await clips.watchPendingShotTimes().first, isEmpty);
+      expect(await clips.pendingShotTimes(), isEmpty);
+    });
+  });
 }

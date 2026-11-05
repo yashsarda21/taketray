@@ -172,6 +172,11 @@ void main() {
       ('a bad date', '{"on": true, "baselines": {}, "since": "$secret"}'),
       ('on without a start time', '{"on": true, "baselines": {}}'),
       (
+        'a stillAnswered that is not a bool',
+        '{"on": true, "since": "2026-10-28T09:00:00.000Z", "baselines": {}, '
+            '"stillAnswered": "$secret"}',
+      ),
+      (
         'a generation too big for a double (1e400 is Infinity)',
         '{"on": true, "since": "2026-10-28T09:00:00.000Z", "baselines": '
             '{"a": {"version": "v", "generation": 1e400}}}',
@@ -585,6 +590,138 @@ void main() {
 
       final lines = records.map((r) => r.message).join('\n');
       expect(lines, isNot(contains('v1')));
+    });
+  });
+
+  group('the Still shooting? answer and the session', () {
+    test('old shooting json reads stillAnswered false', () async {
+      await _put(
+        'shootingMode',
+        jsonEncode({
+          'on': true,
+          'baselines': {
+            'external_primary': {'version': 'v1', 'generation': 40},
+          },
+          'since': '2026-10-28T09:00:00.000Z',
+        }),
+      );
+
+      final state = await repo.loadShooting();
+      expect(state.on, isTrue);
+      expect(state.stillAnswered, isFalse);
+      // A null is the same as no key.
+      await _put(
+        'shootingMode',
+        jsonEncode({
+          'on': true,
+          'baselines': <String, Object>{},
+          'since': '2026-10-28T09:00:00.000Z',
+          'stillAnswered': null,
+        }),
+      );
+      expect((await repo.loadShooting()).stillAnswered, isFalse);
+      expect((await repo.loadShooting()).on, isTrue);
+    });
+
+    test('a new session is not answered', () async {
+      expect((await turnOn()).stillAnswered, isFalse);
+    });
+
+    test('advance keeps stillAnswered', () async {
+      final session = await turnOn();
+      expect(await repo.markStillAnswered(session.since!), isTrue);
+
+      expect(
+        await repo.advanceBaseline(
+          'external_primary',
+          expectedSession: await repo.loadShooting(),
+          expected: _phone,
+          next: const VolumeBaseline(version: 'v1', generation: 45),
+        ),
+        isTrue,
+      );
+
+      final state = await repo.loadShooting();
+      expect(state.stillAnswered, isTrue);
+      expect(state.baselines['external_primary']!.generation, 45);
+    });
+
+    test('mark answered only for the same session', () async {
+      final session = await turnOn();
+      final since = session.since!;
+
+      // Another session (a minute earlier): nothing is written.
+      expect(await repo.markStillAnswered(since.subtract(_minute)), isFalse);
+      expect((await repo.loadShooting()).stillAnswered, isFalse);
+
+      // The session: answered, and nothing else changes.
+      expect(await repo.markStillAnswered(since), isTrue);
+      final state = await repo.loadShooting();
+      expect(state.stillAnswered, isTrue);
+      expect(state.since, since);
+      expect(state.baselines, session.baselines);
+      expect(state.on, isTrue);
+
+      // Already answered: nothing to write.
+      expect(await repo.markStillAnswered(since), isFalse);
+    });
+
+    test('mark answered does nothing while off', () async {
+      expect(await repo.markStillAnswered(_t0), isFalse);
+      expect(await _raw('shootingMode'), isNull);
+    });
+
+    test('off forgets the answer; the next session asks again', () async {
+      final session = await turnOn();
+      await repo.markStillAnswered(session.since!);
+      await repo.turnShootingOff();
+      clock.advance(_minute);
+
+      expect((await turnOn()).stillAnswered, isFalse);
+    });
+
+    test('a session with microseconds matches its milliseconds', () async {
+      // A real clock keeps microseconds; the phone's copy keeps `sinceMs`.
+      clock = FixedClock(_t0.add(const Duration(microseconds: 456)));
+      repo = PhoneStateRepository(db, clock);
+      final session = await turnOn();
+      final fromPhone = DateTime.fromMillisecondsSinceEpoch(
+        session.since!.millisecondsSinceEpoch,
+        isUtc: true,
+      );
+
+      expect(session.isSession(fromPhone), isTrue);
+      expect(session.isSession(fromPhone.add(_minute)), isFalse);
+      expect(ShootingState.off.isSession(fromPhone), isFalse);
+      expect(await repo.markStillAnswered(fromPhone), isTrue);
+      expect(await repo.endSession(fromPhone), isTrue);
+      expect(await repo.loadShooting(), ShootingState.off);
+    });
+
+    test('end session turns off only the same session', () async {
+      final session = await turnOn();
+      final since = session.since!;
+
+      expect(await repo.endSession(since.add(_minute)), isFalse);
+      expect((await repo.loadShooting()).on, isTrue);
+
+      expect(await repo.endSession(since), isTrue);
+      expect(await repo.loadShooting(), ShootingState.off);
+      expect(await _raw('shootingMode'), isNull);
+
+      // Already off.
+      expect(await repo.endSession(since), isFalse);
+    });
+
+    test('the answer is logged without a time', () async {
+      final records = _record();
+      final session = await turnOn();
+      await repo.markStillAnswered(session.since!);
+      await repo.endSession(session.since!);
+
+      final lines = records.map((r) => r.message).join('\n');
+      expect(lines, contains('answered'));
+      expect(lines, isNot(contains('2026')));
     });
   });
 

@@ -4,10 +4,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
+import 'package:taketray/data/background/background_sync.dart';
+import 'package:taketray/data/background/shade_actions.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/platform/background_bridge.dart';
 
 // Error types only, never a message, a path or a name (D-10).
 final Logger _log = Logger('mediaLifecycle');
@@ -17,15 +20,23 @@ final Logger _log = Logger('mediaLifecycle');
 /// [child] unchanged.
 ///
 /// On the first frame, and on every resume, in this order:
-/// 1. `ZoneSync.sync`: the time zone changes the phone saw meanwhile. The
+/// 1. `ShadeActions.apply` (D-106): a Still shooting? button tapped in the
+///    shade while the app was closed. It comes first, so a Turn off ends its
+///    session (with the clips shot before the tap) before the scan below
+///    could add the ones shot after it;
+/// 2. `ZoneSync.sync`: the time zone changes the phone saw meanwhile. The
 ///    scan (and Add earlier videos) syncs again inside its own queued job,
 ///    right before it reads the timeline, so it never depends on this step
 ///    having finished; a second sync changes nothing that is stored. This one
 ///    stays because with Shooting mode off the scan does nothing, and the
 ///    timeline must still learn the zone;
-/// 2. `MediaAccessController.refresh`: the access may have changed in the
+/// 3. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
-/// 3. `MediaScanner.scan`: new videos, when Shooting mode is on.
+/// 4. `MediaScanner.scan`: new videos, when Shooting mode is on;
+/// 5. after a scan that ran (`ScanDone`), `BackgroundSync.flush` and then
+///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
+///    To tag now. The new baselines reach the phone's copy first, so the
+///    new-clips job never counts again with the old ones and re-posts.
 ///
 /// Each step runs even if the one before it failed. Nothing is waited for by
 /// the UI, and no error reaches it: every step is guarded and logs only the
@@ -91,6 +102,11 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   Future<void> _run() async {
     await guarded(
       _log,
+      'The shade actions',
+      () => ref.read(shadeActionsProvider).apply(),
+    );
+    await guarded(
+      _log,
       'The zone sync',
       () => ref.read(zoneSyncProvider).sync(),
     );
@@ -99,10 +115,22 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       'The access check',
       () => ref.read(mediaAccessControllerProvider.notifier).refresh(),
     );
-    await guarded(
+    final scanned = await guarded(
       _log,
       'The scan',
       () => ref.read(mediaScannerProvider).scan(),
+    );
+    if (scanned is! ScanDone || !mounted) return;
+    await guarded(
+      _log,
+      'Writing the background copy',
+      () => ref.read(backgroundSyncProvider).flush(),
+    );
+    if (!mounted) return;
+    await guarded(
+      _log,
+      'Clearing the new clips notification',
+      () => ref.read(backgroundBridgeProvider).clearNewClipsNotification(),
     );
   }
 

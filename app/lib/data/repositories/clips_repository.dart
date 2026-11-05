@@ -817,6 +817,37 @@ class ClipsRepository {
     );
   }
 
+  /// When the clips waiting in To tag were shot (their `dateTakenUtc`),
+  /// oldest first, again each time that list changes (D-106: the phone's
+  /// copy holds them for the evening reminder). A change that leaves the
+  /// list as it was (a reel created, a clip flagged missing) does not emit.
+  Stream<List<DateTime>> watchPendingShotTimes() =>
+      _pendingShotTimesQuery().watch().map(_shotTimes).distinct(_sameTimes);
+
+  /// [watchPendingShotTimes] now, once.
+  Future<List<DateTime>> pendingShotTimes() async =>
+      _shotTimes(await _pendingShotTimesQuery().get());
+
+  JoinedSelectStatement<HasResultSet, dynamic> _pendingShotTimesQuery() =>
+      _db.selectOnly(_db.inbox).join([
+          innerJoin(_db.clips, _db.clips.id.equalsExp(_db.inbox.clipId)),
+        ])
+        ..addColumns([_db.clips.dateTakenUtc])
+        ..where(_db.inbox.state.equalsValue(InboxState.pending))
+        ..orderBy([OrderingTerm.asc(_db.clips.dateTakenUtc)]);
+
+  List<DateTime> _shotTimes(List<TypedResult> rows) => [
+    for (final row in rows) row.readWithConverter(_db.clips.dateTakenUtc)!,
+  ];
+
+  static bool _sameTimes(List<DateTime> a, List<DateTime> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!a[i].isAtSameMomentAs(b[i])) return false;
+    }
+    return true;
+  }
+
   /// How many clips are waiting in To tag, again after every change.
   Stream<int> watchPendingCount() => _watchInboxCount(InboxState.pending);
 
