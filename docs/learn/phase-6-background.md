@@ -337,13 +337,20 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   The test `evening re-arms before posting` makes the post throw and checks that tomorrow's alarm is set.
 
-- **A late alarm must not be pushed to tomorrow.** Because the alarm is inexact, 21:00 can pass before Android delivers it. Anything that re-arms in that window (you open the app at 21:01, the phone corrects its clock, TakeTray updates, a reboot) would see that 21:00 has passed and arm tomorrow's in its place, and today's reminder would be lost. But firing "whenever 21:00 has passed" is wrong too: a fresh install opened at 21:30, or the reminder switched on late, would then ring at once while you are looking at the app. So the store remembers which evening the alarm stands for, and a re-arm catches up only an alarm that is **due**: armed for tonight's evening once its time has passed, or for last night's evening just after midnight (a 23:30 alarm still on its way at 00:05), and not handled yet:
+- **A late alarm must not be pushed to tomorrow.** Because the alarm is inexact, 21:00 can pass before Android delivers it. Anything that re-arms in that window (you open the app at 21:01, the phone corrects its clock, TakeTray updates, a reboot) would see that 21:00 has passed and arm tomorrow's in its place, and today's reminder would be lost. But firing "whenever 21:00 has passed" is wrong too: a fresh install opened at 21:30, or the reminder switched on late, would then ring at once while you are looking at the app. So the store remembers which evening the alarm stands for, and a re-arm catches up only an alarm that is **due** (armed for tonight's evening once its time has passed, or for last night's evening just after midnight, a 23:30 alarm still on its way at 00:05), at most 3 hours after that evening (`EVENING_CATCH_UP`), and not handled yet:
 
   ```kotlin
   val due = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone)
-  val catchUp = due?.takeIf { !firing && store.eveningHandledDay() != ReminderTimes.localDay(it, zone) }
+  val catchUp =
+      due?.takeIf {
+          !firing &&
+              nowMs - it <= ReminderTimes.EVENING_CATCH_UP.toMillis() &&
+              store.eveningHandledDay() != ReminderTimes.localDay(it, zone)
+      }
   val armedFor = catchUp ?: ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
   ```
+
+  Three hours is long enough for a late delivery and short enough that a phone that died before 21:00 and boots at 08:00 the next morning does not ring about the evening before. Remove the bound and `a boot the next morning does not post yesterday's evening` fails with `expected:<2026-11-06T[21]:00:00Z> but was:<2026-11-06T[08]:00:00Z>`.
 
   The alarm then fires at the later of `armedFor` and now, and the store keeps `armedFor`: on a catch-up that is still tonight's 21:00, not the 21:01 it fires at, so a second re-arm before it fires catches up again instead of pushing it to tomorrow. Pretend every passed evening was armed (pass `eveningToday(…)` instead of `store.eveningArmedFor()`) and `turning the reminder on after the time passed waits for tomorrow` fails with `expected:<2026-11-0[6T21:0]0:00Z> but was:<2026-11-0[5T21:3]0:00Z>`: switched on at 21:30, it would have rung at once.
 
@@ -394,7 +401,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
       android:exported="false"/>
   ```
 
-- **Re-arming after a restart.** `BootReceiver` listens for `BOOT_COMPLETED` (a reboot), `MY_PACKAGE_REPLACED` (TakeTray was updated) and `TIME_SET` (the clock was changed). Each arms everything again for the stored copy. A zone change (`TimeZoneChangedReceiver`) records the zone, as before, and re-arms with the zone named in the broadcast, so 21:00 is 21:00 where you landed. A reboot at 21:05 arms tomorrow's 21:00 if tonight's has already run, fires tonight's at once if it was armed for tonight and has not run (the phone was off at 21:00), and waits for tomorrow if nothing was armed for tonight.
+- **Re-arming after a restart.** `BootReceiver` listens for `BOOT_COMPLETED` (a reboot), `MY_PACKAGE_REPLACED` (TakeTray was updated) and `TIME_SET` (the clock was changed). Each arms everything again for the stored copy. A zone change (`TimeZoneChangedReceiver`) records the zone, as before, and re-arms with the zone named in the broadcast, so 21:00 is 21:00 where you landed. A reboot at 21:05 arms tomorrow's 21:00 if tonight's has already run, fires tonight's at once if it was armed for tonight and has not run (the phone was off at 21:00), and waits for tomorrow if nothing was armed for tonight. A boot more than 3 hours after the evening (the next morning) waits for the next evening too.
 
 - **Testing alarms as Android fires them.** The tests do not call the receiver's code by hand only: `ReminderTestSupport.fire` takes the alarm Robolectric recorded and sends its `PendingIntent`, which delivers the broadcast to the receiver declared in the manifest. So a wrong action, a wrong component or a missing manifest entry fails a test.
 

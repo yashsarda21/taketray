@@ -142,6 +142,8 @@ class ReminderTimesTest {
         assertEquals(null, ReminderTimes.dueEvening(ms("2026-11-04T23:30:00Z"), ms("2026-11-06T00:15:00Z"), half, london))
         assertEquals(null, ReminderTimes.dueEvening(armedToday, ms("2026-11-05T22:30:00Z"), 22 * 60, london))
         assertEquals(null, ReminderTimes.dueEvening(null, ms("2026-11-05T21:01:00Z"), nine, london))
+        // A re-arm catches one up for 3 hours after it.
+        assertEquals(java.time.Duration.ofHours(3), ReminderTimes.EVENING_CATCH_UP)
     }
 
     @Test

@@ -302,6 +302,41 @@ class ReminderReceiverTest {
     }
 
     @Test
+    fun `a boot the next morning does not post yesterday's evening`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val clipsToday = on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z")))
+        store.write(clipsToday)
+        now = ms("2026-11-05T12:00:00Z")
+        arming.apply(app, clipsToday)
+        assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // The battery died at 20:00; the phone boots at 08:00 on the 6th.
+        now = ms("2026-11-06T08:00:00Z")
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_BOOT_COMPLETED))
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Nor the first app open that morning (after a force-stop, say).
+        arming.apply(app, clipsToday)
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        assertNull(notification(app, Notifier.EVENING))
+    }
+
+    @Test
+    fun `a re-arm 3 hours after the evening still catches up, 3 hours and 1 minute later does not`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val clipsToday = on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z")))
+        store.write(clipsToday)
+        now = ms("2026-11-05T12:00:00Z")
+        arming.apply(app, clipsToday)
+        // 21:00 not delivered yet. At 00:00, exactly 3 hours after it: still caught up.
+        now = ms("2026-11-06T00:00:00Z")
+        arming.apply(app, clipsToday)
+        assertEquals("2026-11-06T00:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // At 00:01, 3 hours and 1 minute after it: the 6th's evening instead.
+        now = ms("2026-11-06T00:01:00Z")
+        arming.apply(app, clipsToday)
+        assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
     fun `an evening armed two nights ago never fires`() {
         val arming = Arming.background(nowMs = { now }, zone = { LONDON })
         val late = on.copy(eveningMinutes = 23 * 60 + 30, waitingShotMs = listOf(ms("2026-11-04T10:00:00Z")))

@@ -23,6 +23,15 @@ object ReminderTimes {
     const val LAST_MINUTE = 24 * 60 - 1
 
     /**
+     * How long after its evening instant a re-arm still keeps an armed,
+     * unhandled evening alarm (a catch-up) instead of moving to the next
+     * evening. Long enough for a late inexact delivery (a 23:30 alarm
+     * re-armed at 00:05); short enough that a phone booted or an app opened
+     * the next morning never rings about the evening before.
+     */
+    val EVENING_CATCH_UP: Duration = Duration.ofHours(3)
+
+    /**
      * The next instant strictly after [nowMs] when the local time in [zone] is
      * [minutes] past midnight ([minutes] outside 0..[LAST_MINUTE] is clamped).
      * On a day where that time does not exist (the clocks go forward over
@@ -60,7 +69,9 @@ object ReminderTimes {
      * null. Today's evening once its time has passed; yesterday's (a late
      * alarm still on its way after midnight) only while today's evening
      * time has not come, so it never takes today's place; nothing older,
-     * and nothing armed for another time setting.
+     * and nothing armed for another time setting. The receiver names and
+     * counts a delivered alarm's evening with this; a re-arm catches one up
+     * only within [EVENING_CATCH_UP] of it.
      */
     fun dueEvening(
         armedForMs: Long?,
@@ -87,9 +98,11 @@ object ReminderTimes {
     }
 
     /**
-     * [nowMs]'s local date in [zone] as `LocalDate.toEpochDay()`: the day the
-     * evening reminder's "handled" mark names. The receiver that sets the
-     * mark and the arming that reads it both use this, in the same zone.
+     * The local date of the instant [nowMs] in [zone] as
+     * `LocalDate.toEpochDay()`. The evening reminder's "handled" mark is the
+     * `localDay` of the evening the alarm stood for (not of its delivery):
+     * the receiver that sets the mark and the arming that reads it both pass
+     * that evening's instant, in the same zone.
      */
     fun localDay(
         nowMs: Long,
