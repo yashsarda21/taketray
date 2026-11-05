@@ -703,7 +703,117 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
 ## 8. Parked media repairs
 
-_Filled in by Task 8._
+**What we built:** two repairs to how the scan finds clips, both parked by Phase 3's final review.
+
+- **Detached clips find their videos again (I-3).** After Android rebuilds its media library, the app matches its stored clips to the new rows by fingerprint. If Android has not finished indexing at that moment, a clip whose video is not in the list yet is *detached*: it gets the number `-id`, is flagged missing, and nothing ever looked at it again. A minute later the same video appears, and the next scan adds it as a brand-new clip. The reel shows a "missing" clip, and To tag shows the same video as a duplicate. Now a scan matches the detached clips again, and a duplicate that already arrived gives way to the clip the user knows.
+- **A volume with no baseline starts at the session, not at now (M-8).** If Shooting mode is on and a volume has no baseline (its read failed at switch-on, or an SD card was inserted mid-trip), its first scan used to say "nothing here is new". Now it adds the clips shot since Shooting mode was switched on.
+
+**Why TakeTray needs it:** spec §4 names the worst failure: a clip in a reel that points at the wrong video. The next worst is a reel whose clips are split from the videos they stand for, so the user's work and the video live in two rows. A background job that wakes up after a reboot or a system update is the likeliest time to meet a half-built index, which is why this task is in the background-detection phase. And a creator inserting a fresh SD card on a trip expects the clips they shot on it to appear.
+
+**Key ideas:**
+
+- **Detached means "not found yet", not "gone".** A detached clip is `mediaStoreId < 0` (it holds `-id`, so no real video can have its number) and missing. It keeps its fingerprint, which is how it is found again. The scan looks for these clips only on a volume whose index is stable (the `ScanAfter` plan) and **before** it pages over the new videos, so a video that is back ahead of the baseline is found to be a clip already:
+
+  ```dart
+  case ScanAfter(:final generation):
+    await _rematchDetached(context, volume);
+    added += await _scanAfter(
+      context,
+      baseline!,
+      volume,
+      generation,
+      cap: caps?[volume.name],
+    );
+  ```
+
+- **One read, and only when needed.** Reading every video on the volume is the expensive part, so the first thing the re-match does is ask the database whether any detached clip exists. With none, the phone is not asked at all. With some, the volume is read once, and the same fingerprint rule as a rebuild picks the match:
+
+  ```dart
+  final detached = await _clips.detachedClipsOn(volume.name);
+  if (detached.isEmpty) return const ReattachResult(0, 0, 0);
+  final current = await _bridge.allVideos(volume.name);
+  final match = matchAfterRebuild(
+    detached,
+    current,
+    volumeName: volume.name,
+    now: now,
+  );
+  final result = await _clips.reattachDetached(volume.name, match.remap);
+  ```
+
+  The rule is "when unsure, leave it": a clip with two possible videos, or a video two clips want, matches nothing and stays detached for the next scan. A wrong match would put a reel clip on the wrong video, which is worse than a clip that is flagged missing.
+
+- **Three things can hold the video's number.** For a detached clip D and its video V, `reattachDetached` (one transaction per volume) looks at who holds V's number: nobody (D takes it and is no longer missing); a duplicate N that is the same video (N gives way); or a clip that is *another* video, such as a stale number (nothing changes). The test for "the same video" is `sameFingerprint`: the same size, length and shooting instant, never the name.
+
+- **The old clip survives, because it has the user's work.** D is in the user's reels, in the order they built. N is the duplicate that landed in To tag or Skipped. So N is deleted and D takes its number. If N was also in reels, D gets the **union** of both clips' links, and where both are in one reel the link with the **earlier** `addedAt` stays, so the order does not change:
+
+  ```dart
+  for (final link in duplicateLinks) {
+    final own = kept[link.reelId];
+    if (own == null) {
+      await _insertLink(keptId, link.reelId, link.addedAt);
+    } else if (link.addedAt.isBefore(own)) {
+      await (_db.update(_db.clipReels)..where(
+            (l) => l.clipId.equals(keptId) & l.reelId.equals(link.reelId),
+          ))
+          .write(ClipReelsCompanion(addedAt: Value(link.addedAt)));
+    }
+  }
+  ```
+
+- **A repair never fails the scan.** If the phone or the database fails during the re-match, the failure is logged by its type and the scan goes on. The clips stay detached and the next scan tries again. Failing the volume instead would keep a session from being ended from the shade (Section 6) because of a repair:
+
+  ```dart
+  try {
+    await _rebuilds.reattach(volume, now: context.now);
+  } on Object catch (e) {
+    _log.warning(
+      'Volume ${volume.name}: matching detached clips again failed with '
+      '${e.runtimeType}; left for the next scan',
+    );
+  }
+  ```
+
+- **A new volume starts at the session.** The phone is asked once for the videos shot since Shooting mode was switched on. Its query is a *superset* (a video also matches if it was added or modified since), so Dart narrows it by the shooting date, `shotAt`. A video shot exactly at the start counts; one shot before does not, even if it was copied onto the card later. It also drops any row added after the generation the scan captured, which belongs to the next scan:
+
+  ```dart
+  if (since == null) return const [];
+  return [
+    for (final v in rows)
+      if (v.generationAdded <= captured && !shotAt(v, now: now).isBefore(since))
+        v,
+  ];
+  ```
+
+- **One end for both scans.** What happens after the rows are known (save the usable ones, then move the baseline) used to be the tail of `_scanAfter`. It is now `_commit`, and `_startNewVolume` calls the same function:
+
+  ```dart
+  return await _commit(
+    context,
+    volume,
+    baseline: null,
+    from: 0,
+    captured: captured,
+    rows: rows,
+    read: '${rows.length} rows shot since the start',
+  );
+  ```
+
+  So a row that is still unfinished (no length yet) is not added this time, and the baseline is held just below it, as for every scan (`holdsBaseline`, D-72). A clip that is already stored stays where it is, and is not added to To tag again. If the phone fails, no baseline is written, and the next scan tries the volume again.
+
+- **The capped end leaves new volumes alone.** When Turn off is tapped in the shade (Section 6), only the volumes that had a baseline at the tap are scanned. A volume with none is not in the tap and is left alone; if a stale copy did name it, its cap is honoured like any other.
+
+**Where it lives:** `app/lib/data/media/library_resync.dart` (`reattach`), `app/lib/data/media/media_scanner.dart` (`_rematchDetached`, `_startNewVolume`, `_commit`), `app/lib/data/repositories/clips_repository.dart` (`detachedClipsOn`, `reattachDetached`, `ReattachResult`), `app/lib/domain/rules/baseline.dart` (`shotSinceSession`). Tests: `app/test/data/repositories/clips_repository_reattach_test.dart`, `app/test/data/media/media_scanner_rematch_test.dart`, `app/test/data/media/media_scanner_new_volume_test.dart`, and the `shotSinceSession` group in `app/test/domain/rules/baseline_test.dart`. Docs: "Finding new clips" and "Tagging data changes" in `docs/flow.md`.
+
+**Try it yourself:** see the order of the reel preserved. From `app/`:
+
+```bash
+../tool/flutter test test/data/repositories/clips_repository_reattach_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repository.dart` and change `link.addedAt.isBefore(own)` to `link.addedAt.isAfter(own)` in `_mergeDuplicate`, then run the same command. `reattachDetached the duplicate is in the same reel: one link, the earliest addedAt kept (the reel clip is the older)` fails with `Expected: {1: DateTime:2026-10-26 09:01:00.000Z}` and `Actual: {1: DateTime:2026-10-26 09:05:00.000Z}`: the merged clip took the later time, so it would move down its reel. Put the line back and run it again to see it pass.
+
+**Decisions:** D-108 (all of this section, amending D-72), with D-69 (the fingerprint), D-70 (the plans and the baseline), D-71 (detaching as `-id`) and D-106 (the capped end) as background.
 
 ## 9. On the S24
 

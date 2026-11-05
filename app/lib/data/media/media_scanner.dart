@@ -425,8 +425,13 @@ class MediaScanner {
         }
         switch (plan) {
           case StartFromNow():
-            await _startFromNow(context, volume);
+            added += await _startNewVolume(
+              context,
+              volume,
+              cap: caps?[volume.name],
+            );
           case ScanAfter(:final generation):
+            await _rematchDetached(context, volume);
             added += await _scanAfter(
               context,
               baseline!,
@@ -461,19 +466,77 @@ class MediaScanner {
     return ScanDone(added, resynced, failed);
   }
 
-  /// A volume with no baseline: its current position becomes the baseline,
-  /// and nothing on it is new.
-  Future<void> _startFromNow(_ScanContext context, MediaVolume volume) async {
-    final wrote = await _phone.advanceBaseline(
-      volume.name,
-      expectedSession: context.session,
-      expected: null,
-      next: _positionOf(volume),
+  /// A volume with no baseline while Shooting mode is on (its read failed at
+  /// switch-on, an import left none, or an SD card was inserted later): the
+  /// clips shot since the session started are new (D-108, M-8), and its
+  /// current generation becomes the baseline. Returns how many clips are new.
+  ///
+  /// The phone is asked once, `videosShotSince` the session's start; the rows
+  /// are narrowed by [shotSinceSession] and then saved and the baseline
+  /// moved as a scan does (`_commit`), so a clip that is already stored is
+  /// not added again and a row that holds the baseline ([holdsBaseline]) is
+  /// not added yet: the baseline holds below it. A [cap] (the capped end) is
+  /// honoured like `_scanAfter` does: no row above it is kept and the
+  /// baseline goes no higher. A failure of the phone or the database leaves
+  /// the volume without a baseline, and the next scan tries again.
+  Future<int> _startNewVolume(
+    _ScanContext context,
+    MediaVolume volume, {
+    int? cap,
+  }) async {
+    final since = context.session.since;
+    final captured = cap == null
+        ? volume.generation
+        : min(volume.generation, cap);
+    final read = since == null
+        ? const <MediaVideo>[]
+        : await _bridge.videosShotSince(
+            volume.name,
+            context.folders,
+            since.millisecondsSinceEpoch,
+          );
+    final rows = shotSinceSession(
+      read,
+      since: since,
+      captured: captured,
+      now: context.now,
     );
     _log.info(
-      'Volume ${volume.name}: first seen in this session, starting at '
-      'generation ${volume.generation}${wrote ? '' : ' (not written)'}',
+      'Volume ${volume.name}: first seen in this session, ${read.length} '
+      'videos asked for since the start, ${rows.length} shot since',
     );
+    return await _commit(
+      context,
+      volume,
+      baseline: null,
+      from: 0,
+      captured: captured,
+      rows: rows,
+      read: '${rows.length} rows shot since the start',
+    );
+  }
+
+  /// Matches the volume's detached clips against everything now on it,
+  /// before the page of new videos is read (D-108, I-3): so a video that is
+  /// back ahead of the baseline is found to be a clip already, not added a
+  /// second time. One read of the volume per scan, and only while a detached
+  /// clip exists (`LibraryResync.reattach`).
+  ///
+  /// It is a repair: a failure is logged by type and the scan carries on,
+  /// the clips stay detached and the next scan tries again. It never fails
+  /// the volume, so a phone that cannot answer cannot keep a session open.
+  Future<void> _rematchDetached(
+    _ScanContext context,
+    MediaVolume volume,
+  ) async {
+    try {
+      await _rebuilds.reattach(volume, now: context.now);
+    } on Object catch (e) {
+      _log.warning(
+        'Volume ${volume.name}: matching detached clips again failed with '
+        '${e.runtimeType}; left for the next scan',
+      );
+    }
   }
 
   /// Android rebuilt the volume's library: find the stored clips again by
@@ -567,7 +630,38 @@ class MediaScanner {
       }
     }
 
-    final rows = seen.values.toList();
+    return await _commit(
+      context,
+      volume,
+      baseline: baseline,
+      from: from,
+      captured: captured,
+      rows: seen.values.toList(),
+      truncated: truncated,
+      read: '${seen.length} rows on $pages pages',
+    );
+  }
+
+  /// Saves the usable [rows] as clips, and only then moves the baseline: the
+  /// end of `_scanAfter` and of a volume's first scan, so both follow one
+  /// rule. Returns how many clips are new.
+  ///
+  /// [baseline] is the one stored for the volume, or null when it has none.
+  /// [from] is the generation the read started after, [captured] the one it
+  /// stopped at, [truncated] whether it stopped early, and [read] what the
+  /// read found, for the log. A crash or a failure while saving leaves the
+  /// baseline where it was, and the next scan sees the rows again; the move
+  /// itself is a compare-and-set, so a stale scan writes nothing.
+  Future<int> _commit(
+    _ScanContext context,
+    MediaVolume volume, {
+    required VolumeBaseline? baseline,
+    required int from,
+    required int captured,
+    required List<MediaVideo> rows,
+    required String read,
+    bool truncated = false,
+  }) async {
     final usable = [
       for (final v in rows)
         if (isUsable(v)) v,
@@ -598,17 +692,20 @@ class MediaScanner {
         .where((v) => holdsBaseline(v, now: context.now))
         .length;
     var moved = 'kept';
-    if (generation != baseline.generation) {
+    if (baseline == null || generation != baseline.generation) {
       final wrote = await _phone.advanceBaseline(
         volume.name,
         expectedSession: context.session,
         expected: baseline,
-        next: VolumeBaseline(version: baseline.version, generation: generation),
+        next: VolumeBaseline(
+          version: baseline?.version ?? volume.version!,
+          generation: generation,
+        ),
       );
       moved = wrote ? 'moved' : 'left: it had changed';
     }
     final summary =
-        'Volume ${volume.name}: ${rows.length} rows on $pages pages, '
+        'Volume ${volume.name}: $read, '
         '${usable.length} usable, $added new, $pending held, '
         '$detached stored clips were other videos; '
         'baseline $moved';

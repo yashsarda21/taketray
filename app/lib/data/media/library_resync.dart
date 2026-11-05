@@ -46,6 +46,41 @@ class LibraryResync {
     return match;
   }
 
+  /// Gives the detached clips of the mounted [volume] their videos back
+  /// (D-108, I-3): a clip a rebuild left detached because Android had not
+  /// indexed its video yet.
+  ///
+  /// With no detached clip on [volume] nothing is read. Otherwise
+  /// `bridge.allVideos(volume)` is matched against them with the same rule as
+  /// a rebuild (`matchAfterRebuild`: a unique fingerprint, never a guess), and
+  /// `ClipsRepository.reattachDetached` writes the result in one transaction.
+  /// A clip with no unique match stays detached, and is tried again by the
+  /// next scan. Returns what was written.
+  ///
+  /// It throws when the phone or the database fails; the caller decides what
+  /// that costs (the scan carries on without it).
+  Future<ReattachResult> reattach(
+    MediaVolume volume, {
+    required DateTime now,
+  }) async {
+    final detached = await _clips.detachedClipsOn(volume.name);
+    if (detached.isEmpty) return const ReattachResult(0, 0, 0);
+    final current = await _bridge.allVideos(volume.name);
+    final match = matchAfterRebuild(
+      detached,
+      current,
+      volumeName: volume.name,
+      now: now,
+    );
+    final result = await _clips.reattachDetached(volume.name, match.remap);
+    _log.info(
+      'Volume ${volume.name}: ${detached.length} detached clips matched '
+      'again, ${match.remap.length} found, re-attached ${result.reattached}, '
+      '${result.merged} duplicates removed',
+    );
+    return result;
+  }
+
   /// Brings the stored clips of the mounted [volume] up to its current
   /// version, given the versions recorded so far ([recorded], by volume
   /// name):

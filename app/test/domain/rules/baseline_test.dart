@@ -524,4 +524,88 @@ void main() {
       expect(nextPageCursor(cursor: 10, page: const []), isNull);
     });
   });
+
+  group('shotSinceSession (a volume with no baseline, D-108)', () {
+    final since = DateTime.utc(2026, 6, 1, 8);
+
+    MediaVideo shot(int id, DateTime? at, {int generation = 5}) => fakeVideo(
+      id: id,
+      generation: generation,
+      dateTakenMs: at?.millisecondsSinceEpoch,
+      dateAddedSec: null,
+      dateModifiedSec: null,
+    );
+
+    List<int> ids(
+      List<MediaVideo> rows, {
+      DateTime? from,
+      int captured = 9,
+      bool noSession = false,
+    }) => [
+      for (final v in shotSinceSession(
+        rows,
+        since: noSession ? null : (from ?? since),
+        captured: captured,
+        now: _now,
+      ))
+        v.mediaStoreId,
+    ];
+
+    test('keeps the rows shot at or after the session start', () {
+      expect(
+        ids([
+          shot(1, since.subtract(const Duration(milliseconds: 1))),
+          shot(2, since),
+          shot(3, since.add(const Duration(milliseconds: 1))),
+        ]),
+        [2, 3],
+      );
+    });
+
+    test('no session start means nothing is kept (start from now)', () {
+      expect(ids([shot(1, since)], noSession: true), isEmpty);
+    });
+
+    test('drops rows added after the captured generation, keeps the equal', () {
+      expect(
+        ids([shot(1, since, generation: 9), shot(2, since, generation: 10)]),
+        [1],
+      );
+    });
+
+    test('the shooting date is shotAt: an unknown DATE_TAKEN falls back to '
+        'DATE_ADDED', () {
+      final fromAdded = fakeVideo(
+        id: 1,
+        dateTakenMs: null,
+        dateAddedSec: since.millisecondsSinceEpoch ~/ 1000,
+      );
+      final tooOld = fakeVideo(
+        id: 2,
+        dateTakenMs: null,
+        dateAddedSec: since.millisecondsSinceEpoch ~/ 1000 - 1,
+        dateModifiedSec: null,
+      );
+
+      expect(ids([fromAdded, tooOld]), [1]);
+    });
+
+    test('rows that hold the baseline are kept, for the baseline to see', () {
+      final pending = fakeVideo(
+        id: 1,
+        generation: 6,
+        pending: true,
+        dateTakenMs: since.millisecondsSinceEpoch,
+      );
+      final noLength = fakeVideo(
+        id: 2,
+        generation: 7,
+        durationMs: 0,
+        dateTakenMs: since.millisecondsSinceEpoch,
+        dateAddedSec: _now.millisecondsSinceEpoch ~/ 1000,
+      );
+
+      expect(ids([pending, noLength]), [1, 2]);
+    });
+  });
 }
