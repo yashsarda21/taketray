@@ -115,11 +115,23 @@ class StillShootingPrompt {
   );
 
   /// "Turn off": Shooting mode off, as the switch on the Reels screen does.
-  Future<void> turnOff() => guarded(
-    _log,
-    'Turning off from Still shooting?',
-    () => _ref.read(shootingModeControllerProvider.notifier).setOn(false),
-  );
+  ///
+  /// Returns whether Shooting mode is off now. `setOn` never throws (it logs
+  /// a failure and leaves the stored state), so the outcome is read back from
+  /// the database: the screen must not say "off" about a Shooting mode that
+  /// is still on. A read that fails counts as not off.
+  Future<bool> turnOff() async {
+    final off = await guarded(
+      _log,
+      'Turning off from Still shooting?',
+      () async {
+        await _ref.read(shootingModeControllerProvider.notifier).setOn(false);
+        return !(await _ref.read(phoneStateRepositoryProvider).loadShooting())
+            .on;
+      },
+    );
+    return off ?? false;
+  }
 }
 
 /// The one [StillShootingPrompt], for the whole app session: it remembers

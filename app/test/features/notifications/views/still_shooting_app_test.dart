@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/features/reels/views/reel_form_sheet.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
@@ -147,6 +151,56 @@ void main() {
       await _resume(tester);
 
       expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+      expect(find.text(_title), findsOneWidget);
+    });
+
+    testApp('not over the New reel sheet; shown when it closes', (
+      tester,
+    ) async {
+      final (harness, _, _) = await _pumpApp(
+        tester,
+        on: const Duration(days: 1),
+      );
+      // What the New reel button does (it can sit behind the nav pill in a
+      // short test window).
+      unawaited(showReelForm(tester.element(find.byType(ReelsScreen))));
+      await _settle(tester);
+      expect(find.text('Reel name'), findsOneWidget);
+      harness.media.clock.advance(const Duration(days: 14));
+
+      await _resume(tester);
+      expect(find.text(_title), findsNothing);
+      await tester.tapAt(const Offset(4, 4));
+      await _settle(tester);
+
+      expect(find.text('Reel name'), findsNothing);
+      expect(find.text(_title), findsOneWidget);
+    });
+
+    testApp("not over a popup in the Reels tab's own navigator", (
+      tester,
+    ) async {
+      final (harness, _, _) = await _pumpApp(
+        tester,
+        on: const Duration(days: 1),
+      );
+      final context = tester.element(find.byType(ReelsScreen));
+      unawaited(
+        showDialog<void>(
+          context: context,
+          useRootNavigator: false,
+          builder: (_) => const AlertDialog(title: Text('Tab popup')),
+        ),
+      );
+      await _settle(tester);
+      harness.media.clock.advance(const Duration(days: 14));
+
+      await _resume(tester);
+      expect(find.text('Tab popup'), findsOneWidget);
+      expect(find.text(_title), findsNothing);
+      Navigator.of(context).pop();
+      await _settle(tester);
+
       expect(find.text(_title), findsOneWidget);
     });
 

@@ -186,16 +186,35 @@ void main() {
       );
     });
 
-    test('Turn off switches Shooting mode off', () async {
+    test('Turn off switches Shooting mode off and says so', () async {
       daysLater(15);
       await prompt.claim();
 
-      await prompt.turnOff();
+      expect(await prompt.turnOff(), isTrue);
 
       expect(
         await h.media.phoneState.loadShooting().then((s) => s.on),
         isFalse,
       );
+    });
+
+    test('Turn off that fails says so: Shooting mode is still on', () async {
+      daysLater(15);
+      final failing = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          phoneStateRepositoryProvider.overrideWithValue(
+            _FailingOff(h.media.db, h.media.clock),
+          ),
+        ],
+      );
+      final records = captureLogs();
+
+      final off = await failing.read(stillShootingPromptProvider).turnOff();
+
+      expect(off, isFalse);
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      expect(logText(records), isNot(contains('disk full')));
     });
 
     test('Keep it on does not throw when the write fails', () async {
@@ -230,4 +249,14 @@ class _FailingPhoneState extends PhoneStateRepository {
   @override
   Future<bool> markStillAnswered(DateTime since) =>
       Future.error(StateError('/storage/emulated/0/secret'));
+}
+
+/// A phone state whose switch-off fails.
+class _FailingOff extends PhoneStateRepository {
+  // The super constructor's parameters are private.
+  // ignore: use_super_parameters
+  _FailingOff(AppDatabase db, Clock clock) : super(db, clock);
+
+  @override
+  Future<void> turnShootingOff() => Future.error(StateError('disk full'));
 }

@@ -10,6 +10,7 @@ import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
+import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -87,7 +88,21 @@ Future<ProviderContainer> pumpScreen(
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
+  final container = ProviderContainer(
+    overrides: [
+      // The midnight tick owns a timer, and the test binding fails a test that
+      // ends with one pending before any tear-down runs. Screens that watch it
+      // get a tick that never comes, unless the test is about the tick.
+      if (!midnightTick) localDayProvider.overrideWith(_noTick),
+      ...overrides,
+    ],
+  );
+  addTearDown(container.dispose);
   final router = GoRouter(
+    // Sheets and dialogs are seen, as in the app (D-107).
+    observers: [
+      container.read(popupRouteTrackerProvider).observerForNavigator(),
+    ],
     routes: [
       GoRoute(path: '/', builder: (context, state) => screen),
       GoRoute(
@@ -148,16 +163,6 @@ Future<ProviderContainer> pumpScreen(
     ],
   );
   addTearDown(router.dispose);
-  final container = ProviderContainer(
-    overrides: [
-      // The midnight tick owns a timer, and the test binding fails a test that
-      // ends with one pending before any tear-down runs. Screens that watch it
-      // get a tick that never comes, unless the test is about the tick.
-      if (!midnightTick) localDayProvider.overrideWith(_noTick),
-      ...overrides,
-    ],
-  );
-  addTearDown(container.dispose);
   await tester.pumpWidget(
     _DisposeOnUnmount(
       container: midnightTick ? container : null,

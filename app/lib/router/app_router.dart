@@ -11,6 +11,7 @@ import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 
 part 'app_router.g.dart';
@@ -46,8 +47,12 @@ GoRouter appRouter(Ref ref) {
   final rootNavigatorKey = GlobalKey<NavigatorState>(
     debugLabel: 'root navigator',
   );
+  // Sheets and dialogs are pushed on the root navigator, a `PopupRoute`
+  // inside a tab on that tab's own; every navigator gets its own observer.
+  final popups = ref.read(popupRouteTrackerProvider);
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
+    observers: [popups.observerForNavigator()],
     initialLocation: Routes.reels,
     // Any location no route matches (an old deep link, `/reels/stale`, a
     // typo) goes to Reels instead of go_router's error page. The location is
@@ -62,6 +67,7 @@ GoRouter appRouter(Ref ref) {
             AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.reels,
@@ -106,6 +112,7 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.toTag,
@@ -134,6 +141,7 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.settings,

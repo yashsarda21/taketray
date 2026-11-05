@@ -580,7 +580,31 @@ It ends with `All tests passed!`. Now open `app/lib/data/media/media_scanner.dar
   }
   ```
 
-- **Ask only when the user is looking at Reels.** The dialog belongs to Reels, but the app keeps every tab built, and a page pushed on top does not remove the one below it. What does change is the "ticker mode": Flutter turns the tickers off for a screen that is hidden. `StillShootingPromptHost` watches it, so it checks after the first frame, on every resume, and when Reels comes back to the front, and it never opens over the tag player or a clip being watched.
+- **Ask only when the user is looking at Reels.** This needs three questions, because there are three ways for something to be on top. A hidden tab and a page that covers the whole screen (the tag player) turn Flutter's "ticker mode" off for the screen below. A page pushed inside the Reels tab (a reel's page) makes Reels' own route no longer the current one of its navigator. But a **sheet or a dialog** (the New reel form, "Delete reel?") is pushed on the root navigator and covers nothing: the screen under it keeps its tickers and its route. The first version of this checked only the tickers, and a resume with the New reel sheet open would have stacked "Still shooting?" over it. The only way to know is to watch the navigators, so `PopupRouteTracker` keeps the set of open `PopupRoute`s (sheets and dialogs are popup routes), fed by a `NavigatorObserver` on the root navigator and on each tab's:
+
+  ```dart
+  void _add(Route<dynamic>? route) {
+    if (route is PopupRoute && _open.add(route)) notifyListeners();
+  }
+
+  void _remove(Route<dynamic>? route) {
+    if (route != null && _open.remove(route)) notifyListeners();
+  }
+  ```
+
+  `StillShootingPromptHost` puts the three together, checks after the first frame, on every resume and whenever the screen in front goes away, and never opens over anything:
+
+  ```dart
+  bool get _inFront => _screenInFront && !_popups.isOpen;
+  ```
+
+  ```dart
+  final inFront =
+      TickerMode.valuesOf(context).enabled &&
+      (ModalRoute.of(context)?.isCurrent ?? true);
+  ```
+
+  When a popup closes, the host hears it and checks again, so the dialog is not lost; it still shows at most once per app session (next point). A menu (`TtMenuButton`) is an overlay, not a route, so the tracker does not see it; the menus the app has are on To tag and on a reel's page, which already cover Reels.
 
 - **Once, and never twice.** The question is asked at most once per app session, and not at all if the user answered in the shade. The answer in the shade is a note that the scan has not applied yet, so the check reads that note first and the database after it. The scan stores a Keep on and then clears the note: if the note is gone, its effect is already stored. Reading in the other order could miss it:
 
@@ -609,7 +633,7 @@ It ends with `All tests passed!`. Now open `app/lib/data/media/media_scanner.dar
 
   The other order needs no code of its own: the answer in the app is stored (`markStillAnswered`), `BackgroundSync` copies it to the phone, and the phone cancels its notification (Sections 5 and 6).
 
-- **Back means "keep it on".** The dialog returns `true`, `false` or `null` (Back, or a tap outside). Only an explicit **Turn off** turns Shooting mode off, so nobody switches it off by accident.
+- **Back means "keep it on".** The dialog returns `true`, `false` or `null` (Back, or a tap outside). Only an explicit **Turn off** turns Shooting mode off, so nobody switches it off by accident. And "Shooting mode off" is shown only if it is true: `setOn` never throws, so `turnOff()` reads the state back and says whether Shooting mode is really off.
 
 - **Ask for the permission once.** The phone-state key `notificationsAsked` is written **before** the question, so a question that was cut short (the app closing) is not asked again. A second call at the same moment joins the first:
 
@@ -665,7 +689,7 @@ It ends with `All tests passed!`. Now open `app/lib/data/media/media_scanner.dar
 
   A tap sets `_chosen` to the card, or to nothing if that card was the open one, so one card is open at a time.
 
-**Where it lives:** `app/lib/features/notifications/` (`view_models/launch_actions.dart`, `notification_access_controller.dart`, `still_shooting_prompt.dart`, `notifications_help.dart`; `views/still_shooting_dialog.dart`, `notifications_help_screen.dart`), `app/lib/features/settings/views/settings_screen.dart`, `app/lib/domain/rules/phone_brand.dart`, `LaunchActionsListener` in `app/lib/app.dart`, `askOnce` called from `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `notificationsAsked` in `app/lib/data/repositories/phone_state_repository.dart`, one more step in `app/lib/app/media_lifecycle.dart`, and the route in `app/lib/router/`. Tests: `app/test/features/notifications/`, `app/test/features/settings/`, `app/test/app/launch_actions_test.dart`, `app/test/domain/rules/phone_brand_test.dart`, and additions to `media_lifecycle_test.dart`, `phone_state_repository_test.dart`, `shooting_mode_controller_test.dart` and `app_router_test.dart`. The step-by-step flows are "Notification taps", "Still shooting?", "Notification permission" and "Notifications help" in `docs/flow.md`.
+**Where it lives:** `app/lib/features/notifications/` (`view_models/launch_actions.dart`, `notification_access_controller.dart`, `still_shooting_prompt.dart`, `notifications_help.dart`; `views/still_shooting_dialog.dart`, `notifications_help_screen.dart`), `app/lib/features/settings/views/settings_screen.dart`, `app/lib/domain/rules/phone_brand.dart`, `LaunchActionsListener` in `app/lib/app.dart`, `askOnce` called from `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `PopupRouteTracker` in `app/lib/router/popup_route_tracker.dart`, `notificationsAsked` in `app/lib/data/repositories/phone_state_repository.dart`, one more step in `app/lib/app/media_lifecycle.dart`, and the route in `app/lib/router/`. Tests: `app/test/features/notifications/`, `app/test/features/settings/`, `app/test/app/launch_actions_test.dart`, `app/test/domain/rules/phone_brand_test.dart`, and additions to `media_lifecycle_test.dart`, `phone_state_repository_test.dart`, `shooting_mode_controller_test.dart` and `app_router_test.dart`. The step-by-step flows are "Notification taps", "Still shooting?", "Notification permission" and "Notifications help" in `docs/flow.md`.
 
 **Try it yourself:** see "once per app session" at work. From `app/`:
 

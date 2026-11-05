@@ -5,16 +5,23 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
+import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/background/background_sync.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
+import 'package:taketray/features/reels/views/delete_reel_dialog.dart';
+import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
 import '../../../support/pump_screen.dart';
+import '../../../support/reel_summaries.dart';
 import '../../../support/test_app.dart';
 import '../../../support/view_model_fakes.dart';
 import '../../../support/vm_harness.dart';
@@ -64,7 +71,7 @@ void main() {
     h.media.clock.advance(on);
     final container = await pumpScreen(
       tester,
-      const Scaffold(body: StillShootingPromptHost()),
+      const _Tab(),
       overrides: [...h.overrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
@@ -112,7 +119,7 @@ void main() {
       h.media.clock.advance(const Duration(days: 20));
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -127,7 +134,7 @@ void main() {
       h.media.clock.advance(const Duration(days: 20));
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -271,7 +278,7 @@ void main() {
 
         await pumpScreen(
           tester,
-          const Scaffold(body: StillShootingPromptHost()),
+          const _Tab(),
           overrides: h.overrides,
           settle: false,
         );
@@ -291,7 +298,7 @@ void main() {
 
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -307,7 +314,7 @@ void main() {
 
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -330,7 +337,7 @@ void main() {
 
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -348,7 +355,7 @@ void main() {
 
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -392,7 +399,7 @@ void main() {
       final gate = h.background.gate('pendingShadeAction');
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -416,7 +423,7 @@ void main() {
       h.media.clock.advance(const Duration(days: 15));
       await pumpScreen(
         tester,
-        const Scaffold(body: StillShootingPromptHost()),
+        const _Tab(),
         overrides: h.overrides,
         settle: false,
       );
@@ -431,6 +438,192 @@ void main() {
       await settleApp(tester);
 
       expect(find.text(_title), findsOneWidget);
+    });
+  });
+
+  group('never over a sheet, a dialog or a menu', () {
+    BuildContext hostContext(WidgetTester tester) =>
+        tester.element(find.byType(StillShootingPromptHost));
+
+    /// Opens something over the host with Shooting mode not yet due, makes it
+    /// due, and resumes.
+    Future<void> dueWhileOpen(
+      WidgetTester tester,
+      Future<void> Function(BuildContext context) open,
+    ) async {
+      await pumpHost(tester, on: const Duration(days: 1));
+      unawaited(open(hostContext(tester)));
+      await settleApp(tester);
+      h.media.clock.advance(const Duration(days: 14));
+      await resume(tester);
+    }
+
+    void closeRootPopup(WidgetTester tester) =>
+        Navigator.of(hostContext(tester), rootNavigator: true).pop();
+
+    testApp('a resume with the new reel sheet open does not show the dialog', (
+      tester,
+    ) async {
+      await dueWhileOpen(tester, showReelForm);
+
+      expect(find.text('Reel name'), findsOneWidget, reason: 'the sheet is up');
+      expect(find.text(_title), findsNothing);
+    });
+
+    testApp('a resume with the delete dialog open does not show the dialog', (
+      tester,
+    ) async {
+      await dueWhileOpen(
+        tester,
+        (context) => showDeleteReelDialog(context, testSummary(1).reel),
+      );
+
+      expect(find.text('Delete Reel 1?'), findsOneWidget);
+      expect(find.text(_title), findsNothing);
+    });
+
+    testApp('a resume with a menu open does not show the dialog', (
+      tester,
+    ) async {
+      await dueWhileOpen(
+        tester,
+        (context) => Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => Scaffold(
+              body: TtMenuButton<int>(
+                items: const [TtMenuItem<int>(1, 'First choice')],
+                onSelected: (_) {},
+                builder: (context, open) =>
+                    TextButton(onPressed: open, child: const Text('menu')),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('menu'));
+      await settleApp(tester);
+      await resume(tester);
+
+      expect(find.text('First choice'), findsOneWidget, reason: 'menu is open');
+      expect(find.text(_title), findsNothing);
+    });
+
+    testApp("a popup in the screen's own navigator blocks it too", (
+      tester,
+    ) async {
+      await dueWhileOpen(
+        tester,
+        (context) => showDialog<void>(
+          context: context,
+          useRootNavigator: false,
+          builder: (_) => const AlertDialog(title: Text('Own navigator')),
+        ),
+      );
+
+      expect(find.text('Own navigator'), findsOneWidget);
+      expect(find.text(_title), findsNothing);
+    });
+
+    testApp('after the blocking sheet closes the dialog shows', (tester) async {
+      await dueWhileOpen(tester, showReelForm);
+      expect(find.text(_title), findsNothing);
+
+      closeRootPopup(tester);
+      await settleApp(tester);
+
+      expect(find.text(_title), findsOneWidget);
+    });
+
+    testApp('after the blocking dialog closes the dialog shows', (
+      tester,
+    ) async {
+      await dueWhileOpen(
+        tester,
+        (context) => showDeleteReelDialog(context, testSummary(1).reel),
+      );
+
+      closeRootPopup(tester);
+      await settleApp(tester);
+
+      expect(find.text(_title), findsOneWidget);
+    });
+
+    testApp('after a pushed reel page pops the dialog shows', (tester) async {
+      await dueWhileOpen(
+        tester,
+        (context) => GoRouter.of(context).push<void>(Routes.reel(1)),
+      );
+      expect(find.text(reelRouteMarker(1)), findsOneWidget);
+      expect(find.text(_title), findsNothing);
+
+      GoRouter.of(tester.element(find.text(reelRouteMarker(1)))).pop();
+      await settleApp(tester);
+
+      expect(find.text(_title), findsOneWidget);
+    });
+
+    testApp('the dialog still shows only once per process', (tester) async {
+      // A switch that does nothing, so the session stays due after the answer.
+      final fake = FakeShooting(
+        ShootingState(on: true, baselines: const {}, since: _start),
+      );
+      await pumpHost(
+        tester,
+        on: const Duration(days: 1),
+        overrides: [shootingModeControllerProvider.overrideWith(() => fake)],
+      );
+      unawaited(showReelForm(hostContext(tester)));
+      await settleApp(tester);
+      h.media.clock.advance(const Duration(days: 14));
+      await resume(tester);
+      closeRootPopup(tester);
+      await settleApp(tester);
+      expect(find.text(_title), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Turn off'));
+      await settleApp(tester);
+      unawaited(showReelForm(hostContext(tester)));
+      await settleApp(tester);
+      await resume(tester);
+      closeRootPopup(tester);
+      await settleApp(tester);
+      await resume(tester);
+
+      expect(find.text(_title), findsNothing, reason: 'asked once already');
+    });
+
+    testApp('a popup that closes while nothing is due does nothing', (
+      tester,
+    ) async {
+      await pumpHost(tester, on: const Duration(days: 1));
+      unawaited(showReelForm(hostContext(tester)));
+      await settleApp(tester);
+
+      closeRootPopup(tester);
+      await settleApp(tester);
+
+      expect(find.text(_title), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('Turn off that does not work', () {
+    testApp('turn off failing shows no off snack', (tester) async {
+      // The write of "off" fails; the controller logs it and Shooting mode
+      // stays on.
+      final failing = _FailingOff(h.media.db, h.media.clock);
+      await pumpHost(
+        tester,
+        overrides: [phoneStateRepositoryProvider.overrideWithValue(failing)],
+      );
+
+      await tester.tap(find.widgetWithText(TtButton, 'Turn off'));
+      await settleApp(tester);
+
+      expect(find.text(_title), findsNothing);
+      expect((await stored(tester)).on, isTrue);
+      expect(find.text('Shooting mode off'), findsNothing);
+      expect(find.byType(TtSnack), findsNothing);
     });
   });
 
@@ -456,4 +649,39 @@ void main() {
       expect(find.text('Turn off'), findsOneWidget);
     });
   });
+}
+
+/// A phone state whose switch-off fails.
+class _FailingOff extends PhoneStateRepository {
+  // The super constructor's parameters are private, so they cannot be passed
+  // on as super parameters.
+  // ignore: use_super_parameters
+  _FailingOff(AppDatabase db, Clock clock) : super(db, clock);
+
+  @override
+  Future<void> turnShootingOff() => Future.error(StateError('disk full'));
+}
+
+/// The host in a navigator of its own, as the Reels tab has: a sheet or a
+/// dialog goes to the root navigator and leaves the tab's route current, which
+/// is why the host asks `PopupRouteTracker`.
+class _Tab extends ConsumerStatefulWidget {
+  const _Tab();
+
+  @override
+  ConsumerState<_Tab> createState() => _TabState();
+}
+
+class _TabState extends ConsumerState<_Tab> {
+  late final NavigatorObserver _observer = ref
+      .read(popupRouteTrackerProvider)
+      .observerForNavigator();
+
+  @override
+  Widget build(BuildContext context) => Navigator(
+    observers: [_observer],
+    onGenerateRoute: (_) => MaterialPageRoute<void>(
+      builder: (_) => const Scaffold(body: StillShootingPromptHost()),
+    ),
+  );
 }
