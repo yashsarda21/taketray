@@ -1,12 +1,17 @@
 package app.taketray.background
 
+import android.app.job.JobInfo
+import android.app.job.JobScheduler
+import android.content.ComponentName
 import android.content.Context
+import android.provider.MediaStore
+import android.util.Log
 
 /**
  * Arms the background work for a freshly written [BackgroundState]: the
- * new-clips job (Task 4) and the reminder alarms (Task 5). Called by
- * `BackgroundHostApiImpl.writeState` after the state is stored, and by the
- * receivers that re-arm after a reboot, an update or a clock change.
+ * new-clips job ([NewClipsArming], Task 4) and the reminder alarms (Task 5).
+ * Called by `BackgroundHostApiImpl.writeState` after the state is stored, and
+ * by the receivers that re-arm after a reboot, an update or a clock change.
  */
 fun interface Arming {
     fun apply(
@@ -15,7 +20,105 @@ fun interface Arming {
     )
 
     companion object {
-        /** Arms nothing: what MainActivity wires until Tasks 4 and 5 add the job and the alarms. */
+        /** Arms nothing (tests). */
         val NONE = Arming { _, _ -> }
+
+        /**
+         * Every part in order. Each part runs even when an earlier one throws
+         * (a failed job must not leave the alarms unarmed); the first failure
+         * is rethrown at the end.
+         */
+        fun of(vararg parts: Arming): Arming =
+            Arming { context, state ->
+                var failure: Exception? = null
+                for (part in parts) {
+                    try {
+                        part.apply(context, state)
+                    } catch (e: Exception) {
+                        if (failure == null) failure = e
+                    }
+                }
+                failure?.let { throw it }
+            }
+
+        /** What TakeTray arms: the new-clips job. Task 5 adds the reminder alarms after it. */
+        fun background(): Arming = of(NewClipsArming())
+    }
+}
+
+/**
+ * Arming's job part (D-104). With Shooting mode on and full video access:
+ * one JobScheduler job ([NewClipsJobService.JOB_ID]) that Android starts when
+ * anything under the external video collection changes, at least 5 s after
+ * the last change and at most 30 s after the first. Otherwise: no job, and
+ * the new-clips notification is removed (posted count 0).
+ *
+ * A content-trigger job runs once per arming and cannot be persisted across
+ * a reboot, so the job arms its successor after every run ([rearm]) and the
+ * app and the boot receiver (Task 5) arm it again.
+ */
+class NewClipsArming(
+    private val access: (Context) -> Boolean = NewClipsCounter::fullAccess,
+) : Arming {
+    /** From the app and the receivers: an identical job already pending is left alone. */
+    override fun apply(
+        context: Context,
+        state: BackgroundState,
+    ) {
+        arm(context, state, replace = false)
+    }
+
+    /**
+     * From the job itself, after a run (and when Android stops it). Android
+     * still lists the running job as pending and drops it when the run ends,
+     * so the successor is scheduled even when an identical job is listed.
+     * Scheduling over a running job makes Android stop that run
+     * (`onStopJob`), which is harmless: its work is done.
+     */
+    fun rearm(
+        context: Context,
+        state: BackgroundState,
+    ) {
+        arm(context, state, replace = true)
+    }
+
+    /** True when a job was scheduled. */
+    internal fun arm(
+        context: Context,
+        state: BackgroundState,
+        replace: Boolean,
+    ): Boolean {
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        if (!state.shootingOn || !access(context)) {
+            scheduler.cancel(NewClipsJobService.JOB_ID)
+            Notifier(context).cancelNewClips()
+            BackgroundStateStore(context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE)).setPostedNewClips(0)
+            return false
+        }
+        val job = jobInfo(context)
+        if (!replace && scheduler.getPendingJob(NewClipsJobService.JOB_ID) == job) return false
+        if (scheduler.schedule(job) != JobScheduler.RESULT_SUCCESS) {
+            Log.w(LOG_TAG, "new clips job not scheduled")
+            return false
+        }
+        return true
+    }
+
+    companion object {
+        const val UPDATE_DELAY_MS = 5_000L
+        const val MAX_DELAY_MS = 30_000L
+
+        /** The job: a content trigger on every video volume, not persisted (content triggers cannot be). */
+        fun jobInfo(context: Context): JobInfo =
+            JobInfo
+                .Builder(NewClipsJobService.JOB_ID, ComponentName(context, NewClipsJobService::class.java))
+                .addTriggerContentUri(
+                    JobInfo.TriggerContentUri(
+                        MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL),
+                        JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS,
+                    ),
+                ).setTriggerContentUpdateDelay(UPDATE_DELAY_MS)
+                .setTriggerContentMaxDelay(MAX_DELAY_MS)
+                .build()
     }
 }

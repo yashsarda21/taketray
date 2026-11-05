@@ -39,9 +39,9 @@ class MainActivity : FlutterActivity() {
         media = impl
         MediaHostApi.setUp(messenger, impl)
 
-        // Tasks 4 and 5 replace Arming.NONE with the job and the alarms.
+        // Arming.background(): the new-clips job (D-104); Task 5 adds the alarms.
         val flutterApi = BackgroundFlutterApi(messenger)
-        val bg = BackgroundHostApiImpl(this, Arming.NONE, LaunchActionRelay(send = flutterApi::onLaunchAction))
+        val bg = BackgroundHostApiImpl(this, Arming.background(), LaunchActionRelay(send = flutterApi::onLaunchAction))
         background = bg
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)

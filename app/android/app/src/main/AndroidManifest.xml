@@ -80,6 +80,13 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
             </intent-filter>
         </receiver>
+        <!-- The new-clips job (D-104): JobScheduler starts it when the video
+             library changes, with no Flutter engine. Only the system may
+             bind it (BIND_JOB_SERVICE); not exported. -->
+        <service
+            android:name=".background.NewClipsJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

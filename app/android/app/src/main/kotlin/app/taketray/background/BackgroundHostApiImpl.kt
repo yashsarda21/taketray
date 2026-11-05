@@ -46,6 +46,7 @@ class BackgroundHostApiImpl(
     private val prefs = context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE)
     private val store = BackgroundStateStore(prefs)
     private val notifications: NotificationManager = context.getSystemService(NotificationManager::class.java)
+    private val notifier = Notifier(context)
 
     /** Null once the activity is gone ([onHostGone]). */
     private var activity: Activity? = activity
@@ -69,10 +70,10 @@ class BackgroundHostApiImpl(
 
     override fun clearShadeAction(atMs: Long) = guarded("clearShadeAction") { store.clearShadeAction(atMs) }
 
-    /** Task 4 moves this into its Notifier, with [NEW_CLIPS_NOTIFICATION_ID]. */
+    /** After a scan in the app: the notification goes, and nothing is shown any more (posted 0). */
     override fun clearNewClipsNotification() =
         guarded("clearNewClipsNotification") {
-            notifications.cancel(NEW_CLIPS_NOTIFICATION_ID)
+            notifier.cancelNewClips()
             store.setPostedNewClips(0)
         }
 
@@ -184,9 +185,6 @@ class BackgroundHostApiImpl(
     companion object {
         /** The notification permission's request code: 16 bits, unlike the media one (0x7A71) or any plugin's. */
         const val PERMISSION_REQUEST_CODE = 0x7A72
-
-        /** The new-clips notification's fixed id (Task 4 moves it into its Notifier). */
-        const val NEW_CLIPS_NOTIFICATION_ID = 1
 
         /** A string, not Manifest.permission.POST_NOTIFICATIONS: it does not exist below API 33. */
         const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"

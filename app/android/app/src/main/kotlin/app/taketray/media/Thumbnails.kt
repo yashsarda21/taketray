@@ -10,7 +10,7 @@ import java.io.IOException
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-/** A video's thumbnail as JPEG bytes. */
+/** A video's thumbnail: JPEG bytes for Dart, or a bitmap for a notification. */
 object Thumbnails {
     private const val JPEG_QUALITY = 85
 
@@ -36,16 +36,7 @@ object Thumbnails {
         loader: (Size) -> Bitmap,
     ): ByteArray? {
         require(widthPx > 0 && heightPx > 0) { "thumbnail size must be positive" }
-        val bitmap =
-            try {
-                loader(Size(widthPx, heightPx))
-            } catch (e: IOException) {
-                return null
-            } catch (e: SecurityException) {
-                return null
-            } catch (e: OperationCanceledException) {
-                return null
-            }
+        val bitmap = loadOrNull(Size(widthPx, heightPx), loader) ?: return null
         val scaled = scaleToFit(bitmap, max(widthPx, heightPx))
         try {
             val out = ByteArrayOutputStream()
@@ -56,6 +47,44 @@ object Thumbnails {
             bitmap.recycle()
         }
     }
+
+    /**
+     * [uri]'s thumbnail as a bitmap whose longer side is at most [maxSide],
+     * for the new-clips notification (D-104); null in the same cases as
+     * [encode].
+     */
+    fun bitmap(
+        resolver: ContentResolver,
+        uri: Uri,
+        maxSide: Int,
+    ): Bitmap? = scaled(maxSide) { size -> resolver.loadThumbnail(uri, size, null) }
+
+    /** Loads with [loader] at [maxSide] square and scales the result to fit; null as [encode]. */
+    fun scaled(
+        maxSide: Int,
+        loader: (Size) -> Bitmap,
+    ): Bitmap? {
+        require(maxSide > 0) { "thumbnail size must be positive" }
+        val bitmap = loadOrNull(Size(maxSide, maxSide), loader) ?: return null
+        val scaled = scaleToFit(bitmap, maxSide)
+        if (scaled !== bitmap) bitmap.recycle()
+        return scaled
+    }
+
+    /** [loader]'s bitmap; null for a gone or unreadable video, a lost permission or a cancelled load. */
+    private fun loadOrNull(
+        size: Size,
+        loader: (Size) -> Bitmap,
+    ): Bitmap? =
+        try {
+            loader(size)
+        } catch (e: IOException) {
+            null
+        } catch (e: SecurityException) {
+            null
+        } catch (e: OperationCanceledException) {
+            null
+        }
 
     /** [bitmap] itself when its longer side is at most [maxSide], else a scaled-down copy. */
     fun scaleToFit(

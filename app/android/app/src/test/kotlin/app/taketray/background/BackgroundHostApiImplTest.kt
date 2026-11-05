@@ -132,13 +132,13 @@ class BackgroundHostApiImplTest {
     fun `clearing the new-clips notification cancels id 1 and forgets the count`() {
         notifications.createNotificationChannel(NotificationChannel("t", "t", NotificationManager.IMPORTANCE_LOW))
         val notification = Notification.Builder(activity, "t").setSmallIcon(android.R.drawable.ic_menu_camera).build()
-        notifications.notify(BackgroundHostApiImpl.NEW_CLIPS_NOTIFICATION_ID, notification)
+        notifications.notify(Notifier.NEW_CLIPS, notification)
         notifications.notify(2, notification)
         store.setPostedNewClips(4)
 
         impl.clearNewClipsNotification()
 
-        assertNull(shadowOf(notifications).getNotification(BackgroundHostApiImpl.NEW_CLIPS_NOTIFICATION_ID))
+        assertNull(shadowOf(notifications).getNotification(Notifier.NEW_CLIPS))
         // Another notification (a reminder) stays.
         assertEquals(1, shadowOf(notifications).size())
         assertEquals(0, store.postedNewClips())

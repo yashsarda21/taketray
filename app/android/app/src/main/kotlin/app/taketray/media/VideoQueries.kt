@@ -36,6 +36,11 @@ object VideoQueries {
 
     private const val ADDED_ORDER = "${MediaColumns.GENERATION_ADDED} ASC, ${MediaColumns._ID} ASC"
     private const val ID_ORDER = "${MediaColumns._ID} ASC"
+    private const val NEWEST_ORDER = "${MediaColumns.GENERATION_ADDED} DESC, ${MediaColumns._ID} DESC"
+
+    /** The columns the new-clips count reads (D-104). */
+    val NEW_CLIPS_PROJECTION: Array<String> =
+        arrayOf(MediaColumns._ID, MediaColumns.GENERATION_ADDED, MediaColumns.DATE_TAKEN, MediaColumns.DATE_ADDED)
 
     /**
      * A requested folder as MediaStore stores RELATIVE_PATH: no leading '/',
@@ -99,6 +104,26 @@ object VideoQueries {
         args(addedAfterSelection(afterGeneration, folders), MediaStore.MATCH_INCLUDE, ADDED_ORDER).apply {
             putInt(ContentResolver.QUERY_ARG_LIMIT, limit.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
         }
+
+    /**
+     * The new-clips count (D-104): GENERATION_ADDED > [afterGeneration], in
+     * one of [folders], with a positive DURATION and SIZE. A row still being
+     * written has neither yet (and is pending; [newClipsArgs] leaves those
+     * out too); NULL > 0 is not true, so a missing value never counts.
+     */
+    fun newClipsSelection(
+        afterGeneration: Long,
+        folders: List<String>,
+    ): Pair<String, Array<String>> {
+        val (selection, args) = addedAfterSelection(afterGeneration, folders)
+        return "$selection AND ${MediaColumns.DURATION} > 0 AND ${MediaColumns.SIZE} > 0" to args
+    }
+
+    /** Pending and trashed rows left out, newest generation first, no limit. */
+    fun newClipsArgs(
+        afterGeneration: Long,
+        folders: List<String>,
+    ): Bundle = args(newClipsSelection(afterGeneration, folders), MediaStore.MATCH_EXCLUDE, NEWEST_ORDER)
 
     /** Pending rows left out. */
     fun shotSinceArgs(

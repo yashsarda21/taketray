@@ -105,6 +105,28 @@ class VideoQueriesTest {
     }
 
     @Test
+    fun `new clips args count finished, non-empty videos after the baseline, newest first`() {
+        val (selection, selectionArgs) = VideoQueries.newClipsSelection(41, listOf("DCIM/Camera", "Movies/Reels/"))
+        assertEquals(
+            "${MediaColumns.GENERATION_ADDED} > ? AND ($folderTerm OR $folderTerm) AND " +
+                "${MediaColumns.DURATION} > 0 AND ${MediaColumns.SIZE} > 0",
+            selection,
+        )
+        assertArrayEquals(arrayOf("41", "DCIM/Camera/", "Movies/Reels/"), selectionArgs)
+        val args = VideoQueries.newClipsArgs(41, listOf("DCIM/Camera", "Movies/Reels/"))
+        assertEquals(selection, args.getString(ContentResolver.QUERY_ARG_SQL_SELECTION))
+        assertArrayEquals(selectionArgs, args.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS))
+        assertEquals(MediaStore.MATCH_EXCLUDE, args.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+        assertEquals(MediaStore.MATCH_EXCLUDE, args.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED))
+        assertEquals(
+            "${MediaColumns.GENERATION_ADDED} DESC, ${MediaColumns._ID} DESC",
+            args.getString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER),
+        )
+        assertFalse(args.containsKey(ContentResolver.QUERY_ARG_LIMIT))
+        assertEquals("${MediaColumns.GENERATION_ADDED} > ? AND 0 AND ${MediaColumns.DURATION} > 0 AND ${MediaColumns.SIZE} > 0", VideoQueries.newClipsSelection(5, emptyList()).first)
+    }
+
+    @Test
     fun `a huge limit is capped to Int MAX_VALUE`() {
         val args = VideoQueries.addedAfterArgs(0, listOf("A/"), Long.MAX_VALUE)
         assertEquals(Int.MAX_VALUE, args.getInt(ContentResolver.QUERY_ARG_LIMIT))

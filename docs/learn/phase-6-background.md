@@ -144,7 +144,7 @@ It ends with `All tests passed!`. Now open `packages/taketray_ui/lib/src/compone
       }
   ```
 
-  `Arming` is a one-method interface. For now `MainActivity` passes `Arming.NONE`, which does nothing; Tasks 4 and 5 give it the job and the alarms.
+  `Arming` is a one-method interface. When this step was built `MainActivity` passed `Arming.NONE`, which does nothing; Section 4 gives it the job and Section 5 the alarms.
 
 - **`commit()`, not `apply()`.** Android's preferences have two ways to save. `apply()` changes the values in memory at once and writes the file a little later; `commit()` writes the file before it returns. A receiver that Android wakes for a moment may have its process killed right after, so a late write could be lost. The store always uses `commit()`.
 
@@ -195,7 +195,92 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 ## 4. The new-clips job and notification
 
-_Filled in by Task 4._
+**What we built:** the part of TakeTray that works while the app is closed and you are filming.
+
+- **A job** (`NewClipsJobService`). Android's JobScheduler starts it a few seconds after the phone's video library changes. It is plain Kotlin: no Flutter engine starts, and it never touches the database.
+- **A counter** (`NewClipsCounter`) that asks the video library how many videos were added since the last scan the app made.
+- **One notification** (`Notifier`): "3 new clips to tag", with the newest clip's thumbnail and two buttons, **Open camera** and **Tag now**. It is updated in place, never stacked, and silent.
+- **Arming** (`NewClipsArming`): the code that schedules the job when Shooting mode is on and removes it, and the notification, when it is off.
+
+**Why TakeTray needs it:** while you shoot, TakeTray is closed. Without this, nothing would tell you that clips are waiting until you happened to open the app. The notification is a quiet nudge: it never makes a sound, it is never posted again for the same number, and it goes away when the number is 0, when Shooting mode goes off, or when the app has scanned. The app stays in charge: the job only **counts**; deciding which videos become clips is still the scan that runs when you open the app (spec §8.3, §11).
+
+**Key ideas:**
+
+- **A job that wakes on a change, not on a timer.** A JobScheduler job can wait for a content URI to change. TakeTray watches the whole external video collection, and asks Android to wait for 5 seconds of calm (at most 30 seconds in all) before starting it, so a burst of ten recordings becomes one run, not ten:
+
+  ```kotlin
+  .addTriggerContentUri(
+      JobInfo.TriggerContentUri(
+          MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL),
+          JobInfo.TriggerContentUri.FLAG_NOTIFY_FOR_DESCENDANTS,
+      ),
+  ).setTriggerContentUpdateDelay(UPDATE_DELAY_MS)
+  .setTriggerContentMaxDelay(MAX_DELAY_MS)
+  ```
+
+- **Such a job fires once, so every run arms the next.** After a content-trigger job runs, Android forgets it, and it cannot survive a reboot ("persisted"). So the run ends by scheduling its successor, and the app arms it again whenever Dart writes the state. There is a catch: while the job runs, Android still lists it as pending. The app's arming skips scheduling when an identical job is already pending (scheduling again would restart its watching), but if the job did the same it would see itself, skip, and disarm when it finished. So the job always schedules (`replace = true`); the test `the job re-arms even while its own job is listed` covers that.
+
+- **Count only what the app would count, and never count everything.** The question is "how many videos have a higher generation than where the app's last scan stopped, in a watched folder, finished and not empty?":
+
+  ```kotlin
+  return "$selection AND ${MediaColumns.DURATION} > 0 AND ${MediaColumns.SIZE} > 0" to args
+  ```
+
+  A video still being recorded is "pending" (and has no duration yet), so it does not count until the camera finishes it. A generation is MediaStore's change counter, and it only means something together with the library's **version**: if the library is rebuilt, generations start again and "after 100" would be almost everything. So a volume whose version changed, a volume that is not mounted, and a volume with no baseline count 0:
+
+  ```kotlin
+  if (versionOf(baseline.volumeName) != baseline.version) continue
+  ```
+
+  Remove that line and the test `version change counts nothing` fails with `expected:<NewClips(count=1, ...)> but was:<NewClips(count=2, ...)>`.
+
+- **Testing SQL the way Android runs it.** The counter's test does not fake the answer: `SqlVideoProvider` is a tiny video table in a real SQLite database, registered as the media provider. It runs each query's selection through a strict `SQLiteQueryBuilder`, set up as Android's media provider sets one up, and leaves out pending and trashed rows unless asked, as Android does. So a wrong clause, or SQL Android would refuse, fails the test.
+
+- **Quiet means "same number, no post".** The store remembers the number the shade shows (`posted_new_clips`). The run posts only when the count changed:
+
+  ```kotlin
+  if (found.count == store.postedNewClips()) return
+  ```
+
+  The notification itself uses a LOW-importance channel (no sound, no vibration), a fixed id (so posting again replaces it), and `setOnlyAlertOnce(true)`. Whenever the notification is removed, the posted number goes back to 0, so the next real count posts again.
+
+- **Private on the lock screen.** The notification is `VISIBILITY_PRIVATE`, and Android shows its "public version" on a locked phone instead: "TakeTray" and "3 new clips to tag", with no thumbnail. The test `public version has no picture` checks that the public version has no picture and no large icon.
+
+- **Taps are launch actions.** The body and **Tag now** open To tag with the allow-listed launch action from Section 3 (`LaunchActions.intent(context, LaunchActionMsg.TO_TAG)`). **Open camera** opens the phone's video camera directly. Every `PendingIntent` is immutable (no other app can change what it opens) and has its own request code, so none replaces another.
+
+- **A thumbnail never costs a count.** Loading the picture can fail (the video is gone, a decoder breaks). The run then posts without a picture:
+
+  ```kotlin
+  } catch (e: Exception) {
+      Log.w(LOG_TAG, "new clips thumbnail failed: ${e.javaClass.simpleName}")
+      null
+  }
+  ```
+
+- **Not allowed is not an error.** If notifications are off for TakeTray, or you blocked the "New clips" channel, the run posts nothing, throws nothing, and remembers 0, so the first run after you allow them posts.
+
+- **Every run records the time zone.** Spec §8.3a keeps a list of the zones the phone was in, so a clip's local time is right after a trip. The job adds the current zone on every run (even when Shooting mode is off), one more chance to notice a change while the app was closed.
+
+- **A scan in the app wins.** The job and the app can run at the same moment: you film, then open TakeTray while the job is counting. The app scans, moves the baselines and clears the notification, and a moment later the job would post the count it made before. So after updating, the run reads the state again and, if Dart wrote meanwhile, counts once more on the new baselines:
+
+  ```kotlin
+  val counted = update()
+  if (store.state() != counted) update()
+  ```
+
+- **A run that fails still re-arms.** Every step catches its own errors and logs only the error's class (never a count, a folder or a path, D-10), so the run always gets to the re-arming. A failed count leaves the notification as it was; 0 would have removed it.
+
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/background/` (`NewClipsCounter.kt`, `NewClipsJobService.kt` with `NewClipsJob`, `Notifier.kt`, `Arming.kt` with `NewClipsArming`), `media/VideoQueries.kt` (`newClipsArgs`), `media/Thumbnails.kt` (`bitmap`), the copy in `app/android/app/src/main/res/values/strings.xml`, and the service in `AndroidManifest.xml`. Tests: `app/android/app/src/test/kotlin/app/taketray/background/` (`NewClipsCounterTest`, `NotifierTest`, `NewClipsJobServiceTest`, `ArmingTest`, and the `SqlVideoProvider` helper). The step-by-step flow is "New clips while TakeTray is closed" in `docs/flow.md`.
+
+**Try it yourself:** watch a test catch a re-post. From the repo root:
+
+```bash
+tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.background.NewClipsJobServiceTest'
+```
+
+It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/taketray/background/NewClipsJobService.kt`, delete the line `if (found.count == store.postedNewClips()) return`, and run the same command. `same count does not re-post` fails with `expected:<[(external_primary, 2)]> but was:<[(external_primary, 2), (external_primary, 2)]>`: the second run with the same two clips loaded the thumbnail and posted again. Put the line back and run it again to see it pass.
+
+**Decisions:** D-104 (all of this section), with D-101 (the private lock-screen version, what the count means) and D-103 (the mirror, `Arming`, launch actions) as background.
 
 ## 5. Reminders, shade actions and re-arming
 

@@ -86,4 +86,22 @@ class ThumbnailsTest {
         assertEquals(160, tall.width)
         assertEquals(320, tall.height)
     }
+
+    @Test
+    fun `the notification bitmap fits 1024 and fails to null as the bytes do`() {
+        var asked: android.util.Size? = null
+        val bitmap =
+            Thumbnails.scaled(1024) { size ->
+                asked = size
+                Bitmap.createBitmap(1920, 1080, Bitmap.Config.ARGB_8888)
+            }
+        assertEquals(android.util.Size(1024, 1024), asked)
+        assertEquals(1024, bitmap?.width)
+        assertEquals(576, bitmap?.height)
+        assertNull(Thumbnails.scaled(1024) { throw FileNotFoundException("gone") })
+        assertNull(Thumbnails.scaled(1024) { throw SecurityException("no access") })
+        assertNull(Thumbnails.scaled(1024) { throw OperationCanceledException() })
+        FakeMediaProvider.install(FileNotFoundException("gone"))
+        assertNull(Thumbnails.bitmap(resolver, gone, 1024))
+    }
 }
