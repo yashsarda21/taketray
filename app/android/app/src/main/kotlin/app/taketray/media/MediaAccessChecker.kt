@@ -47,20 +47,21 @@ object MediaAccessChecker {
         }
 
     /**
-     * Whether TakeTray stops asking after a request (D-68, Ruling F). Android
-     * gives no rationale both before the first ask and after the final "Don't
-     * allow"; it does give one between the first and the second denial. So a
-     * request ends blocked only when access is not full, there is no
-     * rationale now, and there was one before the request (the second denial)
-     * or the last request had already ended blocked (a dismissal while
-     * blocked). A first dismissal (no rationale before or after) stays askable.
+     * Whether TakeTray stops asking after a request (D-68, Ruling F): the
+     * shared rule in `bridge/BridgeSupport.kt`, with full access as granted.
      */
     fun blockedAfterRequest(
         level: MediaAccessLevelMsg,
         rationaleBefore: Boolean,
         rationaleAfter: Boolean,
         wasBlocked: Boolean,
-    ): Boolean = level != MediaAccessLevelMsg.FULL && !rationaleAfter && (rationaleBefore || wasBlocked)
+    ): Boolean =
+        app.taketray.bridge.blockedAfterRequest(
+            granted = level == MediaAccessLevelMsg.FULL,
+            rationaleBefore = rationaleBefore,
+            rationaleAfter = rationaleAfter,
+            wasBlocked = wasBlocked,
+        )
 
     /**
      * Whether Dart may show the dialog: always with full access, always with

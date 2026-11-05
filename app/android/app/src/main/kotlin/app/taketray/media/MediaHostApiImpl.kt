@@ -14,11 +14,11 @@ import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
 import android.util.Log
+import app.taketray.bridge.PendingPermission
+import app.taketray.bridge.failureMessage
+import app.taketray.bridge.guardedOnIo
+import app.taketray.bridge.guardedWith
 import java.util.TimeZone
-import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * The Kotlin side of the media bridge (D-66): a thin pipe that reads
@@ -53,7 +53,7 @@ class MediaHostApiImpl(
     private var activity: Activity? = activity
 
     /** The one permission request in flight; touched on the main thread only. */
-    private var pendingRequest: CompletableDeferred<Unit>? = null
+    private val permission = PendingPermission(PERMISSION_REQUEST_CODE)
 
     private val sdkInt get() = Build.VERSION.SDK_INT
 
@@ -75,17 +75,12 @@ class MediaHostApiImpl(
      */
     override suspend fun requestAccess(): AccessReportMsg {
         val host = activity ?: throw FlutterError("no-activity", "requestAccess needs the activity")
-        if (pendingRequest != null) throw FlutterError("busy", "a permission request is already showing")
+        if (permission.isWaiting) throw FlutterError("busy", "a permission request is already showing")
         val rationaleBefore = guarded("requestAccess") { rationale() }
-        val request = CompletableDeferred<Unit>()
-        pendingRequest = request
-        try {
+        permission.await {
             guarded("requestAccess") {
                 askPermissions(host, MediaAccessChecker.permissionsToRequest(sdkInt), PERMISSION_REQUEST_CODE)
             }
-            request.await()
-        } finally {
-            if (pendingRequest === request) pendingRequest = null
         }
         return guarded("requestAccess") {
             val level = currentLevel()
@@ -103,21 +98,12 @@ class MediaHostApiImpl(
      * bridge's request; the level is read again rather than from the result
      * arrays, which are empty when Android cancels a request.
      */
-    fun onPermissionResult(requestCode: Int): Boolean {
-        if (requestCode != PERMISSION_REQUEST_CODE) return false
-        val request = pendingRequest ?: return false
-        pendingRequest = null
-        request.complete(Unit)
-        return true
-    }
+    fun onPermissionResult(requestCode: Int): Boolean = permission.onResult(requestCode)
 
     /** The activity is being destroyed: a waiting request fails instead of hanging. */
     fun onHostGone() {
         activity = null
-        pendingRequest?.let {
-            pendingRequest = null
-            it.completeExceptionally(FlutterError("host-gone", "the activity closed before the permission result"))
-        }
+        permission.fail(FlutterError("host-gone", "the activity closed before the permission result"))
     }
 
     override fun openAppSettings() =
@@ -263,7 +249,7 @@ class MediaHostApiImpl(
     private suspend fun <T> io(
         method: String,
         block: () -> T,
-    ): T = withContext(Dispatchers.IO) { guarded(method, block) }
+    ): T = guardedOnIo(method, ::nativeError, block)
 
     companion object {
         /** The request code of the media permission request (16 bits, unlike any plugin's). */
@@ -277,18 +263,11 @@ class MediaHostApiImpl(
     }
 }
 
-/** Runs [block]; an unexpected exception becomes [nativeError]. */
+/** Runs [block]; an unexpected exception becomes [nativeError] (`bridge/BridgeSupport.kt`). */
 private inline fun <T> guarded(
     method: String,
     block: () -> T,
-): T =
-    try {
-        block()
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Throwable) {
-        throw nativeError(method, e)
-    }
+): T = guardedWith(method, ::nativeError, block)
 
 /**
  * What Dart gets for [e]: a FlutterError the bridge threw on purpose as it is;
@@ -300,6 +279,5 @@ internal fun nativeError(
     e: Throwable,
 ): FlutterError {
     if (e is FlutterError) return e
-    Log.w(LOG_TAG, "$method failed: ${e.javaClass.simpleName}")
-    return FlutterError("native-error", "$method failed: ${e.javaClass.simpleName}", null)
+    return FlutterError("native-error", failureMessage(LOG_TAG, method, e), null)
 }

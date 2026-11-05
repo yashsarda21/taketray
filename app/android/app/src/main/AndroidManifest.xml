@@ -24,6 +24,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
 
+    <!-- The new-clips notification and the reminders (D-101, D-103). A runtime
+         permission from Android 13; below 13 it is granted at install.
+         The release gains only this one and RECEIVE_BOOT_COMPLETED (D-101). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+
     <!-- No Google backup or phone-to-phone transfer of app data (D-64): the
          database holds MediaStore ids that would point at other videos on
          another phone, so a new phone starts with an empty TakeTray. The two XML files exclude every domain; allowBackup is
@@ -51,6 +56,14 @@
             <meta-data
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
+              />
+            <!-- Flutter's deep linking is off (D-101, D-103): this activity is
+                 exported for the launcher, so with it on any app could open
+                 any route. Notifications send an allow-listed launch action
+                 (background/LaunchActions.kt) instead. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
               />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
