@@ -256,6 +256,65 @@ class ReminderReceiverTest {
     }
 
     @Test
+    fun `an evening alarm delivered after midnight counts its own day and tomorrow still fires`() {
+        val late = on.copy(eveningMinutes = 23 * 60 + 30, waitingShotMs = listOf(ms("2026-11-05T10:00:00Z")))
+        store.write(late)
+        ReminderScheduler(app, LONDON).armEvening(late, ms("2026-11-05T12:00:00Z"))
+        assertEquals("2026-11-05T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+
+        // Android delivers the 5th's alarm at 00:15 on the 6th: it is the 5th's evening.
+        now = ms("2026-11-06T00:15:00Z")
+        fire(app, ReminderScheduler.ACTION_EVENING)
+        assertEquals("You shot 1 clip today. Tag it?", eveningTitle())
+        assertEquals(ReminderTimes.localDay(ms("2026-11-05T12:00:00Z"), LONDON), store.eveningHandledDay())
+        assertEquals("2026-11-06T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        manager.cancel(Notifier.EVENING)
+
+        // The 6th's own evening still runs, counting the 6th.
+        store.write(late.copy(waitingShotMs = listOf(ms("2026-11-05T10:00:00Z"), ms("2026-11-06T12:00:00Z"), ms("2026-11-06T13:00:00Z"))))
+        now = ms("2026-11-06T23:30:20Z")
+        fire(app, ReminderScheduler.ACTION_EVENING)
+        assertEquals("You shot 2 clips today. Tag them?", eveningTitle())
+        assertEquals("2026-11-07T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `a re-arm just after midnight keeps last night's pending alarm`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val late = on.copy(eveningMinutes = 23 * 60 + 30, waitingShotMs = listOf(ms("2026-11-05T10:00:00Z")))
+        store.write(late)
+        now = ms("2026-11-05T12:00:00Z")
+        arming.apply(app, late)
+        // 23:30 passed, not delivered yet; the app opens at 00:05 and a clock correction follows.
+        now = ms("2026-11-06T00:05:00Z")
+        arming.apply(app, late)
+        assertEquals("2026-11-06T00:05:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        now = ms("2026-11-06T00:06:00Z")
+        BootReceiver().onReceive(app, Intent(Intent.ACTION_TIME_CHANGED))
+        assertEquals("2026-11-06T00:06:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        fire(app, ReminderScheduler.ACTION_EVENING)
+        assertEquals("You shot 1 clip today. Tag it?", eveningTitle())
+        assertEquals("2026-11-06T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Handled: a later re-arm that night keeps tomorrow's.
+        now = ms("2026-11-06T00:30:00Z")
+        arming.apply(app, late)
+        assertEquals("2026-11-06T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `an evening armed two nights ago never fires`() {
+        val arming = Arming.background(nowMs = { now }, zone = { LONDON })
+        val late = on.copy(eveningMinutes = 23 * 60 + 30, waitingShotMs = listOf(ms("2026-11-04T10:00:00Z")))
+        store.write(late)
+        now = ms("2026-11-04T12:00:00Z")
+        arming.apply(app, late)
+        // The phone was off from the 4th's evening to just after midnight on the 6th.
+        now = ms("2026-11-06T00:05:00Z")
+        arming.apply(app, late)
+        assertEquals("2026-11-06T23:30:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
     fun `a re-arm after today fired arms tomorrow`() {
         // A quiet evening: nothing shot today, so nothing is posted, but today is handled.
         store.write(on)

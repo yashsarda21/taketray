@@ -44,27 +44,32 @@ class Reminders(
     private val zone: ZoneId,
 ) {
     /**
-     * 1. Arm the next evening (tomorrow's) first, so nothing below can lose it.
-     * 2. If the reminder is on and today's evening is not handled yet, mark it
-     *    handled (once a local day, posted or not: a re-arm later today then
-     *    arms tomorrow's), and count today's waiting clips: the scanned ones
-     *    Dart lists ([BackgroundState.waitingShotMs]) and the ones the app has
-     *    not scanned yet ([NewClipsCounter]), shot at or after the start of
-     *    the local day.
+     * 1. Note the evening this alarm stood for ([ReminderTimes.dueEvening] of
+     *    the armed evening: yesterday's when it is delivered after midnight;
+     *    else now), then arm the next evening first, so nothing below can
+     *    lose it.
+     * 2. If the reminder is on and that evening's day is not handled yet,
+     *    mark it handled (once per evening, posted or not: a re-arm later
+     *    then arms the next one), and count that day's waiting clips: the
+     *    scanned ones Dart lists ([BackgroundState.waitingShotMs]) and the
+     *    ones the app has not scanned yet ([NewClipsCounter]), shot at or
+     *    after the start of that local day.
      * 3. One or more: post the evening reminder. None: nothing (quiet, even
      *    if older clips wait).
      */
     fun evening() {
         val state = store.state()
+        // Read before re-arming, which moves it to the next evening.
+        val evening = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone) ?: nowMs
         scheduler.armEvening(state, nowMs, firing = true)
         if (!state.eveningEnabled) return
-        val day = ReminderTimes.localDay(nowMs, zone)
-        // Handled already today (the clock moved back, a trip west): once a day.
+        val day = ReminderTimes.localDay(evening, zone)
+        // Handled already (the clock moved back, a trip west): once per evening.
         if (store.eveningHandledDay() == day) return
         store.setEveningHandledDay(day)
-        val today = ReminderTimes.startOfToday(nowMs, zone)
-        val waiting = state.waitingShotMs.count { it >= today }
-        val count = waiting + counter.count(state).shotMs.count { it >= today }
+        val since = ReminderTimes.startOfToday(evening, zone)
+        val waiting = state.waitingShotMs.count { it >= since }
+        val count = waiting + counter.count(state).shotMs.count { it >= since }
         if (count < 1) return
         notifier.showEvening(count)
     }

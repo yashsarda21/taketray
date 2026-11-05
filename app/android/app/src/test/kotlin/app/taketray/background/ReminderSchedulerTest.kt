@@ -98,8 +98,7 @@ class ReminderSchedulerTest {
     fun `evening minutes out of range are clamped and only that is logged`() {
         scheduler.armEvening(on.copy(eveningMinutes = 5000), now)
         assertEquals("2026-11-05T23:59:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
-        // Clamped to midnight, which has passed today: tomorrow's once today is handled.
-        store.setEveningHandledDay(ReminderTimes.localDay(now, LONDON))
+        // Clamped to midnight, which has passed today and was never armed: tomorrow's.
         scheduler.armEvening(on.copy(eveningMinutes = -7), now)
         assertEquals("2026-11-06T00:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         val logs = ShadowLog.getLogsForTag(LOG_TAG)

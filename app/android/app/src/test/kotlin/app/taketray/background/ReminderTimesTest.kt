@@ -127,6 +127,24 @@ class ReminderTimesTest {
     }
 
     @Test
+    fun `the evening an armed alarm is due for`() {
+        val armedToday = ms("2026-11-05T21:00:00Z")
+        // Today's, once its time has passed.
+        assertEquals("2026-11-05T21:00:00Z", ReminderTimes.dueEvening(armedToday, ms("2026-11-05T21:01:00Z"), nine, london)?.let(::at))
+        assertEquals(null, ReminderTimes.dueEvening(armedToday, ms("2026-11-05T20:59:00Z"), nine, london))
+        // Yesterday's (23:30, delivered after midnight), until today's evening time.
+        val half = 23 * 60 + 30
+        val lastNight = ms("2026-11-05T23:30:00Z")
+        assertEquals("2026-11-05T23:30:00Z", ReminderTimes.dueEvening(lastNight, ms("2026-11-06T00:15:00Z"), half, london)?.let(::at))
+        assertEquals("2026-11-05T23:30:00Z", ReminderTimes.dueEvening(lastNight, ms("2026-11-06T23:29:00Z"), half, london)?.let(::at))
+        assertEquals(null, ReminderTimes.dueEvening(lastNight, ms("2026-11-06T23:31:00Z"), half, london))
+        // Nothing older, nothing for another time setting, nothing armed.
+        assertEquals(null, ReminderTimes.dueEvening(ms("2026-11-04T23:30:00Z"), ms("2026-11-06T00:15:00Z"), half, london))
+        assertEquals(null, ReminderTimes.dueEvening(armedToday, ms("2026-11-05T22:30:00Z"), 22 * 60, london))
+        assertEquals(null, ReminderTimes.dueEvening(null, ms("2026-11-05T21:01:00Z"), nine, london))
+    }
+
+    @Test
     fun `start of today`() {
         assertEquals("2026-11-05T00:00:00Z", at(ReminderTimes.startOfToday(ms("2026-11-05T23:30:00Z"), london)))
         // 20:00 UTC is already 01:30 on the 6th in India, whose day began at 18:30 UTC.

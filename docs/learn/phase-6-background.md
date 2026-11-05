@@ -326,38 +326,38 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   `RTC_WAKEUP` is a wall-clock time that wakes the phone; "allow while idle" lets it fire in Doze, Android's deep sleep. It is **inexact**: Android may deliver it a little late to save battery, never early. An exact alarm needs a special permission (`SCHEDULE_EXACT_ALARM`, which Android 14 no longer grants by default, or `USE_EXACT_ALARM`, which Google Play allows only for alarm-clock and calendar apps), and a reminder to tag clips does not need to-the-second timing. WorkManager, the usual library, is ruled out too (D-101): it adds two permissions TakeTray forbids, and it cannot fire at a wall-clock time.
 
-- **Arm tomorrow's evening first.** When the evening alarm fires, the very first thing the receiver does is arm the next one, so nothing that fails later (a broken count, a failed post) can lose tomorrow's. `firing = true` says "this is the alarm itself": always the next evening strictly after now.
+- **Arm the next evening first.** When the evening alarm fires, the receiver first notes which evening the alarm stood for (read before re-arming, which moves it on), then arms the next one, so nothing that fails later (a broken count, a failed post) can lose it. `firing = true` says "this is the alarm itself": always the next evening strictly after now.
 
   ```kotlin
-  val state = store.state()
+  // Read before re-arming, which moves it to the next evening.
+  val evening = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone) ?: nowMs
   scheduler.armEvening(state, nowMs, firing = true)
   if (!state.eveningEnabled) return
   ```
 
   The test `evening re-arms before posting` makes the post throw and checks that tomorrow's alarm is set.
 
-- **A late alarm must not be pushed to tomorrow.** Because the alarm is inexact, 21:00 can pass before Android delivers it. Anything that re-arms in that window (you open the app at 21:01, the phone corrects its clock, TakeTray updates, a reboot) would see that 21:00 has passed and arm tomorrow's in its place, and today's reminder would be lost. But firing "whenever 21:00 has passed" is wrong too: a fresh install opened at 21:30, or the reminder switched on late, would then ring at once while you are looking at the app. So the store remembers which evening the alarm stands for, and a re-arm catches up only an alarm that was armed for tonight, whose time has passed, and which has not run yet:
+- **A late alarm must not be pushed to tomorrow.** Because the alarm is inexact, 21:00 can pass before Android delivers it. Anything that re-arms in that window (you open the app at 21:01, the phone corrects its clock, TakeTray updates, a reboot) would see that 21:00 has passed and arm tomorrow's in its place, and today's reminder would be lost. But firing "whenever 21:00 has passed" is wrong too: a fresh install opened at 21:30, or the reminder switched on late, would then ring at once while you are looking at the app. So the store remembers which evening the alarm stands for, and a re-arm catches up only an alarm that is **due**: armed for tonight's evening once its time has passed, or for last night's evening just after midnight (a 23:30 alarm still on its way at 00:05), and not handled yet:
 
   ```kotlin
-  val today = ReminderTimes.eveningToday(nowMs, state.eveningMinutes, zone)
-  val armedForToday = store.eveningArmedFor() == today
-  val catchUp = !firing && today <= nowMs && armedForToday && store.eveningHandledDay() != ReminderTimes.localDay(nowMs, zone)
-  val armedFor = if (catchUp) today else ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
+  val due = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone)
+  val catchUp = due?.takeIf { !firing && store.eveningHandledDay() != ReminderTimes.localDay(it, zone) }
+  val armedFor = catchUp ?: ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
   ```
 
-  The alarm then fires at the later of `armedFor` and now, and the store keeps `armedFor`: on a catch-up that is still tonight's 21:00, not the 21:01 it fires at, so a second re-arm before it fires catches up again instead of pushing it to tomorrow. Drop `armedForToday` and `turning the reminder on after the time passed waits for tomorrow` fails with `expected:<2026-11-0[6T21:0]0:00Z> but was:<2026-11-0[5T21:3]0:00Z>`: switched on at 21:30, it would have rung at once.
+  The alarm then fires at the later of `armedFor` and now, and the store keeps `armedFor`: on a catch-up that is still tonight's 21:00, not the 21:01 it fires at, so a second re-arm before it fires catches up again instead of pushing it to tomorrow. Pretend every passed evening was armed (pass `eveningToday(…)` instead of `store.eveningArmedFor()`) and `turning the reminder on after the time passed waits for tomorrow` fails with `expected:<2026-11-0[6T21:0]0:00Z> but was:<2026-11-0[5T21:3]0:00Z>`: switched on at 21:30, it would have rung at once.
 
-  The receiver marks the day handled before it counts, whether it posts or not. So a reboot just after the evening has run still arms tomorrow's, and two alarms in one day do the work once. The mark means "handled", not "posted", on purpose: a quiet day (nothing shot) would otherwise never be marked. The tests `a re-arm after the time passed and before it fired still fires today`, `the first state write after the time passed with nothing armed waits for tomorrow` and `a re-arm after today fired arms tomorrow` cover the three sides.
+  The handled mark names the day of the evening the alarm stood for, not the day it was delivered. The receiver marks it before it counts, whether it posts or not, so a reboot just after the evening has run still arms the next one, and two alarms for one evening do the work once. A 23:30 alarm delivered at 00:15 marks and counts the 5th, and the 6th's 23:30 still runs; mark the delivery day instead and `an evening alarm delivered after midnight counts its own day and tomorrow still fires` fails with `expected:<20762> but was:<20763>` (the 6th's day number where the 5th's belongs). The mark means "handled", not "posted", on purpose: a quiet day (nothing shot) would otherwise never be marked.
 
-- **Only clips shot today.** The count is the clips that wait in To tag (Dart's list in the copy) plus the ones the app has not scanned yet (Section 4's counter), shot since the start of today's local day:
+- **Only clips shot that day.** The count is the clips that wait in To tag (Dart's list in the copy) plus the ones the app has not scanned yet (Section 4's counter), shot since the start of the evening's local day (usually today; yesterday for a late alarm after midnight):
 
   ```kotlin
-  val today = ReminderTimes.startOfToday(nowMs, zone)
-  val waiting = state.waitingShotMs.count { it >= today }
-  val count = waiting + counter.count(state).shotMs.count { it >= today }
+  val since = ReminderTimes.startOfToday(evening, zone)
+  val waiting = state.waitingShotMs.count { it >= since }
+  val count = waiting + counter.count(state).shotMs.count { it >= since }
   ```
 
-  With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one a day: the store remembers the local day it last handled, so moving the clock back or flying west does not bring a second one.
+  With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one per evening: the store remembers the day of the evening it last handled, so moving the clock back or flying west does not bring a second one.
 
 - **Once per session.** Every app start writes the copy and re-arms, and once 14 days have passed the still alarm would be due "at once" every time. So the receiver marks the session as handled **before** it posts, and arming skips a handled session:
 

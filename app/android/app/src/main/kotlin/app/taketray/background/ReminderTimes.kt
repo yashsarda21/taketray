@@ -53,8 +53,36 @@ object ReminderTimes {
         nowMs: Long,
         minutes: Int,
         zone: ZoneId,
+    ): Long = eveningDaysBefore(nowMs, 0, minutes, zone)
+
+    /**
+     * The evening an alarm armed for [armedForMs] is due for at [nowMs], or
+     * null. Today's evening once its time has passed; yesterday's (a late
+     * alarm still on its way after midnight) only while today's evening
+     * time has not come, so it never takes today's place; nothing older,
+     * and nothing armed for another time setting.
+     */
+    fun dueEvening(
+        armedForMs: Long?,
+        nowMs: Long,
+        minutes: Int,
+        zone: ZoneId,
+    ): Long? {
+        if (armedForMs == null) return null
+        val today = eveningToday(nowMs, minutes, zone)
+        if (armedForMs == today) return if (today <= nowMs) today else null
+        val yesterday = eveningDaysBefore(nowMs, 1, minutes, zone)
+        return if (armedForMs == yesterday && nowMs < today) yesterday else null
+    }
+
+    /** The evening [days] local dates before [nowMs]'s. */
+    private fun eveningDaysBefore(
+        nowMs: Long,
+        days: Long,
+        minutes: Int,
+        zone: ZoneId,
     ): Long {
-        val date = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate()
+        val date = Instant.ofEpochMilli(nowMs).atZone(zone).toLocalDate().minusDays(days)
         return instantAt(date.atTime(eveningTime(minutes)), zone).toEpochMilli()
     }
 
