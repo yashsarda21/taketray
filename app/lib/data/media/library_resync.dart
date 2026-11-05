@@ -3,6 +3,7 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
+import 'package:taketray/domain/rules/rematch_window.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 // Volume names and counts only; never a MediaStore version (D-10).
@@ -25,6 +26,13 @@ class LibraryResync {
   /// detached and flagged missing, and leave To tag and Skipped unless they
   /// are in a reel), then records the volume's
   /// version. [volume] must be mounted.
+  ///
+  /// When lost clips are still there, detached (a clip in a reel; the others
+  /// left the lists), a re-match window opens on [volume] for them (D-108):
+  /// Android may still be indexing, so [reattach] looks for them again for a
+  /// day. A failure to write it fails the resync like any other write; the
+  /// clips are detached by then, so the retry opens no window for them (they
+  /// stay missing, as before D-108).
   Future<RebuildMatch> resync(
     MediaVolume volume, {
     required DateTime now,
@@ -38,6 +46,20 @@ class LibraryResync {
       now: now,
     );
     await _clips.applyRebuildMatch(volume.name, match);
+    if (match.lost.isNotEmpty) {
+      final detached = {
+        for (final c in await _clips.detachedClipsOn(volume.name))
+          if (match.lost.contains(c.id)) c.id,
+      };
+      if (detached.isNotEmpty) {
+        await _phone.openRematchWindow(
+          volume.name,
+          clipIds: detached,
+          generation: volume.generation,
+          at: now,
+        );
+      }
+    }
     await _phone.recordVolumeVersion(volume.name, volume.version!);
     _log.info(
       'Volume ${volume.name}: matched ${stored.length} clips again, '
@@ -46,25 +68,56 @@ class LibraryResync {
     return match;
   }
 
-  /// Gives the detached clips of the mounted [volume] their videos back
-  /// (D-108, I-3): a clip a rebuild left detached because Android had not
-  /// indexed its video yet.
+  /// Gives the clips a rebuild of the mounted [volume] detached their
+  /// videos back (D-108, I-3): Android had not indexed them yet when the
+  /// rebuild was matched.
   ///
-  /// With no detached clip on [volume] nothing is read. Otherwise
-  /// `bridge.allVideos(volume)` is matched against them with the same rule as
-  /// a rebuild (`matchAfterRebuild`: a unique fingerprint, never a guess), and
-  /// `ClipsRepository.reattachDetached` writes the result in one transaction.
-  /// A clip with no unique match stays detached, and is tried again by the
-  /// next scan. Returns what was written.
+  /// Only inside the re-match window [resync] opened ([RematchWindow]), and
+  /// only for its clips. In this order:
   ///
-  /// It throws when the phone or the database fails; the caller decides what
-  /// that costs (the scan carries on without it).
+  /// 1. No window (or an unreadable one): nothing. So a clip a verify
+  ///    detached (its number now holds another video) never costs a read.
+  /// 2. The window has ended (24 hours, or a clock that went back): it is
+  ///    removed, nothing is read.
+  /// 3. None of its clips is still detached (re-attached, or removed by the
+  ///    user): it is removed, nothing is read.
+  /// 4. The volume's generation is the one they were last matched at: the
+  ///    same videos, nothing is read.
+  /// 5. Otherwise `bridge.allVideos(volume)` is matched against them with
+  ///    the same rule as a rebuild (`matchAfterRebuild`: a unique
+  ///    fingerprint, never a guess), and `ClipsRepository.reattachDetached`
+  ///    writes the result in one transaction. When every one of them is back
+  ///    the window is removed; otherwise the generation is noted, and the
+  ///    next scan reads again only when it has moved.
+  ///
+  /// Returns what was written. It throws when the phone or the database
+  /// fails, before the generation is noted, so the next scan tries again;
+  /// the caller decides what a failure costs (the scan carries on).
   Future<ReattachResult> reattach(
     MediaVolume volume, {
     required DateTime now,
   }) async {
-    final detached = await _clips.detachedClipsOn(volume.name);
-    if (detached.isEmpty) return const ReattachResult(0, 0, 0);
+    const nothing = ReattachResult(0, 0, 0);
+    final window = await _phone.rematchWindow(volume.name);
+    if (window == null) return nothing;
+    if (!window.isOpenAt(now)) {
+      await _phone.closeRematchWindow(volume.name);
+      _log.info('Volume ${volume.name}: the re-match window has ended');
+      return nothing;
+    }
+    final detached = [
+      for (final c in await _clips.detachedClipsOn(volume.name))
+        if (window.clipIds.contains(c.id)) c,
+    ];
+    if (detached.isEmpty) {
+      await _phone.closeRematchWindow(volume.name);
+      _log.info(
+        'Volume ${volume.name}: no clip of the rebuild is detached now, '
+        'the re-match window is done',
+      );
+      return nothing;
+    }
+    if (window.generation == volume.generation) return nothing;
     final current = await _bridge.allVideos(volume.name);
     final match = matchAfterRebuild(
       detached,
@@ -73,6 +126,11 @@ class LibraryResync {
       now: now,
     );
     final result = await _clips.reattachDetached(volume.name, match.remap);
+    if (result.reattached + result.merged == detached.length) {
+      await _phone.closeRematchWindow(volume.name);
+    } else {
+      await _phone.recordRematch(volume.name, volume.generation);
+    }
     _log.info(
       'Volume ${volume.name}: ${detached.length} detached clips matched '
       'again, ${match.remap.length} found, re-attached ${result.reattached}, '

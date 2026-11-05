@@ -156,11 +156,12 @@ int? nextPageCursor({required int cursor, required List<MediaVideo> page}) {
 /// later than [captured], the generation the scan will store as the
 /// baseline. A row added after it belongs to the next scan.
 ///
-/// Pending rows and rows that hold the baseline ([holdsBaseline]) are kept
-/// here, so [advanceBaseline] can hold below them; only the usable ones are
-/// saved as clips. Without a [since] (it cannot happen while Shooting mode
-/// is on, but nothing here may guess) nothing is new: the volume starts from
-/// now.
+/// Rows that are not finished ([holdsBaseline]) are kept here, so the scan
+/// can count them; only the usable ones are saved as clips, and the first
+/// scan of a volume does not hold its baseline for the others (D-108: it
+/// moves to [captured], and such a row is the documented gap). Without a
+/// [since] (it cannot happen while Shooting mode is on, but nothing here may
+/// guess) nothing is new: the volume starts from now.
 List<MediaVideo> shotSinceSession(
   List<MediaVideo> rows, {
   required DateTime? since,

@@ -705,18 +705,20 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
 **What we built:** two repairs to how the scan finds clips, both parked by Phase 3's final review.
 
-- **Detached clips find their videos again (I-3).** After Android rebuilds its media library, the app matches its stored clips to the new rows by fingerprint. If Android has not finished indexing at that moment, a clip whose video is not in the list yet is *detached*: it gets the number `-id`, is flagged missing, and nothing ever looked at it again. A minute later the same video appears, and the next scan adds it as a brand-new clip. The reel shows a "missing" clip, and To tag shows the same video as a duplicate. Now a scan matches the detached clips again, and a duplicate that already arrived gives way to the clip the user knows.
+- **Detached clips find their videos again (I-3).** After Android rebuilds its media library, the app matches its stored clips to the new rows by fingerprint. If Android has not finished indexing at that moment, a clip whose video is not in the list yet is *detached*: it gets the number `-id`, is flagged missing, and nothing ever looked at it again. A minute later the same video appears, and the next scan adds it as a brand-new clip. The reel shows a "missing" clip, and To tag shows the same video as a duplicate. Now, for a day after such a rebuild, a scan matches those clips again whenever the volume has changed, and a duplicate that already arrived gives way to the clip the user knows.
 - **A volume with no baseline starts at the session, not at now (M-8).** If Shooting mode is on and a volume has no baseline (its read failed at switch-on, or an SD card was inserted mid-trip), its first scan used to say "nothing here is new". Now it adds the clips shot since Shooting mode was switched on.
 
 **Why TakeTray needs it:** spec §4 names the worst failure: a clip in a reel that points at the wrong video. The next worst is a reel whose clips are split from the videos they stand for, so the user's work and the video live in two rows. A background job that wakes up after a reboot or a system update is the likeliest time to meet a half-built index, which is why this task is in the background-detection phase. And a creator inserting a fresh SD card on a trip expects the clips they shot on it to appear.
 
 **Key ideas:**
 
-- **Detached means "not found yet", not "gone".** A detached clip is `mediaStoreId < 0` (it holds `-id`, so no real video can have its number) and missing. It keeps its fingerprint, which is how it is found again. The scan looks for these clips only on a volume whose index is stable (the `ScanAfter` plan) and **before** it pages over the new videos, so a video that is back ahead of the baseline is found to be a clip already:
+- **Detached means "not found yet", not "gone".** A detached clip is `mediaStoreId < 0` (it holds `-id`, so no real video can have its number) and missing. It keeps its fingerprint, which is how it is found again. The scan looks for these clips only on a volume whose index is stable (the `ScanAfter` plan), never in the capped end from the shade (it ends the session, so the repair waits), and **before** it pages over the new videos, so a video that is back ahead of the baseline is found to be a clip already:
 
   ```dart
   case ScanAfter(:final generation):
-    await _rematchDetached(context, volume);
+    // Never in the capped end: it ends the session, so a repair that
+    // reads the whole volume can wait for the next session's scan.
+    if (caps == null) await _rematchDetached(context, volume);
     added += await _scanAfter(
       context,
       baseline!,
@@ -726,11 +728,31 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
     );
   ```
 
-- **One read, and only when needed.** Reading every video on the volume is the expensive part, so the first thing the re-match does is ask the database whether any detached clip exists. With none, the phone is not asked at all. With some, the volume is read once, and the same fingerprint rule as a rebuild picks the match:
+- **A window, so the cost ends.** Reading every video on the volume is the expensive part (thousands of rows, on the UI isolate), so it must not happen forever. The only thing that leaves a clip detached while its video is still on the phone is a rebuild that ran too early, and Android finishes re-indexing in minutes. So the resync that detached clips opens a **re-match window** on that volume, and the re-match runs only inside it. A clip a verify detached (its number now holds another video) or flagged gone (its video was deleted) opens none, so it costs nothing. The resync opens the window for the lost clips that are still there:
 
   ```dart
-  final detached = await _clips.detachedClipsOn(volume.name);
-  if (detached.isEmpty) return const ReattachResult(0, 0, 0);
+  if (match.lost.isNotEmpty) {
+    final detached = {
+      for (final c in await _clips.detachedClipsOn(volume.name))
+        if (match.lost.contains(c.id)) c.id,
+    };
+    if (detached.isNotEmpty) {
+      await _phone.openRematchWindow(
+        volume.name,
+        clipIds: detached,
+        generation: volume.generation,
+        at: now,
+      );
+    }
+  }
+  ```
+
+  `PhoneStateRepository` stores it in the `settings` table under `mediaRematchWindows`, like the volume versions: never exported, deleted by an import, and still there after the app is killed. A value that cannot be read counts as no window, and only the key's name is logged.
+
+- **Read only when something changed.** MediaStore keeps a *generation* per volume, a counter that moves whenever a row is added or changed. The window remembers the generation the clips were last matched at (first the resync's). The same generation means the same videos, so a second read would find nothing. `reattach` checks, in order: no window; the window has ended (24 hours, or a clock that went back); none of its clips is still detached; the generation has not moved. Only then is the volume read, once, and the same fingerprint rule as a rebuild picks the match:
+
+  ```dart
+  if (window.generation == volume.generation) return nothing;
   final current = await _bridge.allVideos(volume.name);
   final match = matchAfterRebuild(
     detached,
@@ -739,9 +761,22 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
     now: now,
   );
   final result = await _clips.reattachDetached(volume.name, match.remap);
+  if (result.reattached + result.merged == detached.length) {
+    await _phone.closeRematchWindow(volume.name);
+  } else {
+    await _phone.recordRematch(volume.name, volume.generation);
+  }
   ```
 
-  The rule is "when unsure, leave it": a clip with two possible videos, or a video two clips want, matches nothing and stays detached for the next scan. A wrong match would put a reel clip on the wrong video, which is worse than a clip that is flagged missing.
+  When every clip is back the window closes; otherwise the new generation is noted. If the read or the write fails, the generation is not noted, so the next scan tries again even when nothing changed. The window's 24 hours are a plain rule in the domain layer, open from the resync, with the end left out:
+
+  ```dart
+  bool isOpenAt(DateTime now) =>
+      !now.isBefore(openedAt) &&
+      now.isBefore(openedAt.add(rematchWindowLength));
+  ```
+
+  Only the window's own clips are matched. The rule is "when unsure, leave it": a clip with two possible videos, or a video two clips want, matches nothing and stays detached for the next scan. A wrong match would put a reel clip on the wrong video, which is worse than a clip that is flagged missing.
 
 - **Three things can hold the video's number.** For a detached clip D and its video V, `reattachDetached` (one transaction per volume) looks at who holds V's number: nobody (D takes it and is no longer missing); a duplicate N that is the same video (N gives way); or a clip that is *another* video, such as a stale number (nothing changes). The test for "the same video" is `sameFingerprint`: the same size, length and shooting instant, never the name.
 
@@ -761,7 +796,7 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
   }
   ```
 
-- **A repair never fails the scan.** If the phone or the database fails during the re-match, the failure is logged by its type and the scan goes on. The clips stay detached and the next scan tries again. Failing the volume instead would keep a session from being ended from the shade (Section 6) because of a repair:
+- **A repair never fails the scan.** If the phone or the database fails during the re-match, the failure is logged by its type and the scan goes on. The clips stay detached and the next scan tries again. Failing the volume instead would let a repair stop the volume's new clips and its baseline:
 
   ```dart
   try {
@@ -774,7 +809,7 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
   }
   ```
 
-- **A new volume starts at the session.** The phone is asked once for the videos shot since Shooting mode was switched on. Its query is a *superset* (a video also matches if it was added or modified since), so Dart narrows it by the shooting date, `shotAt`. A video shot exactly at the start counts; one shot before does not, even if it was copied onto the card later. It also drops any row added after the generation the scan captured, which belongs to the next scan:
+- **A new volume starts at the session.** The phone is asked once for the videos shot since Shooting mode was switched on. Its query is a *superset* (a video also matches if it was added or modified since), so Dart narrows it by the shooting date, `shotAt`. A video shot exactly at the start counts; one shot before does not, even if it was copied onto the card later. A video with no `DATE_TAKEN` falls back to `DATE_ADDED` (the D-69 rule), so an old video without one that is copied onto the card during the session counts as shot since the session and is added. The rule also drops any row added after the generation the scan captured, which belongs to the next scan:
 
   ```dart
   if (since == null) return const [];
@@ -796,16 +831,39 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
     captured: captured,
     rows: rows,
     read: '${rows.length} rows shot since the start',
+    hold: false,
   );
   ```
 
-  So a row that is still unfinished (no length yet) is not added this time, and the baseline is held just below it, as for every scan (`holdsBaseline`, D-72). A clip that is already stored stays where it is, and is not added to To tag again. If the phone fails, no baseline is written, and the next scan tries the volume again.
+  A clip that is already stored stays where it is, and is not added to To tag again. If the phone fails, no baseline is written, and the next scan tries the volume again.
+
+- **The first scan never holds its baseline.** A normal scan holds the baseline just below a row that is not finished yet (`holdsBaseline`, D-72), so the next scan sees it again. The first scan of a volume must not: the session's start is a *date*, and only this scan filters by it. The next scan is a plain `ScanAfter` by generation, with no date filter, and a fresh card indexes its videos in no particular order. Held below an unfinished row, the next scan would add every pre-session video above it as new. So `hold: false` moves the baseline to the captured generation whatever the rows are:
+
+  ```dart
+  final generation = advanceBaseline(
+    from: from,
+    captured: captured,
+    seen: hold ? rows : const [],
+    now: context.now,
+    truncated: truncated,
+  );
+  ```
+
+  The price is a gap, and it is the rule: a video with no length yet at the first scan of a card is not added, and neither is one still being recorded (the phone's query leaves pending rows out, so the scan never sees them at all). "Add earlier videos" brings such a clip in, and `docs/later.md` (Phase 11) has the idea for closing the gap. One test feeds the scan a pending row through a fake bridge that lists one; the phone never does, so that test only shows the rule would not hold for one either.
 
 - **The capped end leaves new volumes alone.** When Turn off is tapped in the shade (Section 6), only the volumes that had a baseline at the tap are scanned. A volume with none is not in the tap and is left alone; if a stale copy did name it, its cap is honoured like any other.
 
-**Where it lives:** `app/lib/data/media/library_resync.dart` (`reattach`), `app/lib/data/media/media_scanner.dart` (`_rematchDetached`, `_startNewVolume`, `_commit`), `app/lib/data/repositories/clips_repository.dart` (`detachedClipsOn`, `reattachDetached`, `ReattachResult`), `app/lib/domain/rules/baseline.dart` (`shotSinceSession`). Tests: `app/test/data/repositories/clips_repository_reattach_test.dart`, `app/test/data/media/media_scanner_rematch_test.dart`, `app/test/data/media/media_scanner_new_volume_test.dart`, and the `shotSinceSession` group in `app/test/domain/rules/baseline_test.dart`. Docs: "Finding new clips" and "Tagging data changes" in `docs/flow.md`.
+**Where it lives:** `app/lib/data/media/library_resync.dart` (`resync` opens the window, `reattach`), `app/lib/data/media/media_scanner.dart` (`_rematchDetached`, `_startNewVolume`, `_commit`), `app/lib/data/repositories/clips_repository.dart` (`detachedClipsOn`, `reattachDetached`, `ReattachResult`), `app/lib/data/repositories/phone_state_repository.dart` (`rematchWindow`, `openRematchWindow`, `recordRematch`, `closeRematchWindow`), `app/lib/domain/rules/rematch_window.dart` (`RematchWindow`, `rematchWindowLength`), `app/lib/domain/rules/baseline.dart` (`shotSinceSession`). Tests: `app/test/data/repositories/clips_repository_reattach_test.dart`, `app/test/data/media/media_scanner_rematch_test.dart` (its "the re-match window" group), `app/test/data/media/media_scanner_new_volume_test.dart`, the "re-match windows (D-108)" group in `app/test/data/repositories/phone_state_repository_test.dart`, `app/test/domain/rules/rematch_window_test.dart`, and the `shotSinceSession` group in `app/test/domain/rules/baseline_test.dart`. Docs: "Finding new clips", "Tagging data changes" and "Phone state" in `docs/flow.md`.
 
-**Try it yourself:** see the order of the reel preserved. From `app/`:
+**Try it yourself:** first, see the cost end. From `app/`:
+
+```bash
+../tool/flutter test test/data/media/media_scanner_rematch_test.dart
+```
+
+It ends with `All tests passed!`. Open `app/lib/data/media/library_resync.dart` and delete the line `if (window.generation == volume.generation) return nothing;` in `reattach`, then run it again. `the re-match window inside the window an unchanged generation does not read all videos` fails with `Expected: <1>` and `Actual: <3>`: two scans that saw nothing new each read the whole volume. Put the line back.
+
+Then see the order of the reel preserved:
 
 ```bash
 ../tool/flutter test test/data/repositories/clips_repository_reattach_test.dart
@@ -813,7 +871,7 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
 It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repository.dart` and change `link.addedAt.isBefore(own)` to `link.addedAt.isAfter(own)` in `_mergeDuplicate`, then run the same command. `reattachDetached the duplicate is in the same reel: one link, the earliest addedAt kept (the reel clip is the older)` fails with `Expected: {1: DateTime:2026-10-26 09:01:00.000Z}` and `Actual: {1: DateTime:2026-10-26 09:05:00.000Z}`: the merged clip took the later time, so it would move down its reel. Put the line back and run it again to see it pass.
 
-**Decisions:** D-108 (all of this section, amending D-72), with D-69 (the fingerprint), D-70 (the plans and the baseline), D-71 (detaching as `-id`) and D-106 (the capped end) as background.
+**Decisions:** D-108 (all of this section, amending D-72; its fix round added the window and the first scan that never holds), with D-69 (the fingerprint), D-70 (the plans and the baseline), D-71 (detaching as `-id`) and D-106 (the capped end) as background.
 
 ## 9. On the S24
 

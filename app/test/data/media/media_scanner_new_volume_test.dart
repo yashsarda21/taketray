@@ -52,8 +52,9 @@ Matcher scanDone({required int added, Set<String> failed = const {}}) =>
         .having((d) => d.failedVolumes, 'failedVolumes', failed);
 
 /// A bridge whose `videosShotSince` also returns pending rows. The phone's
-/// query leaves them out (the contract in `pigeons/media_api.dart`); this
-/// pins that the baseline rule would hold below one if it ever showed up.
+/// query leaves them out (the contract in `pigeons/media_api.dart`), so this
+/// proves nothing about the phone: it pins that a pending row that did show
+/// up would not be added and would not hold the baseline either.
 class _PendingVisible extends RecordingBridge {
   @override
   Future<List<MediaVideo>> videosShotSince(
@@ -191,40 +192,43 @@ void main() {
       expect((await h.clip(ids[0])).firstSeenAt, h.clock.now());
     });
 
-    test('new volume pending row holds the baseline', () async {
-      _make = () => MediaHarness(bridge: _PendingVisible());
+    test('a held row on a new card never lets older card videos in on the '
+        'next scan', () async {
       await shootingWithPhoneOnly();
+      h.clock.advance(_hour * 3);
+      // A card indexes in no order: videos shot long before the session can
+      // get higher generations than one shot during it. Row 3 was shot an
+      // hour ago and has no length yet (it would hold a baseline).
       bridge.put(
         [
-          shotOnCard(1, 5, _hour),
-          shotOnCard(2, 6, _hour * 2, pending: true),
-          shotOnCard(3, 7, _hour * 3),
+          shotOnCard(1, 1, -_hour * 48),
+          shotOnCard(2, 2, _hour),
+          shotOnCard(3, 3, _hour * 2, durationMs: 0),
+          shotOnCard(4, 4, -_hour * 72),
+          shotOnCard(5, 5, -_hour * 24),
         ],
         volume: card,
         version: 'c1',
       );
 
-      final outcome = await h.scanner.scan();
-
-      // The pending row is not added; the baseline holds just below it.
-      expect(outcome, scanDone(added: 2));
-      expect(await _onCard(), {1, 3});
-      expect(await h.baselineOf(card), at(5));
-
-      // The recording ends: the next scan adds it, and only it.
-      bridge.videosByVolume[card] = [
-        shotOnCard(1, 5, _hour),
-        shotOnCard(2, 6, _hour * 2),
-        shotOnCard(3, 7, _hour * 3),
-      ];
       expect(await h.scanner.scan(), scanDone(added: 1));
-      expect(await _onCard(), {1, 2, 3});
-      expect(await h.baselineOf(card), at(7));
+      expect(await _onCard(), {2});
+      expect(await h.baselineOf(card), at(5), reason: 'never held');
+
+      // Its length arrives. The next scan is a plain `ScanAfter`, with no
+      // date filter: had the baseline held at 2, rows 4 and 5 would come in.
+      bridge.videosByVolume[card] = [
+        for (final v in bridge.videosByVolume[card]!)
+          if (v.mediaStoreId == 3) v.copyWith(durationMs: 5000) else v,
+      ];
+      expect(await h.scanner.scan(), scanDone(added: 0));
+      expect(await _onCard(), {2}, reason: 'nothing shot before the session');
     });
 
-    test('new volume zero-length row holds the baseline and is added once '
-        'its length arrives', () async {
+    test('a zero-length video at the first card scan is not added and the '
+        'baseline moves to captured', () async {
       await shootingWithPhoneOnly();
+      h.clock.advance(_hour * 4);
       bridge.put(
         [
           shotOnCard(1, 5, _hour),
@@ -237,15 +241,67 @@ void main() {
 
       expect(await h.scanner.scan(), scanDone(added: 2));
       expect(await _onCard(), {1, 3});
-      expect(await h.baselineOf(card), at(5));
+      expect(await h.baselineOf(card), at(7));
 
+      // Its length arrives, but the baseline is past it: the gap (D-108).
+      // "Add earlier videos" brings it in.
       bridge.videosByVolume[card] = [
         shotOnCard(1, 5, _hour),
         shotOnCard(2, 6, _hour * 2),
         shotOnCard(3, 7, _hour * 3),
       ];
-      expect(await h.scanner.scan(), scanDone(added: 1));
-      expect(await _onCard(), {1, 2, 3});
+      expect(await h.scanner.scan(), scanDone(added: 0));
+      expect(await _onCard(), {1, 3});
+      expect(await h.baselineOf(card), at(7));
+    });
+
+    test('a pending row at the first card scan is not added', () async {
+      await shootingWithPhoneOnly();
+      h.clock.advance(_hour * 4);
+      bridge.put(
+        [
+          shotOnCard(1, 5, _hour),
+          shotOnCard(2, 6, _hour * 2, pending: true),
+          shotOnCard(3, 7, _hour * 3),
+        ],
+        volume: card,
+        version: 'c1',
+      );
+
+      // The phone's `videosShotSince` leaves pending rows out.
+      expect(await h.scanner.scan(), scanDone(added: 2));
+      expect(await _onCard(), {1, 3});
+      expect(await h.baselineOf(card), at(7));
+
+      // The recording ends; the baseline is past it: the gap (D-108).
+      bridge.videosByVolume[card] = [
+        shotOnCard(1, 5, _hour),
+        shotOnCard(2, 6, _hour * 2),
+        shotOnCard(3, 7, _hour * 3),
+      ];
+      expect(await h.scanner.scan(), scanDone(added: 0));
+      expect(await _onCard(), {1, 3});
+    });
+
+    test('a pending row from a bridge that lists one (the phone never '
+        'does) is not added and holds nothing', () async {
+      _make = () => MediaHarness(bridge: _PendingVisible());
+      await shootingWithPhoneOnly();
+      h.clock.advance(_hour * 4);
+      bridge.put(
+        [
+          shotOnCard(1, 5, _hour),
+          shotOnCard(2, 6, _hour * 2, pending: true),
+          shotOnCard(3, 7, _hour * 3),
+        ],
+        volume: card,
+        version: 'c1',
+      );
+
+      final outcome = await h.scanner.scan();
+
+      expect(outcome, scanDone(added: 2));
+      expect(await _onCard(), {1, 3});
       expect(await h.baselineOf(card), at(7));
     });
 

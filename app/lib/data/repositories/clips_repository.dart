@@ -1183,10 +1183,14 @@ class ClipsRepository {
     );
   }
 
-  Future<void> _insertLink(int clipId, int reelId, DateTime now) => _db
+  Future<void> _insertLink(int clipId, int reelId, DateTime addedAt) => _db
       .into(_db.clipReels)
       .insert(
-        ClipReelsCompanion.insert(clipId: clipId, reelId: reelId, addedAt: now),
+        ClipReelsCompanion.insert(
+          clipId: clipId,
+          reelId: reelId,
+          addedAt: addedAt,
+        ),
       );
 
   /// Sets `mediaStoreId` (and [verification], when given) of clip [clipId] if

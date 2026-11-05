@@ -431,7 +431,9 @@ class MediaScanner {
               cap: caps?[volume.name],
             );
           case ScanAfter(:final generation):
-            await _rematchDetached(context, volume);
+            // Never in the capped end: it ends the session, so a repair that
+            // reads the whole volume can wait for the next session's scan.
+            if (caps == null) await _rematchDetached(context, volume);
             added += await _scanAfter(
               context,
               baseline!,
@@ -472,13 +474,21 @@ class MediaScanner {
   /// current generation becomes the baseline. Returns how many clips are new.
   ///
   /// The phone is asked once, `videosShotSince` the session's start; the rows
-  /// are narrowed by [shotSinceSession] and then saved and the baseline
-  /// moved as a scan does (`_commit`), so a clip that is already stored is
-  /// not added again and a row that holds the baseline ([holdsBaseline]) is
-  /// not added yet: the baseline holds below it. A [cap] (the capped end) is
-  /// honoured like `_scanAfter` does: no row above it is kept and the
-  /// baseline goes no higher. A failure of the phone or the database leaves
-  /// the volume without a baseline, and the next scan tries again.
+  /// are narrowed by [shotSinceSession] and then saved as a scan saves them
+  /// (`_commit`), so a clip that is already stored is not added again.
+  ///
+  /// The baseline never holds here: it moves to `captured`. A row that would
+  /// hold it ([holdsBaseline]: no length or size yet; pending rows are not in
+  /// the answer at all) is not added, and is not seen again. Holding would
+  /// make the next scan a plain `ScanAfter` from below that row, with no
+  /// date filter, and every video shot before the session above it on the
+  /// card would come in as new (a card indexes in no order). That gap is
+  /// D-108's; "Add earlier videos" recovers it.
+  ///
+  /// A [cap] (the capped end) is honoured like `_scanAfter` does: no row
+  /// above it is kept and the baseline goes no higher. A failure of the
+  /// phone or the database leaves the volume without a baseline, and the
+  /// next scan tries again.
   Future<int> _startNewVolume(
     _ScanContext context,
     MediaVolume volume, {
@@ -513,14 +523,16 @@ class MediaScanner {
       captured: captured,
       rows: rows,
       read: '${rows.length} rows shot since the start',
+      hold: false,
     );
   }
 
-  /// Matches the volume's detached clips against everything now on it,
-  /// before the page of new videos is read (D-108, I-3): so a video that is
-  /// back ahead of the baseline is found to be a clip already, not added a
-  /// second time. One read of the volume per scan, and only while a detached
-  /// clip exists (`LibraryResync.reattach`).
+  /// Matches the clips a rebuild detached against everything now on the
+  /// volume, before the page of new videos is read (D-108, I-3): so a video
+  /// that is back ahead of the baseline is found to be a clip already, not
+  /// added a second time. At most one read of the volume per scan, and only
+  /// inside the rebuild's re-match window when the volume's generation has
+  /// moved (`LibraryResync.reattach`).
   ///
   /// It is a repair: a failure is logged by type and the scan carries on,
   /// the clips stay detached and the next scan tries again. It never fails
@@ -639,6 +651,7 @@ class MediaScanner {
       rows: seen.values.toList(),
       truncated: truncated,
       read: '${seen.length} rows on $pages pages',
+      hold: true,
     );
   }
 
@@ -649,7 +662,10 @@ class MediaScanner {
   /// [baseline] is the one stored for the volume, or null when it has none.
   /// [from] is the generation the read started after, [captured] the one it
   /// stopped at, [truncated] whether it stopped early, and [read] what the
-  /// read found, for the log. A crash or a failure while saving leaves the
+  /// read found, for the log. With [hold] (a `ScanAfter`), a row that holds
+  /// the baseline holds it below the oldest such row ([advanceBaseline]);
+  /// without it (a volume's first scan) the baseline moves to [captured]
+  /// whatever the rows are. A crash or a failure while saving leaves the
   /// baseline where it was, and the next scan sees the rows again; the move
   /// itself is a compare-and-set, so a stale scan writes nothing.
   Future<int> _commit(
@@ -660,6 +676,7 @@ class MediaScanner {
     required int captured,
     required List<MediaVideo> rows,
     required String read,
+    required bool hold,
     bool truncated = false,
   }) async {
     final usable = [
@@ -684,7 +701,7 @@ class MediaScanner {
     final generation = advanceBaseline(
       from: from,
       captured: captured,
-      seen: rows,
+      seen: hold ? rows : const [],
       now: context.now,
       truncated: truncated,
     );
@@ -706,7 +723,8 @@ class MediaScanner {
     }
     final summary =
         'Volume ${volume.name}: $read, '
-        '${usable.length} usable, $added new, $pending held, '
+        '${usable.length} usable, $added new, '
+        '$pending ${hold ? 'held' : 'not finished, left out'}, '
         '$detached stored clips were other videos; '
         'baseline $moved';
     if (truncated) {

@@ -8,6 +8,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/rules/rematch_window.dart';
 
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
@@ -394,6 +395,181 @@ void main() {
         // Recording over a corrupt value starts a fresh map.
         await repo.recordVolumeVersion('external_primary', 'v1');
         expect(await repo.volumeVersions(), {'external_primary': 'v1'});
+      });
+    }
+  });
+
+  group('re-match windows (D-108)', () {
+    const phone = 'external_primary';
+    const card = 'ABCD-1234';
+
+    test('none by default; opened, read back, and closed', () async {
+      expect(PhoneStateRepository.rematchWindowsKey, 'mediaRematchWindows');
+      expect(await repo.rematchWindow(phone), isNull);
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {3, 9},
+        generation: 41,
+        at: _t0,
+      );
+      await repo.openRematchWindow(card, clipIds: {5}, generation: 2, at: _t0);
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: _t0, clipIds: const {3, 9}, generation: 41),
+      );
+      expect(
+        await repo.rematchWindow(card),
+        RematchWindow(openedAt: _t0, clipIds: const {5}, generation: 2),
+      );
+
+      await repo.closeRematchWindow(phone);
+      expect(await repo.rematchWindow(phone), isNull);
+      expect(await repo.rematchWindow(card), isNotNull, reason: 'per volume');
+
+      // Closing the last one removes the key; closing none is fine.
+      await repo.closeRematchWindow(card);
+      await repo.closeRematchWindow(card);
+      expect(await _raw('mediaRematchWindows'), isNull);
+    });
+
+    test('the time is kept to the millisecond, in UTC', () async {
+      final at = DateTime.utc(2026, 10, 28, 9, 0, 0, 123);
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {1},
+        generation: 1,
+        at: at.toLocal(),
+      );
+
+      final window = (await repo.rematchWindow(phone))!;
+      expect(window.openedAt, at);
+      expect(window.openedAt.isUtc, isTrue);
+    });
+
+    test('a second rebuild while one is open adds its clips and starts the '
+        '24 hours again', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final later = _t0.add(const Duration(hours: 20));
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {8},
+        generation: 1,
+        at: later,
+      );
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: later, clipIds: const {3, 8}, generation: 1),
+      );
+    });
+
+    test('a rebuild after the old window ended starts a fresh one', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final later = _t0.add(rematchWindowLength);
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {8},
+        generation: 1,
+        at: later,
+      );
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: later, clipIds: const {8}, generation: 1),
+      );
+    });
+
+    test('a re-match moves the generation, and only of an open '
+        'window', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+
+      await repo.recordRematch(phone, 9);
+      await repo.recordRematch(card, 9);
+
+      expect((await repo.rematchWindow(phone))!.generation, 9);
+      expect(await repo.rematchWindow(card), isNull, reason: 'none opened');
+    });
+
+    test('kept when Shooting mode goes off', () async {
+      await turnOn();
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+
+      await repo.turnShootingOff();
+
+      expect(await repo.rematchWindow(phone), isNotNull);
+    });
+
+    test('never exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.rematchWindowsKey)),
+      );
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final text = await BackupService(db, clock).exportJson();
+      expect(text, isNot(contains('mediaRematchWindows')));
+
+      await BackupService(db, clock).importJson(
+        File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
+      );
+
+      expect(await repo.rematchWindow(phone), isNull);
+    });
+
+    for (final (name, value) in [
+      ('not JSON', 'nope'),
+      ('a list', '[1]'),
+      ('a volume that is not an object', '{"external_primary": "private"}'),
+      (
+        'a time that is not a number',
+        '{"external_primary": {"openedAtMs": "x", "clipIds": [1], '
+            '"generation": 1}}',
+      ),
+      (
+        'clip ids that are not numbers',
+        '{"external_primary": {"openedAtMs": 1, "clipIds": ["private"], '
+            '"generation": 1}}',
+      ),
+      (
+        'a generation that is missing',
+        '{"external_primary": {"openedAtMs": 1, "clipIds": [1]}}',
+      ),
+      (
+        'a time that is not a whole number',
+        '{"external_primary": {"openedAtMs": 9e99, "clipIds": [1], '
+            '"generation": 1}}',
+      ),
+      (
+        'a time out of range',
+        '{"external_primary": {"openedAtMs": 99999999999999999, '
+            '"clipIds": [1], "generation": 1}}',
+      ),
+    ]) {
+      test('$name reads as no window, logging only the key', () async {
+        final records = _record();
+        await _put('mediaRematchWindows', value);
+
+        expect(await repo.rematchWindow(phone), isNull);
+
+        expect(
+          records.map((r) => r.message),
+          contains(contains('mediaRematchWindows')),
+        );
+        for (final r in records) {
+          expect(r.message, isNot(contains(value)));
+          expect(r.message, isNot(contains('private')));
+        }
+        // Opening over a corrupt value starts a fresh map.
+        await repo.openRematchWindow(
+          phone,
+          clipIds: {1},
+          generation: 1,
+          at: _t0,
+        );
+        expect(await repo.rematchWindow(phone), isNotNull);
       });
     }
   });
