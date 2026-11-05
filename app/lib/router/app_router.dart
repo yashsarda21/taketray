@@ -2,10 +2,11 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
@@ -136,7 +137,18 @@ GoRouter appRouter(Ref ref) {
             routes: [
               GoRoute(
                 path: Routes.settings,
-                builder: (context, state) => const SettingsPlaceholderScreen(),
+                builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'notifications-help',
+                    // Full screen, above the shell and its nav pill, like the
+                    // tag player (D-107); Settings stays under it in the tab,
+                    // so Back returns to it.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) =>
+                        const NotificationsHelpScreen(),
+                  ),
+                ],
               ),
             ],
           ),

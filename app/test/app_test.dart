@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -146,7 +146,7 @@ void main() {
 
     await tester.tap(_inPill('Settings'));
     await tester.pumpAndSettle();
-    expect(_inScreen(SettingsPlaceholderScreen, 'Settings'), findsOneWidget);
+    expect(_inScreen(SettingsScreen, 'Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
   });
 

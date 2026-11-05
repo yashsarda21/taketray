@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
+import 'package:taketray/platform/background_bridge.dart';
 
 /// The view a phone with [level] has (the banner rule, D-75, with access that
 /// was never full before).
@@ -38,6 +40,39 @@ class FakeAccess extends MediaAccessController {
   Future<void> allow() async => allowed++;
 
   void show(MediaAccessLevel l) => state = AsyncData(accessView(l));
+}
+
+/// A [NotificationAccessController] that shows [access] (null: the first
+/// read failed; [loading]: the first read never ends), counts the Allow taps
+/// and answers them with [allowResult], and shows what a test pushes with
+/// [show].
+class FakeNotificationAccess extends NotificationAccessController {
+  FakeNotificationAccess(
+    this.access, {
+    this.allowResult = true,
+    this.loading = false,
+  });
+
+  final NotificationAccess? access;
+  final bool loading;
+  bool allowResult;
+  int allowed = 0;
+
+  @override
+  Future<NotificationAccess> build() {
+    if (loading) return Completer<NotificationAccess>().future;
+    final a = access;
+    if (a == null) return Future.error(StateError('the first read failed'));
+    return Future.value(a);
+  }
+
+  @override
+  Future<bool> allow() async {
+    allowed++;
+    return allowResult;
+  }
+
+  void show(NotificationAccess a) => state = AsyncData(a);
 }
 
 /// A [ShootingModeController] that starts at [initial], shows what a test

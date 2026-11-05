@@ -4,6 +4,11 @@ abstract final class Routes {
   static const toTag = '/to-tag';
   static const settings = '/settings';
 
+  /// The help screen "Notifications not arriving?" (D-107), a child of
+  /// Settings, full screen above the tab shell like the tag player. Back
+  /// returns to Settings.
+  static const notificationsHelp = '/settings/notifications-help';
+
   /// The Skipped clips (D-98, D-99), inside the To tag tab
   /// so the nav pill stays; Back returns to To tag.
   static const skipped = '/to-tag/skipped';

@@ -64,7 +64,7 @@ final class ShootingModeControllerProvider
 }
 
 String _$shootingModeControllerHash() =>
-    r'91b9aac27f1e79feb97ed9bf3d6e02f0d83af1f8';
+    r'df01ea50e90eb80a3431364abc1af81135658838';
 
 /// Shooting mode for the card on the Reels screen: whether it is on, the
 /// switch, and the camera shortcut (D-75).

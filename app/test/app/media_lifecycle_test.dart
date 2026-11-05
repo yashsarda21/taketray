@@ -35,6 +35,43 @@ class _ClearRecorder extends FakeBackgroundBridge {
   }
 }
 
+/// The media bridge and the background bridge write the order of their calls
+/// to one list.
+class _OrderedMedia extends RecordingBridge {
+  _OrderedMedia(this.order);
+
+  final List<String> order;
+
+  @override
+  Future<MediaAccess> accessReport() {
+    order.add('accessReport');
+    return super.accessReport();
+  }
+
+  @override
+  Future<List<MediaVideo>> videosAddedAfter(
+    String volumeName,
+    int afterGeneration,
+    List<String> folders,
+    int limit,
+  ) {
+    order.add('videosAddedAfter');
+    return super.videosAddedAfter(volumeName, afterGeneration, folders, limit);
+  }
+}
+
+class _OrderedBackground extends FakeBackgroundBridge {
+  _OrderedBackground(this.order);
+
+  final List<String> order;
+
+  @override
+  Future<NotificationAccess> notificationAccess() {
+    order.add('notificationAccess');
+    return super.notificationAccess();
+  }
+}
+
 void main() {
   late VmHarness h;
   late _CountingCache cache;
@@ -123,6 +160,64 @@ void main() {
 
     expectZoneThenAccessThenScan();
     expect(cache.prunes, 1);
+  });
+
+  group('the notification permission', () {
+    final order = <String>[];
+
+    setUp(() {
+      order.clear();
+      h = VmHarness(
+        bridge: _OrderedMedia(order),
+        background: _OrderedBackground(order),
+      );
+      h.bridge.put([fakeVideo(id: 1, generation: 5)]);
+    });
+
+    testWidgets(
+      'is read on the first frame and on resume, after the access check and '
+      'before the scan',
+      (tester) async {
+        await h.media.turnOnNow();
+        h.bridge.put([fakeVideo(id: 2, generation: 6)]);
+
+        await pumpLifecycle(tester);
+        await work(tester);
+        // The state is built once for the refresh to update, then refreshed.
+        final firstRun = order.lastIndexOf('notificationAccess');
+        expect(firstRun, isNonNegative);
+        expect(order.indexOf('accessReport'), lessThan(firstRun));
+        expect(firstRun, lessThan(order.indexOf('videosAddedAfter')));
+
+        order.clear();
+        await resume(tester);
+        await work(tester);
+
+        expect(order, contains('notificationAccess'));
+        expect(
+          order.indexOf('accessReport'),
+          lessThan(order.indexOf('notificationAccess')),
+        );
+        expect(
+          order.indexOf('notificationAccess'),
+          lessThan(order.indexOf('videosAddedAfter')),
+        );
+      },
+    );
+
+    testWidgets('a failing read does not stop the scan', (tester) async {
+      await h.media.turnOnNow();
+      h.bridge.put([fakeVideo(id: 2, generation: 6)]);
+      h.background
+        ..failNext('notificationAccess')
+        ..failNext('notificationAccess');
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
   });
 
   testWidgets('going to the background starts nothing', (tester) async {
@@ -292,7 +387,11 @@ void main() {
         ShootingState.off,
       );
       expect(h.background.shadeAction, isNull);
-      expect(h.background.calls.first, 'pendingShadeAction');
+      // (The permission check, D-107, is a background call before it.)
+      expect(
+        h.background.calls.firstWhere((c) => c != 'notificationAccess'),
+        'pendingShadeAction',
+      );
       // The scan's own gate ended the session, reading every volume: that
       // counts as a scan, so the notification is cleared.
       expect(clears(), 1);

@@ -14,15 +14,16 @@ part 'phone_state_repository.g.dart';
 final Logger _log = Logger('phoneState');
 
 /// What belongs to this phone, not to the user: whether Shooting mode is on,
-/// where each volume stood when it was switched on, and whether the app ever
-/// had full access to the videos.
+/// where each volume stood when it was switched on, whether the app ever had
+/// full access to the videos, and whether it ever asked for the notification
+/// permission.
 ///
-/// It lives in the `settings` table under three keys, `shootingMode`,
-/// `mediaAccessWasFull` and `mediaVolumeVersions`. None is in
-/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
-/// import deletes them (D-71, D-72): after a restore Shooting mode is off, and
-/// no volume version is known, because both belong to the phone's own media
-/// library.
+/// It lives in the `settings` table under four keys, `shootingMode`,
+/// `mediaAccessWasFull`, `mediaVolumeVersions` and `notificationsAsked`. None
+/// is in `SettingsRepository.exportedKeys`, so a backup never holds them, and
+/// an import deletes them (D-71, D-72): after a restore Shooting mode is off,
+/// and no volume version is known, because both belong to the phone's own
+/// media library.
 ///
 /// `shootingMode` holds the whole [ShootingState] as one JSON value, so
 /// switching on, the start time and the baselines change together or not at
@@ -37,6 +38,7 @@ class PhoneStateRepository {
   static const shootingModeKey = 'shootingMode';
   static const mediaAccessWasFullKey = 'mediaAccessWasFull';
   static const volumeVersionsKey = 'mediaVolumeVersions';
+  static const notificationsAskedKey = 'notificationsAsked';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -246,6 +248,36 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Marked that access was full');
+  }
+
+  /// Whether TakeTray ever asked for the notification permission on this
+  /// phone (D-107): it asks once, the first time Shooting mode is turned on.
+  /// Unreadable counts as no.
+  Future<bool> notificationsAsked() async {
+    final text = await _rawValue(notificationsAskedKey);
+    if (text == null) return false;
+    try {
+      final value = jsonDecode(text);
+      if (value is bool) return value;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $notificationsAskedKey is corrupt, reading it as no');
+    return false;
+  }
+
+  /// Remembers that the permission was asked for. It is never cleared by
+  /// Shooting mode going off.
+  Future<void> markNotificationsAsked() async {
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: notificationsAskedKey,
+            value: jsonEncode(true),
+          ),
+        );
+    _log.info('Marked that notifications were asked for');
   }
 
   Future<String?> _rawValue(String key) async => (await (_db.select(

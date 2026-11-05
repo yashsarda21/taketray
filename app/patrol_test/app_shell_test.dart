@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -19,6 +19,6 @@ void main() {
     expect($(ToTagScreen).$('To tag'), findsOneWidget);
 
     await $(TtNavPill).$('Settings').tap();
-    expect($(SettingsPlaceholderScreen).$('Settings'), findsOneWidget);
+    expect($(SettingsScreen).$('Settings'), findsOneWidget);
   });
 }

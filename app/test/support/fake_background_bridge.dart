@@ -16,7 +16,9 @@ import 'package:taketray/platform/background_bridge.dart';
 ///   default it answers with the current [access].
 /// - [startAction] is what the app was "started with": the first event of
 ///   [launchActions] when it is listened to (taken once). [emit] sends a tap
-///   while the app runs.
+///   while the app runs; [emitError] sends an error, as a failed take of the
+///   start action does. [launchListens] and [launchCancels] count how often
+///   the stream was listened to and how often its last listener left.
 /// - [calls] logs the name of every call, in order, including one that
 ///   fails. [failNext] makes the next call of a method throw a
 ///   `PlatformException`. [gate] makes the next call of a method wait; the
@@ -47,11 +49,18 @@ class FakeBackgroundBridge implements BackgroundBridge {
 
   final List<String> calls = [];
 
+  int launchListens = 0;
+
+  int launchCancels = 0;
+
   final Map<String, int> _failures = {};
   final Map<String, Completer<void>> _gates = {};
 
   late final StreamController<LaunchAction> _launches =
-      StreamController<LaunchAction>.broadcast(onListen: _start);
+      StreamController<LaunchAction>.broadcast(
+        onListen: _start,
+        onCancel: () => launchCancels++,
+      );
   bool _started = false;
 
   /// The next call of [method] throws a `PlatformException`. Calling it twice
@@ -65,6 +74,9 @@ class FakeBackgroundBridge implements BackgroundBridge {
 
   /// A notification tapped while the app runs.
   void emit(LaunchAction action) => _launches.add(action);
+
+  /// An error on [launchActions].
+  void emitError(Object error) => _launches.addError(error);
 
   Future<T> _call<T>(String method, T Function() answer) async {
     calls.add(method);
@@ -82,6 +94,7 @@ class FakeBackgroundBridge implements BackgroundBridge {
   }
 
   void _start() {
+    launchListens++;
     if (_started) return;
     _started = true;
     final start = startAction;

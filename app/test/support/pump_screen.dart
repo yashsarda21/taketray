@@ -33,6 +33,10 @@ String tagPlayerRouteMarker(Object? from) => 'the tag player from $from';
 /// What the Skipped route shows in a test that only has one screen.
 const skippedRouteMarker = 'the Skipped route';
 
+/// What the notifications help route shows in a test that only has one
+/// screen.
+const notificationsHelpRouteMarker = 'the notifications help route';
+
 /// What the Reels route shows in a test that only has one screen.
 const reelsRouteMarker = 'the Reels route';
 
@@ -49,7 +53,9 @@ String clipRouteMarker(Object reelId, Object clipId) =>
 /// `/reels/<id>` route that shows [reelRouteMarker], and a
 /// `/reels/<id>/clip/<clipId>` route that shows [clipRouteMarker], and a
 /// `/to-tag/play` route that shows [tagPlayerRouteMarker] and a
-/// `/to-tag/skipped` route that shows [skippedRouteMarker])
+/// `/to-tag/skipped` route that shows [skippedRouteMarker], and a
+/// `/settings/notifications-help` route that shows
+/// [notificationsHelpRouteMarker])
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -111,6 +117,11 @@ Future<ProviderContainer> pumpScreen(
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: Routes.notificationsHelp,
+        builder: (context, state) =>
+            const Scaffold(body: Text(notificationsHelpRouteMarker)),
       ),
       GoRoute(
         path: Routes.toTag,

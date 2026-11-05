@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
+import 'package:taketray/platform/background_bridge.dart';
 
 import '../../../support/fake_media_bridge.dart';
 import '../../../support/vm_harness.dart';
@@ -159,6 +160,100 @@ void main() {
 
       expect(shown()!.on, isTrue);
       expect(logText(records), contains('The scan after turning on failed'));
+    });
+  });
+
+  group('the notification permission', () {
+    NotificationAccess notAllowed({int sdk = 34}) =>
+        NotificationAccess(granted: false, canAsk: true, sdkInt: sdk);
+
+    int requests() => h.background.calls
+        .where((c) => c == 'requestNotificationAccess')
+        .length;
+
+    test('turning on asks for notifications once on 33+', () async {
+      h.background.access = notAllowed();
+
+      await controller.setOn(true);
+
+      expect(requests(), 1);
+      expect(await h.media.phoneState.notificationsAsked(), isTrue);
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('not asked below 33', () async {
+      h.background.access = notAllowed(sdk: 32);
+
+      await controller.setOn(true);
+
+      expect(requests(), 0);
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('not asked twice: off and on again stays quiet', () async {
+      h.background.access = notAllowed();
+
+      await controller.setOn(true);
+      await controller.setOn(false);
+      h.background.access = notAllowed();
+      await controller.setOn(true);
+
+      expect(requests(), 1);
+    });
+
+    test('not asked when notifications are already allowed', () async {
+      await controller.setOn(true);
+
+      expect(requests(), 0);
+    });
+
+    test('asked after the video question, before it is on', () async {
+      h.bridge.access = access(MediaAccessLevel.denied);
+      h.background.access = notAllowed();
+      final videoDialog = h.bridge.gate('requestAccess');
+
+      final turning = controller.setOn(true);
+      await settle();
+      expect(requests(), 0, reason: 'the video question is still open');
+
+      final notificationDialog = h.background.gate('requestNotificationAccess');
+      videoDialog.complete();
+      await settle();
+      expect(requests(), 1, reason: 'then the notification question');
+      expect(
+        (await h.media.phoneState.loadShooting()).on,
+        isFalse,
+        reason: 'Shooting mode waits for both answers',
+      );
+
+      notificationDialog.complete();
+      await turning;
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('a refused permission does not stop Shooting mode', () async {
+      h.background.access = notAllowed();
+      h.background.onRequestNotificationAccess = () =>
+          const NotificationAccess(granted: false, canAsk: false, sdkInt: 34);
+
+      await controller.setOn(true);
+
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('a failing permission request does not stop Shooting mode', () async {
+      h.background.access = notAllowed();
+      h.background.failNext('requestNotificationAccess');
+
+      await controller.setOn(true);
+
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('turning off never asks', () async {
+      await controller.setOn(false);
+
+      expect(requests(), 0);
     });
   });
 

@@ -1759,5 +1759,165 @@
         "type": "int"
       }
     }
+  },
+  "stillShootingTitle": "Still shooting?",
+  "@stillShootingTitle": {
+    "description": "The title of the dialog that asks whether Shooting mode should stay on after 14 days. Also the title of the notification the phone shows (native copy, strings.xml)."
+  },
+  "stillShootingBody": "Shooting mode has been on for 14 days. While it's on, every new video goes to To tag.",
+  "@stillShootingBody": {
+    "description": "The text of the Still shooting? dialog."
+  },
+  "stillShootingKeepOn": "Keep it on",
+  "@stillShootingKeepOn": {
+    "description": "Button of the Still shooting? dialog that leaves Shooting mode on."
+  },
+  "stillShootingTurnOff": "Turn off",
+  "@stillShootingTurnOff": {
+    "description": "Button of the Still shooting? dialog that turns Shooting mode off."
+  },
+  "shootingModeOffSnack": "Shooting mode off",
+  "@shootingModeOffSnack": {
+    "description": "Snack shown after Shooting mode was turned off from the Still shooting? dialog."
+  },
+  "settingsGroupHelp": "Help",
+  "@settingsGroupHelp": {
+    "description": "Heading of the Help group in Settings."
+  },
+  "settingsGroupPermissions": "Permissions",
+  "@settingsGroupPermissions": {
+    "description": "Heading of the Permissions group in Settings."
+  },
+  "settingsNotificationsTitle": "Notifications",
+  "@settingsNotificationsTitle": {
+    "description": "Title of the Settings row that shows whether TakeTray may send notifications."
+  },
+  "settingsNotificationsAllowed": "Allowed",
+  "@settingsNotificationsAllowed": {
+    "description": "Second line of the Notifications row in Settings when notifications are allowed."
+  },
+  "settingsNotificationsNotAllowed": "Not allowed",
+  "@settingsNotificationsNotAllowed": {
+    "description": "Second line of the Notifications row in Settings when notifications are not allowed."
+  },
+  "settingsNotificationsAllow": "Allow",
+  "@settingsNotificationsAllow": {
+    "description": "Button on the Notifications row in Settings that asks for the notification permission or opens the phone's notification settings."
+  },
+  "settingsNotificationsAllowSemantics": "Allow notifications",
+  "@settingsNotificationsAllowSemantics": {
+    "description": "Screen-reader label of the Allow button on the Notifications row in Settings. It starts with the visible word."
+  },
+  "notificationsHelpTitle": "Notifications not arriving?",
+  "@notificationsHelpTitle": {
+    "description": "Title of the help screen about phones that stop apps in the background, and the title of its row in Settings."
+  },
+  "notificationsHelpRowSubtitle": "Steps for Samsung, Xiaomi, Realme and more",
+  "@notificationsHelpRowSubtitle": {
+    "description": "Second line of the Settings row that opens the help screen about notifications."
+  },
+  "notificationsHelpIntro": "Some phones stop apps in the background to save battery. Then the \"new clips\" notification can be late or missing.",
+  "@notificationsHelpIntro": {
+    "description": "Intro paragraph of the help screen about notifications."
+  },
+  "notificationsHelpSafeTitle": "Your clips are never lost",
+  "@notificationsHelpSafeTitle": {
+    "description": "Title of the reassurance box on the help screen about notifications."
+  },
+  "notificationsHelpSafeBody": "They show up in To tag when you open the app.",
+  "@notificationsHelpSafeBody": {
+    "description": "Text of the reassurance box on the help screen about notifications."
+  },
+  "notificationsHelpYourPhone": "Your phone",
+  "@notificationsHelpYourPhone": {
+    "description": "Small badge on the help screen's card for the brand of the phone in the user's hand."
+  },
+  "notificationsHelpFooter": "Menu names can be a little different on your phone.",
+  "@notificationsHelpFooter": {
+    "description": "Note at the end of the help screen about notifications."
+  },
+  "notificationsHelpBrandSamsung": "Samsung",
+  "@notificationsHelpBrandSamsung": {
+    "description": "Title of the Samsung card on the help screen about notifications."
+  },
+  "notificationsHelpBrandXiaomi": "Xiaomi, Redmi, POCO",
+  "@notificationsHelpBrandXiaomi": {
+    "description": "Title of the Xiaomi card on the help screen about notifications."
+  },
+  "notificationsHelpBrandOppo": "Oppo, Realme",
+  "@notificationsHelpBrandOppo": {
+    "description": "Title of the Oppo card on the help screen about notifications."
+  },
+  "notificationsHelpBrandVivo": "Vivo, iQOO",
+  "@notificationsHelpBrandVivo": {
+    "description": "Title of the Vivo card on the help screen about notifications."
+  },
+  "notificationsHelpBrandOneplus": "OnePlus",
+  "@notificationsHelpBrandOneplus": {
+    "description": "Title of the OnePlus card on the help screen about notifications."
+  },
+  "notificationsHelpSamsungStep1": "Open Settings › Battery › Background usage limits.",
+  "@notificationsHelpSamsungStep1": {
+    "description": "First step of the Samsung card on the help screen about notifications. The arrows separate menu names."
+  },
+  "notificationsHelpSamsungStep2": "Tap Never sleeping apps and add TakeTray.",
+  "@notificationsHelpSamsungStep2": {
+    "description": "Second step of the Samsung card."
+  },
+  "notificationsHelpSamsungStep3": "If TakeTray is under Sleeping apps, remove it.",
+  "@notificationsHelpSamsungStep3": {
+    "description": "Third step of the Samsung card."
+  },
+  "notificationsHelpXiaomiStep1": "Long-press the TakeTray icon › App info.",
+  "@notificationsHelpXiaomiStep1": {
+    "description": "First step of the Xiaomi card. The arrow separates menu names."
+  },
+  "notificationsHelpXiaomiStep2": "Turn on Autostart.",
+  "@notificationsHelpXiaomiStep2": {
+    "description": "Second step of the Xiaomi card."
+  },
+  "notificationsHelpXiaomiStep3": "Tap Battery saver › No restrictions.",
+  "@notificationsHelpXiaomiStep3": {
+    "description": "Third step of the Xiaomi card."
+  },
+  "notificationsHelpOppoStep1": "Long-press the TakeTray icon › App info › Battery usage.",
+  "@notificationsHelpOppoStep1": {
+    "description": "First step of the Oppo card. The arrows separate menu names."
+  },
+  "notificationsHelpOppoStep2": "Turn on Allow background activity.",
+  "@notificationsHelpOppoStep2": {
+    "description": "Second step of the Oppo card."
+  },
+  "notificationsHelpOppoStep3": "Turn on Allow auto launch.",
+  "@notificationsHelpOppoStep3": {
+    "description": "Third step of the Oppo card."
+  },
+  "notificationsHelpVivoStep1": "Open Settings › Battery › Background power consumption management.",
+  "@notificationsHelpVivoStep1": {
+    "description": "First step of the Vivo card. The arrows separate menu names."
+  },
+  "notificationsHelpVivoStep2": "Find TakeTray and choose Allow.",
+  "@notificationsHelpVivoStep2": {
+    "description": "Second step of the Vivo card."
+  },
+  "notificationsHelpOneplusStep1": "Long-press the TakeTray icon › App info › Battery.",
+  "@notificationsHelpOneplusStep1": {
+    "description": "First step of the OnePlus card. The arrows separate menu names."
+  },
+  "notificationsHelpOneplusStep2": "Choose Unrestricted.",
+  "@notificationsHelpOneplusStep2": {
+    "description": "Second step of the OnePlus card."
+  },
+  "notificationsHelpOpenBattery": "Open battery settings",
+  "@notificationsHelpOpenBattery": {
+    "description": "Button in a help card that opens the phone's battery settings."
+  },
+  "notificationsHelpOpenAppInfo": "Open app info",
+  "@notificationsHelpOpenAppInfo": {
+    "description": "Button in a help card that opens TakeTray's page in the phone's settings."
+  },
+  "notificationsHelpOpenFailed": "Couldn't open settings on this phone.",
+  "@notificationsHelpOpenFailed": {
+    "description": "Snack shown when a settings page of the phone could not be opened."
   }
 }

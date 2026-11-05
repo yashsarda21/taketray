@@ -9,6 +9,7 @@ import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
 
 // Error types only, never a message, a path or a name (D-10).
@@ -27,10 +28,12 @@ final Logger _log = Logger('mediaLifecycle');
 ///    timeline must still learn the zone;
 /// 2. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
-/// 3. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
+/// 3. `NotificationAccessController.refresh`: the notification permission
+///    may have changed in the phone's settings too (D-107);
+/// 4. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
 ///    shooting? button tapped in the shade needs no step of its own: every
 ///    scan applies it first, inside its own job (D-106);
-/// 4. after a scan that read every volume (`ScanDone` with no failed volume;
+/// 5. after a scan that read every volume (`ScanDone` with no failed volume;
 ///    an end from the shade counts), `BackgroundSync.flush` and then
 ///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
 ///    To tag now. The new baselines reach the phone's copy first, so the
@@ -107,6 +110,11 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       _log,
       'The access check',
       () => ref.read(mediaAccessControllerProvider.notifier).refresh(),
+    );
+    await guarded(
+      _log,
+      'The notification permission check',
+      () => ref.read(notificationAccessControllerProvider.notifier).refresh(),
     );
     final scanned = await guarded(
       _log,

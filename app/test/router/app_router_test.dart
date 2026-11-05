@@ -7,9 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -460,5 +462,54 @@ void main() {
     router.go(Routes.reels);
     await tester.pumpAndSettle();
     expect(find.text('dummy-pushed'), findsOneWidget);
+  });
+
+  testApp('Settings shows the Settings screen with its Help row', (
+    tester,
+  ) async {
+    final (_, router) = await _pumpApp(tester);
+
+    router.go(Routes.settings);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(find.text('Notifications not arriving?'), findsOneWidget);
+  });
+
+  testApp('the help screen is a full-screen page above Settings', (
+    tester,
+  ) async {
+    expect(Routes.notificationsHelp, '/settings/notifications-help');
+    final (_, router) = await _pumpApp(tester);
+    router.go(Routes.settings);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Notifications not arriving?'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NotificationsHelpScreen), findsOneWidget);
+    expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+
+    await tester.tap(find.byType(TtIconButton));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NotificationsHelpScreen), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
+  });
+
+  testApp('the system Back key leaves the help screen for Settings', (
+    tester,
+  ) async {
+    final (_, router) = await _pumpApp(tester);
+    router.go(Routes.notificationsHelp);
+    await tester.pumpAndSettle();
+    expect(find.byType(NotificationsHelpScreen), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(NotificationsHelpScreen), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
   });
 }

@@ -58,6 +58,10 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 10 (onboarding and settings)
 
+- **Onboarding takes over the notification ask** (D-107). Today the permission is asked once, the first time Shooting mode is turned on (`ShootingModeController._turnOn` → `NotificationAccessController.askOnce`, stored as `notificationsAsked`), then only from the Allow button in Settings. Give it its own onboarding step (`ob-notif` in the prototype), and then remove the call from `_turnOn` or keep it as the fallback for a user who skipped onboarding.
+- **"Remind me to turn it off" feeds `stillReminderEnabled`** (D-107). The Settings switch (`routes.settings` in the prototype) must store the setting, and `BackgroundSync` must read it: today it writes `stillReminderEnabled: true` always, so the 14-day question cannot be turned off. The in-app dialog (`StillShootingPrompt`) should follow the same switch.
+- **The Settings screen grows around the interim rows** (D-107). `SettingsScreen` has only Help ("Notifications not arriving?") and Permissions ("Notifications"). Phase 10 adds Shooting mode, Reminders, Clips, Your data, Video access and About around them, in the prototype's order, keeping the two rows' behaviour and tests.
+
 - Phase 3 asks for video access when the user turns Shooting mode on (`ShootingModeController`, through `MediaAccessController.askIfDenied`, D-75) and from the banner's Allow button. Onboarding replaces the "Turn on, then ask for access" step: ask once, in its own step with its own words, and then decide whether the switch should still ask.
 - Backup import must run through `MediaWorkQueue`, or block the media jobs while it runs. It replaces the clips and the settings in one transaction, but a scan or a verify that is already running has read the old clips and baselines. The compare-and-set refuses the baseline write (an import turns Shooting mode off), yet the clips that job writes could still land in the freshly imported data. The same screen calls `MediaVerifier.verifyAll` for "X of Y clips found": like `verify` it throws on a bridge or database error, so wrap it in `guarded` (D-75).
 

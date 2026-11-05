@@ -539,7 +539,143 @@ It ends with `All tests passed!`. Now open `app/lib/data/media/media_scanner.dar
 
 ## 7. Notification taps, Still shooting?, the permission and the help screen
 
-_Filled in by Task 7._
+**What we built:** the screens on top of Sections 3 to 6.
+
+- **A tap on a notification** opens the right screen: **To tag** for the new-clips notification and the evening reminder, **Reels** for "Still shooting?".
+- **The "Still shooting?" dialog** in the app, on the Reels screen, after 14 days of Shooting mode.
+- **The notification permission**, asked once, the first time Shooting mode is turned on, and from a row in Settings after that.
+- **The help screen** "Notifications not arriving?", with steps for Samsung, Xiaomi, Oppo, Vivo and OnePlus.
+- **Two Settings rows** (Help and Notifications) that Phase 10 will grow around.
+
+**Why TakeTray needs it:** a notification is only useful if its tap goes somewhere sensible, and the 14-day question must not be asked twice. The phone may post the notification at about the time the app opens, and the user may already have answered it in the shade. The permission is easy to get wrong: ask at the wrong moment and people refuse; Android stops showing its dialog after two refusals, so after that only the phone's settings can help. And some phones kill apps in the background, so the notification arrives late; the help screen says what to change on each.
+
+**Key ideas:**
+
+- **A tap is a name, not a route.** Android never sends a path. It sends one of two names, and Dart turns each into a screen with a `switch`, so no other app can make TakeTray open an arbitrary location:
+
+  ```dart
+  String routeFor(LaunchAction action) => switch (action) {
+    LaunchAction.toTag => Routes.toTag,
+    LaunchAction.reels => Routes.reels,
+  };
+  ```
+
+- **One listener, for the life of the app.** The tap stream is broadcast: an event that arrives while nobody listens is gone. So the listener is not on a screen (a screen can be rebuilt or closed) but in a widget above the navigator, which listens once and stops only when the app is taken down:
+
+  ```dart
+  _subscription = ref
+      .read(backgroundBridgeProvider)
+      .launchActions
+      .listen(_open, onError: _failed);
+  ```
+
+  The tap then goes to the router after the current frame (`scheduleMicrotask`), because the tap the app was started with can arrive while the first frame is still being built:
+
+  ```dart
+  void _open(LaunchAction action) {
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      ref.read(appRouterProvider).go(routeFor(action));
+    });
+  }
+  ```
+
+- **Ask only when the user is looking at Reels.** The dialog belongs to Reels, but the app keeps every tab built, and a page pushed on top does not remove the one below it. What does change is the "ticker mode": Flutter turns the tickers off for a screen that is hidden. `StillShootingPromptHost` watches it, so it checks after the first frame, on every resume, and when Reels comes back to the front, and it never opens over the tag player or a clip being watched.
+
+- **Once, and never twice.** The question is asked at most once per app session, and not at all if the user answered in the shade. The answer in the shade is a note that the scan has not applied yet, so the check reads that note first and the database after it. The scan stores a Keep on and then clears the note: if the note is gone, its effect is already stored. Reading in the other order could miss it:
+
+  ```dart
+  final ShadeAction? waiting;
+  try {
+    waiting = await bridge.pendingShadeAction();
+  } on Object catch (error) {
+    _log.warning(
+      'Reading the shade action failed: ${error.runtimeType}; not asking',
+    );
+    return null;
+  }
+  final current = await _ref
+      .read(phoneStateRepositoryProvider)
+      .loadShooting();
+  final since = current.since;
+  if (since == null || !stillShootingDue(current, now)) return null;
+  if (waiting != null && current.isSession(waiting.since)) {
+    _log.info('Still shooting? was answered in the shade; not asking');
+    return null;
+  }
+  _claimed = true;
+  return since;
+  ```
+
+  The other order needs no code of its own: the answer in the app is stored (`markStillAnswered`), `BackgroundSync` copies it to the phone, and the phone cancels its notification (Sections 5 and 6).
+
+- **Back means "keep it on".** The dialog returns `true`, `false` or `null` (Back, or a tap outside). Only an explicit **Turn off** turns Shooting mode off, so nobody switches it off by accident.
+
+- **Ask for the permission once.** The phone-state key `notificationsAsked` is written **before** the question, so a question that was cut short (the app closing) is not asked again. A second call at the same moment joins the first:
+
+  ```dart
+  Future<void> askOnce() {
+    final running = _asking;
+    if (running != null) return running;
+    final next = _askOnce().whenComplete(() => _asking = null);
+    return _asking = next;
+  }
+
+  Future<void> _askOnce() =>
+      guarded(_log, 'Asking for notifications', () async {
+        final bridge = ref.read(backgroundBridgeProvider);
+        final phone = ref.read(phoneStateRepositoryProvider);
+        final call = ++_latest;
+        final access = await bridge.notificationAccess();
+        if (access.sdkInt < _permissionSdk || access.granted) return;
+        if (await phone.notificationsAsked()) return;
+        await phone.markNotificationsAsked();
+        _publish(call, await bridge.requestNotificationAccess());
+      });
+  ```
+
+  `sdkInt < 33` is "below Android 13", which has no dialog. `guarded` (Section 6) means a failure is logged by type and never stops Shooting mode from turning on.
+
+- **A provider nobody listens to is paused.** The prompt reads Shooting mode from a controller built on a stream. In Riverpod 3 such a provider is paused while no one listens, so the first value never comes and the check hangs. While it waits, the prompt listens itself:
+
+  ```dart
+  final subscription = _ref.listen(shootingModeControllerProvider, (_, _) {});
+  ```
+
+  A test that read the controller without a listener timed out; that is how this was found.
+
+- **Brands, not makers.** Phones from many makers share a few Android skins, so a few sets of steps cover them. The whole name has to match (`samsungx` is nobody), and the maker is never logged because it says which phone someone has:
+
+  ```dart
+  PhoneBrand? brandOf(String maker) => switch (maker.trim().toLowerCase()) {
+    'samsung' => PhoneBrand.samsung,
+    'xiaomi' || 'redmi' || 'poco' => PhoneBrand.xiaomi,
+    'oppo' || 'realme' => PhoneBrand.oppo,
+    'vivo' || 'iqoo' => PhoneBrand.vivo,
+    'oneplus' => PhoneBrand.oneplus,
+    _ => null,
+  };
+  ```
+
+- **The user's card is open, unless they chose another.** The screen keeps what the user chose (`_chosen`, and `_touched` for "they chose"). Until then the open card is the user's brand, which may arrive a moment after the screen opens:
+
+  ```dart
+  final open = _touched ? _chosen : mine;
+  ```
+
+  A tap sets `_chosen` to the card, or to nothing if that card was the open one, so one card is open at a time.
+
+**Where it lives:** `app/lib/features/notifications/` (`view_models/launch_actions.dart`, `notification_access_controller.dart`, `still_shooting_prompt.dart`, `notifications_help.dart`; `views/still_shooting_dialog.dart`, `notifications_help_screen.dart`), `app/lib/features/settings/views/settings_screen.dart`, `app/lib/domain/rules/phone_brand.dart`, `LaunchActionsListener` in `app/lib/app.dart`, `askOnce` called from `app/lib/features/shooting_mode/view_models/shooting_mode_controller.dart`, `notificationsAsked` in `app/lib/data/repositories/phone_state_repository.dart`, one more step in `app/lib/app/media_lifecycle.dart`, and the route in `app/lib/router/`. Tests: `app/test/features/notifications/`, `app/test/features/settings/`, `app/test/app/launch_actions_test.dart`, `app/test/domain/rules/phone_brand_test.dart`, and additions to `media_lifecycle_test.dart`, `phone_state_repository_test.dart`, `shooting_mode_controller_test.dart` and `app_router_test.dart`. The step-by-step flows are "Notification taps", "Still shooting?", "Notification permission" and "Notifications help" in `docs/flow.md`.
+
+**Try it yourself:** see "once per app session" at work. From `app/`:
+
+```bash
+../tool/flutter test test/features/notifications/view_models/still_shooting_prompt_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_models/still_shooting_prompt.dart` and delete the line `_claimed = true;` in `claim`, then run the same command. `due after 14 days: the session to ask about, once` fails with `Expected: null` and `Actual: DateTime:<2026-06-01 09:00:00.000Z>`: the second check asked again. Put the line back and run it again to see it pass.
+
+**Decisions:** D-107 (all of this section), with D-101 (the scope and the owner's permission ruling), D-103 (launch actions), D-105 and D-106 (the answers in the shade, `stillAnswered`) as background.
 
 ## 8. Parked media repairs
 

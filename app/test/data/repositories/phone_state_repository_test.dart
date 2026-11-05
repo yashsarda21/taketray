@@ -237,6 +237,66 @@ void main() {
     });
   });
 
+  group('notifications asked', () {
+    test('false until marked, then true, and marking twice is fine', () async {
+      expect(PhoneStateRepository.notificationsAskedKey, 'notificationsAsked');
+      expect(await repo.notificationsAsked(), isFalse);
+
+      await repo.markNotificationsAsked();
+      await repo.markNotificationsAsked();
+
+      expect(await repo.notificationsAsked(), isTrue);
+    });
+
+    test('is separate from Shooting mode and from access', () async {
+      await turnOn();
+      await repo.markNotificationsAsked();
+      await repo.turnShootingOff();
+
+      expect(await repo.notificationsAsked(), isTrue);
+      expect(await repo.accessWasFull(), isFalse);
+    });
+
+    test(
+      'a value that cannot be read counts as not asked, by key only',
+      () async {
+        const secret = 'private-note';
+        await _put('notificationsAsked', '"$secret"');
+        final records = _record();
+
+        expect(await repo.notificationsAsked(), isFalse);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('notificationsAsked'));
+        expect(lines, isNot(contains(secret)));
+      },
+    );
+
+    test('a value that is not JSON counts as not asked', () async {
+      await _put('notificationsAsked', '{not json');
+
+      expect(await repo.notificationsAsked(), isFalse);
+    });
+
+    test('is not exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.notificationsAskedKey)),
+      );
+      await repo.markNotificationsAsked();
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('notificationsAsked')),
+      );
+      final fixture = File('test/data/backup/fixtures/backup_v1.json')
+          .readAsStringSync();
+
+      await BackupService(db, clock).importJson(fixture);
+
+      expect(await repo.notificationsAsked(), isFalse);
+    });
+  });
+
   group('backups', () {
     test('phone-state keys are not exported', () async {
       expect(
