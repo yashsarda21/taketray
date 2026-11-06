@@ -358,7 +358,9 @@ void main() {
         // The title keeps room for whole words: wider than a few letters,
         // and no line is longer than its box (nothing is cut).
         expect(titleBox.width, greaterThan(120), reason: '$brightness');
-        final paragraph = tester.renderObject<RenderParagraph>(find.text(title));
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(title),
+        );
         expect(paragraph.didExceedMaxLines, isFalse);
         for (final line in paragraph.getBoxesForSelection(
           const TextSelection(baseOffset: 0, extentOffset: title.length),
