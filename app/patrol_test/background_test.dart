@@ -58,9 +58,11 @@ import 'support/waiting.dart';
 /// - Nothing is printed that holds a name, a path, a folder or a count of a
 ///   named reel (D-10). No screenshots.
 ///
-/// **Timing.** The first flow prints how long a new video takes to show as a
-/// notification in the shade ("insert-to-notification"), from the real
-/// content trigger. The sixth prints how late the real evening alarm came.
+/// **Timing.** The first flow prints how long the notification takes to show
+/// after the last of two new videos ("last-insert-to-notification"), from
+/// the real content trigger: about 5 minutes, the quiet wait (D-110). The
+/// other flows post it through `runNewClipsJob` and never wait for the
+/// trigger. The sixth prints how late the real evening alarm came.
 /// Opening the shade costs a little: the polls are a quarter of a second
 /// apart, and each asks Android's UI automation for one view.
 ///
@@ -85,11 +87,7 @@ void main() {
   patrolTest('turning off removes the notification', config: _liveConfig, (
     $,
   ) async {
-    await _scenario(
-      $,
-      body: (env) => _turningOffRemoves($, env),
-      waitsForTheRealJob: true,
-    );
+    await _scenario($, body: (env) => _turningOffRemoves($, env));
   });
 
   patrolTest("evening reminder counts today's clips", config: _liveConfig, (
@@ -135,29 +133,47 @@ final _eveningTwoClips = OwnText.evening(2);
 
 Future<void> _newClipsOpensToTag(PatrolIntegrationTester $, _Env env) async {
   // 1. Shooting mode is on (the scenario did it), the app on Reels. Home,
-  // then two videos; the shade open meanwhile so the first poll sees the
-  // notification at once.
+  // then two videos. The notification comes only after 5 quiet minutes (D-110),
+  // so the wait is long and the shade stays closed meanwhile: the screen may
+  // go dark in 5 minutes, and a closed shade needs no UI automation. The
+  // app's own list of its notifications says when it is showing.
   await _showReels($);
   await $.platform.mobile.pressHome();
-  await openShade($);
-  final clock = Stopwatch()..start();
   await env.media.insert();
   await env.media.insert();
-  final inserted = clock.elapsed;
+  final clock = Stopwatch()..start(); // the last insert
   expect(await env.bg.pendingJobs(), [
     TestBackground.newClipsJobId,
   ], reason: 'the insert burst left exactly one job armed');
 
-  // 2. The real content trigger (not a hook) posts "2 new clips to tag".
-  final took = await waitForShade(
+  // 2. The real content trigger (not a hook) posts "2 new clips to tag", 5
+  // minutes after the last clip (Android's own batching may add a little).
+  await _waitUntil(
+    $,
+    () async => (await env.bg.activeNotifications()).contains(
+      TestBackground.newClipsId,
+    ),
+    what: 'the new-clips notification, 5 quiet minutes after the last clip',
+    heat: env.bg,
+    timeout: const Duration(minutes: 7),
+    pump: false,
+  );
+  final took = clock.elapsed;
+  debugPrint(
+    'last-insert-to-notification: ${took.inMilliseconds} ms '
+    '(${took.inSeconds} s; the quiet wait is 300 s)',
+  );
+  expect(
+    took,
+    greaterThanOrEqualTo(const Duration(minutes: 5)),
+    reason: 'the notification never comes before the 5 quiet minutes',
+  );
+  await openShade($);
+  await waitForShade(
     $,
     _twoNewClips,
     since: clock,
-    background: env.bg,
-  );
-  debugPrint(
-    'insert-to-notification: ${took.inMilliseconds} ms from the first insert '
-    '(${(took - inserted).inMilliseconds} ms after the last of 2)',
+    timeout: const Duration(seconds: 30),
   );
   expect(await env.bg.pendingJobs(), [
     TestBackground.newClipsJobId,
@@ -179,18 +195,20 @@ Future<void> _newClipsOpensToTag(PatrolIntegrationTester $, _Env env) async {
 }
 
 Future<void> _turningOffRemoves(PatrolIntegrationTester $, _Env env) async {
-  // 1. The app stays open on Reels. A video arrives; the real trigger posts
-  // the notification. The shade is not opened (see the file comment): the
-  // app's own list of its notifications says it is showing.
+  // 1. The app stays open on Reels. A video arrives; the job's work is run
+  // through the debug hook (the real trigger waits 5 quiet minutes, D-110,
+  // and flow 1 proves it) and posts the notification. The shade is not
+  // opened (see the file comment): the app's own list of its notifications
+  // says it is showing.
   await env.media.insert();
+  await env.bg.runNewClipsJob();
   await _waitUntil(
     $,
     () async => (await env.bg.activeNotifications()).contains(
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification to show',
-    heat: env.bg,
-    timeout: const Duration(seconds: 60),
+    timeout: const Duration(seconds: 30),
   );
 
   // 2. Shooting mode off in the app: the notification is gone, and the job.
@@ -501,10 +519,11 @@ Future<void> _scenario(
 }) async {
   // A hot phone makes the system hold the new-clips job (seen on the S24
   // after a few flows in a row). A flow that waits for Android to run the
-  // job (flows 1 and 2) waits, idle, for the phone to cool before it starts;
-  // it costs nothing on a cool phone. Each such wait is guarded on its own
-  // (`requireCool`), and no timeout is longer for it. The other flows run the
-  // job's work themselves and do not care how hot the phone is.
+  // job (flow 1 only, D-110) waits, idle, for the phone to cool before it
+  // starts; it costs nothing on a cool phone. Each such wait is guarded on
+  // its own (`requireCool`), and no timeout is longer for it. The other
+  // flows run the job's work themselves and do not care how hot the phone
+  // is.
   if (waitsForTheRealJob) await TestBackground().waitUntilCool();
   final media = await TestMedia.start();
   await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));

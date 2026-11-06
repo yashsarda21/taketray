@@ -8,7 +8,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **The big picture first.** Until Phase 5, TakeTray only looked for new videos while it was open. Phase 6 adds a small piece of Android code that runs **without** the Flutter part of the app:
   - Dart keeps a **copy** of what that code needs (Shooting mode on or off, where each volume's scan stopped, the watched folders, the reminder settings) in Android's own storage;
-  - an Android **job** wakes up when the phone's video library changes, counts the new videos and updates one quiet notification;
+  - an Android **job** wakes up when the phone's video library changes, counts the new videos 5 quiet minutes after the last one and posts one notification (one sound, then silent updates);
   - **alarms** fire the reminders;
   - the database stays Dart's alone: the only thing that flows back from Android is a button tapped in the notification shade.
 - **Order.** The sections follow the order the phase was built, from Section 2 on. Step 1 was the plan and decision D-101 (what Phase 6 builds now and what waits), so it has no section here.
@@ -197,16 +197,16 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 **What we built:** the part of TakeTray that works while the app is closed and you are filming.
 
-- **A job** (`NewClipsJobService`). Android's JobScheduler starts it a few seconds after the phone's video library changes. It is plain Kotlin: no Flutter engine starts, and it never touches the database.
+- **A job** (`NewClipsJobService`). Android's JobScheduler starts it 5 quiet minutes after the phone's video library last changed. It is plain Kotlin: no Flutter engine starts, and it never touches the database.
 - **A counter** (`NewClipsCounter`) that asks the video library how many videos were added since the last scan the app made.
 - **One notification** (`Notifier`): "3 new clips to tag", with the newest clip's thumbnail and two buttons, **Open camera** and **Tag now**. It is updated in place, never stacked, and silent.
 - **Arming** (`NewClipsArming`): the code that schedules the job when Shooting mode is on and removes it, and the notification, when it is off.
 
-**Why TakeTray needs it:** while you shoot, TakeTray is closed. Without this, nothing would tell you that clips are waiting until you happened to open the app. The notification is a quiet nudge: it never makes a sound, it is never posted again for the same number, and it goes away when the number is 0, when Shooting mode goes off, or when the app has scanned. The app stays in charge: the job only **counts**; deciding which videos become clips is still the scan that runs when you open the app (spec §8.3, §11).
+**Why TakeTray needs it:** while you shoot, TakeTray is closed. Without this, nothing would tell you that clips are waiting until you happened to open the app. The notification is a nudge for when you have stopped filming: it appears 5 minutes after your last clip and makes the normal notification sound once, later count changes are silent, it is never posted again for the same number, and it goes away when the number is 0, when Shooting mode goes off, or when the app has scanned. The app stays in charge: the job only **counts**; deciding which videos become clips is still the scan that runs when you open the app (spec §8.3, §11).
 
 **Key ideas:**
 
-- **A job that wakes on a change, not on a timer.** A JobScheduler job can wait for a content URI to change. TakeTray watches the whole external video collection, and asks Android to wait for 5 seconds of calm (at most 30 seconds in all) before starting it, so a burst of ten recordings becomes one run, not ten:
+- **A job that wakes on a change, not on a timer.** A JobScheduler job can wait for a content URI to change. TakeTray watches the whole external video collection, and asks Android to wait for 5 minutes of calm before starting it. Each new clip restarts the wait, so a burst of ten recordings, or a whole afternoon of shooting with short gaps, becomes one run, not ten:
 
   ```kotlin
   .addTriggerContentUri(
@@ -217,6 +217,8 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   ).setTriggerContentUpdateDelay(UPDATE_DELAY_MS)
   .setTriggerContentMaxDelay(MAX_DELAY_MS)
   ```
+
+  `MAX_DELAY_MS` is 7 days, on purpose. There is no "no maximum" in JobScheduler: if you leave the maximum out, Android uses its own default of 2 minutes (`JobStatus.DEFAULT_TRIGGER_MAX_DELAY`), and the job would run 2 minutes into a long shoot. A test fails if the call is removed. The value is not `Long.MAX_VALUE` because Android adds the delay to the clock, and that sum would overflow and fire at once. Two limits remain: Android runs the job at once when 40 different rows have changed, and the timer is on the "uptime" clock, which stops while the phone is in deep sleep, so a phone in a pocket may post later than 5 minutes (D-110).
 
 - **Such a job fires once, so every run arms the next.** After a content-trigger job runs, Android forgets it, and it cannot survive a reboot ("persisted"). So the run ends by scheduling its successor, and the app arms it again whenever Dart writes the state. There is a catch: while the job runs, Android still lists it as pending. The app's arming skips scheduling when an identical job is already pending (scheduling again would restart its watching), but if the job did the same it would see itself, skip, and disarm when it finished. So the job always schedules (`replace = true`); the test `the job re-arms even while its own job is listed` covers that.
 
@@ -236,13 +238,13 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
 - **Testing SQL the way Android runs it.** The counter's test does not fake the answer: `SqlVideoProvider` is a tiny video table in a real SQLite database, registered as the media provider. It runs each query's selection through a strict `SQLiteQueryBuilder`, set up as Android's media provider sets one up, and leaves out pending and trashed rows unless asked, as Android does. So a wrong clause, or SQL Android would refuse, fails the test.
 
-- **Quiet means "same number, no post".** The store remembers the number the shade shows (`posted_new_clips`). The run posts only when the count changed:
+- **Once, not twice: "same number, no post".** The store remembers the number the shade shows (`posted_new_clips`). The run posts only when the count changed:
 
   ```kotlin
   if (found.count == store.postedNewClips()) return state
   ```
 
-  The notification itself uses a LOW-importance channel (no sound, no vibration), a fixed id (so posting again replaces it), and `setOnlyAlertOnce(true)`. Whenever the notification is removed, the posted number goes back to 0, so the next real count posts again.
+  The notification itself uses a DEFAULT-importance channel (`new_clips_alert`: the normal sound or vibration), a fixed id (so posting again replaces it), and `setOnlyAlertOnce(true)`, which makes Android sound only when the notification first appears, not when a count update replaces it. A user who swipes it away and then films more hears it again, because nothing is showing. Android cannot raise the importance of a channel that already exists, so version 2 made a new channel and deletes the old silent one (`deleteNotificationChannel`). Whenever the notification is removed, the posted number goes back to 0, so the next real count posts again.
 
 - **Private on the lock screen.** The notification is `VISIBILITY_PRIVATE`, and Android shows its "public version" on a locked phone instead: "TakeTray" and "3 new clips to tag", with no thumbnail. The test `public version has no picture` checks that the public version has no picture and no large icon.
 
@@ -898,8 +900,8 @@ It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repo
 **Key ideas:**
 
 - **The flows.** Each runs from cleared data, with only `Movies/TakeTray Test/` watched:
-  1. two videos go in while the app is in the background, "2 new clips to tag" appears through the real content trigger, and tapping it opens To tag with the two clips;
-  2. turning Shooting mode off removes the notification and the job;
+  1. two videos go in while the app is in the background, "2 new clips to tag" appears through the real content trigger 5 minutes after the last one (the test waits up to 7 and prints the time), and tapping it opens To tag with the two clips;
+  2. turning Shooting mode off removes the notification and the job (the notification is posted by the job-run hook, so the flow does not wait 5 minutes);
   3. the evening reminder says how many clips you shot today;
   4. "Turn off" in the Still shooting? notification switches Shooting mode off without opening the app, and a video shot after it stays out of To tag;
   5. the Still shooting? dialog shows once and Keep it on is remembered;
@@ -907,11 +909,11 @@ It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repo
   7. three bursts of inserts leave exactly one job pending.
 - **The test finds only its own notifications.** Every shade helper takes an `OwnText`, the whole text TakeTray writes (never a part of one), so a notification of another app can never match. "Turn off" is not tapped on the screen: with two TakeTray notifications the phone groups them and folds Still shooting? away, and a single one is collapsed, so a tap cannot find the button. The test fires the button's own `PendingIntent` through a hook instead (`pressStillTurnOff`), which runs the real `ShadeActionReceiver`. Whether the button looks right is a hand check.
 - **A hook reaches what an app cannot trigger.** The debug-only channel `app.taketray/test_background` sends the very broadcast the alarm carries (`fireEvening`, `fireStill`), runs the job's work (`runNewClipsJob`), presses the Still shooting? Turn off button's own intent (`pressStillTurnOff`), and lists *this app's own* notifications and jobs (`activeNotifications`, `pendingJobs`). Android only ever tells an app about its own, so no other app's is seen.
-- **What the phone measured** (2026-11-06):
+- **What the phone measured** (2026-11-06, before the 5 minute wait of D-110; the new wait is for the owner to check by hand):
   - insert to notification: **6949 ms** and **6777 ms** (two runs), of which 5 s is the job's own update delay (`Trigger update delay: +5s0ms`; the maximum delay is `+30s0ms`, both read from our job's block of `dumpsys jobscheduler`);
   - the evening alarm came **78 s** and **65 s** after its minute, never early: it is inexact on purpose;
   - after a burst of inserts there is exactly one job.
-- **What is not proven.** The button on the screen: the phone's grouping and folding is standard Android, so the owner checks "Turn off" in the expanded notification by hand (`docs/dev-setup.md`, Phase 6 check, step 5). Flows 4 and 7 run the job's own work or fire the button's intent; flow 1 alone proves the real trigger.
+- **What is not proven.** The button on the screen: the phone's grouping and folding is standard Android, so the owner checks "Turn off" in the expanded notification by hand (`docs/dev-setup.md`, Phase 6 check, step 5). Flows 4 and 7 run the job's own work or fire the button's intent; flow 1 alone proves the real trigger (and the sound is a hand check).
 - **Heat holds the job.** After a few flows in a row, on the charger, the phone reached thermal status 2 and our job's block said `Restricted due to: thermal.`: every condition was met and Android still waited. That is Android being right (a hot phone should not do background work), and it is also the lesson for the test: a timeout would blame the app. So the flows ask `PowerManager.getCurrentThermalStatus()` through the `thermalStatus` hook, fail with "phone too hot, let it cool" before waiting, and wait for the phone to cool at the start of each flow. Nothing waits longer to get past the heat.
 - **Two bugs were in the test, not the app.** `closeShade` pressed Back; with the shade already closed, Back finished the app, the Flutter engine stopped, and the test died with `Failed to parse HTTP response`. It presses Home now. And Patrol runs each test in a fresh process with cleared data, so a flow never sees the one before it.
 

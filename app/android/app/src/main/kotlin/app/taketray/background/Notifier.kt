@@ -13,12 +13,13 @@ import app.taketray.R
 
 /**
  * TakeTray's notifications, built without a Flutter engine (D-101), with the
- * copy in `res/values/strings.xml`. Two channels: **New clips** (LOW: no
- * sound, no vibration) and **Reminders** (DEFAULT: the evening reminder and
- * Still shooting?, D-105). Each notification has a fixed id, so posting
+ * copy in `res/values/strings.xml`. Two channels: **New clips** (DEFAULT: the
+ * normal sound once, when it appears, D-110) and **Reminders** (DEFAULT: the
+ * evening reminder and Still shooting?, D-105). Each notification has a fixed id, so posting
  * again updates it in place.
  *
- * Quiet (D-104): one new-clips notification, `setOnlyAlertOnce`, and nothing
+ * One new-clips notification, `setOnlyAlertOnce` (a count update of the
+ * showing notification is silent; a post after a dismiss alerts again), and nothing
  * at all while notifications or its channel are off. Never a file name or a
  * folder in a notification, never a count in the log (D-10).
  *
@@ -29,11 +30,17 @@ open class Notifier(
 ) {
     private val manager: NotificationManager = context.getSystemService(NotificationManager::class.java)
 
-    /** Creates both channels; creating an existing one only refreshes its name and description. */
+    /**
+     * Creates both channels; creating an existing one only refreshes its name
+     * and description. Deletes the old LOW channel `new_clips` of earlier
+     * versions: Android cannot raise a channel's importance, so New clips
+     * moved to [CHANNEL_NEW_CLIPS] (D-110).
+     */
     fun ensureChannels() {
+        manager.deleteNotificationChannel(CHANNEL_NEW_CLIPS_OLD)
         manager.createNotificationChannels(
             listOf(
-                channel(CHANNEL_NEW_CLIPS, R.string.channel_new_clips_name, R.string.channel_new_clips_description, NotificationManager.IMPORTANCE_LOW),
+                channel(CHANNEL_NEW_CLIPS, R.string.channel_new_clips_name, R.string.channel_new_clips_description, NotificationManager.IMPORTANCE_DEFAULT),
                 channel(CHANNEL_REMINDERS, R.string.channel_reminders_name, R.string.channel_reminders_description, NotificationManager.IMPORTANCE_DEFAULT),
             ),
         )
@@ -202,7 +209,10 @@ open class Notifier(
         const val EVENING = 2
         const val STILL_SHOOTING = 3
 
-        const val CHANNEL_NEW_CLIPS = "new_clips"
+        const val CHANNEL_NEW_CLIPS = "new_clips_alert"
+
+        /** The LOW channel of versions before D-110; deleted by [ensureChannels]. */
+        const val CHANNEL_NEW_CLIPS_OLD = "new_clips"
         const val CHANNEL_REMINDERS = "reminders"
 
         /**

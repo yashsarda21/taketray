@@ -142,8 +142,8 @@ class ReminderArming(
 /**
  * Arming's job part (D-104). With Shooting mode on and full video access:
  * one JobScheduler job ([NewClipsJobService.JOB_ID]) that Android starts when
- * anything under the external video collection changes, at least 5 s after
- * the last change and at most 30 s after the first. Otherwise: no job, and
+ * anything under the external video collection changes, 5 quiet minutes
+ * after the last change (D-110; no practical maximum). Otherwise: no job, and
  * the new-clips notification is removed (posted count 0), unless the caller
  * keeps it (the shade's Turn off).
  *
@@ -203,8 +203,18 @@ class NewClipsArming(
     }
 
     companion object {
-        const val UPDATE_DELAY_MS = 5_000L
-        const val MAX_DELAY_MS = 30_000L
+        /** Quiet minutes after the last change before the job runs (D-110): each new clip restarts the wait. */
+        const val UPDATE_DELAY_MS = 300_000L
+
+        /**
+         * "No max delay" (D-110). JobScheduler has no such value: a max left
+         * unset (-1) is Android's own default of 2 minutes
+         * (`JobStatus.DEFAULT_TRIGGER_MAX_DELAY`), which would run the job in
+         * the middle of a shoot. So the max is explicit and so long (7 days)
+         * that no shoot reaches it, and short enough for Android's clock
+         * arithmetic (`Handler.postDelayed(uptime + delay)`) never to overflow.
+         */
+        const val MAX_DELAY_MS = 7L * 24 * 60 * 60 * 1000
 
         /** The job: a content trigger on every video volume, not persisted (content triggers cannot be). */
         fun jobInfo(context: Context): JobInfo =

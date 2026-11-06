@@ -1,6 +1,7 @@
 package app.taketray.background
 
 import android.app.Application
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.job.JobInfo
 import android.app.job.JobScheduler
@@ -71,8 +72,12 @@ class ArmingTest {
             ),
             job.triggerContentUris,
         )
-        assertEquals(5_000L, job.triggerContentUpdateDelay)
-        assertEquals(30_000L, job.triggerContentMaxDelay)
+        assertEquals("5 quiet minutes after the last change", 300_000L, job.triggerContentUpdateDelay)
+        // Unset (-1) is not "no max": Android then uses its own 2 minute default
+        // (JobStatus.DEFAULT_TRIGGER_MAX_DELAY), which would run the job in the
+        // middle of a shoot. The max is so long that it never ends a shoot.
+        assertTrue("an explicit, very long max (unset means Android's 2 minutes)", job.triggerContentMaxDelay >= 24L * 60 * 60 * 1000)
+        assertTrue("the max stays far from overflowing Android's clock", job.triggerContentMaxDelay <= 30L * 24 * 60 * 60 * 1000)
         assertFalse("content triggers cannot be persisted", job.isPersisted)
     }
 
@@ -224,7 +229,9 @@ class ArmingTest {
     @Test
     fun `arming creates the channels before anything is posted`() {
         assertNull(manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS))
+        manager.createNotificationChannel(NotificationChannel("new_clips", "New clips", NotificationManager.IMPORTANCE_LOW))
         Arming.background().apply(app, BackgroundState.OFF)
+        assertNull("the old quiet channel is gone from the first write", manager.getNotificationChannel("new_clips"))
         assertEquals("New clips", manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS)?.name)
         assertEquals("Reminders", manager.getNotificationChannel(Notifier.CHANNEL_REMINDERS)?.name)
         assertEquals(0, shadowOf(manager).size())

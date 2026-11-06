@@ -139,6 +139,25 @@ class NewClipsJobServiceTest {
     }
 
     @Test
+    fun `after a dismiss, more clips post again and the same count does not`() {
+        store.write(on)
+        SqlVideoProvider.add(id = 1, generation = 101)
+        SqlVideoProvider.add(id = 2, generation = 102)
+        runJob()
+        assertEquals("2 new clips to tag", title())
+
+        manager.cancel(Notifier.NEW_CLIPS) // the user swipes it away
+        runJob()
+        assertNull("the same count is not posted again", notification())
+
+        SqlVideoProvider.add(id = 3, generation = 103)
+        runJob()
+        assertEquals("3 new clips to tag", title())
+        assertEquals(Notifier.CHANNEL_NEW_CLIPS, notification()?.channelId)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS).importance)
+    }
+
+    @Test
     fun `zero cancels`() {
         // The app scanned (the baseline moved past every clip), then the job ran.
         store.write(on)

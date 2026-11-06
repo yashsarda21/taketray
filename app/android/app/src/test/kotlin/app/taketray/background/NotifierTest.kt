@@ -51,8 +51,9 @@ class NotifierTest {
         notifier.ensureChannels()
         val newClips = manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS)
         assertEquals("New clips", newClips.name)
-        assertEquals("One quiet notification when new clips are waiting to be tagged.", newClips.description)
-        assertEquals(NotificationManager.IMPORTANCE_LOW, newClips.importance)
+        assertEquals("new_clips_alert", Notifier.CHANNEL_NEW_CLIPS)
+        assertEquals("A notification, with one sound, when you have stopped filming and new clips are waiting to be tagged.", newClips.description)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, newClips.importance)
         val reminders = manager.getNotificationChannel(Notifier.CHANNEL_REMINDERS)
         assertEquals("Reminders", reminders.name)
         assertEquals("The evening reminder and the Shooting mode reminder.", reminders.description)
@@ -74,11 +75,11 @@ class NotifierTest {
     }
 
     @Test
-    fun `notification is silent, only alerts once, private`() {
+    fun `notification alerts once, private`() {
         assertTrue(notifier.showNewClips(3, picture))
         val n = posted()
         assertEquals(Notifier.CHANNEL_NEW_CLIPS, n.channelId)
-        assertEquals(NotificationManager.IMPORTANCE_LOW, manager.getNotificationChannel(n.channelId).importance)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel(n.channelId).importance)
         assertTrue("only alerts once", n.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
         assertTrue("auto-cancel", n.flags and Notification.FLAG_AUTO_CANCEL != 0)
         assertEquals(Notification.VISIBILITY_PRIVATE, n.visibility)
@@ -160,5 +161,66 @@ class NotifierTest {
         notifier.cancelNewClips()
         assertNull(shadowOf(manager).getNotification(Notifier.NEW_CLIPS))
         assertNotNull(shadowOf(manager).getNotification(Notifier.EVENING))
+    }
+
+    @Test
+    fun `the old quiet channel is deleted, also on a phone that already has it`() {
+        // A phone that ran the previous version: the LOW channel exists.
+        manager.createNotificationChannel(NotificationChannel("new_clips", "New clips", NotificationManager.IMPORTANCE_LOW))
+        assertNotNull(manager.getNotificationChannel("new_clips"))
+        notifier.ensureChannels()
+        assertNull(manager.getNotificationChannel("new_clips"))
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel("new_clips_alert").importance)
+        // Again, with nothing left to delete, and after a post.
+        notifier.ensureChannels()
+        notifier.showNewClips(2, null)
+        assertNull(manager.getNotificationChannel("new_clips"))
+        assertEquals(setOf("new_clips_alert", "reminders"), manager.notificationChannels.map { it.id }.toSet())
+    }
+
+    @Test
+    fun `a blocked old channel does not block the new one`() {
+        manager.createNotificationChannel(NotificationChannel("new_clips", "New clips", NotificationManager.IMPORTANCE_NONE))
+        assertTrue(notifier.showNewClips(3, null))
+        assertEquals(Notifier.CHANNEL_NEW_CLIPS, posted().channelId)
+        assertNull(manager.getNotificationChannel("new_clips"))
+    }
+
+    @Test
+    fun `a blocked new channel still blocks`() {
+        notifier.ensureChannels()
+        manager.createNotificationChannel(NotificationChannel(Notifier.CHANNEL_NEW_CLIPS, "New clips", NotificationManager.IMPORTANCE_NONE))
+        assertFalse(notifier.canPost(Notifier.CHANNEL_NEW_CLIPS))
+        assertFalse(notifier.showNewClips(3, null))
+    }
+
+    @Test
+    fun `a count update of a showing notification does not alert again`() {
+        // Android alerts a notification that replaces a showing one only when
+        // it is not marked only-alert-once; both posts carry the mark.
+        assertTrue(notifier.showNewClips(2, picture))
+        assertTrue(posted().flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        assertTrue(notifier.showNewClips(3, picture))
+        val updated = posted()
+        assertEquals("3 new clips to tag", updated.title())
+        assertEquals(1, shadowOf(manager).size())
+        assertTrue("the update is marked only-alert-once", updated.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        assertEquals(Notifier.CHANNEL_NEW_CLIPS, updated.channelId)
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel(updated.channelId).importance)
+    }
+
+    @Test
+    fun `a post after a dismiss is a fresh alert`() {
+        // A fresh post is alerted by the channel (DEFAULT: sound), as nothing
+        // is showing for only-alert-once to hold back; and nothing silences it.
+        notifier.showNewClips(2, picture)
+        manager.cancel(Notifier.NEW_CLIPS) // swiped away
+        assertEquals(0, shadowOf(manager).size())
+        assertTrue(notifier.showNewClips(4, picture))
+        val again = posted()
+        assertEquals("4 new clips to tag", again.title())
+        assertEquals(NotificationManager.IMPORTANCE_DEFAULT, manager.getNotificationChannel(again.channelId).importance)
+        assertEquals(Notification.GROUP_ALERT_ALL, again.groupAlertBehavior)
+        assertNull("no group that could silence it", again.group)
     }
 }
