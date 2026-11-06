@@ -183,6 +183,31 @@ class NewClipsCounterTest {
     }
 
     @Test
+    fun `a pending row dated in the future is not a take in progress`() {
+        val now = 1_780_000_000L
+        // A day ahead (the clock was set back): ignored.
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now + 86_400, modified = now + 86_400)
+        assertEquals(false, recording(nowSec = now))
+    }
+
+    @Test
+    fun `a pending row 1 minute ahead is still clock skew and 61 seconds ahead is not`() {
+        val now = 1_780_000_000L
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now + 61)
+        assertEquals(false, recording(nowSec = now))
+        SqlVideoProvider.add(id = 3, generation = 103, pending = true, added = now + 60)
+        assertEquals(true, recording(nowSec = now))
+    }
+
+    @Test
+    fun `a future time does not hide the other time of a pending row`() {
+        val now = 1_780_000_000L
+        // Added in the future, modified a moment ago: the valid time counts.
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now + 86_400, modified = now - 30)
+        assertEquals(true, recording(nowSec = now))
+    }
+
+    @Test
     fun `a pending row with no times is ignored`() {
         SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = null, modified = null)
         assertEquals(false, recording())

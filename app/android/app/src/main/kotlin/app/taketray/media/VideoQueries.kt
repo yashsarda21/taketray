@@ -127,19 +127,24 @@ object VideoQueries {
 
     /**
      * A recording in progress (D-110): a pending row above [afterGeneration] in
-     * one of [folders] whose latest of DATE_ADDED and DATE_MODIFIED (seconds)
-     * is at least [sinceSec], so a crashed recording's stuck row stops
-     * counting. Only pending rows (trashed ones left out), one is enough.
+     * one of [folders] with a DATE_ADDED or DATE_MODIFIED (seconds) from
+     * [sinceSec] to [untilSec]: a crashed recording's stuck row older than
+     * that stops counting, and so does a time in the future (the clock was set
+     * back; a time beyond [untilSec] is not a time). Only pending rows
+     * (trashed ones left out), one is enough.
      */
     fun recordingArgs(
         afterGeneration: Long,
         folders: List<String>,
         sinceSec: Long,
+        untilSec: Long,
     ): Bundle {
         val (selection, selectionArgs) = addedAfterSelection(afterGeneration, folders)
-        val recent = "(${MediaColumns.DATE_ADDED} >= ? OR ${MediaColumns.DATE_MODIFIED} >= ?)"
+        val added = "${MediaColumns.DATE_ADDED} BETWEEN ? AND ?"
+        val modified = "${MediaColumns.DATE_MODIFIED} BETWEEN ? AND ?"
+        val recent = "($added OR $modified)"
         return args(
-            "$selection AND $recent" to selectionArgs + listOf(sinceSec.toString(), sinceSec.toString()),
+            "$selection AND $recent" to selectionArgs + listOf(sinceSec, untilSec, sinceSec, untilSec).map { it.toString() },
             MediaStore.MATCH_ONLY,
             NEWEST_ORDER,
         ).apply { putInt(ContentResolver.QUERY_ARG_LIMIT, 1) }

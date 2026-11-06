@@ -59,16 +59,19 @@ class NewClipsCounter(
     /**
      * Whether a take is still being recorded (D-110): a pending row above a
      * baseline in a watched folder, touched within [RECORDING_CAP_MS] (a
-     * crashed recording's stuck row must not hold the notification for ever).
+     * crashed recording's stuck row must not hold the notification for ever)
+     * and not more than [FUTURE_SLACK_MS] ahead of the clock (a time further
+     * ahead is no time, as for [NewClips.lastTouchedMs]).
      * Throws when MediaStore gives no cursor: not knowing is not "no".
      */
     fun recording(state: BackgroundState): Boolean {
         if (!state.shootingOn || state.watchedFolders.isEmpty() || !access()) return false
         val sinceSec = Math.floorDiv(nowMs() - RECORDING_CAP_MS, 1000L)
+        val untilSec = Math.floorDiv(nowMs() + FUTURE_SLACK_MS, 1000L)
         for (baseline in state.baselines) {
             if (versionOf(baseline.volumeName) != baseline.version) continue
             val uri = MediaStore.Video.Media.getContentUri(baseline.volumeName)
-            val args = VideoQueries.recordingArgs(baseline.generation, state.watchedFolders, sinceSec)
+            val args = VideoQueries.recordingArgs(baseline.generation, state.watchedFolders, sinceSec, untilSec)
             val cursor =
                 resolver.query(uri, arrayOf(MediaColumns._ID), args, null)
                     ?: throw IllegalStateException("MediaStore gave no cursor")

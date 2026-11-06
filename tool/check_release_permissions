@@ -173,11 +173,12 @@ done < <(awk '$1 == "permission" { print $2 }' <<<"$facts" | sort -u)
 # --- The on-device test code is not in the release build (D-77). ---
 # The test media channel (src/debug: TestMedia, its channel name test_media) and
 # the background test hooks (src/debug: DebugBackgroundHooks, its channel name
-# test_background, Phase 6 Task 9) are debug-only. The strings are looked for in every classes*.dex of the APK, and
+# test_background, Phase 6 Task 9) and the quiet rule's debug log line
+# (NewClipsJob.debugLog, marker "quiet-rule", D-110) are debug-only. The strings are looked for in every classes*.dex of the APK, and
 # in R8's mapping file when there is one (the dex only holds the renamed class,
 # the mapping holds the real name). The scan itself is proved by finding a
 # class that must be there.
-FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background)
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background quiet-rule)
 MUST_FIND_IN_DEX="app/taketray/MainActivity"
 dex_dir="$(mktemp -d)"
 trap 'rm -rf "$dex_dir"' EXIT

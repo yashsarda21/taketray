@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.provider.MediaStore
 import android.util.Log
+import app.taketray.BuildConfig
 import app.taketray.media.Thumbnails
 import app.taketray.media.ZoneChangeStore
 import java.util.TimeZone
@@ -147,6 +148,7 @@ class NewClipsJob(
         try {
             var outcome = update(ignoreQuiet)
             if (store.state() != outcome.state) outcome = update(ignoreQuiet)
+            debugLog(outcome)
             // Wait for the quiet, or nothing left to wait for.
             if (outcome.settleInMs != null) arming.settle(context, outcome.settleInMs) else arming.cancelSettle(context)
         } catch (e: Exception) {
@@ -155,6 +157,7 @@ class NewClipsJob(
             // the settle job is retried by Android (its caller).
             counted = false
             Log.w(LOG_TAG, "new clips not counted: ${e.javaClass.simpleName}")
+            debugLog(Outcome(store.state()))
             if (replaceContentJob) retryLater()
         }
         try {
@@ -210,28 +213,49 @@ class NewClipsJob(
             clear()
             return Outcome(state)
         }
-        if (found.count == store.postedNewClips()) return Outcome(state)
+        val freshMs = found.lastTouchedMs?.let { nowMs() - it }
+        if (found.count == store.postedNewClips()) return Outcome(state, freshMs = freshMs)
         if (!notifier.canPost(Notifier.CHANNEL_NEW_CLIPS)) {
             // Not allowed: nothing shows, so nothing is remembered as shown,
             // and the next run after notifications are allowed posts.
             store.setPostedNewClips(0)
-            return Outcome(state)
+            return Outcome(state, freshMs = freshMs)
         }
         if (!ignoreQuiet) {
             // A take still being recorded holds the post: the sound must not land in it.
-            if (counter.recording(state)) return Outcome(state, NewClipsArming.QUIET_MS)
-            NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs())?.let { return Outcome(state, it) }
+            if (counter.recording(state)) return Outcome(state, NewClipsArming.QUIET_MS, recording = true, freshMs = freshMs)
+            NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs())?.let { return Outcome(state, it, freshMs = freshMs) }
         }
         val picture = found.newest?.let { (volume, id) -> picture(volume, id) }
-        store.setPostedNewClips(if (notifier.showNewClips(found.count, picture)) found.count else 0)
-        return Outcome(state)
+        val posted = notifier.showNewClips(found.count, picture)
+        store.setPostedNewClips(if (posted) found.count else 0)
+        return Outcome(state, freshMs = freshMs, posted = posted)
     }
 
-    /** The state a run worked on, and when to try again (null: not waiting for anything). */
+    /**
+     * The state a run worked on, when to try again (null: not waiting for
+     * anything), and what the quiet rule saw, for the debug log: whether a
+     * take was in progress, how old the newest new clip was, whether it posted.
+     */
     private class Outcome(
         val state: BackgroundState,
         val settleInMs: Long? = null,
+        val recording: Boolean = false,
+        val freshMs: Long? = null,
+        val posted: Boolean = false,
     )
+
+    /**
+     * Debug builds only (`BuildConfig.DEBUG` is a constant false in release,
+     * so the line is not in the release dex; `tool/check_release_permissions`
+     * looks for it): what the quiet rule saw in a run, as the hand check
+     * reads it from the process's own logcat. Two flags and a number, nothing
+     * else (D-10).
+     */
+    private fun debugLog(outcome: Outcome) {
+        if (!BuildConfig.DEBUG) return
+        Log.i(LOG_TAG, "quiet-rule: recording=${outcome.recording} freshMs=${outcome.freshMs ?: "none"} posted=${outcome.posted}")
+    }
 
     private fun clear() {
         notifier.cancelNewClips()

@@ -29,6 +29,7 @@ import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.shadow.api.Shadow
+import org.robolectric.shadows.ShadowLog
 import org.robolectric.shadows.ShadowJobService
 import org.robolectric.util.ReflectionHelpers
 
@@ -629,6 +630,79 @@ class NewClipsJobServiceTest {
         SqlVideoProvider.failure = IllegalStateException("provider died")
         runJob()
         assertNull(settle())
+    }
+
+    @Test
+    fun `a pending row dated in the future does not hold the post or wake the phone`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = -86_400)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    // ----------------------------- the debug log of the quiet rule (D-110)
+
+    private fun quietLines() = ShadowLog.getLogsForTag(LOG_TAG).map { it.msg }.filter { it.startsWith("quiet-rule:") }
+
+    @Test
+    fun `the debug log says a take is in progress, counts only`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 100)
+        ShadowLog.clear()
+        runJob()
+        assertEquals(listOf("quiet-rule: recording=true freshMs=3600000 posted=false"), quietLines())
+    }
+
+    @Test
+    fun `the debug log says a fresh clip holds the post`() {
+        store.write(on)
+        addClip(1, agoSec = 60)
+        ShadowLog.clear()
+        runJob()
+        assertEquals(listOf("quiet-rule: recording=false freshMs=60000 posted=false"), quietLines())
+    }
+
+    @Test
+    fun `the debug log says it posted`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        ShadowLog.clear()
+        runJob()
+        assertEquals(listOf("quiet-rule: recording=false freshMs=3600000 posted=true"), quietLines())
+    }
+
+    @Test
+    fun `the debug log with nothing new has no fresh time`() {
+        store.write(on)
+        ShadowLog.clear()
+        runJob()
+        assertEquals(listOf("quiet-rule: recording=false freshMs=none posted=false"), quietLines())
+    }
+
+    @Test
+    fun `the settle job logs the same line and the line holds no text of a clip`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        ShadowLog.clear()
+        clockMs = now + 301_000
+        runSettle()
+        assertEquals(listOf("quiet-rule: recording=false freshMs=401000 posted=true"), quietLines())
+        // D-10: only the two flags and a number, no name, path, URI or id.
+        assertTrue(quietLines().single().matches(Regex("quiet-rule: recording=(true|false) freshMs=(-?\\d+|none) posted=(true|false)")))
+    }
+
+    @Test
+    fun `the debug log of a failed count says nothing was posted`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        SqlVideoProvider.failure = IllegalStateException("provider died")
+        ShadowLog.clear()
+        runJob()
+        assertEquals(listOf("quiet-rule: recording=false freshMs=none posted=false"), quietLines())
     }
 
     @Test
