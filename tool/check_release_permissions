@@ -3,7 +3,8 @@
 # permission (INTERNET, the network state and wake lock that the video player
 # would merge in, the media permissions TakeTray never asks for, exact alarms
 # and foreground services, D-105), Google backup off (D-64), exactly the media
-# permissions TakeTray needs (D-68) and the two background ones (D-101). It
+# permissions TakeTray needs (D-68) and the two background ones (D-101), and no
+# other permission at all (an allow-list of every <uses-permission>). It
 # also checks that the on-device test code (the debug-only test media channel,
 # D-77, and the background test hooks) is not in the release dex. Slow (full release build), so
 # it is not part of tool/check; run it at the end of every phase. Steps are
@@ -142,6 +143,32 @@ if [ "$ENFORCE_MEDIA_PERMISSIONS" = "1" ]; then
   require_permissions "${REQUIRED_PERMISSIONS[@]}"
 fi
 require_permissions "${REQUIRED_BACKGROUND_PERMISSIONS[@]}"
+
+# --- Nothing else: the full list of <uses-permission> names is an allow-list. ---
+# The forbidden list above only knows the permissions we thought of; a plugin
+# update that merged, say, VIBRATE or USE_FULL_SCREEN_INTENT would pass it. So
+# every permission in the release manifest must be one of these (the media and
+# background ones above, and the one AndroidX adds for its own receivers). A new
+# permission is a decision: add it here and in its decision record (Phase 6
+# final review, M-5).
+ALLOWED_PERMISSIONS=(
+  android.permission.READ_MEDIA_VIDEO
+  android.permission.READ_MEDIA_VISUAL_USER_SELECTED
+  android.permission.READ_EXTERNAL_STORAGE
+  android.permission.POST_NOTIFICATIONS
+  android.permission.RECEIVE_BOOT_COMPLETED
+  app.taketray.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
+)
+while IFS= read -r name; do
+  [ -n "$name" ] || continue
+  allowed=0
+  for ok in "${ALLOWED_PERMISSIONS[@]}"; do
+    [ "$name" = "$ok" ] && allowed=1
+  done
+  if [ "$allowed" = "0" ]; then
+    problems+=("$name permission found in release build, and it is not in ALLOWED_PERMISSIONS")
+  fi
+done < <(awk '$1 == "permission" { print $2 }' <<<"$facts" | sort -u)
 
 # --- The on-device test code is not in the release build (D-77). ---
 # The test media channel (src/debug: TestMedia, its channel name test_media) and
