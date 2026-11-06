@@ -74,14 +74,22 @@ void main() {
     'new clips notification appears and opens To tag',
     config: _liveConfig,
     ($) async {
-      await _scenario($, body: (env) => _newClipsOpensToTag($, env));
+      await _scenario(
+        $,
+        body: (env) => _newClipsOpensToTag($, env),
+        waitsForTheRealJob: true,
+      );
     },
   );
 
   patrolTest('turning off removes the notification', config: _liveConfig, (
     $,
   ) async {
-    await _scenario($, body: (env) => _turningOffRemoves($, env));
+    await _scenario(
+      $,
+      body: (env) => _turningOffRemoves($, env),
+      waitsForTheRealJob: true,
+    );
   });
 
   patrolTest("evening reminder counts today's clips", config: _liveConfig, (
@@ -263,18 +271,28 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
   // cannot move the Still shooting? row between the looks and the tap; and
   // the first video is then known to be seen before Off.
   final first = await env.media.insert();
+  // The job's own work, run now: when Android runs the job is its own
+  // business (a hot phone holds it; flow 1 proves the real trigger). The
+  // notification it posts is TakeTray's own, found in the app's own list.
+  await env.bg.runNewClipsJob();
   await _waitUntil(
     $,
     () async => (await env.bg.activeNotifications()).contains(
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification for the first video',
-    heat: env.bg,
-    timeout: const Duration(seconds: 60),
+    timeout: const Duration(seconds: 10),
     pump: false,
   );
   // The shade's own animation for the new row.
   await Future<void>.delayed(const Duration(seconds: 1));
+  // What the shade shows before the tap: yes or no, and the app's own ids.
+  debugPrint(
+    'before the tap: still text shown '
+    '${await shadeShows($, OwnText.stillBody)}, new-clips text shown '
+    '${await shadeShows($, _oneNewClip)}, own notification ids '
+    '${await env.bg.activeNotifications()}',
+  );
   await tapOwnButton(
     $,
     ownText: OwnText.stillBody,
@@ -451,25 +469,24 @@ Future<void> _oneJobPending(PatrolIntegrationTester $, _Env env) async {
     await Future<void>.delayed(const Duration(seconds: 2));
   }
 
-  // The run that follows posts the count of all three, and arms one successor.
+  // The job's work, run now (when Android runs it is its own business, and
+  // flow 1 proves the real trigger): it posts the count of all three and
+  // arms exactly one successor.
+  await env.bg.runNewClipsJob();
   await _waitUntil(
     $,
     () async => (await env.bg.activeNotifications()).contains(
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification after the bursts',
-    heat: env.bg,
-    timeout: const Duration(seconds: 60),
+    timeout: const Duration(seconds: 10),
     pump: false,
   );
-  await _waitUntil(
-    $,
-    () async => (await env.bg.pendingJobs()).length == 1,
-    what: 'exactly one job pending after the run',
-    timeout: const Duration(seconds: 15),
-    pump: false,
+  expect(
+    await env.bg.pendingJobs(),
+    jobs,
+    reason: 'exactly one job pending after the run',
   );
-  expect(await env.bg.pendingJobs(), jobs);
 }
 
 // ============================================================ the set-up
@@ -505,12 +522,15 @@ class _Env {
 Future<void> _scenario(
   PatrolIntegrationTester $, {
   required Future<void> Function(_Env env) body,
+  bool waitsForTheRealJob = false,
 }) async {
   // A hot phone makes the system hold the new-clips job (seen on the S24
-  // after a few flows in a row): wait, idle, for it to cool before a flow
-  // starts. Each wait for the job is still guarded on its own
-  // (`requireCool`), and no timeout is longer for it.
-  await TestBackground().waitUntilCool();
+  // after a few flows in a row). A flow that waits for Android to run the
+  // job (flows 1 and 2) waits, idle, for the phone to cool before it starts;
+  // it costs nothing on a cool phone. Each such wait is guarded on its own
+  // (`requireCool`), and no timeout is longer for it. The other flows run the
+  // job's work themselves and do not care how hot the phone is.
+  if (waitsForTheRealJob) await TestBackground().waitUntilCool();
   final media = await TestMedia.start();
   await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
   final container = ProviderScope.containerOf($.tester.element(_app));
