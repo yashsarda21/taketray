@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.MainActivity
 import app.taketray.background.ReminderTestSupport.LONDON
@@ -32,6 +33,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 
 /**
  * The reminders as they fire (D-105): the real receiver, store, alarm and
@@ -104,6 +106,23 @@ class ReminderReceiverTest {
         evening()
         assertNull(notification(app, Notifier.EVENING))
         assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `a failing reminder never reaches Android and only its class is logged`() {
+        store.write(on.copy(waitingShotMs = listOf(ms("2026-11-05T09:00:00Z"))))
+        // Building the work fails inside the receiver's background block.
+        Receivers.zone = { throw IllegalStateException("zone-secret") }
+        for (run in listOf({ evening() }, { still(since) })) {
+            ShadowLog.clear()
+            run()
+            val logs = ShadowLog.getLogsForTag(LOG_TAG)
+            assertEquals(listOf("reminder failed: IllegalStateException"), logs.map { it.msg })
+            assertEquals(Log.WARN, logs.single().type)
+            // D-10: no message, no stack trace.
+            assertTrue(ShadowLog.getLogs().none { "zone-secret" in it.msg || it.throwable != null })
+        }
+        assertNull(notification(app, Notifier.EVENING))
     }
 
     @Test
@@ -316,6 +335,10 @@ class ReminderReceiverTest {
         // Nor the first app open that morning (after a force-stop, say).
         arming.apply(app, clipsToday)
         assertEquals("2026-11-06T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        // Nothing fires by itself under Robolectric, so the assertNull below holds trivially.
+        // What guards "not at once" is the alarm: tomorrow's evening, well after now.
+        val armed = alarm(app, ReminderScheduler.ACTION_EVENING) ?: throw AssertionError("no evening alarm")
+        assertTrue("not due at once", armed.triggerAtMs - now > 12 * 60 * 60 * 1000L)
         assertNull(notification(app, Notifier.EVENING))
     }
 

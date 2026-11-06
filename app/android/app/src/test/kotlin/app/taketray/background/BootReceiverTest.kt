@@ -7,6 +7,7 @@ import android.app.job.JobScheduler
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.background.ReminderTestSupport.LONDON
 import app.taketray.background.ReminderTestSupport.MAIN
@@ -28,6 +29,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 
 /**
  * Re-arming (D-105): after a reboot, an update, a clock change and a zone
@@ -183,8 +185,14 @@ class BootReceiverTest {
     }
 
     @Test
-    fun `a failing arming does not crash the receiver`() {
+    fun `a failing arming does not crash the receiver, and only its class is logged`() {
         store.write(on)
+        ShadowLog.clear()
         BootReceiver.rearm(app, Arming { _, _, _ -> throw IllegalStateException("scheduler gone") })
+        val logs = ShadowLog.getLogsForTag(LOG_TAG)
+        assertEquals(listOf("re-arming failed: IllegalStateException"), logs.map { it.msg })
+        assertEquals(Log.WARN, logs.single().type)
+        // D-10: the exception's message (it may name a path or a time) is never logged.
+        assertTrue(ShadowLog.getLogs().none { "scheduler gone" in it.msg || it.throwable != null })
     }
 }

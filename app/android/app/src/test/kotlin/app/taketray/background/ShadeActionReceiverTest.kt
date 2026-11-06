@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Looper
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.background.ReminderTestSupport.LONDON
 import app.taketray.background.ReminderTestSupport.MAIN
@@ -22,11 +23,13 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 
 /**
  * Still shooting?'s Turn off and Keep on from the shade (D-105): they act
@@ -114,6 +117,22 @@ class ShadeActionReceiverTest {
         assertNull(alarm(app, ReminderScheduler.ACTION_STILL))
         // The evening reminder is not Shooting mode's: it stays.
         assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+    }
+
+    @Test
+    fun `a failing shade action never reaches Android, only its class is logged, and Still shooting goes`() {
+        armedAndPosted()
+        Receivers.volumes = { throw IllegalStateException("volumes-secret") }
+        ShadowLog.clear()
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+        val logs = ShadowLog.getLogsForTag(LOG_TAG)
+        assertEquals(listOf("shade action failed: IllegalStateException"), logs.map { it.msg })
+        assertEquals(Log.WARN, logs.single().type)
+        assertTrue(ShadowLog.getLogs().none { "volumes-secret" in it.msg || it.throwable != null })
+        // The button's own notification is gone even so, and nothing was recorded.
+        assertNull(notification(app, Notifier.STILL_SHOOTING))
+        assertNull(store.shadeAction())
+        assertEquals(on, store.state())
     }
 
     @Test
