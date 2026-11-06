@@ -14,6 +14,12 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        // BuildConfig.DEBUG: the quiet rule's debug log line (D-110) is
+        // guarded by it, so it is not in the release build.
+        buildConfig = true
+    }
+
     defaultConfig {
         applicationId = "app.taketray"
         // You can update the following values to match your application needs.

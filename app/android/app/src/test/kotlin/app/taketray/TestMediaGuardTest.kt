@@ -57,11 +57,29 @@ class TestMediaGuardTest {
     }
 
     @Test
-    fun `the folder must match exactly, case and trailing slash included`() {
-        assertFalse(TestMediaGuard.allowsDelete("movies/taketray test/", own, own))
+    fun `the folder matches ignoring case (the media provider keeps the case of a folder that exists)`() {
+        assertTrue(TestMediaGuard.allowsDelete("movies/taketray test/", own, own))
+        assertTrue(TestMediaGuard.allowsDelete("MOVIES/TAKETRAY TEST/", own, own))
+        assertTrue(TestMediaGuard.allowsDelete("Movies/Taketray Test/", own, own))
+        assertTrue(TestMediaGuard.allowsDelete("moViEs/TakeTRAY tEST/", own, own))
+    }
+
+    @Test
+    fun `a case variant is still refused for another owner`() {
+        assertFalse(TestMediaGuard.allowsDelete("movies/taketray test/", "com.sec.android.gallery3d", own))
+        assertFalse(TestMediaGuard.allowsDelete("MOVIES/TAKETRAY TEST/", "app.taketray", own))
+        assertFalse(TestMediaGuard.allowsDelete("Movies/Taketray Test/", null, own))
+    }
+
+    @Test
+    fun `the trailing slash, spaces and sub-folders still decide, whatever the case`() {
         assertFalse(TestMediaGuard.allowsDelete("Movies/TakeTray Test", own, own))
         assertFalse(TestMediaGuard.allowsDelete("Movies/TakeTray Test//", own, own))
         assertFalse(TestMediaGuard.allowsDelete(" Movies/TakeTray Test/", own, own))
+        assertFalse(TestMediaGuard.allowsDelete("movies/taketray test", own, own))
+        assertFalse(TestMediaGuard.allowsDelete("MOVIES/TAKETRAY TEST/SUB/", own, own))
+        assertFalse(TestMediaGuard.allowsDelete("movies/taketray test2/", own, own))
+        assertFalse(TestMediaGuard.allowsDelete("Movies/TakeTray Tests/", own, own))
     }
 
     @Test

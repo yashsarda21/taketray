@@ -14,7 +14,7 @@ import java.io.IOException
  * builds do not contain it (`tool/check_release_permissions` checks the dex).
  *
  * **Safety.** The app can only be told to delete a row that [TestMediaGuard]
- * accepts: in `Movies/TakeTray Test/` and owned by this very app. Anything else
+ * accepts: in `Movies/TakeTray Test/` (any case) and owned by this very app. Anything else
  * is refused with [TestMediaRefused] and nothing is deleted. The files belong
  * to this app (MediaStore records the inserting package as the owner), so
  * deleting them needs no consent dialog.
@@ -125,7 +125,8 @@ class TestMedia(
 
     private fun findRow(id: Long): Row? = query("${MediaColumns._ID} = ?", arrayOf(id.toString())).firstOrNull()
 
-    private fun rowsIn(folder: String): List<Row> = query("${MediaColumns.RELATIVE_PATH} = ?", arrayOf(folder))
+    /** The folder's rows ignoring case (as the app's own folder query does). */
+    private fun rowsIn(folder: String): List<Row> = query("${MediaColumns.RELATIVE_PATH} = ? COLLATE NOCASE", arrayOf(folder))
 
     /** Pending and trashed rows included: a leftover is often one of those. */
     private fun query(
@@ -173,16 +174,25 @@ object TestMediaGuard {
     const val FOLDER = "Movies/TakeTray Test/"
 
     /**
-     * True only for a row whose folder is exactly [FOLDER] (same case, no
-     * sub-folder) and whose owner is exactly [ownPackage]. An unknown folder or
-     * owner (null) is a no. The release app `app.taketray` is not the debug
-     * app `app.taketray.dev`: it never matches.
+     * True only for a row whose folder is [FOLDER], ignoring case (no
+     * sub-folder, the trailing '/' and every other character as written: the
+     * media provider keeps the case of a folder that already exists, and its
+     * own folder query ignores case too) and whose owner is exactly
+     * [ownPackage]. The owner is what keeps this safe: only this app can have
+     * put a row there under its own package name. An unknown folder or owner
+     * (null) is a no. The release app `app.taketray` is not the debug app
+     * `app.taketray.dev`: it never matches.
      */
     fun allowsDelete(
         relativePath: String?,
         ownerPackage: String?,
         ownPackage: String,
-    ): Boolean = relativePath == FOLDER && ownerPackage != null && ownPackage.isNotEmpty() && ownerPackage == ownPackage
+    ): Boolean =
+        relativePath != null &&
+            relativePath.equals(FOLDER, ignoreCase = true) &&
+            ownerPackage != null &&
+            ownPackage.isNotEmpty() &&
+            ownerPackage == ownPackage
 }
 
 /** [TestMedia.deleteVideo] was asked for a row that is not one of this app's test videos. */

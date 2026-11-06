@@ -1680,6 +1680,24 @@ abstract final class TtMetrics {
   // proto.css: .infobar { padding: 10px 16px }
   static const double infoBarPaddingVertical = 10;
 
+  // ---- Expandable card and step list ----
+
+  /// Minimum height of the header of an expandable card.
+  // proto.css: .acc .ah { min-height: 56px }
+  static const double expandCardHeaderMinHeight = 56;
+
+  /// Corner radius of the badge in an expandable card's header ("Your phone").
+  // proto.css: .acc .you { border-radius: 6px }
+  static const double expandCardBadgeRadius = 6;
+
+  /// Space above and below the text of that badge.
+  // proto.css: .acc .you { padding: 3px 8px }
+  static const double expandCardBadgePaddingVertical = 3;
+
+  /// Space between two items of a step list.
+  // proto.css: .acc .ab ol { gap: 6px }
+  static const double stepListGap = 6;
+
   // ---- Progress bar ----
 
   /// Height of the progress bar.

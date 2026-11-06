@@ -703,6 +703,198 @@ class ClipsRepository {
     );
   }
 
+  /// Runs [body] in one database transaction, so writes of this repository
+  /// and of `PhoneStateRepository` (one database) stand or fall together. The
+  /// transactions inside [body] join it. Used by `LibraryResync.resync`,
+  /// which must not detach clips without the window that finds them again
+  /// (D-108).
+  Future<T> inTransaction<T>(Future<T> Function() body) =>
+      _db.transaction(body);
+
+  /// The detached MediaStore clips of volume [volumeName]: the ones
+  /// [applyRebuildMatch] or a verify left with `mediaStoreId = -clipId` (and
+  /// `missing`), which [mediaStoreClipsOn] leaves out. [reattachDetached]
+  /// finds them again. Picked clips, attached clips and clips of other
+  /// volumes are not in it. By id.
+  Future<List<Clip>> detachedClipsOn(String volumeName) async {
+    final rows =
+        await (_db.select(_db.clips)
+              ..where(
+                (c) =>
+                    c.source.equalsValue(ClipSource.mediaStore) &
+                    c.volumeName.equals(volumeName) &
+                    c.mediaStoreId.isSmallerThanValue(0),
+              )
+              ..orderBy([(c) => OrderingTerm.asc(c.id)]))
+            .get();
+    return [for (final row in rows) _toClip(row)];
+  }
+
+  /// Gives detached clips the numbers of their videos again, in one
+  /// transaction per volume (D-108, I-3). [matches] maps a detached clip's id
+  /// to the MediaStore id of the video `matchAfterRebuild` found for it on
+  /// [volumeName].
+  ///
+  /// For each pair, in the order of the clip ids, with D the detached clip
+  /// and V the video:
+  ///
+  /// - no clip holds V: D takes V's number, `missing = false`,
+  ///   `lastVerifiedAt` = now;
+  /// - a clip N holds V and is the same video as D (`sameFingerprint`: it is
+  ///   a duplicate that came in as a new clip while D was detached): N is
+  ///   deleted, with its `inbox` row and its reel links, and D takes V's
+  ///   number. D keeps what the user did with it. D also gets N's reel links:
+  ///   a reel that has both keeps one link with the earlier `addedAt`, a reel
+  ///   that had only N gets a link for D with N's `addedAt`. A D that is in no
+  ///   reel and no list takes N's `inbox` row, so it is not left an orphan;
+  /// - V is held by a clip that is not the same video as D (its number is
+  ///   stale), or by a picked clip: nothing is changed, so a clip in a reel
+  ///   never ends up on the wrong video. A later verify detaches the stale
+  ///   holder and the next scan matches D again.
+  ///
+  /// A pair whose clip is not a detached MediaStore clip of [volumeName]
+  /// (attached, picked, of another volume, unknown) is ignored, so a stale
+  /// match changes nothing. A reel's `updatedAt` is not touched: this is a
+  /// repair, not an edit. `vn_copies` rows are left as they are (D-54).
+  ///
+  /// Throws [ArgumentError], changing nothing, when two clips are matched to
+  /// one video or a video id is below 1. A database failure rolls the whole
+  /// volume back.
+  Future<ReattachResult> reattachDetached(
+    String volumeName,
+    Map<int, int> matches,
+  ) async {
+    final targets = matches.values.toList();
+    if (targets.any((id) => id < 1)) {
+      throw ArgumentError.value(
+        matches,
+        'matches',
+        'a MediaStore id must be above 0',
+      );
+    }
+    if (targets.toSet().length != targets.length) {
+      throw ArgumentError.value(
+        matches,
+        'matches',
+        'two clips cannot get the same MediaStore id',
+      );
+    }
+    if (matches.isEmpty) return const ReattachResult(0, 0, 0);
+
+    final result = await _db.transaction(() async {
+      final now = _clock.storedNow();
+      var reattached = 0;
+      var merged = 0;
+      for (final clipId in matches.keys.toList()..sort()) {
+        final videoId = matches[clipId]!;
+        final detached =
+            await (_db.select(_db.clips)..where(
+                  (c) =>
+                      c.id.equals(clipId) &
+                      c.source.equalsValue(ClipSource.mediaStore) &
+                      c.volumeName.equals(volumeName) &
+                      c.mediaStoreId.isSmallerThanValue(0),
+                ))
+                .getSingleOrNull();
+        if (detached == null) continue;
+        final holder =
+            await (_db.select(_db.clips)..where(
+                  (c) =>
+                      c.volumeName.equals(volumeName) &
+                      c.mediaStoreId.equals(videoId),
+                ))
+                .getSingleOrNull();
+        if (holder != null) {
+          final same =
+              holder.source == ClipSource.mediaStore &&
+              sameFingerprint(
+                _toClip(detached).fingerprint,
+                _toClip(holder).fingerprint,
+              );
+          if (!same) continue;
+          await _mergeDuplicate(detached.id, holder.id);
+          merged++;
+        } else {
+          reattached++;
+        }
+        await _setMediaStoreId(
+          volumeName,
+          clipId,
+          videoId,
+          verification: ClipsCompanion(
+            missing: const Value(false),
+            lastVerifiedAt: Value(now),
+          ),
+        );
+      }
+      return ReattachResult(
+        reattached,
+        merged,
+        matches.length - reattached - merged,
+      );
+    });
+    _log.info(
+      'Re-attached ${result.reattached} detached clips, '
+      '${result.merged} merged with a duplicate, ${result.left} left',
+    );
+    return result;
+  }
+
+  /// Moves what the duplicate [duplicateId] has onto [keptId] and deletes
+  /// the duplicate (its `inbox` row and links with it): the union of the
+  /// reel links, keeping the earlier `addedAt` of a reel both are in, and the
+  /// duplicate's `inbox` row when the kept clip has no place at all. Run
+  /// inside a transaction, before the kept clip takes the duplicate's number.
+  Future<void> _mergeDuplicate(int keptId, int duplicateId) async {
+    final kept = {
+      for (final l in await (_db.select(
+        _db.clipReels,
+      )..where((l) => l.clipId.equals(keptId))).get())
+        l.reelId: l.addedAt,
+    };
+    final duplicateLinks = await (_db.select(
+      _db.clipReels,
+    )..where((l) => l.clipId.equals(duplicateId))).get();
+    for (final link in duplicateLinks) {
+      final own = kept[link.reelId];
+      if (own == null) {
+        await _insertLink(keptId, link.reelId, link.addedAt);
+      } else if (link.addedAt.isBefore(own)) {
+        await (_db.update(_db.clipReels)..where(
+              (l) => l.clipId.equals(keptId) & l.reelId.equals(link.reelId),
+            ))
+            .write(ClipReelsCompanion(addedAt: Value(link.addedAt)));
+      }
+    }
+    final keptInbox = await (_db.select(
+      _db.inbox,
+    )..where((i) => i.clipId.equals(keptId))).getSingleOrNull();
+    final duplicateInbox = await (_db.select(
+      _db.inbox,
+    )..where((i) => i.clipId.equals(duplicateId))).getSingleOrNull();
+    if (kept.isEmpty &&
+        duplicateLinks.isEmpty &&
+        keptInbox == null &&
+        duplicateInbox != null) {
+      await _db
+          .into(_db.inbox)
+          .insert(
+            InboxCompanion.insert(
+              clipId: Value(keptId),
+              state: duplicateInbox.state,
+              addedAt: duplicateInbox.addedAt,
+            ),
+          );
+    }
+    await (_db.delete(
+      _db.inbox,
+    )..where((i) => i.clipId.equals(duplicateId))).go();
+    await (_db.delete(
+      _db.clipReels,
+    )..where((l) => l.clipId.equals(duplicateId))).go();
+    await (_db.delete(_db.clips)..where((c) => c.id.equals(duplicateId))).go();
+  }
+
   /// Undo for "Add earlier videos" (D-75): takes the just-added clips in
   /// [clipIds] back out of To tag. In one transaction it deletes the `inbox`
   /// row of each id that is still waiting in To tag ([InboxState.pending])
@@ -815,6 +1007,37 @@ class ClipsRepository {
     return query.watch().map(
       (rows) => [for (final row in rows) _toClip(row.readTable(_db.clips))],
     );
+  }
+
+  /// When the clips waiting in To tag were shot (their `dateTakenUtc`),
+  /// oldest first, again each time that list changes (D-106: the phone's
+  /// copy holds them for the evening reminder). A change that leaves the
+  /// list as it was (a reel created, a clip flagged missing) does not emit.
+  Stream<List<DateTime>> watchPendingShotTimes() =>
+      _pendingShotTimesQuery().watch().map(_shotTimes).distinct(_sameTimes);
+
+  /// [watchPendingShotTimes] now, once.
+  Future<List<DateTime>> pendingShotTimes() async =>
+      _shotTimes(await _pendingShotTimesQuery().get());
+
+  JoinedSelectStatement<HasResultSet, dynamic> _pendingShotTimesQuery() =>
+      _db.selectOnly(_db.inbox).join([
+          innerJoin(_db.clips, _db.clips.id.equalsExp(_db.inbox.clipId)),
+        ])
+        ..addColumns([_db.clips.dateTakenUtc])
+        ..where(_db.inbox.state.equalsValue(InboxState.pending))
+        ..orderBy([OrderingTerm.asc(_db.clips.dateTakenUtc)]);
+
+  List<DateTime> _shotTimes(List<TypedResult> rows) => [
+    for (final row in rows) row.readWithConverter(_db.clips.dateTakenUtc)!,
+  ];
+
+  static bool _sameTimes(List<DateTime> a, List<DateTime> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (!a[i].isAtSameMomentAs(b[i])) return false;
+    }
+    return true;
   }
 
   /// How many clips are waiting in To tag, again after every change.
@@ -968,10 +1191,14 @@ class ClipsRepository {
     );
   }
 
-  Future<void> _insertLink(int clipId, int reelId, DateTime now) => _db
+  Future<void> _insertLink(int clipId, int reelId, DateTime addedAt) => _db
       .into(_db.clipReels)
       .insert(
-        ClipReelsCompanion.insert(clipId: clipId, reelId: reelId, addedAt: now),
+        ClipReelsCompanion.insert(
+          clipId: clipId,
+          reelId: reelId,
+          addedAt: addedAt,
+        ),
       );
 
   /// Sets `mediaStoreId` (and [verification], when given) of clip [clipId] if
@@ -1073,6 +1300,18 @@ class DetectedClips {
   final List<int> ids;
   final List<int> inserted;
   final Set<int> detached;
+}
+
+/// What [ClipsRepository.reattachDetached] did: [reattached] detached clips
+/// took the number of a video nobody held, [merged] took it from a duplicate
+/// that was deleted, and [left] were not changed (their video is held by
+/// another video's clip, or they were not detached clips of the volume).
+class ReattachResult {
+  const ReattachResult(this.reattached, this.merged, this.left);
+
+  final int reattached;
+  final int merged;
+  final int left;
 }
 
 @Riverpod(keepAlive: true)

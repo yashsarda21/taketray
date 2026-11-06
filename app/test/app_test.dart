@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import 'support/fake_media_bridge.dart';
@@ -40,6 +41,62 @@ void main() {
     expect(_inPill('To tag'), findsOneWidget);
     expect(_inPill('Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+  });
+
+  testApp('a cold start with a failing volume counts one failure', (
+    tester,
+  ) async {
+    final harness = VmHarness();
+    harness.bridge.put([fakeVideo(id: 1, generation: 5)]);
+    final session = await harness.media.turnOnNow();
+    harness.bridge.put([fakeVideo(id: 2, generation: 6, sizeBytes: 2)]);
+    for (var i = 0; i < 20; i++) {
+      harness.bridge.failNext('videosAddedAfter');
+    }
+    harness.background.shadeAction = ShadeAction(
+      kind: ShadeActionKind.turnOff,
+      since: session.since!,
+      at: DateTime.utc(2026, 6, 1, 18),
+      generations: const {'external_primary': 6},
+    );
+
+    // The start: the copy's first write and the lifecycle's scan both try
+    // the end, at the same moment.
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: harness.appOverrides,
+        child: const TakeTrayApp(),
+      ),
+    );
+    // Not pumpAndSettle: with Shooting mode on, its card keeps animating.
+    await tester.pump();
+    await tester.runAsync(settle);
+
+    // One more failure 5 minutes later is only the second that counts.
+    harness.media.clock.advance(const Duration(minutes: 5));
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.runAsync(settle);
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.runAsync(settle);
+
+    final state = await tester.runAsync(harness.media.phoneState.loadShooting);
+    expect(state!.on, isTrue);
+    expect(harness.background.shadeAction, isNotNull);
+  });
+
+  testApp('writes the background copy once at start', (tester) async {
+    final harness = await _pumpApp(tester);
+    await tester.runAsync(settle);
+
+    expect(harness.background.writes, hasLength(1));
+    expect(harness.background.state!.shootingOn, isFalse);
+    expect(harness.background.state!.stillReminderEnabled, isTrue);
   });
 
   testApp('starts the media work through the bridge on the first frame', (
@@ -89,7 +146,7 @@ void main() {
 
     await tester.tap(_inPill('Settings'));
     await tester.pumpAndSettle();
-    expect(_inScreen(SettingsPlaceholderScreen, 'Settings'), findsOneWidget);
+    expect(_inScreen(SettingsScreen, 'Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
   });
 

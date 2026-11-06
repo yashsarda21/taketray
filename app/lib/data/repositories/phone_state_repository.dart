@@ -6,6 +6,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/rules/rematch_window.dart';
 
 part 'phone_state_repository.g.dart';
 
@@ -14,15 +15,16 @@ part 'phone_state_repository.g.dart';
 final Logger _log = Logger('phoneState');
 
 /// What belongs to this phone, not to the user: whether Shooting mode is on,
-/// where each volume stood when it was switched on, and whether the app ever
-/// had full access to the videos.
+/// where each volume stood when it was switched on, whether the app ever had
+/// full access to the videos, whether it ever asked for the notification
+/// permission, and which rebuilt volumes have clips to match again.
 ///
-/// It lives in the `settings` table under three keys, `shootingMode`,
-/// `mediaAccessWasFull` and `mediaVolumeVersions`. None is in
-/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
-/// import deletes them (D-71, D-72): after a restore Shooting mode is off, and
-/// no volume version is known, because both belong to the phone's own media
-/// library.
+/// It lives in the `settings` table under five keys, `shootingMode`,
+/// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked` and
+/// `mediaRematchWindows`. None is in `SettingsRepository.exportedKeys`, so a
+/// backup never holds them, and an import deletes them (D-71, D-72, D-108):
+/// after a restore Shooting mode is off, and no volume version or re-match
+/// window is known, because they belong to the phone's own media library.
 ///
 /// `shootingMode` holds the whole [ShootingState] as one JSON value, so
 /// switching on, the start time and the baselines change together or not at
@@ -37,6 +39,8 @@ class PhoneStateRepository {
   static const shootingModeKey = 'shootingMode';
   static const mediaAccessWasFullKey = 'mediaAccessWasFull';
   static const volumeVersionsKey = 'mediaVolumeVersions';
+  static const notificationsAskedKey = 'notificationsAsked';
+  static const rematchWindowsKey = 'mediaRematchWindows';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -119,13 +123,16 @@ class PhoneStateRepository {
     return state;
   }
 
-  /// Switches Shooting mode off and forgets the baselines and the start time.
+  /// Switches Shooting mode off and forgets the baselines, the start time and
+  /// the Still shooting? answer.
   Future<void> turnShootingOff() async {
-    await (_db.delete(
-      _db.settings,
-    )..where((s) => s.key.equals(shootingModeKey))).go();
+    await _deleteShooting();
     _log.info('Shooting mode off');
   }
+
+  Future<void> _deleteShooting() => (_db.delete(
+    _db.settings,
+  )..where((s) => s.key.equals(shootingModeKey))).go();
 
   /// Moves [volume]'s baseline to [next], only if nothing changed since the
   /// caller read the state (compare-and-set, D-71). Returns whether it wrote.
@@ -177,6 +184,45 @@ class PhoneStateRepository {
     return wrote;
   }
 
+  /// Remembers that "Still shooting?" was answered with Keep on, only in the
+  /// session that started at [since] (compare-and-set, D-106; compared to the
+  /// millisecond, [ShootingState.isSession]). Returns whether it wrote:
+  /// false when Shooting mode is off, in another session, or already
+  /// answered. The baselines and the start time are kept.
+  Future<bool> markStillAnswered(DateTime since) async {
+    final wrote = await _db.transaction(() async {
+      final current = await loadShooting();
+      if (!current.isSession(since) || current.stillAnswered) return false;
+      await _putShooting(current.copyWith(stillAnswered: true));
+      return true;
+    });
+    _log.info(
+      wrote
+          ? 'Still shooting? answered: keep on'
+          : 'Still shooting? answer not stored: another session, or already '
+                'answered',
+    );
+    return wrote;
+  }
+
+  /// Switches Shooting mode off, as [turnShootingOff] does, only if it is on
+  /// in the session that started at [since] (compare-and-set, D-106). Returns
+  /// whether it did. A session switched off and on again meanwhile is never
+  /// ended by an older request.
+  Future<bool> endSession(DateTime since) async {
+    final ended = await _db.transaction(() async {
+      if (!(await loadShooting()).isSession(since)) return false;
+      await _deleteShooting();
+      return true;
+    });
+    _log.info(
+      ended
+          ? 'Shooting mode off (session ended)'
+          : 'Session not ended: changed',
+    );
+    return ended;
+  }
+
   /// Whether TakeTray ever saw full access to the videos on this phone.
   /// Unreadable counts as no.
   Future<bool> accessWasFull() async {
@@ -204,6 +250,203 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Marked that access was full');
+  }
+
+  /// Whether TakeTray ever asked for the notification permission on this
+  /// phone (D-107): it asks once, the first time Shooting mode is turned on.
+  /// Unreadable counts as no.
+  Future<bool> notificationsAsked() async {
+    final text = await _rawValue(notificationsAskedKey);
+    if (text == null) return false;
+    try {
+      final value = jsonDecode(text);
+      if (value is bool) return value;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $notificationsAskedKey is corrupt, reading it as no');
+    return false;
+  }
+
+  /// Remembers that the permission was asked for. It is never cleared by
+  /// Shooting mode going off.
+  Future<void> markNotificationsAsked() async {
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: notificationsAskedKey,
+            value: jsonEncode(true),
+          ),
+        );
+    _log.info('Marked that notifications were asked for');
+  }
+
+  /// The re-match window open on [volume], or null when there is none
+  /// (D-108). Whether it is still open at a given time is the caller's
+  /// question ([RematchWindow.isOpenAt]). A missing value is none; an
+  /// unreadable one is none for every volume (only the key's name is
+  /// logged) and is removed, so it is logged once and not at every scan.
+  Future<RematchWindow?> rematchWindow(String volume) async {
+    final windows = await _readRematchWindows();
+    if (windows == null) {
+      await _dropCorruptRematchWindows();
+      return null;
+    }
+    return windows[volume];
+  }
+
+  /// Opens a re-match window on [volume] at [at] for [clipIds], the clips a
+  /// rebuild resync just detached, last matched at [generation] (D-108).
+  ///
+  /// A window still open at [at] (a second rebuild within the day) keeps its
+  /// clips: the new one has both, and its 24 hours start at [at]. A window
+  /// that has ended is replaced. Other volumes are kept; an unreadable value
+  /// is replaced.
+  Future<void> openRematchWindow(
+    String volume, {
+    required Set<int> clipIds,
+    required int generation,
+    required DateTime at,
+  }) async {
+    final count = await _db.transaction(() async {
+      final windows = await _rematchWindows();
+      final old = windows[volume];
+      final window = RematchWindow(
+        openedAt: at.toUtc(),
+        clipIds: {
+          if (old != null && old.isOpenAt(at)) ...old.clipIds,
+          ...clipIds,
+        },
+        generation: generation,
+      );
+      await _putRematchWindows({...windows, volume: window});
+      return window.clipIds.length;
+    });
+    _log.info('Opened a re-match window on volume $volume for $count clips');
+  }
+
+  /// Notes that [volume] was matched again at [generation]. Nothing is
+  /// written when no window is stored for it.
+  Future<void> recordRematch(String volume, int generation) async {
+    await _db.transaction(() async {
+      final windows = await _rematchWindows();
+      final old = windows[volume];
+      if (old == null) return;
+      await _putRematchWindows({
+        ...windows,
+        volume: RematchWindow(
+          openedAt: old.openedAt,
+          clipIds: old.clipIds,
+          generation: generation,
+        ),
+      });
+    });
+  }
+
+  /// Removes [volume]'s re-match window, if any. The key goes with the last
+  /// one.
+  Future<void> closeRematchWindow(String volume) async {
+    final closed = await _db.transaction(() async {
+      final windows = await _rematchWindows();
+      if (!windows.containsKey(volume)) return false;
+      await _putRematchWindows({...windows}..remove(volume));
+      return true;
+    });
+    if (closed) _log.info('Closed the re-match window on volume $volume');
+  }
+
+  /// Every stored window, by volume name, for a write. Unreadable: none,
+  /// logged by key (the write replaces it).
+  Future<Map<String, RematchWindow>> _rematchWindows() async {
+    final windows = await _readRematchWindows();
+    if (windows != null) return windows;
+    _log.warning('Setting $rematchWindowsKey is corrupt, reading it as none');
+    return const {};
+  }
+
+  /// Every stored window, by volume name; none stored is empty; null when the
+  /// value is unreadable (not JSON, or any entry of the wrong shape).
+  Future<Map<String, RematchWindow>?> _readRematchWindows() async {
+    final text = await _rawValue(rematchWindowsKey);
+    if (text == null) return const {};
+    try {
+      final json = jsonDecode(text);
+      if (json is Map<String, dynamic>) {
+        final windows = <String, RematchWindow>{};
+        for (final MapEntry(:key, :value) in json.entries) {
+          final window = _parseWindow(value);
+          if (window == null) break;
+          windows[key] = window;
+        }
+        if (windows.length == json.length) return windows;
+      }
+    } on FormatException {
+      // Not JSON: unreadable.
+    }
+    return null;
+  }
+
+  /// Removes an unreadable value after logging it once, if it is still
+  /// unreadable inside the transaction (a write may have replaced it).
+  Future<void> _dropCorruptRematchWindows() async {
+    await _db.transaction(() async {
+      if (await _readRematchWindows() != null) return;
+      _log.warning(
+        'Setting $rematchWindowsKey is corrupt, reading it as none and '
+        'removing it',
+      );
+      await (_db.delete(
+        _db.settings,
+      )..where((s) => s.key.equals(rematchWindowsKey))).go();
+    });
+  }
+
+  static RematchWindow? _parseWindow(Object? json) {
+    if (json is! Map<String, dynamic>) return null;
+    final openedAtMs = json['openedAtMs'];
+    final clipIds = json['clipIds'];
+    final generation = json['generation'];
+    if (openedAtMs is! int ||
+        generation is! int ||
+        clipIds is! List<dynamic> ||
+        !clipIds.every((id) => id is int) ||
+        openedAtMs.abs() > _maxEpochMs) {
+      return null;
+    }
+    return RematchWindow(
+      openedAt: DateTime.fromMillisecondsSinceEpoch(openedAtMs, isUtc: true),
+      clipIds: clipIds.cast<int>().toSet(),
+      generation: generation,
+    );
+  }
+
+  /// The largest time `DateTime` can hold, in milliseconds either side of
+  /// 1970.
+  static const _maxEpochMs = 8640000000000000;
+
+  Future<void> _putRematchWindows(Map<String, RematchWindow> windows) async {
+    if (windows.isEmpty) {
+      await (_db.delete(
+        _db.settings,
+      )..where((s) => s.key.equals(rematchWindowsKey))).go();
+      return;
+    }
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: rematchWindowsKey,
+            value: jsonEncode({
+              for (final MapEntry(:key, :value) in windows.entries)
+                key: {
+                  'openedAtMs': value.openedAt.millisecondsSinceEpoch,
+                  'clipIds': (value.clipIds.toList()..sort()),
+                  'generation': value.generation,
+                },
+            }),
+          ),
+        );
   }
 
   Future<String?> _rawValue(String key) async => (await (_db.select(

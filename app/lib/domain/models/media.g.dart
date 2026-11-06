@@ -28,6 +28,7 @@ _ShootingState _$ShootingStateFromJson(Map<String, dynamic> json) =>
       since: json['since'] == null
           ? null
           : DateTime.parse(json['since'] as String),
+      stillAnswered: json['stillAnswered'] as bool? ?? false,
     );
 
 Map<String, dynamic> _$ShootingStateToJson(_ShootingState instance) =>
@@ -35,4 +36,5 @@ Map<String, dynamic> _$ShootingStateToJson(_ShootingState instance) =>
       'on': instance.on,
       'baselines': instance.baselines.map((k, e) => MapEntry(k, e.toJson())),
       'since': instance.since?.toIso8601String(),
+      'stillAnswered': instance.stillAnswered,
     };

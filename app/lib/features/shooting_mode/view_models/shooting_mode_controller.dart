@@ -7,6 +7,7 @@ import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 part 'shooting_mode_controller.g.dart';
@@ -39,12 +40,16 @@ class ShootingModeController extends _$ShootingModeController {
   /// Turning on, in this order:
   /// 1. when access is denied and Android would still show its dialog, asks
   ///    for it (the answer is shown on the card's banner);
-  /// 2. stores Shooting mode with a baseline for each mounted volume (its
+  /// 2. asks for the notification permission, once ever (Android 13 and
+  ///    later, not allowed yet, never asked: `askOnce`, D-107). After that
+  ///    only the Settings row asks;
+  /// 3. stores Shooting mode with a baseline for each mounted volume (its
   ///    version and generation now), or with none when the volume list cannot
   ///    be read: the next scan then starts each volume from now. It is turned
-  ///    on whatever the answer to 1 was: without full access the scan simply
-  ///    does nothing, and the card says "Manual mode";
-  /// 3. starts a scan (not waited for).
+  ///    on whatever the answers to 1 and 2 were: without full access the scan
+  ///    simply does nothing, and the card says "Manual mode"; without the
+  ///    notification permission nothing is posted;
+  /// 4. starts a scan (not waited for).
   ///
   /// Turning on while it is on keeps the first session (`turnShootingOn`).
   /// Turning off forgets the session and leaves To tag alone.
@@ -62,11 +67,15 @@ class ShootingModeController extends _$ShootingModeController {
 
   Future<void> _turnOn() async {
     final access = ref.read(mediaAccessControllerProvider.notifier);
+    final notifications = ref.read(
+      notificationAccessControllerProvider.notifier,
+    );
     final bridge = ref.read(mediaBridgeProvider);
     final phone = ref.read(phoneStateRepositoryProvider);
     final scanner = ref.read(mediaScannerProvider);
     await guarded(_log, 'Turning Shooting mode on', () async {
       await access.askIfDenied();
+      await notifications.askOnce();
       await phone.turnShootingOn(await _baselines(bridge));
       unawaited(guarded(_log, 'The scan after turning on', scanner.scan));
     });

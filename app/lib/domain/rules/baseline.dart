@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:meta/meta.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/rules/clip_date.dart';
 
 /// What a scan does with one volume of the media library (D-70).
 @immutable
@@ -10,8 +11,10 @@ sealed class VolumePlan {
 }
 
 /// The volume has no baseline (Shooting mode was switched on before it was
-/// mounted, or after an import): take its current generation as the
-/// baseline and treat nothing on it as new.
+/// mounted, its read failed at switch-on, or an import left none): the clips
+/// shot since the session started are new ([shotSinceSession], D-108), and
+/// its current generation becomes the baseline. Nothing shot before the
+/// session is.
 final class StartFromNow extends VolumePlan {
   const StartFromNow();
 }
@@ -146,4 +149,29 @@ int? nextPageCursor({required int cursor, required List<MediaVideo> page}) {
   if (generations.reduce(min) == highest) return null;
   final next = highest - 1;
   return next > cursor ? next : null;
+}
+
+/// The rows of a volume with no baseline that are new (D-108, M-8): the
+/// ones shot at or after the session's [since] ([shotAt], D-69), and added no
+/// later than [captured], the generation the scan will store as the
+/// baseline. A row added after it belongs to the next scan.
+///
+/// Rows that are not finished ([holdsBaseline]) are kept here, so the scan
+/// can count them; only the usable ones are saved as clips, and the first
+/// scan of a volume does not hold its baseline for the others (D-108: it
+/// moves to [captured], and such a row is the documented gap). Without a
+/// [since] (it cannot happen while Shooting mode is on, but nothing here may
+/// guess) nothing is new: the volume starts from now.
+List<MediaVideo> shotSinceSession(
+  List<MediaVideo> rows, {
+  required DateTime? since,
+  required int captured,
+  required DateTime now,
+}) {
+  if (since == null) return const [];
+  return [
+    for (final v in rows)
+      if (v.generationAdded <= captured && !shotAt(v, now: now).isBefore(since))
+        v,
+  ];
 }

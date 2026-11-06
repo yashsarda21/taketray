@@ -140,3 +140,21 @@ Future<void> pickNewestInSystemPicker(PatrolIntegrationTester $) async {
   );
   await tapNativeView($, '$package:id/button_add');
 }
+
+/// Answers the notification permission dialog (Android 13 and later) with
+/// "Allow", if it shows within [timeout]. Returns whether it did: false on a
+/// phone that does not ask (below Android 13) or that already allowed.
+Future<bool> allowNotificationsInDialog(
+  PatrolIntegrationTester $, {
+  Duration timeout = const Duration(seconds: 15),
+}) async {
+  if (!await $.platform.mobile.isPermissionDialogVisible(timeout: timeout)) {
+    return false;
+  }
+  try {
+    await $.platform.mobile.grantPermissionWhenInUse();
+  } on Object {
+    await tapNativeView($, '${_permissionIds}permission_allow_button');
+  }
+  return true;
+}

@@ -4,10 +4,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
+import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
+import 'package:taketray/platform/background_bridge.dart';
 
 // Error types only, never a message, a path or a name (D-10).
 final Logger _log = Logger('mediaLifecycle');
@@ -25,7 +28,16 @@ final Logger _log = Logger('mediaLifecycle');
 ///    timeline must still learn the zone;
 /// 2. `MediaAccessController.refresh`: the access may have changed in the
 ///    phone's settings;
-/// 3. `MediaScanner.scan`: new videos, when Shooting mode is on.
+/// 3. `NotificationAccessController.refresh`: the notification permission
+///    may have changed in the phone's settings too (D-107);
+/// 4. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
+///    shooting? button tapped in the shade needs no step of its own: every
+///    scan applies it first, inside its own job (D-106);
+/// 5. after a scan that read every volume (`ScanDone` with no failed volume;
+///    an end from the shade counts), `BackgroundSync.flush` and then
+///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
+///    To tag now. The new baselines reach the phone's copy first, so the
+///    new-clips job never counts again with the old ones and re-posts.
 ///
 /// Each step runs even if the one before it failed. Nothing is waited for by
 /// the UI, and no error reaches it: every step is guarded and logs only the
@@ -101,8 +113,28 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
     );
     await guarded(
       _log,
+      'The notification permission check',
+      () => ref.read(notificationAccessControllerProvider.notifier).refresh(),
+    );
+    final scanned = await guarded(
+      _log,
       'The scan',
       () => ref.read(mediaScannerProvider).scan(),
+    );
+    // A volume that failed may still hold clips the job counts.
+    if (scanned is! ScanDone || scanned.failedVolumes.isNotEmpty || !mounted) {
+      return;
+    }
+    await guarded(
+      _log,
+      'Writing the background copy',
+      () => ref.read(backgroundSyncProvider).flush(),
+    );
+    if (!mounted) return;
+    await guarded(
+      _log,
+      'Clearing the new clips notification',
+      () => ref.read(backgroundBridgeProvider).clearNewClipsNotification(),
     );
   }
 

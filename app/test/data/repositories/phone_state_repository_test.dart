@@ -8,6 +8,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/rules/rematch_window.dart';
 
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
@@ -172,6 +173,11 @@ void main() {
       ('a bad date', '{"on": true, "baselines": {}, "since": "$secret"}'),
       ('on without a start time', '{"on": true, "baselines": {}}'),
       (
+        'a stillAnswered that is not a bool',
+        '{"on": true, "since": "2026-10-28T09:00:00.000Z", "baselines": {}, '
+            '"stillAnswered": "$secret"}',
+      ),
+      (
         'a generation too big for a double (1e400 is Infinity)',
         '{"on": true, "since": "2026-10-28T09:00:00.000Z", "baselines": '
             '{"a": {"version": "v", "generation": 1e400}}}',
@@ -229,6 +235,66 @@ void main() {
       await repo.turnShootingOff();
 
       expect(await repo.accessWasFull(), isTrue);
+    });
+  });
+
+  group('notifications asked', () {
+    test('false until marked, then true, and marking twice is fine', () async {
+      expect(PhoneStateRepository.notificationsAskedKey, 'notificationsAsked');
+      expect(await repo.notificationsAsked(), isFalse);
+
+      await repo.markNotificationsAsked();
+      await repo.markNotificationsAsked();
+
+      expect(await repo.notificationsAsked(), isTrue);
+    });
+
+    test('is separate from Shooting mode and from access', () async {
+      await turnOn();
+      await repo.markNotificationsAsked();
+      await repo.turnShootingOff();
+
+      expect(await repo.notificationsAsked(), isTrue);
+      expect(await repo.accessWasFull(), isFalse);
+    });
+
+    test(
+      'a value that cannot be read counts as not asked, by key only',
+      () async {
+        const secret = 'private-note';
+        await _put('notificationsAsked', '"$secret"');
+        final records = _record();
+
+        expect(await repo.notificationsAsked(), isFalse);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('notificationsAsked'));
+        expect(lines, isNot(contains(secret)));
+      },
+    );
+
+    test('a value that is not JSON counts as not asked', () async {
+      await _put('notificationsAsked', '{not json');
+
+      expect(await repo.notificationsAsked(), isFalse);
+    });
+
+    test('is not exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.notificationsAskedKey)),
+      );
+      await repo.markNotificationsAsked();
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('notificationsAsked')),
+      );
+      final fixture = File('test/data/backup/fixtures/backup_v1.json')
+          .readAsStringSync();
+
+      await BackupService(db, clock).importJson(fixture);
+
+      expect(await repo.notificationsAsked(), isFalse);
     });
   });
 
@@ -331,6 +397,209 @@ void main() {
         expect(await repo.volumeVersions(), {'external_primary': 'v1'});
       });
     }
+  });
+
+  group('re-match windows (D-108)', () {
+    const phone = 'external_primary';
+    const card = 'ABCD-1234';
+
+    test('none by default; opened, read back, and closed', () async {
+      expect(PhoneStateRepository.rematchWindowsKey, 'mediaRematchWindows');
+      expect(await repo.rematchWindow(phone), isNull);
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {3, 9},
+        generation: 41,
+        at: _t0,
+      );
+      await repo.openRematchWindow(card, clipIds: {5}, generation: 2, at: _t0);
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: _t0, clipIds: const {3, 9}, generation: 41),
+      );
+      expect(
+        await repo.rematchWindow(card),
+        RematchWindow(openedAt: _t0, clipIds: const {5}, generation: 2),
+      );
+
+      await repo.closeRematchWindow(phone);
+      expect(await repo.rematchWindow(phone), isNull);
+      expect(await repo.rematchWindow(card), isNotNull, reason: 'per volume');
+
+      // Closing the last one removes the key; closing none is fine.
+      await repo.closeRematchWindow(card);
+      await repo.closeRematchWindow(card);
+      expect(await _raw('mediaRematchWindows'), isNull);
+    });
+
+    test('the time is kept to the millisecond, in UTC', () async {
+      final at = DateTime.utc(2026, 10, 28, 9, 0, 0, 123);
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {1},
+        generation: 1,
+        at: at.toLocal(),
+      );
+
+      final window = (await repo.rematchWindow(phone))!;
+      expect(window.openedAt, at);
+      expect(window.openedAt.isUtc, isTrue);
+    });
+
+    test('a second rebuild while one is open adds its clips and starts the '
+        '24 hours again', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final later = _t0.add(const Duration(hours: 20));
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {8},
+        generation: 1,
+        at: later,
+      );
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: later, clipIds: const {3, 8}, generation: 1),
+      );
+    });
+
+    test('a rebuild after the old window ended starts a fresh one', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final later = _t0.add(rematchWindowLength);
+
+      await repo.openRematchWindow(
+        phone,
+        clipIds: {8},
+        generation: 1,
+        at: later,
+      );
+
+      expect(
+        await repo.rematchWindow(phone),
+        RematchWindow(openedAt: later, clipIds: const {8}, generation: 1),
+      );
+    });
+
+    test('a re-match moves the generation, and only of an open '
+        'window', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+
+      await repo.recordRematch(phone, 9);
+      await repo.recordRematch(card, 9);
+
+      expect((await repo.rematchWindow(phone))!.generation, 9);
+      expect(await repo.rematchWindow(card), isNull, reason: 'none opened');
+    });
+
+    test('kept when Shooting mode goes off', () async {
+      await turnOn();
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+
+      await repo.turnShootingOff();
+
+      expect(await repo.rematchWindow(phone), isNotNull);
+    });
+
+    test('never exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.rematchWindowsKey)),
+      );
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final text = await BackupService(db, clock).exportJson();
+      expect(text, isNot(contains('mediaRematchWindows')));
+
+      await BackupService(db, clock).importJson(
+        File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
+      );
+
+      expect(await repo.rematchWindow(phone), isNull);
+    });
+
+    for (final (name, value) in [
+      ('not JSON', 'nope'),
+      ('a list', '[1]'),
+      ('a volume that is not an object', '{"external_primary": "private"}'),
+      (
+        'a time that is not a number',
+        '{"external_primary": {"openedAtMs": "x", "clipIds": [1], '
+            '"generation": 1}}',
+      ),
+      (
+        'clip ids that are not numbers',
+        '{"external_primary": {"openedAtMs": 1, "clipIds": ["private"], '
+            '"generation": 1}}',
+      ),
+      (
+        'a generation that is missing',
+        '{"external_primary": {"openedAtMs": 1, "clipIds": [1]}}',
+      ),
+      (
+        'a time that is not a whole number',
+        '{"external_primary": {"openedAtMs": 9e99, "clipIds": [1], '
+            '"generation": 1}}',
+      ),
+      (
+        'a time out of range',
+        '{"external_primary": {"openedAtMs": 99999999999999999, '
+            '"clipIds": [1], "generation": 1}}',
+      ),
+    ]) {
+      test('$name reads as no window, logging only the key', () async {
+        final records = _record();
+        await _put('mediaRematchWindows', value);
+
+        expect(await repo.rematchWindow(phone), isNull);
+
+        expect(
+          records.map((r) => r.message),
+          contains(contains('mediaRematchWindows')),
+        );
+        for (final r in records) {
+          expect(r.message, isNot(contains(value)));
+          expect(r.message, isNot(contains('private')));
+        }
+        // Read once, it is dropped: the next read has nothing to log.
+        expect(await _raw('mediaRematchWindows'), isNull);
+        records.clear();
+        expect(await repo.rematchWindow(phone), isNull);
+        expect(await repo.rematchWindow(card), isNull);
+        expect(records, isEmpty);
+        // Opening over it starts a fresh map.
+        await repo.openRematchWindow(
+          phone,
+          clipIds: {1},
+          generation: 1,
+          at: _t0,
+        );
+        expect(await repo.rematchWindow(phone), isNotNull);
+      });
+    }
+
+    test('a readable value is not touched by reading it', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final before = await _raw('mediaRematchWindows');
+      final records = _record();
+
+      expect(await repo.rematchWindow(phone), isNotNull);
+      expect(await repo.rematchWindow(card), isNull);
+
+      expect(await _raw('mediaRematchWindows'), before);
+      expect(records, isEmpty);
+    });
+
+    test('a corrupt value met by a write (close, record) is replaced or '
+        'left, never half-read', () async {
+      await _put('mediaRematchWindows', 'nope');
+
+      await repo.recordRematch(phone, 9);
+      await repo.closeRematchWindow(phone);
+
+      expect(await repo.rematchWindow(phone), isNull);
+    });
   });
 
   group('a state stored before D-90', () {
@@ -585,6 +854,138 @@ void main() {
 
       final lines = records.map((r) => r.message).join('\n');
       expect(lines, isNot(contains('v1')));
+    });
+  });
+
+  group('the Still shooting? answer and the session', () {
+    test('old shooting json reads stillAnswered false', () async {
+      await _put(
+        'shootingMode',
+        jsonEncode({
+          'on': true,
+          'baselines': {
+            'external_primary': {'version': 'v1', 'generation': 40},
+          },
+          'since': '2026-10-28T09:00:00.000Z',
+        }),
+      );
+
+      final state = await repo.loadShooting();
+      expect(state.on, isTrue);
+      expect(state.stillAnswered, isFalse);
+      // A null is the same as no key.
+      await _put(
+        'shootingMode',
+        jsonEncode({
+          'on': true,
+          'baselines': <String, Object>{},
+          'since': '2026-10-28T09:00:00.000Z',
+          'stillAnswered': null,
+        }),
+      );
+      expect((await repo.loadShooting()).stillAnswered, isFalse);
+      expect((await repo.loadShooting()).on, isTrue);
+    });
+
+    test('a new session is not answered', () async {
+      expect((await turnOn()).stillAnswered, isFalse);
+    });
+
+    test('advance keeps stillAnswered', () async {
+      final session = await turnOn();
+      expect(await repo.markStillAnswered(session.since!), isTrue);
+
+      expect(
+        await repo.advanceBaseline(
+          'external_primary',
+          expectedSession: await repo.loadShooting(),
+          expected: _phone,
+          next: const VolumeBaseline(version: 'v1', generation: 45),
+        ),
+        isTrue,
+      );
+
+      final state = await repo.loadShooting();
+      expect(state.stillAnswered, isTrue);
+      expect(state.baselines['external_primary']!.generation, 45);
+    });
+
+    test('mark answered only for the same session', () async {
+      final session = await turnOn();
+      final since = session.since!;
+
+      // Another session (a minute earlier): nothing is written.
+      expect(await repo.markStillAnswered(since.subtract(_minute)), isFalse);
+      expect((await repo.loadShooting()).stillAnswered, isFalse);
+
+      // The session: answered, and nothing else changes.
+      expect(await repo.markStillAnswered(since), isTrue);
+      final state = await repo.loadShooting();
+      expect(state.stillAnswered, isTrue);
+      expect(state.since, since);
+      expect(state.baselines, session.baselines);
+      expect(state.on, isTrue);
+
+      // Already answered: nothing to write.
+      expect(await repo.markStillAnswered(since), isFalse);
+    });
+
+    test('mark answered does nothing while off', () async {
+      expect(await repo.markStillAnswered(_t0), isFalse);
+      expect(await _raw('shootingMode'), isNull);
+    });
+
+    test('off forgets the answer; the next session asks again', () async {
+      final session = await turnOn();
+      await repo.markStillAnswered(session.since!);
+      await repo.turnShootingOff();
+      clock.advance(_minute);
+
+      expect((await turnOn()).stillAnswered, isFalse);
+    });
+
+    test('a session with microseconds matches its milliseconds', () async {
+      // A real clock keeps microseconds; the phone's copy keeps `sinceMs`.
+      clock = FixedClock(_t0.add(const Duration(microseconds: 456)));
+      repo = PhoneStateRepository(db, clock);
+      final session = await turnOn();
+      final fromPhone = DateTime.fromMillisecondsSinceEpoch(
+        session.since!.millisecondsSinceEpoch,
+        isUtc: true,
+      );
+
+      expect(session.isSession(fromPhone), isTrue);
+      expect(session.isSession(fromPhone.add(_minute)), isFalse);
+      expect(ShootingState.off.isSession(fromPhone), isFalse);
+      expect(await repo.markStillAnswered(fromPhone), isTrue);
+      expect(await repo.endSession(fromPhone), isTrue);
+      expect(await repo.loadShooting(), ShootingState.off);
+    });
+
+    test('end session turns off only the same session', () async {
+      final session = await turnOn();
+      final since = session.since!;
+
+      expect(await repo.endSession(since.add(_minute)), isFalse);
+      expect((await repo.loadShooting()).on, isTrue);
+
+      expect(await repo.endSession(since), isTrue);
+      expect(await repo.loadShooting(), ShootingState.off);
+      expect(await _raw('shootingMode'), isNull);
+
+      // Already off.
+      expect(await repo.endSession(since), isFalse);
+    });
+
+    test('the answer is logged without a time', () async {
+      final records = _record();
+      final session = await turnOn();
+      await repo.markStillAnswered(session.since!);
+      await repo.endSession(session.since!);
+
+      final lines = records.map((r) => r.message).join('\n');
+      expect(lines, contains('answered'));
+      expect(lines, isNot(contains('2026')));
     });
   });
 

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
+import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
@@ -22,7 +23,9 @@ const int _columns = 2;
 ///
 /// 1. a large app bar "Reels";
 /// 2. the access banner and the Shooting mode card, with its clips-waiting
-///    banner (`ShootingModeSection`, D-76);
+///    banner (`ShootingModeSection`, D-76); once Shooting mode has been on for
+///    14 days, the "Still shooting?" dialog opens over the screen
+///    (`StillShootingPromptHost`, D-107);
 /// 3. when at least one reel exists, the filter chips: All, Collecting, Ready
 ///    to edit and Published, each with how many reels it shows;
 /// 4. the reels, two to a row, newest first, as a lazy grid of `TtReelCard`s;
@@ -81,6 +84,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
       appBar: TtAppBar(large: true, title: l10n.navReels),
       body: Stack(
         children: [
+          // Asks "Still shooting?" when it is due (D-107); draws nothing.
+          const StillShootingPromptHost(),
           CustomScrollView(
             slivers: [
               const SliverToBoxAdapter(child: ShootingModeSection()),

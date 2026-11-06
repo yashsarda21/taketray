@@ -36,8 +36,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 3 | Finding your videos (Android media bridge) | ✅ Done |
 | 4 | Reels screens | ✅ Done |
 | 5 | Tagging (To tag and the tag player) | ✅ Done |
-| 6 | Background detection and notifications | Next |
-| 7 | Adding friends' videos | Planned |
+| 6 | Background detection and notifications | ✅ Done |
+| 7 | Adding friends' videos | Next |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | Planned |
 | 9 | Reference reels | Planned |
 | 10 | Onboarding, settings, error log | Planned |
@@ -153,6 +153,17 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Phone tests** on the S24: tag a day of 40 test clips (one tap, Pick several, Same as previous, Skip), Undo going back, Skip all and Restore, Tag scene, and Undo after switching tabs. The whole on-phone suite passes (13 tests, 1 skipped on purpose). On the tiny test clips the next clip starts within about half a second of a tap; real camera clips are checked by hand.
 - **Learning guide**: [docs/learn/phase-5-tagging.md](docs/learn/phase-5-tagging.md) explains the whole phase in plain English, with the real code.
 
+### Phase 6: Background detection and notifications
+- **New clips while TakeTray is closed**: with Shooting mode on, a notification ("2 new clips to tag") appears 5 minutes after your last clip (each new clip restarts the wait, so never in the middle of a shoot), with the normal notification sound once, and not while a take is still being recorded (a camera app that adds its video only when you stop cannot be seen mid-take); later count changes are silent, and tapping it opens To tag. The evening reminder waits for the same quiet, and is skipped when the quiet only comes after midnight. Android runs this check when it chooses, so a hot phone can delay it; the next app open always finds every clip.
+- **Evening reminder**: once a day at the evening time, "You shot 3 clips today. Tag them?" if clips shot today are waiting. It leaves the shade once you tag them, the next day, or when the reminder is off.
+- **Still shooting?**: a reminder in the shade when Shooting mode has been on for a long time, with **Turn off** and **Keep on**. Turn off from the shade adds only the clips shot before the tap, from every storage, even an SD card put in mid-shoot. In the app, a dialog asks once.
+- **Notification permission**: asked once, the first time you turn Shooting mode on. The Settings screen shows whether notifications are allowed, and a help screen explains, phone by phone (with a Samsung button), how to stop the system from silencing them.
+- **Survives restarts**: reminders and the new-clips check are set up again after a phone restart, an app update or a time change.
+- **Safer scans**: clips that lose their link when Android rebuilds its media library are matched back (within 24 h), and a new SD card starts at the shoot's start, so old videos don't flood To tag.
+- **Still offline and light**: only two permissions added (notifications, and starting after a restart). No exact alarms, no always-running service, no internet.
+- **Phone tests** on the S24: the new-clips notification opening To tag, turning off removing it, the evening reminder's count, the real evening alarm, Still shooting? Turn off adding only pre-tap clips, the dialog, and one waiting check after bursts of new videos. Every on-phone test file passes. The physical buttons in the shade and opening from a notification are checked by hand ([docs/dev-setup.md](docs/dev-setup.md)).
+- **Learning guide**: [docs/learn/phase-6-background.md](docs/learn/phase-6-background.md) explains the whole phase in plain English, with the real code.
+
 ## Running the checks
 
 Use the pinned Flutter through the wrappers in `tool/` (never a global `flutter`):
@@ -172,6 +183,7 @@ Set-up details: [docs/dev-setup.md](docs/dev-setup.md).
 | `app/` | The TakeTray Android app |
 | `app/pigeons/` | The contract between Flutter and Android for reading videos (Pigeon writes the code on both sides from it) |
 | `app/android/app/src/main/kotlin/app/taketray/media/` | The Kotlin side: permissions, video queries, thumbnails, time zone changes |
+| `app/android/app/src/main/kotlin/app/taketray/background/` | The Kotlin side of Phase 6: the new-clips job, notifications, reminders, shade buttons, re-arming after a restart |
 | `packages/taketray_ui/` | The design system (theme and components) |
 | `widgetbook/` | The "TakeTray UI" component catalogue |
 | `tool/` | Flutter wrappers and check scripts |

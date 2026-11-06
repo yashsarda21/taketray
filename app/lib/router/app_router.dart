@@ -2,14 +2,16 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 
 part 'app_router.g.dart';
@@ -45,8 +47,12 @@ GoRouter appRouter(Ref ref) {
   final rootNavigatorKey = GlobalKey<NavigatorState>(
     debugLabel: 'root navigator',
   );
+  // Sheets and dialogs are pushed on the root navigator, a `PopupRoute`
+  // inside a tab on that tab's own; every navigator gets its own observer.
+  final popups = ref.read(popupRouteTrackerProvider);
   final router = GoRouter(
     navigatorKey: rootNavigatorKey,
+    observers: [popups.observerForNavigator()],
     initialLocation: Routes.reels,
     // Any location no route matches (an old deep link, `/reels/stale`, a
     // typo) goes to Reels instead of go_router's error page. The location is
@@ -61,6 +67,7 @@ GoRouter appRouter(Ref ref) {
             AppShell(navigationShell: navigationShell),
         branches: [
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.reels,
@@ -105,6 +112,7 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.toTag,
@@ -133,10 +141,22 @@ GoRouter appRouter(Ref ref) {
             ],
           ),
           StatefulShellBranch(
+            observers: [popups.observerForNavigator()],
             routes: [
               GoRoute(
                 path: Routes.settings,
-                builder: (context, state) => const SettingsPlaceholderScreen(),
+                builder: (context, state) => const SettingsScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'notifications-help',
+                    // Full screen, above the shell and its nav pill, like the
+                    // tag player (D-107); Settings stays under it in the tab,
+                    // so Back returns to it.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) =>
+                        const NotificationsHelpScreen(),
+                  ),
+                ],
               ),
             ],
           ),

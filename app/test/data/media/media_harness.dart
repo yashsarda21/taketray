@@ -15,6 +15,7 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 
 import '../../support/clip_setup.dart';
+import '../../support/fake_background_bridge.dart';
 import '../../support/fake_media_bridge.dart';
 import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
@@ -93,10 +94,12 @@ class MediaHarness {
   MediaHarness({
     DateTime? now,
     RecordingBridge? bridge,
+    FakeBackgroundBridge? background,
     ZoneRepository Function(AppDatabase, FixedClock)? zones,
   }) : db = testDatabase(),
        clock = FixedClock(now ?? DateTime.utc(2026, 6, 1, 9)),
-       bridge = bridge ?? RecordingBridge() {
+       bridge = bridge ?? RecordingBridge(),
+       background = background ?? FakeBackgroundBridge() {
     addTearDown(db.close);
     clips = ClipsRepository(db, clock);
     phoneState = PhoneStateRepository(db, clock);
@@ -110,6 +113,9 @@ class MediaHarness {
   final AppDatabase db;
   final FixedClock clock;
   final RecordingBridge bridge;
+
+  /// The background bridge the scanner reads the shade action from (D-106).
+  final FakeBackgroundBridge background;
   final MediaWorkQueue queue = MediaWorkQueue();
   late final ClipsRepository clips;
   late final PhoneStateRepository phoneState;
@@ -130,6 +136,7 @@ class MediaHarness {
     zoneSync,
     queue,
     clock,
+    background,
   );
 
   /// Switches Shooting mode on with [baselines] (by volume name).

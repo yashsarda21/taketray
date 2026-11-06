@@ -157,6 +157,31 @@ void main() {
         ),
         width: _callout,
       ),
+      const TtScenario(
+        'callout, success',
+        TtCallout(
+          icon: Symbols.verified_rounded,
+          title: 'Your clips are never lost',
+          body: 'They show up in To tag when you open the app.',
+          success: true,
+        ),
+        width: _callout,
+      ),
+      TtScenario(
+        'callout, success, with action',
+        TtCallout(
+          icon: Symbols.verified_rounded,
+          title: 'Your clips are never lost',
+          body: 'They show up in To tag when you open the app.',
+          success: true,
+          action: TtButton(
+            label: 'Got it',
+            kind: TtButtonKind.text,
+            onPressed: () {},
+          ),
+        ),
+        width: _callout,
+      ),
       TtScenario(
         'callout, with action, no title',
         TtCallout(

@@ -21,6 +21,7 @@ import 'package:taketray/domain/rules/earlier_window.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 import 'package:taketray/domain/rules/zone_lookup.dart';
+import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 part 'media_scanner.g.dart';
@@ -62,6 +63,12 @@ final class ScanDone extends ScanOutcome {
       'ScanDone($added, resynced: $resynced, failed: $failedVolumes)';
 }
 
+/// The scan was put off: the shade action could not be read, so nothing was
+/// read or written (D-106). The next trigger tries again.
+final class ScanDeferred extends ScanOutcome {
+  const ScanDeferred();
+}
+
 /// What every volume of one scan shares: read once per scan.
 class _ScanContext {
   _ScanContext({
@@ -95,6 +102,7 @@ class MediaScanner {
     this._zoneSync,
     this._queue,
     this._clock,
+    this._shade,
   );
 
   final MediaBridge _bridge;
@@ -105,6 +113,9 @@ class MediaScanner {
   final ZoneSync _zoneSync;
   final MediaWorkQueue _queue;
   final Clock _clock;
+
+  /// Where the shade's Still shooting? buttons are read and cleared (D-106).
+  final BackgroundBridge _shade;
   late final LibraryResync _rebuilds = LibraryResync(_bridge, _clips, _phone);
 
   /// Rows asked for per page of `videosAddedAfter`.
@@ -117,6 +128,23 @@ class MediaScanner {
   /// The scan that is queued but has not started yet, if any.
   Future<ScanOutcome>? _queued;
 
+  /// How many counted failures in a row ending a session from the shade
+  /// had, which session (its `since` in milliseconds) they were for, and when
+  /// the last one was counted.
+  int _failedEnds = 0;
+  int? _failedEndsFor;
+  DateTime? _lastCountedFailure;
+
+  /// After this many counted failures in this process, a Turn off from the
+  /// shade ends the session with what could be read (D-106).
+  static const maxEndAttempts = 3;
+
+  /// A failed end counts toward [maxEndAttempts] only this long after the
+  /// last counted one, so the tries of one start or resume (the lifecycle's
+  /// scan, To tag's, the copy's write) count once, and three counted
+  /// failures mean the volume failed for at least 10 minutes (D-106).
+  static const endRetryGap = Duration(minutes: 5);
+
   /// Looks for new videos on every volume (D-72).
   ///
   /// Calls never run side by side. While a scan runs, the first call queues
@@ -124,10 +152,185 @@ class MediaScanner {
   /// starts gets the same future. So any number of triggers during one run
   /// cost exactly one more run, and that run sees everything they wanted it
   /// to see.
+  ///
+  /// Every scan first looks for a shade action, inside its own job, so no
+  /// trigger can scan past a Turn off tapped in the shade (D-106):
+  /// - a Turn off for the current session is applied in place of the scan
+  ///   (the end capped at the tap), and its outcome is the
+  ///   answer;
+  /// - a Keep on for the current session is stored, then the scan runs;
+  /// - an action for another session is cleared, then the scan runs;
+  /// - when the action cannot be read, nothing is read or written and the
+  ///   answer is [ScanDeferred]: the next trigger tries again.
   Future<ScanOutcome> scan() => _queued ??= _queue.run(() {
     _queued = null;
-    return _scanOnce();
+    return _gatedScan();
   });
+
+  Future<ScanOutcome> _gatedScan() async {
+    final ShadeAction? action;
+    try {
+      action = await _shade.pendingShadeAction();
+    } on Object catch (e) {
+      _log.warning(
+        'Scan deferred: the shade action was not read (${e.runtimeType})',
+      );
+      return const ScanDeferred();
+    }
+    if (action != null) {
+      final ended = await _applyShade(action);
+      if (ended != null) return ended;
+    }
+    return await _scanOnce();
+  }
+
+  /// Applies the waiting shade action, if any, as [scan] does, but scans
+  /// nothing else (`ShadeActions.apply`). One job on the media queue; it
+  /// throws when the phone does not answer, and the action then stays.
+  Future<void> applyShadeAction() => _queue.run(() async {
+    final action = await _shade.pendingShadeAction();
+    if (action != null) await _applyShade(action);
+  });
+
+  /// Applies [action], inside a queue job. Returns the end's outcome when a
+  /// Turn off for the current session took the place of a scan, else null.
+  ///
+  /// An action for another session (or with Shooting mode off) is only
+  /// cleared. A Keep on is stored (`markStillAnswered`) and cleared. Either
+  /// failing is logged by type and never blocks the scan: the action stays
+  /// for the next try. A Turn off ends the session capped at the tap, and is
+  /// cleared unless the end was kept for another try; only it may block a
+  /// scan. Clearing names the tap, so a newer one stays.
+  Future<ScanOutcome?> _applyShade(ShadeAction action) async {
+    final kind = action.kind.name;
+    final session = await _phone.loadShooting();
+    if (!session.isSession(action.since)) {
+      _log.info('Shade action $kind dropped: it was for another session');
+      await _guardedStep(
+        'Clearing a stale shade action',
+        () => _shade.clearShadeAction(action.at),
+      );
+      return null;
+    }
+    switch (action.kind) {
+      case ShadeActionKind.keepOn:
+        await _guardedStep('Applying shade action $kind', () async {
+          await _phone.markStillAnswered(action.since);
+          await _shade.clearShadeAction(action.at);
+          _log.info('Shade action $kind applied');
+        });
+        return null;
+      case ShadeActionKind.turnOff:
+        final (outcome, kept) = await _endCapped(session, action.generations);
+        if (kept) return outcome;
+        await _shade.clearShadeAction(action.at);
+        _log.info('Shade action $kind applied');
+        return outcome;
+    }
+  }
+
+  /// Runs [step]; a failure is logged by type only (never its message, D-10)
+  /// and goes no further.
+  Future<void> _guardedStep(String what, Future<void> Function() step) async {
+    try {
+      await step();
+    } on Object catch (e) {
+      _log.warning('$what failed: ${e.runtimeType}; left for the next try');
+    }
+  }
+
+  /// Ends [session] capped at [generations], inside a queue job. Returns the
+  /// outcome, and whether the session was kept for another try.
+  ///
+  /// A volume that fails (or a phone that does not answer before the
+  /// volumes are read, which is rethrown) keeps the session, so the next
+  /// trigger tries again; the [maxEndAttempts]th failure in a row for the
+  /// session ends it with what could be read. Without full access it ends
+  /// at once.
+  Future<(ScanOutcome, bool)> _endCapped(
+    ShootingState session,
+    Map<String, int> generations,
+  ) async {
+    final since = session.since!;
+    ScanOutcome outcome;
+    // The phone did not answer and this try's failure is already noted, so
+    // the volume check below must not count (or log "too soon") a second time.
+    var counted = false;
+    try {
+      final run = await _prepare(session, 'Ending the session');
+      if (run == null) {
+        outcome = const ScanNoAccess();
+      } else if (!await _stillSession(session)) {
+        _log.info(
+          'Ending the session stopped: Shooting mode changed meanwhile',
+        );
+        return (const ScanShootingOff(), false);
+      } else {
+        outcome = await _scanVolumes(run.$1, run.$2, caps: generations);
+      }
+    } on PlatformException {
+      counted = true;
+      if (_keepAfterFailure(since)) rethrow;
+      // Nothing was read: every volume of the session counts as failed, so
+      // the new-clips notification is not cleared for them.
+      outcome = ScanDone(0, const {}, {
+        ...generations.keys,
+        ...session.baselines.keys,
+      });
+    }
+    if (!counted &&
+        outcome is ScanDone &&
+        outcome.failedVolumes.isNotEmpty &&
+        _keepAfterFailure(since)) {
+      _log.warning(
+        'Ending the session: ${outcome.failedVolumes.length} volumes failed; '
+        'kept for the next try ($_failedEnds of $maxEndAttempts)',
+      );
+      return (outcome, true);
+    }
+    if (_failedEnds >= maxEndAttempts) {
+      _log.warning(
+        'Ending the session after $maxEndAttempts attempts: '
+        '${outcome is ScanDone ? outcome.failedVolumes.length : 0} '
+        'volumes not read',
+      );
+    }
+    // The count is forgotten only once the session is really ended: when the
+    // database refuses, the next try is still the 4th and not the 1st.
+    final ended = await _phone.endSession(since);
+    _failedEnds = 0;
+    _failedEndsFor = null;
+    _lastCountedFailure = null;
+    _log.info(
+      'Ended the session from the shade: '
+      '${ended ? 'off' : 'left on, it had changed'}',
+    );
+    return (outcome, false);
+  }
+
+  /// Notes one failed end of the session that started at [since]; true
+  /// while it is to be kept for another try (fewer than [maxEndAttempts]
+  /// counted failures in a row). A failure counts only [endRetryGap] or
+  /// more from the last counted one (by the injected clock, in either
+  /// direction: a clock set back by that much must not hold the next counts
+  /// off until it catches up); a closer one is logged and not counted.
+  bool _keepAfterFailure(DateTime since) {
+    final ms = since.millisecondsSinceEpoch;
+    if (_failedEndsFor != ms) {
+      _failedEndsFor = ms;
+      _failedEnds = 0;
+      _lastCountedFailure = null;
+    }
+    final now = _clock.now();
+    final last = _lastCountedFailure;
+    if (last == null || now.difference(last).abs() >= endRetryGap) {
+      _failedEnds++;
+      _lastCountedFailure = now;
+    } else {
+      _log.info('Ending the session failed again, too soon: not counted');
+    }
+    return _failedEnds < maxEndAttempts;
+  }
 
   Future<ScanOutcome> _scanOnce() async {
     final session = await _phone.loadShooting();
@@ -135,49 +338,82 @@ class MediaScanner {
       _log.info('Scan skipped: Shooting mode is off');
       return const ScanShootingOff();
     }
-    final _ScanContext context;
-    final List<MediaVolume> volumes;
+    final run = await _prepare(session, 'Scan');
+    if (run == null) return const ScanNoAccess();
+
+    // Shooting mode may have gone off (and on) while the phone answered: then
+    // this scan belongs to no session and writes nothing at all (M6).
+    if (!await _stillSession(session)) {
+      _log.info('Scan stopped: Shooting mode changed while it ran');
+      return const ScanShootingOff();
+    }
+    return await _scanVolumes(run.$1, run.$2);
+  }
+
+  /// What every volume of one run shares, and the volumes, read from the
+  /// phone. Null without full access (logged as [what] skipped). A phone
+  /// that does not answer is logged and rethrown.
+  Future<(_ScanContext, List<MediaVolume>)?> _prepare(
+    ShootingState session,
+    String what,
+  ) async {
     try {
       final access = await _bridge.accessReport();
       if (access.level != MediaAccessLevel.full) {
-        _log.info('Scan skipped: access is ${access.level.name}');
-        return const ScanNoAccess();
+        _log.info('$what skipped: access is ${access.level.name}');
+        return null;
       }
       await _phone.markAccessWasFull();
       // The zone changes the phone saw while the app was away must be in the
       // timeline before it is read, or a new clip gets the old zone for good.
       await _syncZones();
-      context = _ScanContext(
+      final context = _ScanContext(
         session: session,
         folders: (await _settings.load()).watchedFolders,
         timeline: await _zones.all(),
         currentZone: await _bridge.currentZoneId(),
         now: _clock.now(),
       );
-      volumes = await _bridge.volumes();
+      return (context, await _bridge.volumes());
     } on PlatformException catch (e) {
-      _log.warning('Scan stopped: the phone did not answer (${e.code})');
+      _log.warning('$what stopped: the phone did not answer (${e.code})');
       rethrow;
     }
+  }
 
-    // Shooting mode may have gone off (and on) while the phone answered: then
-    // this scan belongs to no session and writes nothing at all (M6).
+  /// Whether [session] is still the stored one.
+  Future<bool> _stillSession(ShootingState session) async {
     final still = await _phone.loadShooting();
     final since = session.since;
-    if (!still.on ||
-        since == null ||
-        still.since == null ||
-        !still.since!.isAtSameMomentAs(since)) {
-      _log.info('Scan stopped: Shooting mode changed while it ran');
-      return const ScanShootingOff();
-    }
+    return still.on &&
+        since != null &&
+        still.since != null &&
+        still.since!.isAtSameMomentAs(since);
+  }
+
+  /// Scans [volumes], one at a time: the per-volume part of a scan and of
+  /// the capped end.
+  ///
+  /// With [caps] (volume name to generation), only the volumes in it are
+  /// scanned, each up to its cap; any other volume is left alone (logged).
+  /// A volume that fails is named in [ScanDone.failedVolumes] and does not
+  /// stop the others.
+  Future<ScanDone> _scanVolumes(
+    _ScanContext context,
+    List<MediaVolume> volumes, {
+    Map<String, int>? caps,
+  }) async {
     final recorded = await _phone.volumeVersions();
 
     var added = 0;
     final resynced = <String>{};
     final failed = <String>{};
     for (final volume in volumes) {
-      final baseline = session.baselines[volume.name];
+      if (caps != null && !caps.containsKey(volume.name)) {
+        _log.info('Volume ${volume.name}: not in the tap, left alone');
+        continue;
+      }
+      final baseline = context.session.baselines[volume.name];
       final plan = planVolume(baseline, volume);
       if (plan is SkipVolume) {
         _log.info('Volume ${volume.name}: not mounted, left alone');
@@ -197,9 +433,22 @@ class MediaScanner {
         }
         switch (plan) {
           case StartFromNow():
-            await _startFromNow(context, volume);
+            added += await _startNewVolume(
+              context,
+              volume,
+              cap: caps?[volume.name],
+            );
           case ScanAfter(:final generation):
-            added += await _scanAfter(context, baseline!, volume, generation);
+            // Never in the capped end: it ends the session, so a repair that
+            // reads the whole volume can wait for the next session's scan.
+            if (caps == null) await _rematchDetached(context, volume);
+            added += await _scanAfter(
+              context,
+              baseline!,
+              volume,
+              generation,
+              cap: caps?[volume.name],
+            );
           case SkipVolume():
           case Resync():
           // Handled above.
@@ -227,19 +476,90 @@ class MediaScanner {
     return ScanDone(added, resynced, failed);
   }
 
-  /// A volume with no baseline: its current position becomes the baseline,
-  /// and nothing on it is new.
-  Future<void> _startFromNow(_ScanContext context, MediaVolume volume) async {
-    final wrote = await _phone.advanceBaseline(
-      volume.name,
-      expectedSession: context.session,
-      expected: null,
-      next: _positionOf(volume),
+  /// A volume with no baseline while Shooting mode is on (its read failed at
+  /// switch-on, an import left none, or an SD card was inserted later): the
+  /// clips shot since the session started are new (D-108, M-8), and its
+  /// current generation becomes the baseline. Returns how many clips are new.
+  ///
+  /// The phone is asked once, `videosShotSince` the session's start; the rows
+  /// are narrowed by [shotSinceSession] and then saved as a scan saves them
+  /// (`_commit`), so a clip that is already stored is not added again.
+  ///
+  /// The baseline never holds here: it moves to `captured`. A row that would
+  /// hold it ([holdsBaseline]: no length or size yet; pending rows are not in
+  /// the answer at all) is not added, and is not seen again. Holding would
+  /// make the next scan a plain `ScanAfter` from below that row, with no
+  /// date filter, and every video shot before the session above it on the
+  /// card would come in as new (a card indexes in no order). That gap is
+  /// D-108's; "Add earlier videos" recovers it.
+  ///
+  /// A [cap] (the capped end) is honoured like `_scanAfter` does: no row
+  /// above it is kept and the baseline goes no higher. A failure of the
+  /// phone or the database leaves the volume without a baseline, and the
+  /// next scan tries again.
+  Future<int> _startNewVolume(
+    _ScanContext context,
+    MediaVolume volume, {
+    int? cap,
+  }) async {
+    final since = context.session.since;
+    final captured = cap == null
+        ? volume.generation
+        : min(volume.generation, cap);
+    final read = since == null
+        ? const <MediaVideo>[]
+        : await _bridge.videosShotSince(
+            volume.name,
+            context.folders,
+            since.millisecondsSinceEpoch,
+          );
+    final rows = shotSinceSession(
+      read,
+      since: since,
+      captured: captured,
+      now: context.now,
     );
     _log.info(
-      'Volume ${volume.name}: first seen in this session, starting at '
-      'generation ${volume.generation}${wrote ? '' : ' (not written)'}',
+      'Volume ${volume.name}: first seen in this session, ${read.length} '
+      'videos asked for since the start, ${rows.length} shot since',
     );
+    return await _commit(
+      context,
+      volume,
+      baseline: null,
+      from: 0,
+      captured: captured,
+      rows: rows,
+      read: '${rows.length} rows shot since the start',
+      hold: false,
+    );
+  }
+
+  /// Matches the clips a rebuild detached against everything now on the
+  /// volume, before the page of new videos is read (D-108, I-3): so a video
+  /// that is back ahead of the baseline is found to be a clip already, not
+  /// added a second time. At most one read of the volume per scan, and only
+  /// inside the rebuild's re-match window when the volume's generation has
+  /// moved (`LibraryResync.reattach`).
+  ///
+  /// It is a repair: a failure is logged by type and the scan carries on,
+  /// the clips stay detached and the next scan tries again. It never fails
+  /// the volume: a repair must not hold the volume's baseline, and the new
+  /// clips behind it, for as long as the phone cannot answer it. (It never
+  /// runs in the capped end, so it has nothing to do with keeping a session
+  /// open.)
+  Future<void> _rematchDetached(
+    _ScanContext context,
+    MediaVolume volume,
+  ) async {
+    try {
+      await _rebuilds.reattach(volume, now: context.now);
+    } on Object catch (e) {
+      _log.warning(
+        'Volume ${volume.name}: matching detached clips again failed with '
+        '${e.runtimeType}; left for the next scan',
+      );
+    }
   }
 
   /// Android rebuilt the volume's library: find the stored clips again by
@@ -277,6 +597,9 @@ class MediaScanner {
   ///   A row added after it belongs to the next scan: it is not kept, and a
   ///   page that reaches one is the last. So a scan that pages on after
   ///   Shooting mode went off and on cannot pick up a video shot in between.
+  ///   A [cap] (the capped end: the generation at the shade's tap) lowers
+  ///   `captured` to it, so a row added after the tap is never kept, and the
+  ///   baseline moves no higher than the cap.
   /// - The scan cursor is separate from the baseline. After a full page it
   ///   moves to [nextPageCursor] (one below the page's highest generation,
   ///   because rows written together share one), and rows that come back on
@@ -290,9 +613,12 @@ class MediaScanner {
     _ScanContext context,
     VolumeBaseline baseline,
     MediaVolume volume,
-    int from,
-  ) async {
-    final captured = volume.generation;
+    int from, {
+    int? cap,
+  }) async {
+    final captured = cap == null
+        ? volume.generation
+        : min(volume.generation, cap);
     final seen = <int, MediaVideo>{};
     var cursor = from;
     var limit = pageSize;
@@ -327,7 +653,43 @@ class MediaScanner {
       }
     }
 
-    final rows = seen.values.toList();
+    return await _commit(
+      context,
+      volume,
+      baseline: baseline,
+      from: from,
+      captured: captured,
+      rows: seen.values.toList(),
+      truncated: truncated,
+      read: '${seen.length} rows on $pages pages',
+      hold: true,
+    );
+  }
+
+  /// Saves the usable [rows] as clips, and only then moves the baseline: the
+  /// end of `_scanAfter` and of a volume's first scan, so both follow one
+  /// rule. Returns how many clips are new.
+  ///
+  /// [baseline] is the one stored for the volume, or null when it has none.
+  /// [from] is the generation the read started after, [captured] the one it
+  /// stopped at, [truncated] whether it stopped early, and [read] what the
+  /// read found, for the log. With [hold] (a `ScanAfter`), a row that holds
+  /// the baseline holds it below the oldest such row ([advanceBaseline]);
+  /// without it (a volume's first scan) the baseline moves to [captured]
+  /// whatever the rows are. A crash or a failure while saving leaves the
+  /// baseline where it was, and the next scan sees the rows again; the move
+  /// itself is a compare-and-set, so a stale scan writes nothing.
+  Future<int> _commit(
+    _ScanContext context,
+    MediaVolume volume, {
+    required VolumeBaseline? baseline,
+    required int from,
+    required int captured,
+    required List<MediaVideo> rows,
+    required String read,
+    required bool hold,
+    bool truncated = false,
+  }) async {
     final usable = [
       for (final v in rows)
         if (isUsable(v)) v,
@@ -350,7 +712,7 @@ class MediaScanner {
     final generation = advanceBaseline(
       from: from,
       captured: captured,
-      seen: rows,
+      seen: hold ? rows : const [],
       now: context.now,
       truncated: truncated,
     );
@@ -358,18 +720,22 @@ class MediaScanner {
         .where((v) => holdsBaseline(v, now: context.now))
         .length;
     var moved = 'kept';
-    if (generation != baseline.generation) {
+    if (baseline == null || generation != baseline.generation) {
       final wrote = await _phone.advanceBaseline(
         volume.name,
         expectedSession: context.session,
         expected: baseline,
-        next: VolumeBaseline(version: baseline.version, generation: generation),
+        next: VolumeBaseline(
+          version: baseline?.version ?? volume.version!,
+          generation: generation,
+        ),
       );
       moved = wrote ? 'moved' : 'left: it had changed';
     }
     final summary =
-        'Volume ${volume.name}: ${rows.length} rows on $pages pages, '
-        '${usable.length} usable, $added new, $pending held, '
+        'Volume ${volume.name}: $read, '
+        '${usable.length} usable, $added new, '
+        '$pending ${hold ? 'held' : 'not finished, left out'}, '
         '$detached stored clips were other videos; '
         'baseline $moved';
     if (truncated) {
@@ -562,4 +928,5 @@ MediaScanner mediaScanner(Ref ref) => MediaScanner(
   ref.watch(zoneSyncProvider),
   ref.watch(mediaWorkQueueProvider),
   ref.watch(clockProvider),
+  ref.watch(backgroundBridgeProvider),
 );

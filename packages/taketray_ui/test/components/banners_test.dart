@@ -404,6 +404,7 @@ void main() {
       String? body = 'TakeTray only reads them.',
       InlineSpan? richBody,
       bool warning = false,
+      bool success = false,
       Widget? action,
     }) => TtCallout(
       icon: Symbols.shield_rounded,
@@ -411,6 +412,7 @@ void main() {
       body: richBody == null ? body : null,
       richBody: richBody,
       warning: warning,
+      success: success,
       action: action,
     );
 
@@ -451,6 +453,97 @@ void main() {
       expect(
         tester.widget<Icon>(find.byIcon(Symbols.shield_rounded)).color,
         scheme.onTertiaryContainer,
+      );
+    });
+
+    testWidgets('success callout uses the success container', (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(brightness: brightness, callout(success: true)),
+        );
+        await tester.pumpAndSettle();
+        final colors = tester.element(find.byType(TtCallout)).tt.colors;
+        expect(
+          _fillOf(tester, find.byType(TtCallout)),
+          colors.successContainer,
+          reason: '$brightness fill',
+        );
+        // The icon takes the text colour, not the accent colour.
+        expect(
+          tester.widget<Icon>(find.byIcon(Symbols.shield_rounded)).color,
+          colors.onSuccessContainer,
+          reason: '$brightness icon',
+        );
+        expect(
+          tester
+              .widget<Text>(find.text('Your videos stay on your phone'))
+              .style!
+              .color,
+          colors.onSuccessContainer,
+          reason: '$brightness title',
+        );
+        expect(
+          tester
+              .widget<Text>(find.text('TakeTray only reads them.'))
+              .style!
+              .color,
+          colors.onSuccessContainer,
+          reason: '$brightness body',
+        );
+      }
+    });
+
+    testWidgets('a success callout underlines a text action in its colour', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          callout(
+            success: true,
+            action: TtButton(
+              label: 'Got it',
+              kind: TtButtonKind.text,
+              onPressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final style = DefaultTextStyle.of(tester.element(find.text('Got it')))
+          .style;
+      expect(style.decoration, TextDecoration.underline);
+      expect(
+        style.decorationColor,
+        tester.element(find.byType(TtCallout)).tt.colors.onSuccessContainer,
+      );
+    });
+
+    test('warning and success assert', () {
+      expect(
+        () => TtCallout(
+          icon: Symbols.info_rounded,
+          body: 'a',
+          warning: true,
+          success: true,
+        ),
+        throwsAssertionError,
+      );
+      // Either one alone is fine.
+      expect(
+        () => const TtCallout(
+          icon: Symbols.info_rounded,
+          body: 'a',
+          success: true,
+        ),
+        returnsNormally,
+      );
+      expect(
+        () => const TtCallout(
+          icon: Symbols.info_rounded,
+          body: 'a',
+          warning: true,
+        ),
+        returnsNormally,
       );
     });
 
@@ -560,10 +653,19 @@ void main() {
       tester,
     ) async {
       for (final brightness in Brightness.values) {
-        for (final warning in [false, true]) {
+        for (final (warning, success) in [
+          (false, false),
+          (true, false),
+          (false, true),
+        ]) {
           await tester.pumpWidget(
-            ttTestApp(brightness: brightness, callout(warning: warning)),
+            ttTestApp(
+              brightness: brightness,
+              callout(warning: warning, success: success),
+            ),
           );
+          // Material's fill animates between the looks.
+          await tester.pumpAndSettle();
           await expectTtAccessible(tester);
         }
       }

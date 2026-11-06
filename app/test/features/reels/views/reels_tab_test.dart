@@ -8,7 +8,7 @@ import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
-import 'package:taketray/features/settings/views/settings_placeholder_screen.dart';
+import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/test_app.dart';
@@ -246,7 +246,7 @@ void main() {
     expect(offset, greaterThan(500));
 
     await tab(tester, 'Settings');
-    expect(find.byType(SettingsPlaceholderScreen), findsOneWidget);
+    expect(find.byType(SettingsScreen), findsOneWidget);
     await tab(tester, 'Reels');
 
     expect(

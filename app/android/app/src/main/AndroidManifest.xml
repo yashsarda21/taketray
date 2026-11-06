@@ -24,6 +24,15 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
 
+    <!-- The new-clips notification and the reminders (D-101, D-103). A runtime
+         permission from Android 13; below 13 it is granted at install.
+         The release gains only this one and RECEIVE_BOOT_COMPLETED (D-101). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Re-arming the new-clips job and the reminder alarms after a reboot
+         (D-105): neither survives one. No exact-alarm permission: the
+         reminders are inexact (setAndAllowWhileIdle, D-101). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+
     <!-- No Google backup or phone-to-phone transfer of app data (D-64): the
          database holds MediaStore ids that would point at other videos on
          another phone, so a new phone starts with an empty TakeTray. The two XML files exclude every domain; allowBackup is
@@ -52,6 +61,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- Flutter's deep linking is off (D-101, D-103): this activity is
+                 exported for the launcher, so with it on any app could open
+                 any route. Notifications send an allow-listed launch action
+                 (background/LaunchActions.kt) instead. -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -67,6 +84,46 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED"/>
             </intent-filter>
         </receiver>
+        <!-- Re-arms the job and the reminder alarms (D-105) after a reboot, an
+             update of TakeTray and a clock change. Not exported: the system
+             still delivers these broadcasts (each is exempt from the
+             implicit-broadcast limits, or sent to this app only). -->
+        <receiver
+            android:name=".background.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.TIME_SET"/>
+            </intent-filter>
+        </receiver>
+        <!-- The reminder alarms and Still shooting?'s shade buttons (D-105):
+             explicit broadcasts from TakeTray's own PendingIntents only. Not
+             exported and no intent filter, so no other app can reach them. -->
+        <receiver
+            android:name=".background.ReminderReceiver"
+            android:exported="false"/>
+        <receiver
+            android:name=".background.ShadeActionReceiver"
+            android:exported="false"/>
+        <!-- The new-clips job (D-104): JobScheduler starts it when the video
+             library changes, with no Flutter engine. Only the system may
+             bind it (BIND_JOB_SERVICE); not exported. -->
+        <service
+            android:name=".background.NewClipsJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
+        <!-- The settle job (D-110): a one-off job the new-clips job schedules
+             while the newest clip is under 5 minutes old. Same rules. -->
+        <service
+            android:name=".background.NewClipsSettleJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
+        <!-- The deferred evening reminder (D-110): a one-off job. Same rules. -->
+        <service
+            android:name=".background.EveningDeferJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
