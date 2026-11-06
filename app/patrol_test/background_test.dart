@@ -252,12 +252,27 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
     timeout: const Duration(seconds: 30),
   );
 
-  // 2. One video, then Turn off in the shade (the app stays closed).
+  // 2. One video, then Turn off in the shade (the app stays closed). The
+  // video's own notification ("1 new clip to tag") is posted first, so it
+  // cannot move the Still shooting? row between the looks and the tap; and
+  // the first video is then known to be seen before Off.
   final first = await env.media.insert();
+  await _waitUntil(
+    $,
+    () async => (await env.bg.activeNotifications()).contains(
+      TestBackground.newClipsId,
+    ),
+    what: 'the new-clips notification for the first video',
+    timeout: const Duration(seconds: 60),
+    pump: false,
+  );
+  // The shade's own animation for the new row.
+  await Future<void>.delayed(const Duration(seconds: 1));
   await tapOwnButton(
     $,
     ownText: OwnText.stillBody,
     button: StillButton.turnOff,
+    background: env.bg,
   );
   await closeShade($);
 
@@ -641,6 +656,7 @@ Future<void> _expectToTagOpened(
   );
   await pumpFor($, const Duration(seconds: 2));
   expect(find.byType(ToTagScreen), findsOneWidget, reason: 'still on To tag');
+  expect(find.byType(ReelsScreen), findsNothing, reason: 'Reels is gone');
   expect(_tiles, findsNWidgets(count), reason: 'exactly the $count clips');
 }
 

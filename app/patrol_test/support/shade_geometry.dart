@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:meta/meta.dart';
+
 /// One look at the open shade: the screen bounds (in the real display's
 /// pixels) of the views that carry each of three exact texts. Nothing here
 /// holds or reads any text.
@@ -39,35 +41,93 @@ class ShadeLook {
 /// - it is not empty, and no other button fits as well.
 Rect? ownButton(ShadeLook look) => _own(look)?.button;
 
+/// The phone's default display as `TestBackground.display` reads it at tap
+/// time: `Display.getRealSize` (the whole display in its current rotation,
+/// in the pixels the shade's views and uiautomator's `tapAt` use) and
+/// `Display.getRotation` (0 is upright). Numbers only.
+@immutable
+class PhoneDisplay {
+  const PhoneDisplay({
+    required this.width,
+    required this.height,
+    required this.rotation,
+  });
+
+  /// The hook's reply, `{width, height, rotation}`; null for anything else
+  /// (an unknown size never becomes a guess).
+  static PhoneDisplay? fromReply(Object? reply) {
+    if (reply is! Map) return null;
+    final width = reply['width'];
+    final height = reply['height'];
+    final rotation = reply['rotation'];
+    if (width is! int || height is! int || rotation is! int) return null;
+    return PhoneDisplay(width: width, height: height, rotation: rotation);
+  }
+
+  final int width;
+  final int height;
+  final int rotation;
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhoneDisplay &&
+      other.width == width &&
+      other.height == height &&
+      other.rotation == rotation;
+
+  @override
+  int get hashCode => Object.hash(width, height, rotation);
+}
+
 /// Where to tap TakeTray's own button: the centre of the button that [first]
 /// and [second] (two looks, the second just before the tap) both find, as a
-/// fraction of the [screen] (Patrol's `tapAt` multiplies it back by the real
-/// display size, `UiDevice.getDisplayWidth/Height`).
+/// fraction of the real [display] read at tap time (Patrol's `tapAt`
+/// multiplies it back by `UiDevice.getDisplayWidth/Height`, which is
+/// `Display.getRealSize` too).
 ///
-/// Null, so that nothing is tapped, when either look finds no own button,
-/// when the two disagree (the shade was still moving), when the screen has
-/// no size, or when a view lies outside the screen (the sizes are not in the
-/// same pixels, so the fraction would land somewhere else).
+/// Null, so that nothing is tapped, unless all of these hold:
+/// - the size was read ([display] is not null) and is not empty;
+/// - the phone is upright: rotation 0 and taller than wide (the shade and
+///   the launcher are portrait; a rotated phone is refused rather than
+///   reasoned about);
+/// - the real size is Flutter's display size [flutterDisplay] in either
+///   orientation, within a pixel (the same display, the same pixels; Flutter's
+///   own orientation may be stale from before the app went to the background,
+///   so only the two numbers are compared);
+/// - every view of both looks lies inside the real display;
+/// - both looks find the same own text and button (`ownButton`).
 Offset? ownButtonTapPoint({
   required ShadeLook first,
   required ShadeLook second,
-  required Size screen,
+  required PhoneDisplay? display,
+  required Size flutterDisplay,
 }) {
-  if (screen.isEmpty) return null;
-  final display = Offset.zero & screen;
+  if (display == null) return null;
+  final width = display.width.toDouble();
+  final height = display.height.toDouble();
+  if (width <= 0 || height <= 0) return null;
+  if (display.rotation != 0 || height <= width) return null;
+  // The same two numbers, whichever way round each side holds them.
+  final flutterShort = math.min(flutterDisplay.width, flutterDisplay.height);
+  final flutterLong = math.max(flutterDisplay.width, flutterDisplay.height);
+  if ((flutterShort - math.min(width, height)).abs() >= 1 ||
+      (flutterLong - math.max(width, height)).abs() >= 1) {
+    return null;
+  }
+  final screen = Rect.fromLTWH(0, 0, width, height);
   final inside = [...first._all, ...second._all].every(
     (r) =>
-        r.left >= display.left &&
-        r.top >= display.top &&
-        r.right <= display.right &&
-        r.bottom <= display.bottom,
+        r.left >= screen.left &&
+        r.top >= screen.top &&
+        r.right <= screen.right &&
+        r.bottom <= screen.bottom,
   );
   if (!inside) return null;
   final a = _own(first);
   final b = _own(second);
   if (a == null || b == null || a != b) return null;
   final centre = a.button.center;
-  return Offset(centre.dx / screen.width, centre.dy / screen.height);
+  return Offset(centre.dx / width, centre.dy / height);
 }
 
 ({Rect anchor, Rect button})? _own(ShadeLook look) {

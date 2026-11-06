@@ -260,7 +260,10 @@ void main() {
   });
 
   group('ownButtonTapPoint', () {
-    const screen = Size(1080, 2340);
+    // The S24 upright: the real display (the hook, `Display.getRealSize` and
+    // its rotation, read at tap time) and Flutter's own display size.
+    const upright = PhoneDisplay(width: 1080, height: 2340, rotation: 0);
+    const flutter = Size(1080, 2340);
     const text = Rect.fromLTWH(96, 900, 880, 60);
     const turnOff = Rect.fromLTWH(96, 990, 300, 130);
     const keepOn = Rect.fromLTWH(420, 990, 300, 130);
@@ -270,12 +273,29 @@ void main() {
       siblings: [keepOn],
     );
 
-    test('the centre of the checked button, as a fraction of the screen', () {
-      final point = ownButtonTapPoint(
-        first: look,
-        second: look,
-        screen: screen,
-      );
+    Offset? tap({
+      ShadeLook first = look,
+      ShadeLook second = look,
+      PhoneDisplay? display = upright,
+      Size flutterDisplay = flutter,
+    }) => ownButtonTapPoint(
+      first: first,
+      second: second,
+      display: display,
+      flutterDisplay: flutterDisplay,
+    );
+
+    test('the centre of the checked button, as a fraction of the real '
+        'display', () {
+      final point = tap();
+      expect(point, isNotNull);
+      expect(point!.dx, closeTo(246 / 1080, 1e-9));
+      expect(point.dy, closeTo(1055 / 2340, 1e-9));
+    });
+
+    test("Flutter's size still landscape from before Home (stale): the real "
+        'display is used', () {
+      final point = tap(flutterDisplay: const Size(2340, 1080));
       expect(point, isNotNull);
       expect(point!.dx, closeTo(246 / 1080, 1e-9));
       expect(point.dy, closeTo(1055 / 2340, 1e-9));
@@ -288,39 +308,164 @@ void main() {
         buttons: [Rect.fromLTWH(96, 1030, 300, 130)],
         siblings: [Rect.fromLTWH(420, 1030, 300, 130)],
       );
-      expect(
-        ownButtonTapPoint(first: look, second: moved, screen: screen),
-        isNull,
-      );
+      expect(tap(second: moved), isNull);
     });
 
     test('the second look finds no own button: no tap', () {
       const collapsed = ShadeLook(anchors: [text], buttons: [], siblings: []);
-      expect(
-        ownButtonTapPoint(first: look, second: collapsed, screen: screen),
-        isNull,
-      );
-      expect(
-        ownButtonTapPoint(first: collapsed, second: look, screen: screen),
-        isNull,
-      );
+      expect(tap(second: collapsed), isNull);
+      expect(tap(first: collapsed), isNull);
     });
 
-    test('no screen size: no tap', () {
+    test('the phone on its side (landscape size, rotation 1 or 3): no tap', () {
       expect(
-        ownButtonTapPoint(first: look, second: look, screen: Size.zero),
-        isNull,
-      );
-    });
-
-    test('a view outside the screen (the wrong pixel scale): no tap', () {
-      // Logical pixels instead of the real display's: the views do not fit.
-      expect(
-        ownButtonTapPoint(
-          first: look,
-          second: look,
-          screen: const Size(360, 780),
+        tap(
+          display: const PhoneDisplay(width: 2340, height: 1080, rotation: 1),
         ),
+        isNull,
+      );
+      expect(
+        tap(
+          display: const PhoneDisplay(width: 2340, height: 1080, rotation: 3),
+        ),
+        isNull,
+      );
+    });
+
+    test('a landscape size even at rotation 0: no tap', () {
+      // A notification high in the shade fits inside a landscape box too, and
+      // Flutter (stale) reports the same two numbers: only "upright" refuses.
+      const high = ShadeLook(
+        anchors: [Rect.fromLTWH(96, 300, 880, 60)],
+        buttons: [Rect.fromLTWH(96, 390, 300, 130)],
+        siblings: [Rect.fromLTWH(420, 390, 300, 130)],
+      );
+      expect(
+        tap(first: high, second: high),
+        isNotNull,
+        reason: 'upright',
+      );
+      expect(
+        tap(
+          first: high,
+          second: high,
+          display: const PhoneDisplay(width: 2340, height: 1080, rotation: 0),
+        ),
+        isNull,
+      );
+      expect(
+        tap(
+          first: high,
+          second: high,
+          display: const PhoneDisplay(width: 2340, height: 1080, rotation: 0),
+          flutterDisplay: const Size(2340, 1080),
+        ),
+        isNull,
+      );
+    });
+
+    test('rotated with a portrait size (upside down, or any rotation but '
+        '0): no tap', () {
+      for (final rotation in [1, 2, 3, -1, 4]) {
+        expect(
+          tap(
+            display: PhoneDisplay(
+              width: 1080,
+              height: 2340,
+              rotation: rotation,
+            ),
+          ),
+          isNull,
+          reason: 'rotation $rotation',
+        );
+      }
+    });
+
+    test('a square size is not upright: no tap', () {
+      expect(
+        tap(
+          display: const PhoneDisplay(width: 1800, height: 1800, rotation: 0),
+          flutterDisplay: const Size(1800, 1800),
+        ),
+        isNull,
+      );
+    });
+
+    test("the real size does not match Flutter's display (another display or "
+        'another scale): no tap', () {
+      expect(tap(flutterDisplay: const Size(1440, 3120)), isNull);
+      expect(tap(flutterDisplay: const Size(360, 780)), isNull);
+      expect(tap(flutterDisplay: Size.zero), isNull);
+    });
+
+    test('a difference under one pixel still matches', () {
+      expect(tap(flutterDisplay: const Size(1080.4, 2339.6)), isNotNull);
+    });
+
+    test('the size could not be read (unknown, failed): no tap', () {
+      expect(tap(display: null), isNull);
+    });
+
+    test('no size: no tap', () {
+      expect(
+        tap(display: const PhoneDisplay(width: 0, height: 0, rotation: 0)),
+        isNull,
+      );
+      expect(
+        tap(
+          display: const PhoneDisplay(width: 0, height: 0, rotation: 0),
+          flutterDisplay: Size.zero,
+        ),
+        isNull,
+      );
+    });
+
+    test('a view outside the real display: no tap', () {
+      const below = ShadeLook(
+        anchors: [text],
+        buttons: [turnOff],
+        siblings: [keepOn, Rect.fromLTWH(420, 2300, 300, 130)],
+      );
+      expect(tap(first: below, second: below), isNull);
+      const left = ShadeLook(
+        anchors: [Rect.fromLTWH(-4, 900, 880, 60)],
+        buttons: [turnOff],
+        siblings: [keepOn],
+      );
+      expect(tap(first: left, second: left), isNull);
+    });
+  });
+
+  group('PhoneDisplay.fromReply', () {
+    test('reads the three numbers the hook sends', () {
+      expect(
+        PhoneDisplay.fromReply(const {
+          'width': 1080,
+          'height': 2340,
+          'rotation': 0,
+        }),
+        const PhoneDisplay(width: 1080, height: 2340, rotation: 0),
+      );
+    });
+
+    test('anything else is unknown (null)', () {
+      expect(PhoneDisplay.fromReply(null), isNull);
+      expect(PhoneDisplay.fromReply('1080x2340'), isNull);
+      expect(PhoneDisplay.fromReply(const {'width': 1080}), isNull);
+      expect(
+        PhoneDisplay.fromReply(const {
+          'width': 1080,
+          'height': '2340',
+          'rotation': 0,
+        }),
+        isNull,
+      );
+      expect(
+        PhoneDisplay.fromReply(const {
+          'width': 1080,
+          'height': 2340,
+          'rotation': null,
+        }),
         isNull,
       );
     });

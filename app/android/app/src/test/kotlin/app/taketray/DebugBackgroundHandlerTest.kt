@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Looper
 import android.provider.MediaStore
+import android.view.Surface
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.background.BackgroundState
 import app.taketray.background.BackgroundStateStore
@@ -38,6 +39,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowDisplay
 
 /**
  * The debug-only background hooks (Phase 6, Task 9): `fireEvening`,
@@ -457,6 +459,76 @@ class DebugBackgroundHandlerTest {
         assertEquals(1, reply.replies)
         assertTrue(reply.errorMessage!!.contains("IllegalStateException"))
         assertFalse("no path (D-10)", reply.errorMessage!!.contains("storage"))
+        assertFalse(reply.errorMessage!!.contains("secret"))
+    }
+
+    @Test
+    fun `displaySize is the real display size and rotation, upright`() {
+        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
+        display.setRealWidth(1080)
+        display.setRealHeight(2340)
+        display.setRotation(Surface.ROTATION_0)
+
+        val reply = call("displaySize")
+
+        assertEquals(mapOf("width" to 1080, "height" to 2340, "rotation" to 0), reply.success)
+        assertEquals(1, reply.replies)
+    }
+
+    @Test
+    fun `displaySize on its side reports the rotation and the landscape size`() {
+        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
+        display.setRealWidth(2340)
+        display.setRealHeight(1080)
+        display.setRotation(Surface.ROTATION_90)
+
+        assertEquals(mapOf("width" to 2340, "height" to 1080, "rotation" to 1), call("displaySize").success)
+    }
+
+    @Test
+    fun `displaySize is the whole display, not the app window without the bars`() {
+        // uiautomator's tapAt multiplies by Display.getRealSize: the same.
+        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
+        display.setWidth(1080)
+        display.setHeight(2200)
+        display.setRealWidth(1080)
+        display.setRealHeight(2340)
+        display.setRotation(Surface.ROTATION_0)
+
+        assertEquals(mapOf("width" to 1080, "height" to 2340, "rotation" to 0), call("displaySize").success)
+    }
+
+    @Test
+    fun `displaySize with no display is a no-display error, never a guess`() {
+        handler =
+            DebugBackgroundHandler(
+                app,
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                display = { null },
+            )
+
+        val reply = call("displaySize")
+
+        assertEquals("no-display", reply.errorCode)
+        assertNull(reply.success)
+        assertEquals(1, reply.replies)
+    }
+
+    @Test
+    fun `displaySize that throws is a native-error with the class only`() {
+        handler =
+            DebugBackgroundHandler(
+                app,
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                display = { throw SecurityException("/storage/emulated/0/secret") },
+            )
+
+        val reply = call("displaySize")
+
+        assertEquals("native-error", reply.errorCode)
+        assertTrue(reply.errorMessage!!.contains("SecurityException"))
         assertFalse(reply.errorMessage!!.contains("secret"))
     }
 }

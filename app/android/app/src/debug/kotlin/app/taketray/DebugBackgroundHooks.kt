@@ -3,7 +3,10 @@ package app.taketray
 import android.app.NotificationManager
 import android.app.job.JobScheduler
 import android.content.Context
+import android.graphics.Point
+import android.hardware.display.DisplayManager
 import android.util.Log
+import android.view.Display
 import app.taketray.background.NewClipsJobService
 import app.taketray.background.ReminderScheduler
 import app.taketray.background.Receivers
@@ -59,6 +62,13 @@ object DebugBackgroundHooks {
  *   a resume run the scan, which clears the new-clips notification).
  * - `pendingJobs`: the ids of this app's pending jobs (`JobScheduler` only
  *   lists the calling app's), sorted: exactly one new-clips job must be there.
+ * - `displaySize`: `{width, height, rotation}` of the default display, read
+ *   now: `Display.getRealSize` (the whole display, in the current rotation,
+ *   the very size uiautomator's `tapAt` multiplies by) and
+ *   `Display.getRotation` (0 upright). Flutter's own size is not enough: it
+ *   is only refreshed while the activity gets configuration changes, so it
+ *   goes stale once the app is in the background. `no-display` when there is
+ *   no default display. Numbers only.
  *
  * Errors reach Dart as `native-error` with the method and the exception's
  * class name only, never a message, a name or a path (D-10).
@@ -67,6 +77,9 @@ class DebugBackgroundHandler(
     private val context: Context,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val io: CoroutineDispatcher = NewClipsJobService.executor.asCoroutineDispatcher(),
+    private val display: () -> Display? = {
+        context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+    },
 ) : MethodChannel.MethodCallHandler {
     override fun onMethodCall(
         call: MethodCall,
@@ -99,6 +112,19 @@ class DebugBackgroundHandler(
                         result.success(context.getSystemService(NotificationManager::class.java).activeNotifications.map { it.id }.sorted())
                     "pendingJobs" ->
                         result.success(context.getSystemService(JobScheduler::class.java).allPendingJobs.map { it.id }.sorted())
+                    "displaySize" -> {
+                        val shown = display()
+                        if (shown == null) {
+                            Log.w(TAG, "$method: no display")
+                            result.error("no-display", "No default display", null)
+                        } else {
+                            val size = Point()
+                            // The size uiautomator itself uses (UiDevice.getDisplaySize).
+                            @Suppress("DEPRECATION")
+                            shown.getRealSize(size)
+                            result.success(mapOf("width" to size.x, "height" to size.y, "rotation" to shown.rotation))
+                        }
+                    }
                     else -> result.notImplemented()
                 }
             } catch (e: CancellationException) {

@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'shade_geometry.dart';
+
 /// The debug-only channel `app.taketray/test_background`
 /// (`DebugBackgroundHooks.kt`, Phase 6 Task 9): it reaches the same Android
 /// code the alarms, the notification shade and the job scheduler reach, which
@@ -45,6 +47,14 @@ class TestBackground {
 
   /// The ids of the app's pending jobs, sorted.
   Future<List<int>> pendingJobs() => _ids('pendingJobs');
+
+  /// The default display now: its real size and rotation (`PhoneDisplay`),
+  /// for the one tap at a point (`tapOwnButton`). Null when the reply is not
+  /// those three numbers; `PlatformException(no-display)` when the phone has
+  /// no default display.
+  Future<PhoneDisplay?> display() async => PhoneDisplay.fromReply(
+    await _channel.invokeMethod<Object?>('displaySize'),
+  );
 
   Future<List<int>> _ids(String method) async {
     final reply = await _channel.invokeListMethod<int>(method);

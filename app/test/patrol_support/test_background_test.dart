@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import '../../patrol_test/support/shade_geometry.dart';
 import '../../patrol_test/support/test_background.dart';
 
 /// The helpers of the on-device background tests (patrol_test/support): the
@@ -44,6 +45,7 @@ void main() {
       await background.runNewClipsJob();
       await background.activeNotifications();
       await background.pendingJobs();
+      await background.display();
 
       expect(calls, [
         'fireEvening',
@@ -51,6 +53,7 @@ void main() {
         'runNewClipsJob',
         'activeNotifications',
         'pendingJobs',
+        'displaySize',
       ]);
     });
 
@@ -60,6 +63,27 @@ void main() {
 
       expect(await background.pendingJobs(), [0x7A72]);
       expect(await background.activeNotifications(), isEmpty);
+    });
+
+    test('the display size comes back as the real size and rotation', () async {
+      final background = TestBackground(channel);
+      reply = (m) => m == 'displaySize'
+          ? <String, Object?>{'width': 1080, 'height': 2340, 'rotation': 0}
+          : null;
+
+      expect(
+        await background.display(),
+        const PhoneDisplay(width: 1080, height: 2340, rotation: 0),
+      );
+    });
+
+    test('a display reply that is not the three numbers is unknown', () async {
+      final background = TestBackground(channel);
+      reply = (m) => <String, Object?>{'width': 1080};
+
+      expect(await background.display(), isNull);
+      reply = (_) => null;
+      expect(await background.display(), isNull);
     });
 
     test('a null reply is an empty list', () async {

@@ -5,6 +5,7 @@ import 'package:patrol/patrol.dart';
 
 import 'own_texts.dart';
 import 'shade_geometry.dart';
+import 'test_background.dart';
 
 /// TakeTray's own notifications in the notification shade, found and tapped by
 /// their text only (the phone rule).
@@ -136,13 +137,20 @@ Rect _bounds(AndroidNativeView v) => Rect.fromLTRB(
 /// TakeTray's own button (`ownButtonTapPoint`: below TakeTray's own text, on
 /// one row with TakeTray's other button). A selector would be resolved again
 /// by Android, in its own order, and could reach another app's "Turn off".
-/// When the looks find no such view, or disagree, the test fails and nothing
-/// is tapped. A phone that hides a notification's buttons until it is
-/// expanded fails here, saying so.
+/// The point is a fraction of the real display, read from the phone right
+/// after the second look ([background]'s `display`): Flutter's own size goes
+/// stale while the app is in the background. The phone must be upright
+/// (rotation 0, portrait) and that size must be Flutter's display's.
+///
+/// When the looks find no such view, or disagree, or the display is not
+/// upright or cannot be read, the test fails and nothing is tapped. A phone
+/// that hides a notification's buttons until it is expanded fails here,
+/// saying so.
 Future<void> tapOwnButton(
   PatrolIntegrationTester $, {
   required OwnText ownText,
   required StillButton button,
+  required TestBackground background,
 }) async {
   Future<ShadeLook> look() async => ShadeLook(
     anchors: await _boundsOf($, ownText.value),
@@ -152,15 +160,32 @@ Future<void> tapOwnButton(
 
   final first = await look();
   final second = await look();
-  // The real display, in the pixels the views' bounds are in (Flutter takes
-  // it from the window manager's maximum window, the whole display).
-  final screen = $.tester.view.display.size;
-  final point = ownButtonTapPoint(first: first, second: second, screen: screen);
+  PhoneDisplay? display;
+  try {
+    display = await background.display();
+  } on Object {
+    display = null; // Unknown: never a guess.
+  }
+  final point = ownButtonTapPoint(
+    first: first,
+    second: second,
+    display: display,
+    flutterDisplay: $.tester.view.display.size,
+  );
   if (point == null) {
+    final upright =
+        display != null &&
+        display.rotation == 0 &&
+        display.height > display.width;
+    final state = display == null
+        ? 'unknown'
+        : (upright ? 'upright' : 'not upright');
     throw TestFailure(
-      'No own button in the shade: ${second.anchors.length} own text(s), '
+      'No own button tapped: ${second.anchors.length} own text(s), '
       '${second.buttons.length} candidate(s), ${second.siblings.length} '
-      'sibling(s). Is the notification collapsed, or was the shade moving?',
+      'sibling(s), display $state. '
+      'Is the phone upright with auto-rotate off, the notification expanded '
+      'and the shade still?',
     );
   }
   await $.platform.android.tapAt(point);
