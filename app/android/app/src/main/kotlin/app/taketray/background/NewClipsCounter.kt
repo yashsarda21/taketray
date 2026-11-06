@@ -29,6 +29,8 @@ class NewClipsCounter(
     private val versionOf: (String) -> String?,
     /** Whether TakeTray has full video access (D-68). */
     private val access: () -> Boolean,
+    /** The clock (ms), for how recent a row is. */
+    private val nowMs: () -> Long = System::currentTimeMillis,
 ) {
     /**
      * [count] clips; [newest] is the volume and MediaStore id of the one added
@@ -38,7 +40,9 @@ class NewClipsCounter(
      * [lastTouchedMs] is the latest of every counted row's DATE_ADDED and
      * DATE_MODIFIED (seconds, here in ms; a recording's row is added when it
      * starts and modified when it ends), or null when no row has either: how
-     * recently the library took a clip in, for the quiet wait (D-110).
+     * recently the library took a clip in, for the quiet wait (D-110). A time
+     * more than [FUTURE_SLACK_MS] ahead of the clock (the clock was set back,
+     * or a file came with a future time) is not a time and counts for nothing.
      */
     data class NewClips(
         val count: Int,
@@ -52,6 +56,27 @@ class NewClipsCounter(
      * provider unavailable): that says nothing about the count, and 0 would
      * cancel the notification.
      */
+    /**
+     * Whether a take is still being recorded (D-110): a pending row above a
+     * baseline in a watched folder, touched within [RECORDING_CAP_MS] (a
+     * crashed recording's stuck row must not hold the notification for ever).
+     * Throws when MediaStore gives no cursor: not knowing is not "no".
+     */
+    fun recording(state: BackgroundState): Boolean {
+        if (!state.shootingOn || state.watchedFolders.isEmpty() || !access()) return false
+        val sinceSec = Math.floorDiv(nowMs() - RECORDING_CAP_MS, 1000L)
+        for (baseline in state.baselines) {
+            if (versionOf(baseline.volumeName) != baseline.version) continue
+            val uri = MediaStore.Video.Media.getContentUri(baseline.volumeName)
+            val args = VideoQueries.recordingArgs(baseline.generation, state.watchedFolders, sinceSec)
+            val cursor =
+                resolver.query(uri, arrayOf(MediaColumns._ID), args, null)
+                    ?: throw IllegalStateException("MediaStore gave no cursor")
+            if (cursor.use { it.moveToFirst() }) return true
+        }
+        return false
+    }
+
     fun count(state: BackgroundState): NewClips {
         if (!state.shootingOn || state.watchedFolders.isEmpty() || !access()) return NONE
         var count = 0
@@ -59,6 +84,7 @@ class NewClipsCounter(
         // The newest so far: volume, id, DATE_ADDED (seconds).
         var newest: Triple<String, Long, Long>? = null
         var lastTouchedSec: Long? = null
+        val latestTrustedSec = Math.floorDiv(nowMs() + FUTURE_SLACK_MS, 1000L)
         for (baseline in state.baselines) {
             if (versionOf(baseline.volumeName) != baseline.version) continue
             val uri = MediaStore.Video.Media.getContentUri(baseline.volumeName)
@@ -79,6 +105,7 @@ class NewClipsCounter(
                     for (index in intArrayOf(added, modified)) {
                         if (c.isNull(index)) continue
                         val sec = c.getLong(index)
+                        if (sec > latestTrustedSec) continue
                         if (lastTouchedSec.let { it == null || sec > it }) lastTouchedSec = sec
                     }
                     when {
@@ -103,13 +130,37 @@ class NewClipsCounter(
     }
 
     companion object {
+        /**
+         * How long to wait for the newest new clip (its [NewClips.lastTouchedMs])
+         * to be [NewClipsArming.QUIET_MS] old (D-110): null when it is (exactly
+         * 5 minutes old is), or when no clip has a time. What is left plus a
+         * margin, never more than the 5 minutes from now: a clip a little
+         * ahead of the clock has a negative age, so what is left is more than
+         * 5 minutes, and it is waited for the 5 minutes at most.
+         */
+        fun quietWaitMs(
+            lastTouchedMs: Long?,
+            nowMs: Long,
+        ): Long? {
+            val age = nowMs - (lastTouchedMs ?: return null)
+            if (age >= NewClipsArming.QUIET_MS) return null
+            val left = NewClipsArming.QUIET_MS - age
+            return minOf(left + NewClipsArming.SETTLE_MARGIN_MS, NewClipsArming.QUIET_MS)
+        }
+
+        /** A pending row untouched this long is a stuck row, not a take (D-110). */
+        const val RECORDING_CAP_MS = 3L * 60 * 60 * 1000
+
+        /** A clip time this far ahead of the clock is still clock skew; further ahead is no time. */
+        const val FUTURE_SLACK_MS = 60_000L
+
         /** Nothing new. */
         val NONE = NewClips(0, null, emptyList())
 
         /** The counter on the phone's own MediaStore, versions and permissions. */
         fun forPhone(context: Context): NewClipsCounter {
             val volumes = MediaStoreVolumes(context)
-            return NewClipsCounter(context.contentResolver, volumes::version) { fullAccess(context) }
+            return NewClipsCounter(context.contentResolver, volumes::version, { fullAccess(context) })
         }
 
         /** Full video access on this Android version (MediaAccessChecker, D-68). */

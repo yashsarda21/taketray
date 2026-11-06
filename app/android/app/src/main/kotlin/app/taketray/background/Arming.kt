@@ -72,6 +72,31 @@ fun interface Arming {
 }
 
 /**
+ * A one-off job that waits for the quiet (D-110): [latencyMs] of minimum
+ * latency, an override deadline [NewClipsArming.SETTLE_DEADLINE_SLACK_MS]
+ * after it (the deadline alarm wakes the phone, the delay alarm does not),
+ * persisted. Scheduling over a pending job with the same id replaces it.
+ * Returns whether Android accepted it.
+ */
+internal fun scheduleQuietJob(
+    context: Context,
+    jobId: Int,
+    service: Class<*>,
+    latencyMs: Long,
+): Boolean {
+    val job =
+        JobInfo
+            .Builder(jobId, ComponentName(context, service))
+            .setMinimumLatency(latencyMs)
+            .setOverrideDeadline(latencyMs + NewClipsArming.SETTLE_DEADLINE_SLACK_MS)
+            .setPersisted(true)
+            .build()
+    val ok = context.getSystemService(JobScheduler::class.java).schedule(job) == JobScheduler.RESULT_SUCCESS
+    if (!ok) Log.w(LOG_TAG, "one-off job not scheduled")
+    return ok
+}
+
+/**
  * Arming's alarms part (D-105): the evening reminder and Still shooting?
  * ([ReminderScheduler]), in the zone of the moment. The evening is armed
  * even when Still shooting? fails, and the other way round.
@@ -221,15 +246,7 @@ class NewClipsArming(
         context: Context,
         latencyMs: Long,
     ) {
-        val scheduler = context.getSystemService(JobScheduler::class.java)
-        val job =
-            JobInfo
-                .Builder(NewClipsSettleJobService.JOB_ID, ComponentName(context, NewClipsSettleJobService::class.java))
-                .setMinimumLatency(latencyMs)
-                .setOverrideDeadline(latencyMs + SETTLE_DEADLINE_SLACK_MS)
-                .setPersisted(true)
-                .build()
-        if (scheduler.schedule(job) != JobScheduler.RESULT_SUCCESS) Log.w(LOG_TAG, "new clips settle job not scheduled")
+        scheduleQuietJob(context, NewClipsSettleJobService.JOB_ID, NewClipsSettleJobService::class.java, latencyMs)
     }
 
     /** Nothing left to wait for. */

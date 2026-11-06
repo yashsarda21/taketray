@@ -132,6 +132,23 @@ class BackgroundStateStore(
         }
 
     /**
+     * The evening instant (UTC ms) whose reminder is deferred to the one-off
+     * job until 5 quiet minutes (D-110), or null. Not handled until it posts
+     * or is skipped.
+     */
+    fun eveningDeferredFor(): Long? = synchronized(LOCK) { long(KEY_EVENING_DEFERRED_FOR) }
+
+    fun setEveningDeferredFor(atMs: Long?) =
+        synchronized(LOCK) {
+            if (long(KEY_EVENING_DEFERRED_FOR) != atMs) {
+                val edit = prefs.edit()
+                if (atMs == null) edit.remove(KEY_EVENING_DEFERRED_FOR) else edit.putLong(KEY_EVENING_DEFERRED_FOR, atMs)
+                edit.commit()
+            }
+            Unit
+        }
+
+    /**
      * The evening instant (UTC ms) the evening alarm stands for: the time it
      * was armed for, even when a catch-up made it fire later. Null when off.
      */
@@ -174,6 +191,7 @@ class BackgroundStateStore(
         const val KEY_STILL_POSTED_SINCE = "still_posted_since"
         const val KEY_EVENING_HANDLED_DAY = "evening_handled_day"
         const val KEY_EVENING_ARMED_FOR = "evening_armed_for"
+        const val KEY_EVENING_DEFERRED_FOR = "evening_deferred_for"
 
         /** One lock for every store instance (as ZoneChangeStore has). */
         private val LOCK = Any()

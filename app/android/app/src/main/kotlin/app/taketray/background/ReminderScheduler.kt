@@ -2,6 +2,7 @@ package app.taketray.background
 
 import android.app.AlarmManager
 import android.app.PendingIntent
+import android.app.job.JobScheduler
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -20,6 +21,7 @@ class ReminderScheduler(
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) {
     private val alarms: AlarmManager = context.getSystemService(AlarmManager::class.java)
+    private val jobs: JobScheduler = context.getSystemService(JobScheduler::class.java)
     private val store = BackgroundStateStore(context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE))
 
     /**
@@ -48,6 +50,7 @@ class ReminderScheduler(
         if (!state.eveningEnabled) {
             cancel(armedEveningAlarm(context))
             store.setEveningArmedFor(null)
+            cancelEveningDeferral()
             return
         }
         if (state.eveningMinutes !in 0..ReminderTimes.LAST_MINUTE) {
@@ -64,6 +67,26 @@ class ReminderScheduler(
         val armedFor = catchUp ?: ReminderTimes.nextEvening(nowMs, state.eveningMinutes, zone)
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, maxOf(armedFor, nowMs), eveningAlarm(context))
         store.setEveningArmedFor(armedFor)
+        // A deferred evening (D-110) whose job Android lost (a reboot that did
+        // not keep it): ask again. One that is pending is left alone.
+        if (store.eveningDeferredFor() != null && jobs.getPendingJob(EveningDeferJobService.JOB_ID) == null) {
+            deferEvening(NewClipsArming.QUIET_MS)
+        }
+    }
+
+    /**
+     * Defers the evening reminder to the one-off [EveningDeferJobService] in
+     * [latencyMs] (D-110): a job, not an alarm, so no exact-alarm permission.
+     * The caller has stored the evening ([BackgroundStateStore.setEveningDeferredFor]).
+     */
+    fun deferEvening(latencyMs: Long) {
+        scheduleQuietJob(context, EveningDeferJobService.JOB_ID, EveningDeferJobService::class.java, latencyMs)
+    }
+
+    /** Nothing deferred any more: the reminder posted, was skipped or was switched off. */
+    fun cancelEveningDeferral() {
+        store.setEveningDeferredFor(null)
+        jobs.cancel(EveningDeferJobService.JOB_ID)
     }
 
     /**

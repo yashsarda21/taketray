@@ -125,6 +125,26 @@ object VideoQueries {
         return "$selection AND ${MediaColumns.DURATION} > 0 AND ${MediaColumns.SIZE} > 0" to args
     }
 
+    /**
+     * A recording in progress (D-110): a pending row above [afterGeneration] in
+     * one of [folders] whose latest of DATE_ADDED and DATE_MODIFIED (seconds)
+     * is at least [sinceSec], so a crashed recording's stuck row stops
+     * counting. Only pending rows (trashed ones left out), one is enough.
+     */
+    fun recordingArgs(
+        afterGeneration: Long,
+        folders: List<String>,
+        sinceSec: Long,
+    ): Bundle {
+        val (selection, selectionArgs) = addedAfterSelection(afterGeneration, folders)
+        val recent = "(${MediaColumns.DATE_ADDED} >= ? OR ${MediaColumns.DATE_MODIFIED} >= ?)"
+        return args(
+            "$selection AND $recent" to selectionArgs + listOf(sinceSec.toString(), sinceSec.toString()),
+            MediaStore.MATCH_ONLY,
+            NEWEST_ORDER,
+        ).apply { putInt(ContentResolver.QUERY_ARG_LIMIT, 1) }
+    }
+
     /** Pending and trashed rows left out, newest generation first, no limit. */
     fun newClipsArgs(
         afterGeneration: Long,

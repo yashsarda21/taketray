@@ -27,9 +27,12 @@ class NewClipsCounterTest {
     private var versions = mutableMapOf<String, String?>(main to "v1", card to "c1")
     private var access = true
 
+    /** Far after the fixture rows (1.78e9 s), so none of them is recent unless a test says so. */
+    private var clockMs = 1_790_000_000_000L
+
     private val counter by lazy {
         val app = ApplicationProvider.getApplicationContext<Application>()
-        NewClipsCounter(app.contentResolver, { versions[it] }, { access })
+        NewClipsCounter(app.contentResolver, { versions[it] }, { access }, { clockMs })
     }
 
     private fun state(
@@ -114,6 +117,130 @@ class NewClipsCounterTest {
     }
 
     @Test
+    fun `future times beyond a minute are ignored for the last touched time`() {
+        clockMs = 1_780_000_000_000
+        SqlVideoProvider.add(id = 1, generation = 101, added = 1_779_999_990) // 10 s ago
+        SqlVideoProvider.add(id = 2, generation = 102, added = 1_780_000_060, modified = 1_780_086_400) // 1 min and 1 day ahead
+        val found = counter.count(state())
+        assertEquals(2, found.count)
+        assertEquals("1 minute ahead is still clock skew, a day ahead is not a time", 1_780_000_060_000, found.lastTouchedMs)
+        SqlVideoProvider.add(id = 3, generation = 103, added = 1_780_000_061)
+        assertEquals(1_780_000_060_000, counter.count(state()).lastTouchedMs)
+    }
+
+    @Test
+    fun `a clip dated a day ahead has no last touched time`() {
+        clockMs = 1_780_000_000_000
+        SqlVideoProvider.add(id = 1, generation = 101, added = 1_780_086_400, modified = 1_780_086_400)
+        val found = counter.count(state())
+        assertEquals(1, found.count)
+        assertNull(found.lastTouchedMs)
+    }
+
+    // ------------------------------------- a recording in progress (D-110)
+
+    private fun recording(
+        clipsToo: Boolean = true,
+        nowSec: Long = 1_780_000_000,
+    ): Boolean {
+        clockMs = nowSec * 1000
+        if (clipsToo) SqlVideoProvider.add(id = 1, generation = 101, added = nowSec - 3_600)
+        return counter.recording(state())
+    }
+
+    @Test
+    fun `a pending row in a watched folder above the baseline is a recording in progress`() {
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, duration = null, size = 0, added = 1_780_000_000 - 20)
+        assertEquals(true, recording())
+        // It is not counted as a clip.
+        assertEquals(1, counter.count(state()).count)
+    }
+
+    @Test
+    fun `a finished row alone is not a recording`() {
+        assertEquals(false, recording())
+    }
+
+    @Test
+    fun `a pending row older than 3 hours is a stuck row and is ignored`() {
+        val now = 1_780_000_000L
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now - 10_800 - 1)
+        assertEquals(false, recording(nowSec = now))
+    }
+
+    @Test
+    fun `a pending row exactly 3 hours old still counts`() {
+        val now = 1_780_000_000L
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now - 10_800)
+        assertEquals(true, recording(nowSec = now))
+    }
+
+    @Test
+    fun `the 3 hours go by the later of added and modified`() {
+        val now = 1_780_000_000L
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = now - 20_000, modified = now - 60)
+        assertEquals(true, recording(nowSec = now))
+    }
+
+    @Test
+    fun `a pending row with no times is ignored`() {
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = null, modified = null)
+        assertEquals(false, recording())
+    }
+
+    @Test
+    fun `a pending row outside the watched folders is ignored`() {
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, path = "Download/", added = 1_780_000_000 - 5)
+        assertEquals(false, recording())
+    }
+
+    @Test
+    fun `a pending row at or below the baseline is ignored`() {
+        SqlVideoProvider.add(id = 2, generation = 100, pending = true, added = 1_780_000_000 - 5)
+        SqlVideoProvider.add(id = 3, generation = 50, pending = true, added = 1_780_000_000 - 5)
+        assertEquals(false, recording())
+    }
+
+    @Test
+    fun `a trashed pending row is ignored`() {
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, trashed = true, added = 1_780_000_000 - 5)
+        assertEquals(false, recording())
+    }
+
+    @Test
+    fun `a pending row on the card counts, on a volume whose version changed it does not`() {
+        val both = listOf(BackgroundState.Baseline(main, "v1", 100), BackgroundState.Baseline(card, "c1", 5))
+        clockMs = 1_780_000_000_000
+        SqlVideoProvider.add(id = 1, generation = 101, added = 1_780_000_000 - 3_600)
+        SqlVideoProvider.add(id = 2, generation = 7, volume = card, pending = true, added = 1_780_000_000 - 5)
+        assertEquals(true, counter.recording(state(baselines = both)))
+        versions[card] = "c2"
+        assertEquals(false, counter.recording(state(baselines = both)))
+    }
+
+    @Test
+    fun `no recording check without Shooting mode, access or a watched folder`() {
+        SqlVideoProvider.add(id = 2, generation = 102, pending = true, added = 1_780_000_000 - 5)
+        clockMs = 1_780_000_000_000
+        assertEquals(false, counter.recording(state(on = false)))
+        assertEquals(false, counter.recording(state(folders = emptyList())))
+        access = false
+        assertEquals(false, counter.recording(state()))
+        assertEquals(0, SqlVideoProvider.pendingQueries)
+    }
+
+    @Test
+    fun `a failing recording check throws, it does not say no`() {
+        clockMs = 1_780_000_000_000
+        SqlVideoProvider.add(id = 1, generation = 101, added = 1_780_000_000 - 3_600)
+        SqlVideoProvider.pendingFailure = IllegalStateException("provider died")
+        assertThrows(IllegalStateException::class.java) { counter.recording(state()) }
+        SqlVideoProvider.pendingFailure = null
+        SqlVideoProvider.pendingNoCursor = true
+        assertThrows(IllegalStateException::class.java) { counter.recording(state()) }
+    }
+
+    @Test
     fun `no baseline counts nothing`() {
         // A volume without a baseline (a new SD card) is never queried; an
         // unmounted volume (version null) is skipped.
@@ -161,6 +288,6 @@ class NewClipsCounterTest {
     fun `no cursor is an error, never zero`() {
         // Zero would cancel the notification; the provider being unavailable says nothing.
         SqlVideoProvider.noCursor = true
-        assertThrows(IllegalStateException::class.java) { counter.count(state()) }
+        assertThrows(IllegalStateException::class.java) { counter.recording(state()) }
     }
 }

@@ -3,6 +3,7 @@ package app.taketray.background
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import java.time.ZoneId
 
 /**
@@ -64,24 +65,90 @@ class Reminders(
         val state = store.state()
         // Read before re-arming, which moves it to the next evening.
         val evening = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone) ?: nowMs
+        val day = ReminderTimes.localDay(evening, zone)
         scheduler.armEvening(state, nowMs, firing = true)
         if (!state.eveningEnabled) {
             notifier.cancelEvening()
             return
         }
-        val day = ReminderTimes.localDay(evening, zone)
         // Handled already (the clock moved back, a trip west): once per evening.
         if (store.eveningHandledDay() == day) return
+        settleEvening(state, evening, day)
+    }
+
+    /**
+     * The deferred evening reminder's job (D-110). Nothing deferred, or the
+     * reminder switched off, or its evening handled meanwhile: nothing, and
+     * the job goes. The local day of the evening over: skipped, and handled,
+     * so it never says "today" for yesterday. Otherwise [settleEvening] again.
+     */
+    fun eveningDeferred() {
+        val state = store.state()
+        val evening = store.eveningDeferredFor()
+        if (evening == null || !state.eveningEnabled) {
+            scheduler.cancelEveningDeferral()
+            return
+        }
+        val day = ReminderTimes.localDay(evening, zone)
+        if (store.eveningHandledDay() == day) {
+            scheduler.cancelEveningDeferral()
+            return
+        }
+        if (ReminderTimes.localDay(nowMs, zone) != day) {
+            store.setEveningHandledDay(day)
+            scheduler.cancelEveningDeferral()
+            return
+        }
+        settleEvening(state, evening, day)
+    }
+
+    /**
+     * Waits for the quiet, then posts. When the newest unscanned clip is under
+     * 5 minutes old, or a take is in progress (the new-clips job's rule,
+     * D-110), or MediaStore cannot say, the evening is deferred
+     * ([ReminderScheduler.deferEvening]) and not handled yet. When quiet: mark
+     * it handled (once per evening, posted or not), count that day's waiting
+     * clips at this moment, and post or not.
+     */
+    private fun settleEvening(
+        state: BackgroundState,
+        evening: Long,
+        day: Long,
+    ) {
+        val found: NewClipsCounter.NewClips
+        val wait: Long?
+        try {
+            found = counter.count(state)
+            wait = if (counter.recording(state)) NewClipsArming.QUIET_MS else NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs)
+        } catch (e: Exception) {
+            // Not knowing is not quiet; the same evening is tried again.
+            Log.w(LOG_TAG, "evening clips not counted: ${e.javaClass.simpleName}")
+            defer(evening, NewClipsArming.QUIET_MS)
+            return
+        }
+        if (wait != null) {
+            defer(evening, wait)
+            return
+        }
+        scheduler.cancelEveningDeferral()
         store.setEveningHandledDay(day)
         val since = ReminderTimes.startOfToday(evening, zone)
         val waiting = state.waitingShotMs.count { it >= since }
-        val count = waiting + counter.count(state).shotMs.count { it >= since }
+        val count = waiting + found.shotMs.count { it >= since }
         if (count < 1) {
             // Quiet, and yesterday's reminder, if it is still there, is not true any more.
             notifier.cancelEvening()
             return
         }
         notifier.showEvening(count)
+    }
+
+    private fun defer(
+        evening: Long,
+        latencyMs: Long,
+    ) {
+        store.setEveningDeferredFor(evening)
+        scheduler.deferEvening(latencyMs)
     }
 
     /**

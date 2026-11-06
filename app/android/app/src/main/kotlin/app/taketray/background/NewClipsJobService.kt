@@ -150,9 +150,12 @@ class NewClipsJob(
             // Wait for the quiet, or nothing left to wait for.
             if (outcome.settleInMs != null) arming.settle(context, outcome.settleInMs) else arming.cancelSettle(context)
         } catch (e: Exception) {
-            // The count failed: the notification stays as it was.
+            // The count failed: the notification stays as it was. The content
+            // job asks again in 5 minutes (no further video change may come);
+            // the settle job is retried by Android (its caller).
             counted = false
             Log.w(LOG_TAG, "new clips not counted: ${e.javaClass.simpleName}")
+            if (replaceContentJob) retryLater()
         }
         try {
             zones.record(nowMs(), zoneId())
@@ -169,6 +172,15 @@ class NewClipsJob(
             }
         }
         return counted
+    }
+
+    /** Asks for a settle run in 5 minutes; with Shooting mode off the re-arm that follows cancels it. */
+    private fun retryLater() {
+        try {
+            arming.settle(context, NewClipsArming.QUIET_MS)
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "new clips retry not scheduled: ${e.javaClass.simpleName}")
+        }
     }
 
     /** Arms the next run for the stored state (read again: Dart may have written meanwhile). */
@@ -205,7 +217,11 @@ class NewClipsJob(
             store.setPostedNewClips(0)
             return Outcome(state)
         }
-        if (!ignoreQuiet) quietWaitMs(found.lastTouchedMs)?.let { return Outcome(state, it) }
+        if (!ignoreQuiet) {
+            // A take still being recorded holds the post: the sound must not land in it.
+            if (counter.recording(state)) return Outcome(state, NewClipsArming.QUIET_MS)
+            NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs())?.let { return Outcome(state, it) }
+        }
         val picture = found.newest?.let { (volume, id) -> picture(volume, id) }
         store.setPostedNewClips(if (notifier.showNewClips(found.count, picture)) found.count else 0)
         return Outcome(state)
@@ -216,21 +232,6 @@ class NewClipsJob(
         val state: BackgroundState,
         val settleInMs: Long? = null,
     )
-
-    /**
-     * How long to wait for the newest new clip to be [NewClipsArming.QUIET_MS]
-     * old: null when it is (exactly 5 minutes old is), or when no clip has a
-     * time. What is left plus a margin, never more than the 5 minutes from
-     * now: a clip from the future (the clock was set back, so its age is
-     * negative and what is left is more than 5 minutes) is fresh, and is waited
-     * for the 5 minutes at most.
-     */
-    private fun quietWaitMs(lastTouchedMs: Long?): Long? {
-        val age = nowMs() - (lastTouchedMs ?: return null)
-        if (age >= NewClipsArming.QUIET_MS) return null
-        val left = NewClipsArming.QUIET_MS - age
-        return minOf(left + NewClipsArming.SETTLE_MARGIN_MS, NewClipsArming.QUIET_MS)
-    }
 
     private fun clear() {
         notifier.cancelNewClips()
@@ -274,5 +275,42 @@ class NewClipsJob(
                 zoneId = { TimeZone.getDefault().id },
             )
         }
+    }
+}
+
+/**
+ * The deferred evening reminder's job (D-110): a one-off job the evening
+ * alarm's work schedules when a clip is under 5 minutes old or a take is in
+ * progress. It runs on the receivers' thread ([Receivers.executor]), so it
+ * never overlaps a reminder, and calls [Reminders.eveningDeferred], which
+ * posts when it is quiet, defers again, or skips the evening once its day is
+ * over. It has its own id and service (not the settle job): a new-clips
+ * settle job would replace it, and Shooting mode off cancels that one and not
+ * this. A failure asks Android for a retry; so does Android stopping it.
+ *
+ * Not exported, and only the system may bind it.
+ */
+class EveningDeferJobService : JobService() {
+    override fun onStartJob(params: JobParameters): Boolean {
+        val context = applicationContext
+        Receivers.executor.execute {
+            val done =
+                try {
+                    Reminders.forPhone(context).eveningDeferred()
+                    true
+                } catch (e: Exception) {
+                    Log.w(LOG_TAG, "evening deferral not run: ${e.javaClass.simpleName}")
+                    false
+                }
+            jobFinished(params, !done)
+        }
+        return true
+    }
+
+    override fun onStopJob(params: JobParameters): Boolean = true
+
+    companion object {
+        /** Next to the new-clips job (0x7A72) and its settle job (0x7A73). */
+        const val JOB_ID = 0x7A74
     }
 }

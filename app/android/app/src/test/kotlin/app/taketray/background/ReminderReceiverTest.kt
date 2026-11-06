@@ -69,7 +69,7 @@ class ReminderReceiverTest {
         Receivers.executor = Executor { it.run() }
         Receivers.nowMs = { now }
         Receivers.zone = { LONDON }
-        Receivers.counter = { NewClipsCounter(it.contentResolver, { volume -> if (volume == MAIN) "v1" else null }, { true }) }
+        Receivers.counter = { NewClipsCounter(it.contentResolver, { volume -> if (volume == MAIN) "v1" else null }, { true }, { now }) }
     }
 
     @After

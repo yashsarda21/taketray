@@ -72,7 +72,7 @@ class EveningReminderRemovalTest {
         Receivers.zone = { LONDON }
         Receivers.counter = {
             counterCalls++
-            NewClipsCounter(it.contentResolver, { volume -> if (volume == MAIN) "v1" else null }, { true })
+            NewClipsCounter(it.contentResolver, { volume -> if (volume == MAIN) "v1" else null }, { true }, { now })
         }
         ShadowLog.clear()
     }

@@ -119,6 +119,11 @@
             android:name=".background.NewClipsSettleJobService"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false"/>
+        <!-- The deferred evening reminder (D-110): a one-off job. Same rules. -->
+        <service
+            android:name=".background.EveningDeferJobService"
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            android:exported="false"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

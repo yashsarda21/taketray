@@ -79,7 +79,7 @@ class NewClipsJobServiceTest {
             NewClipsJob(
                 context = context,
                 store = BackgroundStateStore(prefs),
-                counter = NewClipsCounter(context.contentResolver, { if (it == main) "v1" else null }, { true }),
+                counter = NewClipsCounter(context.contentResolver, { if (it == main) "v1" else null }, { true }, { clockMs }),
                 notifier = Notifier(context),
                 zones = ZoneChangeStore(prefs),
                 arming = NewClipsArming(access = { true }),
@@ -423,12 +423,221 @@ class NewClipsJobServiceTest {
     }
 
     @Test
-    fun `a clip from the future after a backward clock jump is fresh but waits at most 5 minutes`() {
+    fun `a clip a little ahead of the clock is fresh but waits at most 5 minutes`() {
         store.write(on)
-        addClip(1, agoSec = -3_600)
+        addClip(1, agoSec = -30)
         runJob()
         assertNull(notification())
         assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `a clip more than a minute ahead of the clock does not hold the post back and wakes nothing`() {
+        // The clock was set back, or a file came with a future time: waiting
+        // for it would wake the phone every 5 minutes for days.
+        store.write(on)
+        addClip(1, agoSec = -61)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a clip a day ahead posts at once`() {
+        store.write(on)
+        addClip(1, agoSec = -86_400, modifiedAgoSec = -86_400)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a clip a day ahead does not hide a clip that was just recorded`() {
+        store.write(on)
+        addClip(1, agoSec = -86_400)
+        addClip(2, agoSec = 30)
+        runJob()
+        assertNull(notification())
+        assertEquals(270_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+    }
+
+    // ------------------------------------ a recording in progress (D-110)
+
+    private fun addPending(
+        id: Long,
+        agoSec: Long,
+        modifiedAgoSec: Long? = null,
+        path: String? = "DCIM/Camera/",
+        generation: Long = 100 + id,
+    ) = SqlVideoProvider.add(
+        id = id,
+        generation = generation,
+        added = now / 1000 - agoSec,
+        modified = modifiedAgoSec?.let { now / 1000 - it },
+        pending = true,
+        duration = null,
+        size = 0,
+        path = path,
+    )
+
+    @Test
+    fun `a take in progress holds back an older finished clip and settles in 5 minutes`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 400)
+        val job = runJob()
+        assertNull("no sound in the middle of a take", notification())
+        assertEquals(0, store.postedNewClips())
+        assertTrue(thumbnails.isEmpty())
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+        assertFinishedAndArmed(job)
+    }
+
+    @Test
+    fun `a take in progress also holds back the update of a showing notification`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        addClip(2, agoSec = 3_000)
+        addPending(3, agoSec = 100)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNotNull(settle())
+    }
+
+    @Test
+    fun `the recording check is asked only when a post is possible`() {
+        store.write(on)
+        runJob() // nothing new
+        assertEquals(0, SqlVideoProvider.pendingQueries)
+        addClip(1, agoSec = 3_600)
+        runJob() // posts: asked once
+        assertEquals(1, SqlVideoProvider.pendingQueries)
+        runJob() // the same count is showing: not asked again
+        assertEquals(1, SqlVideoProvider.pendingQueries)
+    }
+
+    @Test
+    fun `a pending row older than 3 hours is ignored and the clips post`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 10_800 + 1)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a pending row outside the watched folders is ignored`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 10, path = "Download/")
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a pending row below the baseline is ignored`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 10, generation = 50)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+    }
+
+    @Test
+    fun `a take that finishes is counted and waits 5 quiet minutes from its end`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 600)
+        runJob()
+        assertNull(notification())
+
+        // The camera finishes the take 2 minutes later, at the clock's now + 100 s.
+        clockMs = now + 100_000
+        SqlVideoProvider.finish(2, modified = now / 1000 + 100)
+        clockMs = now + 220_000
+        runJob()
+        assertNull("only 2 minutes since the end", notification())
+        assertEquals(180_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+
+        clockMs = now + 100_000 + 301_000
+        runSettle()
+        assertEquals("2 new clips to tag", title())
+        assertNull(settle())
+        assertTrue(notification()!!.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+    }
+
+    @Test
+    fun `the settle job during a take reschedules itself and posts when the take is over`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 50)
+        runJob()
+        val job = runSettle()
+        assertFalse("no retry: the next settle job is scheduled instead", job.isRescheduleNeeded)
+        assertNull(notification())
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+
+        // The take was stopped without a clip (deleted): the row is gone.
+        SqlVideoProvider.trash(2)
+        runSettle()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a failing recording check posts nothing and the content job retries in 5 minutes`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        SqlVideoProvider.pendingFailure = IllegalStateException("provider died")
+        val job = runJob()
+        assertNull("not knowing is not a reason to sound", notification())
+        assertEquals(0, store.postedNewClips())
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+        assertFinishedAndArmed(job)
+
+        // The settle job asks Android for a retry instead.
+        scheduler.cancel(NewClipsSettleJobService.JOB_ID)
+        val retry = runSettle()
+        assertTrue(retry.isRescheduleNeeded)
+        assertNull(notification())
+    }
+
+    @Test
+    fun `a failed count in the content job schedules a retry in 5 minutes`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        SqlVideoProvider.failure = IllegalStateException("provider died")
+        val job = runJob()
+        assertNull(notification())
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+        assertFinishedAndArmed(job)
+
+        SqlVideoProvider.failure = null
+        SqlVideoProvider.noCursor = true
+        scheduler.cancel(NewClipsSettleJobService.JOB_ID)
+        runJob()
+        assertEquals("no cursor at all: the same", NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `a failed count with Shooting mode off schedules no retry`() {
+        store.write(on.copy(shootingOn = false, sinceMs = null, baselines = emptyList()))
+        SqlVideoProvider.failure = IllegalStateException("provider died")
+        runJob()
+        assertNull(settle())
+    }
+
+    @Test
+    fun `the debug run ignores a take in progress too`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addPending(2, agoSec = 5)
+        jobNow().run(ignoreQuiet = true)
+        assertEquals("1 new clip to tag", title())
     }
 
     @Test

@@ -44,6 +44,12 @@ class SqlVideoProvider : ContentProvider() {
         val volume = uri.pathSegments.first()
         queries += volume
         failure?.let { throw it }
+        val onlyPending = queryArgs?.getInt(MediaStore.QUERY_ARG_MATCH_PENDING) == MediaStore.MATCH_ONLY
+        if (onlyPending) {
+            pendingQueries++
+            pendingFailure?.let { throw it }
+            if (pendingNoCursor) return null
+        }
         if (noCursor) return null
         val args = queryArgs ?: Bundle()
         val selection = args.getString(ContentResolver.QUERY_ARG_SQL_SELECTION)
@@ -58,8 +64,9 @@ class SqlVideoProvider : ContentProvider() {
                 projectionMap = COLUMNS.associateWith { it }
                 appendWhere("volume = ")
                 appendWhereEscapeString(volume)
-                if (args.getInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_EXCLUDE) == MediaStore.MATCH_EXCLUDE) {
-                    appendWhere(" AND ${MediaColumns.IS_PENDING} = 0")
+                when (args.getInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_EXCLUDE)) {
+                    MediaStore.MATCH_EXCLUDE -> appendWhere(" AND ${MediaColumns.IS_PENDING} = 0")
+                    MediaStore.MATCH_ONLY -> appendWhere(" AND ${MediaColumns.IS_PENDING} = 1")
                 }
                 if (args.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_EXCLUDE) == MediaStore.MATCH_EXCLUDE) {
                     appendWhere(" AND ${MediaColumns.IS_TRASHED} = 0")
@@ -113,6 +120,15 @@ class SqlVideoProvider : ContentProvider() {
         /** Thrown by every query while set. */
         var failure: Exception? = null
 
+        /** Thrown by the queries for pending rows only (the recording check), while set. */
+        var pendingFailure: Exception? = null
+
+        /** While true, the queries for pending rows only give no cursor. */
+        var pendingNoCursor = false
+
+        /** How many queries for pending rows only ran since [install]. */
+        var pendingQueries = 0
+
         /** While true, every query gives no cursor (the provider unavailable). */
         var noCursor = false
 
@@ -129,10 +145,30 @@ class SqlVideoProvider : ContentProvider() {
             queries.clear()
             failure = null
             noCursor = false
+            pendingFailure = null
+            pendingNoCursor = false
+            pendingQueries = 0
             Robolectric.setupContentProvider(SqlVideoProvider::class.java, MediaStore.AUTHORITY)
         }
 
         /** Adds one video row; the defaults make a finished, non-empty clip in DCIM/Camera/ on the main volume. */
+        /** The camera finishes the recording: not pending any more, with a length and a size, modified at [modified] (seconds). */
+        fun finish(
+            id: Long,
+            modified: Long?,
+        ) {
+            db.execSQL(
+                "UPDATE $TABLE SET ${MediaColumns.IS_PENDING} = 0, ${MediaColumns.DURATION} = 12000, ${MediaColumns.SIZE} = 5000000, " +
+                    "${MediaColumns.DATE_MODIFIED} = ? WHERE ${MediaColumns._ID} = ?",
+                arrayOf<Any?>(modified, id),
+            )
+        }
+
+        /** The row goes to the trash (a deleted take). */
+        fun trash(id: Long) {
+            db.execSQL("UPDATE $TABLE SET ${MediaColumns.IS_TRASHED} = 1 WHERE ${MediaColumns._ID} = ?", arrayOf<Any?>(id))
+        }
+
         fun add(
             id: Long,
             generation: Long,

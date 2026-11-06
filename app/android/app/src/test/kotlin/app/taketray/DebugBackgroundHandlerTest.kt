@@ -116,7 +116,7 @@ class DebugBackgroundHandlerTest {
         Receivers.executor = Executor { it.run() }
         Receivers.nowMs = { now }
         Receivers.zone = { ReminderTestSupport.LONDON }
-        Receivers.counter = { NewClipsCounter(it.contentResolver, { volume -> if (volume == main) "v1" else null }, { true }) }
+        Receivers.counter = { NewClipsCounter(it.contentResolver, { volume -> if (volume == main) "v1" else null }, { true }, { now }) }
         NewClipsJobService.newJob = { context -> job(context) }
         handler = DebugBackgroundHandler(app, scope = CoroutineScope(Dispatchers.Unconfined), io = Dispatchers.Unconfined)
     }
@@ -132,7 +132,7 @@ class DebugBackgroundHandlerTest {
         NewClipsJob(
             context = context,
             store = BackgroundStateStore(prefs),
-            counter = NewClipsCounter(context.contentResolver, { if (it == main) "v1" else null }, { true }),
+            counter = NewClipsCounter(context.contentResolver, { if (it == main) "v1" else null }, { true }, { now }),
             notifier = Notifier(context),
             zones = ZoneChangeStore(prefs),
             arming = NewClipsArming(access = { true }),
