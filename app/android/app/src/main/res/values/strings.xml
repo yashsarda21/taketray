@@ -32,7 +32,11 @@
     <string name="evening_text">Takes a few minutes, one tap per clip.</string>
 
     <!-- Still shooting? (D-105): once per Shooting mode session. Turn off and
-         Keep on work from the shade without opening the app. -->
+         Keep on work from the shade without opening the app. On One UI the
+         buttons show only once the notification is expanded (it is folded away
+         when it is the app's only one, or grouped under another TakeTray
+         notification); the body tap opens Reels, where the app asks, which is
+         the way that always works. -->
     <string name="still_title">Still shooting?</string>
     <string name="still_text">Shooting mode has been on for 14 days. Turn it off?</string>
     <string name="action_turn_off">Turn off</string>
