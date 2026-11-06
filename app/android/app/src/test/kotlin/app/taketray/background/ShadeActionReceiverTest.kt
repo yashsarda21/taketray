@@ -111,7 +111,8 @@ class ShadeActionReceiverTest {
             ShadeActionMsg(ShadeActionKindMsg.TURN_OFF, since, now, listOf(VolumeGenerationMsg(MAIN, 140))),
             store.shadeAction(),
         )
-        assertEquals(on.copy(shootingOn = false, sinceMs = null), store.state())
+        // Off as Dart writes it (D-103): no session and no baselines.
+        assertEquals(on.copy(shootingOn = false, sinceMs = null, baselines = emptyList()), store.state())
         assertNull("the job stops", jobs.getPendingJob(NewClipsJobService.JOB_ID))
         assertNull(notification(app, Notifier.STILL_SHOOTING))
         assertNull(alarm(app, ReminderScheduler.ACTION_STILL))
@@ -182,7 +183,7 @@ class ShadeActionReceiverTest {
         assertEquals(listOf("volume generation not read: IllegalStateException"), logs)
         assertTrue(ShadowLog.getLogs().none { "broken-card" in it.msg })
         // The session still ends.
-        assertEquals(state.copy(shootingOn = false, sinceMs = null), store.state())
+        assertEquals(state.copy(shootingOn = false, sinceMs = null, baselines = emptyList()), store.state())
     }
 
     @Test

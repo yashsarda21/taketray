@@ -60,7 +60,7 @@ class ShadeActionReceiver : BroadcastReceiver() {
     ) {
         val generations = generations(Receivers.volumes(context), state)
         store.putShadeAction(ShadeActionMsg(ShadeActionKindMsg.TURN_OFF, since, now, generations))
-        val off = state.copy(shootingOn = false, sinceMs = null)
+        val off = state.copy(shootingOn = false, sinceMs = null, baselines = emptyList())
         store.write(off)
         Receivers.arming().apply(context, off, keepNewClips = true)
     }
