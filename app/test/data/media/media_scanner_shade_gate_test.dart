@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/background/background_sync.dart';
@@ -28,6 +29,22 @@ class _FailingMark extends PhoneStateRepository {
   @override
   Future<bool> markStillAnswered(DateTime since) async =>
       throw StateError('database is full');
+}
+
+/// A phone state whose first `endSession` fails like a full disk.
+class _FailingEnd extends PhoneStateRepository {
+  _FailingEnd(super._db, super._clock);
+
+  int failures = 1;
+
+  @override
+  Future<bool> endSession(DateTime since) async {
+    if (failures > 0) {
+      failures--;
+      throw StateError('database is full');
+    }
+    return await super.endSession(since);
+  }
 }
 
 late VmHarness h;
@@ -100,8 +117,10 @@ void main() {
     test('a cold start from the notification with a pending turn off is '
         'capped', () async {
       _tapTurnOff();
-      // To tag is built first (the notification opened it), and its scan
-      // joins the queue before the lifecycle's first-frame apply.
+      // To tag is built first (the notification opened it) and its scan is
+      // queued first; then come the apply that BackgroundSync runs before a
+      // write and the lifecycle's scan. Each looks for the action in its own
+      // job (D-106), so whichever runs first ends the session capped.
       h.container.listen<AsyncValue<List<Clip>>>(
         toTagControllerProvider,
         (_, _) {},
@@ -206,6 +225,9 @@ void main() {
 
       expect(logText(records), contains('StateError'));
       expect(logText(records), isNot(contains('database is full')));
+      // Not marked answered, and the action is left for the next try.
+      expect((await h.media.phoneState.loadShooting()).stillAnswered, isFalse);
+      expect(h.background.shadeAction, isNotNull);
     });
   });
 
@@ -287,6 +309,145 @@ void main() {
       await scanner.scan(); // 5 minutes after the second: 3, ends
 
       expect(await stillOn(), isFalse);
+      expect(h.background.shadeAction, isNull);
+    });
+
+    test('a clock set back by more than the gap does not stretch the '
+        'window', () async {
+      _tapTurnOff();
+      for (var i = 0; i < 3; i++) {
+        h.bridge.failNext('videosAddedAfter');
+      }
+      Future<bool> stillOn() async =>
+          (await h.media.phoneState.loadShooting()).on;
+
+      await scanner.scan(); // counted: 1
+      h.media.clock.advance(const Duration(hours: -1));
+      await scanner.scan(); // an hour back: counted, 2
+      expect(await stillOn(), isTrue);
+      h.media.clock.advance(const Duration(minutes: 5));
+      await scanner.scan(); // 5 minutes after that: 3, ends
+
+      expect(await stillOn(), isFalse);
+      expect(h.background.shadeAction, isNull);
+    });
+
+    test('a clock set back by less than the gap is still too soon, by '
+        'exactly the gap it counts', () async {
+      _tapTurnOff();
+      final records = captureLogs();
+      for (var i = 0; i < 4; i++) {
+        h.bridge.failNext('videosAddedAfter');
+      }
+
+      await scanner.scan(); // counted: 1
+      h.media.clock.advance(const Duration(minutes: -4, seconds: -59));
+      await scanner.scan(); // under 5 minutes back: not counted
+      expect(logText(records), contains('not counted'));
+      records.clear();
+      h.media.clock.advance(const Duration(seconds: -1));
+      await scanner.scan(); // exactly 5 minutes before the last: counted, 2
+
+      expect(logText(records), isNot(contains('not counted')));
+      expect(logText(records), contains('(2 of 3)'));
+    });
+
+    test('an end that read nothing counts once, and the third try does '
+        'not log "too soon"', () async {
+      _tapTurnOff();
+      final records = captureLogs();
+      for (var i = 0; i < 3; i++) {
+        h.bridge.failNext('volumes');
+      }
+      Future<Object?> scanFails() async {
+        try {
+          return await scanner.scan();
+        } on PlatformException catch (e) {
+          return e;
+        }
+      }
+
+      expect(await scanFails(), isA<PlatformException>());
+      h.media.clock.advance(const Duration(minutes: 5));
+      expect(await scanFails(), isA<PlatformException>());
+      h.media.clock.advance(const Duration(minutes: 5));
+      records.clear();
+
+      final third = await scanFails();
+
+      // Ended with nothing read: every volume of the session counts as failed.
+      expect(third, isA<ScanDone>());
+      expect(await h.media.phoneState.loadShooting(), ShootingState.off);
+      expect(h.background.shadeAction, isNull);
+      expect(logText(records), contains('after 3 attempts'));
+      expect(logText(records), isNot(contains('too soon')));
+      expect(logText(records), isNot(contains('not counted')));
+    });
+
+    test('ending the session fails in the database: the failed tries '
+        'are still counted', () async {
+      final m = h.media;
+      final failing = _FailingEnd(m.db, m.clock);
+      final flaky = MediaScanner(
+        m.bridge,
+        m.clips,
+        failing,
+        m.settings,
+        m.zones,
+        m.zoneSync,
+        m.queue,
+        m.clock,
+        m.background,
+      );
+      _tapTurnOff();
+      for (var i = 0; i < 4; i++) {
+        h.bridge.failNext('videosAddedAfter');
+      }
+      Future<bool> stillOn() async =>
+          (await h.media.phoneState.loadShooting()).on;
+
+      await flaky.scan(); // counted: 1
+      m.clock.advance(const Duration(minutes: 5));
+      await flaky.scan(); // 2
+      m.clock.advance(const Duration(minutes: 5));
+      // 3: the end is due, but the database refuses it.
+      await expectLater(flaky.scan(), throwsA(isA<StateError>()));
+      expect(await stillOn(), isTrue);
+      expect(h.background.shadeAction, isNotNull);
+
+      // Next try, a volume fails again: three counted failures are already
+      // behind it, so the session ends and does not count from zero.
+      m.clock.advance(const Duration(minutes: 5));
+      await flaky.scan();
+
+      expect(await stillOn(), isFalse);
+      expect(h.background.shadeAction, isNull);
+    });
+
+    test('ending the session fails in the database, then the volumes '
+        'read: it ends on the next try', () async {
+      final m = h.media;
+      final flaky = MediaScanner(
+        m.bridge,
+        m.clips,
+        _FailingEnd(m.db, m.clock),
+        m.settings,
+        m.zones,
+        m.zoneSync,
+        m.queue,
+        m.clock,
+        m.background,
+      );
+      _tapTurnOff();
+
+      await expectLater(flaky.scan(), throwsA(isA<StateError>()));
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      expect(h.background.shadeAction, isNotNull);
+
+      // The first try already read the clips shot before the tap.
+      expect(await flaky.scan(), _done(added: 0));
+      expect(await _toTagIds(), {11, 12});
+      expect(await h.media.phoneState.loadShooting(), ShootingState.off);
       expect(h.background.shadeAction, isNull);
     });
 

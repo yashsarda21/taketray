@@ -105,7 +105,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
   An `assert` runs in debug and test builds and stops the program there; the test `warning and success assert` checks that.
 
-- **Tests that can fail.** Each test was written first and run red (the new names did not exist yet), then green. Then each of five changes was made alone, to see the right tests fail, and undone: the `expanded` flag removed from the semantics ("Expected: Tristate.isFalse, Actual: Tristate.none"), the step numbers started at 0 (`Found 0 widgets with text "3."`), the success callout painted in the plain container, the badge left out of the label ("Expected: 'Samsung, Your phone', Actual: 'Samsung'"), and the body always built.
+- **Tests that can fail.** The tests were written with the component, not strictly before it. To see them fail, the component was set aside and they were run: they failed to compile because the new names did not exist, which is a red at compile level only, not proof that each test checks a behaviour. That proof came afterwards: each of these changes was made alone, to see the right tests fail, and undone: the `expanded` flag removed from the semantics ("Expected: Tristate.isFalse, Actual: Tristate.none"), the step numbers started at 0 (`Found 0 widgets with text "3."`), the success callout painted in the plain container, the badge left out of the label ("Expected: 'Samsung, Your phone', Actual: 'Samsung'"), and the body always built.
 
 **Where it lives:** `packages/taketray_ui/lib/src/components/expand_card.dart` (`TtExpandCard`), `step_list.dart` (`TtStepList`) and `banners.dart` (`TtCallout`, the `success` flag); the few sizes that are not in the shared tokens are in `lib/src/theme/tt_metrics.dart` (`expandCardHeaderMinHeight`, `expandCardBadgeRadius`, `expandCardBadgePaddingVertical`, `stepListGap`). Tests: `packages/taketray_ui/test/components/expand_card_test.dart`, `step_list_test.dart`, `banners_test.dart` and `expand_card_golden_test.dart`. Widgetbook (the catalogue of components): `widgetbook/lib/components/expand_card.dart`, `step_list.dart` and `banners.dart`.
 
@@ -175,7 +175,7 @@ It ends with `All tests passed!`. Now open `packages/taketray_ui/lib/src/compone
 
 - **Read once.** Android can hand the same intent to the activity again: when it is re-created, when the user reopens the app from Recents (with the flag `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`), and after the process died (the activity comes back from "saved state" with its first intent). Each would open To tag again if the action were read twice. So `LaunchActions.read` removes the extra as it reads it, ignores the Recents flag, and `MainActivity` drops the action of a restored activity. The test `extra removed after reading` re-creates a real (simulated) activity with the same intent; with the removal taken out it fails with `delivered again after re-creation expected:<[]> but was:<[REELS]>`.
 
-- **The tap that started the app comes first.** When a tap starts the app, Dart is not running yet, so Kotlin keeps the action. When Dart first listens to `launchActions`, the bridge sets up its listener for later taps and then asks for the kept one (`takeLaunchAction`). That first ask is also how Kotlin knows Dart is listening. A tap that arrives while the answer is on its way waits behind it, so the stream gives the start action first (`launch actions stream yields the start action first`).
+- **The tap that started the app comes first.** When a tap starts the app, Dart is not running yet, so Kotlin keeps the action. When Dart first listens to `launchActions`, the bridge sets up its listener for later taps and then asks for the kept one (`takeLaunchAction`). That first ask is also how Kotlin knows Dart is listening. A tap that arrives while the answer is on its way waits behind it, so the stream gives the start action first (`launch actions stream yields the start action first`). Because Kotlin keeps every tap until one ask has reached it, an ask that fails on the way would strand the taps until the app restarts, so the bridge asks again, up to three times 500 ms apart (the tests under `a take that fails`); only the last failure goes to the stream.
 
 - **The notification permission has its own request code.** Android 13 added a permission for notifications, with a dialog like the one for videos. Both dialogs answer through the same `onRequestPermissionsResult`, so each request has a number: `0x7A71` for videos, `0x7A72` for notifications. `MainActivity` hands every answer to both bridges and each takes only its own. Below Android 13 there is no dialog, so asking just reports the state. After two "Don't allow" answers Android stops showing the dialog; the bridge remembers that, using the same rule as for videos (D-68), so the app can open Settings instead (Task 7).
 
@@ -484,7 +484,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
       : min(volume.generation, cap);
   ```
 
-  Rows above `captured` are left out, and the baseline never moves past it. Then, in the same job on the media queue, Shooting mode goes off, but only if it is still that session (`PhoneStateRepository.endSession`, compare-and-set). A volume that does not answer keeps the session and the action, so the next trigger tries again. A failure counts only 5 minutes or more after the last counted one (`endRetryGap`, by the clock): one app start can try the end three times within a second (the copy's write, the lifecycle's scan, To tag's), and that must not count as three. The third counted failure, at least 10 minutes after the first, ends the session with what could be read (`maxEndAttempts`), so a broken SD card cannot keep Shooting mode on forever. Without full access it ends at once: nothing could be read anyway. A recording still pending at the tap is not added: it holds the baseline, and the session is gone before it finishes.
+  Rows above `captured` are left out, and the baseline never moves past it. Then, in the same job on the media queue, Shooting mode goes off, but only if it is still that session (`PhoneStateRepository.endSession`, compare-and-set). A volume that does not answer keeps the session and the action, so the next trigger tries again. A failure counts only 5 minutes or more from the last counted one (`endRetryGap`, by the clock, on either side, so a clock set back by an hour does not hold the count off until it catches up): one app start can try the end three times within a second (the copy's write, the lifecycle's scan, To tag's), and that must not count as three. The third counted failure, at least 10 minutes after the first, ends the session with what could be read (`maxEndAttempts`), so a broken SD card cannot keep Shooting mode on forever. Without full access it ends at once: nothing could be read anyway. A recording still pending at the tap is not added: it holds the baseline, and the session is gone before it finishes.
 
 - **Every scan looks first.** The lifecycle's scan is not the only one: To tag scans when it opens and on resume, and a notification can open To tag before the lifecycle's first frame. A scan joins the media queue at once, so an apply queued separately could come too late, after a scan that added the clips shot after the tap. So the check lives inside the scan's own queued job:
 
@@ -731,7 +731,9 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 - **A window, so the cost ends.** Reading every video on the volume is the expensive part (thousands of rows, on the UI isolate), so it must not happen forever. The only thing that leaves a clip detached while its video is still on the phone is a rebuild that ran too early, and Android finishes re-indexing in minutes. So the resync that detached clips opens a **re-match window** on that volume, and the re-match runs only inside it. A clip a verify detached (its number now holds another video) or flagged gone (its video was deleted) opens none, so it costs nothing. The resync opens the window for the lost clips that are still there:
 
   ```dart
-  if (match.lost.isNotEmpty) {
+  await _clips.inTransaction(() async {
+    await _clips.applyRebuildMatch(volume.name, match);
+    if (match.lost.isEmpty) return;
     final detached = {
       for (final c in await _clips.detachedClipsOn(volume.name))
         if (match.lost.contains(c.id)) c.id,
@@ -744,12 +746,14 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
         at: now,
       );
     }
-  }
+  });
   ```
 
-  `PhoneStateRepository` stores it in the `settings` table under `mediaRematchWindows`, like the volume versions: never exported, deleted by an import, and still there after the app is killed. A value that cannot be read counts as no window, and only the key's name is logged.
+  The detach and the window are written in **one transaction**. If the window cannot be written (a full disk, say) the detach is taken back with it, so the next scan does both. Without that, the clips would be detached with no window to find them again, and would stay missing for good (the test `the window is written with the detach: if it cannot be, nothing is detached and the next scan does both` guards it).
 
-- **Read only when something changed.** MediaStore keeps a *generation* per volume, a counter that moves whenever a row is added or changed. The window remembers the generation the clips were last matched at (first the resync's). The same generation means the same videos, so a second read would find nothing. `reattach` checks, in order: no window; the window has ended (24 hours, or a clock that went back); none of its clips is still detached; the generation has not moved. Only then is the volume read, once, and the same fingerprint rule as a rebuild picks the match:
+  `PhoneStateRepository` stores it in the `settings` table under `mediaRematchWindows`, like the volume versions: never exported, deleted by an import, and still there after the app is killed. A value that cannot be read counts as no window, only the key's name is logged, and the read deletes it, so it is logged once and not at every scan.
+
+- **Read only when something changed.** MediaStore keeps a *generation* per volume, a counter that moves whenever a row is added or changed. The window remembers the generation the clips were last matched at (first the resync's). The same generation means the same videos, so a second read would find nothing. `reattach` checks, in order: no window; the window has ended (24 hours, or a clock set back by more than 5 minutes); none of its clips is still detached; the generation has not moved. Only then is the volume read, once, and the same fingerprint rule as a rebuild picks the match:
 
   ```dart
   if (window.generation == volume.generation) return nothing;
@@ -772,9 +776,11 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
   ```dart
   bool isOpenAt(DateTime now) =>
-      !now.isBefore(openedAt) &&
+      !now.isBefore(openedAt.subtract(rematchClockTolerance)) &&
       now.isBefore(openedAt.add(rematchWindowLength));
   ```
+
+  The start has a tolerance of 5 minutes: an automatic time correction can put the clock a few seconds or minutes before the time the window was opened, and that must not close it. A clock further back than that (a stored time months ahead) still closes it, so a window that cannot be timed does not stay open for good.
 
   Only the window's own clips are matched. The rule is "when unsure, leave it": a clip with two possible videos, or a video two clips want, matches nothing and stays detached for the next scan. A wrong match would put a reel clip on the wrong video, which is worse than a clip that is flagged missing.
 

@@ -449,6 +449,96 @@ void main() {
       expect((await clip(d)).missing, isFalse);
     });
 
+    test('a clock corrected back by a few minutes keeps the window open, '
+        'by more than the tolerance closes it', () async {
+      for (final (back, matched) in [
+        (const Duration(minutes: 2), true),
+        (rematchClockTolerance, true),
+        (rematchClockTolerance + const Duration(seconds: 1), false),
+      ]) {
+        _built = null;
+        reels = ReelsRepository(h.db, h.clock);
+        final (:d, reel: _) = await rebuiltWithoutIt();
+        h.clock.advance(-back);
+        bridge.put([vid(110, 3, like: 10)], version: 'v2');
+
+        // Matched: the video is the clip again. Untimed: the window is closed,
+        // nothing is matched, and the video comes in as a new clip.
+        expect(
+          await h.scanner.scan(),
+          scanDone(added: matched ? 0 : 1),
+          reason: '$back',
+        );
+
+        expect(
+          (await clip(d)).mediaStoreId,
+          matched ? 110 : -d,
+          reason: '$back',
+        );
+        // Closed either way: every clip is back, or the window was untimed.
+        expect(await rawWindows(), isNull, reason: '$back');
+      }
+    });
+
+    test('the window is written with the detach: if it cannot be, nothing '
+        'is detached and the next scan does both', () async {
+      final reel = await reels.create('Goa');
+      final original = vid(10, 1);
+      bridge.put([original], generation: 5);
+      final d = (await h.store([original])).single;
+      await h.clips.addClipsToReel(reel.id, [d]);
+      await h.turnOnNow();
+      bridge
+        ..videosByVolume[phone] = []
+        ..put([], version: 'v2', generation: 2);
+      await h.db.customStatement(
+        'CREATE TRIGGER no_window BEFORE INSERT ON settings '
+        "WHEN NEW.key = '${PhoneStateRepository.rematchWindowsKey}' "
+        "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+      );
+      final records = captureLogs();
+
+      final outcome = await h.scanner.scan();
+
+      // The resync failed as a whole: the clip is not detached (it keeps its
+      // number and is not flagged), no window, no version recorded.
+      expect(outcome, scanDone(added: 0, failed: {phone}));
+      expect((await clip(d)).mediaStoreId, 10);
+      expect((await clip(d)).missing, isFalse);
+      expect(await rawWindows(), isNull);
+      expect(logText(records), isNot(contains('disk full')));
+
+      // The next scan does the detach and opens the window together.
+      await h.db.customStatement('DROP TRIGGER no_window');
+      expect(await h.scanner.scan(), scanDone(added: 0, resynced: {phone}));
+      expect((await clip(d)).mediaStoreId, -d);
+      expect(
+        await h.phoneState.rematchWindow(phone),
+        RematchWindow(openedAt: h.clock.now(), clipIds: {d}, generation: 2),
+      );
+    });
+
+    test('a failing detach opens no window either', () async {
+      final reel = await reels.create('Goa');
+      final original = vid(10, 1);
+      bridge.put([original], generation: 5);
+      final d = (await h.store([original])).single;
+      await h.clips.addClipsToReel(reel.id, [d]);
+      await h.turnOnNow();
+      bridge
+        ..videosByVolume[phone] = []
+        ..put([], version: 'v2', generation: 2);
+      await h.db.customStatement(
+        'CREATE TRIGGER no_detach BEFORE UPDATE ON clips '
+        "WHEN NEW.id = $d BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+      );
+
+      expect(await h.scanner.scan(), scanDone(added: 0, failed: {phone}));
+
+      expect(await rawWindows(), isNull);
+      expect((await clip(d)).mediaStoreId, 10);
+    });
+
     test('a rebuild that loses nothing opens no window', () async {
       final reel = await reels.create('Goa');
       bridge.put([vid(10, 1)], generation: 5);

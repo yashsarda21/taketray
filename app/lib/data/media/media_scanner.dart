@@ -253,6 +253,9 @@ class MediaScanner {
   ) async {
     final since = session.since!;
     ScanOutcome outcome;
+    // The phone did not answer and this try's failure is already noted, so
+    // the volume check below must not count (or log "too soon") a second time.
+    var counted = false;
     try {
       final run = await _prepare(session, 'Ending the session');
       if (run == null) {
@@ -266,6 +269,7 @@ class MediaScanner {
         outcome = await _scanVolumes(run.$1, run.$2, caps: generations);
       }
     } on PlatformException {
+      counted = true;
       if (_keepAfterFailure(since)) rethrow;
       // Nothing was read: every volume of the session counts as failed, so
       // the new-clips notification is not cleared for them.
@@ -274,7 +278,8 @@ class MediaScanner {
         ...session.baselines.keys,
       });
     }
-    if (outcome is ScanDone &&
+    if (!counted &&
+        outcome is ScanDone &&
         outcome.failedVolumes.isNotEmpty &&
         _keepAfterFailure(since)) {
       _log.warning(
@@ -290,10 +295,12 @@ class MediaScanner {
         'volumes not read',
       );
     }
+    // The count is forgotten only once the session is really ended: when the
+    // database refuses, the next try is still the 4th and not the 1st.
+    final ended = await _phone.endSession(since);
     _failedEnds = 0;
     _failedEndsFor = null;
     _lastCountedFailure = null;
-    final ended = await _phone.endSession(since);
     _log.info(
       'Ended the session from the shade: '
       '${ended ? 'off' : 'left on, it had changed'}',
@@ -304,8 +311,9 @@ class MediaScanner {
   /// Notes one failed end of the session that started at [since]; true
   /// while it is to be kept for another try (fewer than [maxEndAttempts]
   /// counted failures in a row). A failure counts only [endRetryGap] or
-  /// more after the last counted one (by the injected clock); a closer one
-  /// is logged and not counted.
+  /// more from the last counted one (by the injected clock, in either
+  /// direction: a clock set back by that much must not hold the next counts
+  /// off until it catches up); a closer one is logged and not counted.
   bool _keepAfterFailure(DateTime since) {
     final ms = since.millisecondsSinceEpoch;
     if (_failedEndsFor != ms) {
@@ -315,7 +323,7 @@ class MediaScanner {
     }
     final now = _clock.now();
     final last = _lastCountedFailure;
-    if (last == null || now.difference(last) >= endRetryGap) {
+    if (last == null || now.difference(last).abs() >= endRetryGap) {
       _failedEnds++;
       _lastCountedFailure = now;
     } else {
@@ -536,7 +544,10 @@ class MediaScanner {
   ///
   /// It is a repair: a failure is logged by type and the scan carries on,
   /// the clips stay detached and the next scan tries again. It never fails
-  /// the volume, so a phone that cannot answer cannot keep a session open.
+  /// the volume: a repair must not hold the volume's baseline, and the new
+  /// clips behind it, for as long as the phone cannot answer it. (It never
+  /// runs in the capped end, so it has nothing to do with keeping a session
+  /// open.)
   Future<void> _rematchDetached(
     _ScanContext context,
     MediaVolume volume,

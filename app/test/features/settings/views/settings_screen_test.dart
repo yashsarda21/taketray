@@ -149,16 +149,47 @@ void main() {
       expect(find.text('Not allowed'), findsNothing);
     });
 
-    testWidgets(
-      'a first read that failed shows no Permissions group, no error',
-      (tester) async {
-        await pump(tester, null);
+    testWidgets('a first read that failed shows Not allowed with Allow, no '
+        'error', (tester) async {
+      await pump(tester, null);
 
-        expect(groupLabel('Help'), findsOneWidget);
-        expect(groupLabel('Permissions'), findsNothing);
-        expect(tester.takeException(), isNull);
-      },
-    );
+      expect(groupLabel('Help'), findsOneWidget);
+      expect(groupLabel('Permissions'), findsOneWidget);
+      expect(find.text('Not allowed'), findsOneWidget);
+      expect(find.text('Allowed'), findsNothing);
+      expect(find.byIcon(Symbols.check_circle_rounded), findsNothing);
+      final button = tester.widget<TtButton>(find.byType(TtButton));
+      expect(button.label, 'Allow');
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('Allow after a failed first read calls allow(), and a later '
+        'good read replaces the row', (tester) async {
+      final fake = await pump(tester, null);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Allow'));
+      await tester.pumpAndSettle();
+      expect(fake.allowed, 1);
+      expect(find.byType(TtSnack), findsNothing);
+
+      fake.show(_allowed);
+      await tester.pump();
+      expect(find.text('Allowed'), findsOneWidget);
+      expect(find.byType(TtButton), findsNothing);
+    });
+
+    testWidgets('a failed first read with a settings page that will not open '
+        'shows the snack', (tester) async {
+      await pump(tester, null, allowResult: false);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Allow'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Couldn't open settings on this phone."),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('a screen reader hears the state, and which Allow it is', (
       tester,
@@ -186,6 +217,18 @@ void main() {
 
         await expectTtAccessible(tester);
         expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('accessible at ${scale}x after a failed first read', (
+        tester,
+      ) async {
+        await pump(tester, null, textScale: scale);
+
+        await expectTtAccessible(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.text('Allow'), findsOneWidget);
       });
     }
 

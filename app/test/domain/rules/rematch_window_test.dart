@@ -30,10 +30,43 @@ void main() {
       expect(_window().isOpenAt(end.add(const Duration(days: 30))), isFalse);
     });
 
-    test('closed before it was opened (the clock went back)', () {
+    test('a clock corrected back by a little keeps it open, by more than '
+        'the tolerance closes it', () {
+      expect(rematchClockTolerance, const Duration(minutes: 5));
+      // An NTP step of a second or a few minutes is not a reason to close.
+      for (final back in [
+        const Duration(milliseconds: 1),
+        const Duration(seconds: 2),
+        const Duration(minutes: 4, seconds: 59),
+        rematchClockTolerance,
+      ]) {
+        expect(
+          _window().isOpenAt(_opened.subtract(back)),
+          isTrue,
+          reason: '$back',
+        );
+      }
+      // Further back than that the stored time cannot be trusted: closed.
       expect(
-        _window().isOpenAt(_opened.subtract(const Duration(milliseconds: 1))),
+        _window().isOpenAt(
+          _opened.subtract(
+            rematchClockTolerance + const Duration(milliseconds: 1),
+          ),
+        ),
         isFalse,
+      );
+      expect(
+        _window().isOpenAt(_opened.subtract(const Duration(days: 300))),
+        isFalse,
+      );
+    });
+
+    test('the tolerance does not stretch the other end', () {
+      final end = _opened.add(rematchWindowLength);
+      expect(_window().isOpenAt(end), isFalse);
+      expect(
+        _window().isOpenAt(end.subtract(const Duration(milliseconds: 1))),
+        isTrue,
       );
     });
 

@@ -16,6 +16,7 @@ import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/router/app_router.dart';
+import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -58,6 +59,38 @@ void main() {
 
     expect(find.byType(ToTagScreen), findsOneWidget);
   });
+
+  // Each tab has its own navigator, and the popup tracker needs an observer on
+  // every one (a "Still shooting?" dialog must never open over a sheet).
+  for (final (name, location, screen) in [
+    ('Reels', Routes.reels, ReelsScreen),
+    ('To tag', Routes.toTag, ToTagScreen),
+    ('Settings', Routes.settings, SettingsScreen),
+  ]) {
+    testApp("a dialog on the $name tab's own navigator is seen by the popup "
+        'tracker', (tester) async {
+      final (container, router) = await _pumpApp(tester);
+      final tracker = container.read(popupRouteTrackerProvider);
+      router.go(location);
+      await tester.pumpAndSettle();
+      expect(tracker.isOpen, isFalse);
+
+      final context = tester.element(find.byType(screen));
+      unawaited(
+        showDialog<void>(
+          context: context,
+          useRootNavigator: false,
+          builder: (_) => const AlertDialog(title: Text('d')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tracker.isOpen, isTrue);
+
+      Navigator.of(context).pop();
+      await tester.pumpAndSettle();
+      expect(tracker.isOpen, isFalse);
+    });
+  }
 
   testApp('unknown location redirects to Reels', (tester) async {
     final (_, router) = await _pumpApp(tester);

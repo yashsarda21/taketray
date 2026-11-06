@@ -46,7 +46,7 @@ class ReminderScheduler(
         firing: Boolean = false,
     ) {
         if (!state.eveningEnabled) {
-            alarms.cancel(eveningAlarm(context))
+            cancel(armedEveningAlarm(context))
             store.setEveningArmedFor(null)
             return
         }
@@ -94,7 +94,18 @@ class ReminderScheduler(
     }
 
     /** Removes the Still shooting? alarm; the notification stays. */
-    fun cancelStill() = alarms.cancel(stillAlarm(context, null))
+    fun cancelStill() = cancel(armedStillAlarm(context))
+
+    /**
+     * Cancels the alarm of [pending] and the PendingIntent itself. A cancel
+     * looks the PendingIntent up (`FLAG_NO_CREATE`), so it makes none when
+     * nothing was armed: null here.
+     */
+    private fun cancel(pending: PendingIntent?) {
+        if (pending == null) return
+        alarms.cancel(pending)
+        pending.cancel()
+    }
 
     companion object {
         const val ACTION_EVENING = "app.taketray.REMINDER_EVENING"
@@ -120,24 +131,24 @@ class ReminderScheduler(
             return intent
         }
 
-        private fun eveningAlarm(context: Context): PendingIntent =
-            PendingIntent.getBroadcast(
-                context,
-                REQUEST_EVENING_ALARM,
-                eveningIntent(context),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+        private const val ARM = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
-        /** [sinceMs] null: the same alarm for cancelling (a PendingIntent is matched without its extras). */
+        /** What a cancel looks up: the PendingIntent if the alarm was armed, never a new one (null). */
+        private const val LOOK_UP = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_NO_CREATE
+
+        private fun eveningAlarm(context: Context): PendingIntent =
+            PendingIntent.getBroadcast(context, REQUEST_EVENING_ALARM, eveningIntent(context), ARM)
+
+        private fun armedEveningAlarm(context: Context): PendingIntent? =
+            PendingIntent.getBroadcast(context, REQUEST_EVENING_ALARM, eveningIntent(context), LOOK_UP)
+
         private fun stillAlarm(
             context: Context,
-            sinceMs: Long?,
-        ): PendingIntent =
-            PendingIntent.getBroadcast(
-                context,
-                REQUEST_STILL_ALARM,
-                stillIntent(context, sinceMs),
-                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-            )
+            sinceMs: Long,
+        ): PendingIntent = PendingIntent.getBroadcast(context, REQUEST_STILL_ALARM, stillIntent(context, sinceMs), ARM)
+
+        /** Without the session: a PendingIntent is matched without its extras. */
+        private fun armedStillAlarm(context: Context): PendingIntent? =
+            PendingIntent.getBroadcast(context, REQUEST_STILL_ALARM, stillIntent(context, null), LOOK_UP)
     }
 }

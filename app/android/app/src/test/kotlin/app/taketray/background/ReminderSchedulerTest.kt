@@ -3,9 +3,11 @@ package app.taketray.background
 import android.app.AlarmManager
 import android.app.Application
 import android.app.Notification
+import android.app.PendingIntent
 import android.app.NotificationManager
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.R
@@ -86,6 +88,43 @@ class ReminderSchedulerTest {
         assertEquals(1, shadowOf(app.getSystemService(AlarmManager::class.java)).scheduledAlarms.size)
     }
 
+    /** The alarm's PendingIntent if one exists, without making one. */
+    private fun existing(
+        request: Int,
+        intent: Intent,
+    ): PendingIntent? = PendingIntent.getBroadcast(app, request, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
+
+    @Test
+    fun `cancelling an alarm that was never armed creates no PendingIntent`() {
+        // Switched off from the start: the cancels run, and must not make what they cancel.
+        scheduler.armEvening(on.copy(eveningEnabled = false), now)
+        scheduler.armStill(on.copy(shootingOn = false, sinceMs = null), now)
+        scheduler.cancelStill()
+        assertNull(existing(ReminderScheduler.REQUEST_EVENING_ALARM, ReminderScheduler.eveningIntent(app)))
+        assertNull(existing(ReminderScheduler.REQUEST_STILL_ALARM, ReminderScheduler.stillIntent(app, null)))
+    }
+
+    @Test
+    fun `cancelling an armed alarm removes the alarm and its PendingIntent`() {
+        scheduler.armEvening(on, now)
+        scheduler.armStill(on, now)
+        assertNotNull(existing(ReminderScheduler.REQUEST_EVENING_ALARM, ReminderScheduler.eveningIntent(app)))
+        assertNotNull(existing(ReminderScheduler.REQUEST_STILL_ALARM, ReminderScheduler.stillIntent(app, null)))
+
+        scheduler.armEvening(on.copy(eveningEnabled = false), now)
+        scheduler.cancelStill()
+        assertNull(alarm(app, ReminderScheduler.ACTION_EVENING))
+        assertNull(alarm(app, ReminderScheduler.ACTION_STILL))
+        assertNull(existing(ReminderScheduler.REQUEST_EVENING_ALARM, ReminderScheduler.eveningIntent(app)))
+        assertNull(existing(ReminderScheduler.REQUEST_STILL_ALARM, ReminderScheduler.stillIntent(app, null)))
+
+        // Arming again after a cancel works as the first time.
+        scheduler.armEvening(on, now)
+        scheduler.armStill(on, now)
+        assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
+        assertEquals("2026-11-15T10:00:00Z", alarmAt(app, ReminderScheduler.ACTION_STILL))
+    }
+
     @Test
     fun `evening disabled cancels`() {
         scheduler.armEvening(on, now)
@@ -98,7 +137,8 @@ class ReminderSchedulerTest {
     fun `evening minutes out of range are clamped and only that is logged`() {
         scheduler.armEvening(on.copy(eveningMinutes = 5000), now)
         assertEquals("2026-11-05T23:59:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
-        // Clamped to midnight, which has passed today and was never armed: tomorrow's.
+        // Clamped to midnight, which has passed today; the 23:59 armed above is not due yet,
+        // so there is no catch-up and the next midnight is armed.
         scheduler.armEvening(on.copy(eveningMinutes = -7), now)
         assertEquals("2026-11-06T00:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
         val logs = ShadowLog.getLogsForTag(LOG_TAG)

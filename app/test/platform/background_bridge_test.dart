@@ -24,6 +24,9 @@ class _StubApi extends BackgroundHostApi {
 
   /// Completes `takeLaunchAction`; null answers at once.
   Completer<void>? takeGate;
+
+  /// How many `takeLaunchAction` calls fail before one answers.
+  int takeFailures = 0;
   Exception? error;
 
   final List<String> calls = [];
@@ -85,6 +88,10 @@ class _StubApi extends BackgroundHostApi {
   @override
   Future<LaunchActionMsg?> takeLaunchAction() async {
     _record('takeLaunchAction');
+    if (takeFailures > 0) {
+      takeFailures--;
+      throw PlatformException(code: 'channel-error');
+    }
     final gate = takeGate;
     if (gate != null) await gate.future;
     return startAction;
@@ -105,7 +112,10 @@ void main() {
 
   setUp(() {
     api = _StubApi();
-    bridge = PigeonBackgroundBridge(api: api);
+    bridge = PigeonBackgroundBridge(
+      api: api,
+      takeRetryDelay: const Duration(milliseconds: 5),
+    );
   });
 
   tearDown(() => bridge.dispose());
@@ -406,6 +416,93 @@ void main() {
       await nativeSends(LaunchActionMsg.toTag);
       await pumpEventQueue();
       expect(seen, [LaunchAction.toTag]);
+    });
+
+    group('a take that fails', () {
+      // Kotlin keeps taps until Dart has taken the start action once (D-103).
+      // A take that fails before it reaches Kotlin would strand every later
+      // tap until the app restarts, so the bridge tries again.
+      test('is tried again, and the start action still arrives', () async {
+        api
+          ..takeFailures = 2
+          ..startAction = LaunchActionMsg.reels;
+        final seen = <LaunchAction>[];
+        final errors = <Object>[];
+        final sub = bridge.launchActions.listen(seen.add, onError: errors.add);
+        addTearDown(sub.cancel);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
+        expect(seen, [LaunchAction.reels]);
+        expect(errors, isEmpty);
+        // Later taps come through as usual.
+        await nativeSends(LaunchActionMsg.toTag);
+        await pumpEventQueue();
+        expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+      });
+
+      test(
+        'a retry that finds no start action adds none and no error',
+        () async {
+          api.takeFailures = 1;
+          final seen = <LaunchAction>[];
+          final errors = <Object>[];
+          final sub = bridge.launchActions.listen(
+            seen.add,
+            onError: errors.add,
+          );
+          addTearDown(sub.cancel);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(2));
+          expect(seen, isEmpty);
+          expect(errors, isEmpty);
+        },
+      );
+
+      test('three failures in a row reach the stream once, and taps '
+          'still come through', () async {
+        api.takeFailures = 10;
+        final seen = <LaunchAction>[];
+        final errors = <Object>[];
+        final sub = bridge.launchActions.listen(seen.add, onError: errors.add);
+        addTearDown(sub.cancel);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
+        expect(errors, hasLength(1));
+        expect(errors.single, isA<PlatformException>());
+        await nativeSends(LaunchActionMsg.toTag);
+        await pumpEventQueue();
+        expect(seen, [LaunchAction.toTag]);
+      });
+
+      test(
+        'a tap that arrives during the retries follows the start action',
+        () async {
+          api
+            ..takeFailures = 1
+            ..startAction = LaunchActionMsg.reels;
+          final seen = <LaunchAction>[];
+          final sub = bridge.launchActions.listen(seen.add);
+          addTearDown(sub.cancel);
+          await pumpEventQueue();
+          await nativeSends(LaunchActionMsg.toTag);
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+        },
+      );
+
+      test(
+        'dispose while waiting stops the retries and throws nothing',
+        () async {
+          api.takeFailures = 10;
+          final sub = bridge.launchActions.listen((_) {});
+          addTearDown(sub.cancel);
+          await pumpEventQueue();
+          expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
+          bridge.dispose();
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+          expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
+        },
+      );
     });
 
     test('nothing is asked before someone listens', () async {

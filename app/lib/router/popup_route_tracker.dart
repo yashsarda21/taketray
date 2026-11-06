@@ -10,8 +10,12 @@ part 'popup_route_tracker.g.dart';
 /// it: that screen's route is still the current one of its own navigator, and
 /// its tickers stay on. The only way to know a popup is open is to watch the
 /// navigators, so every navigator of the app gets an observer from
-/// [observerForNavigator] (the root one and each tab's). [isOpen] is true
-/// while at least one popup route is open, and listeners hear each change.
+/// [observerForNavigator] (the root one and each tab's). go_router also hands
+/// the router's own observers the events of its shell navigators, so a tab's
+/// popup is heard twice; the set below makes that harmless, and
+/// `test/router/app_router_test.dart` opens a dialog on each tab. [isOpen] is
+/// true while at least one popup route is open, and listeners hear each
+/// change.
 ///
 /// Used by the "Still shooting?" dialog (D-107), which must never open over a
 /// sheet or a dialog. A menu (`TtMenuButton`, a `MenuAnchor`) is an overlay,

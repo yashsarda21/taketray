@@ -126,9 +126,15 @@ class PigeonBackgroundBridge implements BackgroundBridge {
   /// [api] defaults to a real [BackgroundHostApi]; tests pass a stub.
   /// [messenger] is the channel for both directions (the default one when
   /// null).
-  new({BackgroundHostApi? api, BinaryMessenger? messenger})
-    : _api = api ?? BackgroundHostApi(binaryMessenger: messenger),
-      _messenger = messenger;
+  new({
+    BackgroundHostApi? api,
+    BinaryMessenger? messenger,
+    this.takeRetryDelay = const Duration(milliseconds: 500),
+  }) : _api = api ?? BackgroundHostApi(binaryMessenger: messenger),
+       _messenger = messenger;
+
+  /// The wait before taking the start action again after a failed take.
+  final Duration takeRetryDelay;
 
   final BackgroundHostApi _api;
   final BinaryMessenger? _messenger;
@@ -223,18 +229,36 @@ class PigeonBackgroundBridge implements BackgroundBridge {
     unawaited(_takeStartAction());
   }
 
+  /// Takes the start action, trying up to [_takeAttempts] times. Kotlin sends
+  /// taps through the Flutter API only after one take reached it (a tap
+  /// before is kept), so a take that failed on the way would leave every later
+  /// tap kept until the app restarts. The last failure goes to the stream.
   Future<void> _takeStartAction() async {
     try {
-      final start = await _api.takeLaunchAction();
-      if (start != null) _launches.add(_launchAction(start));
-    } on Object catch (e, stack) {
-      _launches.addError(e, stack);
+      for (var attempt = 1; ; attempt++) {
+        try {
+          final start = await _api.takeLaunchAction();
+          if (start != null && !_launches.isClosed) {
+            _launches.add(_launchAction(start));
+          }
+          return;
+        } on Object catch (e, stack) {
+          if (attempt >= _takeAttempts || _launches.isClosed) {
+            if (!_launches.isClosed) _launches.addError(e, stack);
+            return;
+          }
+          await Future<void>.delayed(takeRetryDelay);
+          if (_launches.isClosed) return;
+        }
+      }
     } finally {
       final early = _early ?? const [];
       _early = null;
-      early.forEach(_launches.add);
+      if (!_launches.isClosed) early.forEach(_launches.add);
     }
   }
+
+  static const _takeAttempts = 3;
 
   void _onTap(LaunchAction action) {
     final early = _early;

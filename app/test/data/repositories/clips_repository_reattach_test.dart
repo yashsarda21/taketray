@@ -442,6 +442,51 @@ void main() {
       expect((await row(d2)).mediaStoreId, -d2);
     });
 
+    // Undo records name clips by id. A duplicate the merge deletes is gone,
+    // and its `vn_copies` rows stay as D-54 keeps them; these pin what an
+    // undo does with such a record (D-108).
+    test('an undo taken before the merge, naming the removed duplicate, '
+        'links the surviving clip', () async {
+      final goa = await reels.create('Goa');
+      final cafe = await reels.create('Cafe');
+      final n = await save(_clip(110, like: 10));
+      await repo.addClipsToReel(goa.id, [n]);
+      // Removing it from its only reel sweeps (deletes) the duplicate.
+      final removal = await repo.removeClipsFromReel(goa.id, [n]);
+      expect(await exists(n), isFalse);
+      final d = await detachedIn(10, reel: cafe.id);
+      await repo.reattachDetached(_phone, {d: 110});
+      final before = await clipCount();
+
+      await repo.undo(removal);
+
+      // The same video is already there under D: linked, nothing inserted.
+      expect(await clipCount(), before);
+      expect(await exists(n), isFalse);
+      expect(await links(d), {
+        cafe.id: isA<DateTime>(),
+        goa.id: isA<DateTime>(),
+      });
+    });
+
+    test('an undo of an add, taken before the merge deleted the duplicate, '
+        'changes nothing and does not throw', () async {
+      final goa = await reels.create('Goa');
+      final cafe = await reels.create('Cafe');
+      final n = await save(_clip(110, like: 10));
+      final add = await repo.addClipsToReel(goa.id, [n]);
+      final d = await detachedIn(10, reel: cafe.id);
+      await repo.reattachDetached(_phone, {d: 110});
+      expect(await exists(n), isFalse);
+      final linksBefore = await links(d);
+      final before = await clipCount();
+
+      await repo.undo(add);
+
+      expect(await clipCount(), before);
+      expect(await links(d), linksBefore);
+    });
+
     test('the log has ids and counts only', () async {
       final records = <LogRecord>[];
       final sub = Logger.root.onRecord.listen(records.add);

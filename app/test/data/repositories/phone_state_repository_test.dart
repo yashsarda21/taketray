@@ -562,7 +562,13 @@ void main() {
           expect(r.message, isNot(contains(value)));
           expect(r.message, isNot(contains('private')));
         }
-        // Opening over a corrupt value starts a fresh map.
+        // Read once, it is dropped: the next read has nothing to log.
+        expect(await _raw('mediaRematchWindows'), isNull);
+        records.clear();
+        expect(await repo.rematchWindow(phone), isNull);
+        expect(await repo.rematchWindow(card), isNull);
+        expect(records, isEmpty);
+        // Opening over it starts a fresh map.
         await repo.openRematchWindow(
           phone,
           clipIds: {1},
@@ -572,6 +578,28 @@ void main() {
         expect(await repo.rematchWindow(phone), isNotNull);
       });
     }
+
+    test('a readable value is not touched by reading it', () async {
+      await repo.openRematchWindow(phone, clipIds: {3}, generation: 4, at: _t0);
+      final before = await _raw('mediaRematchWindows');
+      final records = _record();
+
+      expect(await repo.rematchWindow(phone), isNotNull);
+      expect(await repo.rematchWindow(card), isNull);
+
+      expect(await _raw('mediaRematchWindows'), before);
+      expect(records, isEmpty);
+    });
+
+    test('a corrupt value met by a write (close, record) is replaced or '
+        'left, never half-read', () async {
+      await _put('mediaRematchWindows', 'nope');
+
+      await repo.recordRematch(phone, 9);
+      await repo.closeRematchWindow(phone);
+
+      expect(await repo.rematchWindow(phone), isNull);
+    });
   });
 
   group('a state stored before D-90', () {

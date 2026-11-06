@@ -270,13 +270,15 @@ void main() {
         await tester.pumpWidget(
           ttTestApp(
             brightness: brightness,
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: _card(
-                title: title,
-                badge: 'Your phone',
-                expanded: true,
-                child: const Text(body),
+            Builder(
+              builder: (context) => Padding(
+                padding: EdgeInsets.all(context.tt.spacing.m),
+                child: _card(
+                  title: title,
+                  badge: 'Your phone',
+                  expanded: true,
+                  child: const Text(body),
+                ),
               ),
             ),
             textScale: 2,
@@ -331,6 +333,45 @@ void main() {
         tester.getRect(find.text('Your phone')).top,
         lessThan(tester.getRect(find.text('Samsung')).bottom),
       );
+    });
+
+    testWidgets('at 1.3x a long title shares the row with the badge, wraps '
+        'in whole words and nothing overflows', (tester) async {
+      _phone(tester);
+      const title = 'Xiaomi, Redmi, POCO and many others';
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            brightness: brightness,
+            _card(title: title, badge: 'Your phone'),
+            textScale: 1.3,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        final titleBox = tester.getRect(find.text(title));
+        final badgeBox = tester.getRect(find.text('Your phone'));
+        final card = tester.getRect(_surface());
+        // Still beside the title (the badge moves below only from 1.5x).
+        expect(badgeBox.top, lessThan(titleBox.bottom), reason: '$brightness');
+        expect(badgeBox.left, greaterThanOrEqualTo(titleBox.right));
+        expect(badgeBox.right, lessThan(card.right));
+        // The title keeps room for whole words: wider than a few letters,
+        // and no line is longer than its box (nothing is cut).
+        expect(titleBox.width, greaterThan(120), reason: '$brightness');
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.text(title),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse);
+        for (final line in paragraph.getBoxesForSelection(
+          const TextSelection(baseOffset: 0, extentOffset: title.length),
+        )) {
+          expect(line.right, lessThanOrEqualTo(titleBox.width + 0.5));
+        }
+        // The header grows with the title; the card still holds both.
+        expect(card.height, greaterThanOrEqualTo(56));
+        expect(titleBox.top, greaterThanOrEqualTo(card.top + 8));
+        expect(titleBox.bottom, lessThanOrEqualTo(card.bottom - 8));
+      }
     });
 
     testWidgets('passes the accessibility guidelines in light and dark', (

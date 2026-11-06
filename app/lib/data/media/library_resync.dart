@@ -30,9 +30,10 @@ class LibraryResync {
   /// When lost clips are still there, detached (a clip in a reel; the others
   /// left the lists), a re-match window opens on [volume] for them (D-108):
   /// Android may still be indexing, so [reattach] looks for them again for a
-  /// day. A failure to write it fails the resync like any other write; the
-  /// clips are detached by then, so the retry opens no window for them (they
-  /// stay missing, as before D-108).
+  /// day. The detach and the window are written in **one transaction**: a
+  /// failure to write the window fails the resync like any other write and
+  /// takes the detach with it, so the retry does both (a clip is never left
+  /// detached with no window to find it again).
   Future<RebuildMatch> resync(
     MediaVolume volume, {
     required DateTime now,
@@ -45,8 +46,9 @@ class LibraryResync {
       volumeName: volume.name,
       now: now,
     );
-    await _clips.applyRebuildMatch(volume.name, match);
-    if (match.lost.isNotEmpty) {
+    await _clips.inTransaction(() async {
+      await _clips.applyRebuildMatch(volume.name, match);
+      if (match.lost.isEmpty) return;
       final detached = {
         for (final c in await _clips.detachedClipsOn(volume.name))
           if (match.lost.contains(c.id)) c.id,
@@ -59,7 +61,7 @@ class LibraryResync {
           at: now,
         );
       }
-    }
+    });
     await _phone.recordVolumeVersion(volume.name, volume.version!);
     _log.info(
       'Volume ${volume.name}: matched ${stored.length} clips again, '

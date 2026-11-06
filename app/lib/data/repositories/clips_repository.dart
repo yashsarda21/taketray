@@ -703,6 +703,14 @@ class ClipsRepository {
     );
   }
 
+  /// Runs [body] in one database transaction, so writes of this repository
+  /// and of `PhoneStateRepository` (one database) stand or fall together. The
+  /// transactions inside [body] join it. Used by `LibraryResync.resync`,
+  /// which must not detach clips without the window that finds them again
+  /// (D-108).
+  Future<T> inTransaction<T>(Future<T> Function() body) =>
+      _db.transaction(body);
+
   /// The detached MediaStore clips of volume [volumeName]: the ones
   /// [applyRebuildMatch] or a verify left with `mediaStoreId = -clipId` (and
   /// `missing`), which [mediaStoreClipsOn] leaves out. [reattachDetached]

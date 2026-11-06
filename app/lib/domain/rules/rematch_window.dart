@@ -6,6 +6,12 @@ import 'package:meta/meta.dart';
 /// costing reads soon.
 const rematchWindowLength = Duration(hours: 24);
 
+/// How far back the clock may be set from a window's [RematchWindow.openedAt]
+/// before the window is taken as untimed and closed: an automatic time
+/// correction is a few seconds, a manual one a few minutes. Further back (a
+/// stored time months ahead) the window could stay open for good.
+const rematchClockTolerance = Duration(minutes: 5);
+
 /// The time after a rebuild of a volume's media library in which the scan
 /// matches the clips the rebuild could not find again (D-108, I-3).
 ///
@@ -29,11 +35,13 @@ class RematchWindow {
   final int generation;
 
   /// Whether the window is open at [now]: from [openedAt] (inclusive) for
-  /// [rematchWindowLength] (exclusive). A [now] before [openedAt] (the clock
-  /// went back, or a stored time in the future) is closed: a window that
-  /// cannot be timed must not stay open for good.
+  /// [rematchWindowLength] (exclusive). A clock corrected back by up to
+  /// [rematchClockTolerance] still finds it open (an automatic correction
+  /// must not close it). A [now] further before [openedAt] (a stored time in
+  /// the future, a clock set far back) is closed: a window that cannot be
+  /// timed must not stay open for good.
   bool isOpenAt(DateTime now) =>
-      !now.isBefore(openedAt) &&
+      !now.isBefore(openedAt.subtract(rematchClockTolerance)) &&
       now.isBefore(openedAt.add(rematchWindowLength));
 
   @override
