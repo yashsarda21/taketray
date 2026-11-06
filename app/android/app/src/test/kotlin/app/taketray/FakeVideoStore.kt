@@ -17,8 +17,8 @@ import org.robolectric.Robolectric
 
 /**
  * A small in-memory video table standing in for Android's media provider in the
- * [TestMedia] tests. It answers only the two selections TestMedia makes
- * (`_id = ?` and `relative_path = ?`) and fails the test on any other; like the
+ * [TestMedia] tests. It answers only the selections TestMedia makes
+ * (`_id = ?`, `relative_path = ?` and `relative_path = ? COLLATE NOCASE`) and fails the test on any other; like the
  * real provider it hides IS_PENDING rows unless the query asks to include them,
  * and it records the owner of an inserted row as [callerPackage] (the real one
  * does the same). [events] lists what was done, in order, for example
@@ -105,6 +105,7 @@ class FakeVideoStore : ContentProvider() {
             when (selection) {
                 "${MediaColumns._ID} = ?" -> rows.values.filter { it.id.toString() == value }
                 "${MediaColumns.RELATIVE_PATH} = ?" -> rows.values.filter { it.path == value }
+                "${MediaColumns.RELATIVE_PATH} = ? COLLATE NOCASE" -> rows.values.filter { it.path.equals(value, ignoreCase = true) }
                 else -> throw AssertionError("unexpected selection: $selection")
             }.filter { includePending || !it.pending }
         val columns = projection!!.toList()

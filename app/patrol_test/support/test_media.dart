@@ -68,8 +68,11 @@ class TestMedia {
     addTearDown(media.cleanUp);
     final left = await channel.invokeMapMethod<String, int>('deleteLeftovers');
     // A count only (D-10): how many a crashed run left, 0 on a clean phone.
-    debugPrint('test media leftovers removed: ${left?['deleted'] ?? -1}');
     final refused = left?['refused'] ?? -1;
+    debugPrint(
+      'test media leftovers removed: ${left?['deleted'] ?? -1}, '
+      'rows of other packages: $refused',
+    );
     if (refused != 0) {
       throw TestFailure(
         'The test folder holds $refused file(s) that TakeTray Dev does not '

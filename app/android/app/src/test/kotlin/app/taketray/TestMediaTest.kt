@@ -165,7 +165,7 @@ class TestMediaTest {
 
     @Test
     fun `an own file outside the test folder is refused`() {
-        for (path in listOf("DCIM/Camera/", "Movies/", "movies/taketray test/", "Movies/TakeTray Test/sub/", null)) {
+        for (path in listOf("DCIM/Camera/", "Movies/", "movies/taketray test2/", "Movies/TakeTray Test/sub/", null)) {
             val row = seed(path, own)
 
             assertThrows("folder '$path'", TestMediaRefused::class.java) { media.deleteVideo(row.id) }
@@ -199,5 +199,70 @@ class TestMediaTest {
 
         assertEquals(TestMedia.Cleanup(0, 0), done)
         assertFalse(FakeVideoStore.events.contains("delete"))
+    }
+
+    @Test
+    fun `leftovers removes this app's rows whatever the case of the folder`() {
+        val exact = seed(folder, own)
+        val upper = seed("MOVIES/TAKETRAY TEST/", own)
+        val mixed = seed("Movies/Taketray Test/", own)
+        val lower = seed("movies/taketray test/", own)
+
+        val done = media.deleteLeftovers()
+
+        assertEquals(TestMedia.Cleanup(4, 0), done)
+        assertTrue(FakeVideoStore.rows.isEmpty())
+        assertEquals(4, listOf(exact, upper, mixed, lower).size)
+    }
+
+    @Test
+    fun `leftovers counts another package's row in the folder, in any case, and never deletes it`() {
+        val foreign = seed(folder, "com.sec.android.gallery3d")
+        val foreignUpper = seed("MOVIES/TAKETRAY TEST/", "com.sec.android.gallery3d")
+        val releaseApp = seed("Movies/Taketray Test/", "app.taketray")
+        val unknown = seed("movies/taketray test/", null)
+        val mine = seed("Movies/TakeTray Test/", own)
+
+        val done = media.deleteLeftovers()
+
+        assertEquals(1, done.deleted)
+        assertEquals("four rows of others are counted", 4, done.refused)
+        assertEquals(setOf(foreign.id, foreignUpper.id, releaseApp.id, unknown.id), FakeVideoStore.rows.keys)
+        assertFalse(FakeVideoStore.rows.containsKey(mine.id))
+    }
+
+    @Test
+    fun `leftovers deletes a pending row in a case variant`() {
+        seed("MOVIES/TAKETRAY TEST/", own, pending = true)
+        seed("Movies/TakeTray Test/", own, pending = true)
+
+        val done = media.deleteLeftovers()
+
+        assertEquals(TestMedia.Cleanup(2, 0), done)
+        assertTrue(FakeVideoStore.rows.isEmpty())
+    }
+
+    @Test
+    fun `leftovers leaves a folder that only starts with the same text alone, counted nowhere`() {
+        val near =
+            listOf("Movies/TakeTray Test2/", "Movies/TakeTray Tests/", "Movies/TakeTray Test/sub/", "Movies/TakeTray/", "movies/taketray test2/", "Movies/")
+                .flatMap { listOf(seed(it, own), seed(it, "com.sec.android.gallery3d")) }
+
+        val done = media.deleteLeftovers()
+
+        assertEquals(TestMedia.Cleanup(0, 0), done)
+        assertEquals(near.map { it.id }.toSet(), FakeVideoStore.rows.keys)
+        assertFalse(FakeVideoStore.events.contains("delete"))
+    }
+
+    @Test
+    fun `deleteVideo accepts an own row in a case variant of the folder, not another package's`() {
+        val mine = seed("MOVIES/TAKETRAY TEST/", own)
+        val theirs = seed("MOVIES/TAKETRAY TEST/", "com.sec.android.gallery3d")
+
+        assertTrue(media.deleteVideo(mine.id))
+        assertThrows(TestMediaRefused::class.java) { media.deleteVideo(theirs.id) }
+
+        assertEquals(setOf(theirs.id), FakeVideoStore.rows.keys)
     }
 }
