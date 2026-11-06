@@ -498,7 +498,7 @@ Kotlin never sends a route, only a `LaunchAction` (D-101, D-103), so no other ap
 
 ### Notifications help, with the interim Settings rows (`lib/features/settings/`, `lib/features/notifications/`, D-107)
 
-**Settings** (`SettingsScreen`, the third tab; Phase 10 builds the rest around it): a large app bar "Settings"; the group **Help** with one row, "Notifications not arriving?" / "Steps for Samsung, Xiaomi, Realme and more" and a chevron, which opens the help screen (once however fast the taps, `OpenOnce`); the group **Permissions** with "Notifications": "Allowed" and a check, or "Not allowed" and a tonal **Allow** button (screen-reader label "Allow notifications"). The Permissions group is left out while the permission is unknown (the first read is running or failed).
+**Settings** (`SettingsScreen`, the third tab; Phase 10 builds the rest around it): a large app bar "Settings"; the group **Help** with one row, "Notifications not arriving?" / "Steps for Samsung, Xiaomi, Realme and more" and a chevron, which opens the help screen (once however fast the taps, `OpenOnce`); the group **Permissions** with "Notifications": "Allowed" and a check, or "Not allowed" and a tonal **Allow** button (screen-reader label "Allow notifications"). The Permissions group is left out while the first read is running; if the first read failed it shows "Not allowed" with **Allow** (the permission is unknown, and **Allow** reads it again, then asks or opens the phone's notification settings).
 
 **Notifications help** (`NotificationsHelpScreen`, `Routes.notificationsHelp` = `/settings/notifications-help`, a child of Settings on the root navigator: full screen above the nav pill, Back returns to Settings):
 

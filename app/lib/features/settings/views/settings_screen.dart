@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
-import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -19,8 +18,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   (`NotificationAccessController.allow`); if that page cannot be opened,
 ///   "Couldn't open settings on this phone." The row follows the state, which
 ///   is read again on every resume, so it is right after the user comes back
-///   from the phone's settings. While the permission is unknown (the first
-///   read is running or failed) the group is left out.
+///   from the phone's settings. While the first read is running the group is
+///   left out. If it failed, the row says "Not allowed" with **Allow**: the
+///   permission is unknown, and the button reads it again (and opens the
+///   phone's notification settings if it still cannot be read).
 class SettingsScreen extends ConsumerStatefulWidget {
   const new({super.key});
 
@@ -50,7 +51,11 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final access = ref.watch(notificationAccessControllerProvider).value;
+    final access = ref.watch(notificationAccessControllerProvider);
+    // Running the first read: unknown, nothing to show yet. A failed first
+    // read is shown as not allowed, so the user can still reach Allow.
+    final granted = access.value?.granted ?? false;
+    final showPermissions = access.hasValue || access.hasError;
     return Scaffold(
       appBar: TtAppBar(large: true, title: l10n.navSettings),
       body: ListView(
@@ -73,27 +78,29 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ],
           ),
-          if (access != null) ...[
+          if (showPermissions) ...[
             TtGroupLabel(l10n.settingsGroupPermissions),
-            TtGroupedRows(children: [_notificationsRow(l10n, access)]),
+            TtGroupedRows(
+              children: [_notificationsRow(l10n, granted: granted)],
+            ),
           ],
         ],
       ),
     );
   }
 
-  Widget _notificationsRow(AppLocalizations l10n, NotificationAccess access) {
+  Widget _notificationsRow(AppLocalizations l10n, {required bool granted}) {
     return TtListRow(
       leading: const TtRowIcon(
         icon: Symbols.notifications_rounded,
         boxed: false,
       ),
       title: l10n.settingsNotificationsTitle,
-      subtitle: access.granted
+      subtitle: granted
           ? l10n.settingsNotificationsAllowed
           : l10n.settingsNotificationsNotAllowed,
       stackTrailingAtLargeText: true,
-      trailing: access.granted
+      trailing: granted
           ? Icon(
               Symbols.check_circle_rounded,
               fill: 1,
