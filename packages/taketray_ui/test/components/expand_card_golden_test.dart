@@ -18,18 +18,21 @@ TtExpandCard _samsungCard({required bool expanded, String? badge}) =>
       badge: badge,
       expanded: expanded,
       onToggle: () {},
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        spacing: 12,
-        children: [
-          const TtStepList(_samsung),
-          TtButton(
-            label: 'Open battery settings',
-            icon: Symbols.open_in_new_rounded,
-            kind: TtButtonKind.tonal,
-            onPressed: () {},
-          ),
-        ],
+      // The theme's spacing, not a raw number (D-102 item 4: 12 dp).
+      child: Builder(
+        builder: (context) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: context.tt.spacing.s,
+          children: [
+            const TtStepList(_samsung),
+            TtButton(
+              label: 'Open battery settings',
+              icon: Symbols.open_in_new_rounded,
+              kind: TtButtonKind.tonal,
+              onPressed: () {},
+            ),
+          ],
+        ),
       ),
     );
 
