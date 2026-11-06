@@ -207,6 +207,8 @@ Phase 6 is background detection and notifications: with Shooting mode on and Tak
 
 6. **Cold start from the notification.** With Shooting mode on, remove TakeTray Dev from Recents (swipe it away), film a short clip, wait for "1 new clip to tag" in the shade and tap it. TakeTray Dev starts on **To tag** with the clip.
 7. **Tap while the app runs.** Open TakeTray Dev on Reels, press Home (the app stays in the background), film a clip and tap the "new clips" notification. The app comes back on **To tag** (not on Reels).
+8. **Process killed, task kept.** Open TakeTray Dev on Reels, press Home, then from the computer stop only its process: `tool/adb shell am kill app.taketray.dev` (the task stays in Recents). Film a clip and tap the "new clips" notification: TakeTray Dev starts again on **To tag**.
+9. **Recents after a notification launch.** After step 6 or 8, press Home, then open TakeTray Dev from **Recents** (not from the notification): it opens where you left it and does **not** jump to To tag again.
 
 If a step does not behave like this, write down the step number and what you saw.
 
