@@ -97,6 +97,45 @@ class BackgroundHostApiImplTest {
             assertEquals(armed.last().first, armed.last().second)
         }
 
+    // ---- Final review M-1: an "on" write cannot undo the shade's Turn off ----
+
+    private fun turnOff(sinceMs: Long) = ShadeActionMsg(ShadeActionKindMsg.TURN_OFF, sinceMs, 1_780_000_500_000, emptyList())
+
+    @Test
+    fun `an on write after a pending Turn off for the same session stays off`() =
+        timed {
+            store.putShadeAction(turnOff(stateMsg.sinceMs!!))
+            impl.writeState(stateMsg)
+
+            val off = BackgroundState.from(stateMsg).copy(shootingOn = false, sinceMs = null, baselines = emptyList())
+            assertEquals(off, store.state())
+            // Armed with the off state: the job is not re-armed.
+            assertEquals(listOf(off to off), armed)
+            // The action itself is Dart's to apply and clear.
+            assertEquals(ShadeActionKindMsg.TURN_OFF, store.shadeAction()?.kind)
+        }
+
+    @Test
+    fun `an on write for a newer session than the Turn off is written`() =
+        timed {
+            store.putShadeAction(turnOff(stateMsg.sinceMs!! - 1))
+            impl.writeState(stateMsg)
+            assertEquals(BackgroundState.from(stateMsg), store.state())
+        }
+
+    @Test
+    fun `a Keep on action or no action leaves an on write alone, and so does an off write`() =
+        timed {
+            store.putShadeAction(ShadeActionMsg(ShadeActionKindMsg.KEEP_ON, stateMsg.sinceMs!!, 1_780_000_500_000, emptyList()))
+            impl.writeState(stateMsg)
+            assertEquals(BackgroundState.from(stateMsg), store.state())
+
+            store.putShadeAction(turnOff(stateMsg.sinceMs!!))
+            val offMsg = stateMsg.copy(shootingOn = false, sinceMs = null, baselines = emptyList())
+            impl.writeState(offMsg)
+            assertEquals(BackgroundState.from(offMsg), store.state())
+        }
+
     @Test
     fun `the app's own off write still cancels the new clips notification`() =
         timed {

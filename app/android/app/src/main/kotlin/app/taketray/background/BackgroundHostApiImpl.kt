@@ -61,8 +61,8 @@ class BackgroundHostApiImpl(
     /** Stores the state first, so the arming (and anything it starts) reads the new one. */
     override suspend fun writeState(state: BackgroundStateMsg) =
         guardedOnIo("writeState", ::nativeError) {
-            val next = BackgroundState.from(state)
-            store.write(next)
+            // What was stored (off, when the shade's Turn off for this session waits) is what is armed.
+            val next = store.writeFromApp(BackgroundState.from(state))
             arming.apply(context, next)
         }
 
