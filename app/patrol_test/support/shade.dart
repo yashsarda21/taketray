@@ -158,6 +158,7 @@ Future<void> tapOwnButton(
   required OwnText ownText,
   required StillButton button,
   required TestBackground background,
+  required Future<String?> Function() refuse,
 }) async {
   Future<ShadeLook> look() async => ShadeLook(
     anchors: await _boundsOf($, ownText.value),
@@ -165,6 +166,9 @@ Future<void> tapOwnButton(
     siblings: await _boundsOf($, button.sibling.label),
   );
 
+  // The caller's refusal (`stillTapRefusal`): asked before the first look
+  // and again right before the tap; a reason means nothing is tapped.
+  await _refuseIf(refuse);
   final first = await look();
   final second = await look();
   PhoneDisplay? display;
@@ -198,5 +202,12 @@ Future<void> tapOwnButton(
       'and the shade still?',
     );
   }
+  await _refuseIf(refuse);
   await $.platform.android.tapAt(point);
+}
+
+/// Fails the test with the caller's reason, when it has one.
+Future<void> _refuseIf(Future<String?> Function() refuse) async {
+  final why = await refuse();
+  if (why != null) throw TestFailure('No own button tapped: $why');
 }

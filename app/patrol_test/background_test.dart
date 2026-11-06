@@ -21,6 +21,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'support/own_texts.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
+import 'support/tap_guard.dart';
 import 'support/test_background.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
@@ -266,38 +267,35 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
     timeout: const Duration(seconds: 30),
   );
 
-  // 2. One video, then Turn off in the shade (the app stays closed). The
-  // video's own notification ("1 new clip to tag") is posted first, so it
-  // cannot move the Still shooting? row between the looks and the tap; and
-  // the first video is then known to be seen before Off.
+  // 2. One video, then Turn off in the shade (the app stays closed). Two
+  // TakeTray notifications at once are grouped by the phone and Still
+  // shooting? is folded away, so the looks and the tap come inside the real
+  // job's 5 s delay, before it posts the new-clips notification, and
+  // `stillTapRefusal` refuses (nothing tapped) if another own notification is
+  // showing or the insert is 4.5 s old. The video counts for Turn off even
+  // so: the insert is synchronous, and the shade action records the library's
+  // generation at the tap (the asserts below prove it).
   final first = await env.media.insert();
-  // The job's own work, run now: when Android runs the job is its own
-  // business (a hot phone holds it; flow 1 proves the real trigger). The
-  // notification it posts is TakeTray's own, found in the app's own list.
-  await env.bg.runNewClipsJob();
-  await _waitUntil(
-    $,
-    () async => (await env.bg.activeNotifications()).contains(
-      TestBackground.newClipsId,
-    ),
-    what: 'the new-clips notification for the first video',
-    timeout: const Duration(seconds: 10),
-    pump: false,
-  );
-  // The shade's own animation for the new row.
-  await Future<void>.delayed(const Duration(seconds: 1));
-  // What the shade shows before the tap: yes or no, and the app's own ids.
-  debugPrint(
-    'before the tap: still text shown '
-    '${await shadeShows($, OwnText.stillBody)}, new-clips text shown '
-    '${await shadeShows($, _oneNewClip)}, own notification ids '
-    '${await env.bg.activeNotifications()}',
-  );
+  final sinceInsert = Stopwatch()..start();
+  Future<String?> refuse() async {
+    final ids = await env.bg.activeNotifications();
+    debugPrint(
+      'before the tap: own notification ids $ids, '
+      '${sinceInsert.elapsedMilliseconds} ms since the insert',
+    );
+    return stillTapRefusal(
+      ownIds: ids,
+      sinceInsert: sinceInsert.elapsed,
+      stillId: TestBackground.stillShootingId,
+    );
+  }
+
   await tapOwnButton(
     $,
     ownText: OwnText.stillBody,
     button: StillButton.turnOff,
     background: env.bg,
+    refuse: refuse,
   );
   await closeShade($);
 
