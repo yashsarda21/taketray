@@ -162,6 +162,16 @@ open class Notifier(
 
     fun cancelStillShooting() = manager.cancel(STILL_SHOOTING)
 
+    /**
+     * Removes the evening reminder (D-105). Android removes it by itself only
+     * for a tap on its body (`setAutoCancel`), not for its **Tag now** button,
+     * so the app does when its claim stops being true.
+     */
+    fun cancelEvening() = manager.cancel(EVENING)
+
+    /** Whether the evening reminder is in the shade now. */
+    fun isEveningShowing(): Boolean = manager.activeNotifications.any { it.id == EVENING }
+
     /** A shade button: an explicit broadcast to [ShadeActionReceiver], which is not exported. */
     private fun shade(
         requestCode: Int,

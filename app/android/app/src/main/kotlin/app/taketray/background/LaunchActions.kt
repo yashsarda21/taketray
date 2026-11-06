@@ -73,11 +73,30 @@ object LaunchActions {
  * the newest action is kept for [take]; after that each one is sent through
  * [send] (`BackgroundFlutterApi.onLaunchAction`). A send that fails (no
  * handler, say) keeps the action for the next [take].
+ *
+ * [onToTag] runs for every fresh To tag action, before it goes to Dart
+ * (D-105): the evening reminder's **Tag now** and body tap, and the
+ * new-clips notification's, all lead to To tag, and Android removes only the
+ * tapped body, never the notification of a button. A failure in it is logged
+ * by class only and never stops the action.
  */
 class LaunchActionRelay(
     private val send: suspend (LaunchActionMsg) -> Unit,
     private val scope: CoroutineScope = MainScope(),
+    private val onToTag: () -> Unit = {},
 ) {
+    companion object {
+        /** MainActivity's relay: opening To tag removes the evening reminder. */
+        fun forActivity(
+            context: Context,
+            send: suspend (LaunchActionMsg) -> Unit,
+            scope: CoroutineScope = MainScope(),
+        ): LaunchActionRelay {
+            val notifier = Notifier(context.applicationContext)
+            return LaunchActionRelay(send, scope, onToTag = notifier::cancelEvening)
+        }
+    }
+
     private var kept: LaunchActionMsg? = null
     private var dartListening = false
 
@@ -93,6 +112,13 @@ class LaunchActionRelay(
     ) {
         val action = LaunchActions.read(intent) ?: return
         if (restored) return
+        if (action == LaunchActionMsg.TO_TAG) {
+            try {
+                onToTag()
+            } catch (e: RuntimeException) {
+                Log.w(LOG_TAG, "evening reminder not removed: ${e.javaClass.simpleName}")
+            }
+        }
         if (!dartListening) {
             kept = action
             return

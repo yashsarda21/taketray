@@ -55,14 +55,20 @@ class Reminders(
      *    ones the app has not scanned yet ([NewClipsCounter]), shot at or
      *    after the start of that local day.
      * 3. One or more: post the evening reminder. None: nothing (quiet, even
-     *    if older clips wait).
+     *    if older clips wait). Either way, a reminder left from an earlier
+     *    evening goes: it is replaced, or no longer true. So does it when the
+     *    reminder is off. (A repeat for an evening already handled leaves
+     *    the one in the shade alone.)
      */
     fun evening() {
         val state = store.state()
         // Read before re-arming, which moves it to the next evening.
         val evening = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone) ?: nowMs
         scheduler.armEvening(state, nowMs, firing = true)
-        if (!state.eveningEnabled) return
+        if (!state.eveningEnabled) {
+            notifier.cancelEvening()
+            return
+        }
         val day = ReminderTimes.localDay(evening, zone)
         // Handled already (the clock moved back, a trip west): once per evening.
         if (store.eveningHandledDay() == day) return
@@ -70,7 +76,11 @@ class Reminders(
         val since = ReminderTimes.startOfToday(evening, zone)
         val waiting = state.waitingShotMs.count { it >= since }
         val count = waiting + counter.count(state).shotMs.count { it >= since }
-        if (count < 1) return
+        if (count < 1) {
+            // Quiet, and yesterday's reminder, if it is still there, is not true any more.
+            notifier.cancelEvening()
+            return
+        }
         notifier.showEvening(count)
     }
 

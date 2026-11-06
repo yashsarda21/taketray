@@ -41,7 +41,7 @@ class MainActivity : FlutterActivity() {
 
         // Arming.background(): the channels, the new-clips job (D-104) and the reminder alarms (D-105).
         val flutterApi = BackgroundFlutterApi(messenger)
-        val bg = BackgroundHostApiImpl(this, Arming.background(), LaunchActionRelay(send = flutterApi::onLaunchAction))
+        val bg = BackgroundHostApiImpl(this, Arming.background(), LaunchActionRelay.forActivity(this, send = flutterApi::onLaunchAction))
         background = bg
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)

@@ -74,6 +74,9 @@ fun interface Arming {
  * Arming's alarms part (D-105): the evening reminder and Still shooting?
  * ([ReminderScheduler]), in the zone of the moment. The evening is armed
  * even when Still shooting? fails, and the other way round.
+ *
+ * It also takes the evening reminder out of the shade when its claim, "You
+ * shot 3 clips today", is no longer true ([dropStaleEvening]).
  */
 class ReminderArming(
     private val nowMs: () -> Long = System::currentTimeMillis,
@@ -88,9 +91,42 @@ class ReminderArming(
         val now = nowMs()
         try {
             scheduler.armEvening(state, now)
+            dropStaleEvening(context, state, now)
         } finally {
             scheduler.armStill(state, now)
         }
+    }
+
+    /**
+     * Removes the evening reminder when the reminder is off, or when no clip
+     * shot today is waiting any more: neither in Dart's list
+     * ([BackgroundState.waitingShotMs]) nor among the clips the app has not
+     * scanned yet ([NewClipsCounter], the same two the alarm counted). Only
+     * asks MediaStore while the reminder is in the shade, and keeps it when
+     * that count fails (logged by error class only, D-10). Not for the alarm
+     * itself: [Reminders.evening] arms without this, so it never removes the
+     * reminder it is about to post.
+     */
+    private fun dropStaleEvening(
+        context: Context,
+        state: BackgroundState,
+        nowMs: Long,
+    ) {
+        val notifier = Notifier(context)
+        if (!state.eveningEnabled) {
+            notifier.cancelEvening()
+            return
+        }
+        if (!notifier.isEveningShowing()) return
+        val today = ReminderTimes.startOfToday(nowMs, zone())
+        if (state.waitingShotMs.any { it >= today }) return
+        try {
+            if (Receivers.counter(context).count(state).shotMs.any { it >= today }) return
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "evening reminder not checked: ${e.javaClass.simpleName}")
+            return
+        }
+        notifier.cancelEvening()
     }
 }
 
