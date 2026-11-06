@@ -107,11 +107,24 @@ class ReminderScheduler(
         const val REQUEST_EVENING_ALARM = 200
         const val REQUEST_STILL_ALARM = 300
 
+        /** The broadcast the evening alarm delivers (the debug hook sends the same one). */
+        internal fun eveningIntent(context: Context): Intent = Intent(context, ReminderReceiver::class.java).setAction(ACTION_EVENING)
+
+        /** The broadcast the Still shooting? alarm delivers for the session [sinceMs]; null: without the session (cancelling). */
+        internal fun stillIntent(
+            context: Context,
+            sinceMs: Long?,
+        ): Intent {
+            val intent = Intent(context, ReminderReceiver::class.java).setAction(ACTION_STILL)
+            if (sinceMs != null) intent.putExtra(EXTRA_SINCE_MS, sinceMs)
+            return intent
+        }
+
         private fun eveningAlarm(context: Context): PendingIntent =
             PendingIntent.getBroadcast(
                 context,
                 REQUEST_EVENING_ALARM,
-                Intent(context, ReminderReceiver::class.java).setAction(ACTION_EVENING),
+                eveningIntent(context),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
 
@@ -119,15 +132,12 @@ class ReminderScheduler(
         private fun stillAlarm(
             context: Context,
             sinceMs: Long?,
-        ): PendingIntent {
-            val intent = Intent(context, ReminderReceiver::class.java).setAction(ACTION_STILL)
-            if (sinceMs != null) intent.putExtra(EXTRA_SINCE_MS, sinceMs)
-            return PendingIntent.getBroadcast(
+        ): PendingIntent =
+            PendingIntent.getBroadcast(
                 context,
                 REQUEST_STILL_ALARM,
-                intent,
+                stillIntent(context, sinceMs),
                 PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
             )
-        }
     }
 }

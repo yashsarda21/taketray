@@ -1,10 +1,13 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/background/background_sync.dart';
+import 'package:taketray/data/background/debug_evening.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/features/notifications/view_models/launch_actions.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -29,11 +32,38 @@ class TakeTrayApp extends ConsumerStatefulWidget {
   ConsumerState<TakeTrayApp> createState() => _TakeTrayAppState();
 }
 
+/// Debug builds only: `--dart-define=TAKETRAY_EVENING_IN_MINUTES=2` sets the
+/// evening reminder to that many minutes from app start (the owner's hand
+/// check of the real alarm; `applyDebugEvening`). 0 (the default) does
+/// nothing, and a release build never reads it.
+final Logger _debugLog = Logger('debugEvening');
+
+const int _debugEveningInMinutes = int.fromEnvironment(
+  'TAKETRAY_EVENING_IN_MINUTES',
+);
+
 class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
   @override
   void initState() {
     super.initState();
+    if (kDebugMode && _debugEveningInMinutes > 0) {
+      unawaited(_setDebugEvening());
+    }
     ref.read(backgroundSyncProvider).start();
+  }
+
+  Future<void> _setDebugEvening() async {
+    try {
+      await applyDebugEvening(
+        ref.read(settingsRepositoryProvider),
+        inMinutes: _debugEveningInMinutes,
+        now: DateTime.now(),
+      );
+    } on Object catch (error) {
+      _debugLog.warning(
+        'Setting the debug evening failed: ${error.runtimeType}',
+      );
+    }
   }
 
   @override
