@@ -26,11 +26,6 @@ final class OwnText {
     );
   }
 
-  /// The whole text of the Still shooting? notification.
-  static const stillBody = OwnText._(
-    'Shooting mode has been on for 14 days. Turn it off?',
-  );
-
   /// The exact text.
   final String value;
 
@@ -42,20 +37,4 @@ final class OwnText {
       throw ArgumentError.value(n, 'n', 'a notification counts 1 or more');
     }
   }
-}
-
-/// The two buttons of TakeTray's Still shooting? notification. Their labels
-/// are not TakeTray's alone, so they are only ever tapped through the
-/// geometry guard (`shade_geometry.dart`), next to each other ([sibling]).
-enum StillButton {
-  turnOff('Turn off'),
-  keepOn('Keep on');
-
-  StillButton(this.label);
-
-  /// The exact label.
-  final String label;
-
-  /// The other button on the same row.
-  StillButton get sibling => this == turnOff ? keepOn : turnOff;
 }

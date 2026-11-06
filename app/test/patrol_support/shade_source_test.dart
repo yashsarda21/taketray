@@ -28,28 +28,14 @@ void main() {
   });
 
   test(
-    'tapOwnButton asks the guard before the first look and before tapAt',
+    'the shade is never tapped at a point or expanded; Turn off is a hook',
     () {
-      final start = shade.indexOf('Future<void> tapOwnButton');
-      expect(start, greaterThanOrEqualTo(0));
-      final body = shade.substring(start);
-      final firstGuard = body.indexOf('await _refuseIf(refuse)');
-      final firstLook = body.indexOf('await look()');
-      final lastGuard = body.lastIndexOf('await _refuseIf(refuse)');
-      final tap = body.indexOf('tapAt(');
-      expect(firstGuard, greaterThanOrEqualTo(0), reason: 'a guard call');
-      expect(firstGuard, lessThan(firstLook), reason: 'before the first look');
-      expect(lastGuard, greaterThan(firstLook), reason: 'a second guard call');
-      expect(lastGuard, lessThan(tap), reason: 'right before the tap');
-      // Nothing else comes between the second guard and the tap.
-      final between = body
-          .substring(lastGuard, tap)
-          .replaceAll(RegExp(r'\s+'), ' ');
-      expect(
-        between,
-        r'await _refuseIf(refuse); await $.platform.android.',
-        reason: 'the guard is the last thing before the tap',
-      );
+      for (final source in [shade, flows]) {
+        expect(source, isNot(contains('tapAt(')));
+        expect(source, isNot(contains('tapOwnButton')));
+        expect(source, isNot(contains('swipe')));
+      }
+      expect(flows, contains('pressStillTurnOff()'));
     },
   );
 }

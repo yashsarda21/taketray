@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'shade_geometry.dart';
-
 /// The debug-only channel `app.taketray/test_background`
 /// (`DebugBackgroundHooks.kt`, Phase 6 Task 9): it reaches the same Android
 /// code the alarms, the notification shade and the job scheduler reach, which
@@ -67,13 +65,13 @@ class TestBackground {
   /// The ids of the app's pending jobs, sorted.
   Future<List<int>> pendingJobs() => _ids('pendingJobs');
 
-  /// The default display now: its real size and rotation (`PhoneDisplay`),
-  /// for the one tap at a point (`tapOwnButton`). Null when the reply is not
-  /// those three numbers; `PlatformException(no-display)` when the phone has
-  /// no default display.
-  Future<PhoneDisplay?> display() async => PhoneDisplay.fromReply(
-    await _channel.invokeMethod<Object?>('displaySize'),
-  );
+  /// Presses the **Turn off** button of the app's own Still shooting?
+  /// notification without opening the shade: the very `PendingIntent` the
+  /// shade button carries, so the real `ShadeActionReceiver` runs.
+  /// `PlatformException`: `no-notification` when it is not showing,
+  /// `no-action` when it has no such button.
+  Future<void> pressStillTurnOff() =>
+      _channel.invokeMethod<void>('pressStillTurnOff');
 
   /// The phone's thermal status now (`PowerManager.getCurrentThermalStatus`,
   /// 0 to 6). A reply that is no number is a `StateError`, never 0.

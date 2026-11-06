@@ -21,7 +21,6 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'support/own_texts.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
-import 'support/tap_guard.dart';
 import 'support/test_background.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
@@ -255,51 +254,29 @@ Future<void> _eveningCounts(PatrolIntegrationTester $, _Env env) async {
 }
 
 Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
-  // 1. Still shooting? in the shade, for the stored session.
+  // 1. Still shooting? posted for the stored session; the app goes away. The
+  // shade is not opened in this flow: the app's own list says it is there.
   await $.platform.mobile.pressHome();
-  await openShade($);
-  final clock = Stopwatch()..start();
   await env.bg.fireStill();
-  await waitForShade(
+  await _waitUntil(
     $,
-    OwnText.stillBody,
-    since: clock,
+    () async => (await env.bg.activeNotifications()).contains(
+      TestBackground.stillShootingId,
+    ),
+    what: 'the Still shooting? notification',
     timeout: const Duration(seconds: 30),
+    pump: false,
   );
 
-  // 2. One video, then Turn off in the shade (the app stays closed). Two
-  // TakeTray notifications at once are grouped by the phone and Still
-  // shooting? is folded away, so the looks and the tap come inside the real
-  // job's 5 s delay, before it posts the new-clips notification, and
-  // `stillTapRefusal` refuses (nothing tapped) if another own notification is
-  // showing or the insert is 4.5 s old. The video counts for Turn off even
-  // so: the insert is synchronous, and the shade action records the library's
-  // generation at the tap (the asserts below prove it).
+  // 2. One video, then Turn off: the very button of the notification, fired
+  // through its own PendingIntent (the real receiver runs; the app stays
+  // closed). The video counts for Turn off: the insert is synchronous, and
+  // the receiver records the library's generation at the press (the asserts
+  // below prove it).
   final first = await env.media.insert();
-  final sinceInsert = Stopwatch()..start();
-  Future<String?> refuse() async {
-    final ids = await env.bg.activeNotifications();
-    debugPrint(
-      'before the tap: own notification ids $ids, '
-      '${sinceInsert.elapsedMilliseconds} ms since the insert',
-    );
-    return stillTapRefusal(
-      ownIds: ids,
-      sinceInsert: sinceInsert.elapsed,
-      stillId: TestBackground.stillShootingId,
-    );
-  }
+  await env.bg.pressStillTurnOff();
 
-  await tapOwnButton(
-    $,
-    ownText: OwnText.stillBody,
-    button: StillButton.turnOff,
-    background: env.bg,
-    refuse: refuse,
-  );
-  await closeShade($);
-
-  // 3. One more video, after the tap: it must stay out.
+  // 3. One more video, after Turn off: it must stay out.
   await env.media.insert();
   await Future<void>.delayed(const Duration(seconds: 3));
 

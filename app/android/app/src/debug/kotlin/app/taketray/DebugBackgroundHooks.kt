@@ -3,12 +3,11 @@ package app.taketray
 import android.app.NotificationManager
 import android.app.job.JobScheduler
 import android.content.Context
-import android.graphics.Point
-import android.hardware.display.DisplayManager
 import android.os.PowerManager
 import android.util.Log
-import android.view.Display
+import app.taketray.R
 import app.taketray.background.NewClipsJobService
+import app.taketray.background.Notifier
 import app.taketray.background.ReminderScheduler
 import app.taketray.background.Receivers
 import io.flutter.embedding.engine.FlutterEngine
@@ -63,13 +62,13 @@ object DebugBackgroundHooks {
  *   a resume run the scan, which clears the new-clips notification).
  * - `pendingJobs`: the ids of this app's pending jobs (`JobScheduler` only
  *   lists the calling app's), sorted: exactly one new-clips job must be there.
- * - `displaySize`: `{width, height, rotation}` of the default display, read
- *   now: `Display.getRealSize` (the whole display, in the current rotation,
- *   the very size uiautomator's `tapAt` multiplies by) and
- *   `Display.getRotation` (0 upright). Flutter's own size is not enough: it
- *   is only refreshed while the activity gets configuration changes, so it
- *   goes stale once the app is in the background. `no-display` when there is
- *   no default display. Numbers only.
+ * - `pressStillTurnOff`: fires the **Turn off** button of this app's own
+ *   Still shooting? notification (id 3) without opening the shade: it finds
+ *   the action whose label is exactly this app's own "Turn off" string and
+ *   sends its `PendingIntent`, the very one the shade button carries, so the
+ *   real `ShadeActionReceiver` runs. `no-notification` when id 3 is not
+ *   posted, `no-action` when it has no such action (Keep on is never pressed
+ *   instead). Only this app's own notifications are ever looked at.
  * - `thermalStatus`: `PowerManager.getCurrentThermalStatus()` now, one int
  *   (0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6
  *   shutdown). The system holds the new-clips job while the phone is hot
@@ -83,9 +82,6 @@ class DebugBackgroundHandler(
     private val context: Context,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main),
     private val io: CoroutineDispatcher = NewClipsJobService.executor.asCoroutineDispatcher(),
-    private val display: () -> Display? = {
-        context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
-    },
     private val thermalStatus: () -> Int = {
         context.getSystemService(PowerManager::class.java).currentThermalStatus
     },
@@ -121,17 +117,23 @@ class DebugBackgroundHandler(
                         result.success(context.getSystemService(NotificationManager::class.java).activeNotifications.map { it.id }.sorted())
                     "pendingJobs" ->
                         result.success(context.getSystemService(JobScheduler::class.java).allPendingJobs.map { it.id }.sorted())
-                    "displaySize" -> {
-                        val shown = display()
-                        if (shown == null) {
-                            Log.w(TAG, "$method: no display")
-                            result.error("no-display", "No default display", null)
+                    "pressStillTurnOff" -> {
+                        val manager = context.getSystemService(NotificationManager::class.java)
+                        val still = manager.activeNotifications.firstOrNull { it.id == Notifier.STILL_SHOOTING }
+                        if (still == null) {
+                            Log.w(TAG, "$method: no notification")
+                            result.error("no-notification", "Still shooting? is not showing", null)
                         } else {
-                            val size = Point()
-                            // The size uiautomator itself uses (UiDevice.getDisplaySize).
-                            @Suppress("DEPRECATION")
-                            shown.getRealSize(size)
-                            result.success(mapOf("width" to size.x, "height" to size.y, "rotation" to shown.rotation))
+                            val label = context.getString(R.string.action_turn_off)
+                            val turnOff = still.notification.actions.orEmpty().firstOrNull { it.title?.toString() == label }
+                            val intent = turnOff?.actionIntent
+                            if (intent == null) {
+                                Log.w(TAG, "$method: no action")
+                                result.error("no-action", "Still shooting? has no Turn off button", null)
+                            } else {
+                                intent.send()
+                                result.success(null)
+                            }
                         }
                     }
                     "thermalStatus" -> result.success(thermalStatus())

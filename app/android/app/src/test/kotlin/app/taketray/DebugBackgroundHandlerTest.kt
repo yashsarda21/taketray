@@ -3,13 +3,14 @@ package app.taketray
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.app.job.JobScheduler
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Looper
 import android.os.PowerManager
 import android.provider.MediaStore
-import android.view.Surface
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.background.BackgroundState
 import app.taketray.background.BackgroundStateStore
@@ -22,6 +23,7 @@ import app.taketray.background.ReminderReceiver
 import app.taketray.background.ReminderScheduler
 import app.taketray.background.ReminderTestSupport
 import app.taketray.background.Receivers
+import app.taketray.background.ShadeActionReceiver
 import app.taketray.background.SqlVideoProvider
 import app.taketray.media.ZoneChangeStore
 import io.flutter.plugin.common.MethodCall
@@ -40,7 +42,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
-import org.robolectric.shadows.ShadowDisplay
 
 /**
  * The debug-only background hooks (Phase 6, Task 9): `fireEvening`,
@@ -464,76 +465,6 @@ class DebugBackgroundHandlerTest {
     }
 
     @Test
-    fun `displaySize is the real display size and rotation, upright`() {
-        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
-        display.setRealWidth(1080)
-        display.setRealHeight(2340)
-        display.setRotation(Surface.ROTATION_0)
-
-        val reply = call("displaySize")
-
-        assertEquals(mapOf("width" to 1080, "height" to 2340, "rotation" to 0), reply.success)
-        assertEquals(1, reply.replies)
-    }
-
-    @Test
-    fun `displaySize on its side reports the rotation and the landscape size`() {
-        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
-        display.setRealWidth(2340)
-        display.setRealHeight(1080)
-        display.setRotation(Surface.ROTATION_90)
-
-        assertEquals(mapOf("width" to 2340, "height" to 1080, "rotation" to 1), call("displaySize").success)
-    }
-
-    @Test
-    fun `displaySize is the whole display, not the app window without the bars`() {
-        // uiautomator's tapAt multiplies by Display.getRealSize: the same.
-        val display = shadowOf(ShadowDisplay.getDefaultDisplay())
-        display.setWidth(1080)
-        display.setHeight(2200)
-        display.setRealWidth(1080)
-        display.setRealHeight(2340)
-        display.setRotation(Surface.ROTATION_0)
-
-        assertEquals(mapOf("width" to 1080, "height" to 2340, "rotation" to 0), call("displaySize").success)
-    }
-
-    @Test
-    fun `displaySize with no display is a no-display error, never a guess`() {
-        handler =
-            DebugBackgroundHandler(
-                app,
-                scope = CoroutineScope(Dispatchers.Unconfined),
-                io = Dispatchers.Unconfined,
-                display = { null },
-            )
-
-        val reply = call("displaySize")
-
-        assertEquals("no-display", reply.errorCode)
-        assertNull(reply.success)
-        assertEquals(1, reply.replies)
-    }
-
-    @Test
-    fun `displaySize that throws is a native-error with the class only`() {
-        handler =
-            DebugBackgroundHandler(
-                app,
-                scope = CoroutineScope(Dispatchers.Unconfined),
-                io = Dispatchers.Unconfined,
-                display = { throw SecurityException("/storage/emulated/0/secret") },
-            )
-
-        val reply = call("displaySize")
-
-        assertEquals("native-error", reply.errorCode)
-        assertTrue(reply.errorMessage!!.contains("SecurityException"))
-        assertFalse(reply.errorMessage!!.contains("secret"))
-    }
-
-    @Test
     fun `thermalStatus is the phone's thermal status now, a number only`() {
         val power = app.getSystemService(PowerManager::class.java)
         for (status in listOf(
@@ -579,5 +510,148 @@ class DebugBackgroundHandlerTest {
         assertTrue(reply.errorMessage!!.contains("SecurityException"))
         assertFalse(reply.errorMessage!!.contains("secret"))
         assertNull(reply.success)
+    }
+
+    // -------------------------------------------------------- pressStillTurnOff
+
+    private fun broadcastFor(action: String): PendingIntent =
+        PendingIntent.getBroadcast(
+            app,
+            action.hashCode(),
+            ShadeActionReceiver.intent(app, action, since),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+
+    /** Id 3 with exactly these (label, broadcast action) buttons, in this order. */
+    private fun postStill(
+        id: Int,
+        vararg buttons: Pair<String, String>,
+    ) {
+        val builder = Notification.Builder(app, Notifier.CHANNEL_REMINDERS).setSmallIcon(android.R.drawable.ic_dialog_info)
+        for ((label, action) in buttons) {
+            builder.addAction(Notification.Action.Builder(null as Icon?, label, broadcastFor(action)).build())
+        }
+        manager.notify(id, builder.build())
+    }
+
+    private fun shadeBroadcasts(): List<String?> = sentBroadcasts().filter { it.component?.className == ShadeActionReceiver::class.java.name }.map { it.action }
+
+    @Test
+    fun `pressStillTurnOff fires the real Turn off button, through the receiver`() {
+        store.write(on)
+        assertTrue(Notifier(app).showStillShooting(since))
+        assertNotNull(notification(Notifier.STILL_SHOOTING))
+
+        val reply = call("pressStillTurnOff")
+
+        assertEquals(1, reply.replies)
+        assertNull(reply.errorCode)
+        assertEquals(listOf(ShadeActionReceiver.ACTION_TURN_OFF), shadeBroadcasts())
+        assertFalse("the receiver ran: Shooting mode is off", store.state().shootingOn)
+        assertNull("and the notification is gone", notification(Notifier.STILL_SHOOTING))
+    }
+
+    @Test
+    fun `pressStillTurnOff with the notification not posted is an error and sends nothing`() {
+        store.write(on)
+
+        val reply = call("pressStillTurnOff")
+
+        assertEquals("no-notification", reply.errorCode)
+        assertEquals(1, reply.replies)
+        assertTrue(shadeBroadcasts().isEmpty())
+        assertTrue("Shooting mode is untouched", store.state().shootingOn)
+    }
+
+    @Test
+    fun `pressStillTurnOff with a notification of id 3 that has no actions is an error`() {
+        postStill(Notifier.STILL_SHOOTING)
+
+        val reply = call("pressStillTurnOff")
+
+        assertEquals("no-action", reply.errorCode)
+        assertTrue(shadeBroadcasts().isEmpty())
+    }
+
+    @Test
+    fun `pressStillTurnOff with only Keep on is an error and never presses it`() {
+        postStill(Notifier.STILL_SHOOTING, "Keep on" to ShadeActionReceiver.ACTION_KEEP_ON)
+
+        val reply = call("pressStillTurnOff")
+
+        assertEquals("no-action", reply.errorCode)
+        assertTrue("Keep on is not pressed instead", shadeBroadcasts().isEmpty())
+    }
+
+    @Test
+    fun `pressStillTurnOff finds Turn off when it is not the first action`() {
+        postStill(
+            Notifier.STILL_SHOOTING,
+            "Keep on" to ShadeActionReceiver.ACTION_KEEP_ON,
+            "Turn off" to ShadeActionReceiver.ACTION_TURN_OFF,
+        )
+
+        val reply = call("pressStillTurnOff")
+
+        assertNull(reply.errorCode)
+        assertEquals("only the Turn off button is pressed", listOf(ShadeActionReceiver.ACTION_TURN_OFF), shadeBroadcasts())
+    }
+
+    @Test
+    fun `pressStillTurnOff finds Turn off when it is first, with Keep on after`() {
+        postStill(
+            Notifier.STILL_SHOOTING,
+            "Turn off" to ShadeActionReceiver.ACTION_TURN_OFF,
+            "Keep on" to ShadeActionReceiver.ACTION_KEEP_ON,
+        )
+
+        call("pressStillTurnOff")
+
+        assertEquals(listOf(ShadeActionReceiver.ACTION_TURN_OFF), shadeBroadcasts())
+    }
+
+    @Test
+    fun `pressStillTurnOff matches the label exactly, not a part of it or another case`() {
+        for (label in listOf("Turn Off", "turn off", "Turn off now", "Turn", "")) {
+            shadowOf(app).clearBroadcastIntents()
+            postStill(Notifier.STILL_SHOOTING, label to ShadeActionReceiver.ACTION_TURN_OFF)
+
+            val reply = call("pressStillTurnOff")
+
+            assertEquals("label '$label'", "no-action", reply.errorCode)
+            assertTrue("label '$label'", shadeBroadcasts().isEmpty())
+        }
+    }
+
+    @Test
+    fun `pressStillTurnOff ignores a Turn off on another notification id`() {
+        postStill(Notifier.NEW_CLIPS, "Turn off" to ShadeActionReceiver.ACTION_TURN_OFF)
+        postStill(Notifier.EVENING, "Turn off" to ShadeActionReceiver.ACTION_TURN_OFF)
+
+        val reply = call("pressStillTurnOff")
+
+        assertEquals("no-notification", reply.errorCode)
+        assertTrue(shadeBroadcasts().isEmpty())
+    }
+
+    @Test
+    fun `pressStillTurnOff for an older session leaves Shooting mode on, like the real button`() {
+        store.write(on.copy(sinceMs = since + 1))
+        assertTrue(Notifier(app).showStillShooting(since))
+
+        call("pressStillTurnOff")
+
+        assertEquals(listOf(ShadeActionReceiver.ACTION_TURN_OFF), shadeBroadcasts())
+        assertTrue("the receiver checks the session itself", store.state().shootingOn)
+    }
+
+    @Test
+    fun `pressStillTurnOff presses the button exactly once`() {
+        store.write(on)
+        Notifier(app).showStillShooting(since)
+
+        call("pressStillTurnOff")
+
+        assertEquals(1, shadeBroadcasts().size)
     }
 }

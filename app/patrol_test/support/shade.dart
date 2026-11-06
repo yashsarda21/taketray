@@ -1,24 +1,18 @@
-import 'dart:ui';
-
-import 'package:flutter/foundation.dart';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
 import 'own_texts.dart';
-import 'shade_geometry.dart';
 import 'test_background.dart';
 
 /// TakeTray's own notifications in the notification shade, found and tapped by
 /// their text only (the phone rule).
 ///
 /// What these never do: list the shade, read a notification's text for
-/// anything but the one string asked about, or tap anything that is not
-/// (a) a notification found by a text only TakeTray writes, matched exactly
-/// (`OwnText`, never a part of a text), or (b) TakeTray's own Still shooting?
-/// button, tapped at the spot two looks agreed on (`tapOwnButton`). Nothing is
-/// printed from the shade: failures say how many views matched, not what they
-/// said.
+/// anything but the one string asked about, or tap anything that is not a
+/// notification found by a text only TakeTray writes, matched exactly
+/// (`OwnText`, never a part of a text). The Still shooting? "Turn off" button
+/// is not tapped at all: the debug channel fires its `PendingIntent`
+/// (`TestBackground.pressStillTurnOff`). Nothing is printed from the shade.
 ///
 /// Opening the shade takes the focus from the app, and Android gives it back
 /// when the shade closes: the app sees a pause and a resume, scans, and
@@ -59,13 +53,6 @@ Future<List<AndroidNativeView>> _views(
     return const [];
   }
 }
-
-/// The screen bounds of the views whose text is exactly [text].
-Future<List<Rect>> _boundsOf(PatrolIntegrationTester $, String text) async =>
-    (await _views(
-      $,
-      AndroidSelector(text: text),
-    )).where((v) => v.text == text).map(_bounds).toList();
 
 /// Whether the open shade shows a view whose text is exactly [text].
 Future<bool> shadeShows(PatrolIntegrationTester $, OwnText text) async {
@@ -127,87 +114,3 @@ Future<void> tapNotification(
   AndroidSelector(text: text.value),
   timeout: timeout,
 );
-
-Rect _bounds(AndroidNativeView v) => Rect.fromLTRB(
-  v.visibleBounds.minX,
-  v.visibleBounds.minY,
-  v.visibleBounds.maxX,
-  v.visibleBounds.maxY,
-);
-
-/// Taps [button] of TakeTray's own notification whose text is exactly
-/// [ownText] (open shade).
-///
-/// It looks at the shade twice (the views with [ownText], with the button's
-/// label and with its sibling's label, each by its exact text) and taps a
-/// point, not a selector: the centre of the one view both looks agree is
-/// TakeTray's own button (`ownButtonTapPoint`: below TakeTray's own text, on
-/// one row with TakeTray's other button). A selector would be resolved again
-/// by Android, in its own order, and could reach another app's "Turn off".
-/// The point is a fraction of the real display, read from the phone right
-/// after the second look ([background]'s `display`): Flutter's own size goes
-/// stale while the app is in the background. The phone must be upright
-/// (rotation 0, portrait) and that size must be Flutter's display's.
-///
-/// When the looks find no such view, or disagree, or the display is not
-/// upright or cannot be read, the test fails and nothing is tapped. A phone
-/// that hides a notification's buttons until it is expanded fails here,
-/// saying so.
-Future<void> tapOwnButton(
-  PatrolIntegrationTester $, {
-  required OwnText ownText,
-  required StillButton button,
-  required TestBackground background,
-  required Future<String?> Function() refuse,
-}) async {
-  Future<ShadeLook> look() async => ShadeLook(
-    anchors: await _boundsOf($, ownText.value),
-    buttons: await _boundsOf($, button.label),
-    siblings: await _boundsOf($, button.sibling.label),
-  );
-
-  // The caller's refusal (`stillTapRefusal`): asked before the first look
-  // and again right before the tap; a reason means nothing is tapped.
-  await _refuseIf(refuse);
-  final first = await look();
-  final second = await look();
-  PhoneDisplay? display;
-  try {
-    display = await background.display();
-  } on Object {
-    display = null; // Unknown: never a guess.
-  }
-  // Pixels only: what the guard measured, for the run's log.
-  debugPrint('shade look 1: ${first.numbers}');
-  debugPrint('shade look 2: ${second.numbers}');
-  final point = ownButtonTapPoint(
-    first: first,
-    second: second,
-    display: display,
-    flutterDisplay: $.tester.view.display.size,
-  );
-  if (point == null) {
-    final upright =
-        display != null &&
-        display.rotation == 0 &&
-        display.height > display.width;
-    final state = display == null
-        ? 'unknown'
-        : (upright ? 'upright' : 'not upright');
-    throw TestFailure(
-      'No own button tapped: ${second.anchors.length} own text(s), '
-      '${second.buttons.length} candidate(s), ${second.siblings.length} '
-      'sibling(s), display $state. '
-      'Is the phone upright with auto-rotate off, the notification expanded '
-      'and the shade still?',
-    );
-  }
-  await _refuseIf(refuse);
-  await $.platform.android.tapAt(point);
-}
-
-/// Fails the test with the caller's reason, when it has one.
-Future<void> _refuseIf(Future<String?> Function() refuse) async {
-  final why = await refuse();
-  if (why != null) throw TestFailure('No own button tapped: $why');
-}

@@ -1,7 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../../patrol_test/support/shade_geometry.dart';
 import '../../patrol_test/support/test_background.dart';
 
 /// The helpers of the on-device background tests (patrol_test/support): the
@@ -45,7 +44,7 @@ void main() {
       await background.runNewClipsJob();
       await background.activeNotifications();
       await background.pendingJobs();
-      await background.display();
+      await background.pressStillTurnOff();
 
       expect(calls, [
         'fireEvening',
@@ -53,7 +52,7 @@ void main() {
         'runNewClipsJob',
         'activeNotifications',
         'pendingJobs',
-        'displaySize',
+        'pressStillTurnOff',
       ]);
     });
 
@@ -65,26 +64,37 @@ void main() {
       expect(await background.activeNotifications(), isEmpty);
     });
 
-    test('the display size comes back as the real size and rotation', () async {
-      final background = TestBackground(channel);
-      reply = (m) => m == 'displaySize'
-          ? <String, Object?>{'width': 1080, 'height': 2340, 'rotation': 0}
-          : null;
+    test(
+      'pressStillTurnOff is the method of the same name and waits for it',
+      () async {
+        final background = TestBackground(channel);
 
-      expect(
-        await background.display(),
-        const PhoneDisplay(width: 1080, height: 2340, rotation: 0),
-      );
-    });
+        await background.pressStillTurnOff();
 
-    test('a display reply that is not the three numbers is unknown', () async {
-      final background = TestBackground(channel);
-      reply = (m) => <String, Object?>{'width': 1080};
+        expect(calls, ['pressStillTurnOff']);
+      },
+    );
 
-      expect(await background.display(), isNull);
-      reply = (_) => null;
-      expect(await background.display(), isNull);
-    });
+    test(
+      'pressStillTurnOff errors reach the test (no notification, no action)',
+      () async {
+        final background = TestBackground(channel);
+        for (final code in ['no-notification', 'no-action', 'native-error']) {
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(channel, (call) async {
+                throw PlatformException(code: code);
+              });
+
+          await expectLater(
+            background.pressStillTurnOff(),
+            throwsA(
+              isA<PlatformException>().having((e) => e.code, 'code', code),
+            ),
+            reason: code,
+          );
+        }
+      },
+    );
 
     test('a null reply is an empty list', () async {
       final background = TestBackground(channel);

@@ -889,23 +889,13 @@ It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repo
   5. the Still shooting? dialog shows once and Keep it on is remembered;
   6. the real evening alarm, set two minutes ahead, fires;
   7. three bursts of inserts leave exactly one job pending.
-- **The test finds only its own notifications.** Every shade helper takes an `OwnText`, the whole text TakeTray writes (never a part of one), so a notification of another app can never match. The one tap that is not on a notification, "Turn off", is made at a point that two looks at the shade agreed on:
-
-  ```dart
-  final first = await look();
-  final second = await look();
-  final point = ownButtonTapPoint(first: first, second: second, display: display, flutterDisplay: $.tester.view.display.size);
-  if (point == null) throw TestFailure('No own button tapped: ...');
-  await $.platform.android.tapAt(point);
-  ```
-
-  If the two looks disagree, or the phone is not upright, nothing is tapped and the test fails.
-- **A hook reaches what an app cannot trigger.** The debug-only channel `app.taketray/test_background` sends the very broadcast the alarm carries (`fireEvening`, `fireStill`), runs the job's work (`runNewClipsJob`), and lists *this app's own* notifications and jobs (`activeNotifications`, `pendingJobs`). Android only ever tells an app about its own, so no other app's is seen.
+- **The test finds only its own notifications.** Every shade helper takes an `OwnText`, the whole text TakeTray writes (never a part of one), so a notification of another app can never match. "Turn off" is not tapped on the screen: with two TakeTray notifications the phone groups them and folds Still shooting? away, and a single one is collapsed, so a tap cannot find the button. The test fires the button's own `PendingIntent` through a hook instead (`pressStillTurnOff`), which runs the real `ShadeActionReceiver`. Whether the button looks right is a hand check.
+- **A hook reaches what an app cannot trigger.** The debug-only channel `app.taketray/test_background` sends the very broadcast the alarm carries (`fireEvening`, `fireStill`), runs the job's work (`runNewClipsJob`), presses the Still shooting? Turn off button's own intent (`pressStillTurnOff`), and lists *this app's own* notifications and jobs (`activeNotifications`, `pendingJobs`). Android only ever tells an app about its own, so no other app's is seen.
 - **What the phone measured** (2026-11-06):
   - insert to notification: **6949 ms** and **6777 ms** (two runs), of which 5 s is the job's own update delay (`Trigger update delay: +5s0ms`; the maximum delay is `+30s0ms`, both read from our job's block of `dumpsys jobscheduler`);
   - the evening alarm came **78 s** and **65 s** after its minute, never early: it is inexact on purpose;
   - after a burst of inserts there is exactly one job.
-- **What is not proven yet.** The "Turn off" tap on the shade button has not yet run on the S24: with the new-clips notification also in the shade, the Still shooting? text was not visible (the phone groups two notifications of one app and folds the older one away), so the guard refused and tapped nothing. Flow 4 now taps while Still shooting? is the app's only notification and inside the job's 5 s delay, and refuses (`stillTapRefusal`) otherwise; that version has not yet run on the S24. Flows 4 and 7 run the job's own work (`runNewClipsJob`) instead of waiting for Android; flow 1 alone proves the real trigger.
+- **What is not proven.** The button on the screen: the phone's grouping and folding is standard Android, so the owner checks "Turn off" in the expanded notification by hand (`docs/dev-setup.md`, Phase 6 check, step 5). Flows 4 and 7 run the job's own work or fire the button's intent; flow 1 alone proves the real trigger.
 - **Heat holds the job.** After a few flows in a row, on the charger, the phone reached thermal status 2 and our job's block said `Restricted due to: thermal.`: every condition was met and Android still waited. That is Android being right (a hot phone should not do background work), and it is also the lesson for the test: a timeout would blame the app. So the flows ask `PowerManager.getCurrentThermalStatus()` through the `thermalStatus` hook, fail with "phone too hot, let it cool" before waiting, and wait for the phone to cool at the start of each flow. Nothing waits longer to get past the heat.
 - **Two bugs were in the test, not the app.** `closeShade` pressed Back; with the shade already closed, Back finished the app, the Flutter engine stopped, and the test died with `Failed to parse HTTP response`. It presses Home now. And Patrol runs each test in a fresh process with cleared data, so a flow never sees the one before it.
 
