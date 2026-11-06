@@ -18,6 +18,7 @@ import 'package:taketray/features/shooting_mode/view_models/shooting_mode_contro
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/own_texts.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
 import 'support/test_background.dart';
@@ -40,12 +41,14 @@ import 'support/waiting.dart';
 ///   through its system dialog when Shooting mode is turned on (Android 13
 ///   and later asks once, D-107).
 /// - **The shade.** Only TakeTray's own notifications are found and tapped,
-///   by a string only TakeTray writes (`support/shade.dart`). Nothing in the
-///   shade is listed, printed or stored. The two shade buttons ("Turn off")
-///   are tapped only when they sit below TakeTray's own text and next to
-///   TakeTray's own "Keep on". What a test needs to know without opening the
-///   shade, it asks the app itself: `activeNotifications` and `pendingJobs`
-///   return only this app's own notifications and jobs.
+///   by a whole text only TakeTray writes, matched exactly (`OwnText`,
+///   `support/shade.dart`). Nothing in the shade is listed, printed or
+///   stored. The Still shooting? "Turn off" is tapped only at the spot two
+///   looks at the shade agree is TakeTray's own button: directly below
+///   TakeTray's own text, on one row with TakeTray's own "Keep on". What a
+///   test needs to know without opening the shade, it asks the app itself:
+///   `activeNotifications` and `pendingJobs` return only this app's own
+///   notifications and jobs.
 /// - **Shooting mode** is turned off again at the end of the body, which
 ///   cancels the job and the notification.
 /// - **The hooks** (`app.taketray/test_background`) reach the same code the
@@ -118,13 +121,15 @@ void main() {
 
 // =============================================================== the flows
 
-const _twoNewClips = '2 new clips to tag';
-const _stillBody = 'Shooting mode has been on for 14 days';
-const _eveningTwoClips = 'You shot 2 clips today. Tag them?';
+final _oneNewClip = OwnText.newClips(1);
+final _twoNewClips = OwnText.newClips(2);
+final _eveningTwoClips = OwnText.evening(2);
 
 Future<void> _newClipsOpensToTag(PatrolIntegrationTester $, _Env env) async {
-  // 1. Shooting mode is on (the scenario did it). Home, then two videos; the
-  // shade open meanwhile so the first poll sees the notification at once.
+  // 1. Shooting mode is on (the scenario did it), the app on Reels. Home,
+  // then two videos; the shade open meanwhile so the first poll sees the
+  // notification at once.
+  await _showReels($);
   await $.platform.mobile.pressHome();
   await openShade($);
   final clock = Stopwatch()..start();
@@ -147,19 +152,7 @@ Future<void> _newClipsOpensToTag(PatrolIntegrationTester $, _Env env) async {
 
   // 3. A tap opens To tag with the two clips; the notification is gone.
   await tapNotification($, _twoNewClips);
-  await waitFor(
-    $,
-    () => $(ToTagScreen).exists,
-    what: 'To tag to open from the notification',
-  );
-  await waitFor(
-    $,
-    () => _tiles.evaluate().length == 2,
-    what: 'the 2 new clips as tiles on To tag',
-    timeout: const Duration(seconds: 60),
-  );
-  await pumpFor($, const Duration(seconds: 2));
-  expect(_tiles, findsNWidgets(2), reason: 'exactly the 2 clips');
+  await _expectToTagOpened($, 2, 'the new-clips notification');
   await _waitUntil(
     $,
     () async => !(await env.bg.activeNotifications()).contains(
@@ -211,9 +204,9 @@ Future<void> _turningOffRemoves(PatrolIntegrationTester $, _Env env) async {
     reason: 'a job run with Shooting mode off posts nothing',
   );
 
-  // 4. The shade agrees.
+  // 4. The shade agrees (one video: "1 new clip to tag").
   await openShade($);
-  await waitForShadeToLose($, 'new clip');
+  await waitForShadeToLose($, _oneNewClip);
   await closeShade($);
 }
 
@@ -225,6 +218,9 @@ Future<void> _eveningCounts(PatrolIntegrationTester $, _Env env) async {
   await _waitForPending($, env, 2, 'To tag to hold the 2 test videos');
   // The phone's copy has the waiting clips and the new baselines together.
   await env.container.read(backgroundSyncProvider).flush();
+  // Back to Reels: Android brings the app back on its last screen, so only
+  // a tap that routes can show To tag again.
+  await _showReels($);
 
   // 2. The evening reminder, through its own receiver; the shade shows it.
   await $.platform.mobile.pressHome();
@@ -238,13 +234,9 @@ Future<void> _eveningCounts(PatrolIntegrationTester $, _Env env) async {
     timeout: const Duration(seconds: 30),
   );
 
-  // 3. A tap opens To tag.
+  // 3. A tap opens To tag, with the 2 clips.
   await tapNotification($, _eveningTwoClips);
-  await waitFor(
-    $,
-    () => $(ToTagScreen).exists && _tiles.evaluate().length == 2,
-    what: 'To tag with the 2 clips after tapping the reminder',
-  );
+  await _expectToTagOpened($, 2, 'the evening reminder');
 }
 
 Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
@@ -255,7 +247,7 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
   await env.bg.fireStill();
   await waitForShade(
     $,
-    _stillBody,
+    OwnText.stillBody,
     since: clock,
     timeout: const Duration(seconds: 30),
   );
@@ -264,9 +256,8 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
   final first = await env.media.insert();
   await tapOwnButton(
     $,
-    ownText: _stillBody,
-    button: 'Turn off',
-    sibling: 'Keep on',
+    ownText: OwnText.stillBody,
+    button: StillButton.turnOff,
   );
   await closeShade($);
 
@@ -373,6 +364,8 @@ Future<void> _eveningAlarmFires(PatrolIntegrationTester $, _Env env) async {
   await env.media.insert();
   await $(TtNavPill).$('To tag').tap();
   await _waitForPending($, env, 2, 'To tag to hold the 2 test videos');
+  // Back to Reels, so that only the tap can open To tag (as in flow 3).
+  await _showReels($);
 
   // 2. The evening reminder is set two minutes ahead, through the settings
   // (the folders are restored by the clean-up).
@@ -418,11 +411,7 @@ Future<void> _eveningAlarmFires(PatrolIntegrationTester $, _Env env) async {
     timeout: const Duration(seconds: 30),
   );
   await tapNotification($, _eveningTwoClips);
-  await waitFor(
-    $,
-    () => $(ToTagScreen).exists,
-    what: 'To tag to open from the evening reminder',
-  );
+  await _expectToTagOpened($, 2, 'the evening reminder from the alarm');
 }
 
 Future<void> _oneJobPending(PatrolIntegrationTester $, _Env env) async {
@@ -618,6 +607,41 @@ Future<void> _setShootingMode(
     () => stored() == on,
     what: 'Shooting mode to be stored as ${on ? 'on' : 'off'}',
   );
+}
+
+/// Leaves for Reels and waits until Reels, not To tag, is on screen. Android
+/// brings an app back on its last screen, so a flow that then proves a tap
+/// "opens To tag" must not start from To tag.
+Future<void> _showReels(PatrolIntegrationTester $) async {
+  await $(TtNavPill).$('Reels').tap();
+  await waitFor(
+    $,
+    () => $(ReelsScreen).exists && !$(ToTagScreen).exists,
+    what: 'Reels, not To tag, on screen before the app goes away',
+  );
+}
+
+/// After a notification tap (the app was left on Reels, `_showReels`): To
+/// tag is on screen instead of Reels, with exactly [count] clips.
+Future<void> _expectToTagOpened(
+  PatrolIntegrationTester $,
+  int count,
+  String tapped,
+) async {
+  await waitFor(
+    $,
+    () => $(ToTagScreen).exists && !$(ReelsScreen).exists,
+    what: 'To tag to open from $tapped',
+  );
+  await waitFor(
+    $,
+    () => _tiles.evaluate().length == count,
+    what: 'the $count clips as tiles on To tag',
+    timeout: const Duration(seconds: 60),
+  );
+  await pumpFor($, const Duration(seconds: 2));
+  expect(find.byType(ToTagScreen), findsOneWidget, reason: 'still on To tag');
+  expect(_tiles, findsNWidgets(count), reason: 'exactly the $count clips');
 }
 
 /// Waits until exactly [count] clips are waiting in the database.

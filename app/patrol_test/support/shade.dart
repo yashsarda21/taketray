@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
+import 'own_texts.dart';
 import 'shade_geometry.dart';
 
 /// TakeTray's own notifications in the notification shade, found and tapped by
@@ -10,10 +11,11 @@ import 'shade_geometry.dart';
 ///
 /// What these never do: list the shade, read a notification's text for
 /// anything but the one string asked about, or tap anything that is not
-/// (a) a notification found by a string only TakeTray writes, or (b) a button
-/// on the same row as TakeTray's own second button, below TakeTray's own text
-/// (`tapOwnButton`). Nothing is printed from the shade: failures say how many
-/// views matched, not what they said.
+/// (a) a notification found by a text only TakeTray writes, matched exactly
+/// (`OwnText`, never a part of a text), or (b) TakeTray's own Still shooting?
+/// button, tapped at the spot two looks agreed on (`tapOwnButton`). Nothing is
+/// printed from the shade: failures say how many views matched, not what they
+/// said.
 ///
 /// Opening the shade takes the focus from the app, and Android gives it back
 /// when the shade closes: the app sees a pause and a resume, scans, and
@@ -34,9 +36,9 @@ Future<void> closeShade(PatrolIntegrationTester $) async {
   }
 }
 
-/// The views whose text contains `text`, flattened. Empty when none (Patrol
-/// reports "nothing matches" in different ways).
-Future<List<AndroidNativeView>> _viewsWithText(
+/// The views [selector] finds, flattened. Empty when none (Patrol reports
+/// "nothing matches" in different ways).
+Future<List<AndroidNativeView>> _views(
   PatrolIntegrationTester $,
   AndroidSelector selector,
 ) async {
@@ -55,10 +57,17 @@ Future<List<AndroidNativeView>> _viewsWithText(
   }
 }
 
-/// Whether the open shade shows a view whose text contains [text].
-Future<bool> shadeShows(PatrolIntegrationTester $, String text) async {
-  final views = await _viewsWithText($, AndroidSelector(textContains: text));
-  return views.any((v) => (v.text ?? '').contains(text));
+/// The screen bounds of the views whose text is exactly [text].
+Future<List<Rect>> _boundsOf(PatrolIntegrationTester $, String text) async =>
+    (await _views(
+      $,
+      AndroidSelector(text: text),
+    )).where((v) => v.text == text).map(_bounds).toList();
+
+/// Whether the open shade shows a view whose text is exactly [text].
+Future<bool> shadeShows(PatrolIntegrationTester $, OwnText text) async {
+  final views = await _views($, AndroidSelector(text: text.value));
+  return views.any((v) => text.matches(v.text));
 }
 
 /// Waits until the open shade shows [text] and returns how long it took
@@ -66,7 +75,7 @@ Future<bool> shadeShows(PatrolIntegrationTester $, String text) async {
 /// milliseconds, so the time is that precise.
 Future<Duration> waitForShade(
   PatrolIntegrationTester $,
-  String text, {
+  OwnText text, {
   required Stopwatch since,
   Duration timeout = const Duration(seconds: 60),
 }) async {
@@ -86,7 +95,7 @@ Future<Duration> waitForShade(
 /// Waits until the open shade no longer shows [text]; fails after [timeout].
 Future<void> waitForShadeToLose(
   PatrolIntegrationTester $,
-  String text, {
+  OwnText text, {
   Duration timeout = const Duration(seconds: 30),
 }) async {
   final deadline = DateTime.now().add(timeout);
@@ -101,13 +110,13 @@ Future<void> waitForShadeToLose(
   }
 }
 
-/// Taps the notification whose text contains [text] (open shade).
+/// Taps the notification whose text is exactly [text] (open shade).
 Future<void> tapNotification(
   PatrolIntegrationTester $,
-  String text, {
+  OwnText text, {
   Duration timeout = const Duration(seconds: 10),
 }) => $.platform.mobile.tapOnNotificationBySelector(
-  AndroidSelector(textContains: text),
+  AndroidSelector(text: text.value),
   timeout: timeout,
 );
 
@@ -118,47 +127,41 @@ Rect _bounds(AndroidNativeView v) => Rect.fromLTRB(
   v.visibleBounds.maxY,
 );
 
-/// Taps [button] of TakeTray's own notification whose text contains
-/// [ownText] (open shade). Only a view with exactly the text [button] that
-/// lies below that text and shares a row with a [sibling] button (TakeTray's
-/// other button) is tapped (`ownButtonIndex`); with no such view the test
-/// fails and taps nothing. A phone that hides a notification's buttons until
-/// it is expanded fails here, saying so.
+/// Taps [button] of TakeTray's own notification whose text is exactly
+/// [ownText] (open shade).
+///
+/// It looks at the shade twice (the views with [ownText], with the button's
+/// label and with its sibling's label, each by its exact text) and taps a
+/// point, not a selector: the centre of the one view both looks agree is
+/// TakeTray's own button (`ownButtonTapPoint`: below TakeTray's own text, on
+/// one row with TakeTray's other button). A selector would be resolved again
+/// by Android, in its own order, and could reach another app's "Turn off".
+/// When the looks find no such view, or disagree, the test fails and nothing
+/// is tapped. A phone that hides a notification's buttons until it is
+/// expanded fails here, saying so.
 Future<void> tapOwnButton(
   PatrolIntegrationTester $, {
-  required String ownText,
-  required String button,
-  required String sibling,
+  required OwnText ownText,
+  required StillButton button,
 }) async {
-  final anchors = await _viewsWithText(
-    $,
-    AndroidSelector(textContains: ownText),
+  Future<ShadeLook> look() async => ShadeLook(
+    anchors: await _boundsOf($, ownText.value),
+    buttons: await _boundsOf($, button.label),
+    siblings: await _boundsOf($, button.sibling.label),
   );
-  final anchor = anchors.where((v) => (v.text ?? '').contains(ownText));
-  if (anchor.length != 1) {
+
+  final first = await look();
+  final second = await look();
+  // The real display, in the pixels the views' bounds are in (Flutter takes
+  // it from the window manager's maximum window, the whole display).
+  final screen = $.tester.view.display.size;
+  final point = ownButtonTapPoint(first: first, second: second, screen: screen);
+  if (point == null) {
     throw TestFailure(
-      'Expected one TakeTray notification text in the shade, found '
-      '${anchor.length}',
+      'No own button in the shade: ${second.anchors.length} own text(s), '
+      '${second.buttons.length} candidate(s), ${second.siblings.length} '
+      'sibling(s). Is the notification collapsed, or was the shade moving?',
     );
   }
-  final buttons = (await _viewsWithText(
-    $,
-    AndroidSelector(text: button),
-  )).where((v) => v.text == button).toList();
-  final siblings = (await _viewsWithText(
-    $,
-    AndroidSelector(text: sibling),
-  )).where((v) => v.text == sibling).toList();
-  final index = ownButtonIndex(
-    anchor: _bounds(anchor.single),
-    candidates: buttons.map(_bounds).toList(),
-    siblings: siblings.map(_bounds).toList(),
-  );
-  if (index == null) {
-    throw TestFailure(
-      'No own button in the shade: ${buttons.length} candidate(s), '
-      '${siblings.length} sibling(s). Is the notification collapsed?',
-    );
-  }
-  await $.platform.android.tap(AndroidSelector(text: button, instance: index));
+  await $.platform.android.tapAt(point);
 }
