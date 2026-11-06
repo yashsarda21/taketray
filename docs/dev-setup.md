@@ -205,6 +205,9 @@ Phase 6 is background detection and notifications: with Shooting mode on and Tak
 
 5. **Turn off in the shade.** The test cannot tap the shade's "Turn off" (when two TakeTray notifications show, the phone groups them and folds the older one away, and a single one is collapsed), so check it by hand. Wait until "Still shooting?" shows (14 days of Shooting mode, or ask the controller to post it), pull the shade, **expand** the notification (and the group, if there is one) and tap **Turn off**. Open TakeTray Dev: Shooting mode should be off.
 
+6. **Cold start from the notification.** With Shooting mode on, remove TakeTray Dev from Recents (swipe it away), film a short clip, wait for "1 new clip to tag" in the shade and tap it. TakeTray Dev starts on **To tag** with the clip.
+7. **Tap while the app runs.** Open TakeTray Dev on Reels, press Home (the app stays in the background), film a clip and tap the "new clips" notification. The app comes back on **To tag** (not on Reels).
+
 If a step does not behave like this, write down the step number and what you saw.
 
 ### Running `background_test.dart` (the controller does this)

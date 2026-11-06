@@ -671,6 +671,9 @@ Future<void> _setShootingMode(
   );
   if (stored() != on) {
     await $(ReelsScreen).$(TtSwitch).tap();
+    // The first time Shooting mode goes on, the app asks for the
+    // notification permission (Android 13 and later; D-107).
+    if (on) await allowNotificationsInDialog($);
   }
   await waitFor(
     $,
