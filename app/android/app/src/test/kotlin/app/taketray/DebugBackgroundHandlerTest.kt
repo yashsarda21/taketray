@@ -18,6 +18,7 @@ import app.taketray.background.NewClipsArming
 import app.taketray.background.NewClipsCounter
 import app.taketray.background.NewClipsJob
 import app.taketray.background.NewClipsJobService
+import app.taketray.background.NewClipsSettleJobService
 import app.taketray.background.Notifier
 import app.taketray.background.ReminderReceiver
 import app.taketray.background.ReminderScheduler
@@ -328,6 +329,17 @@ class DebugBackgroundHandlerTest {
         assertNull(reply.errorCode)
         assertEquals("2 new clips to tag", title(Notifier.NEW_CLIPS))
         assertEquals(2, store.postedNewClips())
+    }
+
+    @Test
+    fun `runNewClipsJob posts a clip that is only seconds old, without the quiet wait`() {
+        store.write(on)
+        SqlVideoProvider.add(id = 1, generation = 101, added = now / 1000 - 3)
+
+        call("runNewClipsJob")
+
+        assertEquals("1 new clip to tag", title(Notifier.NEW_CLIPS))
+        assertNull("no settle job: the hook is the test's shortcut around the 5 minutes", scheduler.getPendingJob(NewClipsSettleJobService.JOB_ID))
     }
 
     @Test

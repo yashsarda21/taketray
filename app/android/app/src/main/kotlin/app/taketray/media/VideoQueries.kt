@@ -40,7 +40,13 @@ object VideoQueries {
 
     /** The columns the new-clips count reads (D-104). */
     val NEW_CLIPS_PROJECTION: Array<String> =
-        arrayOf(MediaColumns._ID, MediaColumns.GENERATION_ADDED, MediaColumns.DATE_TAKEN, MediaColumns.DATE_ADDED)
+        arrayOf(
+            MediaColumns._ID,
+            MediaColumns.GENERATION_ADDED,
+            MediaColumns.DATE_TAKEN,
+            MediaColumns.DATE_ADDED,
+            MediaColumns.DATE_MODIFIED,
+        )
 
     /**
      * A requested folder as MediaStore stores RELATIVE_PATH: no leading '/',

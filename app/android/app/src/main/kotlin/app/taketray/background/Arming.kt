@@ -187,6 +187,7 @@ class NewClipsArming(
         val scheduler = context.getSystemService(JobScheduler::class.java)
         if (!state.shootingOn || !access(context)) {
             scheduler.cancel(NewClipsJobService.JOB_ID)
+            scheduler.cancel(NewClipsSettleJobService.JOB_ID)
             if (!keepNewClips) {
                 Notifier(context).cancelNewClips()
                 BackgroundStateStore(context.getSharedPreferences(BackgroundStateStore.PREFS_NAME, Context.MODE_PRIVATE)).setPostedNewClips(0)
@@ -202,9 +203,50 @@ class NewClipsArming(
         return true
     }
 
+    /**
+     * Schedules the one-off settle job (D-110) to run in [latencyMs]: the
+     * content job ran while the newest clip was under [QUIET_MS] old, so the
+     * notification waits for it. Replaces a settle job already pending.
+     *
+     * `setMinimumLatency` counts from `SystemClock.elapsedRealtime`, which
+     * keeps counting in deep sleep (unlike the content trigger's uptime
+     * timer), but the delay alarm Android sets for it is not a wake-up alarm
+     * (`TimeController.setDelayExpiredAlarmLocked`); the override deadline is
+     * (`ELAPSED_REALTIME_WAKEUP`), so it is set just after the latency and the
+     * phone is woken once to post. Persisted: it survives a reboot
+     * (RECEIVE_BOOT_COMPLETED is already declared). Not an alarm: no exact
+     * alarm permission.
+     */
+    fun settle(
+        context: Context,
+        latencyMs: Long,
+    ) {
+        val scheduler = context.getSystemService(JobScheduler::class.java)
+        val job =
+            JobInfo
+                .Builder(NewClipsSettleJobService.JOB_ID, ComponentName(context, NewClipsSettleJobService::class.java))
+                .setMinimumLatency(latencyMs)
+                .setOverrideDeadline(latencyMs + SETTLE_DEADLINE_SLACK_MS)
+                .setPersisted(true)
+                .build()
+        if (scheduler.schedule(job) != JobScheduler.RESULT_SUCCESS) Log.w(LOG_TAG, "new clips settle job not scheduled")
+    }
+
+    /** Nothing left to wait for. */
+    fun cancelSettle(context: Context) = context.getSystemService(JobScheduler::class.java).cancel(NewClipsSettleJobService.JOB_ID)
+
     companion object {
+        /** The notification waits until the newest new clip is this old (D-110): the same 5 minutes as the update delay. */
+        const val QUIET_MS = 300_000L
+
+        /** Added to what is left of the quiet wait: DATE_ADDED has whole seconds and a job starts a little late. */
+        const val SETTLE_MARGIN_MS = 5_000L
+
+        /** How long after its latency the settle job's wake-up deadline is. */
+        const val SETTLE_DEADLINE_SLACK_MS = 60_000L
+
         /** Quiet minutes after the last change before the job runs (D-110): each new clip restarts the wait. */
-        const val UPDATE_DELAY_MS = 300_000L
+        const val UPDATE_DELAY_MS = QUIET_MS
 
         /**
          * "No max delay" (D-110). JobScheduler has no such value: a max left

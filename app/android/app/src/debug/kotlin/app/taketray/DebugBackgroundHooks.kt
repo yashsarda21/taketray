@@ -54,7 +54,9 @@ object DebugBackgroundHooks {
  * - `runNewClipsJob`: the job's work, built by the service's own factory
  *   ([NewClipsJobService.newJob]) and run on the service's thread, so it never
  *   overlaps a real run. `JobScheduler` cannot be forced to run a job by an
- *   app. Answers success when the run (and its re-arming) is over.
+ *   app. It ignores the 5 minute quiet wait (D-110): it posts for clips that
+ *   are seconds old, so a flow need not wait. Answers success when the run
+ *   (and its re-arming) is over.
  * - `activeNotifications`: the ids of this app's own notifications now in the
  *   shade (`NotificationManager.activeNotifications` only ever returns the
  *   calling app's), sorted. Another app's notification is never seen. The
@@ -110,7 +112,7 @@ class DebugBackgroundHandler(
                         }
                     }
                     "runNewClipsJob" -> {
-                        withContext(io) { NewClipsJobService.newJob(context).run() }
+                        withContext(io) { NewClipsJobService.newJob(context).run(ignoreQuiet = true) }
                         result.success(null)
                     }
                     "activeNotifications" ->

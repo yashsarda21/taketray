@@ -102,6 +102,7 @@ class SqlVideoProvider : ContentProvider() {
                 MediaColumns.IS_PENDING,
                 MediaColumns.IS_TRASHED,
                 "volume",
+                MediaColumns.DATE_MODIFIED,
             )
 
         private lateinit var db: SQLiteDatabase
@@ -122,7 +123,8 @@ class SqlVideoProvider : ContentProvider() {
                 "CREATE TABLE $TABLE (${MediaColumns._ID} INTEGER, ${MediaColumns.GENERATION_ADDED} INTEGER, " +
                     "${MediaColumns.RELATIVE_PATH} TEXT, ${MediaColumns.DURATION} INTEGER, ${MediaColumns.SIZE} INTEGER, " +
                     "${MediaColumns.DATE_TAKEN} INTEGER, ${MediaColumns.DATE_ADDED} INTEGER, " +
-                    "${MediaColumns.IS_PENDING} INTEGER, ${MediaColumns.IS_TRASHED} INTEGER, volume TEXT)",
+                    "${MediaColumns.IS_PENDING} INTEGER, ${MediaColumns.IS_TRASHED} INTEGER, volume TEXT, " +
+                    "${MediaColumns.DATE_MODIFIED} INTEGER)",
             )
             queries.clear()
             failure = null
@@ -142,10 +144,11 @@ class SqlVideoProvider : ContentProvider() {
             pending: Boolean = false,
             trashed: Boolean = false,
             volume: String = MediaStore.VOLUME_EXTERNAL_PRIMARY,
+            modified: Long? = null,
         ) {
             db.execSQL(
-                "INSERT INTO $TABLE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                arrayOf<Any?>(id, generation, path, duration, size, taken, added, if (pending) 1 else 0, if (trashed) 1 else 0, volume),
+                "INSERT INTO $TABLE VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                arrayOf<Any?>(id, generation, path, duration, size, taken, added, if (pending) 1 else 0, if (trashed) 1 else 0, volume, modified),
             )
         }
     }

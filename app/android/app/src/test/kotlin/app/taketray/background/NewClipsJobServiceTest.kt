@@ -17,6 +17,7 @@ import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -48,6 +49,9 @@ class NewClipsJobServiceTest {
     private val main = MediaStore.VOLUME_EXTERNAL_PRIMARY
 
     private val now = 1_781_000_000_000L
+
+    /** What the job's clock says; a test moves it. */
+    private var clockMs = now
     private var zone = "Europe/London"
 
     /** Every thumbnail asked for: one per notification posted. */
@@ -83,11 +87,13 @@ class NewClipsJobServiceTest {
                     thumbnails += volume to id
                     thumbnail(volume, id)
                 },
-                nowMs = { now },
+                nowMs = { clockMs },
                 zoneId = { zone },
             )
         }
     }
+
+    private fun jobNow() = NewClipsJobService.newJob(app)
 
     @After
     fun tearDown() {
@@ -101,6 +107,27 @@ class NewClipsJobServiceTest {
         assertTrue("the work runs off the main thread", service.onStartJob(ReflectionHelpers.callConstructor(JobParameters::class.java)))
         return Shadow.extract(service)
     }
+
+    /** Starts the settle job as Android would and returns its shadow. */
+    private fun runSettle(): ShadowJobService {
+        val service = Robolectric.buildService(NewClipsSettleJobService::class.java).create().get()
+        assertTrue("the work runs off the main thread", service.onStartJob(ReflectionHelpers.callConstructor(JobParameters::class.java)))
+        return Shadow.extract(service)
+    }
+
+    private fun settle() = scheduler.getPendingJob(NewClipsSettleJobService.JOB_ID)
+
+    /** A clip added [agoSec] seconds before the injected clock. */
+    private fun addClip(
+        id: Long,
+        agoSec: Long,
+        modifiedAgoSec: Long? = null,
+    ) = SqlVideoProvider.add(
+        id = id,
+        generation = 100 + id,
+        added = now / 1000 - agoSec,
+        modified = modifiedAgoSec?.let { now / 1000 - it },
+    )
 
     private fun notification(): Notification? = shadowOf(manager).getNotification(Notifier.NEW_CLIPS)
 
@@ -292,5 +319,272 @@ class NewClipsJobServiceTest {
         val info = app.packageManager.getServiceInfo(ComponentName(app, NewClipsJobService::class.java), 0)
         assertFalse(info.exported)
         assertEquals("android.permission.BIND_JOB_SERVICE", info.permission)
+    }
+
+    // ------------------------------------------------- the quiet wait (D-110)
+
+    @Test
+    fun `a newest clip 1 minute old posts nothing and settles in about 4 minutes`() {
+        store.write(on)
+        addClip(1, agoSec = 60)
+        val job = runJob()
+        assertNull("nothing is posted while the shoot may go on", notification())
+        assertEquals(0, store.postedNewClips())
+        assertTrue("no thumbnail is loaded for a post that does not happen", thumbnails.isEmpty())
+        val settle = settle() ?: throw AssertionError("no settle job")
+        assertEquals("the 4 minutes left plus the margin", 240_000L + NewClipsArming.SETTLE_MARGIN_MS, settle.minLatencyMillis)
+        assertEquals(ComponentName(app, NewClipsSettleJobService::class.java), settle.service)
+        assertNotEquals(NewClipsJobService.JOB_ID, settle.id)
+        // A wakeup deadline: the delay alone does not wake a sleeping phone (the delay alarm is not a wakeup alarm).
+        assertTrue(settle.maxExecutionDelayMillis > settle.minLatencyMillis)
+        assertTrue("survives a reboot", settle.isPersisted)
+        // The content trigger is armed as always.
+        assertFinishedAndArmed(job)
+    }
+
+    @Test
+    fun `a newest clip exactly 5 minutes old posts`() {
+        store.write(on)
+        addClip(1, agoSec = 300)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a newest clip 1 second short of 5 minutes does not post`() {
+        store.write(on)
+        addClip(1, agoSec = 299)
+        runJob()
+        assertNull(notification())
+        assertEquals(1_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `an older newest clip posts and leaves no settle job`() {
+        store.write(on)
+        addClip(1, agoSec = 301)
+        addClip(2, agoSec = 3_600)
+        runJob()
+        assertEquals("2 new clips to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `one fresh clip among old ones holds the whole count back`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        addClip(2, agoSec = 900)
+        addClip(3, agoSec = 30)
+        runJob()
+        assertNull(notification())
+        assertEquals(270_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `a clip finished just now counts as fresh even when it was added long ago`() {
+        // A long recording's row is added when the recording starts and
+        // modified when it ends.
+        store.write(on)
+        addClip(1, agoSec = 1_800, modifiedAgoSec = 10)
+        runJob()
+        assertNull(notification())
+        assertEquals(290_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `an old modified time does not make a fresh clip old`() {
+        store.write(on)
+        addClip(1, agoSec = 20, modifiedAgoSec = 86_400)
+        runJob()
+        assertNull(notification())
+        assertEquals(280_000L + NewClipsArming.SETTLE_MARGIN_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `a clip with no time at all is not held back`() {
+        store.write(on)
+        SqlVideoProvider.add(id = 1, generation = 101, added = null, modified = null)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `an immediate run in the middle of a shoot posts nothing`() {
+        // Android runs the content job at once at 40 changed URIs, however
+        // long the update delay: the clip just recorded is seconds old.
+        store.write(on)
+        for (i in 1L..40L) addClip(i, agoSec = 40 - i)
+        runJob()
+        assertNull(notification())
+        assertEquals(0, store.postedNewClips())
+        assertEquals("at most the 5 minutes from now", NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `a clip from the future after a backward clock jump is fresh but waits at most 5 minutes`() {
+        store.write(on)
+        addClip(1, agoSec = -3_600)
+        runJob()
+        assertNull(notification())
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+    }
+
+    @Test
+    fun `the settle job reschedules itself while a newer clip is under 5 minutes old`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        val first = settle() ?: throw AssertionError("no settle job")
+
+        // The settle job runs; meanwhile another clip arrived 10 s ago.
+        addClip(2, agoSec = 10)
+        val job = runSettle()
+        assertTrue("jobFinished called", job.isJobFinished)
+        assertFalse("no retry: the next settle job is scheduled instead", job.isRescheduleNeeded)
+        assertNull(notification())
+        assertEquals(0, store.postedNewClips())
+        val second = settle() ?: throw AssertionError("settle job gone")
+        assertEquals(290_000L + NewClipsArming.SETTLE_MARGIN_MS, second.minLatencyMillis)
+        assertNotEquals(first.minLatencyMillis, second.minLatencyMillis)
+        // The content trigger stays the one that was pending.
+        assertEquals(NewClipsArming.jobInfo(app), scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+    }
+
+    @Test
+    fun `the settle job after the quiet period posts once and stays silent after`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        addClip(2, agoSec = 90)
+        runJob()
+        assertNull(notification())
+
+        // 5 minutes later (the clock is injected: the clips are now old).
+        clockMs = now + 301_000
+        runSettle()
+        assertEquals("2 new clips to tag", title())
+        assertEquals(2, store.postedNewClips())
+        assertNull("no further settle job once it has posted", settle())
+        assertTrue("only alerts once", notification()!!.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        assertEquals(Notifier.CHANNEL_NEW_CLIPS, notification()?.channelId)
+        val marker = notification()
+
+        // Another run with the same count: nothing again.
+        runSettle()
+        assertSame(marker, notification())
+        assertEquals(1, thumbnails.size)
+    }
+
+    @Test
+    fun `a showing notification is not updated while a newer clip is fresh`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        runJob()
+        assertEquals("1 new clip to tag", title())
+
+        clockMs = now + 100_000
+        addClip(2, agoSec = -100 + 5) // 5 s old at the clock
+        runJob()
+        assertEquals("the shade keeps the count it had", "1 new clip to tag", title())
+        assertEquals(1, store.postedNewClips())
+        assertNotNull(settle())
+
+        clockMs = now + 100_000 + 301_000
+        runSettle()
+        assertEquals("2 new clips to tag", title())
+        assertTrue(notification()!!.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+        assertNull(settle())
+    }
+
+    @Test
+    fun `the settle job with Shooting mode off removes the notification and posts nothing`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        assertNotNull(settle())
+        store.write(on.copy(shootingOn = false, sinceMs = null, baselines = emptyList()))
+        runSettle()
+        assertNull(notification())
+        assertNull(settle())
+    }
+
+    @Test
+    fun `arming off or without access cancels the settle job with the content job`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        assertNotNull(settle())
+        NewClipsArming(access = { true }).apply(app, on.copy(shootingOn = false, sinceMs = null))
+        assertNull(scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+        assertNull("the settle job goes with it", settle())
+
+        store.write(on)
+        runJob()
+        assertNotNull(settle())
+        NewClipsArming(access = { false }).apply(app, on)
+        assertNull(settle())
+    }
+
+    @Test
+    fun `a run that finds nothing new or nothing to wait for cancels the settle job`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        assertNotNull(settle())
+
+        // The clip was tagged in the app meanwhile: the baseline moved past it.
+        store.write(on.copy(baselines = listOf(BackgroundState.Baseline(main, "v1", 200))))
+        runSettle()
+        assertNull(settle())
+        assertNull(notification())
+    }
+
+    @Test
+    fun `the settle job records the zone and arms the content job only when it is missing`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        val before = scheduler.getPendingJob(NewClipsJobService.JOB_ID)
+        runSettle()
+        // The very same job: it was not scheduled again (that restarts the watch).
+        assertSame(before, scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+        assertEquals(listOf(ZoneChangeMsg(now, "Europe/London")), zones.pending().takeLast(1))
+
+        scheduler.cancel(NewClipsJobService.JOB_ID)
+        runSettle()
+        assertNotNull(scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+    }
+
+    @Test
+    fun `the settle job survives a failed count and asks for a retry when stopped`() {
+        store.write(on)
+        addClip(1, agoSec = 100)
+        runJob()
+        SqlVideoProvider.failure = IllegalStateException("provider down")
+        val job = runSettle()
+        assertTrue(job.isJobFinished)
+        assertTrue("Android is asked for a retry (the one-off job is used up)", job.isRescheduleNeeded)
+        SqlVideoProvider.failure = null
+
+        val service = Robolectric.buildService(NewClipsSettleJobService::class.java).create().get()
+        assertTrue(service.onStopJob(ReflectionHelpers.callConstructor(JobParameters::class.java)))
+    }
+
+    @Test
+    fun `the settle job service is not exported and only the system binds it`() {
+        val info = app.packageManager.getServiceInfo(ComponentName(app, NewClipsSettleJobService::class.java), 0)
+        assertFalse(info.exported)
+        assertEquals("android.permission.BIND_JOB_SERVICE", info.permission)
+    }
+
+    @Test
+    fun `the debug run ignores the quiet wait`() {
+        store.write(on)
+        addClip(1, agoSec = 5)
+        val job = jobNow()
+        job.run(ignoreQuiet = true)
+        assertEquals("1 new clip to tag", title())
+        assertNull(settle())
     }
 }

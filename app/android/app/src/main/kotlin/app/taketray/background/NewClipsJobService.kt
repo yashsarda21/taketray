@@ -67,6 +67,42 @@ class NewClipsJobService : JobService() {
 }
 
 /**
+ * The settle job (D-110): a one-off job the content job schedules when it runs
+ * while the newest new clip is under 5 minutes old, so the notification waits
+ * for the quiet. It does the content job's counting and posting under the
+ * same rule ([NewClipsJob.runSettle]) and schedules itself again while a
+ * newer clip is still too fresh. It never re-arms the content trigger (that
+ * would restart its watch); it only makes sure it is armed. A failed count asks
+ * Android for a retry, and Android stopping the run does too.
+ *
+ * Not exported, and only the system may bind it.
+ */
+class NewClipsSettleJobService : JobService() {
+    override fun onStartJob(params: JobParameters): Boolean {
+        val context = applicationContext
+        NewClipsJobService.executor.execute {
+            val done =
+                try {
+                    NewClipsJobService.newJob(context).runSettle()
+                } catch (e: Exception) {
+                    Log.w(LOG_TAG, "new clips settle job not run: ${e.javaClass.simpleName}")
+                    false
+                }
+            jobFinished(params, !done)
+        }
+        return true
+    }
+
+    /** Android stopped the run: try again later. */
+    override fun onStopJob(params: JobParameters): Boolean = true
+
+    companion object {
+        /** The settle job's id, next to the content job's. */
+        const val JOB_ID = 0x7A73
+    }
+}
+
+/**
  * One run of the new-clips job, with everything it touches injected. Every
  * step catches its own errors, logged by type only (D-10), so the run always
  * reaches the re-arming.
@@ -91,12 +127,31 @@ class NewClipsJob(
      * 2. Record the phone's zone (spec §8.3a: every background job run).
      * 3. Arm the next run ([rearm]); with Shooting mode off that cancels instead.
      */
-    fun run() {
+    fun run(ignoreQuiet: Boolean = false) {
+        execute(ignoreQuiet, replaceContentJob = true)
+    }
+
+    /**
+     * The settle job's run (D-110): the same work, but the content job is only
+     * made sure of ([NewClipsArming.apply] leaves an identical pending job
+     * alone), because re-arming it would restart its watch. False when the
+     * count failed (the caller asks Android for a retry).
+     */
+    fun runSettle(): Boolean = execute(ignoreQuiet = false, replaceContentJob = false)
+
+    private fun execute(
+        ignoreQuiet: Boolean,
+        replaceContentJob: Boolean,
+    ): Boolean {
+        var counted = true
         try {
-            val counted = update()
-            if (store.state() != counted) update()
+            var outcome = update(ignoreQuiet)
+            if (store.state() != outcome.state) outcome = update(ignoreQuiet)
+            // Wait for the quiet, or nothing left to wait for.
+            if (outcome.settleInMs != null) arming.settle(context, outcome.settleInMs) else arming.cancelSettle(context)
         } catch (e: Exception) {
             // The count failed: the notification stays as it was.
+            counted = false
             Log.w(LOG_TAG, "new clips not counted: ${e.javaClass.simpleName}")
         }
         try {
@@ -104,7 +159,16 @@ class NewClipsJob(
         } catch (e: Exception) {
             Log.w(LOG_TAG, "zone not recorded: ${e.javaClass.simpleName}")
         }
-        rearm()
+        if (replaceContentJob) {
+            rearm()
+        } else {
+            try {
+                arming.apply(context, store.state())
+            } catch (e: Exception) {
+                Log.w(LOG_TAG, "new clips job not armed: ${e.javaClass.simpleName}")
+            }
+        }
+        return counted
     }
 
     /** Arms the next run for the stored state (read again: Dart may have written meanwhile). */
@@ -118,31 +182,54 @@ class NewClipsJob(
 
     /**
      * Off: no notification. Otherwise the count: 0 removes the notification;
-     * the count already shown leaves it alone (never re-posted, Quiet); any
-     * other count posts or updates it. The posted count is what the shade
-     * shows: 0 whenever nothing is. Returns the state it worked on.
+     * the count already shown leaves it alone (never re-posted); a newest
+     * clip under 5 minutes old (D-110) neither posts nor updates, and asks for
+     * a settle job; any other count posts or updates it. The posted count is
+     * what the shade shows: 0 whenever nothing is.
      */
-    private fun update(): BackgroundState {
+    private fun update(ignoreQuiet: Boolean): Outcome {
         val state = store.state()
         if (!state.shootingOn) {
             clear()
-            return state
+            return Outcome(state)
         }
         val found = counter.count(state)
         if (found.count == 0) {
             clear()
-            return state
+            return Outcome(state)
         }
-        if (found.count == store.postedNewClips()) return state
+        if (found.count == store.postedNewClips()) return Outcome(state)
         if (!notifier.canPost(Notifier.CHANNEL_NEW_CLIPS)) {
             // Not allowed: nothing shows, so nothing is remembered as shown,
             // and the next run after notifications are allowed posts.
             store.setPostedNewClips(0)
-            return state
+            return Outcome(state)
         }
+        if (!ignoreQuiet) quietWaitMs(found.lastTouchedMs)?.let { return Outcome(state, it) }
         val picture = found.newest?.let { (volume, id) -> picture(volume, id) }
         store.setPostedNewClips(if (notifier.showNewClips(found.count, picture)) found.count else 0)
-        return state
+        return Outcome(state)
+    }
+
+    /** The state a run worked on, and when to try again (null: not waiting for anything). */
+    private class Outcome(
+        val state: BackgroundState,
+        val settleInMs: Long? = null,
+    )
+
+    /**
+     * How long to wait for the newest new clip to be [NewClipsArming.QUIET_MS]
+     * old: null when it is (exactly 5 minutes old is), or when no clip has a
+     * time. What is left plus a margin, never more than the 5 minutes from
+     * now: a clip from the future (the clock was set back, so its age is
+     * negative and what is left is more than 5 minutes) is fresh, and is waited
+     * for the 5 minutes at most.
+     */
+    private fun quietWaitMs(lastTouchedMs: Long?): Long? {
+        val age = nowMs() - (lastTouchedMs ?: return null)
+        if (age >= NewClipsArming.QUIET_MS) return null
+        val left = NewClipsArming.QUIET_MS - age
+        return minOf(left + NewClipsArming.SETTLE_MARGIN_MS, NewClipsArming.QUIET_MS)
     }
 
     private fun clear() {

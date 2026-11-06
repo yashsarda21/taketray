@@ -5,6 +5,7 @@ import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.background.NewClipsCounter.NewClips
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -58,7 +59,7 @@ class NewClipsCounterTest {
         SqlVideoProvider.add(id = 1, generation = 101, pending = true, duration = null, size = 0)
         SqlVideoProvider.add(id = 2, generation = 102, pending = true)
         SqlVideoProvider.add(id = 3, generation = 103)
-        assertEquals(NewClips(1, main to 3L, listOf(1_780_000_000_000)), counter.count(state()))
+        assertEquals(NewClips(1, main to 3L, listOf(1_780_000_000_000), 1_780_000_000_000), counter.count(state()))
     }
 
     @Test
@@ -90,8 +91,26 @@ class NewClipsCounterTest {
         SqlVideoProvider.add(id = 1, generation = 101)
         SqlVideoProvider.add(id = 2, generation = 7, volume = card)
         val both = listOf(BackgroundState.Baseline(main, "v1", 100), BackgroundState.Baseline(card, "c1", 5))
-        assertEquals(NewClips(1, card to 2L, listOf(1_780_000_000_000)), counter.count(state(baselines = both)))
+        assertEquals(NewClips(1, card to 2L, listOf(1_780_000_000_000), 1_780_000_000_000), counter.count(state(baselines = both)))
         assertEquals(listOf(card), SqlVideoProvider.queries)
+    }
+
+    @Test
+    fun `the last touched time is the latest added or modified time of any counted row`() {
+        assertNull(counter.count(state()).lastTouchedMs)
+        SqlVideoProvider.add(id = 1, generation = 101, added = 1_780_000_100, modified = 1_780_000_900)
+        SqlVideoProvider.add(id = 2, generation = 102, added = 1_780_000_500, modified = null)
+        SqlVideoProvider.add(id = 3, generation = 103, added = null, modified = 1_780_000_700)
+        // Not counted: pending, so its newer times say nothing.
+        SqlVideoProvider.add(id = 4, generation = 104, added = 1_790_000_000, pending = true)
+        assertEquals(1_780_000_900_000, counter.count(state()).lastTouchedMs)
+    }
+
+    @Test
+    fun `rows with no times give no last touched time`() {
+        SqlVideoProvider.add(id = 1, generation = 101, added = null, modified = null)
+        assertEquals(1, counter.count(state()).count)
+        assertNull(counter.count(state()).lastTouchedMs)
     }
 
     @Test

@@ -35,11 +35,16 @@ class NewClipsCounter(
      * last (for the thumbnail); [shotMs] the UTC instants they were shot, in no
      * particular order (Task 5's evening count): DATE_TAKEN, or DATE_ADDED x
      * 1000 when DATE_TAKEN is missing or 0; a row with neither has no entry.
+     * [lastTouchedMs] is the latest of every counted row's DATE_ADDED and
+     * DATE_MODIFIED (seconds, here in ms; a recording's row is added when it
+     * starts and modified when it ends), or null when no row has either: how
+     * recently the library took a clip in, for the quiet wait (D-110).
      */
     data class NewClips(
         val count: Int,
         val newest: Pair<String, Long>?,
         val shotMs: List<Long>,
+        val lastTouchedMs: Long? = null,
     )
 
     /**
@@ -53,6 +58,7 @@ class NewClipsCounter(
         val shots = ArrayList<Long>()
         // The newest so far: volume, id, DATE_ADDED (seconds).
         var newest: Triple<String, Long, Long>? = null
+        var lastTouchedSec: Long? = null
         for (baseline in state.baselines) {
             if (versionOf(baseline.volumeName) != baseline.version) continue
             val uri = MediaStore.Video.Media.getContentUri(baseline.volumeName)
@@ -64,11 +70,17 @@ class NewClipsCounter(
                 val id = c.getColumnIndexOrThrow(MediaColumns._ID)
                 val taken = c.getColumnIndexOrThrow(MediaColumns.DATE_TAKEN)
                 val added = c.getColumnIndexOrThrow(MediaColumns.DATE_ADDED)
+                val modified = c.getColumnIndexOrThrow(MediaColumns.DATE_MODIFIED)
                 var first = true
                 while (c.moveToNext()) {
                     count++
                     val takenMs = if (c.isNull(taken)) 0L else c.getLong(taken)
                     val addedSec = if (c.isNull(added)) null else c.getLong(added)
+                    for (index in intArrayOf(added, modified)) {
+                        if (c.isNull(index)) continue
+                        val sec = c.getLong(index)
+                        if (lastTouchedSec.let { it == null || sec > it }) lastTouchedSec = sec
+                    }
                     when {
                         takenMs != 0L -> shots += takenMs
                         addedSec != null -> shots += addedSec * 1000
@@ -87,7 +99,7 @@ class NewClipsCounter(
                 }
             }
         }
-        return NewClips(count, newest?.let { it.first to it.second }, shots)
+        return NewClips(count, newest?.let { it.first to it.second }, shots, lastTouchedSec?.let { it * 1000 })
     }
 
     companion object {

@@ -218,7 +218,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   .setTriggerContentMaxDelay(MAX_DELAY_MS)
   ```
 
-  `MAX_DELAY_MS` is 7 days, on purpose. There is no "no maximum" in JobScheduler: if you leave the maximum out, Android uses its own default of 2 minutes (`JobStatus.DEFAULT_TRIGGER_MAX_DELAY`), and the job would run 2 minutes into a long shoot. A test fails if the call is removed. The value is not `Long.MAX_VALUE` because Android adds the delay to the clock, and that sum would overflow and fire at once. Two limits remain: Android runs the job at once when 40 different rows have changed, and the timer is on the "uptime" clock, which stops while the phone is in deep sleep, so a phone in a pocket may post later than 5 minutes (D-110).
+  `MAX_DELAY_MS` is 7 days, on purpose. There is no "no maximum" in JobScheduler: if you leave the maximum out, Android uses its own default of 2 minutes (`JobStatus.DEFAULT_TRIGGER_MAX_DELAY`), and the job would run 2 minutes into a long shoot. A test fails if the call is removed. The value is not `Long.MAX_VALUE` because Android adds the delay to the clock, and that sum would overflow and fire at once. Two limits remain: Android runs the job at once when 40 different rows have changed, and the timer is on the "uptime" clock, which stops while the phone is in deep sleep, so a phone in a pocket may post later than 5 minutes (D-110). The first would break the promise "never in the middle of a shoot", so the run checks the quiet itself, as the next point says.
 
 - **Such a job fires once, so every run arms the next.** After a content-trigger job runs, Android forgets it, and it cannot survive a reboot ("persisted"). So the run ends by scheduling its successor, and the app arms it again whenever Dart writes the state. There is a catch: while the job runs, Android still lists it as pending. The app's arming skips scheduling when an identical job is already pending (scheduling again would restart its watching), but if the job did the same it would see itself, skip, and disarm when it finished. So the job always schedules (`replace = true`); the test `the job re-arms even while its own job is listed` covers that.
 
@@ -246,6 +246,16 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   The notification itself uses a DEFAULT-importance channel (`new_clips_alert`: the normal sound or vibration), a fixed id (so posting again replaces it), and `setOnlyAlertOnce(true)`, which makes Android sound only when the notification first appears, not when a count update replaces it. A user who swipes it away and then films more hears it again, because nothing is showing. Android cannot raise the importance of a channel that already exists, so version 2 made a new channel and deletes the old silent one (`deleteNotificationChannel`). Whenever the notification is removed, the posted number goes back to 0, so the next real count posts again.
 
+- **The run checks the quiet too, and a settle job waits for it.** When the job runs it looks at how old the newest new clip is: `now - max(DATE_ADDED, DATE_MODIFIED)`. A recording's row is added when it starts and modified when it ends, so a long recording that has just finished still counts as fresh. Under 5 minutes, it posts nothing and schedules a one-off *settle* job:
+
+  ```kotlin
+  JobInfo.Builder(JOB_ID, ComponentName(context, NewClipsSettleJobService::class.java))
+      .setMinimumLatency(latencyMs)                           // what is left of the 5 minutes + 5 s
+      .setOverrideDeadline(latencyMs + SETTLE_DEADLINE_SLACK_MS)
+      .setPersisted(true)
+  ```
+
+  The settle job counts again under the same rule: a newer clip under 5 minutes old makes it schedule itself again; otherwise it posts once. It never re-arms the content trigger, because that would restart the content trigger's watch. The deadline is there because of how Android keeps the time: the latency is counted on a clock that runs in deep sleep, but the alarm for it does not wake the phone, while the deadline's alarm does. A clip that looks to be from the future (the clock was set back) is treated as fresh, and the wait is never more than 5 minutes from now. Edge cases the tests pin: 1 minute old waits about 4 minutes; exactly 5 minutes posts; 40 clips in a hurry post nothing; Shooting mode off cancels the settle job with the content job. The Patrol hook `runNewClipsJob` skips the rule, so only flow 1 waits.
 - **Private on the lock screen.** The notification is `VISIBILITY_PRIVATE`, and Android shows its "public version" on a locked phone instead: "TakeTray" and "3 new clips to tag", with no thumbnail. The test `public version has no picture` checks that the public version has no picture and no large icon.
 
 - **Taps are launch actions.** The body and **Tag now** open To tag with the allow-listed launch action from Section 3 (`LaunchActions.intent(context, LaunchActionMsg.TO_TAG)`). **Open camera** opens the phone's video camera directly. Every `PendingIntent` is immutable (no other app can change what it opens) and has its own request code, so none replaces another.
