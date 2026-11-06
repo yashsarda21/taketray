@@ -71,12 +71,15 @@ class ReminderScheduler(
      * [ReminderTimes.stillDueAt] (at [nowMs] when that has passed), carrying
      * the session's `sinceMs`. Once the receiver has handled this session
      * ([BackgroundStateStore.stillPostedSince]), no alarm: one per session,
-     * however often the app or a reboot re-arms. Otherwise no alarm and no
-     * Still shooting? notification.
+     * however often the app or a reboot re-arms. With [armOverdue] false (the
+     * app's own write) a due time that has passed arms nothing: the in-app
+     * dialog asks, and an alarm already armed stays. Otherwise no alarm and
+     * no Still shooting? notification.
      */
     fun armStill(
         state: BackgroundState,
         nowMs: Long,
+        armOverdue: Boolean = true,
     ) {
         val since = state.sinceMs
         if (!state.shootingOn || since == null || !state.stillReminderEnabled || state.stillAnswered) {
@@ -89,7 +92,11 @@ class ReminderScheduler(
             cancelStill()
             return
         }
-        val at = maxOf(ReminderTimes.stillDueAt(since, zone), nowMs)
+        val due = ReminderTimes.stillDueAt(since, zone)
+        // The app's own write after the due time (armOverdue false): the in-app dialog asks. An alarm
+        // already armed is left as it is, neither replaced "at once" nor cancelled.
+        if (!armOverdue && due <= nowMs) return
+        val at = maxOf(due, nowMs)
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, stillAlarm(context, since))
     }
 

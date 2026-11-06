@@ -40,8 +40,9 @@ class MainActivity : FlutterActivity() {
         MediaHostApi.setUp(messenger, impl)
 
         // Arming.background(): the channels, the new-clips job (D-104) and the reminder alarms (D-105).
+        // From the app's own writes an overdue Still shooting? is left to the in-app dialog.
         val flutterApi = BackgroundFlutterApi(messenger)
-        val bg = BackgroundHostApiImpl(this, Arming.background(), LaunchActionRelay.forActivity(this, send = flutterApi::onLaunchAction))
+        val bg = BackgroundHostApiImpl(this, Arming.background(armOverdueStill = false),LaunchActionRelay.forActivity(this, send = flutterApi::onLaunchAction))
         background = bg
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)

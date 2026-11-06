@@ -66,7 +66,8 @@ fun interface Arming {
         fun background(
             nowMs: () -> Long = System::currentTimeMillis,
             zone: () -> ZoneId = ZoneId::systemDefault,
-        ): Arming = of(CHANNELS, NewClipsArming(), ReminderArming(nowMs, zone))
+            armOverdueStill: Boolean = true,
+        ): Arming = of(CHANNELS, NewClipsArming(), ReminderArming(nowMs, zone, armOverdueStill))
     }
 }
 
@@ -81,6 +82,14 @@ fun interface Arming {
 class ReminderArming(
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
+    /**
+     * False for the app's own `writeState` (final review M-2): with the app
+     * open, an overdue Still shooting? is the in-app dialog's to ask, so this
+     * arming does not arm an alarm "at once" (a notification that would post,
+     * with sound, under the dialog). The receivers' re-arms (boot, update,
+     * clock, zone) keep the default and arm it at once.
+     */
+    private val armOverdueStill: Boolean = true,
 ) : Arming {
     override fun apply(
         context: Context,
@@ -93,7 +102,7 @@ class ReminderArming(
             scheduler.armEvening(state, now)
             dropStaleEvening(context, state, now)
         } finally {
-            scheduler.armStill(state, now)
+            scheduler.armStill(state, now, armOverdue = armOverdueStill)
         }
     }
 
