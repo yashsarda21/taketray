@@ -119,6 +119,72 @@ class ShadeActionReceiverTest {
         assertEquals("2026-11-05T21:00:00Z", alarmAt(app, ReminderScheduler.ACTION_EVENING))
     }
 
+    /** Shooting mode on since [since] with baselines for [named] only (volumes never baselined are the point). */
+    private fun onWithBaselines(vararg named: BackgroundState.Baseline) = on.copy(baselines = named.toList())
+
+    @Test
+    fun `turn off names a mounted volume with no baseline`() {
+        // An SD card inserted mid-session (or whose read failed at switch-on): no baseline yet.
+        val state = onWithBaselines(BackgroundState.Baseline(MAIN, "v1", 100))
+        Receivers.volumes = { FakeVolumes(mapOf(MAIN to ("v1" to 140L), sd to ("c1" to 55L))) }
+        armedAndPosted(state)
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+
+        val tapped = store.shadeAction() ?: throw AssertionError("no shade action")
+        assertEquals(setOf(VolumeGenerationMsg(MAIN, 140), VolumeGenerationMsg(sd, 55)), tapped.generations.toSet())
+        assertEquals(2, tapped.generations.size)
+    }
+
+    @Test
+    fun `turn off names each volume once, baselined or not, and the primary one is unchanged`() {
+        val state = onWithBaselines(BackgroundState.Baseline(MAIN, "v1", 100), BackgroundState.Baseline(sd, "c1", 20))
+        Receivers.volumes = { FakeVolumes(mapOf(MAIN to ("v1" to 140L), sd to ("c1" to 55L))) }
+        armedAndPosted(state)
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+
+        val generations = store.shadeAction()?.generations ?: throw AssertionError("no shade action")
+        assertEquals(setOf(VolumeGenerationMsg(MAIN, 140), VolumeGenerationMsg(sd, 55)), generations.toSet())
+        assertEquals(2, generations.size)
+    }
+
+    @Test
+    fun `an unmounted volume with no baseline is not named`() {
+        val state = onWithBaselines(BackgroundState.Baseline(MAIN, "v1", 100))
+        // The card is not mounted at the tap: it is not among the volumes at all.
+        Receivers.volumes = { FakeVolumes(mapOf(MAIN to ("v1" to 140L))) }
+        armedAndPosted(state)
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+
+        assertEquals(listOf(VolumeGenerationMsg(MAIN, 140)), store.shadeAction()?.generations)
+    }
+
+    @Test
+    fun `a baselined volume rebuilt since is still left out, a card without a baseline is named`() {
+        val state = onWithBaselines(BackgroundState.Baseline(MAIN, "old-version", 100))
+        Receivers.volumes = { FakeVolumes(mapOf(MAIN to ("v1" to 140L), sd to ("c1" to 55L))) }
+        armedAndPosted(state)
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+
+        // The rebuilt volume's generations mean nothing against the old baseline (Dart resyncs it), the card is new.
+        assertEquals(listOf(VolumeGenerationMsg(sd, 55)), store.shadeAction()?.generations)
+    }
+
+    @Test
+    fun `a card without a baseline whose generation cannot be read is skipped and logged by class only`() {
+        val state = onWithBaselines(BackgroundState.Baseline(MAIN, "v1", 100))
+        Receivers.volumes = { FakeVolumes(mapOf(MAIN to ("v1" to 140L)), failing = setOf("broken-card")) }
+        armedAndPosted(state)
+        ShadowLog.clear()
+        tap(ShadeActionReceiver.ACTION_TURN_OFF, since)
+
+        assertEquals(listOf(VolumeGenerationMsg(MAIN, 140)), store.shadeAction()?.generations)
+        val logs = ShadowLog.getLogsForTag(LOG_TAG).map { it.msg }
+        assertEquals(listOf("volume generation not read: IllegalStateException"), logs)
+        assertTrue(ShadowLog.getLogs().none { "broken-card" in it.msg })
+        // The session still ends.
+        assertEquals(state.copy(shootingOn = false, sinceMs = null), store.state())
+    }
+
     @Test
     fun `a failing shade action never reaches Android, only its class is logged, and Still shooting goes`() {
         armedAndPosted()

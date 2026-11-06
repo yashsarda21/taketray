@@ -44,8 +44,10 @@ class ShadeActionReceiver : BroadcastReceiver() {
     }
 
     /**
-     * Records the volumes' current generations (where the scan may go up to,
-     * so clips shot after the tap stay out), writes the state off and stops
+     * Records the mounted volumes' current generations (where the scan may go
+     * up to, so clips shot after the tap stay out; a volume with no baseline
+     * is named too, so the clips shot on it before the tap still arrive),
+     * writes the state off and stops
      * the job. The new-clips notification stays: those clips still arrive
      * when the app opens, and its scan clears it.
      */
@@ -91,26 +93,35 @@ class ShadeActionReceiver : BroadcastReceiver() {
                 .putExtra(ReminderScheduler.EXTRA_SINCE_MS, sinceMs)
 
         /**
-         * Each baselined volume's current generation, where its MediaStore
-         * version still matches the baseline's (a rebuilt or unmounted volume
-         * is left out, and Dart skips it). A volume whose read throws is left
-         * out too, logged by error class only (D-10).
+         * Every mounted volume's current generation (where Dart's capped end
+         * may read up to), sorted by name: a baselined volume whose MediaStore
+         * version still matches its baseline's, and a volume with no baseline
+         * yet (an SD card inserted during the session, or one whose read
+         * failed at switch-on), whose clips shot before the tap Dart adds
+         * (D-108, M-8). A rebuilt volume (its version is not the baseline's)
+         * and an unmounted one are left out, and Dart skips them. A volume
+         * whose read throws is left out too, logged by error class only
+         * (D-10).
          */
         internal fun generations(
             volumes: Volumes,
             state: BackgroundState,
-        ): List<VolumeGenerationMsg> =
-            state.baselines.mapNotNull { baseline ->
+        ): List<VolumeGenerationMsg> {
+            val baselined = state.baselines.associateBy { it.volumeName }
+            return volumes.names().sorted().mapNotNull { name ->
                 try {
-                    if (volumes.version(baseline.volumeName) != baseline.version) {
+                    val version = volumes.version(name) ?: return@mapNotNull null
+                    val baseline = baselined[name]
+                    if (baseline != null && baseline.version != version) {
                         null
                     } else {
-                        VolumeGenerationMsg(baseline.volumeName, volumes.generation(baseline.volumeName))
+                        VolumeGenerationMsg(name, volumes.generation(name))
                     }
                 } catch (e: Exception) {
                     Log.w(LOG_TAG, "volume generation not read: ${e.javaClass.simpleName}")
                     null
                 }
             }
+        }
     }
 }

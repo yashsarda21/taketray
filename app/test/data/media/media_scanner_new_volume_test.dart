@@ -470,7 +470,7 @@ void main() {
         );
 
     test(
-      'a volume with no baseline is not in the tap and is left alone',
+      'a volume with no baseline that the tap could not read is left alone',
       () async {
         await shootingWithPhoneOnly();
         final session = (await h.phoneState.loadShooting()).since!;
@@ -508,5 +508,131 @@ void main() {
         expect(await _onCard(), {1, 2}, reason: 'the third came after the tap');
       },
     );
+
+    // Final review I-1: the shade's tap now names every mounted volume, so a
+    // card inserted mid-session (no baseline) is capped like the phone.
+
+    test('a card with clips before and after the tap adds only the ones before '
+        'it, and not the ones from before the session', () async {
+      await shootingWithPhoneOnly();
+      final session = (await h.phoneState.loadShooting()).since!;
+      bridge.put(
+        [
+          // Copied onto the card long before the session: not new.
+          shotOnCard(1, 4, -_hour * 48),
+          shotOnCard(2, 5, _hour),
+          shotOnCard(3, 6, _hour * 2),
+          shotOnCard(4, 7, _hour * 3),
+          shotOnCard(5, 8, _hour * 4),
+        ],
+        volume: card,
+        version: 'c1',
+      );
+      h.background.shadeAction = turnOff(session, const {phone: 1, card: 6});
+
+      final outcome = await h.scanner.scan();
+
+      expect(outcome, scanDone(added: 2));
+      expect(await _onCard(), {2, 3});
+      expect(bridge.count('videosShotSince'), 1);
+      expect((await h.phoneState.loadShooting()).on, isFalse);
+      expect(h.background.shadeAction, isNull);
+    });
+
+    test('a card with no clips adds nothing and the session ends', () async {
+      await shootingWithPhoneOnly();
+      final session = (await h.phoneState.loadShooting()).since!;
+      bridge.put(const [], volume: card, version: 'c1', generation: 3);
+      h.background.shadeAction = turnOff(session, const {phone: 1, card: 3});
+
+      final outcome = await h.scanner.scan();
+
+      expect(outcome, scanDone(added: 0));
+      expect(await _onCard(), isEmpty);
+      expect((await h.phoneState.loadShooting()).on, isFalse);
+    });
+
+    test('a baselined phone and a new card are both capped', () async {
+      await shootingWithPhoneOnly();
+      final session = (await h.phoneState.loadShooting()).since!;
+      bridge.put([
+        fakeVideo(id: 2, generation: 2),
+        fakeVideo(id: 3, generation: 3),
+        fakeVideo(id: 4, generation: 4),
+      ]);
+      bridge.put(
+        [shotOnCard(1, 5, _hour), shotOnCard(2, 6, _hour * 2)],
+        volume: card,
+        version: 'c1',
+      );
+      h.background.shadeAction = turnOff(session, const {phone: 3, card: 5});
+
+      final outcome = await h.scanner.scan();
+
+      expect(outcome, scanDone(added: 3));
+      expect({for (final c in await h.toTag()) c.mediaStoreId!}, {1, 2, 3});
+      expect(await _onCard(), {1}, reason: 'the card clip after the tap stays');
+      expect((await h.phoneState.loadShooting()).on, isFalse);
+    });
+
+    test('a card removed before the end is skipped and the session still '
+        'ends', () async {
+      await shootingWithPhoneOnly();
+      final session = (await h.phoneState.loadShooting()).since!;
+      bridge.put([shotOnCard(1, 5, _hour)], volume: card, version: 'c1');
+      bridge.put([fakeVideo(id: 2, generation: 2)]);
+      h.background.shadeAction = turnOff(session, const {phone: 2, card: 5});
+      // Taken out between the tap and the app opening.
+      bridge.removeVolume(card);
+
+      final outcome = await h.scanner.scan();
+
+      expect(outcome, scanDone(added: 1));
+      expect(await _onCard(), isEmpty);
+      expect((await h.phoneState.loadShooting()).on, isFalse);
+    });
+
+    test(
+      'a card that is listed but unmounted at the end is left alone',
+      () async {
+        await shootingWithPhoneOnly();
+        final session = (await h.phoneState.loadShooting()).since!;
+        bridge.put([shotOnCard(1, 5, _hour)], volume: card, version: 'c1');
+        bridge.setVolume(card, version: null);
+        h.background.shadeAction = turnOff(session, const {phone: 1, card: 5});
+
+        final outcome = await h.scanner.scan();
+
+        expect(outcome, scanDone(added: 0));
+        expect(bridge.count('videosShotSince'), 0);
+        expect((await h.phoneState.loadShooting()).on, isFalse);
+      },
+    );
+
+    test('a card that fails to read keeps the session for the next try, which '
+        'adds its clips', () async {
+      await shootingWithPhoneOnly();
+      final session = (await h.phoneState.loadShooting()).since!;
+      bridge
+        ..put(
+          [shotOnCard(1, 5, _hour), shotOnCard(2, 6, _hour * 2)],
+          volume: card,
+          version: 'c1',
+        )
+        ..failNext('videosShotSince');
+      h.background.shadeAction = turnOff(session, const {phone: 1, card: 5});
+
+      final first = await h.scanner.scan();
+
+      expect(first, scanDone(added: 0, failed: {card}));
+      expect((await h.phoneState.loadShooting()).on, isTrue);
+      expect(h.background.shadeAction, isNotNull);
+
+      final second = await h.scanner.scan();
+
+      expect(second, scanDone(added: 1));
+      expect(await _onCard(), {1});
+      expect((await h.phoneState.loadShooting()).on, isFalse);
+    });
   });
 }
