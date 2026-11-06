@@ -66,7 +66,8 @@ fun interface Arming {
         fun background(
             nowMs: () -> Long = System::currentTimeMillis,
             zone: () -> ZoneId = ZoneId::systemDefault,
-        ): Arming = of(CHANNELS, NewClipsArming(), ReminderArming(nowMs, zone))
+            armOverdueStill: Boolean = true,
+        ): Arming = of(CHANNELS, NewClipsArming(), ReminderArming(nowMs, zone, armOverdueStill))
     }
 }
 
@@ -74,10 +75,21 @@ fun interface Arming {
  * Arming's alarms part (D-105): the evening reminder and Still shooting?
  * ([ReminderScheduler]), in the zone of the moment. The evening is armed
  * even when Still shooting? fails, and the other way round.
+ *
+ * It also takes the evening reminder out of the shade when its claim, "You
+ * shot 3 clips today", is no longer true ([dropStaleEvening]).
  */
 class ReminderArming(
     private val nowMs: () -> Long = System::currentTimeMillis,
     private val zone: () -> ZoneId = ZoneId::systemDefault,
+    /**
+     * False for the app's own `writeState` (final review M-2): with the app
+     * open, an overdue Still shooting? is the in-app dialog's to ask, so this
+     * arming does not arm an alarm "at once" (a notification that would post,
+     * with sound, under the dialog). The receivers' re-arms (boot, update,
+     * clock, zone) keep the default and arm it at once.
+     */
+    private val armOverdueStill: Boolean = true,
 ) : Arming {
     override fun apply(
         context: Context,
@@ -88,9 +100,42 @@ class ReminderArming(
         val now = nowMs()
         try {
             scheduler.armEvening(state, now)
+            dropStaleEvening(context, state, now)
         } finally {
-            scheduler.armStill(state, now)
+            scheduler.armStill(state, now, armOverdue = armOverdueStill)
         }
+    }
+
+    /**
+     * Removes the evening reminder when the reminder is off, or when no clip
+     * shot today is waiting any more: neither in Dart's list
+     * ([BackgroundState.waitingShotMs]) nor among the clips the app has not
+     * scanned yet ([NewClipsCounter], the same two the alarm counted). Only
+     * asks MediaStore while the reminder is in the shade, and keeps it when
+     * that count fails (logged by error class only, D-10). Not for the alarm
+     * itself: [Reminders.evening] arms without this, so it never removes the
+     * reminder it is about to post.
+     */
+    private fun dropStaleEvening(
+        context: Context,
+        state: BackgroundState,
+        nowMs: Long,
+    ) {
+        val notifier = Notifier(context)
+        if (!state.eveningEnabled) {
+            notifier.cancelEvening()
+            return
+        }
+        if (!notifier.isEveningShowing()) return
+        val today = ReminderTimes.startOfToday(nowMs, zone())
+        if (state.waitingShotMs.any { it >= today }) return
+        try {
+            if (Receivers.counter(context).count(state).shotMs.any { it >= today }) return
+        } catch (e: Exception) {
+            Log.w(LOG_TAG, "evening reminder not checked: ${e.javaClass.simpleName}")
+            return
+        }
+        notifier.cancelEvening()
     }
 }
 

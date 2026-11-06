@@ -4,6 +4,8 @@ import android.app.Activity
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.app.Notification
+import android.app.NotificationManager
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import app.taketray.MainActivity
@@ -18,6 +20,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 
 /**
  * Launch actions (D-103): the allow-listed extra a notification puts on its
@@ -160,6 +164,84 @@ class LaunchActionsTest {
         assertNull(relay.take())
         relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.REELS))
         assertEquals(LaunchActionMsg.REELS, relay.take())
+    }
+
+    // ---- The evening reminder goes when To tag opens (final review I-3) ----
+
+    /** MainActivity's relay: its sends run at once, and a To tag action removes the evening reminder. */
+    private fun phoneRelay() = LaunchActionRelay.forActivity(context, send = { sent += it }, scope = CoroutineScope(Dispatchers.Unconfined))
+
+    private fun postEvening() {
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(true)
+        assertTrue(Notifier(context).showEvening(2))
+        assertNotNull(ReminderTestSupport.notification(context, Notifier.EVENING))
+    }
+
+    private fun eveningShowing() = ReminderTestSupport.notification(context, Notifier.EVENING) != null
+
+    @Test
+    fun `tag now and the body tap on the evening reminder remove it`() {
+        // Both taps start MainActivity with the same To tag action; Android does not cancel for an action button.
+        val taps = listOf<(Notification) -> android.app.PendingIntent>({ it.contentIntent }, { it.actions.single().actionIntent })
+        for (tap in taps) {
+            postEvening()
+            val n = ReminderTestSupport.notification(context, Notifier.EVENING) ?: throw AssertionError("no evening reminder")
+            phoneRelay().onIntent(Intent(shadowOf(tap(n)).savedIntent))
+            assertFalse(eveningShowing())
+        }
+    }
+
+    @Test
+    fun `a To tag action from the new clips notification removes it too, a Reels action does not`() {
+        postEvening()
+        phoneRelay().onIntent(LaunchActions.intent(context, LaunchActionMsg.REELS))
+        assertTrue("the Still shooting? body tap opens Reels and leaves it", eveningShowing())
+        phoneRelay().onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG))
+        assertFalse(eveningShowing())
+    }
+
+    @Test
+    fun `a cold start with To tag removes it before Dart listens, and the action is still kept`() {
+        postEvening()
+        val relay = phoneRelay()
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG))
+        assertFalse(eveningShowing())
+        assertEquals(LaunchActionMsg.TO_TAG, relay.take())
+    }
+
+    @Test
+    fun `a replayed, restored or unknown launch leaves the evening reminder`() {
+        postEvening()
+        val relay = phoneRelay()
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG), restored = true)
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY))
+        relay.onIntent(openIntent("TOTAG"))
+        relay.onIntent(Intent(context, MainActivity::class.java))
+        relay.onIntent(null)
+        assertTrue(eveningShowing())
+    }
+
+    @Test
+    fun `without the notification permission opening To tag still works`() {
+        shadowOf(context.getSystemService(NotificationManager::class.java)).setNotificationsEnabled(false)
+        val relay = phoneRelay()
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG))
+        assertEquals(LaunchActionMsg.TO_TAG, relay.take())
+    }
+
+    @Test
+    fun `a failing removal never stops the action and logs only its class`() {
+        val relay =
+            LaunchActionRelay(
+                send = { sent += it },
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                onToTag = { throw IllegalStateException("secret-notification") },
+            )
+        ShadowLog.clear()
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.TO_TAG))
+        assertEquals(LaunchActionMsg.TO_TAG, relay.take())
+        assertEquals(listOf("evening reminder not removed: IllegalStateException"), ShadowLog.getLogsForTag(LOG_TAG).map { it.msg })
+        assertTrue(ShadowLog.getLogs().none { "secret-notification" in it.msg || it.throwable != null })
     }
 
     @Test

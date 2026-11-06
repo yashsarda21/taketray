@@ -158,6 +158,69 @@ class ArmingTest {
         assertEquals("2026-11-05T12:00:00Z", ReminderTestSupport.alarmAt(app, ReminderScheduler.ACTION_STILL))
     }
 
+    // ---- Final review M-2: the app's own write leaves an overdue Still shooting? to the dialog ----
+
+    private val stillSince = ReminderTestSupport.ms("2026-10-01T09:00:00Z")
+    private val stillOn = on.copy(sinceMs = stillSince, stillReminderEnabled = true)
+    private val stillDue = ReminderTimes.stillDueAt(stillSince, ReminderTestSupport.LONDON)
+
+    private fun appArming(now: Long) = Arming.background(nowMs = { now }, zone = { ReminderTestSupport.LONDON }, armOverdueStill = false)
+
+    private fun systemArming(now: Long) = Arming.background(nowMs = { now }, zone = { ReminderTestSupport.LONDON })
+
+    private fun stillAlarm() = ReminderTestSupport.alarm(app, ReminderScheduler.ACTION_STILL)?.triggerAtMs
+
+    @Test
+    fun `an app write after Still shooting is due arms no still alarm`() {
+        val now = stillDue + 3_600_000
+        appArming(now).apply(app, stillOn.copy(eveningEnabled = true, eveningMinutes = 21 * 60))
+        assertNull("the in-app dialog asks, not a notification that posts under it", stillAlarm())
+        // The rest is armed as ever.
+        assertNotNull(ReminderTestSupport.alarm(app, ReminderScheduler.ACTION_EVENING))
+        assertNotNull(scheduler.getPendingJob(NewClipsJobService.JOB_ID))
+    }
+
+    @Test
+    fun `an app write exactly at the due time arms none, one a moment before arms it`() {
+        appArming(stillDue).apply(app, stillOn)
+        assertNull(stillAlarm())
+        appArming(stillDue - 1).apply(app, stillOn)
+        assertEquals(stillDue, stillAlarm())
+    }
+
+    @Test
+    fun `an app write before it is due arms it for the due time`() {
+        appArming(stillDue - 86_400_000).apply(app, stillOn)
+        assertEquals(stillDue, stillAlarm())
+    }
+
+    @Test
+    fun `an alarm armed before it was due stays when the app writes after`() {
+        appArming(stillDue - 86_400_000).apply(app, stillOn)
+        appArming(stillDue + 60_000).apply(app, stillOn)
+        // Not replaced "at once" and not cancelled: it is the one already on its way.
+        assertEquals(stillDue, stillAlarm())
+    }
+
+    @Test
+    fun `boot, update, clock and zone re-arms still arm an overdue one at once`() {
+        val now = stillDue + 3_600_000
+        systemArming(now).apply(app, stillOn)
+        assertEquals(now, stillAlarm())
+    }
+
+    @Test
+    fun `an app write still cancels the still alarm when it is answered or Shooting mode is off`() {
+        systemArming(stillDue - 86_400_000).apply(app, stillOn)
+        assertNotNull(stillAlarm())
+        appArming(stillDue + 1_000).apply(app, stillOn.copy(stillAnswered = true))
+        assertNull(stillAlarm())
+
+        systemArming(stillDue - 86_400_000).apply(app, stillOn)
+        appArming(stillDue + 1_000).apply(app, stillOn.copy(shootingOn = false, sinceMs = null))
+        assertNull(stillAlarm())
+    }
+
     @Test
     fun `arming creates the channels before anything is posted`() {
         assertNull(manager.getNotificationChannel(Notifier.CHANNEL_NEW_CLIPS))

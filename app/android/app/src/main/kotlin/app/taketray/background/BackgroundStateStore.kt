@@ -45,6 +45,27 @@ class BackgroundStateStore(
             Unit
         }
 
+    /**
+     * The app's write of the mirror (`writeState`). Under the same lock as the
+     * shade's Turn off: when a Turn off for this very session is waiting for
+     * Dart, an "on" write that was already on its way must not undo it, so
+     * the state stored (and returned, for arming) is off, with no session and
+     * no baselines, as Dart writes it (D-103, D-106). A Turn off for another
+     * session, a Keep on and an off state change nothing.
+     */
+    fun writeFromApp(state: BackgroundState): BackgroundState =
+        synchronized(LOCK) {
+            val action = shadeAction()
+            val turnedOff =
+                state.shootingOn &&
+                    state.sinceMs != null &&
+                    action?.kind == ShadeActionKindMsg.TURN_OFF &&
+                    action.sinceMs == state.sinceMs
+            val stored = if (turnedOff) state.copy(shootingOn = false, sinceMs = null, baselines = emptyList()) else state
+            write(stored)
+            stored
+        }
+
     /** The shade action waiting for Dart, or null. */
     fun shadeAction(): ShadeActionMsg? =
         synchronized(LOCK) {

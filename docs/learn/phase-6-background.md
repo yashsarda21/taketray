@@ -289,7 +289,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 - **Reminder times** (`ReminderTimes`): pure date arithmetic for "the next 21:00 here" and "the first 10:00 after 14 days".
 - **Two alarms** (`ReminderScheduler`): the **evening reminder** ("You shot 3 clips today. Tag them?") and, 14 days into a Shooting mode session, **"Still shooting?"**.
 - **A receiver for the alarms** (`ReminderReceiver`, with the work in `Reminders`): it counts today's clips or checks the session, and posts.
-- **A receiver for the shade buttons** (`ShadeActionReceiver`): Still shooting?'s **Turn off** and **Keep on** work right in the notification shade, without opening the app.
+- **A receiver for the shade buttons** (`ShadeActionReceiver`): Still shooting?'s **Turn off** and **Keep on** work right in the notification shade, without opening the app. (On Samsung's One UI the buttons show once the notification is expanded: the S24 folded it away even when it was TakeTray's only notification, and groups it under another TakeTray notification. Tapping the body opens Reels, where the app asks, and that always works.)
 - **Re-arming** (`BootReceiver`, and `TimeZoneChangedReceiver` from Phase 3): after a reboot, an app update, a clock change or a time-zone change, everything is armed again.
 
 **Why TakeTray needs it:** a creator who shoots all day should get one gentle nudge in the evening to tag what they shot, and nothing on a day they shot nothing. Shooting mode sends every new video to To tag, so leaving it on for weeks by accident would fill To tag with holiday videos: after 14 days TakeTray asks once whether you are still shooting. Android forgets alarms and jobs at a reboot, and the reminder times are local times, which move when you fly or the clocks change, so all of it must be armed again at the right moments.
@@ -332,7 +332,10 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   // Read before re-arming, which moves it to the next evening.
   val evening = ReminderTimes.dueEvening(store.eveningArmedFor(), nowMs, state.eveningMinutes, zone) ?: nowMs
   scheduler.armEvening(state, nowMs, firing = true)
-  if (!state.eveningEnabled) return
+  if (!state.eveningEnabled) {
+      notifier.cancelEvening()
+      return
+  }
   ```
 
   The test `evening re-arms before posting` makes the post throw and checks that tomorrow's alarm is set.
@@ -366,6 +369,13 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
 
   With none, nothing is posted, even if older clips wait (the owner's ruling): "You shot 0 clips today" is not a reminder anyone wants. And at most one per evening: the store remembers the day of the evening it last handled, so moving the clock back or flying west does not bring a second one.
 
+- **It leaves the shade when it stops being true.** Android removes a notification when you tap its body, but not when you tap one of its buttons, so **Tag now** alone would leave "You shot 3 clips today. Tag them?" hanging after you tagged everything, and into the next morning. So `Notifier.cancelEvening()` is called when:
+  - the reminder is switched off, or no clip shot today waits any more (checked at every arming, so tagging the last one removes it, and the next day's first write removes yesterday's; it asks the library only while the reminder is showing, and a failed check keeps it);
+  - the next evening's alarm finds nothing shot that day, or the reminder off;
+  - To tag opens from any notification (the launch action `toTag`).
+
+  The alarm itself does not take part in the first rule, so it never removes the reminder it is about to post. The tests are in `EveningReminderRemovalTest` (for example `tagging the last of today's clips removes the evening reminder`, `the next day's first write removes yesterday's reminder`) and, for the launch action, `LaunchActionsTest`.
+
 - **Once per session.** Every app start writes the copy and re-arms, and once 14 days have passed the still alarm would be due "at once" every time. So the receiver marks the session as handled **before** it posts, and arming skips a handled session:
 
   ```kotlin
@@ -385,7 +395,7 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/kotlin/app/t
   }
   ```
 
-- **Turn off without the app.** No Dart runs, and the database is Dart's alone. So the receiver writes down what happened and lets Dart apply it at the next start (Section 6): a shade action with the session, the time of the tap and, for each volume, the library's current generation (so clips shot after the tap stay out). Then it writes the copy as off, which stops the job. The "N new clips" notification **stays**: those clips are real and still arrive when you open the app.
+- **Turn off without the app.** No Dart runs, and the database is Dart's alone. So the receiver writes down what happened and lets Dart apply it at the next start (Section 6): a shade action with the session, the time of the tap and, for each mounted volume (with a baseline or without one, such as a card inserted mid-session), the library's current generation (so clips shot after the tap stay out). Then it writes the copy as off (no session and no baselines, the same as Dart's own off), which stops the job. If an "on" write from the app was already on its way, the store notices the waiting Turn off for that session and keeps the copy off (`writeFromApp`, tests `an on write after a pending Turn off for the same session stays off` and `an on write for a newer session than the Turn off is written`). In the same way the app's own writes do not arm a Still shooting? alarm for a time that has already passed (the in-app dialog asks, so the notification never posts under it): `an app write after Still shooting is due arms no still alarm`. The "N new clips" notification **stays**: those clips are real and still arrive when you open the app.
 
   ```kotlin
   Receivers.arming().apply(context, off, keepNewClips = true)
@@ -857,7 +867,7 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
   The price is a gap, and it is the rule: a video with no length yet at the first scan of a card is not added, and neither is one still being recorded (the phone's query leaves pending rows out, so the scan never sees them at all). "Add earlier videos" brings such a clip in, and `docs/later.md` (Phase 11) has the idea for closing the gap. One test feeds the scan a pending row through a fake bridge that lists one; the phone never does, so that test only shows the rule would not hold for one either.
 
-- **The capped end leaves new volumes alone.** When Turn off is tapped in the shade (Section 6), only the volumes that had a baseline at the tap are scanned. A volume with none is not in the tap and is left alone; if a stale copy did name it, its cap is honoured like any other.
+- **The capped end covers new volumes too.** When Turn off is tapped in the shade (Section 6), the tap names every mounted volume, with a baseline or without one. A card inserted during the session (or one that could not be read when Shooting mode went on) has no baseline, so it starts at the session's start as above, but only up to the tap: the clips shot on it before the tap arrive, the ones after do not. The first version named baselined volumes only and left the card alone, which lost its clips for good: the job had counted none for it, and the next session's baselines started after them. A volume the phone could not read at the tap is still left alone.
 
 **Where it lives:** `app/lib/data/media/library_resync.dart` (`resync` opens the window, `reattach`), `app/lib/data/media/media_scanner.dart` (`_rematchDetached`, `_startNewVolume`, `_commit`), `app/lib/data/repositories/clips_repository.dart` (`detachedClipsOn`, `reattachDetached`, `ReattachResult`), `app/lib/data/repositories/phone_state_repository.dart` (`rematchWindow`, `openRematchWindow`, `recordRematch`, `closeRematchWindow`), `app/lib/domain/rules/rematch_window.dart` (`RematchWindow`, `rematchWindowLength`), `app/lib/domain/rules/baseline.dart` (`shotSinceSession`). Tests: `app/test/data/repositories/clips_repository_reattach_test.dart`, `app/test/data/media/media_scanner_rematch_test.dart` (its "the re-match window" group), `app/test/data/media/media_scanner_new_volume_test.dart`, the "re-match windows (D-108)" group in `app/test/data/repositories/phone_state_repository_test.dart`, `app/test/domain/rules/rematch_window_test.dart`, and the `shotSinceSession` group in `app/test/domain/rules/baseline_test.dart`. Docs: "Finding new clips", "Tagging data changes" and "Phone state" in `docs/flow.md`.
 
