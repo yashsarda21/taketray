@@ -23,6 +23,37 @@ class ShadeLook {
   final List<Rect> siblings;
 
   Iterable<Rect> get _all => [...anchors, ...buttons, ...siblings];
+
+  /// What the look measured, for a test's log: pixel rectangles
+  /// (left, top, right, bottom), and for each button how far below TakeTray's
+  /// text it starts (the gap `ownButton` limits to one button height) and how
+  /// far its centre is from the nearest sibling's (the row). Numbers only,
+  /// never a text.
+  String get numbers {
+    String r(Rect v) =>
+        '${v.left.round()},${v.top.round()},${v.right.round()},'
+        '${v.bottom.round()}';
+    String all(Iterable<Rect> v) => '[${v.map(r).join('; ')}]';
+    final anchor = anchors.isEmpty ? null : anchors.first;
+    final gaps = anchor == null
+        ? 'none'
+        : buttons.isEmpty
+        ? 'none'
+        : buttons.map((b) => (b.top - anchor.bottom).round()).join(' ');
+    final rows = buttons.isEmpty || siblings.isEmpty
+        ? 'none'
+        : buttons
+              .map(
+                (b) => siblings
+                    .map((s) => (s.center.dy - b.center.dy).abs())
+                    .reduce(math.min)
+                    .round(),
+              )
+              .join(' ');
+    return 'text ${all(anchors)}, buttons ${all(buttons)}, '
+        'siblings ${all(siblings)}, gap below the text $gaps, '
+        'row offset $rows';
+  }
 }
 
 /// Which of [ShadeLook.buttons] (every "Turn off" in the shade) is the button

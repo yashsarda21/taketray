@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
 
 import 'shade_geometry.dart';
 
@@ -24,6 +26,23 @@ class TestBackground {
 
   /// The new-clips job's id (`NewClipsJobService.JOB_ID`, 0x7A72).
   static const int newClipsJobId = 0x7A72;
+
+  /// `PowerManager.THERMAL_STATUS_MODERATE`: from here the system holds the
+  /// new-clips job (the job's `Restricted due to: thermal`), so a wait for it
+  /// proves nothing about the app.
+  static const int thermalModerate = 2;
+
+  /// `PowerManager.THERMAL_STATUS_*` by number; `unknown` for any other.
+  static String thermalName(int status) => switch (status) {
+    0 => 'none',
+    1 => 'light',
+    2 => 'moderate',
+    3 => 'severe',
+    4 => 'critical',
+    5 => 'emergency',
+    6 => 'shutdown',
+    _ => 'unknown',
+  };
 
   final MethodChannel _channel;
 
@@ -55,6 +74,69 @@ class TestBackground {
   Future<PhoneDisplay?> display() async => PhoneDisplay.fromReply(
     await _channel.invokeMethod<Object?>('displaySize'),
   );
+
+  /// The phone's thermal status now (`PowerManager.getCurrentThermalStatus`,
+  /// 0 to 6). A reply that is no number is a `StateError`, never 0.
+  Future<int> thermalStatus() async {
+    final reply = await _channel.invokeMethod<int>('thermalStatus');
+    return reply ?? (throw StateError('thermalStatus gave no number'));
+  }
+
+  TestFailure _tooHot(int status) => TestFailure(
+    'The phone is too hot to time the new-clips job: phone too hot, let it '
+    'cool (thermal status $status, ${thermalName(status)}; wanted below '
+    '$thermalModerate) and run the test again',
+  );
+
+  /// Fails the test, naming the heat, when the phone is at
+  /// [thermalModerate] or above: the system holds the job then, and a wait
+  /// for its notification would time out for a reason that is not the app's.
+  /// A status that cannot be read is an error too (it is not "cool").
+  /// Prints the status (a number) so a run's log shows the heat.
+  Future<void> requireCool() async {
+    final status = await thermalStatus();
+    debugPrint('thermal status before the wait: $status');
+    if (status >= thermalModerate) throw _tooHot(status);
+  }
+
+  /// Waits, with the phone idle, until the thermal status is below
+  /// [thermalModerate], for at most [limit]; returns how long it waited.
+  /// Fails with the same "phone too hot" failure when it does not cool in
+  /// time. It is for the start of a flow: it never lengthens a wait for the
+  /// job itself, which [requireCool] guards.
+  Future<Duration> waitUntilCool({
+    Duration limit = const Duration(minutes: 10),
+    Duration poll = const Duration(seconds: 5),
+  }) async {
+    final clock = Stopwatch()..start();
+    var polls = 0;
+    while (true) {
+      final status = await thermalStatus();
+      if (status < thermalModerate) {
+        if (polls > 0) {
+          debugPrint(
+            'phone cooled to thermal status $status after '
+            '${clock.elapsed.inSeconds} s',
+          );
+        }
+        return clock.elapsed;
+      }
+      if (clock.elapsed >= limit) throw _tooHot(status);
+      polls++;
+      await Future<void>.delayed(poll);
+    }
+  }
+
+  /// A sentence for a timeout message: the thermal status now, or that it is
+  /// unknown. Never throws.
+  Future<String> thermalNote() async {
+    try {
+      final status = await thermalStatus();
+      return ' (thermal status $status, ${thermalName(status)})';
+    } on Object {
+      return ' (thermal status unknown)';
+    }
+  }
 
   Future<List<int>> _ids(String method) async {
     final reply = await _channel.invokeListMethod<int>(method);

@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:patrol/patrol.dart';
 
@@ -28,14 +30,14 @@ import 'test_background.dart';
 Future<void> openShade(PatrolIntegrationTester $) =>
     $.platform.mobile.openNotifications();
 
-/// Closes the shade. Not an error when it is closed already.
-Future<void> closeShade(PatrolIntegrationTester $) async {
-  try {
-    await $.platform.mobile.closeNotifications();
-  } on Object {
-    // Closed already (a tap on a notification closes it): nothing to do.
-  }
-}
+/// Closes the shade, and is harmless when it is closed already: it presses
+/// Home. Not Back (Patrol's own shade closer is a Back key press): with the
+/// shade closed, Back finishes the app's root activity, which stops
+/// the Flutter engine and kills the running test (`EOFException`, seen on the
+/// S24, 2026-11-06). Home leaves the app alive in the background; a flow that
+/// needs it in front calls `openApp`.
+Future<void> closeShade(PatrolIntegrationTester $) =>
+    $.platform.mobile.pressHome();
 
 /// The views [selector] finds, flattened. Empty when none (Patrol reports
 /// "nothing matches" in different ways).
@@ -79,13 +81,18 @@ Future<Duration> waitForShade(
   OwnText text, {
   required Stopwatch since,
   Duration timeout = const Duration(seconds: 60),
+  TestBackground? background,
 }) async {
+  // A wait for the job's notification is read against the phone's heat: a
+  // hot phone fails at once, and a timeout says what the heat was.
+  await background?.requireCool();
   final deadline = DateTime.now().add(timeout);
   while (!await shadeShows($, text)) {
     if (DateTime.now().isAfter(deadline)) {
       throw TestFailure(
         'Timed out after ${timeout.inSeconds} s waiting for the shade to show '
-        'a TakeTray notification',
+        'a TakeTray notification'
+        '${await background?.thermalNote() ?? ''}',
       );
     }
     await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -166,6 +173,9 @@ Future<void> tapOwnButton(
   } on Object {
     display = null; // Unknown: never a guess.
   }
+  // Pixels only: what the guard measured, for the run's log.
+  debugPrint('shade look 1: ${first.numbers}');
+  debugPrint('shade look 2: ${second.numbers}');
   final point = ownButtonTapPoint(
     first: first,
     second: second,

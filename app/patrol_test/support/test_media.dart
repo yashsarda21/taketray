@@ -67,6 +67,8 @@ class TestMedia {
     final media = TestMedia._(channel);
     addTearDown(media.cleanUp);
     final left = await channel.invokeMapMethod<String, int>('deleteLeftovers');
+    // A count only (D-10): how many a crashed run left, 0 on a clean phone.
+    debugPrint('test media leftovers removed: ${left?['deleted'] ?? -1}');
     final refused = left?['refused'] ?? -1;
     if (refused != 0) {
       throw TestFailure(

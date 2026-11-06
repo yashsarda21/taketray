@@ -92,6 +92,181 @@ void main() {
       expect(await background.activeNotifications(), isEmpty);
     });
 
+    test(
+      'thermalStatus asks the thermalStatus hook and returns its int',
+      () async {
+        final background = TestBackground(channel);
+        reply = (m) => m == 'thermalStatus' ? 3 : null;
+
+        expect(await background.thermalStatus(), 3);
+        expect(calls, ['thermalStatus']);
+      },
+    );
+
+    test(
+      'thermalStatus with no number in the reply is an error, not 0',
+      () async {
+        final background = TestBackground(channel);
+        reply = (_) => null;
+
+        await expectLater(background.thermalStatus(), throwsStateError);
+      },
+    );
+
+    test('requireCool lets a cool phone through (none, light)', () async {
+      final background = TestBackground(channel);
+      for (final status in [0, 1]) {
+        reply = (_) => status;
+
+        await background.requireCool();
+      }
+    });
+
+    test(
+      'requireCool fails a hot phone (moderate and above) by name',
+      () async {
+        final background = TestBackground(channel);
+        for (final status in [2, 3, 4, 5, 6]) {
+          reply = (_) => status;
+
+          await expectLater(
+            background.requireCool(),
+            throwsA(
+              isA<TestFailure>().having(
+                (e) => e.message,
+                'message',
+                allOf(
+                  contains('phone too hot'),
+                  contains('let it cool'),
+                  contains('thermal status $status'),
+                ),
+              ),
+            ),
+            reason: 'status $status',
+          );
+        }
+      },
+    );
+
+    test('requireCool does not hide a hook that cannot be read', () async {
+      final background = TestBackground(channel);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            throw PlatformException(code: 'native-error');
+          });
+
+      await expectLater(
+        background.requireCool(),
+        throwsA(isA<PlatformException>()),
+      );
+    });
+
+    test('thermalNote names the status for a timeout message', () async {
+      final background = TestBackground(channel);
+      reply = (_) => 2;
+
+      final note = await background.thermalNote();
+
+      expect(note, contains('thermal status 2'));
+      expect(note, contains('moderate'));
+    });
+
+    test('thermalNote never throws: an unreadable status is unknown', () async {
+      final background = TestBackground(channel);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            throw PlatformException(code: 'native-error');
+          });
+
+      expect(
+        await background.thermalNote(),
+        contains('thermal status unknown'),
+      );
+    });
+
+    test('thermal status names follow PowerManager (0 to 6)', () {
+      expect(
+        [for (var i = 0; i <= 6; i++) TestBackground.thermalName(i)],
+        [
+          'none',
+          'light',
+          'moderate',
+          'severe',
+          'critical',
+          'emergency',
+          'shutdown',
+        ],
+      );
+      expect(TestBackground.thermalName(7), 'unknown');
+      expect(TestBackground.thermalName(-1), 'unknown');
+      expect(TestBackground.thermalModerate, 2);
+    });
+
+    test('waitUntilCool returns at once on a cool phone', () async {
+      final background = TestBackground(channel);
+      reply = (_) => 1;
+
+      final waited = await background.waitUntilCool(
+        limit: const Duration(seconds: 5),
+        poll: const Duration(milliseconds: 10),
+      );
+
+      expect(waited, lessThan(const Duration(milliseconds: 100)));
+      expect(calls, ['thermalStatus'], reason: 'one read, no waiting');
+    });
+
+    test(
+      'waitUntilCool waits for a hot phone to drop below moderate',
+      () async {
+        final background = TestBackground(channel);
+        final statuses = [3, 2, 2, 1];
+        reply = (_) => statuses.removeAt(0);
+
+        final waited = await background.waitUntilCool(
+          limit: const Duration(seconds: 5),
+          poll: const Duration(milliseconds: 10),
+        );
+
+        expect(calls, hasLength(4), reason: 'polled until the status was 1');
+        expect(waited, greaterThan(Duration.zero));
+      },
+    );
+
+    test('waitUntilCool gives up on a phone that stays hot, by name', () async {
+      final background = TestBackground(channel);
+      reply = (_) => 2;
+
+      await expectLater(
+        background.waitUntilCool(
+          limit: const Duration(milliseconds: 100),
+          poll: const Duration(milliseconds: 20),
+        ),
+        throwsA(
+          isA<TestFailure>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('phone too hot'), contains('thermal status 2')),
+          ),
+        ),
+      );
+    });
+
+    test('waitUntilCool does not hide a hook that cannot be read', () async {
+      final background = TestBackground(channel);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            throw PlatformException(code: 'native-error');
+          });
+
+      await expectLater(
+        background.waitUntilCool(
+          limit: const Duration(milliseconds: 100),
+          poll: const Duration(milliseconds: 20),
+        ),
+        throwsA(isA<PlatformException>()),
+      );
+    });
+
     test('the error code reaches the test', () async {
       final background = TestBackground(channel);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

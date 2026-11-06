@@ -141,7 +141,12 @@ Future<void> _newClipsOpensToTag(PatrolIntegrationTester $, _Env env) async {
   ], reason: 'the insert burst left exactly one job armed');
 
   // 2. The real content trigger (not a hook) posts "2 new clips to tag".
-  final took = await waitForShade($, _twoNewClips, since: clock);
+  final took = await waitForShade(
+    $,
+    _twoNewClips,
+    since: clock,
+    background: env.bg,
+  );
   debugPrint(
     'insert-to-notification: ${took.inMilliseconds} ms from the first insert '
     '(${(took - inserted).inMilliseconds} ms after the last of 2)',
@@ -176,6 +181,7 @@ Future<void> _turningOffRemoves(PatrolIntegrationTester $, _Env env) async {
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification to show',
+    heat: env.bg,
     timeout: const Duration(seconds: 60),
   );
 
@@ -263,6 +269,7 @@ Future<void> _stillTurnOffFromShade(PatrolIntegrationTester $, _Env env) async {
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification for the first video',
+    heat: env.bg,
     timeout: const Duration(seconds: 60),
     pump: false,
   );
@@ -451,6 +458,7 @@ Future<void> _oneJobPending(PatrolIntegrationTester $, _Env env) async {
       TestBackground.newClipsId,
     ),
     what: 'the new-clips notification after the bursts',
+    heat: env.bg,
     timeout: const Duration(seconds: 60),
     pump: false,
   );
@@ -498,6 +506,11 @@ Future<void> _scenario(
   PatrolIntegrationTester $, {
   required Future<void> Function(_Env env) body,
 }) async {
+  // A hot phone makes the system hold the new-clips job (seen on the S24
+  // after a few flows in a row): wait, idle, for it to cool before a flow
+  // starts. Each wait for the job is still guarded on its own
+  // (`requireCool`), and no timeout is longer for it.
+  await TestBackground().waitUntilCool();
   final media = await TestMedia.start();
   await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
   final container = ProviderScope.containerOf($.tester.element(_app));
@@ -675,18 +688,25 @@ Future<void> _waitForPending(
 
 /// Waits until [done] is true, asking every quarter of a second; [pump] draws
 /// the app meanwhile (not wanted while the app is in the background).
+///
+/// With [heat] (the wait is for the new-clips job, which the system holds
+/// while the phone is hot) the wait first fails if the phone is at
+/// `thermalModerate` or above, and a timeout names the thermal status.
 Future<void> _waitUntil(
   PatrolIntegrationTester $,
   Future<bool> Function() done, {
   required String what,
   Duration timeout = const Duration(seconds: 45),
   bool pump = true,
+  TestBackground? heat,
 }) async {
+  await heat?.requireCool();
   final deadline = DateTime.now().add(timeout);
   while (!await done()) {
     if (DateTime.now().isAfter(deadline)) {
       throw TestFailure(
-        'Timed out after ${timeout.inSeconds} s waiting for: $what',
+        'Timed out after ${timeout.inSeconds} s waiting for: $what'
+        '${await heat?.thermalNote() ?? ''}',
       );
     }
     if (pump) {

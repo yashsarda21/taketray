@@ -875,4 +875,48 @@ It ends with `All tests passed!`. Now open `app/lib/data/repositories/clips_repo
 
 ## 9. On the S24
 
-_Filled in by Task 9._
+**What we built:** the proof on a real phone. Everything before this section was tested on a computer (Robolectric pretends to be Android); here seven flows run on the S24, in the real app, with the real job scheduler, notification shade and alarm manager: `app/patrol_test/background_test.dart`.
+
+**Why TakeTray needs it:** the whole point of Phase 6 is that a notification arrives *while the app is closed*. A computer cannot say whether Android really wakes the job when a video appears, how long that takes, or whether the shade shows the text we think it shows. Only the phone can.
+
+**Key ideas:**
+
+- **The flows.** Each runs from cleared data, with only `Movies/TakeTray Test/` watched:
+  1. two videos go in while the app is in the background, "2 new clips to tag" appears through the real content trigger, and tapping it opens To tag with the two clips;
+  2. turning Shooting mode off removes the notification and the job;
+  3. the evening reminder says how many clips you shot today;
+  4. "Turn off" in the Still shooting? notification switches Shooting mode off without opening the app, and a video shot after it stays out of To tag;
+  5. the Still shooting? dialog shows once and Keep it on is remembered;
+  6. the real evening alarm, set two minutes ahead, fires;
+  7. three bursts of inserts leave exactly one job pending.
+- **The test finds only its own notifications.** Every shade helper takes an `OwnText`, the whole text TakeTray writes (never a part of one), so a notification of another app can never match. The one tap that is not on a notification, "Turn off", is made at a point that two looks at the shade agreed on:
+
+  ```dart
+  final first = await look();
+  final second = await look();
+  final point = ownButtonTapPoint(first: first, second: second, display: display, flutterDisplay: $.tester.view.display.size);
+  if (point == null) throw TestFailure('No own button tapped: ...');
+  await $.platform.android.tapAt(point);
+  ```
+
+  If the two looks disagree, or the phone is not upright, nothing is tapped and the test fails.
+- **A hook reaches what an app cannot trigger.** The debug-only channel `app.taketray/test_background` sends the very broadcast the alarm carries (`fireEvening`, `fireStill`), runs the job's work (`runNewClipsJob`), and lists *this app's own* notifications and jobs (`activeNotifications`, `pendingJobs`). Android only ever tells an app about its own, so no other app's is seen.
+- **What the phone measured** (2026-11-06):
+  - insert to notification: **6949 ms** and **6777 ms** (two runs), of which 5 s is the job's own update delay (`Trigger update delay: +5s0ms`; the maximum delay is `+30s0ms`, both read from our job's block of `dumpsys jobscheduler`);
+  - the evening alarm came **78 s** and **65 s** after its minute, never early: it is inexact on purpose;
+  - after a burst of inserts there is exactly one job.
+- **What is not proven yet.** At the time of writing no single run has passed all seven flows: flows 4 (the shade's "Turn off") and 7 stopped at the heat guard each time the phone was at thermal status 2, so the tap on the shade button has not yet run on the S24.
+- **Heat holds the job.** After a few flows in a row, on the charger, the phone reached thermal status 2 and our job's block said `Restricted due to: thermal.`: every condition was met and Android still waited. That is Android being right (a hot phone should not do background work), and it is also the lesson for the test: a timeout would blame the app. So the flows ask `PowerManager.getCurrentThermalStatus()` through the `thermalStatus` hook, fail with "phone too hot, let it cool" before waiting, and wait for the phone to cool at the start of each flow. Nothing waits longer to get past the heat.
+- **Two bugs were in the test, not the app.** `closeShade` pressed Back; with the shade already closed, Back finished the app, the Flutter engine stopped, and the test died with `Failed to parse HTTP response`. It presses Home now. And Patrol runs each test in a fresh process with cleared data, so a flow never sees the one before it.
+
+**Where it lives:** `app/patrol_test/background_test.dart`, `app/patrol_test/support/` (`shade.dart`, `shade_geometry.dart`, `own_texts.dart`, `test_background.dart`, `test_media.dart`), `app/android/app/src/debug/kotlin/app/taketray/DebugBackgroundHooks.kt`. Unit tests of the helpers: `app/test/patrol_support/`; of the hooks: `DebugBackgroundHandlerTest.kt`. How to run it: "Phase 6 check" in `docs/dev-setup.md`.
+
+**Try it yourself:** the helpers' tests run on a computer. From `app/`:
+
+```bash
+../tool/flutter test test/patrol_support/test_background_test.dart
+```
+
+It ends with `All tests passed!`. Open `app/patrol_test/support/test_background.dart` and change `status >= thermalModerate` to `status > thermalModerate` in `requireCool`, then run it again: `requireCool fails a hot phone (moderate and above) by name` fails with `Actual: <Instance of 'Future<void>'>`, because a phone at status 2 now passes. Put it back. To see the real thing you need the phone: the steps are in `docs/dev-setup.md`, "Running `background_test.dart`".
+
+**Decisions:** D-109 (the times, the heat and the shade), with D-104 (the job and its delays), D-105 (the reminders) and D-100 (Patrol on the S24) as background.

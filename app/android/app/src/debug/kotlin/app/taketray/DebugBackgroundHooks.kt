@@ -5,6 +5,7 @@ import android.app.job.JobScheduler
 import android.content.Context
 import android.graphics.Point
 import android.hardware.display.DisplayManager
+import android.os.PowerManager
 import android.util.Log
 import android.view.Display
 import app.taketray.background.NewClipsJobService
@@ -69,6 +70,11 @@ object DebugBackgroundHooks {
  *   is only refreshed while the activity gets configuration changes, so it
  *   goes stale once the app is in the background. `no-display` when there is
  *   no default display. Numbers only.
+ * - `thermalStatus`: `PowerManager.getCurrentThermalStatus()` now, one int
+ *   (0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6
+ *   shutdown). The system holds the new-clips job while the phone is hot
+ *   (the job's `Restricted due to: thermal`), so a flow reads it before it
+ *   waits for the job and says "too hot" instead of a bare timeout.
  *
  * Errors reach Dart as `native-error` with the method and the exception's
  * class name only, never a message, a name or a path (D-10).
@@ -79,6 +85,9 @@ class DebugBackgroundHandler(
     private val io: CoroutineDispatcher = NewClipsJobService.executor.asCoroutineDispatcher(),
     private val display: () -> Display? = {
         context.getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)
+    },
+    private val thermalStatus: () -> Int = {
+        context.getSystemService(PowerManager::class.java).currentThermalStatus
     },
 ) : MethodChannel.MethodCallHandler {
     override fun onMethodCall(
@@ -125,6 +134,7 @@ class DebugBackgroundHandler(
                             result.success(mapOf("width" to size.x, "height" to size.y, "rotation" to shown.rotation))
                         }
                     }
+                    "thermalStatus" -> result.success(thermalStatus())
                     else -> result.notImplemented()
                 }
             } catch (e: CancellationException) {

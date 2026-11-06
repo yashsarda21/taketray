@@ -470,4 +470,45 @@ void main() {
       );
     });
   });
+
+  group('ShadeLook.numbers', () {
+    test('is rects in pixels only, the gap and the row, never a text', () {
+      const look = ShadeLook(
+        anchors: [Rect.fromLTRB(96, 1200, 996, 1260)],
+        buttons: [Rect.fromLTRB(96, 1330, 396, 1400)],
+        siblings: [Rect.fromLTRB(420, 1332, 720, 1398)],
+      );
+
+      final text = look.numbers;
+
+      expect(text, contains('text [96,1200,996,1260]'));
+      expect(text, contains('buttons [96,1330,396,1400]'));
+      expect(text, contains('siblings [420,1332,720,1398]'));
+      expect(text, contains('gap below the text 70'));
+      expect(text, contains('row offset 0'));
+      expect(text, isNot(contains(RegExp('[A-Za-z]{12,}'))));
+    });
+
+    test('an empty look says none and has no gap', () {
+      const look = ShadeLook(anchors: [], buttons: [], siblings: []);
+
+      expect(look.numbers, contains('text []'));
+      expect(look.numbers, contains('gap below the text none'));
+      expect(look.numbers, contains('row offset none'));
+    });
+
+    test('several buttons give a gap and a row for each', () {
+      const look = ShadeLook(
+        anchors: [Rect.fromLTRB(96, 1200, 996, 1260)],
+        buttons: [
+          Rect.fromLTRB(96, 1330, 396, 1400),
+          Rect.fromLTRB(96, 1900, 396, 1970),
+        ],
+        siblings: [Rect.fromLTRB(420, 1330, 720, 1400)],
+      );
+
+      expect(look.numbers, contains('gap below the text 70 640'));
+      expect(look.numbers, contains('row offset 0 570'));
+    });
+  });
 }

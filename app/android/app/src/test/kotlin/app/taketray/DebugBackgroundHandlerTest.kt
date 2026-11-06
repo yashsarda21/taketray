@@ -7,6 +7,7 @@ import android.app.job.JobScheduler
 import android.content.Context
 import android.content.Intent
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.MediaStore
 import android.view.Surface
 import androidx.test.core.app.ApplicationProvider
@@ -530,5 +531,53 @@ class DebugBackgroundHandlerTest {
         assertEquals("native-error", reply.errorCode)
         assertTrue(reply.errorMessage!!.contains("SecurityException"))
         assertFalse(reply.errorMessage!!.contains("secret"))
+    }
+
+    @Test
+    fun `thermalStatus is the phone's thermal status now, a number only`() {
+        val power = app.getSystemService(PowerManager::class.java)
+        for (status in listOf(
+            PowerManager.THERMAL_STATUS_NONE,
+            PowerManager.THERMAL_STATUS_LIGHT,
+            PowerManager.THERMAL_STATUS_MODERATE,
+            PowerManager.THERMAL_STATUS_SEVERE,
+            PowerManager.THERMAL_STATUS_SHUTDOWN,
+        )) {
+            shadowOf(power).setCurrentThermalStatus(status)
+
+            val reply = call("thermalStatus")
+
+            assertEquals("status $status", status, reply.success)
+            assertEquals(1, reply.replies)
+        }
+    }
+
+    @Test
+    fun `thermalStatus is read at call time, not once`() {
+        val power = app.getSystemService(PowerManager::class.java)
+        shadowOf(power).setCurrentThermalStatus(PowerManager.THERMAL_STATUS_NONE)
+        assertEquals(0, call("thermalStatus").success)
+
+        shadowOf(power).setCurrentThermalStatus(PowerManager.THERMAL_STATUS_MODERATE)
+
+        assertEquals(2, call("thermalStatus").success)
+    }
+
+    @Test
+    fun `thermalStatus that throws is a native-error with the class only`() {
+        handler =
+            DebugBackgroundHandler(
+                app,
+                scope = CoroutineScope(Dispatchers.Unconfined),
+                io = Dispatchers.Unconfined,
+                thermalStatus = { throw SecurityException("/storage/emulated/0/secret") },
+            )
+
+        val reply = call("thermalStatus")
+
+        assertEquals("native-error", reply.errorCode)
+        assertTrue(reply.errorMessage!!.contains("SecurityException"))
+        assertFalse(reply.errorMessage!!.contains("secret"))
+        assertNull(reply.success)
     }
 }
