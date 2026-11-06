@@ -157,7 +157,14 @@ class NewClipsJob(
             // the settle job is retried by Android (its caller).
             counted = false
             Log.w(LOG_TAG, "new clips not counted: ${e.javaClass.simpleName}")
-            debugLog(Outcome(store.state()))
+            // The log line must not be able to skip the retry and the re-arm below.
+            if (BuildConfig.DEBUG) {
+                try {
+                    debugLog(Outcome(store.state()))
+                } catch (logError: Exception) {
+                    Log.w(LOG_TAG, "debug log not written: ${logError.javaClass.simpleName}")
+                }
+            }
             if (replaceContentJob) retryLater()
         }
         try {
@@ -213,48 +220,51 @@ class NewClipsJob(
             clear()
             return Outcome(state)
         }
-        val freshMs = found.lastTouchedMs?.let { nowMs() - it }
-        if (found.count == store.postedNewClips()) return Outcome(state, freshMs = freshMs)
+        val fresh = found.lastTouchedMs?.let { nowMs() - it < NewClipsArming.QUIET_MS } ?: false
+        if (found.count == store.postedNewClips()) return Outcome(state, fresh = fresh)
         if (!notifier.canPost(Notifier.CHANNEL_NEW_CLIPS)) {
             // Not allowed: nothing shows, so nothing is remembered as shown,
             // and the next run after notifications are allowed posts.
             store.setPostedNewClips(0)
-            return Outcome(state, freshMs = freshMs)
+            return Outcome(state, fresh = fresh)
         }
         if (!ignoreQuiet) {
             // A take still being recorded holds the post: the sound must not land in it.
-            if (counter.recording(state)) return Outcome(state, NewClipsArming.QUIET_MS, recording = true, freshMs = freshMs)
-            NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs())?.let { return Outcome(state, it, freshMs = freshMs) }
+            if (counter.recording(state)) return Outcome(state, NewClipsArming.QUIET_MS, recording = true, fresh = fresh)
+            NewClipsCounter.quietWaitMs(found.lastTouchedMs, nowMs())?.let { return Outcome(state, it, fresh = fresh) }
         }
         val picture = found.newest?.let { (volume, id) -> picture(volume, id) }
         val posted = notifier.showNewClips(found.count, picture)
         store.setPostedNewClips(if (posted) found.count else 0)
-        return Outcome(state, freshMs = freshMs, posted = posted)
+        return Outcome(state, fresh = fresh, posted = posted)
     }
 
     /**
      * The state a run worked on, when to try again (null: not waiting for
      * anything), and what the quiet rule saw, for the debug log: whether a
-     * take was in progress, how old the newest new clip was, whether it posted.
+     * take was in progress, whether the newest new clip was under 5 minutes
+     * old, whether it posted.
      */
     private class Outcome(
         val state: BackgroundState,
         val settleInMs: Long? = null,
         val recording: Boolean = false,
-        val freshMs: Long? = null,
+        val fresh: Boolean = false,
         val posted: Boolean = false,
     )
 
     /**
-     * Debug builds only (`BuildConfig.DEBUG` is a constant false in release,
-     * so the line is not in the release dex; `tool/check_release_permissions`
-     * looks for it): what the quiet rule saw in a run, as the hand check
-     * reads it from the process's own logcat. Two flags and a number, nothing
-     * else (D-10).
+     * Debug and profile builds only (`BuildConfig.DEBUG` is a constant false
+     * in release, so the line is not in the release dex;
+     * `tool/check_release_permissions` looks for it; Flutter's profile build
+     * type is a copy of debug): what the quiet rule saw in a run, as the hand
+     * check reads it from the process's own logcat. Three flags, no time and
+     * no number, nothing else (D-10). Callers guard with `BuildConfig.DEBUG`
+     * so that nothing is read in release to build the argument.
      */
     private fun debugLog(outcome: Outcome) {
         if (!BuildConfig.DEBUG) return
-        Log.i(LOG_TAG, "quiet-rule: recording=${outcome.recording} freshMs=${outcome.freshMs ?: "none"} posted=${outcome.posted}")
+        Log.i(LOG_TAG, "quiet-rule: recording=${outcome.recording} fresh=${outcome.fresh} posted=${outcome.posted}")
     }
 
     private fun clear() {

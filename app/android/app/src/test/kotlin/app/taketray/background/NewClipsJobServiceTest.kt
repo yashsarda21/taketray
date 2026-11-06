@@ -653,7 +653,7 @@ class NewClipsJobServiceTest {
         addPending(2, agoSec = 100)
         ShadowLog.clear()
         runJob()
-        assertEquals(listOf("quiet-rule: recording=true freshMs=3600000 posted=false"), quietLines())
+        assertEquals(listOf("quiet-rule: recording=true fresh=false posted=false"), quietLines())
     }
 
     @Test
@@ -662,7 +662,7 @@ class NewClipsJobServiceTest {
         addClip(1, agoSec = 60)
         ShadowLog.clear()
         runJob()
-        assertEquals(listOf("quiet-rule: recording=false freshMs=60000 posted=false"), quietLines())
+        assertEquals(listOf("quiet-rule: recording=false fresh=true posted=false"), quietLines())
     }
 
     @Test
@@ -671,15 +671,15 @@ class NewClipsJobServiceTest {
         addClip(1, agoSec = 3_600)
         ShadowLog.clear()
         runJob()
-        assertEquals(listOf("quiet-rule: recording=false freshMs=3600000 posted=true"), quietLines())
+        assertEquals(listOf("quiet-rule: recording=false fresh=false posted=true"), quietLines())
     }
 
     @Test
-    fun `the debug log with nothing new has no fresh time`() {
+    fun `the debug log with nothing new says nothing is fresh`() {
         store.write(on)
         ShadowLog.clear()
         runJob()
-        assertEquals(listOf("quiet-rule: recording=false freshMs=none posted=false"), quietLines())
+        assertEquals(listOf("quiet-rule: recording=false fresh=false posted=false"), quietLines())
     }
 
     @Test
@@ -690,9 +690,56 @@ class NewClipsJobServiceTest {
         ShadowLog.clear()
         clockMs = now + 301_000
         runSettle()
-        assertEquals(listOf("quiet-rule: recording=false freshMs=401000 posted=true"), quietLines())
-        // D-10: only the two flags and a number, no name, path, URI or id.
-        assertTrue(quietLines().single().matches(Regex("quiet-rule: recording=(true|false) freshMs=(-?\\d+|none) posted=(true|false)")))
+        assertEquals(listOf("quiet-rule: recording=false fresh=false posted=true"), quietLines())
+        // D-10: only three flags, no number, no name, path, URI or id.
+        assertTrue(quietLines().single().matches(Regex("quiet-rule: recording=(true|false) fresh=(true|false) posted=(true|false)")))
+    }
+
+    /** The prefs of the job's store throw once, on the first read after the failed count's warning. */
+    private fun prefsThatThrowOnceAfterTheWarning(thrown: BooleanArray): android.content.SharedPreferences =
+        java.lang.reflect.Proxy.newProxyInstance(
+            javaClass.classLoader,
+            arrayOf(android.content.SharedPreferences::class.java),
+        ) { _, method, args ->
+            val warned = ShadowLog.getLogsForTag(LOG_TAG).any { it.msg.startsWith("new clips not counted") }
+            if (warned && !thrown[0] && (method.name.startsWith("get") || method.name == "contains")) {
+                thrown[0] = true
+                throw IllegalStateException("store died")
+            }
+            try {
+                method.invoke(prefs, *(args ?: emptyArray()))
+            } catch (e: java.lang.reflect.InvocationTargetException) {
+                throw e.targetException
+            }
+        } as android.content.SharedPreferences
+
+    @Test
+    fun `a store that fails while the debug line is logged still reaches the retry and the re-arm`() {
+        store.write(on)
+        addClip(1, agoSec = 3_600)
+        SqlVideoProvider.failure = IllegalStateException("provider died")
+        val thrown = BooleanArray(1)
+        val failing = prefsThatThrowOnceAfterTheWarning(thrown)
+        NewClipsJobService.newJob = { context ->
+            NewClipsJob(
+                context = context,
+                store = BackgroundStateStore(failing),
+                counter = NewClipsCounter(context.contentResolver, { if (it == main) "v1" else null }, { true }, { clockMs }),
+                notifier = Notifier(context),
+                zones = ZoneChangeStore(prefs),
+                arming = NewClipsArming(access = { true }),
+                thumbnail = { _, _ -> null },
+                nowMs = { clockMs },
+                zoneId = { zone },
+            )
+        }
+        ShadowLog.clear()
+        val job = runJob()
+        assertTrue("the store failed once, after the warning", thrown[0])
+        // The log line cannot take the retry, the zone record or the re-arm with it.
+        assertEquals(NewClipsArming.QUIET_MS, settle()?.minLatencyMillis)
+        assertEquals(listOf(ZoneChangeMsg(now, "Europe/London")), zones.pending())
+        assertFinishedAndArmed(job)
     }
 
     @Test
@@ -702,7 +749,7 @@ class NewClipsJobServiceTest {
         SqlVideoProvider.failure = IllegalStateException("provider died")
         ShadowLog.clear()
         runJob()
-        assertEquals(listOf("quiet-rule: recording=false freshMs=none posted=false"), quietLines())
+        assertEquals(listOf("quiet-rule: recording=false fresh=false posted=false"), quietLines())
     }
 
     @Test
