@@ -51,10 +51,17 @@ class NewClipsJobService : JobService() {
         /** The job's id (the notification permission's request code has the same value; they never meet). */
         const val JOB_ID = 0x7A72
 
-        /** One thread for every run, so two runs never overlap. Tests make it direct. */
+        /**
+         * One thread for every run, so two runs never overlap. Tests make it
+         * direct. Like [newJob] this is a test seam held in a static: the
+         * Android tests run one at a time (Gradle's default, one test JVM),
+         * and each puts back what it replaced.
+         */
+        @Volatile
         internal var executor: Executor = Executors.newSingleThreadExecutor()
 
         /** Builds a run on the phone's own parts. Tests inject theirs. */
+        @Volatile
         internal var newJob: (Context) -> NewClipsJob = { NewClipsJob.forPhone(it) }
     }
 }
