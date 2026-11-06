@@ -731,7 +731,9 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 - **A window, so the cost ends.** Reading every video on the volume is the expensive part (thousands of rows, on the UI isolate), so it must not happen forever. The only thing that leaves a clip detached while its video is still on the phone is a rebuild that ran too early, and Android finishes re-indexing in minutes. So the resync that detached clips opens a **re-match window** on that volume, and the re-match runs only inside it. A clip a verify detached (its number now holds another video) or flagged gone (its video was deleted) opens none, so it costs nothing. The resync opens the window for the lost clips that are still there:
 
   ```dart
-  if (match.lost.isNotEmpty) {
+  await _clips.inTransaction(() async {
+    await _clips.applyRebuildMatch(volume.name, match);
+    if (match.lost.isEmpty) return;
     final detached = {
       for (final c in await _clips.detachedClipsOn(volume.name))
         if (match.lost.contains(c.id)) c.id,
@@ -744,12 +746,14 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
         at: now,
       );
     }
-  }
+  });
   ```
 
-  `PhoneStateRepository` stores it in the `settings` table under `mediaRematchWindows`, like the volume versions: never exported, deleted by an import, and still there after the app is killed. A value that cannot be read counts as no window, and only the key's name is logged.
+  The detach and the window are written in **one transaction**. If the window cannot be written (a full disk, say) the detach is taken back with it, so the next scan does both. Without that, the clips would be detached with no window to find them again, and would stay missing for good (the test `the window is written with the detach: if it cannot be, nothing is detached and the next scan does both` guards it).
 
-- **Read only when something changed.** MediaStore keeps a *generation* per volume, a counter that moves whenever a row is added or changed. The window remembers the generation the clips were last matched at (first the resync's). The same generation means the same videos, so a second read would find nothing. `reattach` checks, in order: no window; the window has ended (24 hours, or a clock that went back); none of its clips is still detached; the generation has not moved. Only then is the volume read, once, and the same fingerprint rule as a rebuild picks the match:
+  `PhoneStateRepository` stores it in the `settings` table under `mediaRematchWindows`, like the volume versions: never exported, deleted by an import, and still there after the app is killed. A value that cannot be read counts as no window, only the key's name is logged, and the read deletes it, so it is logged once and not at every scan.
+
+- **Read only when something changed.** MediaStore keeps a *generation* per volume, a counter that moves whenever a row is added or changed. The window remembers the generation the clips were last matched at (first the resync's). The same generation means the same videos, so a second read would find nothing. `reattach` checks, in order: no window; the window has ended (24 hours, or a clock set back by more than 5 minutes); none of its clips is still detached; the generation has not moved. Only then is the volume read, once, and the same fingerprint rule as a rebuild picks the match:
 
   ```dart
   if (window.generation == volume.generation) return nothing;
@@ -772,9 +776,11 @@ It ends with `All tests passed!`. Now open `app/lib/features/notifications/view_
 
   ```dart
   bool isOpenAt(DateTime now) =>
-      !now.isBefore(openedAt) &&
+      !now.isBefore(openedAt.subtract(rematchClockTolerance)) &&
       now.isBefore(openedAt.add(rematchWindowLength));
   ```
+
+  The start has a tolerance of 5 minutes: an automatic time correction can put the clock a few seconds or minutes before the time the window was opened, and that must not close it. A clock further back than that (a stored time months ahead) still closes it, so a window that cannot be timed does not stay open for good.
 
   Only the window's own clips are matched. The rule is "when unsure, leave it": a clip with two possible videos, or a video two clips want, matches nothing and stays detached for the next scan. A wrong match would put a reel clip on the wrong video, which is worse than a clip that is flagged missing.
 

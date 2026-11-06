@@ -544,7 +544,10 @@ class MediaScanner {
   ///
   /// It is a repair: a failure is logged by type and the scan carries on,
   /// the clips stay detached and the next scan tries again. It never fails
-  /// the volume, so a phone that cannot answer cannot keep a session open.
+  /// the volume: a repair must not hold the volume's baseline, and the new
+  /// clips behind it, for as long as the phone cannot answer it. (It never
+  /// runs in the capped end, so it has nothing to do with keeping a session
+  /// open.)
   Future<void> _rematchDetached(
     _ScanContext context,
     MediaVolume volume,

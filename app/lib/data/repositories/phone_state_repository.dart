@@ -285,9 +285,16 @@ class PhoneStateRepository {
   /// The re-match window open on [volume], or null when there is none
   /// (D-108). Whether it is still open at a given time is the caller's
   /// question ([RematchWindow.isOpenAt]). A missing value is none; an
-  /// unreadable one is none for every volume (only the key's name is logged).
-  Future<RematchWindow?> rematchWindow(String volume) async =>
-      (await _rematchWindows())[volume];
+  /// unreadable one is none for every volume (only the key's name is
+  /// logged) and is removed, so it is logged once and not at every scan.
+  Future<RematchWindow?> rematchWindow(String volume) async {
+    final windows = await _readRematchWindows();
+    if (windows == null) {
+      await _dropCorruptRematchWindows();
+      return null;
+    }
+    return windows[volume];
+  }
 
   /// Opens a re-match window on [volume] at [at] for [clipIds], the clips a
   /// rebuild resync just detached, last matched at [generation] (D-108).
@@ -349,8 +356,18 @@ class PhoneStateRepository {
     if (closed) _log.info('Closed the re-match window on volume $volume');
   }
 
-  /// Every stored window, by volume name. Unreadable: none, logged by key.
+  /// Every stored window, by volume name, for a write. Unreadable: none,
+  /// logged by key (the write replaces it).
   Future<Map<String, RematchWindow>> _rematchWindows() async {
+    final windows = await _readRematchWindows();
+    if (windows != null) return windows;
+    _log.warning('Setting $rematchWindowsKey is corrupt, reading it as none');
+    return const {};
+  }
+
+  /// Every stored window, by volume name; none stored is empty; null when the
+  /// value is unreadable (not JSON, or any entry of the wrong shape).
+  Future<Map<String, RematchWindow>?> _readRematchWindows() async {
     final text = await _rawValue(rematchWindowsKey);
     if (text == null) return const {};
     try {
@@ -365,10 +382,24 @@ class PhoneStateRepository {
         if (windows.length == json.length) return windows;
       }
     } on FormatException {
-      // Not JSON: fall through to the log line.
+      // Not JSON: unreadable.
     }
-    _log.warning('Setting $rematchWindowsKey is corrupt, reading it as none');
-    return const {};
+    return null;
+  }
+
+  /// Removes an unreadable value after logging it once, if it is still
+  /// unreadable inside the transaction (a write may have replaced it).
+  Future<void> _dropCorruptRematchWindows() async {
+    await _db.transaction(() async {
+      if (await _readRematchWindows() != null) return;
+      _log.warning(
+        'Setting $rematchWindowsKey is corrupt, reading it as none and '
+        'removing it',
+      );
+      await (_db.delete(
+        _db.settings,
+      )..where((s) => s.key.equals(rematchWindowsKey))).go();
+    });
   }
 
   static RematchWindow? _parseWindow(Object? json) {

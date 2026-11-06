@@ -255,7 +255,9 @@ void main() {
       expect(await h.baselineOf(card), at(7));
     });
 
-    test('a pending row at the first card scan is not added', () async {
+    test('a pending row at the first card scan is left out by the bridge, so '
+        'it is not added (a pin of the bridge contract: the production rule '
+        'is `shotSinceSession` and the next test)', () async {
       await shootingWithPhoneOnly();
       h.clock.advance(_hour * 4);
       bridge.put(
@@ -268,7 +270,10 @@ void main() {
         version: 'c1',
       );
 
-      // The phone's `videosShotSince` leaves pending rows out.
+      // The phone's `videosShotSince` leaves pending rows out (the fake
+      // does the same), so the scanner never sees this one; no production
+      // code here could make this fail. The test pins the contract the gap
+      // in D-108 relies on.
       expect(await h.scanner.scan(), scanDone(added: 2));
       expect(await _onCard(), {1, 3});
       expect(await h.baselineOf(card), at(7));
