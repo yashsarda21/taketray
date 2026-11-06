@@ -43,7 +43,7 @@ class _FailingEnd extends PhoneStateRepository {
       failures--;
       throw StateError('database is full');
     }
-    return super.endSession(since);
+    return await super.endSession(since);
   }
 }
 
