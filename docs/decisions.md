@@ -1362,3 +1362,15 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - A user who had changed the old channel's settings loses them (the channel is deleted).
   - Proved: JVM tests (the job's delays, the quiet rule and the settle job: 1 minute, exactly 5 minutes, 1 s short, older, mixed ages, DATE_MODIFIED, no times, 40 immediate clips, a clip from the future, rescheduling, posting once, cancelling, the retry, the channel and its importance, the old channel deleted also when it exists, the only-alert-once mark on a first post and on an update, a post after a dismiss) with mutation checks on each line. Not proved by a test: the sound itself (Robolectric does not play it); the owner checks it by hand (`docs/dev-setup.md`, Phase 6 check, step 1). Patrol flow 1 waits for the real trigger (up to 7 minutes) and prints the time from the last insert; flow 2 and the others use `runNewClipsJob`.
 
+### D-111 · Phase 7 scope: videos are added by hand, from any folder or the photo picker
+- Date: 2026-11-07 · Phase: 7 · Task: 1
+- Decision: Phase 7 adds **Add videos** on To tag and on the reel page (prototype screen 17). With full access it is a folder browser over every folder with videos on every indexed volume (phone, SD card, USB drive); in Manual mode (limited or no access) it opens Android's photo picker after the "Pick videos yourself" sheet. The owner's rulings (2026-11-07):
+  1. **By hand only.** Friends' videos (WhatsApp, Quick Share, Download) are never picked up automatically; Shooting mode still watches only the camera folder. Automatic folders wait for Phase 10's Watched folders screen.
+  2. **Any shooting device, no brand-specific code.** GoPro, Insta360, DJI, a mirrorless camera or a second phone are folders like any other. Big batches must work (the grid pages from Kotlin).
+  3. **WhatsApp's Sent folders are hidden** from the list, so a low-quality copy of the owner's own clip is not added by mistake.
+  4. **Dates stay as the phone reports them.** No "received" label and no date fix; a device with a wrong clock shows its clips on the wrong day.
+  A video added from a folder is a `ClipSource.mediaStore` clip, the same identity a scan gives it (D-57), so a later scan of the same video finds it rather than duplicating it. A photo-picker video is a `ClipSource.picker` clip, identified by its URI.
+- Why: by hand never floods To tag with group forwards, and needs no new setting; folders cover every device without knowing its brand; hiding Sent avoids the commonest duplicate; a date fix is a new screen and new rules for rebuilds and export, for a problem not yet met.
+- Alternatives considered: a Settings switch that also watches WhatsApp, Download and Quick Share during Shooting mode (floods, and it is Phase 10's screen); brand detection for action cameras (fragile, and folders already work); showing Sent (duplicates); a "received" hint or a batch date shift (beyond the prototype).
+- Consequences: the plan `docs/superpowers/plans/2026-11-07-phase-7-add-videos.md`; `docs/later.md` Phase 10 holds the automatic folders and the wrong-clock idea.
+

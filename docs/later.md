@@ -21,18 +21,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
 - Phase 5 left this (minors batch, item 44): the reel picker's clip ids are fixed while it is open. If a verify deletes one of them, every confirm fails until Cancel (Phase 4's picker has the same). Drop the ids that are gone before writing.
 
-Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
-
-- **Friends' videos.** Pick up videos the owner didn't shoot, such as WhatsApp downloads and Quick Share, behind a Settings switch. Today only `DCIM/Camera` is watched, so these never reach To tag. This may be done through Phase 10's editable watched folders. Open risks:
-  - busy groups and forwards could flood To tag;
-  - WhatsApp's "Sent" copies would duplicate the owner's own camera clips;
-  - WhatsApp strips the original shooting date, so a clip would be dated when it was received.
-- **Action cameras (GoPro, Insta360).** Open points:
-  - their phone apps save to their own folders;
-  - Insta360's raw 360° files must be reframed and exported first, so only the exported clip is useful;
-  - a whole day of clips is often copied at once;
-  - camera clocks and time zones are often wrong, which would put clips on the wrong day.
-
 ## Phase 8 (editor handoff)
 
 - Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
@@ -50,6 +38,8 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 10 (onboarding and settings)
 
+- **Automatic friends' and device folders (Phase 7 rulings, D-111).** Phase 7 adds them by hand only (Add videos). Watching more folders automatically belongs to the Watched folders screen. Open risks from the owner's request (2026-10-30): busy WhatsApp groups and forwards could flood To tag; WhatsApp's Sent copies duplicate the owner's own clips (Add videos hides Sent folders); WhatsApp strips the shooting date, so a clip is dated when it was received. Shooting devices (GoPro, Insta360, DJI, a mirrorless camera, a second phone) are folders like any other, with no brand code; their apps save to their own folders, a whole day is often copied at once, and Insta360's raw 360° files must be exported first.
+- **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.
 - **Onboarding takes over the notification ask** (D-107). Today the permission is asked once, the first time Shooting mode is turned on (`ShootingModeController._turnOn` → `NotificationAccessController.askOnce`, stored as `notificationsAsked`), then only from the Allow button in Settings. Give it its own onboarding step (`ob-notif` in the prototype), and then remove the call from `_turnOn` or keep it as the fallback for a user who skipped onboarding.
 - **"Remind me to turn it off" feeds `stillReminderEnabled`** (D-107). The Settings switch (`routes.settings` in the prototype) must store the setting, and `BackgroundSync` must read it: today it writes `stillReminderEnabled: true` always, so the 14-day question cannot be turned off. The in-app dialog (`StillShootingPrompt`) should follow the same switch.
 - **Two TakeTray notifications at once are grouped, and Still shooting? is folded even alone (product note, no change now).** When Still shooting? and the new-clips notification are both in the shade, the phone (seen on the S24, 2026-11-06) groups them and folds the older one away; the user expands the group to reach "Turn off". The S24 also showed Still shooting? collapsed when it was the app's only notification: its text showed and its buttons did not, until it was expanded (final review M-3). The body tap to Reels, where the dialog asks, always works. That is standard Android behaviour, so TakeTray does nothing about it. The Patrol flow for "Turn off" avoids it by tapping while Still shooting? is the app's only notification (D-109). Revisit only if the owner finds the folded Still shooting? question easy to miss (for example with a notification group key of our own, or a longer gap between the two).
