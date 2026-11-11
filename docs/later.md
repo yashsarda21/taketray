@@ -19,6 +19,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - Phase 4 left these (final review M-6, D-80):
   - ~~**Add videos** on the reel page (hidden in Phase 4).~~ Done in Phase 7 Task 5 (D-114).
 - **A picked clip and its folder twin** (D-115, D-57). After full access comes back, a video added through the photo picker and the same video added from its folder are two clips (the address and the MediaStore number are different identities; the fingerprint is not one). Both are undoable and removable. If it bites, offer to merge the two when a folder add finds a picked clip with the same fingerprint, asking the user first; never merge silently.
+- **A late native release can outlive its timeout** (D-112, Task 4 review m4). On a timeout `PickedGrants` gives up after 15 s but the Kotlin loop (`PickedVideos.release`) goes on releasing the addresses it already chose. If the user re-picks one of those videos in that window (the picker address is stable per video), the late release removes the new grant and the clip looks missing. Accepted: it needs a stall of more than 15 s plus a pick in the window, and the sweep runs before the UI. Revisit only if the S24 shows it.
 - **A cancelled photo picker closes the sheet** (D-115). The prototype's sheet closes when **Open photo picker** is tapped, so a user who cancels the picker has to open Add videos again. Revisit after the S24 hand check (Task 7) if it feels like one tap too many.
 
 ## Phase 8 (editor handoff)

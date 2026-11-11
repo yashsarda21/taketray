@@ -298,7 +298,6 @@ It also brought three smaller things:
 
   ```dart
   if (access?.level != MediaAccessLevel.full) {
-    pushing?.call();
     await showManualPickSheet(context, target: target, onOutcome: ...);
     return;
   }
