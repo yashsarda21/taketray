@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -74,6 +75,13 @@ class _OrderedBackground extends FakeBackgroundBridge {
     order.add('notificationAccess');
     return super.notificationAccess();
   }
+}
+
+/// A second harness next to the one `setUp` made, on purpose: silences
+/// drift's warning for the test, and puts it back after.
+void allowSecondDatabase() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  addTearDown(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
 }
 
 void main() {
@@ -173,6 +181,7 @@ void main() {
 
     setUp(() {
       order.clear();
+      allowSecondDatabase();
       h = VmHarness(
         bridge: _OrderedMedia(order),
         background: _OrderedBackground(order),
@@ -630,6 +639,7 @@ void main() {
       'lifecycle writes the new baselines before clearing the notification',
       (tester) async {
         final recorder = _ClearRecorder();
+        allowSecondDatabase();
         h = VmHarness(background: recorder);
         h.bridge.put([fakeVideo(id: 1, generation: 5)]);
         await h.media.turnOnNow();

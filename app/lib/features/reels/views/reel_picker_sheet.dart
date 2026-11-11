@@ -101,9 +101,12 @@ Future<List<int>?> showReelPicker(
 ///   the sheet stays open (D-85).
 /// - **The snack comes after the sheet closes**, with **Undo** for everything
 ///   the action changed (`ReelSnacks.showUndoAll`); an add that changed
-///   nothing (the clips were there already) shows the plain snack, and a
-///   move that moved nothing (every chosen clip had left the reel meanwhile)
-///   shows none, as a remove of nothing does. If the
+///   nothing (the clips were there already) shows the plain snack. **No
+///   snack at all** when nothing happened: a move that moved nothing (every
+///   chosen clip had left the reel meanwhile), and an add or a tag whose
+///   chosen clips are **all gone** by the confirm (a verify deleted them
+///   while the picker was open): nothing is written, [onSnack] still runs,
+///   and for a tag `LastTags` is not set. If the
 ///   sheet was dragged away while the action ran, nothing is modal any more,
 ///   so `perform` shows the snack itself when it finishes (or the failure
 ///   snack). [onSnack] is called after a success (also when no snack was

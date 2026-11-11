@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:drift/drift.dart' show QueryExecutor;
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -276,6 +277,44 @@ void main() {
       }
     });
   });
+  group('placesOf reads one state (D-113)', () {
+    test('a tag landing between its reads cannot mix two states', () async {
+      final goa = await reels.create('Goa');
+      final [id] = await clips.saveDetected([shot(1)]);
+      expect(id, isPositive);
+
+      // The user tags the clip (inbox row out, link in) the moment placesOf
+      // has read the inbox and not yet the links. The tag is another caller
+      // (outside placesOf's zone), and the hook gives it every chance to run
+      // there and then: it can only if placesOf has left its transaction.
+      final outside = Zone.current;
+      Future<void>? tag;
+      _hook.armed = () async {
+        tag = outside.run(() => clips.tagClip(id, {goa.id}));
+        await Future.any<Object?>([
+          tag!,
+          Future<void>.delayed(const Duration(milliseconds: 200)),
+        ]);
+      };
+
+      final places = await clips.placesOf('external_primary', [1]);
+      expect(tag, isNotNull, reason: 'placesOf reads the inbox');
+      await tag;
+
+      // Before the tag or after it, never "in To tag and in a reel".
+      final place = places[1]!;
+      final before = place.inbox == InboxState.pending && place.reelIds.isEmpty;
+      final after = place.inbox == null && setEquals(place.reelIds, {goa.id});
+      expect(
+        before || after,
+        isTrue,
+        reason: 'got ${place.inbox} and ${place.reelIds}',
+      );
+      // And the read waited for nothing it did not need: the tag landed.
+      expect(await clips.watchReelIdsOf(id).first, {goa.id});
+    });
+  });
+
   group('pending shot times (the background copy, D-106)', () {
     test('pending shot times ascending and only on change', () async {
       // shot(n) is shot n minutes before _t0: saved out of order.

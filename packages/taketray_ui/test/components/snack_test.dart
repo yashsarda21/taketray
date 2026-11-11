@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -185,6 +186,56 @@ void main() {
       final undo = tester.getRect(find.widgetWithText(TtButton, 'Undo'));
       expect(undo.right, lessThanOrEqualTo(360));
       expect(undo.width, greaterThan(60));
+    });
+
+    testWidgets('a two-line message at 2x wraps, grows the snack and keeps '
+        'every part inside it', (tester) async {
+      tester.view
+        ..physicalSize = const Size(360, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      // What Add videos says after a partly failed add: a line for what was
+      // added (long, it wraps) and a line for what was not.
+      const added = '12 videos added to Autumn recipes and other long names';
+      const notKept = "Couldn't add 2 videos.";
+      Future<Size> snackSize({required String message}) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            _snack(message: message, actionLabel: 'Undo', onAction: () {}),
+            textScale: 2,
+          ),
+        );
+        expect(tester.takeException(), isNull);
+        return tester.getSize(find.byType(TtSnack));
+      }
+
+      final oneLine = await snackSize(message: 'Added');
+      final two = await snackSize(message: '$added\n$notKept');
+
+      final snack = tester.getRect(find.byType(TtSnack));
+      final text = tester.getRect(find.text('$added\n$notKept'));
+      final undo = tester.getRect(find.widgetWithText(TtButton, 'Undo'));
+      // Two explicit lines and the wrap of the first: at least three lines
+      // of text where one line is one, so the snack grew by two lines.
+      expect(text.height, greaterThan(2 * 14 * 2 * 1.2));
+      expect(two.height, greaterThan(oneLine.height + 2 * 14 * 2));
+      expect(snack.right, lessThanOrEqualTo(360));
+      expect(snack.left, greaterThanOrEqualTo(0));
+      // The text and the whole action sit inside the snack.
+      expect(text.left, greaterThanOrEqualTo(snack.left));
+      expect(text.right, lessThanOrEqualTo(undo.left));
+      expect(text.top, greaterThanOrEqualTo(snack.top));
+      expect(text.bottom, lessThanOrEqualTo(snack.bottom));
+      expect(undo.right, lessThanOrEqualTo(snack.right));
+      expect(undo.top, greaterThanOrEqualTo(snack.top));
+      expect(undo.bottom, lessThanOrEqualTo(snack.bottom));
+      expect(undo.width, greaterThan(60));
+      // Every line is shown: nothing is cut to a number of lines.
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.text('$added\n$notKept'),
+      );
+      expect(paragraph.didExceedMaxLines, isFalse);
+      expect(paragraph.maxLines, isNull);
     });
 
     testWidgets('is a live region', (tester) async {

@@ -78,6 +78,16 @@ class SpyReels extends ReelsRepository {
 
   Completer<void>? gate;
 
+  /// Runs when the controller reads the reels' names, which it does at the
+  /// start of every tag: the moment a test deletes a clip "mid-write".
+  Future<void> Function()? onNames;
+
+  @override
+  Stream<List<Reel>> watchAll() async* {
+    await onNames?.call();
+    yield* super.watchAll();
+  }
+
   @override
   Future<Reel> create(String name, {String? description}) async {
     final wait = gate;
@@ -1112,6 +1122,143 @@ void main() {
       expect(await reelsOf(ids[0]), {goa.id});
       expect(await reelsOf(ids[1]), isEmpty);
       expect(stateOf().index, 1);
+    });
+  });
+
+  group('a clip deleted by a verify while its tag is written', () {
+    /// A verify finds clip [id] gone from the phone: flagged, out of To tag
+    /// and (in no reel) deleted.
+    Future<void> verifyDeletes(int id) async {
+      await h.media.clips.applyVerification(
+        found: {},
+        gone: {id},
+        otherVideo: {},
+      );
+      expect(await spy.clipsByIds([id]), isEmpty);
+    }
+
+    /// Nothing was written for it and the player is not stuck on it.
+    Future<void> expectNothingTagged(
+      List<int> ids,
+      int goneId,
+      Reel goa,
+    ) async {
+      await settle();
+      final s = stateOf();
+      expect(s.busy, isFalse);
+      expect(s.confirmingReelId, isNull);
+      expect(s.taggedPerReel, isEmpty);
+      expect(s.pending, ids.where((id) => id != goneId).toSet());
+      expect(s.session[s.index], isNot(goneId), reason: 'moved on');
+      expect(await reelsOf(ids[1]), isEmpty);
+      expect(spy.addCalls.expand((call) => call.$2), isEmpty);
+      expect((await reels.getById(goa.id))!.updatedAt, goa.updatedAt);
+      expect(c.read(lastTagsProvider), isEmpty);
+    }
+
+    test(
+      'a chip tap: nothing is tagged, no error, the player moves on',
+      () async {
+        final ids = await waiting(2);
+        final goa = await reel('Goa');
+        final session = await start();
+        reels.onNames = () async {
+          reels.onNames = null;
+          await verifyDeletes(ids[0]);
+        };
+
+        final tagged = session.tapReel(goa.id);
+        holds.fireAll();
+
+        expect(await tagged, isNull);
+        await expectNothingTagged(ids, ids[0], goa);
+      },
+    );
+
+    test('Add to {k} reels: nothing is tagged, and the picks stay', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      final session = await start()
+        ..setMulti(true)
+        ..togglePick(goa.id)
+        ..togglePick(london.id);
+      reels.onNames = () async {
+        reels.onNames = null;
+        await verifyDeletes(ids[0]);
+      };
+
+      expect(await session.confirmPicks(), isNull);
+
+      await expectNothingTagged(ids, ids[0], goa);
+      expect((await reels.getById(london.id))!.updatedAt, london.updatedAt);
+    });
+
+    test('Same as previous: nothing is tagged', () async {
+      final ids = await waiting(3);
+      final goa = await reel('Goa');
+      final session = await start();
+      final first = session.tapReel(goa.id);
+      holds.fireAll();
+      await first;
+      spy.addCalls.clear();
+      final before = (await reels.getById(goa.id))!;
+      reels.onNames = () async {
+        reels.onNames = null;
+        await verifyDeletes(ids[1]);
+      };
+
+      expect(await session.sameAsPrevious(), isNull);
+
+      await settle();
+      final s = stateOf();
+      expect(s.busy, isFalse);
+      expect(s.session[s.index], ids[2], reason: 'moved on');
+      expect(s.taggedPerReel, {goa.id: 1}, reason: 'only the first tag');
+      expect(spy.addCalls.expand((call) => call.$2), isEmpty);
+      expect((await reels.getById(goa.id))!.updatedAt, before.updatedAt);
+      expect(c.read(lastTagsProvider), [goa.id], reason: 'the earlier tag');
+    });
+
+    test('a new reel is still made; the gone clip is not tagged', () async {
+      final ids = await waiting(2);
+      final session = await start();
+      final gate = reels.gate = Completer<void>();
+
+      final made = session.createReelAndTag('Paris', clipId: ids[0]);
+      await settle();
+      await verifyDeletes(ids[0]);
+      gate.complete();
+      final result = (await made)!;
+
+      expect(result.reel.name, 'Paris');
+      expect(result.outcome, isNull);
+      await settle();
+      final s = stateOf();
+      expect(s.busy, isFalse);
+      expect(s.session[s.index], ids[1], reason: 'moved on');
+      expect(s.taggedPerReel, isEmpty);
+      expect(await reelsOf(ids[1]), isEmpty);
+    });
+
+    test('the next tag still works', () async {
+      final ids = await waiting(2);
+      final goa = await reel('Goa');
+      final session = await start();
+      reels.onNames = () async {
+        reels.onNames = null;
+        await verifyDeletes(ids[0]);
+      };
+      final lost = session.tapReel(goa.id);
+      holds.fireAll();
+      expect(await lost, isNull);
+      await settle();
+
+      final next = session.tapReel(goa.id);
+      holds.fireAll();
+
+      expect((await next)!.clipId, ids[1]);
+      expect(await reelsOf(ids[1]), {goa.id});
     });
   });
 

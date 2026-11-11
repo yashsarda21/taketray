@@ -241,7 +241,10 @@ class AddVideosService {
           ],
           target,
           notKept,
-          // The address is the identity (D-57): a known one is this video.
+          // Never called: `ClipsRepository.addByHand` asks `sameVideo` only
+          // for MediaStore clips, because a picked clip's address is its
+          // identity (D-57), so a known one is this video. The answer is
+          // `true` to say that, should it ever be asked.
           sameVideo: (_, _) => true,
         );
       });

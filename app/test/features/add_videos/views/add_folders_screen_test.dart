@@ -346,6 +346,104 @@ void main() {
     });
   });
 
+  group('the preview is kept for the life of the folder list', () {
+    void fortyFolders() {
+      final day = addNow.subtract(const Duration(days: 1));
+      for (var i = 0; i < 40; i++) {
+        final path = 'Movies/Folder ${100 + i}/';
+        a.bridge.putFolder(path, [folderVideo(1000 + i, day, folder: path)]);
+      }
+    }
+
+    List<String> pathsRead() => [for (final p in a.bridge.pages) p.$2];
+
+    testApp('a row scrolled away and back is not read again', (tester) async {
+      fortyFolders();
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+      expect(previewIds(tester, 'Folder 100'), [1000]);
+
+      await tester.scrollUntilVisible(
+        find.text('Folder 139'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await settleApp(tester);
+      expect(find.text('Folder 100'), findsNothing, reason: 'scrolled away');
+      final readSoFar = pathsRead().length;
+
+      await tester.scrollUntilVisible(
+        find.text('Folder 100'),
+        -400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await settleApp(tester);
+
+      expect(previewIds(tester, 'Folder 100'), [1000]);
+      expect(pathsRead(), hasLength(readSoFar), reason: 'nothing read again');
+      expect(pathsRead().toSet(), hasLength(pathsRead().length));
+    });
+
+    testApp('a preview that failed is read again when its row comes back', (
+      tester,
+    ) async {
+      fortyFolders();
+      a.bridge.failNext('videosInFolder');
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+      expect(previewIds(tester, 'Folder 100'), isEmpty);
+
+      await tester.scrollUntilVisible(
+        find.text('Folder 139'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await settleApp(tester);
+      await tester.scrollUntilVisible(
+        find.text('Folder 100'),
+        -400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await settleApp(tester);
+
+      expect(previewIds(tester, 'Folder 100'), [1000]);
+    });
+
+    testApp('a resume reads the previews again', (tester) async {
+      threeFolders();
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+      expect(previewIds(tester, 'GoPro'), [20]);
+      final day = addNow.subtract(const Duration(days: 1));
+      a.bridge.putFolder('DCIM/GoPro/', [
+        folderVideo(21, day, folder: 'DCIM/GoPro/'),
+      ]);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await settleApp(tester);
+
+      expect(previewIds(tester, 'GoPro'), unorderedEquals([20, 21]));
+    });
+
+    testApp('closing the list and opening it again reads them again', (
+      tester,
+    ) async {
+      threeFolders();
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+      expect(previewIds(tester, 'GoPro'), [20]);
+      await tapAndSettle(tester, find.bySemanticsLabel('Back'));
+      final day = addNow.subtract(const Duration(days: 1));
+      a.bridge.putFolder('DCIM/GoPro/', [
+        folderVideo(21, day, folder: 'DCIM/GoPro/'),
+      ]);
+
+      await openBrowser(tester);
+
+      expect(previewIds(tester, 'GoPro'), unorderedEquals([20, 21]));
+    });
+  });
+
   group('the tip', () {
     testApp('shows until Got it, and never again', (tester) async {
       threeFolders();

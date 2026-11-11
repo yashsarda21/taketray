@@ -339,6 +339,52 @@ void main() {
     });
   });
 
+  group('the counts are not the length of the list (D-113)', () {
+    // A video listed twice is one video: `added` and `alreadyThere` count it
+    // once, but `notKept` counts a list entry, so the three counts can add up
+    // to less than the list. The screen must not assume the sum.
+    test('a folder list: duplicates count once as added or already there, '
+        'and twice as not kept', () async {
+      await stored(friend(2));
+      final fresh = friend(1);
+      final there = friend(2);
+      final bad = friend(3, size: 0);
+      h.bridge.put([fresh, there, bad]);
+      final list = [fresh, fresh, there, there, bad, bad];
+
+      final r = await service.addFromFolder(list, toTag);
+
+      expectCounts(r, added: 1, alreadyThere: 1, notKept: 2);
+      expect(r.added + r.alreadyThere + r.notKept, lessThan(list.length));
+      expect(await h.allClips(), hasLength(2));
+    });
+
+    test('a picked list: the same', () async {
+      await service.addPicked([pick('content://there')], toTag);
+      final fresh = pick('content://fresh');
+      final there = pick('content://there');
+      final bad = pick('content://bad', persisted: false);
+      final list = [fresh, fresh, there, there, bad, bad];
+
+      final r = await service.addPicked(list, toTag);
+
+      expectCounts(r, added: 1, alreadyThere: 1, notKept: 2);
+      expect(r.added + r.alreadyThere + r.notKept, lessThan(list.length));
+      expect(await h.allClips(), hasLength(2));
+    });
+
+    test('to a reel: a duplicate is one link', () async {
+      final goa = await reel('Goa');
+      final v = friend(7);
+      h.bridge.put([v]);
+
+      final r = await service.addFromFolder([v, v, v], AddToReel(goa));
+
+      expectCounts(r, added: 1);
+      expect(await reelIdsOf((await clipOf(v)).id), {goa});
+    });
+  });
+
   group('nothing to add', () {
     test('every picked video not kept: counted, nothing read or written, '
         'and Undo does nothing', () async {

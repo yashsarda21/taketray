@@ -152,6 +152,38 @@ void main() {
     expect(now().loadingMore, isFalse);
   });
 
+  test('two refreshes overlap and the first one fails: it clears nothing '
+      'while the second runs', () async {
+    a.bridge.putFolder(whatsAppFolder, many(450));
+    await open();
+    final notifier = container.read(grid().notifier);
+    final pageGate = a.bridge.gate('videosInFolder');
+    final late = notifier.loadMore();
+    expect(now().loadingMore, isTrue);
+    // The first refresh fails at once; the second began before it ended and
+    // is still reading.
+    a.bridge.failNext('videosInFolder');
+    final first = notifier.refresh();
+    final secondGate = a.bridge.gate('videosInFolder');
+    final second = notifier.refresh();
+    await first;
+
+    expect(
+      now().loadingMore,
+      isTrue,
+      reason: 'the first refresh was overtaken: the second one ends this',
+    );
+    pageGate.complete();
+    await late;
+    expect(now().loadingMore, isTrue, reason: 'the stale page changes nothing');
+    secondGate.complete();
+    await second;
+
+    expect(now().loadingMore, isFalse);
+    expect(ids(now()), [for (var i = 1; i <= 200; i++) i]);
+    expect(now().hasMore, isTrue);
+  });
+
   test('two loads at once ask for one page', () async {
     a.bridge.putFolder(whatsAppFolder, many(450));
     await open();

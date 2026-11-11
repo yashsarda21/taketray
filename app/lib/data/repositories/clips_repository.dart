@@ -176,102 +176,21 @@ class ClipsRepository {
       }
       final now = _clock.storedNow();
       final unique = {for (final c in clips) _identityKey(c): c};
-      final known = await _knownByIdentity(unique.values);
-      final knownIds = {for (final row in known.values) row.id};
-      final inboxOf = {
-        for (final row in await _inboxRowsOf(knownIds)) row.clipId: row,
-      };
-      final reelsOf = await _reelIdsOfAll(knownIds);
-
-      var alreadyThere = 0;
-      final inserted = <int>[];
-      final detached = <int>{};
-      final restored = <InboxEntry>[];
-      final linked = <int>{};
-      final unlisted = <InboxEntry>[];
-      for (final MapEntry(:key, value: clip) in unique.entries) {
-        var row = known[key];
-        if (row != null &&
-            clip.source == ClipSource.mediaStore &&
-            !sameVideo(_toClip(row), clip)) {
-          await _markDetached({row.id}, now);
-          detached.add(row.id);
-          row = null;
-        }
-        final inbox = row == null ? null : inboxOf[row.id];
-        final reels = row == null ? const <int>{} : reelsOf[row.id] ?? const {};
-        if (row == null || (inbox == null && reels.isEmpty)) {
-          // New, or (only a backup can leave one) known with no place: it
-          // gets its place now, and Undo takes it away again.
-          final id = row?.id ?? await _insertClip(clip, now);
-          if (reelId == null) {
-            await _insertInbox(id, InboxState.pending, now);
-          } else {
-            await _insertLink(id, reelId, now);
-          }
-          inserted.add(id);
-        } else if (reelId == null) {
-          if (inbox?.state == InboxState.skipped) {
-            restored.add(_entryOf(inbox!));
-          } else {
-            alreadyThere++;
-          }
-        } else if (reels.contains(reelId) ||
-            inbox?.state == InboxState.pending) {
-          alreadyThere++;
-        } else {
-          linked.add(row.id);
-          if (inbox != null) unlisted.add(_entryOf(inbox));
-        }
-      }
-
-      for (final batch in _batches({for (final e in restored) e.clipId})) {
-        await (_db.update(_db.inbox)..where(
-              (i) =>
-                  i.clipId.isIn(batch) &
-                  i.state.equalsValue(InboxState.skipped),
-            ))
-            .write(const InboxCompanion(state: Value(InboxState.pending)));
-      }
-      for (final clipId in linked) {
-        await _insertLink(clipId, reelId!, now);
-      }
-      for (final batch in _batches({for (final e in unlisted) e.clipId})) {
-        await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(batch))).go();
-      }
-      final touched =
-          reelId != null && (linked.isNotEmpty || inserted.isNotEmpty);
-      if (touched) await _touchReels({reelId}, now);
-      // A detached clip only in To tag or Skipped leaves it (Ruling Y); every
-      // inserted clip has its place by now.
-      if (detached.isNotEmpty) await _removeMissing(detached);
-
-      final record = reelId == null
-          ? InboxUndo(before: restored, after: InboxState.pending)
-          : AddUndo(
-              reelId: reelId,
-              createdLinks: [
-                for (final clipId in linked)
-                  ClipLink(clipId: clipId, reelId: reelId, addedAt: now),
-              ],
-              removedInbox: unlisted,
-              // The reel's time is put back by `undoHandAdd`, which also
-              // knows the links of the inserted clips.
-              touch: null,
-            );
+      final plan = await _placeByHand(unique, reelId, now, sameVideo);
+      final touched = await _settleByHand(plan, reelId, now);
       return HandAdd(
-        inserted.length + restored.length + linked.length,
-        alreadyThere,
+        plan.inserted.length + plan.restored.length + plan.linked.length,
+        plan.alreadyThere,
         HandAddUndo._(
           reelId: reelId,
           at: now,
-          inserted: inserted,
-          record: record,
+          inserted: plan.inserted,
+          record: _handAddRecord(plan, reelId, now),
           touch: touched
-              ? ReelTouch(reelId: reelId, before: before!, after: now)
+              ? ReelTouch(reelId: reelId!, before: before!, after: now)
               : null,
         ),
-        detached.length,
+        plan.detached.length,
       );
     });
     _log.info(
@@ -281,6 +200,106 @@ class ClipsRepository {
     );
     return result;
   }
+
+  /// Step 1 of [addByHand]: reads where the known clips are, then decides
+  /// each clip of [unique] in order and writes what has to come first: a
+  /// detach (the new clip takes the old one's identity) and an insert with its
+  /// place (a `pending` row or a link, never a clip without a place). The
+  /// writes that change a known clip's place wait for [_settleByHand].
+  Future<_HandPlan> _placeByHand(
+    Map<Object, NewClip> unique,
+    int? reelId,
+    DateTime now,
+    bool Function(Clip stored, NewClip incoming) sameVideo,
+  ) async {
+    final known = await _knownByIdentity(unique.values);
+    final knownIds = {for (final row in known.values) row.id};
+    final inboxOf = {
+      for (final row in await _inboxRowsOf(knownIds)) row.clipId: row,
+    };
+    final reelsOf = await _reelIdsOfAll(knownIds);
+
+    final plan = _HandPlan();
+    for (final MapEntry(:key, value: clip) in unique.entries) {
+      var row = known[key];
+      if (row != null &&
+          clip.source == ClipSource.mediaStore &&
+          !sameVideo(_toClip(row), clip)) {
+        await _markDetached({row.id}, now);
+        plan.detached.add(row.id);
+        row = null;
+      }
+      final inbox = row == null ? null : inboxOf[row.id];
+      final reels = row == null ? const <int>{} : reelsOf[row.id] ?? const {};
+      if (row == null || (inbox == null && reels.isEmpty)) {
+        // New, or (only a backup can leave one) known with no place: it
+        // gets its place now, and Undo takes it away again.
+        final id = row?.id ?? await _insertClip(clip, now);
+        if (reelId == null) {
+          await _insertInbox(id, InboxState.pending, now);
+        } else {
+          await _insertLink(id, reelId, now);
+        }
+        plan.inserted.add(id);
+      } else if (reelId == null) {
+        if (inbox?.state == InboxState.skipped) {
+          plan.restored.add(_entryOf(inbox!));
+        } else {
+          plan.alreadyThere++;
+        }
+      } else if (reels.contains(reelId) || inbox?.state == InboxState.pending) {
+        plan.alreadyThere++;
+      } else {
+        plan.linked.add(row.id);
+        if (inbox != null) plan.unlisted.add(_entryOf(inbox));
+      }
+    }
+    return plan;
+  }
+
+  /// Step 2 of [addByHand]: the writes that change where known clips are
+  /// (Skipped back to To tag, new links, inbox rows out), the reel's
+  /// `updatedAt`, and the sweep of the clips detached in step 1. Returns
+  /// whether the reel was touched.
+  Future<bool> _settleByHand(_HandPlan plan, int? reelId, DateTime now) async {
+    for (final batch in _batches({for (final e in plan.restored) e.clipId})) {
+      await (_db.update(_db.inbox)..where(
+            (i) =>
+                i.clipId.isIn(batch) & i.state.equalsValue(InboxState.skipped),
+          ))
+          .write(const InboxCompanion(state: Value(InboxState.pending)));
+    }
+    for (final clipId in plan.linked) {
+      await _insertLink(clipId, reelId!, now);
+    }
+    for (final batch in _batches({for (final e in plan.unlisted) e.clipId})) {
+      await (_db.delete(_db.inbox)..where((i) => i.clipId.isIn(batch))).go();
+    }
+    final touched =
+        reelId != null && (plan.linked.isNotEmpty || plan.inserted.isNotEmpty);
+    if (touched) await _touchReels({reelId}, now);
+    // A detached clip only in To tag or Skipped leaves it (Ruling Y); every
+    // inserted clip has its place by now.
+    if (plan.detached.isNotEmpty) await _removeMissing(plan.detached);
+    return touched;
+  }
+
+  /// What Undo gives back of an add that [plan] describes, for the clips that
+  /// were already known (the inserted ones are [HandAddUndo]'s own).
+  UndoRecord _handAddRecord(_HandPlan plan, int? reelId, DateTime now) =>
+      reelId == null
+      ? InboxUndo(before: plan.restored, after: InboxState.pending)
+      : AddUndo(
+          reelId: reelId,
+          createdLinks: [
+            for (final clipId in plan.linked)
+              ClipLink(clipId: clipId, reelId: reelId, addedAt: now),
+          ],
+          removedInbox: plan.unlisted,
+          // The reel's time is put back by `undoHandAdd`, which also
+          // knows the links of the inserted clips.
+          touch: null,
+        );
 
   /// Undo for [addByHand], in one transaction: takes away only what that add
   /// created (D-113).
@@ -349,11 +368,13 @@ class ClipsRepository {
   /// Where the attached, not-missing MediaStore clips of volume [volumeName]
   /// that hold one of [mediaStoreIds] are, by number: the Add videos marks
   /// (D-113). A missing or detached clip, a picked clip and a clip of
-  /// another volume are left out. Asked in batches of [idBatch].
+  /// another volume are left out. Asked in batches of [idBatch], all in one
+  /// read transaction, so a tag or an add landing meanwhile cannot show a clip
+  /// in To tag and in a reel at once.
   Future<Map<int, ClipPlace>> placesOf(
     String volumeName,
     Iterable<int> mediaStoreIds,
-  ) async {
+  ) => _db.transaction(() async {
     final numberOf = <int, int>{};
     for (final batch in _batches(mediaStoreIds.toSet())) {
       final rows =
@@ -379,7 +400,7 @@ class ClipsRepository {
       for (final MapEntry(key: clipId, value: number) in numberOf.entries)
         number: ClipPlace(inbox[clipId], reels[clipId] ?? const {}),
     };
-  }
+  });
 
   /// A clip's identity (D-57), as a map key.
   static Object _identityKey(NewClip clip) => switch (clip.source) {
@@ -1670,6 +1691,27 @@ class HandAddUndo {
   final UndoRecord? _record;
 
   final ReelTouch? _touch;
+}
+
+/// What one [ClipsRepository.addByHand] decided for its clips, as it goes.
+class _HandPlan {
+  /// Videos that were there already (nothing changes for them).
+  int alreadyThere = 0;
+
+  /// Clips that got a place from the add (new, or known with no place).
+  final List<int> inserted = [];
+
+  /// Stored clips that turned out to be another video and were detached.
+  final Set<int> detached = {};
+
+  /// Known clips brought back from Skipped (their `inbox` rows as they were).
+  final List<InboxEntry> restored = [];
+
+  /// Known clips to link to the reel.
+  final Set<int> linked = {};
+
+  /// The `inbox` rows of the clips in [linked] that leave To tag / Skipped.
+  final List<InboxEntry> unlisted = [];
 }
 
 /// Where one stored clip is: its `inbox` state (null when it has no row) and

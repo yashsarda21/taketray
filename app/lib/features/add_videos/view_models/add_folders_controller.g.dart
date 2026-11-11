@@ -14,6 +14,9 @@ part of 'add_folders_controller.dart';
 /// A failed read is the error state (the screen offers **Try again**,
 /// [retry]); [refresh] reads again when the app comes back to the front,
 /// keeping the list shown meanwhile.
+///
+/// It also keeps the previews it was asked for ([previewOf]) for as long as
+/// the list lives, so a row scrolled away and back is not read again.
 
 @ProviderFor(AddFoldersController)
 final addFoldersControllerProvider = AddFoldersControllerProvider._();
@@ -24,6 +27,9 @@ final addFoldersControllerProvider = AddFoldersControllerProvider._();
 /// A failed read is the error state (the screen offers **Try again**,
 /// [retry]); [refresh] reads again when the app comes back to the front,
 /// keeping the list shown meanwhile.
+///
+/// It also keeps the previews it was asked for ([previewOf]) for as long as
+/// the list lives, so a row scrolled away and back is not read again.
 final class AddFoldersControllerProvider
     extends $AsyncNotifierProvider<AddFoldersController, List<BrowseFolder>> {
   /// The folders of Add videos' list (`browseFolders`, D-113, D-114): every
@@ -32,6 +38,9 @@ final class AddFoldersControllerProvider
   /// A failed read is the error state (the screen offers **Try again**,
   /// [retry]); [refresh] reads again when the app comes back to the front,
   /// keeping the list shown meanwhile.
+  ///
+  /// It also keeps the previews it was asked for ([previewOf]) for as long as
+  /// the list lives, so a row scrolled away and back is not read again.
   AddFoldersControllerProvider._()
     : super(
         from: null,
@@ -52,7 +61,7 @@ final class AddFoldersControllerProvider
 }
 
 String _$addFoldersControllerHash() =>
-    r'65dd719429f193389f1fa3f4e864370dcf4f9ade';
+    r'aaee0a801523637d7880e6934e3dc67326d886cf';
 
 /// The folders of Add videos' list (`browseFolders`, D-113, D-114): every
 /// folder with videos on every volume, named and in order.
@@ -60,6 +69,9 @@ String _$addFoldersControllerHash() =>
 /// A failed read is the error state (the screen offers **Try again**,
 /// [retry]); [refresh] reads again when the app comes back to the front,
 /// keeping the list shown meanwhile.
+///
+/// It also keeps the previews it was asked for ([previewOf]) for as long as
+/// the list lives, so a row scrolled away and back is not read again.
 
 abstract class _$AddFoldersController
     extends $AsyncNotifier<List<BrowseFolder>> {
@@ -83,16 +95,18 @@ abstract class _$AddFoldersController
 
 /// The first [folderPreviewCount] videos of the folder [relativePath] on
 /// [volumeName] (newest shot first), for its row's preview. Read only when
-/// the row is built, so a long list reads a screenful. A failure is an
-/// error, which the row shows as the folder icon.
+/// the row is built, so a long list reads a screenful, and kept by the list
+/// ([AddFoldersController.previewOf]), so scrolling back over a row reads
+/// nothing. A failure is an error, which the row shows as the folder icon.
 
 @ProviderFor(folderPreview)
 final folderPreviewProvider = FolderPreviewFamily._();
 
 /// The first [folderPreviewCount] videos of the folder [relativePath] on
 /// [volumeName] (newest shot first), for its row's preview. Read only when
-/// the row is built, so a long list reads a screenful. A failure is an
-/// error, which the row shows as the folder icon.
+/// the row is built, so a long list reads a screenful, and kept by the list
+/// ([AddFoldersController.previewOf]), so scrolling back over a row reads
+/// nothing. A failure is an error, which the row shows as the folder icon.
 
 final class FolderPreviewProvider
     extends
@@ -106,8 +120,9 @@ final class FolderPreviewProvider
         $FutureProvider<List<FolderVideo>> {
   /// The first [folderPreviewCount] videos of the folder [relativePath] on
   /// [volumeName] (newest shot first), for its row's preview. Read only when
-  /// the row is built, so a long list reads a screenful. A failure is an
-  /// error, which the row shows as the folder icon.
+  /// the row is built, so a long list reads a screenful, and kept by the list
+  /// ([AddFoldersController.previewOf]), so scrolling back over a row reads
+  /// nothing. A failure is an error, which the row shows as the folder icon.
   FolderPreviewProvider._({
     required FolderPreviewFamily super.from,
     required (String, String) super.argument,
@@ -152,12 +167,13 @@ final class FolderPreviewProvider
   }
 }
 
-String _$folderPreviewHash() => r'a1bb70377b4f6957d23d89c4b791ce62b94fd4ce';
+String _$folderPreviewHash() => r'f6952126bc22098464be59cc557a6f2e0f21f05c';
 
 /// The first [folderPreviewCount] videos of the folder [relativePath] on
 /// [volumeName] (newest shot first), for its row's preview. Read only when
-/// the row is built, so a long list reads a screenful. A failure is an
-/// error, which the row shows as the folder icon.
+/// the row is built, so a long list reads a screenful, and kept by the list
+/// ([AddFoldersController.previewOf]), so scrolling back over a row reads
+/// nothing. A failure is an error, which the row shows as the folder icon.
 
 final class FolderPreviewFamily extends $Family
     with
@@ -176,8 +192,9 @@ final class FolderPreviewFamily extends $Family
 
   /// The first [folderPreviewCount] videos of the folder [relativePath] on
   /// [volumeName] (newest shot first), for its row's preview. Read only when
-  /// the row is built, so a long list reads a screenful. A failure is an
-  /// error, which the row shows as the folder icon.
+  /// the row is built, so a long list reads a screenful, and kept by the list
+  /// ([AddFoldersController.previewOf]), so scrolling back over a row reads
+  /// nothing. A failure is an error, which the row shows as the folder icon.
 
   FolderPreviewProvider call(String volumeName, String relativePath) =>
       FolderPreviewProvider._(argument: (volumeName, relativePath), from: this);
