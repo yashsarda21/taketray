@@ -1978,7 +1978,8 @@ void main() {
         final picked = await repo.addNewClipsToReel(reel.id, [
           pickerClip('content://p/1'),
         ]);
-        // A picked clip has no thumbnail to ask for: it is not offered.
+        // A missing picked clip has no picture: it is not offered.
+        await flagClips(db, picked.toSet(), missing: true, at: clock.now());
         expect(await repo.watchFirstShowableClip().first, isNull);
 
         final ids = await repo.saveDetected([
@@ -1989,6 +1990,19 @@ void main() {
         expect((await repo.watchFirstShowableClip().first)!.id, ids[0]);
       },
     );
+
+    test('watchFirstShowableClip offers a picked clip that is not missing '
+        '(Phase 7: the Shooting mode backdrop)', () async {
+      final reel = await reels.create('Goa');
+      final picked = await repo.addNewClipsToReel(reel.id, [
+        pickerClip('content://p/1'),
+      ]);
+
+      final shown = await repo.watchFirstShowableClip().first;
+
+      expect(shown?.id, picked.single);
+      expect(shown?.source, ClipSource.picker);
+    });
 
     test('watchFirstShowableClip skips a clip that is missing', () async {
       final ids = await repo.saveDetected([

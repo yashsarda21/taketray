@@ -387,6 +387,66 @@ void main() {
       expect(find.byType(TtSheet), findsOneWidget);
     });
 
+    testApp('a clip removed by a verify while the picker is open is dropped: '
+        'confirm tags the rest (Phase 5 later item)', (tester) async {
+      await waiting(tester);
+      final london = await newReel(tester, 'London Food');
+      final container = await open(tester);
+
+      await tester.tap(tagScene(0));
+      await settleApp(tester);
+      await tester.tap(pickRow('London Food'));
+      await tester.pumpAndSettle();
+      // A verify finds clip 2's video gone: it leaves To tag and is deleted.
+      await real(
+        tester,
+        () => clips.applyVerification(
+          found: const {},
+          gone: {ids[1]},
+          otherVideo: const {},
+        ),
+      );
+      await settleApp(tester);
+      await tester.tap(sheetButton('Tag 3 clips'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), {ids[0], ids[2]});
+      expect(find.text('2 clips added to London Food'), findsOneWidget);
+      expect(container.read(lastTagsProvider), [london.id]);
+    });
+
+    testApp('every clip removed while the picker is open: confirm closes the '
+        'sheet with no snack and remembers nothing', (tester) async {
+      await waiting(tester);
+      final london = await newReel(tester, 'London Food');
+      final container = await open(tester);
+
+      await tester.tap(tagScene(0));
+      await settleApp(tester);
+      await tester.tap(pickRow('London Food'));
+      await tester.pumpAndSettle();
+      await real(
+        tester,
+        () => clips.applyVerification(
+          found: const {},
+          gone: {ids[0], ids[1], ids[2]},
+          otherVideo: const {},
+        ),
+      );
+      await settleApp(tester);
+      await tester.tap(sheetButton('Tag 3 clips'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), isEmpty);
+      expect(find.textContaining('added to'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+      expect(container.read(lastTagsProvider), isEmpty);
+    });
+
     testApp('a failed tag is told in the sheet and remembers nothing', (
       tester,
     ) async {

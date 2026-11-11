@@ -18,8 +18,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - Phase 4 left these (final review M-6, D-80):
   - **Add videos** on the reel page (hidden in Phase 4).
-  - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
-- Phase 5 left this (minors batch, item 44): the reel picker's clip ids are fixed while it is open. If a verify deletes one of them, every confirm fails until Cancel (Phase 4's picker has the same). Drop the ids that are gone before writing.
 
 ## Phase 8 (editor handoff)
 

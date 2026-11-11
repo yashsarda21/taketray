@@ -774,6 +774,56 @@ void main() {
       expect(await clipIdsOf(tester, goa.id), ids.toSet());
     });
 
+    testApp('a chosen clip deleted while the picker is open is dropped: '
+        'confirm adds the rest (Phase 4 picker, later item)', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      final ids = await reelWithClips(tester, goa, 2);
+      await open(tester, goa.id);
+      await select(tester, 2);
+      await tester.tap(barButton('Add to another reel'));
+      await settleApp(tester);
+      await tester.tap(find.text('London'));
+      await tester.pumpAndSettle();
+      // Another screen removes one chosen clip; it was in no other reel,
+      // so it is deleted.
+      await real(tester, () => clips.removeClipsFromReel(goa.id, [ids[0]]));
+      await settleApp(tester);
+
+      await tester.tap(confirm('Add to 1 reel'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), {ids[1]});
+      expect(find.text('Added to London'), findsOneWidget);
+    });
+
+    testApp('every chosen clip deleted while the picker is open: confirm '
+        'closes it and says nothing', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      final ids = await reelWithClips(tester, goa, 2);
+      await open(tester, goa.id);
+      await select(tester, 1);
+      await tester.tap(barButton('Add to another reel'));
+      await settleApp(tester);
+      await tester.tap(find.text('London'));
+      await tester.pumpAndSettle();
+      await real(tester, () => clips.removeClipsFromReel(goa.id, [ids[0]]));
+      await settleApp(tester);
+
+      await tester.tap(confirm('Add to 1 reel'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), isEmpty);
+      expect(find.textContaining('Added to'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+      expect(find.textContaining('selected'), findsNothing);
+    });
+
     testApp('Undo of an add to several reels undoes every record in one go', (
       tester,
     ) async {

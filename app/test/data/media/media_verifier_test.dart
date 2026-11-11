@@ -223,7 +223,10 @@ void main() {
     expect((await h.clip(clips[2]!.id)).mediaStoreId, -clips[2]!.id);
   });
 
-  test('picked clips and clips that no longer exist are skipped', () async {
+  test('clips that no longer exist are skipped; a picked clip is checked by '
+      'its address', () async {
+    // Amended in Phase 7: a picked clip used to be skipped too.
+    bridge.readable = {'content://picker/1'};
     final clips = await stored([video(1)]);
     final reel = await reels.create('Goa');
     final picked = await h.clips.addNewClipsToReel(reel.id, [
@@ -249,8 +252,215 @@ void main() {
         ghost,
         ...await h.clips.clipsByIds(picked),
       ]),
-      outcome(found: {clips[1]!.id}, skipped: {999, picked.single}),
+      outcome(found: {clips[1]!.id, picked.single}, skipped: {999}),
     );
+  });
+
+  group('picked clips (Phase 7)', () {
+    NewClip pickedClip(String uri) => NewClip.picker(
+      pickerUri: uri,
+      fingerprint: ClipFingerprint(
+        sizeBytes: 5,
+        durationMs: 5,
+        dateTakenUtc: h.clock.now(),
+        displayName: 'p.mp4',
+      ),
+      width: 0,
+      height: 0,
+      mimeType: 'video/mp4',
+    );
+
+    /// Picked clips at [uris], in a reel (so a missing one keeps its row).
+    Future<List<Clip>> pickedInReel(List<String> uris) async {
+      final reel = await reels.create('Picked ${uris.length}');
+      final ids = await h.clips.addNewClipsToReel(reel.id, [
+        for (final u in uris) pickedClip(u),
+      ]);
+      return await h.clips.clipsByIds(ids);
+    }
+
+    test('a picked clip absent from readableUris becomes missing', () async {
+      final picked = await pickedInReel(['content://p/1', 'content://p/2']);
+      bridge.readable = {'content://p/1'};
+      h.clock.advance(const Duration(hours: 1));
+
+      final result = await h.verifier.verify(picked);
+
+      expect(result, outcome(found: {picked[0].id}, missing: {picked[1].id}));
+      final kept = await h.clip(picked[0].id);
+      final gone = await h.clip(picked[1].id);
+      expect((kept.missing, kept.lastVerifiedAt), (false, h.clock.now()));
+      expect((gone.missing, gone.lastVerifiedAt), (true, h.clock.now()));
+      expect(gone.pickerUri, 'content://p/2', reason: 'its address is kept');
+    });
+
+    test(
+      'a missing picked clip that is readable again is un-flagged',
+      () async {
+        final picked = await pickedInReel(['content://p/1']);
+        await flagClips(
+          h.db,
+          {picked.single.id},
+          missing: true,
+          at: h.clock.now(),
+        );
+        bridge.readable = {'content://p/1'};
+        h.clock.advance(const Duration(hours: 1));
+
+        expect(
+          await h.verifier.verify(picked),
+          outcome(found: {picked.single.id}),
+        );
+        final clip = await h.clip(picked.single.id);
+        expect((clip.missing, clip.lastVerifiedAt), (false, h.clock.now()));
+      },
+    );
+
+    test('a thrown readableUris changes nothing and counts as skipped, never '
+        'gone', () async {
+      final mediaStore = await stored([video(1)]);
+      final picked = await pickedInReel(['content://p/1', 'content://p/2']);
+      await flagClips(h.db, {picked[1].id}, missing: true, at: h.clock.now());
+      bridge
+        ..put([video(1)])
+        ..failNext('readableUris');
+      h.clock.advance(const Duration(hours: 1));
+
+      final result = await h.verifier.verify([...mediaStore.values, ...picked]);
+
+      expect(
+        result,
+        outcome(
+          found: {mediaStore[1]!.id},
+          skipped: {picked[0].id, picked[1].id},
+        ),
+        reason: 'the MediaStore clip is still verified',
+      );
+      final first = await h.clip(picked[0].id);
+      final second = await h.clip(picked[1].id);
+      expect((first.missing, first.lastVerifiedAt), (false, null));
+      expect(second.missing, isTrue, reason: 'not un-flagged either');
+      expect(second.lastVerifiedAt, isNot(h.clock.now()));
+    });
+
+    test('any other throw from readableUris is skipped too', () async {
+      _built = MediaHarness(bridge: _BrokenReadable());
+      final picked = await pickedInReel(['content://p/1']);
+
+      expect(
+        await h.verifier.verify(picked),
+        outcome(skipped: {picked.single.id}),
+      );
+      expect((await h.clip(picked.single.id)).missing, isFalse);
+    });
+
+    test('a failure in a later batch skips every picked clip', () async {
+      _built = MediaHarness(bridge: _FailOnSecondReadable());
+      final uris = [for (var i = 0; i < 501; i++) 'content://p/$i'];
+      final picked = await pickedInReel(uris);
+      // The first batch answers (all gone), the second throws.
+      bridge.readable = {};
+
+      final result = await h.verifier.verify(picked);
+
+      expect(result.skipped, {for (final c in picked) c.id});
+      expect(result.missing, isEmpty);
+      expect(result.found, isEmpty);
+      for (final c in await h.allClips()) {
+        expect((c.missing, c.lastVerifiedAt), (false, null));
+      }
+    });
+
+    test('picked clips are checked in batches of 500, with only their '
+        'addresses', () async {
+      final recorder = _ReadableRecorder();
+      _built = MediaHarness(bridge: recorder);
+      final stored0 = await stored([video(1)]);
+      final uris = [for (var i = 0; i < 1001; i++) 'content://p/$i'];
+      final picked = await pickedInReel(uris);
+      bridge
+        ..put([video(1)])
+        ..readable = uris.toSet();
+
+      final result = await h.verifier.verify([...stored0.values, ...picked]);
+
+      expect(recorder.batches.map((b) => b.length), [500, 500, 1]);
+      expect([for (final b in recorder.batches) ...b], unorderedEquals(uris));
+      expect(result.found, hasLength(1002));
+    });
+
+    test('picked clips are checked without full access; MediaStore clips are '
+        'still skipped', () async {
+      final stored0 = await stored([video(1)]);
+      final picked = await pickedInReel(['content://p/1', 'content://p/2']);
+      bridge
+        ..put([])
+        ..readable = {'content://p/1'};
+      for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+        bridge.access = MediaAccess(
+          level: level,
+          canAskAgain: true,
+          sdkInt: 34,
+        );
+
+        expect(
+          await h.verifier.verify([...stored0.values, ...picked]),
+          outcome(
+            found: {picked[0].id},
+            missing: {picked[1].id},
+            skipped: {stored0[1]!.id},
+          ),
+        );
+      }
+      final mediaStore = await h.clip(stored0[1]!.id);
+      expect((mediaStore.missing, mediaStore.lastVerifiedAt), (false, null));
+      expect(bridge.calls, isNot(contains('videosByIds')));
+    });
+
+    test('a picked clip only in To tag that is gone leaves To tag, as a '
+        'MediaStore clip does', () async {
+      final ids = await h.clips.saveDetected([pickedClip('content://p/1')]);
+      bridge.readable = {};
+
+      final result = await h.verifier.verify(await h.clips.clipsByIds(ids));
+
+      expect(result.missing, {ids.single});
+      expect(await h.toTag(), isEmpty);
+    });
+
+    test('with no picked clips readableUris is not called', () async {
+      final stored0 = await stored([video(1)]);
+      bridge.put([video(1)]);
+
+      await h.verifier.verify(stored0.values);
+
+      expect(bridge.calls, isNot(contains('readableUris')));
+    });
+
+    test('verifyAll includes picked clips', () async {
+      final picked = await pickedInReel(['content://p/1']);
+      bridge.readable = {};
+
+      expect(
+        await h.verifier.verifyAll(),
+        outcome(missing: {picked.single.id}),
+      );
+    });
+
+    test('the log has counts and never an address', () async {
+      final picked = await pickedInReel(['content://p/secret-1']);
+      bridge.readable = {};
+      final logs = captureLogs();
+
+      await h.verifier.verify(picked);
+      bridge.failNext('readableUris');
+      await h.verifier.verify(picked);
+
+      final text = logText(logs);
+      expect(text, isNot(contains('content')));
+      expect(text, isNot(contains('secret')));
+      expect(text, contains('fake-failure'));
+    });
   });
 
   test('verifyAll counts', () async {
@@ -510,5 +720,40 @@ class _FailOnSecondPhoneBatch extends RecordingBridge {
       throw PlatformException(code: 'native-error', message: 'boom');
     }
     return answer;
+  }
+}
+
+/// A bridge whose `readableUris` throws something that is not a
+/// `PlatformException`.
+class _BrokenReadable extends RecordingBridge {
+  @override
+  Future<List<String>> readableUris(List<String> uris) async {
+    calls.add('readableUris');
+    throw StateError('broken');
+  }
+}
+
+/// A bridge whose second `readableUris` call throws.
+class _FailOnSecondReadable extends RecordingBridge {
+  int _calls = 0;
+
+  @override
+  Future<List<String>> readableUris(List<String> uris) {
+    if (++_calls == 2) {
+      calls.add('readableUris');
+      return Future.error(PlatformException(code: 'native-error'));
+    }
+    return super.readableUris(uris);
+  }
+}
+
+/// A bridge that records every `readableUris` batch.
+class _ReadableRecorder extends RecordingBridge {
+  final List<List<String>> batches = [];
+
+  @override
+  Future<List<String>> readableUris(List<String> uris) {
+    batches.add(List.of(uris));
+    return super.readableUris(uris);
   }
 }

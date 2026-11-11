@@ -331,6 +331,34 @@ Six more calls on the media bridge (Pigeon contract `pigeons/media_api.dart`; re
 
 **In tests:** `FakeMediaBridge.videosInFolder` filters and orders as above (an unknown volume is `[]`); `picked` is what `pickVideos` answers (each one with `persisted` also joins `persisted`, as the phone's saved grant would), `pickerBusy` makes it throw the `busy` `PlatformException`, `readable` is the set `readableUris` keeps (in the order asked), `persisted` is the saved grants, `released` logs every `releaseUris` argument, `uriThumbnails` answers `thumbnailOfUri`. Kotlin: `PickedVideosTest` (intent per SDK and extension level, results, facts, readable, persisted, release; the saved grants are behind the `UriGrants` seam, the queries go through `FakeMediaProvider`), `VideoQueriesTest`, `VideoQueriesSqlTest` (filter, order and paging on real SQLite through a strict builder), `MediaHostApiImplTest` (the gone volume, the busy picker, off the main thread).
 
+### Picked clips: pictures, checks and the grant clean-up (`thumbnail_cache.dart`, `media_verifier.dart`, `picked_grants.dart`, Phase 7 Task 4, D-74, D-84)
+
+A picked clip (`ClipSource.picker`, D-111) has a picker address and no MediaStore number. Paths are relative to `app/lib/`. No log line in any of these holds an address (D-10).
+
+**Its picture** (`data/media/thumbnail_cache.dart`, D-74 as amended):
+1. `ClipThumbnailKey.of(clip, sizePx)`: a picked clip with a non-empty `pickerUri` gets a key (address, `sizeBytes`, date taken in ms, the clamped pixel size); none for no address or `''`.
+2. The file is `picked-<addressHash(uri)>_<sizeBytes>_<dateTakenMs>_<sizePx>.jpg`: FNV-1a 64 of the UTF-8 bytes, 16 hex digits.
+3. A miss calls `bridge.thumbnailOfUri(uri, sizePx, sizePx)` with the 15-second limit. Everything else (disk first, temp and rename, shared loads, discard, prune) is the MediaStore path. Failures log `No thumbnail from a picked video: <code, timeout or type>`.
+4. `ClipThumbnailImage` compares the source and the address too; its `toString` says `picked`.
+
+**Covers and the backdrop** (`data/database/clip_rules.dart › hasPicture`): a clip that is not missing and either a MediaStore clip with a volume and a number above 0, or a picked clip with a non-empty address. A missing picked clip is not offered.
+
+**Its check** (`MediaVerifier._verify`, inside the queued job, see "Checking clips still exist"):
+1. After `clipsByIds`, the picked clips with an address are split off and checked **whatever the access level** (Manual mode is where they live): their addresses go to `bridge.readableUris` in batches of 500.
+2. An address in the answer → found; left out → gone (`missing`; out of To tag and Skipped, a clip in a reel stays, flagged; the address is kept).
+3. **Any throw from any batch** (a `PlatformException` or anything else) → every picked clip of this verify is `skipped` and nothing about them is written; it is logged as `Could not check <n> picked clips (<code or type>): skipped`.
+4. Their found and gone join the MediaStore ones in the one `applyVerification` write.
+
+**The grant clean-up** (`data/media/picked_grants.dart › PickedGrants.sweep`, `pickedGrantsProvider`, kept alive):
+1. `MediaLifecycle` queues it once per app start, on the first frame, before the run's scan (see "App start and resume"), through `guarded` (`The picked grants clean-up failed: <type>`).
+2. On `MediaWorkQueue`: `bridge.persistedUris()` (15-second limit). None → 0, the database is not read.
+3. Every `clips.picker_uri` that is not null, whatever the clip's state (missing, skipped, in a reel, in To tag).
+4. A saved address is held when a row has it as written or as `Uri.tryParse` normalises it (host case, `%` escape case); the rest are unused.
+5. Unused → one `bridge.releaseUris(unused)` (15-second limit); none → no call. Logs `Released <n> of <m> saved grants (<k> addresses held by clips)`, returns `n`.
+6. A failed or late `persistedUris`, or a failed database read, throws before anything is released; a failed release is thrown too. The lifecycle logs the type; nothing else waits for it.
+
+**The reel picker drops gone clips** (`features/reels/view_models/reel_clip_actions.dart › addToReels`, Phase 5 later item): the picker holds its clip ids while it is open, so before writing, the ids are read again (`clipsByIds`) and the ones that no longer exist are dropped (logged as a count). `clipCount` is the clips still there. When none is left nothing is written; `pickAndPerform` then shows no snack and does not set `LastTags` (as for a move of nothing). Both pickers (add on the reel page and the viewer, tag on To tag) go through it; move already ignored clips that had left the reel.
+
 ### Background bridge (`lib/platform/background_bridge.dart`, `pigeons/background_api.dart`, D-103)
 
 Dart keeps a mirror of what the code that runs while TakeTray is closed needs (Tasks 4 and 5: the new-clips job, the reminders) in Kotlin's own storage, and gets back two things: a "Still shooting?" button tapped in the shade, and the screen a notification tap asks for. `BackgroundSync` writes the mirror and `ShadeActions` applies the shade's buttons (D-106, below); Task 7 listens for the taps. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/`.
@@ -621,9 +649,9 @@ The capped end never re-matches (it ends the session; a repair that reads the wh
 Nothing calls it yet (Tasks 9 and 10 will, where clips are shown; Phase 10 calls `verifyAll` after an import).
 
 1. `MediaVerifier.verify(clips)` keeps only the clip ids and queues the check on `MediaWorkQueue`; `verifyAll()` queues it with `ClipsRepository.allClipIds()`. No ids: an empty `VerifyOutcome`, the bridge is not called.
-2. `bridge.accessReport()`. Not `full` → every id `skipped`; nothing written.
-3. `ClipsRepository.clipsByIds(ids)` reads the clips as they are now (a scan before it in the queue may have remapped them). Ids that no longer exist are `skipped`.
-4. `bridge.volumes()` and `PhoneStateRepository.volumeVersions()`. A picked clip, a detached one (`mediaStoreId` null or ≤ 0) and a clip whose volume is not listed as mounted are `skipped`.
+2. `bridge.accessReport()`.
+3. `ClipsRepository.clipsByIds(ids)` reads the clips as they are now (a scan before it in the queue may have remapped them). Ids that no longer exist are `skipped`. Picked clips are checked by address whatever the access (see "Picked clips: pictures, checks and the grant clean-up"). Not `full` → every other clip `skipped`, the library is not asked.
+4. `bridge.volumes()` and `PhoneStateRepository.volumeVersions()` (only when there is a clip left to check this way). A picked clip with no address, a detached one (`mediaStoreId` null or ≤ 0) and a clip whose volume is not listed as mounted are `skipped`.
 5. Per volume: `LibraryResync.catchUp(volume, recorded versions)` (the scanner's rule). After a rebuild it matches the volume's clips by fingerprint and writes the result (`applyRebuildMatch`); the group's clips the match lost are `missing` (detached, and out of To tag and Skipped unless in a reel), the rest are read again (`clipsByIds`). Then their numbers go to `bridge.videosByIds(volume, batch)` in batches of 500. Per clip: a row that is `sameVideo` → found; a row that is not → "other video"; no row → gone. If anything about the volume throws (a `PlatformException`, or any other error), its clips not already lost are `skipped` (logged by volume name and code or type).
 6. One write, `ClipsRepository.applyVerification(found:, gone:, otherVideo:)`, in one transaction: detach the other-video clips; flag gone (`missing`) and found (not missing), with `lastVerifiedAt`; take gone and other-video clips out of To tag and Skipped, then the orphan sweep (a clip in a reel stays, flagged).
 7. Returns `VerifyOutcome(found, missing: gone ∪ other video ∪ lost in a rebuild, skipped)`.
@@ -653,7 +681,7 @@ No baseline is read or written.
 
 `MediaLifecycle` is a widget in `TakeTrayApp` above the router. It has an `AppLifecycleListener` and shows its child unchanged.
 
-1. **First frame** (`addPostFrameCallback`): starts the prune (step 6) and a run (steps 2 to 5).
+1. **First frame** (`addPostFrameCallback`): starts the prune (step 6), queues the picked grants clean-up on the media queue (`PickedGrants.sweep`, Phase 7; before the run's scan, once per app start, guarded; see "Picked clips: pictures, checks and the grant clean-up") and a run (steps 2 to 5).
 2. **Run, step 1: zone sync.** `ZoneSync.sync()`. This stays even though the scan syncs too: with Shooting mode off the scan does nothing, and the timeline must still learn the zone changes.
 3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state. If the very first read fails the state is an `AsyncError` until a later `refresh()` or `allow()` succeeds; a first read that fails after one of those already published a view hands that view back instead of replacing it.
 3b. **Run, step 2b: notification permission.** `NotificationAccessController.refresh()` (D-107): reads `BackgroundBridge.notificationAccess()` and shows it, so the Notifications row in Settings is right when the user comes back from the phone's settings. Guarded like every step.
@@ -661,7 +689,7 @@ No baseline is read or written.
 5. **Run, step 4: after a scan that read every volume** (`ScanDone` with no failed volumes; a capped end from the shade counts; not after `ScanShootingOff`, `ScanNoAccess`, `ScanDeferred`, a failed volume, which may still hold clips the job counts, or a scan that threw): `BackgroundSync.flush()`, then `BackgroundBridge.clearNewClipsNotification()` (D-106). The flush writes the moved baselines into the phone's copy first, so a new-clips job that runs after the clear counts with them, not the old ones, and cannot post the clips just scanned again. A failed write is logged by the flush, and the clear still runs.
 6. **Prune, once per app start (once per mount of `MediaLifecycle`):** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
 7. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
-8. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune.
+8. **Resume** (`AppLifecycleListener.onResume`): the same run, without the prune or the grant clean-up.
 9. **Runs never overlap.** A start or resume while a run is going sets a flag; when the run ends, exactly one more run follows, however many triggers came. The scanner's own coalescing (D-72) and the media queue stay in force underneath.
 
 **Other places that start media work (all guarded, none waited for by the UI):**
@@ -914,7 +942,7 @@ Nothing shows a tile yet (Task 10); `MediaLifecycle` calls `ThumbnailCache.prune
 
 **Showing one tile** (`Image(image: ClipThumbnailImage(clip:, logicalSize:, cache:), errorBuilder: placeholder)`):
 
-1. `ClipThumbnailImage.obtainKey(configuration)`: `ClipThumbnailKey.of(clip, (logicalSize * (devicePixelRatio ?? 1)).round())`. A clip with no key (picked, detached, no volume, size below 1) makes the future fail with a `StateError`, which is the image error (step 8).
+1. `ClipThumbnailImage.obtainKey(configuration)`: `ClipThumbnailKey.of(clip, (logicalSize * (devicePixelRatio ?? 1)).round())`. A clip with no key (detached, no volume, a picked clip with no address, size below 1; a picked clip with an address has a key, see "Picked clips") makes the future fail with a `StateError`, which is the image error (step 8).
 2. Flutter's image cache looks the key up (volume, number, `sizeBytes`, date taken, pixel size). A hit shows the decoded picture; no disk or bridge is touched.
 3. A miss calls `loadImage`, a `MultiFrameImageStreamCompleter` with `scale: sizePx / logicalSize`, whose codec is `cache.load(clip, key.sizePx)` decoded by Flutter.
 4. `ThumbnailCache.load(clip, sizePx)`: no key (same rule as step 1) gives null. Else `_inFlight[fileName]`: a load of the same key already running is joined; otherwise one starts.

@@ -88,3 +88,70 @@ It ends with `BUILD SUCCESSFUL`. Now open `VideoQueries.kt` and delete `, ${Medi
 
 **Decisions:** D-112 (all of this section), with D-111 (Phase 7's scope) as background.
 
+## 4. Picked clips get pictures, verification and a grant clean-up
+
+**What we built:** a video added through Android's photo picker now behaves like any other clip.
+
+- **A picture.** Its tile, a reel's cover and the Shooting mode card's backdrop show its thumbnail.
+- **A check.** When To tag or a reel page checks its clips, a picked clip whose video was deleted (or whose access was taken away) is flagged missing, and comes back if it can be read again.
+- **A clean-up.** Once per app start, TakeTray gives back the saved read grants that no clip uses any more.
+- **A fix from the parked list.** The reel picker no longer fails every time when one of its clips was deleted while it was open.
+
+**Why TakeTray needs it:** in Manual mode the photo picker is the only way in, so picked clips must not be second-class: no grey tiles, no stale clips that cannot play. And Android limits how many saved grants an app may keep, so grants nobody uses must go back. The danger runs the other way too: giving back a grant that a clip still needs would break that clip for good, and the user could only fix it by picking the video again.
+
+**Key ideas:**
+
+- **A file name must not say which video it is.** A MediaStore thumbnail is named after the volume and the number. A picked video has an address such as `content://media/picker/0/.../media/1000017`; putting that in a file name would leak it (D-10) and would hold `/` characters. So the name holds a hash of the address: FNV-1a, a short, well-known function that turns any text into a 64-bit number, the same on every run.
+
+  ```dart
+  var hash = 0xcbf29ce484222325;
+  for (final byte in utf8.encode(text)) {
+    hash ^= byte;
+    hash *= 0x100000001b3;
+  }
+  ```
+
+  Dart's own `hashCode` would be shorter to write, but it makes no promise to be the same after a restart, and the files must still be found tomorrow. A test checks the published answer for `"foobar"` (`85944171f73967e8`).
+
+- **"I could not look" is not "it is gone".** `readableUris` throws when the question itself failed. The verifier treats any throw as "skipped, change nothing":
+
+  ```dart
+  } on Object catch (e) {
+    ...
+    return _PickedCheck(skipped: {for (final c in picked) c.id});
+  }
+  ```
+
+  If a failure were read as "gone", one bad moment of the phone would flag every picked clip missing and take the To tag ones out of the list.
+
+- **Picked clips are checked without full access.** MediaStore clips are skipped in Manual mode, because a limited query sees only some videos and everything else would look gone. A picked clip's address is not affected by that, and Manual mode is exactly where picked clips live, so they are always checked.
+
+- **The clean-up only gives back what nobody holds.** It reads the saved grants, then every `picker_uri` in the clips table, and releases the difference:
+
+  ```dart
+  final unused = [
+    for (final uri in saved)
+      if (!heldForms.contains(uri) && !heldForms.contains(_canonical(uri)))
+        uri,
+  ];
+  ```
+
+  Any row counts, whatever its state: a missing clip may come back, a skipped one may be tagged later. An address written slightly differently (the case of the host, of a `%3a` escape) still counts as held, because a mismatch there would be the worst kind of mistake. If reading the grants or the rows fails, it throws before releasing anything.
+
+- **Timing matters.** A grant is taken by Android the moment the user confirms the picker, and the clip row is written a moment later. A clean-up that ran in between would see a grant with no row and give it back. So the clean-up runs on the media queue (an Add queued before it finishes first), and it is queued on the very first frame, before the start's scan: nobody can open the picker and choose videos before it is done. Its bridge calls give up after 15 seconds, so a call that never answers cannot hold the scans behind it.
+
+- **Ids that went away.** The reel picker keeps the ids of the chosen clips while it is open. If a verify deletes one meanwhile, adding a clip that does not exist fails the whole transaction, and every later confirm failed the same way until Cancel. Now `ReelClipActions.addToReels` reads the ids again and drops the ones that are gone; if none is left, nothing is written and no snack is shown.
+
+- **Tests that can fail.** Every edge case was written first and run against an empty `PickedGrants` that only threw: 59 tests failed for the real reasons (no picked key, picked clips skipped, the sweep not there, the picker's confirm failing). After the code was written, each key line was broken on purpose and the right tests went red, then it was put back: the "held by a row" filter, a failed read that releases nothing, "a throw means skipped", the hash in the file name, the picker's dropped ids, the cover rule, the timeout, the spelling match, the queue, the start-up order, the check without full access, the provider's equality and the silent tag of nothing.
+
+**Where it lives:** `app/lib/data/media/thumbnail_cache.dart` (`ClipThumbnailKey`, `addressHash`), `app/lib/features/clips/widgets/clip_thumbnail_image.dart`, `app/lib/data/database/clip_rules.dart` (`hasPicture`), `app/lib/data/media/media_verifier.dart` (`_checkPicked`), `app/lib/data/media/picked_grants.dart` (`PickedGrants.sweep`), `app/lib/app/media_lifecycle.dart`, `app/lib/features/reels/view_models/reel_clip_actions.dart` and `app/lib/features/reels/views/reel_picker_sheet.dart`. Tests: `app/test/data/media/picked_grants_test.dart`, and new groups in `thumbnail_cache_test.dart`, `media_verifier_test.dart`, `media_lifecycle_test.dart`, `reels_repository_test.dart`, `clips_repository_test.dart`, `clip_thumbnail_image_test.dart`, `reel_clip_actions_test.dart`, `reel_selection_screen_test.dart` and `to_tag_actions_test.dart`.
+
+**Try it yourself:** see the clean-up's one rule matter. From the repo root:
+
+```bash
+cd app && ../tool/flutter test test/data/media/picked_grants_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/data/media/picked_grants.dart` and replace the line `if (!heldForms.contains(uri) && !heldForms.contains(_canonical(uri)))` with `if (true)`, then run it again. Several tests fail, among them `releases only the saved grants that no clip row holds`: every grant, used or not, would be given back. Put the line back.
+
+**Decisions:** D-74 and D-84 point 3 (amended), D-112 (the bridge calls this builds on).

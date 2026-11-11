@@ -139,6 +139,13 @@ Future<ClipActionOutcome?> pickAndPerform(
   List<int>? tagSet;
   var closed = false;
   void tell(ClipActionOutcome done) {
+    // Every chosen clip was gone by the confirm (or, for a move, had left the
+    // reel): nothing happened, so nothing is said, as for a remove of
+    // nothing.
+    if (done.clipCount == 0) {
+      onSnack?.call();
+      return;
+    }
     final message = switch (mode) {
       ReelPickerMode.add => addedToText(l10n, done.reelNames),
       ReelPickerMode.move => l10n.movedToSnack(done.reelNames.single),
@@ -193,7 +200,8 @@ Future<ClipActionOutcome?> pickAndPerform(
                 clipIds: clipIds,
               )
             : await actions.addToReels(clipIds: clipIds, reelIds: reelIds);
-        if (lastTags != null) {
+        // A tag of nothing (every clip gone) is not remembered.
+        if (lastTags != null && done.clipCount > 0) {
           tagBefore = lastTags.current;
           tagSet = lastTags.set(reelIds);
         }

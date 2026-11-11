@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/painting.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/enums.dart';
 
 /// A clip's thumbnail as an [ImageProvider], read through a [ThumbnailCache]
 /// (D-74).
@@ -13,16 +14,20 @@ import 'package:taketray/domain/models/clip.dart';
 /// asked for at that size times the device pixel ratio of the
 /// [ImageConfiguration], and drawn with that scale, so it fills [logicalSize].
 ///
-/// When there is no picture (the video is gone, the clip is detached or
-/// picked, the volume is out, access is refused) the stream reports an error,
+/// A picked clip (Phase 7) is asked for through its picker address
+/// (`ThumbnailCache`, D-74).
+///
+/// When there is no picture (the video is gone, the clip is detached, the
+/// volume is out, a picked clip's grant is lost, access is refused) the stream
+/// reports an error,
 /// which an `Image` shows through its `errorBuilder`: the tile's placeholder.
 /// Nothing is reported to the log, and a failure is not kept by Flutter's
 /// image cache, so the next time the tile is built it asks again.
 ///
-/// Two providers are equal when they are for the same video (volume, number,
-/// size and date taken) at the same [logicalSize]; the clip's row id and the
-/// cache do not count. Their keys are equal when, besides, the pixel size is
-/// the same.
+/// Two providers are equal when they are for the same video (source, volume,
+/// number or picker address, size and date taken) at the same [logicalSize];
+/// the clip's row id and the cache do not count. Their keys are equal when,
+/// besides, the pixel size is the same.
 @immutable
 class ClipThumbnailImage extends ImageProvider<ClipThumbnailKey> {
   const ClipThumbnailImage({
@@ -81,6 +86,8 @@ class ClipThumbnailImage extends ImageProvider<ClipThumbnailKey> {
   bool operator ==(Object other) =>
       other is ClipThumbnailImage &&
       other.logicalSize == logicalSize &&
+      other.clip.source == clip.source &&
+      other.clip.pickerUri == clip.pickerUri &&
       other.clip.volumeName == clip.volumeName &&
       other.clip.mediaStoreId == clip.mediaStoreId &&
       other.clip.fingerprint.sizeBytes == clip.fingerprint.sizeBytes &&
@@ -88,6 +95,8 @@ class ClipThumbnailImage extends ImageProvider<ClipThumbnailKey> {
 
   @override
   int get hashCode => Object.hash(
+    clip.source,
+    clip.pickerUri,
     clip.volumeName,
     clip.mediaStoreId,
     clip.fingerprint.sizeBytes,
@@ -95,7 +104,10 @@ class ClipThumbnailImage extends ImageProvider<ClipThumbnailKey> {
     logicalSize,
   );
 
+  /// Never the picker address (D-10).
   @override
-  String toString() =>
-      'ClipThumbnailImage(${clip.volumeName}/${clip.mediaStoreId}, $logicalSize)';
+  String toString() => clip.source == ClipSource.picker
+      ? 'ClipThumbnailImage(picked, $logicalSize)'
+      : 'ClipThumbnailImage(${clip.volumeName}/${clip.mediaStoreId}, '
+            '$logicalSize)';
 }

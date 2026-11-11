@@ -23,11 +23,12 @@ final Logger _log = Logger('verifier');
 /// What one verify found, as sets of clip ids. Every clip asked about is in
 /// exactly one of them.
 ///
-/// [missing] holds the clips whose video is gone *and* the ones whose number
-/// now holds a different video (those are also detached). [skipped] holds
-/// the clips that could not be checked: no full access, a picked or detached
-/// clip, a volume that is not mounted or did not answer, a clip that no longer
-/// exists.
+/// [missing] holds the clips whose video is gone (a picked clip whose
+/// address can no longer be read too) *and* the ones whose number now holds a
+/// different video (those are also detached). [skipped] holds the clips that
+/// could not be checked: a MediaStore clip without full access, a detached
+/// clip, a volume that is not mounted or did not answer, picked clips when
+/// `readableUris` failed, a clip that no longer exists.
 @immutable
 class VerifyOutcome {
   const VerifyOutcome({
@@ -76,12 +77,20 @@ class MediaVerifier {
   Future<VerifyOutcome> verifyAll() =>
       _queue.run(() async => await _verify(await _clips.allClipIds()));
 
-  /// 1. Without full access everything is skipped and nothing is written: a
-  ///    limited query returns only the picked videos, so every other clip
-  ///    would look gone (Review Focus 1).
-  /// 2. Picked and detached clips, clips whose volume is not mounted, and ids
-  ///    that no longer exist are skipped.
-  /// 3. Per volume, first the library version (Ruling V): when the version
+  /// 1. The clips are read again by id; ids that no longer exist are
+  ///    skipped.
+  /// 2. **Picked clips** (Phase 7) are checked by their picker address,
+  ///    whatever the access: `readableUris` in batches of [batchSize]. An
+  ///    address it keeps is found; one it leaves out is gone (its video was
+  ///    deleted or its grant revoked). **When any batch throws, every picked
+  ///    clip is skipped**: a failed read never means "gone" (Phase 7 review
+  ///    focus 5).
+  /// 3. Without full access every other clip is skipped and the library is
+  ///    not asked: a limited query returns only the picked videos, so every
+  ///    other clip would look gone (Review Focus 1).
+  /// 4. Detached clips, clips whose volume is not mounted, and picked clips
+  ///    with no address are skipped.
+  /// 5. Per volume, first the library version (Ruling V): when the version
   ///    recorded for it differs from the current one, Android rebuilt it, so
   ///    the old numbers mean nothing. The volume's clips are matched again by
   ///    fingerprint (`LibraryResync`, the scanner's own rule) before any
@@ -89,37 +98,55 @@ class MediaVerifier {
   ///    detached and, unless it is in a reel, leaves the lists, as after any
   ///    rebuild). No version recorded: the
   ///    current one is recorded.
-  /// 4. The volume's clips (read again after a resync) are asked for in
+  /// 6. The volume's clips (read again after a resync) are asked for in
   ///    batches of [batchSize]. A returned row that is `sameVideo` is found;
   ///    one that is not means the number holds another video; a clip whose
   ///    row is not returned is gone. When anything about a volume fails, its
   ///    unchecked clips are skipped: an error never means "missing".
-  /// 5. One write (`applyVerification`): detach the other-video clips, flag
-  ///    found and gone, take gone and detached clips out of the lists.
+  /// 7. One write (`applyVerification`): detach the other-video clips, flag
+  ///    found and gone (picked ones too), take gone and detached clips out of
+  ///    the lists.
   Future<VerifyOutcome> _verify(Set<int> ids) async {
     if (ids.isEmpty) {
       return const VerifyOutcome(found: {}, missing: {}, skipped: {});
     }
     final access = await _bridge.accessReport();
-    if (access.level != MediaAccessLevel.full) {
-      _log.info('Skipped ${ids.length} clips: access is ${access.level.name}');
-      return VerifyOutcome(found: const {}, missing: const {}, skipped: ids);
-    }
-
     final clips = await _clips.clipsByIds(ids);
     final skipped = {...ids}..removeAll(clips.map((c) => c.id));
-    final mounted = {
-      for (final v in await _bridge.volumes())
-        if (v.isMounted) v.name: v,
-    };
-    final recorded = await _phone.volumeVersions();
+    final picked = [
+      for (final c in clips)
+        if (_pickedCheckable(c)) c,
+    ];
+    final others = [
+      for (final c in clips)
+        if (!_pickedCheckable(c)) c,
+    ];
+    final pickedCheck = await _checkPicked(picked);
+    skipped.addAll(pickedCheck.skipped);
+
     final byVolume = <String, List<Clip>>{};
-    for (final clip in clips) {
-      final volume = clip.volumeName;
-      if (_checkable(clip) && mounted.containsKey(volume)) {
-        (byVolume[volume!] ??= []).add(clip);
-      } else {
-        skipped.add(clip.id);
+    final mounted = <String, MediaVolume>{};
+    var recorded = const <String, String>{};
+    if (access.level != MediaAccessLevel.full) {
+      if (others.isNotEmpty) {
+        _log.info(
+          'Skipped ${others.length} clips: access is ${access.level.name}',
+        );
+      }
+      skipped.addAll(others.map((c) => c.id));
+    } else if (others.isNotEmpty) {
+      mounted.addAll({
+        for (final v in await _bridge.volumes())
+          if (v.isMounted) v.name: v,
+      });
+      recorded = await _phone.volumeVersions();
+      for (final clip in others) {
+        final volume = clip.volumeName;
+        if (_checkable(clip) && mounted.containsKey(volume)) {
+          (byVolume[volume!] ??= []).add(clip);
+        } else {
+          skipped.add(clip.id);
+        }
       }
     }
 
@@ -187,6 +214,8 @@ class MediaVerifier {
       lost.addAll(lostHere);
     }
 
+    found.addAll(pickedCheck.found);
+    gone.addAll(pickedCheck.gone);
     final removed = await _clips.applyVerification(
       found: found,
       gone: gone,
@@ -200,6 +229,44 @@ class MediaVerifier {
       '$removed left the lists',
     );
     return VerifyOutcome(found: found, missing: missing, skipped: skipped);
+  }
+
+  /// A picked clip with an address to check.
+  static bool _pickedCheckable(Clip clip) =>
+      clip.source == ClipSource.picker && (clip.pickerUri ?? '').isNotEmpty;
+
+  /// Asks which of [picked]'s addresses can still be read, in batches of
+  /// [batchSize]. Never throws: when any batch fails, every one of [picked]
+  /// is skipped (logged by code or type, never an address, D-10).
+  Future<_PickedCheck> _checkPicked(List<Clip> picked) async {
+    if (picked.isEmpty) return const _PickedCheck();
+    final uris = {for (final c in picked) c.pickerUri!}.toList();
+    final readable = <String>{};
+    try {
+      for (var start = 0; start < uris.length; start += batchSize) {
+        readable.addAll(
+          await _bridge.readableUris(
+            uris.sublist(start, min(start + batchSize, uris.length)),
+          ),
+        );
+      }
+    } on Object catch (e) {
+      final reason = e is PlatformException ? e.code : '${e.runtimeType}';
+      _log.warning(
+        'Could not check ${picked.length} picked clips ($reason): skipped',
+      );
+      return _PickedCheck(skipped: {for (final c in picked) c.id});
+    }
+    final found = <int>{};
+    final gone = <int>{};
+    for (final clip in picked) {
+      (readable.contains(clip.pickerUri) ? found : gone).add(clip.id);
+    }
+    _log.info(
+      'Checked ${picked.length} picked clips: ${found.length} found, '
+      '${gone.length} gone',
+    );
+    return _PickedCheck(found: found, gone: gone);
   }
 
   /// A MediaStore clip that still holds a number (not picked, not detached).
@@ -229,6 +296,19 @@ class MediaVerifier {
     }
     return rows;
   }
+}
+
+/// What `_checkPicked` found, as clip ids.
+class _PickedCheck {
+  const _PickedCheck({
+    this.found = const {},
+    this.gone = const {},
+    this.skipped = const {},
+  });
+
+  final Set<int> found;
+  final Set<int> gone;
+  final Set<int> skipped;
 }
 
 /// The verifier, on the shared [mediaWorkQueueProvider].

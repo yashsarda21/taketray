@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -31,51 +32,78 @@ const int defaultThumbnailCacheBytes = 64 * 1024 * 1024;
 const String _picture = '.jpg';
 const String _temp = '.tmp';
 
-/// What one cached thumbnail is: which video (volume and MediaStore number),
-/// as which video (size and date taken), at which size in pixels (D-74).
+/// What one cached thumbnail is: which video, as which video (size and date
+/// taken), at which size in pixels (D-74).
 ///
-/// Its [fileName] is
-/// `<volume>_<mediaStoreId>_<sizeBytes>_<dateTakenMs>_<sizePx>.jpg`.
-/// The size and the date are part of it, so a number that Android gives to
+/// - A MediaStore clip is its volume and MediaStore number. Its [fileName] is
+///   `<volume>_<mediaStoreId>_<sizeBytes>_<dateTakenMs>_<sizePx>.jpg`.
+/// - A picked clip (Phase 7) is its picker address. Its [fileName] is
+///   `picked-<hash>_<sizeBytes>_<dateTakenMs>_<sizePx>.jpg`, where `<hash>` is
+///   the FNV-1a 64-bit hash of the address's UTF-8 bytes in 16 hex digits:
+///   **the address itself is never in a file name** (nor in [toString] or a
+///   log line, D-10). The name has three underscores and a MediaStore name at
+///   least four, so the two never meet.
+///
+/// The size and the date are part of both, so a number that Android gives to
 /// another video, or a video edited in place, never reuses an old picture
-/// (Review Focus 5). Equality uses exactly these five fields.
+/// (Review Focus 5). Equality uses the identity (the full address for a
+/// picked clip, not its hash) and these three fields.
 @immutable
 class ClipThumbnailKey {
   const ClipThumbnailKey._({
-    required this.volumeName,
-    required this.mediaStoreId,
     required this.sizeBytes,
     required this.dateTakenMs,
     required this.sizePx,
+    this.volumeName,
+    this.mediaStoreId,
+    this.pickerUri,
   });
 
   /// The key of [clip] at [sizePx], or null when the clip has no thumbnail to
-  /// ask for: it is a picked or a detached clip (a number of 0 or less), has
-  /// no volume, or [sizePx] is below 1. A [sizePx] above [maxThumbnailPx] is
-  /// the same picture as [maxThumbnailPx].
+  /// ask for: a detached MediaStore clip (a number of 0 or less), one with no
+  /// volume, a picked clip with no address, or [sizePx] below 1. A [sizePx]
+  /// above [maxThumbnailPx] is the same picture as [maxThumbnailPx].
   static ClipThumbnailKey? of(Clip clip, int sizePx) {
-    final id = clip.mediaStoreId;
-    final volume = clip.volumeName;
-    if (clip.source != ClipSource.mediaStore ||
-        id == null ||
-        id <= 0 ||
-        volume == null ||
-        volume.isEmpty ||
-        sizePx < 1) {
-      return null;
+    if (sizePx < 1) return null;
+    final px = sizePx > maxThumbnailPx ? maxThumbnailPx : sizePx;
+    final sizeBytes = clip.fingerprint.sizeBytes;
+    final dateTakenMs = clip.fingerprint.dateTakenUtc.millisecondsSinceEpoch;
+    switch (clip.source) {
+      case ClipSource.mediaStore:
+        final id = clip.mediaStoreId;
+        final volume = clip.volumeName;
+        if (id == null || id <= 0 || volume == null || volume.isEmpty) {
+          return null;
+        }
+        return ClipThumbnailKey._(
+          volumeName: volume,
+          mediaStoreId: id,
+          sizeBytes: sizeBytes,
+          dateTakenMs: dateTakenMs,
+          sizePx: px,
+        );
+      case ClipSource.picker:
+        final uri = clip.pickerUri;
+        if (uri == null || uri.isEmpty) return null;
+        return ClipThumbnailKey._(
+          pickerUri: uri,
+          sizeBytes: sizeBytes,
+          dateTakenMs: dateTakenMs,
+          sizePx: px,
+        );
     }
-    return ClipThumbnailKey._(
-      volumeName: volume,
-      mediaStoreId: id,
-      sizeBytes: clip.fingerprint.sizeBytes,
-      dateTakenMs: clip.fingerprint.dateTakenUtc.millisecondsSinceEpoch,
-      sizePx: sizePx > maxThumbnailPx ? maxThumbnailPx : sizePx,
-    );
   }
 
-  /// The real volume name, as the bridge wants it.
-  final String volumeName;
-  final int mediaStoreId;
+  /// The real volume name, as the bridge wants it; null for a picked clip.
+  final String? volumeName;
+
+  /// Null for a picked clip.
+  final int? mediaStoreId;
+
+  /// The picker address, for the bridge only; null for a MediaStore clip.
+  /// Never print or log it (D-10).
+  final String? pickerUri;
+
   final int sizeBytes;
   final int dateTakenMs;
 
@@ -83,31 +111,67 @@ class ClipThumbnailKey {
   final int sizePx;
 
   /// The file name. Any character of the volume name outside `A-Z a-z 0-9 _ -`
-  /// becomes `_`, so a crafted name cannot reach outside the folder.
+  /// becomes `_`, so a crafted name cannot reach outside the folder; a picked
+  /// clip's name holds only hex digits of its address's hash.
   String get fileName {
-    final volume = volumeName.replaceAll(RegExp('[^A-Za-z0-9_-]'), '_');
+    final uri = pickerUri;
+    if (uri != null) {
+      return 'picked-${addressHash(uri)}_${sizeBytes}_${dateTakenMs}_$sizePx'
+          '$_picture';
+    }
+    final volume = volumeName!.replaceAll(RegExp('[^A-Za-z0-9_-]'), '_');
     return '${volume}_${mediaStoreId}_${sizeBytes}_${dateTakenMs}_$sizePx'
         '$_picture';
   }
+
+  /// What a log line may say about this key's video: the volume name, or
+  /// "a picked video" (never the address, D-10).
+  String get logLabel =>
+      pickerUri == null ? 'volume $volumeName' : 'a picked video';
 
   @override
   bool operator ==(Object other) =>
       other is ClipThumbnailKey &&
       other.volumeName == volumeName &&
       other.mediaStoreId == mediaStoreId &&
+      other.pickerUri == pickerUri &&
       other.sizeBytes == sizeBytes &&
       other.dateTakenMs == dateTakenMs &&
       other.sizePx == sizePx;
 
   @override
-  int get hashCode =>
-      Object.hash(volumeName, mediaStoreId, sizeBytes, dateTakenMs, sizePx);
+  int get hashCode => Object.hash(
+    volumeName,
+    mediaStoreId,
+    pickerUri,
+    sizeBytes,
+    dateTakenMs,
+    sizePx,
+  );
 
   @override
   String toString() => 'ClipThumbnailKey($fileName)';
 }
 
-/// Thumbnails on disk, in front of [MediaBridge.thumbnail] (D-74).
+/// The FNV-1a 64-bit hash of [text]'s UTF-8 bytes, as 16 lowercase hex
+/// digits: the same on every run and every phone, so a picked clip's file
+/// name survives a restart (Dart's own `hashCode` gives no such promise).
+@visibleForTesting
+String addressHash(String text) {
+  // 64-bit arithmetic on the Dart VM wraps, as FNV needs. The app runs on
+  // Android only, never compiled to JavaScript.
+  // ignore: avoid_js_rounded_ints
+  var hash = 0xcbf29ce484222325;
+  for (final byte in utf8.encode(text)) {
+    hash ^= byte;
+    hash *= 0x100000001b3;
+  }
+  String half(int v) => v.toRadixString(16).padLeft(8, '0');
+  return half(hash >>> 32) + half(hash & 0xFFFFFFFF);
+}
+
+/// Thumbnails on disk, in front of [MediaBridge.thumbnail] and, for picked
+/// clips, [MediaBridge.thumbnailOfUri] (D-74).
 ///
 /// - [load] returns the JPEG bytes of a clip's thumbnail: from the folder when
 ///   it is there (and then touches the file's modified time), else from the
@@ -156,10 +220,11 @@ class ThumbnailCache {
   /// The JPEG bytes of [clip]'s thumbnail at [sizePx] on both sides (1 to
   /// [maxThumbnailPx]; larger counts as [maxThumbnailPx]), or null.
   ///
-  /// Null for a detached or picked clip and for [sizePx] below 1 (no bridge
-  /// call), and when the bridge has no picture, answers with nothing, or
-  /// fails (the failure is logged by volume name and code; nothing is
-  /// cached). Never throws for those reasons.
+  /// Null for a clip with no key (detached, no volume, a picked clip with no
+  /// address) and for [sizePx] below 1 (no bridge call), and when the bridge
+  /// has no picture, answers with nothing, or fails (the failure is logged by
+  /// volume name, or as "a picked video", and code; nothing is cached).
+  /// Never throws for those reasons.
   Future<Uint8List?> load(Clip clip, int sizePx) {
     final key = ClipThumbnailKey.of(clip, sizePx);
     if (key == null) return Future.value();
@@ -206,18 +271,26 @@ class ThumbnailCache {
 
   Future<Uint8List?> _fromBridge(ClipThumbnailKey key) async {
     final Uint8List? bytes;
+    final uri = key.pickerUri;
     try {
-      bytes = await _bridge
-          .thumbnail(key.volumeName, key.mediaStoreId, key.sizePx, key.sizePx)
-          .timeout(_bridgeTimeout);
+      bytes =
+          await (uri == null
+                  ? _bridge.thumbnail(
+                      key.volumeName!,
+                      key.mediaStoreId!,
+                      key.sizePx,
+                      key.sizePx,
+                    )
+                  : _bridge.thumbnailOfUri(uri, key.sizePx, key.sizePx))
+              .timeout(_bridgeTimeout);
     } on TimeoutException {
-      _log.info('No thumbnail from volume ${key.volumeName}: timeout');
+      _log.info('No thumbnail from ${key.logLabel}: timeout');
       return null;
     } on PlatformException catch (e) {
-      _log.info('No thumbnail from volume ${key.volumeName}: ${e.code}');
+      _log.info('No thumbnail from ${key.logLabel}: ${e.code}');
       return null;
     } on Exception catch (e) {
-      _log.info('No thumbnail from volume ${key.volumeName}: ${e.runtimeType}');
+      _log.info('No thumbnail from ${key.logLabel}: ${e.runtimeType}');
       return null;
     }
     if (bytes == null || bytes.isEmpty) return null;
@@ -235,7 +308,7 @@ class ThumbnailCache {
       await _rename(temp, _fileOf(key).path);
     } on Exception catch (e) {
       _log.warning(
-        'Could not cache a thumbnail of volume ${key.volumeName}: '
+        'Could not cache a thumbnail of ${key.logLabel}: '
         '${e.runtimeType}',
       );
       await _tryDelete(temp);
