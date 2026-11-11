@@ -554,6 +554,56 @@ void main() {
       expect(find.text('Undo'), findsNothing);
     });
 
+    testApp('some videos not kept: "Couldn\'t add 1 video." is shown beside '
+        'what was added, and Undo stays', (tester) async {
+      final day = today.add(const Duration(hours: 9));
+      // A video with no size is not kept (the next verify would remove it).
+      final noSize = fakeVideo(
+        id: 2,
+        generation: 2,
+        folder: whatsAppFolder,
+        sizeBytes: 0,
+        dateTakenMs: day.millisecondsSinceEpoch,
+        dateAddedSec: day.millisecondsSinceEpoch ~/ 1000,
+        dateModifiedSec: day.millisecondsSinceEpoch ~/ 1000,
+      );
+      await openGrid(tester, videos: [fiveVideos().first, noSize]);
+      await tapAndSettle(tester, tileOf(1));
+      await tapAndSettle(tester, tileOf(2));
+
+      await tapAndSettle(tester, find.text('Add 2'));
+
+      expect(find.text(originMarker), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.textContaining('1 video added to To tag'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(SnackBar),
+          matching: find.textContaining("Couldn't add 1 video."),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Undo'), findsOneWidget);
+      expect(await a.pendingIds(tester), [1]);
+    });
+
+    testApp('every video kept: the snack does not mention "Couldn\'t add"', (
+      tester,
+    ) async {
+      await openGrid(tester);
+      await tapAndSettle(tester, tileOf(1));
+
+      await tapAndSettle(tester, find.text('Add 1'));
+
+      expect(snack('1 video added to To tag'), findsOneWidget);
+      expect(find.textContaining("Couldn't add"), findsNothing);
+    });
+
     testApp('Add is off while it runs, and a second tap adds nothing', (
       tester,
     ) async {

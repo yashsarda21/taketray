@@ -262,6 +262,12 @@ void main() {
       });
     }
 
+    testWidgets('off: no suffix, whatever the access', (tester) async {
+      await pump(tester, access: MediaAccessLevel.limited);
+
+      expect(find.textContaining('add clips yourself'), findsNothing);
+    });
+
     testWidgets('full: no suffix', (tester) async {
       await pump(tester, shooting: on());
 

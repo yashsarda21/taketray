@@ -17,7 +17,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 3. [Adding by hand, and Undo](#3-adding-by-hand-and-undo)
 4. [Picked clips get pictures, verification and a grant clean-up](#4-picked-clips-get-pictures-verification-and-a-grant-clean-up)
 5. [The folder browser](#5-the-folder-browser)
-6. Manual mode (Task 6)
+6. [Manual mode](#6-manual-mode)
 7. On the S24 (Task 7)
 
 ## 2. The bridge: folder pages and the photo picker
@@ -279,4 +279,62 @@ cd app && ../tool/flutter test test/features/add_videos/views/add_grid_screen_te
 It ends with `All tests passed!`. Now open `app/lib/features/add_videos/view_models/add_grid_controller.dart`, find `_loadMore`, and under `rowsRead: latest.rowsRead + page.length,` add the line `selected: const {},`. Run it again: the test `pages of 200 from the phone, the next near the end, and the choice survives every page` fails, because loading page two forgot what you picked on page one. Delete the line and run it again to see it pass.
 
 **Decisions:** D-114 (all of this section), with D-111 (the owner's rulings), D-112 (the folder pages), D-113 (the folder rules and the marks), D-74 (thumbnails), D-85 (snacks on the root messenger) and D-86 (one tap opens one page) as background.
+
+## 6. Manual mode
+
+**What we built:** a small sheet called "Pick videos yourself". When TakeTray can see only some of your videos (or none), **Add videos** opens this sheet instead of the folder list. Its main button, **Open photo picker**, opens Android's own photo picker. You choose videos there, and TakeTray adds them to To tag or to the reel, with the same snack and **Undo** as before. A second button, **Allow full access instead**, asks Android for full access, so next time you get the folder list.
+
+It also brought three smaller things:
+
+- Every add now ends with the same snack, whichever way you added. If some videos could not be added, the snack has a second line: "Couldn't add 2 videos."
+- A reel's page now shows the access banner, the same one To tag has. If you lose access while the folder list is open, the app closes it and takes you back to where you were. Now the page you land on says why.
+- The old "On since 9:41 · Manual mode: add clips yourself" line on the Shooting mode card already existed. Its tests got one more case: the line never shows while Shooting mode is off.
+
+**Why TakeTray needs it:** Android lets you share only some videos with an app ("Select photos and videos"), and you can say no to video access altogether. The folder list needs full access, so without it **Add videos** would have nothing to show. The photo picker needs no permission at all: Android shows the picker itself, and the app only gets the videos you choose. That makes it the one way to add a video that always works.
+
+**Key ideas:**
+
+- **Which screen opens is decided by a fresh look at the access.** If reading the access fails, we still open the sheet, because the picker needs no permission:
+
+  ```dart
+  if (access?.level != MediaAccessLevel.full) {
+    pushing?.call();
+    await showManualPickSheet(context, target: target, onOutcome: ...);
+    return;
+  }
+  ```
+
+  Read it like this: anything that is not a known "full" means Manual mode. Only a known "full" opens the folder list.
+
+- **One tap, one picker.** Two guards, so that a quick double tap cannot open two pickers. The first is `OpenOnce.openSlow`, the same helper the screens use to open one page once. The second is a flag: both buttons turn off while the picker is open. Each guard has its own test, and each test fails when only that guard is removed.
+
+  ```dart
+  void _openPicker() => _once.openSlow((_) => _pick());
+  ...
+  onPressed: _picking ? null : _openPicker,
+  ```
+
+- **Cancel is not an error.** If you close the picker without choosing, nothing is added and nothing is shown. If Android says a picker is already open (the code `busy`), nothing is shown either, and the sheet stays so you can try again. Any other failure says "Couldn't add videos. Try again."
+
+- **What you pick is never lost.** The sheet reports its result through a callback that is called even if you swiped the sheet away while the picker was open. A test does exactly that and checks the videos still arrive.
+
+- **One snack, two lines.** A new snack replaces the one on screen. If "Couldn't add 2 videos." were its own snack, it would push out the snack with **Undo**. So both messages share one snack, one line under the other. When nothing at all was added and nothing was there already, only the "Couldn't add" line shows, because "Already added" would be untrue.
+
+- **No clean-up between the pick and the add.** Android lets an app keep a limited number of saved permissions, and TakeTray gives back the ones that no clip uses (section 4). Right after a pick, the new permissions belong to no clip yet. A clean-up at that moment would give them back, and the clip would stop working. So the clean-up runs only once, when the app starts, and this sheet never starts it. A test holds the picker open, finishes the pick, and checks the bridge never saw a clean-up call.
+
+- **A picked clip and its folder twin.** A picked clip is known by its address. A folder clip is known by its volume and number. The size, length and date are not an identity (D-57), so if you add a video through the picker and, after getting full access, add the same video from its folder, you get two clips. Nothing breaks: each is added once and can be undone. We chose not to merge them by guessing, because two different takes can look alike. It is noted in `docs/later.md`.
+
+- **Tests that can fail.** All the new tests were written first, and 36 of them failed for the real reasons (no sheet, no banner, no second line in the snack). After the code was written, key lines were broken on purpose, one at a time, and each broke a named test before it was put back: the access check (three ways: limited, denied, and a failed read), the two double-tap guards, the cancel branch, the `busy` branch, the failure message, **Allow full access instead** (not asked, not closing, not turned off), the two "Couldn't add" lines, the "Already added" line, a clean-up added between the pick and the add, the reel page's banner, and the Shooting mode card line (always shown, shown when off, shown when access is unknown).
+
+**Where it lives:** `app/lib/features/add_videos/views/manual_pick_sheet.dart` (the sheet), `app/lib/features/add_videos/views/open_add_videos.dart` (which screen opens, and the snack), `app/lib/features/reels/views/reel_detail_screen.dart` (the banner) and the new texts in `app/lib/l10n/app_en.arb`. Tests: `app/test/features/add_videos/views/manual_pick_sheet_test.dart`, with more cases in `add_videos_entry_test.dart`, `add_grid_screen_test.dart` and `shooting_mode_section_test.dart`; screenshots in `add_videos_golden_test.dart` (macOS only).
+
+**Try it yourself:** see the double-tap guard work. From the repo root:
+
+```bash
+cd app && ../tool/flutter test test/features/add_videos/views/manual_pick_sheet_test.dart --plain-name "a double tap opens the picker once"
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/add_videos/views/manual_pick_sheet.dart`, find `_openPicker`, and change it to `void _openPicker() => unawaited(_pick());`. Run the test again: it fails, because two quick taps now open the picker twice. Put the line back and run it again to see it pass.
+
+**Decisions:** D-115 (all of this section), with D-111 (the owner's rulings), D-112 (the photo picker and the clean-up), D-113 (what "not kept" means), D-114 (the folder list and who closes when), D-57 (a clip's identity) and D-86 (one tap opens one page) as background.
 

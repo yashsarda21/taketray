@@ -100,6 +100,28 @@ MediaVideo folderVideo(
   height: horizontal ? 1080 : 1920,
 );
 
+/// A video the photo picker hands over, [n] being unique to it.
+PickedVideo pickedVideo(
+  int n, {
+  bool persisted = true,
+  int seconds = 5,
+  DateTime? shot,
+}) => PickedVideo(
+  uri:
+      'content://media/picker/0/com.android.providers.media.photopicker/'
+      'media/$n',
+  sizeBytes: 2000000 + n,
+  displayName: 'PICKED-$n.mp4',
+  persisted: persisted,
+  durationMs: seconds * 1000,
+  dateTakenMs: (shot ?? addNow.subtract(const Duration(hours: 3)))
+      .add(Duration(minutes: n))
+      .millisecondsSinceEpoch,
+  width: 1080,
+  height: 1920,
+  mimeType: 'video/mp4',
+);
+
 /// A friend's WhatsApp folder.
 const whatsAppFolder =
     'Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/';
@@ -125,6 +147,12 @@ class CountingAddVideos extends AddVideosService {
 
   /// The targets of every `addFromFolder` call, in order.
   final List<AddTarget> targets = [];
+
+  /// The videos of every `addPicked` call, in order.
+  final List<List<PickedVideo>> pickedAdds = [];
+
+  /// The next `addPicked` throws.
+  bool failNextPicked = false;
 
   /// Holds the next add until it completes.
   Completer<void>? gate;
@@ -160,6 +188,19 @@ class CountingAddVideos extends AddVideosService {
       throw StateError('the add failed on purpose');
     }
     return await super.addFromFolder(videos, target);
+  }
+
+  @override
+  Future<AddResult> addPicked(
+    List<PickedVideo> videos,
+    AddTarget target,
+  ) async {
+    pickedAdds.add(List.of(videos));
+    if (failNextPicked) {
+      failNextPicked = false;
+      throw StateError('the picked add failed on purpose');
+    }
+    return await super.addPicked(videos, target);
   }
 }
 

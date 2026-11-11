@@ -2108,5 +2108,34 @@
   "addVideosFailed": "Couldn't add videos. Try again.",
   "@addVideosFailed": {
     "description": "Snack when adding the picked videos failed; the choice is kept."
+  },
+  "addVideosNotKept": "{count, plural, one{Couldn't add 1 video.} other{Couldn't add {count} videos.}}",
+  "@addVideosNotKept": {
+    "description": "Line of the snack after an add when some of the picked videos could not be added (a video whose permission Android would not keep, or one that is unfinished or gone). It follows what was added.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "manualPickTitle": "Pick videos yourself",
+  "@manualPickTitle": {
+    "description": "Title of the sheet that Add videos opens when TakeTray can see only some of the user's videos (Manual mode)."
+  },
+  "manualPickBody": "TakeTray can see only some of your videos (Manual mode), so it opens Android's photo picker.",
+  "@manualPickBody": {
+    "description": "Line under the title of the Manual mode sheet."
+  },
+  "manualPickCallout": "The photo picker doesn't show folder counts, and it can't mark videos you've already added.",
+  "@manualPickCallout": {
+    "description": "Note in the Manual mode sheet about what the photo picker cannot do."
+  },
+  "manualPickOpen": "Open photo picker",
+  "@manualPickOpen": {
+    "description": "Button of the Manual mode sheet that opens Android's photo picker."
+  },
+  "manualPickAllow": "Allow full access instead",
+  "@manualPickAllow": {
+    "description": "Button of the Manual mode sheet that asks for full video access, so Add videos can show folders."
   }
 }

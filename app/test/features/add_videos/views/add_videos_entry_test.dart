@@ -147,15 +147,19 @@ void main() {
       expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(2));
     });
 
-    testWidgets('a read that fails lets the next tap try again', (
-      tester,
-    ) async {
+    testWidgets('a read that fails opens the sheet, and the next tap reads '
+        'again', (tester) async {
       final bridge = await pumpToTag(tester);
       bridge.failNext('accessReport');
 
       await tester.tap(barButton('Add videos'));
       await tester.pumpAndSettle();
+      // The picker needs no permission, so a failed read is Manual mode.
       expect(find.text(addVideosRouteMarker(null)), findsNothing);
+      expect(find.text('Pick videos yourself'), findsOneWidget);
+
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
       await tester.tap(barButton('Add videos'));
       await tester.pumpAndSettle();
 
@@ -189,6 +193,48 @@ void main() {
         expect(find.byType(ToTagScreen), findsOneWidget);
       });
     }
+
+    for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+      testWidgets('without full access (${level.name}) the Manual mode sheet '
+          'opens instead', (tester) async {
+        await pumpToTag(tester, level: level);
+
+        await tester.tap(barButton('Add videos'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Pick videos yourself'), findsOneWidget);
+        expect(find.text('Open photo picker'), findsOneWidget);
+      });
+    }
+
+    testWidgets('a double tap without full access opens one sheet', (
+      tester,
+    ) async {
+      final bridge = await pumpToTag(tester, level: MediaAccessLevel.limited);
+      final slow = bridge.gate('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(barButton('Add videos'));
+      await tester.pump(const Duration(seconds: 2));
+      slow.complete();
+      await tester.pumpAndSettle();
+
+      expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(1));
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testWidgets('an access read that fails opens the Manual mode sheet', (
+      tester,
+    ) async {
+      final bridge = await pumpToTag(tester);
+      bridge.failNext('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pick videos yourself'), findsOneWidget);
+    });
 
     testWidgets('an access read that fails does not open the folder browser', (
       tester,
@@ -274,6 +320,10 @@ void main() {
       final id = await reelWithNoClips(tester);
       await open(tester, id);
       final slow = h.bridge.gate('accessReport');
+      // The page's access banner has read the access once already.
+      final readsBefore = h.bridge.calls
+          .where((c) => c == 'accessReport')
+          .length;
 
       await tester.tap(barButton('Add videos'));
       await tester.pump(const Duration(seconds: 2));
@@ -282,11 +332,52 @@ void main() {
       slow.complete();
       await settleApp(tester);
 
-      expect(h.bridge.calls.where((c) => c == 'accessReport'), hasLength(1));
+      expect(
+        h.bridge.calls.where((c) => c == 'accessReport'),
+        hasLength(readsBefore + 1),
+      );
       expect(
         find.text(addVideosRouteMarker(id), skipOffstage: false),
         findsOneWidget,
       );
+    });
+
+    testApp('a double tap without full access opens one Manual mode sheet', (
+      tester,
+    ) async {
+      final id = await reelWithNoClips(tester);
+      h.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await open(tester, id);
+
+      await tester.tap(barButton('Add videos'));
+      await tester.tap(barButton('Add videos'));
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('full access: the reel page has no access banner', (tester) async {
+      final id = await reelWithNoClips(tester);
+      await open(tester, id);
+      expect(find.byType(TtBanner), findsNothing);
+    });
+
+    testApp('limited access: the reel page says Manual mode, with Allow full '
+        'access', (tester) async {
+      final id = await reelWithNoClips(tester);
+      h.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await open(tester, id);
+
+      expect(find.widgetWithText(TtBanner, 'Manual mode'), findsOneWidget);
+      expect(find.text('Allow full access'), findsOneWidget);
     });
 
     testApp('a double tap on the empty reel page Add videos opens it once', (
@@ -350,6 +441,37 @@ void main() {
       await tapAndSettle(tester, find.text('Undo'));
 
       expect(await a.pendingIds(tester), isEmpty);
+    });
+
+    testApp('from a reel: access lost while the folder list is open goes '
+        'back to the reel, which says why', (tester) async {
+      await a.makeReel(tester, 'Goa');
+      await pumpApp(tester);
+      await tapAndSettle(tester, find.text('Goa'));
+      await tapAndSettle(tester, barButton('Add videos'));
+      expect(find.byType(AddFoldersScreen), findsOneWidget);
+      expect(find.text("TakeTray can't see your videos"), findsNothing);
+
+      a.fakeAccess.show(MediaAccessLevel.denied);
+      await settleApp(tester);
+
+      expect(find.byType(AddFoldersScreen), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.text("TakeTray can't see your videos"), findsOneWidget);
+      expect(find.text('Allow access to find new clips.'), findsOneWidget);
+    });
+
+    testApp('from To tag: access lost while the folder list is open goes '
+        'back to To tag, which says why', (tester) async {
+      await pumpApp(tester);
+      await tapAndSettle(tester, inPill('To tag'));
+      await tapAndSettle(tester, barButton('Add videos'));
+
+      a.fakeAccess.show(MediaAccessLevel.denied);
+      await settleApp(tester);
+
+      expect(find.byType(ToTagScreen), findsOneWidget);
+      expect(find.text("TakeTray can't see your videos"), findsOneWidget);
     });
 
     testApp('from a reel: the add lands back on the reel, which shows the '

@@ -14,8 +14,9 @@ import '../../../support/vm_harness.dart';
 import '../add_videos_support.dart';
 
 /// Add videos' screenshots (prototype screen 17, D-114): the folder list with
-/// its tip, the grid with marks and a choice, and an empty folder, at text 1x
-/// and 2x, and the list and the grid also in dark.
+/// its tip, the grid with marks and a choice, an empty folder, and the Manual
+/// mode sheet (D-115), at text 1x and 2x, and the list, the grid and the sheet
+/// also in dark.
 ///
 /// **macOS only, and not on CI** (D-61, D-97), like the other app screens:
 /// the images are made with real text on the owner's Mac (`goldens/macos/`).
@@ -229,4 +230,19 @@ void main() {
     await openBrowser(tester);
     await openFolder(tester, 'Old');
   });
+
+  both('the Manual mode sheet', 'manual', (tester, scale, brightness) async {
+    a.bridge.access = const MediaAccess(
+      level: MediaAccessLevel.limited,
+      canAskAgain: true,
+      sdkInt: 34,
+    );
+    await a.pumpOrigin(
+      tester,
+      const AddToToTag(),
+      textScale: scale,
+      brightness: brightness,
+    );
+    await openBrowser(tester);
+  }, dark: true);
 }

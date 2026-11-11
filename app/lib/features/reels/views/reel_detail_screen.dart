@@ -15,6 +15,7 @@ import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
+import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_selection.dart';
@@ -48,6 +49,9 @@ enum _ReelAction { details, select, delete }
 ///    **Select clips** and **Delete reel**. The bar has no title: the reel's
 ///    name is in the body, where it wraps over as many lines as it needs (an
 ///    app bar title clamps at large text);
+///    Above the list sits the access banner (`MediaAccessBanner`, D-115), as
+///    on To tag: it says why Add videos opens the photo picker, or why it
+///    closed when access was lost;
 /// 2. the reel's header (`TtReelHeader`): name, the status pill that opens the
 ///    status menu ("Marked as {status}"), "{n} clips · {m:ss}" or "No clips
 ///    yet", "{m} missing", and Shot ideas with Show more / Show less;
@@ -233,6 +237,9 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
               ),
         body: CustomScrollView(
           slivers: [
+            // Why Add videos sends the user to the photo picker, or why it
+            // took them back here when access was lost (D-111): as on To tag.
+            const SliverToBoxAdapter(child: MediaAccessBanner()),
             if (state == null)
               ..._loading(context)
             else ...[
