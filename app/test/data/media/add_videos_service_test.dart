@@ -778,6 +778,71 @@ void main() {
       },
     );
 
+    test('keeps a clip the user tagged and then moved back to To tag '
+        '(added to To tag)', () async {
+      final goa = await reel('Goa');
+      final v = friend(1);
+      h.bridge.put([v]);
+      final r = await service.addFromFolder([v], toTag);
+      final id = (await clipOf(v)).id;
+      // The row the add made is gone; the user's own pending row replaces it
+      // a moment later (untagToInbox gives it a new addedAt).
+      h.clock.advance(const Duration(minutes: 1));
+      await h.clips.tagClip(id, {goa});
+      h.clock.advance(const Duration(minutes: 1));
+      await h.clips.untagToInbox(id);
+
+      await service.undo(r);
+
+      expect((await h.allClips()).map((c) => c.id), [id]);
+      expect((await inboxOf(id))!.state, InboxState.pending);
+    });
+
+    test('keeps a link the user made again later (added to a reel)', () async {
+      final goa = await reel('Goa');
+      final paris = await reel('Paris');
+      final v = friend(1);
+      h.bridge.put([v]);
+      final r = await service.addFromFolder([v], AddToReel(goa));
+      final id = (await clipOf(v)).id;
+      // The user moves it to Paris only, then puts it in Goa again: that
+      // Goa link is the user's own, with a newer addedAt than the add's.
+      h.clock.advance(const Duration(minutes: 1));
+      await h.clips.tagClip(id, {paris});
+      h.clock.advance(const Duration(minutes: 1));
+      await h.clips.addClipsToReel(goa, [id]);
+
+      await service.undo(r);
+
+      expect(await reelIdsOf(id), {goa, paris});
+      expect((await h.allClips()).map((c) => c.id), [id]);
+    });
+
+    test('keeps the inbox row of a clip that is also in a reel (added to To '
+        'tag)', () async {
+      final goa = await reel('Goa');
+      final v = friend(1);
+      h.bridge.put([v]);
+      final r = await service.addFromFolder([v], toTag);
+      final id = (await clipOf(v)).id;
+      // The app never makes this state (tagging removes the inbox row), but a
+      // restored backup can: pending and in a reel at once.
+      await h.db
+          .into(h.db.clipReels)
+          .insert(
+            ClipReelsCompanion.insert(
+              clipId: id,
+              reelId: goa,
+              addedAt: h.clock.storedNow(),
+            ),
+          );
+
+      await service.undo(r);
+
+      expect((await inboxOf(id))!.state, InboxState.pending);
+      expect(await reelIdsOf(id), {goa});
+    });
+
     test('a second Undo changes nothing, even after the user moved the clip '
         'back', () async {
       final v = friend(1);
@@ -867,6 +932,69 @@ void main() {
         expect(await h.allClips(), isEmpty);
       },
     );
+  });
+
+  group('the same MediaStore number on two volumes', () {
+    // A MediaStore number is only unique on its volume: the phone's id 7 and
+    // the SD card's id 7 are two videos (the volume is half of the identity).
+    for (final (label, size) in [
+      ('another size', 555),
+      ('the same size and date', null),
+    ]) {
+      for (final reelTarget in [false, true]) {
+        test('${reelTarget ? 'to a reel' : 'to To tag'}, $label: the '
+            "phone's clip is left alone and the card's is added", () async {
+          final goa = await reel('Goa');
+          final onPhone = friend(7);
+          final onCard = friend(7, volume: card, size: size);
+          h.bridge
+            ..put([onPhone])
+            ..put([onCard], volume: card);
+          final phoneId = await stored(onPhone);
+          await h.clips.skipClips([phoneId]);
+          final before = await h.clip(phoneId);
+          final target = reelTarget ? AddToReel(goa) : toTag;
+
+          final r = await service.addFromFolder([onCard], target);
+
+          expectCounts(r, added: 1);
+          final clips = await h.allClips();
+          expect(clips, hasLength(2));
+          final kept = clips.singleWhere((c) => c.id == phoneId);
+          expect((kept.volumeName, kept.mediaStoreId), (phone, 7));
+          expect(kept, before, reason: 'not detached, not changed');
+          expect((await inboxOf(phoneId))!.state, InboxState.skipped);
+          final added = clips.singleWhere((c) => c.volumeName == card);
+          expect(added.mediaStoreId, 7);
+          if (reelTarget) {
+            expect(await reelIdsOf(added.id), {goa});
+          } else {
+            expect((await inboxOf(added.id))!.state, InboxState.pending);
+          }
+
+          await service.undo(r);
+
+          expect((await h.allClips()).map((c) => c.id), [phoneId]);
+        });
+      }
+    }
+
+    test('the card first, then the phone: two clips as well', () async {
+      final onCard = friend(7, volume: card);
+      final onPhone = friend(7, size: 555);
+      h.bridge
+        ..put([onPhone])
+        ..put([onCard], volume: card);
+      final cardId = await stored(onCard);
+
+      final r = await service.addFromFolder([onPhone], toTag);
+
+      expectCounts(r, added: 1);
+      final clips = await h.allClips();
+      expect(clips, hasLength(2));
+      expect(clips.singleWhere((c) => c.id == cardId).volumeName, card);
+      expect(clips.singleWhere((c) => c.id == cardId).mediaStoreId, 7);
+    });
   });
 
   group('marks', () {

@@ -2029,6 +2029,41 @@ void main() {
       expect((row.mediaStoreId, row.sizeBytes), (10, 9));
     });
 
+    for (final toReel in [false, true]) {
+      test('a known clip with no place (a backup can leave one) gets its '
+          'place, ${toReel ? 'in the reel' : 'in To tag'}, and is not '
+          'reported already there', () async {
+        final reel = await reels.create('Goa');
+        final [orphan] = await repo.saveDetected([mediaStoreClip(10)]);
+        await db.delete(db.inbox).go();
+        expect(await inboxRows(), isEmpty);
+        expect(await reelIdsOf(orphan), isEmpty);
+        clock.advance(_minute);
+
+        final add = await repo.addByHand(
+          [mediaStoreClip(10)],
+          reelId: toReel ? reel.id : null,
+          sameVideo: same,
+        );
+
+        expect((add.added, add.alreadyThere), (1, 0));
+        expect(await clipIds(), [orphan], reason: 'the same clip, no copy');
+        if (toReel) {
+          expect(await reelIdsOf(orphan), {reel.id});
+          expect(await inboxRows(), isEmpty);
+        } else {
+          final [row] = await inboxRows();
+          expect((row.clipId, row.state), (orphan, InboxState.pending));
+          expect(row.addedAt, _t0.add(_minute));
+        }
+
+        // Undo takes the place away again, so the sweep removes the clip.
+        await repo.undoHandAdd(add.undo);
+
+        expect(await clipIds(), isEmpty);
+      });
+    }
+
     test('undoHandAdd removes the new clips and is idempotent', () async {
       final [keep] = await repo.saveDetected([mediaStoreClip(5)]);
       final add = await repo.addByHand([

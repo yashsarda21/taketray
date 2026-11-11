@@ -31,6 +31,26 @@ void main() {
       );
     });
 
+    test('a WhatsApp segment anywhere before Sent counts, not only the '
+        'immediate parent', () {
+      expect(
+        pathsOf([
+          folder('Movies/WhatsApp/Extra/Sent/'),
+          folder('Android/media/com.whatsapp/WhatsApp/Media/Sent/'),
+          folder('WhatsApp/A/B/C/Sent'),
+        ]),
+        isEmpty,
+      );
+      // No WhatsApp segment at all before it: it stays, whatever the depth.
+      expect(
+        pathsOf([
+          folder('Movies/Extra/Sent/', count: 2),
+          folder('A/B/C/Sent/', count: 1),
+        ]),
+        ['Movies/Extra/Sent/', 'A/B/C/Sent/'],
+      );
+    });
+
     test('case is ignored, for both the segment and Sent', () {
       expect(
         pathsOf([
@@ -240,5 +260,70 @@ void main() {
       browseFolders([folder('Movies/A/')]),
       browseFolders([folder('Movies/A/')]),
     );
+  });
+
+  test('BrowseFolder is equal only when every field is, detail included', () {
+    const base = BrowseFolder(
+      volumeName: phone,
+      relativePath: 'Movies/A/',
+      videoCount: 3,
+      name: 'A',
+      detail: 'Movies',
+    );
+    BrowseFolder same() => const BrowseFolder(
+      volumeName: phone,
+      relativePath: 'Movies/A/',
+      videoCount: 3,
+      name: 'A',
+      detail: 'Movies',
+    );
+    expect(same(), base);
+    expect(same().hashCode, base.hashCode);
+    final others = [
+      const BrowseFolder(
+        volumeName: phone,
+        relativePath: 'Movies/A/',
+        videoCount: 3,
+        name: 'A',
+        detail: 'Other',
+      ),
+      const BrowseFolder(
+        volumeName: phone,
+        relativePath: 'Movies/A/',
+        videoCount: 3,
+        name: 'A',
+      ),
+      const BrowseFolder(
+        volumeName: card,
+        relativePath: 'Movies/A/',
+        videoCount: 3,
+        name: 'A',
+        detail: 'Movies',
+      ),
+      const BrowseFolder(
+        volumeName: phone,
+        relativePath: 'Movies/B/',
+        videoCount: 3,
+        name: 'A',
+        detail: 'Movies',
+      ),
+      const BrowseFolder(
+        volumeName: phone,
+        relativePath: 'Movies/A/',
+        videoCount: 4,
+        name: 'A',
+        detail: 'Movies',
+      ),
+      const BrowseFolder(
+        volumeName: phone,
+        relativePath: 'Movies/A/',
+        videoCount: 3,
+        name: 'B',
+        detail: 'Movies',
+      ),
+    ];
+    for (final other in others) {
+      expect(other, isNot(base), reason: '$other');
+    }
   });
 }
