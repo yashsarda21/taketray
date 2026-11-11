@@ -32,8 +32,9 @@ import org.robolectric.RobolectricTestRunner
  * The photo picker: which intent each Android level gets, how its result
  * (many, one, cancelled, with nobody waiting) is read, the facts read for each
  * picked video, and the three calls on saved addresses (readable, persisted,
- * release). A ContentResolver subclass records every binder call, so no phone
- * is needed.
+ * release). Queries go through the real resolver to FakeMediaProvider, and the
+ * saved grants through a recording UriGrants (ResolverGrants has its own tests
+ * on the real resolver), so no phone is needed.
  */
 @RunWith(RobolectricTestRunner::class)
 class PickedVideosTest {
@@ -390,6 +391,31 @@ class PickedVideosTest {
     }
 
     @Test
+    fun `a failure reading facts partway leaves no grant taken by this call`() {
+        // URI 7 of 7 fails; grants for 1 to 6 must not be left behind (they would
+        // count toward the per-app limit and Dart never hears of them).
+        for (failing in listOf(1, 4, 7)) {
+            provider { if (it == uri(failing)) throw IllegalStateException("provider broke") else null }
+            val grants = FakeGrants()
+            val all = (1..7).map { uri(it) }
+            assertThrows(IllegalStateException::class.java) { PickedVideos.describe(resolver, grants, all) }
+            val kept = grants.taken.map { it.first }.toSet() - grants.released.map { it.first }.toSet()
+            assertTrue("failing=$failing left ${grants.taken} taken, ${grants.released} released", kept.isEmpty())
+        }
+    }
+
+    @Test
+    fun `a failed pick never releases a grant that was already saved before it`() {
+        // The user picks a video they picked earlier (its grant is in use by a clip), and another read fails.
+        provider { if (it == uri(2)) throw IllegalStateException("provider broke") else null }
+        val grants = FakeGrants()
+        grants.saved = listOf(SavedGrant(uri(1), read = true))
+        assertThrows(IllegalStateException::class.java) { PickedVideos.describe(resolver, grants, listOf(uri(1), uri(2))) }
+        assertTrue("released ${grants.released}", grants.released.none { it.first == uri(1) })
+        assertEquals(listOf(SavedGrant(uri(1), read = true)), grants.saved)
+    }
+
+    @Test
     fun `every picked uri is made persistable with read access, in order`() {
         provider { null }
         val grants = FakeGrants()
@@ -567,5 +593,57 @@ class PickedVideosTest {
         val grants = FakeGrants()
         assertEquals(0, PickedVideos.release(grants, emptyList()))
         assertTrue(grants.released.isEmpty())
+    }
+
+    // ---- ResolverGrants (the real resolver; Robolectric keeps the saved grants) ----
+
+    private val realGrants = ResolverGrants(context.contentResolver)
+    private val readFlag = Intent.FLAG_GRANT_READ_URI_PERMISSION
+    private val writeFlag = Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+
+    @Test
+    fun `ResolverGrants take saves a read grant that saved lists as read`() {
+        val u = Uri.parse("content://app.taketray.resolver.grants/take/1")
+        realGrants.take(u, readFlag)
+        assertEquals(listOf(SavedGrant(u, read = true)), realGrants.saved().filter { it.uri == u })
+        assertEquals(listOf(u.toString()), PickedVideos.persisted(realGrants).filter { it == u.toString() })
+    }
+
+    @Test
+    fun `ResolverGrants saved reports a write-only grant as not read`() {
+        val u = Uri.parse("content://app.taketray.resolver.grants/write/1")
+        realGrants.take(u, writeFlag)
+        assertEquals(listOf(SavedGrant(u, read = false)), realGrants.saved().filter { it.uri == u })
+        assertFalse(PickedVideos.persisted(realGrants).contains(u.toString()))
+    }
+
+    @Test
+    fun `ResolverGrants release with read access removes that grant and only that one`() {
+        val a = Uri.parse("content://app.taketray.resolver.grants/release/1")
+        val b = Uri.parse("content://app.taketray.resolver.grants/release/2")
+        realGrants.take(a, readFlag)
+        realGrants.take(b, readFlag)
+        assertEquals(0, PickedVideos.release(realGrants, listOf(a.toString())))
+        assertEquals(listOf(b), realGrants.saved().map { it.uri }.filter { it == a || it == b })
+    }
+
+    @Test
+    fun `ResolverGrants release flag is the one passed, not a wider one`() {
+        // Releasing write access leaves the read grant, as Android does.
+        val u = Uri.parse("content://app.taketray.resolver.grants/flags/1")
+        realGrants.take(u, readFlag or writeFlag)
+        realGrants.release(u, writeFlag)
+        assertEquals(listOf(SavedGrant(u, read = true)), realGrants.saved().filter { it.uri == u })
+        realGrants.release(u, readFlag)
+        assertTrue(realGrants.saved().none { it.uri == u })
+    }
+
+    @Test
+    fun `describe through ResolverGrants saves each pick and says so`() {
+        provider { null }
+        val picked = listOf(Uri.parse("content://app.taketray.resolver.grants/describe/1"), Uri.parse("content://app.taketray.resolver.grants/describe/2"))
+        val msgs = PickedVideos.describe(resolver, realGrants, picked)
+        assertEquals(listOf(true, true), msgs.map { it.persisted })
+        assertTrue(PickedVideos.persisted(realGrants).containsAll(picked.map { it.toString() }))
     }
 }

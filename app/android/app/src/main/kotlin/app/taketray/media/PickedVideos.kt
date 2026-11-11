@@ -166,15 +166,20 @@ class PickedVideos(
          * shares, or from OpenableColumns for a document), and whether Android
          * kept read access across restarts. A provider that refuses or has no
          * row still gives the row, with a 0 size and an empty name; any other
-         * failure fails the whole call.
+         * failure fails the whole call, and then no grant has been taken.
          */
         fun describe(
             resolver: ContentResolver,
             grants: UriGrants,
             uris: List<Uri>,
-        ): List<PickedVideoMsg> =
-            uris.map { uri ->
-                val facts = factsOf(resolver, uri)
+        ): List<PickedVideoMsg> {
+            // Every read that can fail the call runs before the first grant is
+            // taken, so a failure part-way leaves no grant behind (they would
+            // count toward the per-app limit and Dart never hears of them), and
+            // there is nothing to release, which could drop a grant that a clip
+            // already picked earlier is using.
+            val facts = uris.map { factsOf(resolver, it) }
+            return facts.zip(uris) { fact, uri ->
                 val persisted =
                     try {
                         grants.take(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -182,8 +187,9 @@ class PickedVideos(
                     } catch (e: Exception) {
                         false
                     }
-                facts.copy(persisted = persisted)
+                fact.copy(persisted = persisted)
             }
+        }
 
         private fun factsOf(
             resolver: ContentResolver,
