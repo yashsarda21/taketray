@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -490,19 +491,25 @@ void main() {
         },
       );
 
-      test(
-        'dispose while waiting stops the retries and throws nothing',
-        () async {
+      test('dispose while waiting stops the retries and throws nothing', () {
+        // Fake time: the retry timer fires only when the test elapses it,
+        // so a loaded machine cannot let it fire early (or late).
+        fakeAsync((async) {
           api.takeFailures = 10;
-          final sub = bridge.launchActions.listen((_) {});
-          addTearDown(sub.cancel);
-          await pumpEventQueue();
+          final waiting = PigeonBackgroundBridge(
+            api: api,
+            takeRetryDelay: const Duration(milliseconds: 5),
+          );
+          final sub = waiting.launchActions.listen((_) {});
+          async.flushMicrotasks();
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
-          bridge.dispose();
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+          waiting.dispose();
+          async.elapse(const Duration(milliseconds: 100));
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
-        },
-      );
+          unawaited(sub.cancel());
+          async.flushMicrotasks();
+        });
+      });
     });
 
     test('nothing is asked before someone listens', () async {
