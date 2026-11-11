@@ -182,6 +182,23 @@ void main() {
     });
 
     for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+      testWidgets('without full access (${level.name}) leaving To tag during '
+          'a slow read opens no sheet', (tester) async {
+        final bridge = await pumpToTag(tester, level: level);
+        final slow = bridge.gate('accessReport');
+        await tester.tap(barButton('Add videos'));
+        await tester.pump();
+
+        await tester.pumpWidget(const SizedBox());
+        slow.complete();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(TtSheet), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
       testWidgets('without full access (${level.name}) the folder browser '
           'does not open', (tester) async {
         await pumpToTag(tester, level: level);
@@ -222,6 +239,40 @@ void main() {
 
       expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(1));
       expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testWidgets('a tap right after the sheet closes opens it again: no window '
+        'left over from when it opened', (tester) async {
+      final bridge = await pumpToTag(tester, level: MediaAccessLevel.limited);
+      var elapsed = Duration.zero;
+      Future<void> pass(Duration d) async {
+        await tester.pump(d);
+        elapsed += d;
+      }
+
+      await tester.tap(barButton('Add videos'));
+      await pass(const Duration(milliseconds: 20));
+      await pass(const Duration(milliseconds: 30));
+      expect(find.byType(TtSheet), findsOneWidget);
+      // Dragged away at once (the picker is not open).
+      Navigator.of(
+        tester.element(find.byType(TtSheet)),
+        rootNavigator: true,
+      ).pop();
+      for (var i = 0; i < 12; i++) {
+        await pass(const Duration(milliseconds: 25));
+      }
+      expect(find.byType(TtSheet), findsNothing);
+      // Still inside the window that a push would have opened (2 x 200 ms).
+      expect(elapsed, lessThan(const Duration(milliseconds: 400)));
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(2));
+      expect(find.byType(TtSheet), findsOneWidget);
+      await tester.pumpAndSettle();
     });
 
     testWidgets('an access read that fails opens the Manual mode sheet', (
@@ -342,6 +393,27 @@ void main() {
       );
     });
 
+    testApp('without full access, leaving the reel page during a slow read '
+        'opens no sheet', (tester) async {
+      final id = await reelWithNoClips(tester);
+      h.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await open(tester, id);
+      final slow = h.bridge.gate('accessReport');
+      await tester.tap(barButton('Add videos'));
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+      slow.complete();
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
     testApp('a double tap without full access opens one Manual mode sheet', (
       tester,
     ) async {
@@ -441,6 +513,34 @@ void main() {
       await tapAndSettle(tester, find.text('Undo'));
 
       expect(await a.pendingIds(tester), isEmpty);
+    });
+
+    testApp('limited access: access lost while the Manual mode sheet is '
+        'open, the pick still adds', (tester) async {
+      a = AddHarness(access: MediaAccessLevel.limited);
+      a.bridge.access = const MediaAccess(
+        level: MediaAccessLevel.limited,
+        canAskAgain: true,
+        sdkInt: 34,
+      );
+      await pumpApp(tester);
+      await tapAndSettle(tester, inPill('To tag'));
+      await tapAndSettle(tester, barButton('Add videos'));
+      expect(find.byType(TtSheet), findsOneWidget);
+
+      a.fakeAccess.show(MediaAccessLevel.denied);
+      await settleApp(tester);
+      // The page behind the sheet says why, and the sheet does not close.
+      expect(find.text("TakeTray can't see your videos"), findsOneWidget);
+      expect(find.byType(TtSheet), findsOneWidget);
+      a.bridge.picked = [pickedVideo(1)];
+      await tapAndSettle(tester, find.text('Open photo picker'));
+
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.text('1 video added to To tag'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      final pending = (await tester.runAsync(a.h.media.toTag))!;
+      expect([for (final c in pending) c.pickerUri], [pickedVideo(1).uri]);
     });
 
     testApp('from a reel: access lost while the folder list is open goes '

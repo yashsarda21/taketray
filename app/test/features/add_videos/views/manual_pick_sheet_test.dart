@@ -377,6 +377,102 @@ void main() {
       expect(await tester.runAsync(a.h.media.allClips), isEmpty);
     });
 
+    testApp("the reel's name cannot be read after the add: the add is kept, "
+        'the snack still has Undo, and only the error type is logged', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      final goa = await a.makeReel(tester, 'Goa');
+      a.makeReelsUnreadable();
+      await openWith(tester, target: AddToReel(goa.id));
+      a.bridge.picked = [pickedVideo(1), pickedVideo(2)];
+
+      await tapPicker(tester);
+
+      expect(a.unreadableReels!.reads, 1);
+      expect(tester.takeException(), isNull);
+      expect(snack('2 videos added to this reel'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(await pendingUris(tester), isEmpty);
+      final inReel = (await tester.runAsync(
+        () => a.h.media.clips.watchReelClips(goa.id).first,
+      ))!;
+      expect(inReel, hasLength(2));
+      final text = logText(records);
+      expect(text, contains('StateError'));
+      expect(text, isNot(contains('on purpose')));
+      expect(text, isNot(contains('Goa')));
+
+      await tapAndSettle(tester, find.text('Undo'));
+
+      expect(
+        await tester.runAsync(
+          () => a.h.media.clips.watchReelClips(goa.id).first,
+        ),
+        isEmpty,
+      );
+    });
+
+    testApp('at text 2x the body scrolls: the callout can be dragged clear '
+        'above the pinned buttons', (tester) async {
+      await openWith(tester, textScale: 2);
+      final callout = find.byType(TtCallout);
+      final footerTop = tester
+          .getTopLeft(
+            find.ancestor(
+              of: sheetButton('Open photo picker'),
+              matching: find.byType(TtButton),
+            ),
+          )
+          .dy;
+      // The first frame is cut off by the buttons (the callout is below
+      // them), and the buttons stay where they are.
+      expect(tester.getRect(callout).bottom, greaterThan(footerTop));
+
+      await tester.drag(
+        find.descendant(
+          of: find.byType(TtSheet),
+          matching: find.byType(ListView),
+        ),
+        const Offset(0, -400),
+      );
+      await tester.pump();
+
+      expect(tester.getRect(callout).bottom, lessThanOrEqualTo(footerTop));
+      expect(tester.getRect(callout).top, greaterThan(0));
+      expect(sheetButton('Open photo picker'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testApp('a mixed pick (one already there, one new): Undo removes only '
+        'the new one, and the other keeps its place', (tester) async {
+      final goa = await a.makeReel(tester, 'Goa');
+      await openWith(tester, target: AddToReel(goa.id));
+      a.bridge.picked = [pickedVideo(1)];
+      await tapPicker(tester);
+      Future<List<int>> inReel() async => [
+        for (final c in (await tester.runAsync(
+          () => a.h.media.clips.watchReelClips(goa.id).first,
+        ))!)
+          c.clip.id,
+      ];
+      final before = await inReel();
+      expect(before, hasLength(1));
+
+      await openBrowser(tester);
+      a.bridge.picked = [pickedVideo(1), pickedVideo(2)];
+      await tapPicker(tester);
+      expect(snack('1 video added to Goa'), findsOneWidget);
+      expect(await inReel(), hasLength(2));
+      // The first snack is leaving as this one arrives.
+      await tester.pump(const Duration(seconds: 1));
+
+      await tapAndSettle(tester, find.text('Undo'));
+
+      expect(await inReel(), before);
+      expect(a.service.pickedAdds, hasLength(2));
+    });
+
     testApp('Allow full access instead asks for access and closes the '
         'sheet, picking nothing', (tester) async {
       await openWith(tester);

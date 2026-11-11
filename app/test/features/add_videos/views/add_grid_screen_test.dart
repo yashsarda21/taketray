@@ -539,6 +539,34 @@ void main() {
       expect(await a.pendingIds(tester), isEmpty);
     });
 
+    testApp("the reel's name cannot be read after the add: the add is kept "
+        'and the snack still has Undo', (tester) async {
+      final goa = await a.makeReel(tester, 'Goa');
+      a.makeReelsUnreadable();
+      await openGrid(tester, target: AddToReel(goa.id));
+      await tapAndSettle(tester, tileOf(2));
+
+      await tapAndSettle(tester, find.text('Add 1'));
+
+      expect(a.unreadableReels!.reads, 1);
+      expect(tester.takeException(), isNull);
+      expect(find.text(originMarker), findsOneWidget);
+      expect(snack('1 video added to this reel'), findsOneWidget);
+      final inReel = (await tester.runAsync(
+        () => a.h.media.clips.watchReelClips(goa.id).first,
+      ))!;
+      expect([for (final c in inReel) c.clip.mediaStoreId], [2]);
+
+      await tapAndSettle(tester, find.text('Undo'));
+
+      expect(
+        await tester.runAsync(
+          () => a.h.media.clips.watchReelClips(goa.id).first,
+        ),
+        isEmpty,
+      );
+    });
+
     testApp('every picked video already there meanwhile: the snack says '
         '"Already added"', (tester) async {
       final videos = fiveVideos();

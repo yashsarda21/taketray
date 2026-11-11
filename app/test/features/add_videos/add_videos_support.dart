@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
@@ -204,6 +206,24 @@ class CountingAddVideos extends AddVideosService {
   }
 }
 
+/// A [ReelsRepository] whose `getById` throws, as a database that fails
+/// right after an add would.
+class UnreadableReels extends ReelsRepository {
+  // The parameters of ReelsRepository are private, so they cannot be super
+  // parameters.
+  // ignore: use_super_parameters, the same reason
+  UnreadableReels(AppDatabase db, Clock clock) : super(db, clock);
+
+  /// How many times `getById` was asked.
+  int reads = 0;
+
+  @override
+  Future<Reel?> getById(int id) async {
+    reads++;
+    throw StateError('the reel could not be read, on purpose');
+  }
+}
+
 /// Everything an Add videos test needs: a [VmHarness] on a [FolderBridge]
 /// whose clock is [addNow], a [FakeAccess] at full, and a
 /// [CountingAddVideos] on the harness's providers.
@@ -224,6 +244,21 @@ class AddHarness {
 
   /// More overrides for a test to add before it pumps.
   final List<Override> extraOverrides = [];
+
+  /// The reels repository the app reads (once [makeReelsUnreadable] is
+  /// called and the app is pumped).
+  UnreadableReels? unreadableReels;
+
+  /// The screens' reels repository cannot read a reel's name (`getById`
+  /// throws). Call before pumping.
+  void makeReelsUnreadable() => extraOverrides.add(
+    reelsRepositoryProvider.overrideWith(
+      (ref) => unreadableReels = UnreadableReels(
+        ref.watch(appDatabaseProvider),
+        ref.watch(clockProvider),
+      ),
+    ),
+  );
 
   List<Override> get overrides => [
     ...h.overrides,

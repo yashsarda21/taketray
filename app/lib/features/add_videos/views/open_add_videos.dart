@@ -36,8 +36,10 @@ final Logger _log = Logger('addVideos');
 /// add videos. Try again.".
 ///
 /// The caller opens it through `OpenOnce.openSlow`, so a double tap opens one
-/// list (or one sheet) even when the access read is slow: it passes
-/// `openSlow`'s [pushing], which this calls just before it opens either.
+/// list (or one sheet) even when the access read is slow. It passes
+/// `openSlow`'s [pushing], which this calls just before it pushes the folder
+/// list. The sheet does not call it: taps stay shut out until the sheet
+/// closes.
 Future<void> openAddVideos(
   BuildContext context,
   WidgetRef ref,
@@ -64,13 +66,22 @@ Future<void> openAddVideos(
     AddToReel(:final reelId) => reelId,
   };
 
+  /// What the snack calls the target. The add is over and kept, so a reel
+  /// whose name cannot be read is called "this reel": the snack (and its Undo)
+  /// still show. A reel that is gone has no name (null).
+  Future<String?> targetName() async {
+    if (reelId == null) return l10n.navToTag;
+    try {
+      return (await reels.getById(reelId))?.name;
+    } on Object catch (error) {
+      _log.warning('Reading the reel name failed: ${error.runtimeType}');
+      return l10n.pickerThisReel;
+    }
+  }
+
   Future<void> announce(AddResult result) async {
     // The reel's name is read now: the add is over, and it may be gone.
-    final name = result.added == 0
-        ? null
-        : reelId == null
-        ? l10n.navToTag
-        : (await reels.getById(reelId))?.name;
+    final name = result.added == 0 ? null : await targetName();
     final notKept = result.notKept > 0
         ? l10n.addVideosNotKept(result.notKept)
         : null;
@@ -98,7 +109,10 @@ Future<void> openAddVideos(
     _log.info('Add videos without full access: Manual mode');
     // The caller may be gone after a slow read: there is no sheet to show.
     if (!context.mounted) return;
-    pushing?.call();
+    // No `pushing` here: `openSlow` holds the taps until this future ends,
+    // that is until the sheet closes, and the sheet covers the page and its
+    // button meanwhile. A window from when it opened would only shut out a
+    // tap after it closed.
     await showManualPickSheet(
       context,
       target: target,
