@@ -22,6 +22,10 @@ class _StubApi extends MediaHostApi {
   List<int?> zoneOffsets = [];
   List<ZoneChangeMsg> zoneChanges = [];
   bool cameraResult = true;
+  List<PickedVideoMsg> pickedList = [];
+  Uint8List? uriThumbnailBytes;
+  List<String> readableList = [];
+  List<String> persistedList = [];
   Exception? error;
 
   final List<String> calls = [];
@@ -138,6 +142,49 @@ class _StubApi extends MediaHostApi {
     _record('openVideoCamera');
     return cameraResult;
   }
+
+  @override
+  Future<List<VideoRowMsg>> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  ) async {
+    _record('videosInFolder', [volumeName, relativePath, limit, offset]);
+    return rows;
+  }
+
+  @override
+  Future<List<PickedVideoMsg>> pickVideos() async {
+    _record('pickVideos');
+    return pickedList;
+  }
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(
+    String uri,
+    int widthPx,
+    int heightPx,
+  ) async {
+    _record('thumbnailOfUri', [uri, widthPx, heightPx]);
+    return uriThumbnailBytes;
+  }
+
+  @override
+  Future<List<String>> readableUris(List<String> uris) async {
+    _record('readableUris', [uris]);
+    return readableList;
+  }
+
+  @override
+  Future<List<String>> persistedUris() async {
+    _record('persistedUris');
+    return persistedList;
+  }
+
+  @override
+  Future<void> releaseUris(List<String> uris) async =>
+      _record('releaseUris', [uris]);
 }
 
 VideoRowMsg _fullRow() => VideoRowMsg(
@@ -166,6 +213,26 @@ VideoRowMsg _nullRow() => VideoRowMsg(
   displayName: '',
   relativePath: '',
   isPending: false,
+);
+
+PickedVideoMsg _fullPicked() => PickedVideoMsg(
+  uri: 'content://media/picker/0/x/media/1',
+  sizeBytes: 123456789,
+  durationMs: 9500,
+  dateTakenMs: 1760000000123,
+  displayName: 'VID_1.mp4',
+  width: 1920,
+  height: 1080,
+  mimeType: 'video/mp4',
+  persisted: true,
+);
+
+/// Every nullable field left out, which means null.
+PickedVideoMsg _nullPicked() => PickedVideoMsg(
+  uri: 'content://com.android.providers.media.documents/document/video%3A2',
+  sizeBytes: 0,
+  displayName: '',
+  persisted: false,
 );
 
 void main() {
@@ -342,6 +409,159 @@ void main() {
     // A mime type that is set is not replaced.
     api.rows = [_fullRow()];
     expect((await bridge.allVideos('v')).single.mimeType, 'video/mp4');
+  });
+
+  group('folder pages and the photo picker', () {
+    test('videosInFolder maps rows like the other video calls and passes its '
+        'arguments', () async {
+      api.rows = [_fullRow(), _nullRow()];
+      final page = await bridge.videosInFolder(
+        'external_primary',
+        'DCIM/Camera/',
+        50,
+        100,
+      );
+      expect(api.calls.last, 'videosInFolder');
+      expect(api.args, ['external_primary', 'DCIM/Camera/', 50, 100]);
+      expect(page, await bridge.allVideos('v'));
+      expect(page.first.mediaStoreId, 4821);
+      expect(page.last.mimeType, 'video/*');
+      expect(page.last.durationMs, isNull);
+      api.rows = [];
+      expect(await bridge.videosInFolder('gone', 'A/', 10, 0), isEmpty);
+    });
+
+    test('pickVideos maps every field, set and null', () async {
+      api.pickedList = [_fullPicked(), _nullPicked()];
+      final picked = await bridge.pickVideos();
+      expect(api.calls.last, 'pickVideos');
+      expect(picked, hasLength(2));
+      expect(picked[0].uri, 'content://media/picker/0/x/media/1');
+      expect(picked[0].sizeBytes, 123456789);
+      expect(picked[0].durationMs, 9500);
+      expect(picked[0].dateTakenMs, 1760000000123);
+      expect(picked[0].displayName, 'VID_1.mp4');
+      expect(picked[0].width, 1920);
+      expect(picked[0].height, 1080);
+      expect(picked[0].mimeType, 'video/mp4');
+      expect(picked[0].persisted, isTrue);
+      expect(
+        picked[1].uri,
+        'content://com.android.providers.media.documents/document/video%3A2',
+      );
+      expect(picked[1].sizeBytes, 0);
+      expect(picked[1].displayName, '');
+      expect(picked[1].durationMs, isNull);
+      expect(picked[1].dateTakenMs, isNull);
+      expect(picked[1].width, isNull);
+      expect(picked[1].height, isNull);
+      expect(picked[1].mimeType, isNull);
+      expect(picked[1].persisted, isFalse);
+    });
+
+    test('a cancelled picker is an empty list', () async {
+      api.pickedList = [];
+      expect(await bridge.pickVideos(), isEmpty);
+    });
+
+    test('a busy picker reaches the caller as the same PlatformException', () {
+      final busy = PlatformException(code: 'busy', message: 'a picker is open');
+      api.error = busy;
+      expect(bridge.pickVideos(), throwsA(same(busy)));
+    });
+
+    test(
+      'thumbnailOfUri passes its arguments and returns bytes or null',
+      () async {
+        api.uriThumbnailBytes = Uint8List.fromList([0xff, 0xd8, 0xff]);
+        expect(await bridge.thumbnailOfUri('content://x/1', 320, 240), [
+          0xff,
+          0xd8,
+          0xff,
+        ]);
+        expect(api.args, ['content://x/1', 320, 240]);
+        api.uriThumbnailBytes = null;
+        expect(await bridge.thumbnailOfUri('content://x/1', 1, 1), isNull);
+      },
+    );
+
+    test(
+      'readableUris, persistedUris and releaseUris pass lists through',
+      () async {
+        api.readableList = ['content://x/2'];
+        expect(await bridge.readableUris(['content://x/1', 'content://x/2']), [
+          'content://x/2',
+        ]);
+        expect(api.args, [
+          ['content://x/1', 'content://x/2'],
+        ]);
+        api.readableList = [];
+        expect(await bridge.readableUris([]), isEmpty);
+
+        api.persistedList = ['content://x/1', 'content://x/3'];
+        expect(await bridge.persistedUris(), [
+          'content://x/1',
+          'content://x/3',
+        ]);
+        expect(api.calls.last, 'persistedUris');
+
+        await bridge.releaseUris(['content://x/1']);
+        expect(api.calls.last, 'releaseUris');
+        expect(api.args, [
+          ['content://x/1'],
+        ]);
+      },
+    );
+
+    test('a failed call is an exception, never an empty answer', () {
+      final error = PlatformException(code: 'native-error', message: 'x');
+      api.error = error;
+      expect(bridge.readableUris(['a']), throwsA(same(error)));
+      expect(bridge.persistedUris(), throwsA(same(error)));
+      expect(bridge.releaseUris(['a']), throwsA(same(error)));
+      expect(bridge.thumbnailOfUri('a', 1, 1), throwsA(same(error)));
+      expect(bridge.videosInFolder('v', 'a/', 1, 0), throwsA(same(error)));
+    });
+
+    test('a picked video survives the wire with its nulls', () async {
+      const prefix = 'dev.flutter.pigeon.taketray.MediaHostApi';
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      const codec = MediaHostApi.pigeonChannelCodec;
+      messenger.setMockMessageHandler('$prefix.pickVideos', (message) async {
+        return codec.encodeMessage(<Object?>[
+          [_fullPicked(), _nullPicked()],
+        ]);
+      });
+      addTearDown(
+        () => messenger.setMockMessageHandler('$prefix.pickVideos', null),
+      );
+      final picked = await PigeonMediaBridge().pickVideos();
+      expect(picked.map((p) => p.persisted), [true, false]);
+      expect(picked[1].mimeType, isNull);
+      expect(picked[0].durationMs, 9500);
+    });
+
+    test('PickedVideo is a value: equal fields are equal', () {
+      const a = PickedVideo(
+        uri: 'u',
+        sizeBytes: 1,
+        displayName: 'n',
+        persisted: true,
+      );
+      expect(
+        a,
+        const PickedVideo(
+          uri: 'u',
+          sizeBytes: 1,
+          displayName: 'n',
+          persisted: true,
+        ),
+      );
+      expect(a, isNot(a.copyWith(persisted: false)));
+      expect(a.durationMs, isNull);
+      expect(a.mimeType, isNull);
+    });
   });
 
   test('zone changes map to ZoneEntry with UTC instants', () async {

@@ -84,6 +84,28 @@ abstract class VideoFolder with _$VideoFolder {
   }) = _VideoFolder;
 }
 
+/// One video the user picked in Android's photo picker (or the document picker
+/// that stands in for it), identified by its content [uri].
+///
+/// [sizeBytes] is 0 and [displayName] is '' when the provider gave none; the
+/// other facts are null when unknown. [persisted] is true when Android agreed
+/// to keep read access to [uri] across restarts; when false the access lasts
+/// only until the app is closed. Never log [uri] or [displayName] (D-10).
+@freezed
+abstract class PickedVideo with _$PickedVideo {
+  const factory PickedVideo({
+    required String uri,
+    required int sizeBytes,
+    required String displayName,
+    required bool persisted,
+    int? durationMs,
+    int? dateTakenMs,
+    int? width,
+    int? height,
+    String? mimeType,
+  }) = _PickedVideo;
+}
+
 /// Where a volume stood when Shooting mode was switched on: its MediaStore
 /// [version] and [generation]. Videos with a higher generation (under the same
 /// version) are new.

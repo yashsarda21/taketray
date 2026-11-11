@@ -87,6 +87,36 @@ abstract interface class MediaBridge {
 
   /// Opens the phone's camera in video mode; false when no app could.
   Future<bool> openVideoCamera();
+
+  /// One page of a folder: finished videos with a duration in exactly
+  /// [relativePath] (case-insensitive; '' is the volume root), newest shot
+  /// first (date taken, then date added, then date modified), at most [limit]
+  /// from [offset]. The order is stable, so pages never repeat a video. A
+  /// volume that is gone gives an empty list.
+  Future<List<MediaVideo>> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  );
+
+  /// Opens Android's photo picker (its document picker where that is missing)
+  /// and returns what the user picked: empty when they cancelled. Throws a
+  /// `PlatformException` with code `busy` while a picker is already open.
+  Future<List<PickedVideo>> pickVideos();
+
+  /// JPEG bytes of a picked video, or null when it is gone or unreadable.
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx);
+
+  /// The subset of [uris] that can still be read, in the order given. A failed
+  /// call throws: a caller must never read "failed" as "gone".
+  Future<List<String>> readableUris(List<String> uris);
+
+  /// Every address the app still holds a saved read grant for.
+  Future<List<String>> persistedUris();
+
+  /// Gives up the saved grants of exactly [uris].
+  Future<void> releaseUris(List<String> uris);
 }
 
 /// The address the viewer plays [clip] from, or null when it must not be
@@ -222,6 +252,46 @@ class PigeonMediaBridge implements MediaBridge {
 
   @override
   Future<bool> openVideoCamera() => _api.openVideoCamera();
+
+  @override
+  Future<List<MediaVideo>> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  ) async => _videos(
+    await _api.videosInFolder(volumeName, relativePath, limit, offset),
+  );
+
+  @override
+  Future<List<PickedVideo>> pickVideos() async => [
+    for (final p in await _api.pickVideos())
+      PickedVideo(
+        uri: p.uri,
+        sizeBytes: p.sizeBytes,
+        displayName: p.displayName,
+        persisted: p.persisted,
+        durationMs: p.durationMs,
+        dateTakenMs: p.dateTakenMs,
+        width: p.width,
+        height: p.height,
+        mimeType: p.mimeType,
+      ),
+  ];
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) =>
+      _api.thumbnailOfUri(uri, widthPx, heightPx);
+
+  @override
+  Future<List<String>> readableUris(List<String> uris) =>
+      _api.readableUris(uris);
+
+  @override
+  Future<List<String>> persistedUris() => _api.persistedUris();
+
+  @override
+  Future<void> releaseUris(List<String> uris) => _api.releaseUris(uris);
 }
 
 MediaAccess _access(AccessReportMsg msg) => MediaAccess(

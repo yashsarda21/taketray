@@ -99,6 +99,35 @@ class VideoFolderMsg {
   int videoCount;
 }
 
+/// One video the user picked in Android's photo picker (or its document
+/// picker fallback), identified by its content [uri]. Facts the provider does
+/// not give stay null; Kotlin maps a null size to 0 and a null name to ''.
+/// [persisted] is true when Android agreed to keep read access to [uri] across
+/// restarts (takePersistableUriPermission did not throw).
+class PickedVideoMsg {
+  PickedVideoMsg({
+    required this.uri,
+    required this.sizeBytes,
+    required this.durationMs,
+    required this.dateTakenMs,
+    required this.displayName,
+    required this.width,
+    required this.height,
+    required this.mimeType,
+    required this.persisted,
+  });
+
+  String uri;
+  int sizeBytes;
+  int? durationMs;
+  int? dateTakenMs;
+  String displayName;
+  int? width;
+  int? height;
+  String? mimeType;
+  bool persisted;
+}
+
 /// "From [atMs] (UTC milliseconds) the phone was in [zoneId]."
 class ZoneChangeMsg {
   ZoneChangeMsg({required this.atMs, required this.zoneId});
@@ -163,6 +192,46 @@ abstract class MediaHostApi {
     int widthPx,
     int heightPx,
   );
+
+  /// One page of a folder: non-pending videos with DURATION > 0 in exactly
+  /// [relativePath] (case-insensitive; '' is the volume root), newest shot
+  /// first (DATE_TAKEN, then DATE_ADDED, then DATE_MODIFIED), the id as the
+  /// tie-break so pages never repeat. At most [limit] rows from [offset].
+  /// A volume that is gone gives `[]`, never an error.
+  @async
+  List<VideoRowMsg> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  );
+
+  /// Opens Android's photo picker (the document picker where it is missing)
+  /// and answers with what the user picked: `[]` when cancelled. Fails with
+  /// code `busy` while one is already open, and `host-gone` if the activity
+  /// closes first.
+  @async
+  List<PickedVideoMsg> pickVideos();
+
+  /// Like [thumbnail], for a content [uri] (a picked video). Null when the
+  /// video is gone or unreadable, or [uri] is not a content address.
+  @async
+  Uint8List? thumbnailOfUri(String uri, int widthPx, int heightPx);
+
+  /// The subset of [uris] that can still be read. A uri whose read is refused
+  /// (SecurityException) or has no row is left out; a failure of the whole
+  /// call is an error, so "failed" is never read as "gone".
+  @async
+  List<String> readableUris(List<String> uris);
+
+  /// Every address this app still holds a saved read grant for.
+  @async
+  List<String> persistedUris();
+
+  /// Gives up the saved grants of exactly [uris]; one that fails does not stop
+  /// the rest.
+  @async
+  void releaseUris(List<String> uris);
 
   String currentZoneId();
 

@@ -104,4 +104,23 @@ class ThumbnailsTest {
         FakeMediaProvider.install(FileNotFoundException("gone"))
         assertNull(Thumbnails.bitmap(resolver, gone, 1024))
     }
+    @Test
+    fun `a picked uri that is not a content address has no thumbnail and asks nothing`() {
+        FakeMediaProvider.install(FileNotFoundException("gone"))
+        for (text in listOf("", "   ", "file:///storage/emulated/0/Movies/a.mp4", "/storage/emulated/0/a.mp4", "not a uri", "http://example.com/a.mp4")) {
+            assertNull(text, Thumbnails.loadFromUri(resolver, text, 96, 96))
+        }
+        assertTrue(FakeMediaProvider.opens.isEmpty())
+    }
+
+    @Test
+    fun `a gone or unreadable picked uri gives null, a size of 0 or less is an error`() {
+        for (error in listOf<Exception>(FileNotFoundException("gone"), SecurityException("grant lost"), IOException("unreadable"))) {
+            FakeMediaProvider.install(error)
+            assertNull(Thumbnails.loadFromUri(resolver, gone.toString(), 96, 96))
+            assertEquals(1, FakeMediaProvider.opens.size)
+        }
+        assertThrows(IllegalArgumentException::class.java) { Thumbnails.loadFromUri(resolver, gone.toString(), 0, 96) }
+        assertThrows(IllegalArgumentException::class.java) { Thumbnails.loadFromUri(resolver, gone.toString(), 96, -1) }
+    }
 }

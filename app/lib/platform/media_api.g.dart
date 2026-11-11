@@ -423,6 +423,105 @@ class VideoFolderMsg {
   }
 }
 
+/// One video the user picked in Android's photo picker (or its document
+/// picker fallback), identified by its content [uri]. Facts the provider does
+/// not give stay null; Kotlin maps a null size to 0 and a null name to ''.
+/// [persisted] is true when Android agreed to keep read access to [uri] across
+/// restarts (takePersistableUriPermission did not throw).
+class PickedVideoMsg {
+  PickedVideoMsg({
+    required this.uri,
+    required this.sizeBytes,
+    this.durationMs,
+    this.dateTakenMs,
+    required this.displayName,
+    this.width,
+    this.height,
+    this.mimeType,
+    required this.persisted,
+  });
+
+  String uri;
+
+  int sizeBytes;
+
+  int? durationMs;
+
+  int? dateTakenMs;
+
+  String displayName;
+
+  int? width;
+
+  int? height;
+
+  String? mimeType;
+
+  bool persisted;
+
+  List<Object?> _toList() {
+    return <Object?>[
+      uri,
+      sizeBytes,
+      durationMs,
+      dateTakenMs,
+      displayName,
+      width,
+      height,
+      mimeType,
+      persisted,
+    ];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static PickedVideoMsg decode(Object result) {
+    result as List<Object?>;
+    return PickedVideoMsg(
+      uri: result[0]! as String,
+      sizeBytes: result[1]! as int,
+      durationMs: result[2] as int?,
+      dateTakenMs: result[3] as int?,
+      displayName: result[4]! as String,
+      width: result[5] as int?,
+      height: result[6] as int?,
+      mimeType: result[7] as String?,
+      persisted: result[8]! as bool,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! PickedVideoMsg || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(uri, other.uri) &&
+        _deepEquals(sizeBytes, other.sizeBytes) &&
+        _deepEquals(durationMs, other.durationMs) &&
+        _deepEquals(dateTakenMs, other.dateTakenMs) &&
+        _deepEquals(displayName, other.displayName) &&
+        _deepEquals(width, other.width) &&
+        _deepEquals(height, other.height) &&
+        _deepEquals(mimeType, other.mimeType) &&
+        _deepEquals(persisted, other.persisted);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'PickedVideoMsg(uri: $uri, sizeBytes: $sizeBytes, durationMs: $durationMs, dateTakenMs: $dateTakenMs, displayName: $displayName, width: $width, height: $height, mimeType: $mimeType, persisted: $persisted)';
+  }
+}
+
 /// "From [atMs] (UTC milliseconds) the phone was in [zoneId]."
 class ZoneChangeMsg {
   ZoneChangeMsg({required this.atMs, required this.zoneId});
@@ -491,8 +590,11 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is VideoFolderMsg) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is ZoneChangeMsg) {
+    } else if (value is PickedVideoMsg) {
       buffer.putUint8(135);
+      writeValue(buffer, value.encode());
+    } else if (value is ZoneChangeMsg) {
+      buffer.putUint8(136);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -516,6 +618,8 @@ class _PigeonCodec extends StandardMessageCodec {
       case 134:
         return VideoFolderMsg.decode(readValue(buffer)!);
       case 135:
+        return PickedVideoMsg.decode(readValue(buffer)!);
+      case 136:
         return ZoneChangeMsg.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
@@ -767,6 +871,153 @@ class MediaHostApi {
       isNullValid: true,
     );
     return pigeonVar_replyValue as Uint8List?;
+  }
+
+  /// One page of a folder: non-pending videos with DURATION > 0 in exactly
+  /// [relativePath] (case-insensitive; '' is the volume root), newest shot
+  /// first (DATE_TAKEN, then DATE_ADDED, then DATE_MODIFIED), the id as the
+  /// tie-break so pages never repeat. At most [limit] rows from [offset].
+  /// A volume that is gone gives `[]`, never an error.
+  Future<List<VideoRowMsg>> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.videosInFolder$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[volumeName, relativePath, limit, offset],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<VideoRowMsg>();
+  }
+
+  /// Opens Android's photo picker (the document picker where it is missing)
+  /// and answers with what the user picked: `[]` when cancelled. Fails with
+  /// code `busy` while one is already open, and `host-gone` if the activity
+  /// closes first.
+  Future<List<PickedVideoMsg>> pickVideos() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.pickVideos$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<PickedVideoMsg>();
+  }
+
+  /// Like [thumbnail], for a content [uri] (a picked video). Null when the
+  /// video is gone or unreadable, or [uri] is not a content address.
+  Future<Uint8List?> thumbnailOfUri(
+    String uri,
+    int widthPx,
+    int heightPx,
+  ) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.thumbnailOfUri$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[uri, widthPx, heightPx],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as Uint8List?;
+  }
+
+  /// The subset of [uris] that can still be read. A uri whose read is refused
+  /// (SecurityException) or has no row is left out; a failure of the whole
+  /// call is an error, so "failed" is never read as "gone".
+  Future<List<String>> readableUris(List<String> uris) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.readableUris$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[uris],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<String>();
+  }
+
+  /// Every address this app still holds a saved read grant for.
+  Future<List<String>> persistedUris() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.persistedUris$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<String>();
+  }
+
+  /// Gives up the saved grants of exactly [uris]; one that fails does not stop
+  /// the rest.
+  Future<void> releaseUris(List<String> uris) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.releaseUris$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[uris],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
   }
 
   Future<String> currentZoneId() async {

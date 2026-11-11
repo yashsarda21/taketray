@@ -23,6 +23,23 @@ object Thumbnails {
     ): ByteArray? = encode(widthPx, heightPx) { size -> resolver.loadThumbnail(uri, size, null) }
 
     /**
+     * Like [load] for an address as text (a picked video). Anything that is
+     * not a `content:` address (a file path, nothing, rubbish) has no
+     * thumbnail and asks nothing. The size must be positive, as for [encode].
+     */
+    fun loadFromUri(
+        resolver: ContentResolver,
+        uri: String,
+        widthPx: Int,
+        heightPx: Int,
+    ): ByteArray? {
+        require(widthPx > 0 && heightPx > 0) { "thumbnail size must be positive" }
+        val parsed = Uri.parse(uri)
+        if (!ContentResolver.SCHEME_CONTENT.equals(parsed.scheme, ignoreCase = true)) return null
+        return load(resolver, parsed, widthPx, heightPx)
+    }
+
+    /**
      * Loads with [loader] and encodes. A gone or unreadable video
      * (FileNotFoundException, IOException), a lost permission
      * (SecurityException) or a cancelled load (OperationCanceledException)

@@ -127,6 +127,47 @@ class VideoQueriesTest {
     }
 
     @Test
+    fun `inFolder selection is one exact folder with a positive duration`() {
+        val (selection, args) = VideoQueries.inFolderSelection("DCIM/Camera")
+        assertEquals("($folderTerm) AND ${MediaColumns.DURATION} > 0", selection)
+        assertArrayEquals(arrayOf("DCIM/Camera/"), args)
+        assertArrayEquals(arrayOf("Movies/WhatsApp/"), VideoQueries.inFolderSelection("/Movies/WhatsApp//").second)
+    }
+
+    @Test
+    fun `inFolder selection for the volume root matches an empty or missing path`() {
+        for (root in listOf("", "/", "//")) {
+            val (selection, args) = VideoQueries.inFolderSelection(root)
+            assertEquals(
+                "(${MediaColumns.RELATIVE_PATH} IS NULL OR ${MediaColumns.RELATIVE_PATH} = '') AND ${MediaColumns.DURATION} > 0",
+                selection,
+            )
+            assertEquals(0, args.size)
+        }
+    }
+
+    @Test
+    fun `inFolder args leave out pending and trashed rows, newest shot first, with limit and offset`() {
+        val args = VideoQueries.inFolderArgs("DCIM/Camera/", 50, 100)
+        assertEquals(MediaStore.MATCH_EXCLUDE, args.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+        assertEquals(MediaStore.MATCH_EXCLUDE, args.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED))
+        assertEquals(VideoQueries.SHOT_NEWEST_ORDER, args.getString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER))
+        assertEquals(50, args.getInt(ContentResolver.QUERY_ARG_LIMIT))
+        assertEquals(100, args.getInt(ContentResolver.QUERY_ARG_OFFSET))
+        val expected = VideoQueries.inFolderSelection("DCIM/Camera/")
+        assertEquals(expected.first, args.getString(ContentResolver.QUERY_ARG_SQL_SELECTION))
+        assertArrayEquals(expected.second, args.getStringArray(ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS))
+    }
+
+    @Test
+    fun `inFolder args cap a huge limit and offset and treat a negative offset as 0`() {
+        val huge = VideoQueries.inFolderArgs("A/", Long.MAX_VALUE, Long.MAX_VALUE)
+        assertEquals(Int.MAX_VALUE, huge.getInt(ContentResolver.QUERY_ARG_LIMIT))
+        assertEquals(Int.MAX_VALUE, huge.getInt(ContentResolver.QUERY_ARG_OFFSET))
+        assertEquals(0, VideoQueries.inFolderArgs("A/", 10, -5).getInt(ContentResolver.QUERY_ARG_OFFSET))
+    }
+
+    @Test
     fun `a huge limit is capped to Int MAX_VALUE`() {
         val args = VideoQueries.addedAfterArgs(0, listOf("A/"), Long.MAX_VALUE)
         assertEquals(Int.MAX_VALUE, args.getInt(ContentResolver.QUERY_ARG_LIMIT))

@@ -288,4 +288,194 @@ void main() {
     fake.cameraOpens = false;
     expect(await fake.openVideoCamera(), isFalse);
   });
+  group('videosInFolder', () {
+    List<int> ids(List<MediaVideo> v) => [for (final x in v) x.mediaStoreId];
+
+    test('keeps finished videos with a duration in exactly that folder, '
+        'ignoring ASCII case only', () async {
+      fake.videosByVolume['v'] = [
+        fakeVideo(id: 1),
+        fakeVideo(id: 2, folder: 'dcim/CAMERA/'),
+        fakeVideo(id: 3, folder: 'DCIM/Camera/Sub/'),
+        fakeVideo(id: 4, folder: 'DCIM/Camera'),
+        fakeVideo(id: 5, pending: true),
+        fakeVideo(id: 6, durationMs: 0),
+        fakeVideo(id: 7, durationMs: null),
+        fakeVideo(id: 8, folder: 'DCIM/Other/'),
+        fakeVideo(id: 9, folder: 'Vidéos/'),
+        fakeVideo(id: 10, folder: 'VIDÉOS/'),
+      ];
+      expect(ids(await fake.videosInFolder('v', 'DCIM/Camera', 100, 0)), [
+        2,
+        1,
+      ]);
+      expect(ids(await fake.videosInFolder('v', '/dcim/camera/', 100, 0)), [
+        2,
+        1,
+      ]);
+      expect(ids(await fake.videosInFolder('v', 'Vidéos', 100, 0)), [9]);
+      expect(fake.calls, hasLength(3));
+    });
+
+    test('a folder of the volume root matches an empty path', () async {
+      fake.videosByVolume['v'] = [
+        fakeVideo(id: 1, folder: ''),
+        fakeVideo(id: 2, folder: 'DCIM/'),
+      ];
+      expect(ids(await fake.videosInFolder('v', '', 10, 0)), [1]);
+      expect(ids(await fake.videosInFolder('v', '/', 10, 0)), [1]);
+    });
+
+    test('is newest shot first: date taken, then date added, then date '
+        'modified, ties by id, no date last', () async {
+      fake.videosByVolume['v'] = [
+        fakeVideo(id: 1, dateTakenMs: 5000000, dateAddedSec: 1),
+        fakeVideo(
+          id: 2,
+          dateTakenMs: null,
+          dateAddedSec: 6000,
+          dateModifiedSec: 1,
+        ),
+        fakeVideo(
+          id: 3,
+          dateTakenMs: 0,
+          dateAddedSec: 4000,
+          dateModifiedSec: 1,
+        ),
+        fakeVideo(
+          id: 4,
+          dateTakenMs: null,
+          dateAddedSec: null,
+          dateModifiedSec: 7000,
+        ),
+        fakeVideo(
+          id: 5,
+          dateTakenMs: null,
+          dateAddedSec: 0,
+          dateModifiedSec: 3000,
+        ),
+        fakeVideo(id: 6, dateTakenMs: 8000000, dateAddedSec: 1),
+        fakeVideo(
+          id: 7,
+          dateTakenMs: null,
+          dateAddedSec: null,
+          dateModifiedSec: null,
+        ),
+        fakeVideo(id: 8, dateTakenMs: 3000000),
+        fakeVideo(id: 9, dateTakenMs: 3000000),
+      ];
+      expect(ids(await fake.videosInFolder('v', 'DCIM/Camera/', 100, 0)), [
+        6,
+        4,
+        2,
+        1,
+        3,
+        9,
+        8,
+        5,
+        7,
+      ]);
+    });
+
+    test('pages never repeat or skip a video', () async {
+      fake.videosByVolume['v'] = [
+        for (var i = 1; i <= 11; i++)
+          fakeVideo(id: i, dateTakenMs: i <= 5 ? 2000 : 1000 * i),
+      ];
+      final all = ids(await fake.videosInFolder('v', 'DCIM/Camera/', 100, 0));
+      expect(all, hasLength(11));
+      for (final size in [1, 2, 3, 4, 5, 10, 11, 12]) {
+        final paged = <int>[];
+        for (var offset = 0; ; offset += size) {
+          final page = ids(
+            await fake.videosInFolder('v', 'DCIM/Camera/', size, offset),
+          );
+          if (page.isEmpty) break;
+          expect(page.length, lessThanOrEqualTo(size));
+          paged.addAll(page);
+        }
+        expect(paged, all, reason: 'page size $size');
+      }
+    });
+
+    test('a limit of 0 or less, an offset past the end, a negative offset and '
+        'a volume that is gone', () async {
+      fake.videosByVolume['v'] = [fakeVideo(id: 1), fakeVideo(id: 2)];
+      expect(await fake.videosInFolder('v', 'DCIM/Camera/', 0, 0), isEmpty);
+      expect(await fake.videosInFolder('v', 'DCIM/Camera/', -1, 0), isEmpty);
+      expect(await fake.videosInFolder('v', 'DCIM/Camera/', 10, 5), isEmpty);
+      expect(
+        ids(await fake.videosInFolder('v', 'DCIM/Camera/', 10, -3)),
+        hasLength(2),
+      );
+      expect(await fake.videosInFolder('gone', 'DCIM/Camera/', 10, 0), isEmpty);
+    });
+  });
+
+  group('the photo picker and saved addresses', () {
+    PickedVideo picked(int n, {bool persisted = true}) => PickedVideo(
+      uri: 'content://picker/$n',
+      sizeBytes: n,
+      displayName: 'p$n.mp4',
+      persisted: persisted,
+    );
+
+    test('pickVideos answers the settable list (empty is a cancel), and the '
+        'list it gives is a copy', () async {
+      expect(await fake.pickVideos(), isEmpty);
+      fake.picked = [picked(1), picked(2, persisted: false)];
+      final answer = await fake.pickVideos();
+      expect(answer, fake.picked);
+      answer.clear();
+      expect(fake.picked, hasLength(2));
+      expect(fake.calls, ['pickVideos', 'pickVideos']);
+    });
+
+    test('pickVideos persists the grants it reports as persisted', () async {
+      fake.picked = [picked(1), picked(2, persisted: false)];
+      await fake.pickVideos();
+      expect(await fake.persistedUris(), ['content://picker/1']);
+    });
+
+    test('a busy picker throws the busy PlatformException and still logs the '
+        'call', () async {
+      fake
+        ..picked = [picked(1)]
+        ..pickerBusy = true;
+      await expectLater(
+        fake.pickVideos(),
+        throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'busy')),
+      );
+      expect(fake.calls, ['pickVideos']);
+      expect(await fake.persistedUris(), isEmpty);
+      fake.pickerBusy = false;
+      expect(await fake.pickVideos(), hasLength(1));
+    });
+
+    test('readableUris is the subset of the settable set, in order', () async {
+      fake.readable = {'a', 'c'};
+      expect(await fake.readableUris(['c', 'b', 'a']), ['c', 'a']);
+      expect(await fake.readableUris([]), isEmpty);
+      fake.failNext('readableUris');
+      await expectLater(
+        fake.readableUris(['a']),
+        throwsA(isA<PlatformException>()),
+      );
+    });
+
+    test('releaseUris drops only the given grants and logs them', () async {
+      fake.persisted = {'a', 'b', 'c'};
+      await fake.releaseUris(['b', 'zzz']);
+      expect(await fake.persistedUris(), unorderedEquals(['a', 'c']));
+      expect(fake.released, [
+        ['b', 'zzz'],
+      ]);
+    });
+
+    test('thumbnailOfUri answers from the settable map', () async {
+      fake.uriThumbnails['content://x/1'] = Uint8List.fromList([1, 2]);
+      expect(await fake.thumbnailOfUri('content://x/1', 10, 10), [1, 2]);
+      expect(await fake.thumbnailOfUri('content://x/2', 10, 10), isNull);
+    });
+  });
 }

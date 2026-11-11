@@ -46,7 +46,8 @@ MediaVideo fakeVideo({
 ///
 /// - Settable state: [access], [volumeList], [videosByVolume] (volume name to
 ///   its videos), [folders], [thumbnails] (keyed by `(volume, id)`),
-///   [currentZone], [zoneRules], [zoneChanges], [cameraOpens].
+///   [currentZone], [zoneRules], [zoneChanges], [cameraOpens], and for the
+///   picker [picked], [pickerBusy], [readable], [persisted], [uriThumbnails].
 /// - `zoneOffsetsMs` answers from the fixed table [zoneRules] (null for a zone
 ///   not in it) and logs each request in [zoneOffsetRequests].
 /// - [onRequestAccess] gives the result of `requestAccess`, which also becomes
@@ -63,7 +64,10 @@ MediaVideo fakeVideo({
 /// requested folder gets exactly one trailing '/' and is then compared with the
 /// stored path as it is, ignoring ASCII case only (SQLite's COLLATE NOCASE).
 /// `videosAddedAfter` includes pending rows; `videosShotSince` and `allVideos`
-/// leave them out; `videosByIds` returns any row that exists.
+/// leave them out; `videosByIds` returns any row that exists. `videosInFolder`
+/// is one exact folder ('' is the volume root), finished videos with a
+/// duration, newest shot first with the id as tie-break, `limit` from `offset`;
+/// a volume that is not in [videosByVolume] gives an empty page.
 class FakeMediaBridge implements MediaBridge {
   MediaAccess access = const MediaAccess(
     level: MediaAccessLevel.full,
@@ -101,6 +105,26 @@ class FakeMediaBridge implements MediaBridge {
   List<ZoneEntry> zoneChanges = [];
 
   bool cameraOpens = true;
+
+  /// What `pickVideos` answers; empty is the user cancelling. Each one that
+  /// is `persisted` also joins [persisted], as the phone's saved grant would.
+  List<PickedVideo> picked = [];
+
+  /// Makes `pickVideos` throw the `busy` `PlatformException`, as when a
+  /// picker is already open.
+  bool pickerBusy = false;
+
+  /// The addresses `readableUris` keeps (it answers the asked ones in this
+  /// set, in the asked order).
+  Set<String> readable = {};
+
+  /// The addresses with a saved read grant, for `persistedUris`.
+  Set<String> persisted = {};
+
+  /// The argument of every `releaseUris` call.
+  final List<List<String>> released = [];
+
+  final Map<String, Uint8List?> uriThumbnails = {};
 
   final List<String> calls = [];
 
@@ -261,6 +285,93 @@ class FakeMediaBridge implements MediaBridge {
 
   @override
   Future<bool> openVideoCamera() => _call('openVideoCamera', () => cameraOpens);
+
+  @override
+  Future<List<MediaVideo>> videosInFolder(
+    String volumeName,
+    String relativePath,
+    int limit,
+    int offset,
+  ) => _call('videosInFolder', () {
+    final wanted = _asciiLower(_withSlash(relativePath));
+    final root = relativePath.replaceAll('/', '').isEmpty;
+    final rows =
+        _of(volumeName)
+            .where(
+              (v) =>
+                  !v.isPending &&
+                  (v.durationMs ?? 0) > 0 &&
+                  (root
+                      ? v.relativePath.isEmpty
+                      : _asciiLower(v.relativePath) == wanted),
+            )
+            .toList()
+          ..sort((a, b) {
+            // Newest shot first (null, no date, last), then newest id first.
+            final x = _shotMs(a);
+            final y = _shotMs(b);
+            if (x != y) {
+              if (x == null) return 1;
+              if (y == null) return -1;
+              return y.compareTo(x);
+            }
+            return b.mediaStoreId.compareTo(a.mediaStoreId);
+          });
+    final start = offset < 0 ? 0 : offset;
+    if (limit <= 0 || start >= rows.length) return <MediaVideo>[];
+    return rows.skip(start).take(limit).toList();
+  });
+
+  @override
+  Future<List<PickedVideo>> pickVideos() => _call('pickVideos', () {
+    if (pickerBusy) {
+      throw PlatformException(
+        code: 'busy',
+        message: 'a picker is already open',
+      );
+    }
+    final answer = List.of(picked);
+    persisted.addAll([
+      for (final p in answer)
+        if (p.persisted) p.uri,
+    ]);
+    return answer;
+  });
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) =>
+      _call('thumbnailOfUri', () => uriThumbnails[uri]);
+
+  @override
+  Future<List<String>> readableUris(List<String> uris) => _call(
+    'readableUris',
+    () => [
+      for (final u in uris)
+        if (readable.contains(u)) u,
+    ],
+  );
+
+  @override
+  Future<List<String>> persistedUris() =>
+      _call('persistedUris', () => List.of(persisted));
+
+  @override
+  Future<void> releaseUris(List<String> uris) => _call('releaseUris', () {
+    released.add(List.of(uris));
+    persisted.removeAll(uris);
+  });
+
+  /// The shot time as the phone sorts folders: date taken (ms), else date
+  /// added, else date modified (seconds, times 1000); a zero is no date.
+  static int? _shotMs(MediaVideo v) {
+    final taken = v.dateTakenMs;
+    if (taken != null && taken != 0) return taken;
+    final added = v.dateAddedSec;
+    if (added != null && added != 0) return added * 1000;
+    final modified = v.dateModifiedSec;
+    if (modified != null && modified != 0) return modified * 1000;
+    return null;
+  }
 
   List<MediaVideo> _of(String volumeName) =>
       videosByVolume[volumeName] ?? const [];

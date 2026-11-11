@@ -3,8 +3,10 @@ package app.taketray.media
 import android.app.Activity
 import android.content.ContentResolver
 import android.content.Context
+import android.content.Intent
 import android.database.MatrixCursor
 import android.graphics.Point
+import android.net.Uri
 import android.os.Build
 import android.os.Looper
 import android.provider.MediaStore
@@ -545,5 +547,314 @@ class MediaHostApiImplTest {
     fun `volumes come from the injected volume source`() =
         timed {
             assertEquals(emptyList<VolumeMsg>(), impl.volumes())
+        }
+    // ---- Folder pages (D-112) ----
+
+    private fun volumesOf(vararg names: String) =
+        object : Volumes {
+            override fun names() = names.toSet()
+
+            override fun version(volume: String): String? = "v"
+
+            override fun generation(volume: String) = 1L
+        }
+
+    private fun folderRow(
+        id: Long,
+        path: String = "DCIM/Camera/",
+    ) = videoRow(id, path).toMutableMap().apply {
+        put(MediaColumns.DURATION, 5_000L)
+        put(MediaColumns.DISPLAY_NAME, "VID_$id.mp4")
+    }
+
+    @Test
+    fun `videosInFolder asks one folder of the volume's video table, a page at a time, off the main thread`() =
+        timed {
+            impl = MediaHostApiImpl(activity, volumesOf("abcd-1234"))
+            var onMain: Boolean? = null
+            FakeMediaProvider.install(answer = {
+                onMain = Looper.myLooper() == Looper.getMainLooper()
+                cursorOf(listOf(folderRow(42), folderRow(41)))
+            })
+            val rows = impl.videosInFolder("abcd-1234", "DCIM/Camera", 25, 50)
+
+            val q = FakeMediaProvider.queries.single()
+            assertEquals(MediaStore.Video.Media.getContentUri("abcd-1234"), q.uri)
+            assertEquals(VideoQueries.PROJECTION.toList(), q.projection)
+            val expected = VideoQueries.inFolderSelection("DCIM/Camera")
+            assertEquals(expected.first, q.args!!.getString(ContentResolver.QUERY_ARG_SQL_SELECTION))
+            assertEquals(expected.second.toList(), q.selectionArgs())
+            assertEquals(MediaStore.MATCH_EXCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_PENDING))
+            assertEquals(MediaStore.MATCH_EXCLUDE, q.args!!.getInt(MediaStore.QUERY_ARG_MATCH_TRASHED))
+            assertEquals(VideoQueries.SHOT_NEWEST_ORDER, q.args!!.getString(ContentResolver.QUERY_ARG_SQL_SORT_ORDER))
+            assertEquals(25, q.args!!.getInt(ContentResolver.QUERY_ARG_LIMIT))
+            assertEquals(50, q.args!!.getInt(ContentResolver.QUERY_ARG_OFFSET))
+            // The provider's order is kept.
+            assertEquals(listOf(42L, 41L), rows.map { it.mediaStoreId })
+            assertTrue(rows.all { it.volumeName == "abcd-1234" })
+            assertEquals(false, onMain)
+        }
+
+    @Test
+    fun `videosInFolder with a limit of 0 or less gives no rows without a query, and a negative offset is 0`() =
+        timed {
+            impl = MediaHostApiImpl(activity, volumesOf("external_primary"))
+            FakeMediaProvider.install(answer = { cursorOf(listOf(folderRow(1))) })
+            assertEquals(emptyList<VideoRowMsg>(), impl.videosInFolder("external_primary", "A/", 0, 0))
+            assertEquals(emptyList<VideoRowMsg>(), impl.videosInFolder("external_primary", "A/", -3, 0))
+            assertTrue(FakeMediaProvider.queries.isEmpty())
+            impl.videosInFolder("external_primary", "A/", 10, -7)
+            assertEquals(0, FakeMediaProvider.queries.single().args!!.getInt(ContentResolver.QUERY_ARG_OFFSET))
+        }
+
+    @Test
+    fun `videosInFolder on a volume that is gone is empty and never asks the provider`() =
+        timed {
+            impl = MediaHostApiImpl(activity, volumesOf("external_primary"))
+            FakeMediaProvider.install(answer = { throw AssertionError("a gone volume must not be queried") })
+            assertEquals(emptyList<VideoRowMsg>(), impl.videosInFolder("1234-ABCD", "DCIM/", 10, 0))
+            assertTrue(FakeMediaProvider.queries.isEmpty())
+            // No volumes at all.
+            impl = MediaHostApiImpl(activity, noVolumes)
+            assertEquals(emptyList<VideoRowMsg>(), impl.videosInFolder("external_primary", "DCIM/", 10, 0))
+        }
+
+    @Test
+    fun `videosInFolder on a volume removed while the query runs is empty`() =
+        timed {
+            var present = true
+            impl =
+                MediaHostApiImpl(
+                    activity,
+                    object : Volumes {
+                        override fun names() = if (present) setOf("1234-ABCD") else emptySet()
+
+                        override fun version(volume: String): String? = "v"
+
+                        override fun generation(volume: String) = 1L
+                    },
+                )
+            FakeMediaProvider.install(answer = {
+                present = false // the card is pulled during the query
+                throw IllegalArgumentException("Volume 1234-ABCD not found")
+            })
+            assertEquals(emptyList<VideoRowMsg>(), impl.videosInFolder("1234-ABCD", "DCIM/", 10, 0))
+        }
+
+    @Test
+    fun `videosInFolder failing on a volume that is still there is an error, never an empty page`() =
+        timed {
+            impl = MediaHostApiImpl(activity, volumesOf("external_primary"))
+            for (failure in listOf<() -> android.database.Cursor?>(
+                { throw IllegalArgumentException("Invalid column") },
+                { throw IllegalStateException("provider died") },
+                { null },
+            )) {
+                FakeMediaProvider.install(answer = { failure() })
+                try {
+                    impl.videosInFolder("external_primary", "DCIM/", 10, 0)
+                    fail("expected an error")
+                } catch (e: FlutterError) {
+                    assertTrue(e.code, e.code == "native-error" || e.code == "no-cursor")
+                }
+            }
+        }
+
+    // ---- Saved addresses ----
+
+    private val mediaUri = MediaStore.Video.Media.getContentUri("external_primary")
+
+    private fun videoUri(id: Long): String = Uri.withAppendedPath(mediaUri, "$id").toString()
+
+    @Test
+    fun `readableUris keeps the readable ones, off the main thread, and fails whole when a query fails`() =
+        timed {
+            val threads = mutableListOf<Boolean>()
+            FakeMediaProvider.install(answer = { q ->
+                threads += Looper.myLooper() == Looper.getMainLooper()
+                when (q.uri.lastPathSegment) {
+                    "1" -> MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME)).apply { addRow(arrayOf<Any?>("a")) }
+                    "2" -> throw SecurityException("grant lost")
+                    "3" -> MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME))
+                    else -> throw IllegalStateException("provider died")
+                }
+            })
+            assertEquals(listOf(videoUri(1)), impl.readableUris(listOf(videoUri(1), videoUri(2), videoUri(3))))
+            assertTrue(threads.isNotEmpty() && threads.none { it })
+            try {
+                impl.readableUris(listOf(videoUri(1), videoUri(4)))
+                fail("expected an error")
+            } catch (e: FlutterError) {
+                assertEquals("readableUris failed: IllegalStateException", e.message)
+            }
+        }
+
+    @Test
+    fun `releaseUris and persistedUris never carry a uri in an error`() =
+        timed {
+            // Nothing is persisted in a fresh app: an empty list, and a release of an unknown uri is harmless.
+            assertEquals(emptyList<String>(), impl.persistedUris())
+            impl.releaseUris(listOf(videoUri(1), "not a uri", ""))
+        }
+
+    @Test
+    fun `thumbnailOfUri is null for a gone video and for an address that is not a content address`() =
+        timed {
+            FakeMediaProvider.install(FileNotFoundException("gone"))
+            assertNull(impl.thumbnailOfUri(videoUri(4821), 96, 96))
+            assertNull(impl.thumbnailOfUri("file:///storage/emulated/0/a.mp4", 96, 96))
+            assertNull(impl.thumbnailOfUri("", 96, 96))
+            assertEquals(1, FakeMediaProvider.opens.size)
+        }
+
+    @Test
+    fun `thumbnailOfUri caps the size at 4096 and refuses 0 or less`() =
+        timed {
+            FakeMediaProvider.install(FileNotFoundException("gone"))
+            assertNull(impl.thumbnailOfUri(videoUri(1), 10_000, 5_000))
+            @Suppress("DEPRECATION")
+            val size = FakeMediaProvider.opens.single().getParcelable<Point>(ContentResolver.EXTRA_SIZE)
+            assertEquals(Point(4096, 4096), size)
+            for ((w, h) in listOf(0L to 96L, 96L to 0L, -5L to 96L)) {
+                try {
+                    impl.thumbnailOfUri(videoUri(1), w, h)
+                    fail("expected an error for $w x $h")
+                } catch (e: FlutterError) {
+                    assertEquals("native-error", e.code)
+                }
+            }
+        }
+
+    // ---- The photo picker ----
+
+    private fun pickerImpl(
+        extension: Int = 0,
+        limit: Int = 100,
+    ) = MediaHostApiImpl(activity, noVolumes, extensionLevelOf = { extension }, pickLimitOf = { limit })
+
+    private fun pickedUri(id: Int) = Uri.parse("content://media/picker/0/com.android.providers.media.photopicker/media/$id")
+
+    @Test
+    fun `pickVideos starts the picker for its request code, and a result answers it`() =
+        timed {
+            impl = pickerImpl(extension = 2)
+            FakeMediaProvider.install(answer = {
+                MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME, MediaColumns.SIZE)).apply { addRow(arrayOf<Any?>("a.mp4", 77L)) }
+            })
+            val pick = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            val started = shadowOf(activity).peekNextStartedActivityForResult()
+            assertEquals(PickedVideos.REQUEST_CODE, started.requestCode)
+            assertEquals(PickedVideos.intent(sdk, 2) { 100 }.action, started.intent.action)
+            assertEquals("video/*", started.intent.type)
+            assertFalse(pick.isCompleted)
+
+            val result =
+                Intent().apply {
+                    clipData = android.content.ClipData.newRawUri("", pickedUri(1)).apply { addItem(android.content.ClipData.Item(pickedUri(2))) }
+                }
+            assertTrue(impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_OK, result))
+            val picked = pick.await()
+            assertEquals(listOf(pickedUri(1), pickedUri(2)).map { it.toString() }, picked.map { it.uri })
+            assertTrue(picked.all { it.displayName == "a.mp4" && it.sizeBytes == 77L })
+        }
+
+    @Test
+    fun `cancelling the picker gives an empty list`() =
+        timed {
+            impl = pickerImpl()
+            val pick = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            assertTrue(impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null))
+            assertEquals(emptyList<PickedVideoMsg>(), pick.await())
+        }
+
+    @Test
+    fun `a second pickVideos while one is open fails with busy and leaves the first waiting`() =
+        timed {
+            impl = pickerImpl()
+            val first = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            for (attempt in 1..2) {
+                try {
+                    impl.pickVideos()
+                    fail("expected busy")
+                } catch (e: FlutterError) {
+                    assertEquals("busy", e.code)
+                }
+            }
+            assertFalse(first.isCompleted)
+            // Only the first picker was started.
+            shadowOf(activity).nextStartedActivityForResult
+            assertNull(shadowOf(activity).nextStartedActivityForResult)
+
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), first.await())
+            // Once answered, a new pick may start.
+            val again = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), again.await())
+        }
+
+    @Test
+    fun `a picker result with no caller waiting is dropped silently`() =
+        timed {
+            impl = pickerImpl()
+            // The process died while the picker was open; the new activity gets the result.
+            assertFalse(impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_OK, Intent().setData(pickedUri(1))))
+            // And another request code is not this bridge's.
+            val pick = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            assertFalse(impl.onActivityResult(PickedVideos.REQUEST_CODE + 1, Activity.RESULT_OK, Intent().setData(pickedUri(1))))
+            assertFalse(pick.isCompleted)
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), pick.await())
+        }
+
+    @Test
+    fun `the host going away fails a waiting pick`() =
+        timed {
+            impl = pickerImpl()
+            val pick = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            impl.onHostGone()
+            try {
+                pick.await()
+                fail("expected host-gone")
+            } catch (e: FlutterError) {
+                assertEquals("host-gone", e.code)
+            }
+            try {
+                impl.pickVideos()
+                fail("expected no-activity")
+            } catch (e: FlutterError) {
+                assertEquals("no-activity", e.code)
+            }
+        }
+
+    @Test
+    fun `a picker that cannot start fails without its message and frees the slot`() =
+        timed {
+            impl = pickerImpl()
+            shadowOf(activity.application).checkActivities(true)
+            repeat(2) {
+                try {
+                    impl.pickVideos()
+                    fail("expected an error")
+                } catch (e: FlutterError) {
+                    assertEquals("no-picker", e.code)
+                }
+            }
+        }
+
+    @Test
+    fun `facts of picked videos are read off the main thread`() =
+        timed {
+            impl = pickerImpl()
+            val threads = mutableListOf<Boolean>()
+            FakeMediaProvider.install(answer = {
+                threads += Looper.myLooper() == Looper.getMainLooper()
+                null
+            })
+            val pick = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            val uri = Uri.parse(videoUri(7))
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_OK, Intent().setData(uri))
+            assertEquals(listOf(videoUri(7)), pick.await().map { it.uri })
+            assertTrue(threads.isNotEmpty() && threads.none { it })
         }
 }
