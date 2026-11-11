@@ -17,7 +17,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 7 (add videos and Manual mode)
 
 - Phase 4 left these (final review M-6, D-80):
-  - **Add videos** on the reel page (hidden in Phase 4).
+  - ~~**Add videos** on the reel page (hidden in Phase 4).~~ Done in Phase 7 Task 5 (D-114).
 
 ## Phase 8 (editor handoff)
 
@@ -59,6 +59,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - The disabled-on `TtSwitch` tick is at full opacity.
 
 ## Phase 11 (polish and release)
+
+- **Name an SD card and a USB drive apart in Add videos** (D-114). A volume's name cannot tell them apart, so every volume but the phone's is "Other storage" (numbered when there are two). Android's `StorageVolume.getDescription` would give "SD card" or the drive's name, for one more bridge call. Only seen when two folders with one name are on two storages.
+- **Add videos' grid pages by offset** (D-114). A video deleted from the folder between two page reads can be skipped until the next resume (a new one is kept once, not twice). Keyset paging (after the last date and id shown) would close it, for a new bridge call. Rare: the folder must change while the user scrolls it.
 
 - **A shade Turn off is lost when listing the volumes fails** (Phase 6 final re-review M-7). `ShadeActionReceiver` names every mounted volume for the tap; if that MediaStore call throws, the Turn off is dropped silently: Shooting mode stays on and the Still shooting? notification is gone. No clip is lost (the session continues). Fix idea: record the tap with no generations and let the capped end treat every volume as "at the tap", or keep the notification so the user can tap again.
 - **A clip trashed in a gallery and restored does not come back (M-6).** The queries leave out `IS_TRASHED` rows, so the verifier takes a trashed video for gone and removes an inbox-only clip. Restoring it does not give the row a newer generation, so the scan never adds it again. A clip in a reel recovers (the next verify un-flags it). Moved here from Phase 6 (D-108): rare, and the Phase 6 job only counts and never scans, so the background work does not make it more likely.

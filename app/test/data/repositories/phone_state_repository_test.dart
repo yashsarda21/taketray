@@ -298,6 +298,68 @@ void main() {
     });
   });
 
+  group('folder tip seen (Add videos, D-114)', () {
+    test('false until marked, then true, and marking twice is fine', () async {
+      expect(PhoneStateRepository.folderTipSeenKey, 'folderTipSeen');
+      expect(await repo.folderTipSeen(), isFalse);
+
+      await repo.markFolderTipSeen();
+      await repo.markFolderTipSeen();
+
+      expect(await repo.folderTipSeen(), isTrue);
+      expect(await _raw('folderTipSeen'), 'true');
+    });
+
+    test('is separate from Shooting mode, access and notifications', () async {
+      await turnOn();
+      await repo.markFolderTipSeen();
+      await repo.turnShootingOff();
+
+      expect(await repo.folderTipSeen(), isTrue);
+      expect(await repo.accessWasFull(), isFalse);
+      expect(await repo.notificationsAsked(), isFalse);
+    });
+
+    test(
+      'a value that cannot be read counts as not seen, by key only',
+      () async {
+        const secret = 'private-note';
+        await _put('folderTipSeen', '"$secret"');
+        final records = _record();
+
+        expect(await repo.folderTipSeen(), isFalse);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('folderTipSeen'));
+        expect(lines, isNot(contains(secret)));
+      },
+    );
+
+    test('a value that is not JSON counts as not seen', () async {
+      await _put('folderTipSeen', '{not json');
+
+      expect(await repo.folderTipSeen(), isFalse);
+    });
+
+    test('is not exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.folderTipSeenKey)),
+      );
+      await repo.markFolderTipSeen();
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('folderTipSeen')),
+      );
+      final fixture = File('test/data/backup/fixtures/backup_v1.json')
+          .readAsStringSync();
+
+      await BackupService(db, clock).importJson(fixture);
+
+      expect(await repo.folderTipSeen(), isFalse);
+    });
+  });
+
   group('backups', () {
     test('phone-state keys are not exported', () async {
       expect(

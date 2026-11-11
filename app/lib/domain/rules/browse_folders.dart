@@ -1,7 +1,47 @@
 import 'package:flutter/foundation.dart';
 import 'package:taketray/domain/models/media.dart';
 
-/// One row of the Add videos folder list (D-113).
+/// The name Android gives the phone's own storage (`VOLUME_EXTERNAL_PRIMARY`).
+/// Every other volume is an SD card or a USB drive, which a volume name
+/// cannot tell apart (both are a serial such as `1234-5678`).
+const primaryVolumeName = 'external_primary';
+
+/// Which storage a folder is on, as the Add videos list names it (D-114):
+/// the phone's own, or other storage (an SD card or a USB drive), numbered
+/// when the list has more than one other storage.
+///
+/// It never holds a volume's name: the view turns it into words ("Phone",
+/// "Other storage 2").
+@immutable
+class FolderStorage {
+  const FolderStorage._(this.isPhone, this.number);
+
+  /// Other storage: [number] is 1, 2, … in the order of the volume names when
+  /// the list has two or more other storages, else null.
+  const FolderStorage.other([this.number]) : isPhone = false;
+
+  /// The phone's own storage.
+  static const phone = FolderStorage._(true, null);
+
+  final bool isPhone;
+  final int? number;
+
+  @override
+  bool operator ==(Object other) =>
+      other is FolderStorage &&
+      other.isPhone == isPhone &&
+      other.number == number;
+
+  @override
+  int get hashCode => Object.hash(isPhone, number);
+
+  @override
+  String toString() => isPhone
+      ? 'FolderStorage(phone)'
+      : 'FolderStorage(other${number == null ? '' : ' $number'})';
+}
+
+/// One row of the Add videos folder list (D-113, D-114).
 @immutable
 class BrowseFolder {
   const BrowseFolder({
@@ -9,7 +49,8 @@ class BrowseFolder {
     required this.relativePath,
     required this.videoCount,
     required this.name,
-    this.detail,
+    this.parent,
+    this.storage,
   });
 
   /// The [name] of a volume's root folder: the view shows "Main folder".
@@ -19,7 +60,14 @@ class BrowseFolder {
   final String relativePath;
   final int videoCount;
   final String name;
-  final String? detail;
+
+  /// For a name another row shares: the path segment before the name, or
+  /// null (a root, or a name no other row has).
+  final String? parent;
+
+  /// For a name another row on another volume shares: the storage it is on,
+  /// or null.
+  final FolderStorage? storage;
 
   bool get isMainFolder => name == mainFolder;
 
@@ -30,18 +78,20 @@ class BrowseFolder {
       other.relativePath == relativePath &&
       other.videoCount == videoCount &&
       other.name == name &&
-      other.detail == detail;
+      other.parent == parent &&
+      other.storage == storage;
 
   @override
   int get hashCode =>
-      Object.hash(volumeName, relativePath, videoCount, name, detail);
+      Object.hash(volumeName, relativePath, videoCount, name, parent, storage);
 
   @override
   String toString() =>
-      'BrowseFolder($volumeName, $relativePath, $videoCount, $name, $detail)';
+      'BrowseFolder($volumeName, $relativePath, $videoCount, $name, $parent, '
+      '$storage)';
 }
 
-/// The folders the Add videos list shows, named and in order (D-113).
+/// The folders the Add videos list shows, named and in order (D-113, D-114).
 ///
 /// - A folder with no videos is left out, and so is WhatsApp's **Sent**
 ///   folder (D-111 ruling 3): its last path segment is `Sent` and a segment
@@ -50,10 +100,14 @@ class BrowseFolder {
 /// - [BrowseFolder.name] is the last path segment; a volume's root (`''`, or
 ///   only slashes) is [BrowseFolder.mainFolder], which the view shows as
 ///   "Main folder" (no translation in a rule).
-/// - Folders that share a name (ignoring case) get a [BrowseFolder.detail]:
-///   the segment before the name, joined with ` · ` to the volume name when
-///   those folders are on more than one volume (a root, with no segment
-///   before it, then has only the volume). A unique name has none.
+/// - Folders that share a name (ignoring case) are told apart: each gets its
+///   [BrowseFolder.parent] (the segment before the name; a root has none),
+///   and, when those folders are on more than one volume, its
+///   [BrowseFolder.storage]: [FolderStorage.phone] for [primaryVolumeName],
+///   else [FolderStorage.other], numbered 1, 2, … by volume name when the
+///   shown folders are on two or more other volumes (the same number on
+///   every row). A volume's name is never shown (D-114). A unique name has
+///   neither.
 /// - `DCIM/Camera` (ignoring case, on any volume) comes first, then the
 ///   rest by video count, most first; ties go by name ignoring case, then
 ///   by name, path and volume, so the order never depends on the input's.
@@ -66,17 +120,39 @@ List<BrowseFolder> browseFolders(List<VideoFolder> all) {
   for (final f in shown) {
     byName.putIfAbsent(_lower(_nameOf(f)), () => []).add(f);
   }
-  final folders = [
+  final others = {
     for (final f in shown)
-      BrowseFolder(
-        volumeName: f.volumeName,
-        relativePath: f.relativePath,
-        videoCount: f.videoCount,
-        name: _nameOf(f),
-        detail: _detailOf(f, byName[_lower(_nameOf(f))]!),
-      ),
+      if (f.volumeName != primaryVolumeName) f.volumeName,
+  }.toList()..sort();
+  FolderStorage storageOf(String volume) => volume == primaryVolumeName
+      ? FolderStorage.phone
+      : FolderStorage.other(
+          others.length > 1 ? others.indexOf(volume) + 1 : null,
+        );
+  final folders = [
+    for (final f in shown) _named(f, byName[_lower(_nameOf(f))]!, storageOf),
   ]..sort(_order);
   return folders;
+}
+
+BrowseFolder _named(
+  VideoFolder f,
+  List<VideoFolder> sameName,
+  FolderStorage Function(String volume) storageOf,
+) {
+  final clash = sameName.length > 1;
+  final segments = _segments(f.relativePath);
+  final volumes = {for (final g in sameName) g.volumeName};
+  return BrowseFolder(
+    volumeName: f.volumeName,
+    relativePath: f.relativePath,
+    videoCount: f.videoCount,
+    name: _nameOf(f),
+    parent: clash && segments.length >= 2
+        ? segments[segments.length - 2]
+        : null,
+    storage: clash && volumes.length > 1 ? storageOf(f.volumeName) : null,
+  );
 }
 
 List<String> _segments(String relativePath) => [
@@ -95,15 +171,6 @@ bool _isWhatsAppSent(List<String> segments) =>
     segments
         .take(segments.length - 1)
         .any((s) => _lower(s).startsWith('whatsapp'));
-
-String? _detailOf(VideoFolder f, List<VideoFolder> sameName) {
-  if (sameName.length < 2) return null;
-  final segments = _segments(f.relativePath);
-  final parent = segments.length >= 2 ? segments[segments.length - 2] : null;
-  final volumes = {for (final g in sameName) g.volumeName};
-  final parts = [?parent, if (volumes.length > 1) f.volumeName];
-  return parts.isEmpty ? null : parts.join(' · ');
-}
 
 bool _isCamera(BrowseFolder f) =>
     _lower(_segments(f.relativePath).join('/')) == 'dcim/camera';

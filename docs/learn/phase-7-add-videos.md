@@ -16,7 +16,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 2. [The bridge: folder pages and the photo picker](#2-the-bridge-folder-pages-and-the-photo-picker)
 3. [Adding by hand, and Undo](#3-adding-by-hand-and-undo)
 4. [Picked clips get pictures, verification and a grant clean-up](#4-picked-clips-get-pictures-verification-and-a-grant-clean-up)
-5. The folder browser (Task 5)
+5. [The folder browser](#5-the-folder-browser)
 6. Manual mode (Task 6)
 7. On the S24 (Task 7)
 
@@ -221,3 +221,62 @@ cd app && ../tool/flutter test test/data/media/picked_grants_test.dart
 It ends with `All tests passed!`. Now open `app/lib/data/media/picked_grants.dart` and replace the line `if (!heldForms.contains(uri) && !heldForms.contains(_canonical(uri)))` with `if (true)`, then run it again. Several tests fail, among them `releases only the saved grants that no clip row holds`: every grant, used or not, would be given back. Put the line back.
 
 **Decisions:** D-74 and D-84 point 3 (amended), D-112 (the bridge calls this builds on).
+
+## 5. The folder browser
+
+**What we built:** the two screens behind **Add videos** when TakeTray can see all your videos.
+
+- **The folder list.** Every folder with videos, on the phone and on any SD card or USB drive. Each row shows a small 2×2 preview of the folder's newest videos, its name and how many videos it holds. The camera folder comes first. A one-time tip at the top says how to keep friends' videos sharp.
+- **The video grid.** One folder's videos, newest first, under day headers ("Today · Fri, Oct 30"). Tap videos to pick them; a bar at the bottom counts them and adds up their length; **Add** puts them in To tag or in the reel, and you land back where you started, with a snack and **Undo**.
+- **The way in.** A new **Add videos** button on To tag and on every reel's page (and in their empty states).
+
+**Why TakeTray needs it:** friends' WhatsApp and Quick Share videos, and clips from a GoPro or a second phone, land in folders that Shooting mode does not watch (D-111). This is how they get in. A folder can hold thousands of videos, an SD card can be pulled out while you look at it, and access can be taken away from the phone's settings: each of these must end calmly, never with a crash or a wrong video.
+
+**Key ideas:**
+
+- **Never show a volume's name.** Android names the phone's storage `external_primary` and an SD card or USB drive something like `1234-5678`. When two folders share a name (a `Camera` on the phone and one on the card), the row needs to say which is which, but those names would look like a bug. The rule now gives a kind, not a name, and the screen turns it into words:
+
+  ```dart
+  FolderStorage storageOf(String volume) => volume == primaryVolumeName
+      ? FolderStorage.phone
+      : FolderStorage.other(
+          others.length > 1 ? others.indexOf(volume) + 1 : null,
+        );
+  ```
+
+  Read it like this: the phone's own storage is "Phone"; anything else is "Other storage", because a card and a USB drive look the same from here. With two of them, they are numbered, the same way on every row ("Other storage 1", "Other storage 2").
+
+- **Read a page at a time.** The grid never asks for the whole folder. It asks the phone for 200 videos, and asks for the next 200 only when you scroll near the end of what is shown:
+
+  ```dart
+  if (index >= rows.length - _loadAheadRows) _askMore(state);
+  ```
+
+  The list itself is built lazily too: only the rows on screen exist, and only their pictures are loaded. So a folder of 3,000 videos opens as fast as a folder of 30.
+
+- **Your choice survives the pages.** What you picked is kept as a set of video numbers, apart from the list of videos. A new page only adds videos to the list, so a video you picked on page one is still picked on page three. A test scrolls through 450 videos (three pages), picks the first and the last, and checks that **Add 2** adds exactly those two.
+
+- **A page can arrive too late.** If you leave the app and come back while a page is loading, the grid reads the folder again from the start. The late page would then be added to a list it no longer belongs to. Each full read bumps a counter (`_epoch`), and a page that was asked for under an older counter is dropped when it arrives.
+
+- **Already added means "cannot pick".** A video that is already in this reel, in To tag, or (when adding to To tag) in any reel shows a label instead of a check circle. A tap on it says "Already added". The labels for a page are read before its videos show, so a video is never pickable for a moment and then marked.
+
+- **One add, one result, one way back.** The grid and the folder list are two screens on top of the page you came from. When the add works, the grid closes and hands its result to the list, the list closes and hands it on, and the page that opened them shows the snack. If access is lost or the reel is deleted while you are there, the same chain closes both screens with a "leave" note instead. Only the top screen closes itself, so the two can never close the same screen twice.
+
+- **Tap twice, add once.** **Add** turns off as soon as it is tapped, and the grid's own state says "adding", so even two taps in the same frame start one add. Back waits while it runs, and so does a lost access: the grid closes only once the add is done, so an add that worked always shows its snack with **Undo**.
+
+- **When things change behind you.** Coming back to the app reads the folder again. A video you picked that was deleted meanwhile leaves your choice; an SD card that was removed shows "No videos in this folder" and nothing stays picked. A failed add keeps your choice and says "Couldn't add videos. Try again.".
+
+- **Tests that can fail.** All the screen and rule tests were written first and run against empty stand-ins: 99 failed for the real reasons (no rows, no tiles, no storage, the tip never saved). After the code was written, 28 key lines were broken on purpose, one at a time, and each made a named test fail before it was put back: the choice lost on a new page, the double-tap guard (twice: the grid's state and the button), a marked video that can be picked (twice: the grid's state and the tile), a failed add that drops the choice, the access and reel listeners, a removed card that keeps the old grid, the repeated-video and late-page guards, the numbering of other storages, and more.
+
+**Where it lives:** `app/lib/features/add_videos/` (`views/add_folders_screen.dart`, `views/add_grid_screen.dart`, `views/open_add_videos.dart`, `views/add_videos_flow.dart`, `view_models/add_folders_controller.dart`, `view_models/add_grid_controller.dart`, `view_models/folder_video.dart`), the routes in `app/lib/router/routes.dart` and `app_router.dart` (`addVideosRoute`), the rule in `app/lib/domain/rules/browse_folders.dart`, the tip's flag in `app/lib/data/repositories/phone_state_repository.dart`, and the new buttons in `to_tag_screen.dart` and `reel_detail_screen.dart`. Tests: `app/test/features/add_videos/` (with `add_videos_support.dart`), `browse_folders_test.dart`, `phone_state_repository_test.dart` and `app_router_test.dart`.
+
+**Try it yourself:** see the choice survive paging. From the repo root:
+
+```bash
+cd app && ../tool/flutter test test/features/add_videos/views/add_grid_screen_test.dart --plain-name "the choice survives every page"
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/add_videos/view_models/add_grid_controller.dart`, find `_loadMore`, and under `rowsRead: latest.rowsRead + page.length,` add the line `selected: const {},`. Run it again: the test `pages of 200 from the phone, the next near the end, and the choice survives every page` fails, because loading page two forgot what you picked on page one. Delete the line and run it again to see it pass.
+
+**Decisions:** D-114 (all of this section), with D-111 (the owner's rulings), D-112 (the folder pages), D-113 (the folder rules and the marks), D-74 (thumbnails), D-85 (snacks on the root messenger) and D-86 (one tap opens one page) as background.
+

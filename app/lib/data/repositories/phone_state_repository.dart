@@ -17,12 +17,14 @@ final Logger _log = Logger('phoneState');
 /// What belongs to this phone, not to the user: whether Shooting mode is on,
 /// where each volume stood when it was switched on, whether the app ever had
 /// full access to the videos, whether it ever asked for the notification
-/// permission, and which rebuilt volumes have clips to match again.
+/// permission, which rebuilt volumes have clips to match again, and whether
+/// Add videos' folder tip was dismissed.
 ///
-/// It lives in the `settings` table under five keys, `shootingMode`,
-/// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked` and
-/// `mediaRematchWindows`. None is in `SettingsRepository.exportedKeys`, so a
-/// backup never holds them, and an import deletes them (D-71, D-72, D-108):
+/// It lives in the `settings` table under six keys, `shootingMode`,
+/// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked`,
+/// `mediaRematchWindows` and `folderTipSeen`. None is in
+/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
+/// import deletes them (D-71, D-72, D-108):
 /// after a restore Shooting mode is off, and no volume version or re-match
 /// window is known, because they belong to the phone's own media library.
 ///
@@ -41,6 +43,7 @@ class PhoneStateRepository {
   static const volumeVersionsKey = 'mediaVolumeVersions';
   static const notificationsAskedKey = 'notificationsAsked';
   static const rematchWindowsKey = 'mediaRematchWindows';
+  static const folderTipSeenKey = 'folderTipSeen';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -280,6 +283,34 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Marked that notifications were asked for');
+  }
+
+  /// Whether the user dismissed Add videos' tip "Keep friends' clips sharp"
+  /// with **Got it** on this phone (D-114). Unreadable counts as no.
+  Future<bool> folderTipSeen() async {
+    final text = await _rawValue(folderTipSeenKey);
+    if (text == null) return false;
+    try {
+      final value = jsonDecode(text);
+      if (value is bool) return value;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $folderTipSeenKey is corrupt, reading it as no');
+    return false;
+  }
+
+  /// Remembers that the tip was dismissed, so it never shows again.
+  Future<void> markFolderTipSeen() async {
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: folderTipSeenKey,
+            value: jsonEncode(true),
+          ),
+        );
+    _log.info('Marked the folder tip as seen');
   }
 
   /// The re-match window open on [volume], or null when there is none

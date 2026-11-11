@@ -1919,5 +1919,194 @@
   "notificationsHelpOpenFailed": "Couldn't open settings on this phone.",
   "@notificationsHelpOpenFailed": {
     "description": "Snack shown when a settings page of the phone could not be opened."
+  },
+  "addVideosTitle": "Add videos",
+  "@addVideosTitle": {
+    "description": "Title of the Add videos folder list, and the name of the button on To tag and a reel's page that opens it."
+  },
+  "addVideosToToTag": "to To tag",
+  "@addVideosToToTag": {
+    "description": "Line under the Add videos title when the videos go to To tag."
+  },
+  "addVideosToReel": "to {reel}",
+  "@addVideosToReel": {
+    "description": "Line under the Add videos title when the videos go to a reel. {reel} is the reel's name.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "addFoldersTipTitle": "Keep friends' clips sharp",
+  "@addFoldersTipTitle": {
+    "description": "Title of the one-time tip on the Add videos folder list."
+  },
+  "addFoldersTipBody": "Ask friends to send videos as HD or by Quick Share to keep full quality.",
+  "@addFoldersTipBody": {
+    "description": "Text of the one-time tip on the Add videos folder list."
+  },
+  "addFoldersTipDismiss": "Got it",
+  "@addFoldersTipDismiss": {
+    "description": "Button that closes the folder tip for good."
+  },
+  "addFoldersCount": "{count, plural, one{1 video} other{{count} videos}}",
+  "@addFoldersCount": {
+    "description": "How many videos a folder holds, under its name in the Add videos list.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addFoldersMainFolder": "Main folder",
+  "@addFoldersMainFolder": {
+    "description": "Name of the top folder of a storage (the phone or an SD card) in the Add videos list."
+  },
+  "addFoldersStoragePhone": "Phone",
+  "@addFoldersStoragePhone": {
+    "description": "Which storage a folder is on, when folders with the same name are on the phone and on an SD card or USB drive: the phone's own storage."
+  },
+  "addFoldersStorageOther": "Other storage",
+  "@addFoldersStorageOther": {
+    "description": "Which storage a folder is on: an SD card or a USB drive (the phone cannot tell which)."
+  },
+  "addFoldersStorageOtherNumbered": "Other storage {number}",
+  "@addFoldersStorageOtherNumbered": {
+    "description": "Which storage a folder is on, when there are two or more SD cards or USB drives: they are numbered.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "addFoldersJoin": "{first} · {second}",
+  "@addFoldersJoin": {
+    "description": "Joins two parts of a folder's line in the Add videos list, such as its count and the folder above it.",
+    "placeholders": {
+      "first": {
+        "type": "String"
+      },
+      "second": {
+        "type": "String"
+      }
+    }
+  },
+  "addFoldersLoadFailedTitle": "Couldn't load your folders",
+  "@addFoldersLoadFailedTitle": {
+    "description": "Title when the Add videos folder list could not be read."
+  },
+  "addFoldersEmptyTitle": "No videos yet",
+  "@addFoldersEmptyTitle": {
+    "description": "Title when no folder on the phone holds a video."
+  },
+  "addFoldersEmptyBody": "Videos saved on your phone will show up here.",
+  "@addFoldersEmptyBody": {
+    "description": "Line under the title when no folder on the phone holds a video."
+  },
+  "addGridSubtitle": "Tap videos to pick them",
+  "@addGridSubtitle": {
+    "description": "Line under the folder's name on the Add videos grid."
+  },
+  "addGridLoadFailedTitle": "Couldn't load these videos",
+  "@addGridLoadFailedTitle": {
+    "description": "Title when the videos of a folder could not be read."
+  },
+  "addGridMoreFailed": "Couldn't load more videos.",
+  "@addGridMoreFailed": {
+    "description": "Shown at the end of the grid when the next videos of a folder could not be read, above Try again."
+  },
+  "addGridEmptyTitle": "No videos in this folder",
+  "@addGridEmptyTitle": {
+    "description": "Title when a folder has no videos (or its SD card was removed)."
+  },
+  "addGridEmptyBody": "Videos saved here will show up when you come back.",
+  "@addGridEmptyBody": {
+    "description": "Line under the title when a folder has no videos."
+  },
+  "addMarkInThisReel": "In this reel",
+  "@addMarkInThisReel": {
+    "description": "Label over a video that is already in the reel the videos go to."
+  },
+  "addMarkInToTag": "In To tag",
+  "@addMarkInToTag": {
+    "description": "Label over a video that is already waiting in To tag."
+  },
+  "addMarkInAReel": "In a reel",
+  "@addMarkInAReel": {
+    "description": "Label over a video that is already in a reel, when the videos go to To tag."
+  },
+  "addGridTileMarkedSemantics": "Clip, {time}, {duration}, {mark}",
+  "@addGridTileMarkedSemantics": {
+    "description": "Screen-reader label of a video that is already added. {time} is when it was shot, {duration} its length, {mark} why it is marked, such as In To tag.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      },
+      "mark": {
+        "type": "String"
+      }
+    }
+  },
+  "addVideosAlreadyAdded": "Already added",
+  "@addVideosAlreadyAdded": {
+    "description": "Snack when a marked video is tapped, or when every picked video was already added."
+  },
+  "addBarNonePicked": "No videos picked",
+  "@addBarNonePicked": {
+    "description": "Bottom bar of the Add videos grid when nothing is picked."
+  },
+  "addBarMarkedHint": "Videos already added are marked",
+  "@addBarMarkedHint": {
+    "description": "Line under No videos picked."
+  },
+  "addBarPicked": "{count, plural, one{1 video picked} other{{count} videos picked}}",
+  "@addBarPicked": {
+    "description": "Bottom bar of the Add videos grid: how many videos are picked.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addBarPickedDetail": "{duration} · added in shooting order",
+  "@addBarPickedDetail": {
+    "description": "Line under the picked count: their total length, such as 1:18, and that they are added in the order they were shot.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "addBarAdd": "Add",
+  "@addBarAdd": {
+    "description": "Button of the Add videos grid when nothing is picked (it is off)."
+  },
+  "addBarAddCount": "Add {count}",
+  "@addBarAddCount": {
+    "description": "Button of the Add videos grid that adds the picked videos.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addVideosAddedSnack": "{count, plural, one{1 video added to {target}} other{{count} videos added to {target}}}",
+  "@addVideosAddedSnack": {
+    "description": "Snack after videos were added by hand, with an Undo button. {target} is To tag or the reel's name.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "target": {
+        "type": "String"
+      }
+    }
+  },
+  "addVideosFailed": "Couldn't add videos. Try again.",
+  "@addVideosFailed": {
+    "description": "Snack when adding the picked videos failed; the choice is kept."
   }
 }

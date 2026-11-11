@@ -6,12 +6,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
+import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
+import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
@@ -41,7 +43,8 @@ enum _ReelAction { details, select, delete }
 /// A reel's page (`routes.reel`, D-87), inside the Reels tab so the nav pill
 /// stays. From the top:
 ///
-/// 1. an app bar with **Back** and a ⋮ menu: **Reel details** (the form),
+/// 1. an app bar with **Back**, **Add videos** (`openAddVideos` for this reel,
+///    Phase 7, D-114) and a ⋮ menu: **Reel details** (the form),
 ///    **Select clips** and **Delete reel**. The bar has no title: the reel's
 ///    name is in the body, where it wraps over as many lines as it needs (an
 ///    app bar title clamps at large text);
@@ -72,8 +75,9 @@ enum _ReelAction { details, select, delete }
 ///
 /// **Loading** shows a skeleton day header and nine skeleton tiles (also if
 /// the first read fails: the design has no error state). **No clips** shows
-/// the empty reel illustration, "No clips yet" and one button, **Go to To
-/// tag**. A reel that is gone (an id that names no reel, or a reel deleted
+/// the empty reel illustration, "No clips yet", "Tag clips from To tag, or
+/// add videos from your phone." and two buttons, **Go to To tag** and **Add
+/// videos**. A reel that is gone (an id that names no reel, or a reel deleted
 /// while the page is open) sends the app to Reels.
 ///
 /// **Choosing clips** (D-88; `ReelSelection`). **Select clips** in the ⋮ menu
@@ -87,8 +91,11 @@ enum _ReelAction { details, select, delete }
 /// every action ends with a snack with **Undo** on the root messenger (the
 /// failure of a picker action is told in the picker, D-85).
 ///
-/// Not built: Add videos (Phase 7), Edit video and the VN banner (Phase 8)
-/// and References (Phase 9), all hidden (D-80).
+/// **Add videos** opens the folder browser for this reel (once however fast
+/// the taps); the videos it adds arrive here, with a snack and **Undo**.
+///
+/// Not built: Edit video and the VN banner (Phase 8) and References (Phase
+/// 9), all hidden (D-80).
 class ReelDetailScreen extends ConsumerStatefulWidget {
   const new({required this.reelId, super.key});
 
@@ -117,9 +124,17 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   void _openViewer(int clipId) =>
       _viewer.open(() => context.push(Routes.clip(widget.reelId, clipId)));
 
+  /// Opens Add videos once however fast the taps.
+  final OpenOnce _addVideos = OpenOnce();
+
+  void _openAddVideos() => _addVideos.open(
+    () => openAddVideos(context, ref, AddToReel(widget.reelId)),
+  );
+
   @override
   void dispose() {
     _viewer.dispose();
+    _addVideos.dispose();
     super.dispose();
   }
 
@@ -179,6 +194,13 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                 ),
                 actions: [
                   if (state != null)
+                    TtIconButton(
+                      icon: Symbols.library_add_rounded,
+                      semanticLabel: l10n.addVideosTitle,
+                      style: TtIconButtonStyle.circle,
+                      onPressed: _openAddVideos,
+                    ),
+                  if (state != null)
                     TtMenuButton<_ReelAction>(
                       items: [
                         TtMenuItem(
@@ -226,6 +248,12 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                         icon: Symbols.sell_rounded,
                         kind: TtButtonKind.tonal,
                         onPressed: () => context.go(Routes.toTag),
+                      ),
+                      TtButton(
+                        label: l10n.addVideosTitle,
+                        icon: Symbols.library_add_rounded,
+                        kind: TtButtonKind.text,
+                        onPressed: _openAddVideos,
                       ),
                     ],
                   ),
