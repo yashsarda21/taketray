@@ -889,7 +889,7 @@ class MediaScanner {
       for (final v in videos) (v.volumeName, v.mediaStoreId): v,
     };
     return _clips.addCheckedClips(
-      [for (final v in videos) _clipFrom(v, timeline, currentZone, now)],
+      [for (final v in videos) clipFromVideo(v, timeline, currentZone, now)],
       sameVideo: (stored, incoming) => sameVideo(
         stored.fingerprint,
         byIdentity[(incoming.volumeName!, incoming.mediaStoreId!)]!,
@@ -898,23 +898,24 @@ class MediaScanner {
     );
   }
 
-  /// The clip for [v], in the zone the phone was in when it was shot (the
-  /// timeline), or the phone's zone now when the timeline does not reach
-  /// back that far.
-  static NewClip _clipFrom(
-    MediaVideo v,
-    List<ZoneEntry> timeline,
-    String currentZone,
-    DateTime now,
-  ) => newClipFrom(
-    v,
-    now: now,
-    zoneId: zoneAt(timeline, shotAt(v, now: now)) ?? currentZone,
-  );
-
   static VolumeBaseline _positionOf(MediaVolume volume) =>
       VolumeBaseline(version: volume.version!, generation: volume.generation);
 }
+
+/// The clip for [v], in the zone the phone was in when it was shot (the
+/// timeline), or the phone's zone now when the timeline does not reach back
+/// that far. The scan, "Add earlier videos" and a folder add by hand (D-113)
+/// all build their clips with it, so one video is always the same clip.
+NewClip clipFromVideo(
+  MediaVideo v,
+  List<ZoneEntry> timeline,
+  String currentZone,
+  DateTime now,
+) => newClipFrom(
+  v,
+  now: now,
+  zoneId: zoneAt(timeline, shotAt(v, now: now)) ?? currentZone,
+);
 
 /// The scanner, on the shared [mediaWorkQueueProvider]. Kept alive: the
 /// queued scan that calls share lives in it.

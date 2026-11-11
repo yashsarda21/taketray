@@ -14,7 +14,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 ## Contents
 
 2. [The bridge: folder pages and the photo picker](#2-the-bridge-folder-pages-and-the-photo-picker)
-3. Adding by hand, and Undo (Task 3)
+3. [Adding by hand, and Undo](#3-adding-by-hand-and-undo)
 4. Picked clips get pictures, verification and a grant clean-up (Task 4)
 5. The folder browser (Task 5)
 6. Manual mode (Task 6)
@@ -87,6 +87,72 @@ tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.media.VideoQueriesS
 It ends with `BUILD SUCCESSFUL`. Now open `VideoQueries.kt` and delete `, ${MediaColumns._ID} DESC` from the end of `SHOT_NEWEST_ORDER`, then run the same command. Two tests fail: `clips with the same shot time are ordered by id, newest id first` and `pages never repeat or skip a clip, even when many share a shot time`. Put the text back and run it again to see it pass.
 
 **Decisions:** D-112 (all of this section), with D-111 (Phase 7's scope) as background.
+
+## 3. Adding by hand, and Undo
+
+**What we built:** the rules and the service behind the **Add videos** screens, which come in later tasks.
+
+- **`browseFolders`** turns Android's list of folders into the list the user sees: which folders show, what each is called, and in what order.
+- **`AddVideosService`** does every add and every Undo. It has four calls: `marks` (which videos in a folder are already added, and where), `addFromFolder`, `addPicked` (for the photo picker) and `undo`.
+
+**Why TakeTray needs it:** a video can reach TakeTray in more than one way. Shooting mode's scan can find it, the user can add it from a folder, they can tap **Add** twice, or the scan can run while they add. Whatever happens, one video must be **one clip in one place**, and **Undo** must take back only what that add did, never something the user did after it.
+
+**Key ideas:**
+
+- **Hiding WhatsApp's Sent folder.** When the owner sends a clip on WhatsApp, WhatsApp keeps a smaller copy in a folder called `Sent`. Adding that copy by mistake would put a worse version of a clip in a reel (D-111). The rule looks only at the folder's path:
+
+  ```dart
+  bool _isWhatsAppSent(List<String> segments) =>
+      segments.length >= 2 &&
+      _lower(segments.last) == 'sent' &&
+      segments
+          .take(segments.length - 1)
+          .any((s) => _lower(s).startsWith('whatsapp'));
+  ```
+
+  Read it like this: the last folder name is `Sent` (any case), and some folder above it starts with `WhatsApp`. So `Movies/WhatsApp/Sent/` is hidden, but `DCIM/Sent/` and `Movies/Sent stuff/` are not.
+
+- **Two folders with the same name.** `DCIM/Camera` and `Movies/Camera` would both show as "Camera". So when names clash, each gets a small `detail`: the folder above it ("DCIM", "Movies"), and the volume (phone or SD card) when they are on different ones.
+
+- **Marks follow the prototype.** A video already added shows a label and cannot be picked again: **In this reel**, **In To tag**, or **In a reel** (only when adding to To tag). A video in Skipped has no mark: picking it again is a clear "I want this now", so the add brings it back.
+
+- **One rule for the grid and the add.** A marked video is exactly a video the add leaves alone (it is counted as `alreadyThere`). A test checks this for every kind of clip and every target, so the screen can never promise something the add does not do.
+
+- **One job at a time.** Every add and every Undo runs on the media work queue, the same line the scan waits in. Two taps on **Add** become two jobs; the second one finds the clip the first one saved and reports it as already there:
+
+  ```dart
+  Future<AddResult> addFromFolder(List<MediaVideo> videos, AddTarget target) =>
+      _queue.run(() async {
+  ```
+
+- **The same clip the scan would make.** A video added from a folder is saved exactly as a scan would save it, by the same function (`clipFromVideo`, moved out of the scanner so both use it). So when Shooting mode's scan later sees the same video, it recognises it and adds nothing. One test adds a video to a reel and then runs the scan: the video stays in the reel and To tag stays empty.
+
+- **A number can belong to another video.** Android gives each video a number. If a stored clip has that number but its size, length or date do not match the video in the folder, it is another video (for example a clip restored from a backup made on another phone). The old clip is set aside (detached) and the video comes in as a new clip, the same rule the scan uses.
+
+- **Undo takes back only what this add created.** The add remembers its exact time (`at`). Undo removes a new clip's place only if it is still the place the add gave it, at that time:
+
+  ```dart
+  i.clipId.isIn(batch) &
+      i.state.equalsValue(InboxState.pending) &
+      i.addedAt.equalsValue(at) &
+      i.clipId.isNotInQuery(inAReel),
+  ```
+
+  So a clip you tagged, skipped or put in another reel after adding it stays where you put it. A clip the add brought back from Skipped goes back to Skipped. Undo also remembers that it has run: a second tap does nothing, even if you moved the clip back in between.
+
+- **Tests that can fail.** All the edge cases were written first. They failed to compile; then stand-ins that did nothing let them compile and fail for the real reason (92 red; the 5 that passed only check that nothing extra is hidden). After the code was written, 28 key lines were broken on purpose, one at a time, and each made at least one test fail before it was put back: the Sent rule (4 ways), "no inbox row for a reel", the Skipped restore and its Undo, "only what this add created" (5 ways), the double add, the queue, the access check, the rebuild check and the "not kept" rules.
+
+**Where it lives:** `app/lib/domain/rules/browse_folders.dart`, `app/lib/data/media/add_videos_service.dart`, and in `app/lib/data/repositories/clips_repository.dart` the methods `addByHand`, `undoHandAdd` and `placesOf`. Shared rules: `clipFromVideo` in `media_scanner.dart`, `shotAtFrom` in `domain/rules/clip_date.dart`, `newClipFromPicked` in `domain/rules/media_clip.dart`. Tests: `app/test/domain/rules/browse_folders_test.dart`, `app/test/data/media/add_videos_service_test.dart`, and the `addByHand` group in `app/test/data/repositories/clips_repository_test.dart`.
+
+**Try it yourself:** see the Sent rule matter. From the repo root:
+
+```bash
+cd app && ../tool/flutter test test/domain/rules/browse_folders_test.dart
+```
+
+It ends with `All tests passed!`. Now open `lib/domain/rules/browse_folders.dart` and change `startsWith('whatsapp')` to `contains('whatsapp')`, then run it again. One test fails: `a segment must start with WhatsApp: com.whatsapp alone does not count`, because `Android/media/com.whatsapp/Sent/` would now be hidden. Put the text back and run it again to see it pass.
+
+**Decisions:** D-113 (all of this section), with D-111 (the owner's rulings) and D-57, D-84 and D-94 (identity, Undo and Skipped) as background.
 
 ## 4. Picked clips get pictures, verification and a grant clean-up
 

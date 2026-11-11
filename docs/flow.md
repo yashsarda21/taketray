@@ -677,6 +677,21 @@ A failing `accessReport` or `volumes()` throws before anything is written.
 
 No baseline is read or written.
 
+### Adding videos by hand (`lib/data/media/add_videos_service.dart`, `lib/domain/rules/browse_folders.dart`, D-113)
+
+The folder browser (Task 5) and Manual mode (Task 6) call it through `addVideosServiceProvider`. A target is `AddToToTag()` or `AddToReel(reelId)`.
+
+1. **The folder list:** `browseFolders(bridge.videoFolders())` (pure): drops folders with no videos and WhatsApp's Sent (last segment `Sent`, a segment before it starting `WhatsApp`, A to Z case ignored); names each by its last segment (`BrowseFolder.mainFolder`, `''`, for a volume root); gives folders that share a name a `detail` (parent segment, plus ` · volume` when they span volumes); orders `DCIM/Camera` first, then by count, name, path and volume.
+2. **Marks:** `marks(volume, mediaStoreIds, target)` runs `ClipsRepository.placesOf` (attached, not-missing MediaStore clips holding those numbers, with their `inbox` state and reels; batches of `idBatch`), then `addMarkFor` per clip: `inThisReel` (target reel it is in), else `inToTag` (pending), else `inAReel` (target To tag, in any reel). Not on the media queue.
+3. **`addFromFolder(videos, target)`**, one `MediaWorkQueue` job: `bridge.accessReport()` not `full` → `StateError`, nothing read or written. `bridge.volumes()`; a video that is not `isUsable` or whose volume is not mounted is `notKept`; none left → `AddResult(0, 0, notKept)`, nothing more read or written. For each volume of the rest, `LibraryResync.catchUp` (records the version, or matches the stored clips again after a rebuild). `ZoneSync.sync()` (a failure is logged by type), `ZoneRepository.all()`, `bridge.currentZoneId()`; each video becomes `clipFromVideo` (the scanner's own function); then step 5 with `sameVideo` against the folder row.
+4. **`addPicked(videos, target)`**, one queue job, any access: `persisted == false` is `notKept` (none left → nothing read or written); the rest become `newClipFromPicked` (date `shotAtFrom(takenMs)`, else now; no type `video/*`; missing facts `0` or `''`), zone as in step 3; step 5 with every known address taken as the same video.
+5. **`ClipsRepository.addByHand(clips, reelId:, sameVideo:)`**, one transaction: the reel must exist (`StateError`). Known clips, their `inbox` rows and links are read in batches. Per unique identity: a known MediaStore clip that is not `sameVideo` is detached (`-id`, missing); new (or placeless) → inserted with a `pending` row (To tag) or a link (reel); To tag: skipped → `pending` (`addedAt` kept), pending or in a reel → `alreadyThere`; reel: in it or pending → `alreadyThere`, skipped → linked and its row deleted, only in other reels → linked. The reel's `updatedAt` is set when a link was added; detached clips only in a list are then swept (`_removeMissing`). Returns `HandAdd(added, alreadyThere, undo, detached)`; the service returns `AddResult(added, alreadyThere, notKept)`.
+6. **`undo(result)`**: nothing to undo → returns. Else one queue job running `ClipsRepository.undoHandAdd`, one transaction: `UndoWriter.applyUndo` on the `InboxUndo` (back to Skipped, only if still pending with the same `addedAt`) or `AddUndo` (Skipped rows back, links of existing clips removed when the clip has another place); the add's new clips lose their `pending` row (same `addedAt`, no link) or their link (same `addedAt`); the reel's `updatedAt` goes back if unchanged; the orphan sweep. The record is marked undone after the commit, so a second call returns at once and a failed one can be retried.
+
+Logs (`addVideos`, `clips`): counts, the target kind, reel ids and error types only (D-10).
+
+**In tests:** `test/domain/rules/browse_folders_test.dart`; `test/data/media/add_videos_service_test.dart` on `MediaHarness` (which takes a `database:` such as `loggedTestDatabase` for the batching and rollback tests) and `FakeMediaBridge`; the repository's own cases, including the D-57 sweep race, in `test/data/repositories/clips_repository_test.dart` (`addByHand`).
+
 ### App start and resume (`lib/app/media_lifecycle.dart`, `lib/features/*/view_models/`, D-75)
 
 `MediaLifecycle` is a widget in `TakeTrayApp` above the router. It has an `AppLifecycleListener` and shows its child unchanged.

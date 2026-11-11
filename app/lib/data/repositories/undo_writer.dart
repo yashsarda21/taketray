@@ -86,18 +86,7 @@ class UndoWriter {
             );
             continue;
           }
-          switch (record) {
-            case RemoveUndo():
-              await _undoRemove(record);
-            case MoveUndo():
-              await _undoMove(record);
-            case AddUndo():
-              await _undoAdd(record);
-            case DeleteReelUndo():
-              await _undoDelete(record);
-            case InboxUndo():
-              await _undoInbox(record);
-          }
+          await applyUndo(record);
           _undone[record] = true;
           marked.add(record);
         }
@@ -110,6 +99,25 @@ class UndoWriter {
         _undone[record] = null;
       }
       rethrow;
+    }
+  }
+
+  /// Puts back what [record] changed, as [undo] does, inside the caller's
+  /// transaction and **without** the once-only mark: the caller undoes it at
+  /// most once (`ClipsRepository.undoHandAdd` marks its own record only after
+  /// its transaction commits, so a rolled-back undo can run again).
+  Future<void> applyUndo(UndoRecord record) async {
+    switch (record) {
+      case RemoveUndo():
+        await _undoRemove(record);
+      case MoveUndo():
+        await _undoMove(record);
+      case AddUndo():
+        await _undoAdd(record);
+      case DeleteReelUndo():
+        await _undoDelete(record);
+      case InboxUndo():
+        await _undoInbox(record);
     }
   }
 

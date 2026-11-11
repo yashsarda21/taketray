@@ -89,14 +89,16 @@ class RecordingBridge extends FakeMediaBridge {
   int count(String method) => calls.where((c) => c == method).length;
 }
 
-/// Everything the media tests need, on a fresh in-memory database.
+/// Everything the media tests need, on a fresh in-memory database ([db]
+/// when given, such as a logged one; it is closed at the end either way).
 class MediaHarness {
   MediaHarness({
     DateTime? now,
     RecordingBridge? bridge,
     FakeBackgroundBridge? background,
     ZoneRepository Function(AppDatabase, FixedClock)? zones,
-  }) : db = testDatabase(),
+    AppDatabase? database,
+  }) : db = database ?? testDatabase(),
        clock = FixedClock(now ?? DateTime.utc(2026, 6, 1, 9)),
        bridge = bridge ?? RecordingBridge(),
        background = background ?? FakeBackgroundBridge() {
