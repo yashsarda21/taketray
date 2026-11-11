@@ -954,9 +954,11 @@ class MediaHostApi {
     return pigeonVar_replyValue as Uint8List?;
   }
 
-  /// The subset of [uris] that can still be read. A uri whose read is refused
-  /// (SecurityException) or has no row is left out; a failure of the whole
-  /// call is an error, so "failed" is never read as "gone".
+  /// The subset of [uris] that can still be read. Only a read that is refused
+  /// (SecurityException) or a cursor with no row means gone and leaves a uri
+  /// out. Every other failure fails the whole call, so "failed" is never read
+  /// as "gone": any other exception, and a null cursor (the provider is not
+  /// installed or its process died), which is code `no-cursor`.
   Future<List<String>> readableUris(List<String> uris) async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.taketray.MediaHostApi.readableUris$pigeonVar_messageChannelSuffix';

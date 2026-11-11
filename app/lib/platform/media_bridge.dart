@@ -108,8 +108,10 @@ abstract interface class MediaBridge {
   /// JPEG bytes of a picked video, or null when it is gone or unreadable.
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx);
 
-  /// The subset of [uris] that can still be read, in the order given. A failed
-  /// call throws: a caller must never read "failed" as "gone".
+  /// The subset of [uris] that can still be read, in the order given. Only a
+  /// refused read or a missing row means gone. A failed call throws (any other
+  /// error, and a provider that gives no cursor, code `no-cursor`): a caller
+  /// must never read "failed" as "gone", nor release a grant after one.
   Future<List<String>> readableUris(List<String> uris);
 
   /// Every address the app still holds a saved read grant for.

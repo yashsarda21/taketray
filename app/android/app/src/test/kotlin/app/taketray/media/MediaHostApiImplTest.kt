@@ -690,6 +690,25 @@ class MediaHostApiImplTest {
         }
 
     @Test
+    fun `readableUris with a null cursor fails whole, as no-cursor, so a failed read is never gone`() =
+        timed {
+            FakeMediaProvider.install(answer = { q ->
+                if (q.uri.lastPathSegment == "2") {
+                    null
+                } else {
+                    MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME)).apply { addRow(arrayOf<Any?>("a")) }
+                }
+            })
+            try {
+                impl.readableUris(listOf(videoUri(1), videoUri(2)))
+                fail("expected an error")
+            } catch (e: FlutterError) {
+                assertEquals("no-cursor", e.code)
+                assertFalse(e.toString().contains("content://"))
+            }
+        }
+
+    @Test
     fun `releaseUris and persistedUris never carry a uri in an error`() =
         timed {
             // Nothing is persisted in a fresh app: an empty list, and a release of an unknown uri is harmless.

@@ -25,18 +25,21 @@ object Thumbnails {
     /**
      * Like [load] for an address as text (a picked video). Anything that is
      * not a `content:` address (a file path, nothing, rubbish) has no
-     * thumbnail and asks nothing. The size must be positive, as for [encode].
+     * thumbnail and asks nothing: [loader] is not called for it. The size must
+     * be positive, as for [encode]. [loader] defaults to the resolver's own
+     * thumbnail load; tests pass a recording one.
      */
     fun loadFromUri(
         resolver: ContentResolver,
         uri: String,
         widthPx: Int,
         heightPx: Int,
+        loader: (Uri, Size) -> Bitmap = { address, size -> resolver.loadThumbnail(address, size, null) },
     ): ByteArray? {
         require(widthPx > 0 && heightPx > 0) { "thumbnail size must be positive" }
         val parsed = Uri.parse(uri)
         if (!ContentResolver.SCHEME_CONTENT.equals(parsed.scheme, ignoreCase = true)) return null
-        return load(resolver, parsed, widthPx, heightPx)
+        return encode(widthPx, heightPx) { size -> loader(parsed, size) }
     }
 
     /**

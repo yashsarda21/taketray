@@ -451,19 +451,50 @@ class PickedVideosTest {
     }
 
     @Test
-    fun `readable drops a uri with no row, an empty cursor or no cursor`() {
+    fun `readable drops a uri whose cursor has no row`() {
         provider {
             when (it) {
                 uri(1) -> MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME))
-                uri(2) -> null
                 else -> oneRow(it)
             }
         }
         assertEquals(
-            listOf(uri(3).toString()),
+            listOf(uri(2), uri(3)).map { it.toString() },
             PickedVideos.readable(resolver, listOf(uri(1), uri(2), uri(3)).map { it.toString() }),
         )
         assertTrue(opened.all { it.isClosed })
+    }
+
+    @Test
+    fun `readable throws on a null cursor, which is a failed read and not a gone video`() {
+        provider { null }
+        val error =
+            assertThrows(FlutterError::class.java) {
+                PickedVideos.readable(resolver, listOf(uri(1).toString()))
+            }
+        assertEquals("no-cursor", error.code)
+        // The error carries no address (D-10).
+        assertFalse(error.toString().contains("content://"))
+    }
+
+    @Test
+    fun `readable throws when any uri in a mixed list answers a null cursor, never a partial answer`() {
+        // The provider's process died while the list was read: nothing may be reported gone.
+        for (nullAt in listOf(1, 2, 3)) {
+            provider {
+                when (it) {
+                    uri(nullAt) -> null
+                    uri(2) -> throw SecurityException("grant lost")
+                    uri(3) -> MatrixCursor(arrayOf(MediaColumns.DISPLAY_NAME))
+                    else -> oneRow(it)
+                }
+            }
+            val error =
+                assertThrows(FlutterError::class.java) {
+                    PickedVideos.readable(resolver, listOf(uri(1), uri(2), uri(3), uri(4)).map { it.toString() })
+                }
+            assertEquals("null at $nullAt", "no-cursor", error.code)
+        }
     }
 
     @Test

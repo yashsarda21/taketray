@@ -227,9 +227,13 @@ class PickedVideos(
         }
 
         /**
-         * The subset of [uris] that can still be read, in order. A read that is
-         * refused (SecurityException) or gives no row means gone. Any other
-         * failure is thrown, so a failed call is never read as "all gone".
+         * The subset of [uris] that can still be read, in order. Only two
+         * answers mean gone: a read that is refused (SecurityException) and a
+         * cursor with no row. Everything else is a failed read and is thrown, so
+         * the caller never reads "failed" as "gone": any other exception, and a
+         * null cursor (the provider is not installed, or its process died
+         * during the call: `query` swallows that and returns null), which is
+         * `FlutterError("no-cursor")` as for MediaStore.
          */
         fun readable(
             resolver: ContentResolver,
@@ -237,7 +241,10 @@ class PickedVideos(
         ): List<String> =
             uris.filter { text ->
                 try {
-                    resolver.query(Uri.parse(text), arrayOf(MediaColumns.DISPLAY_NAME), null, null)?.use { it.moveToFirst() } ?: false
+                    val cursor =
+                        resolver.query(Uri.parse(text), arrayOf(MediaColumns.DISPLAY_NAME), null, null)
+                            ?: throw FlutterError("no-cursor", "the provider returned no cursor")
+                    cursor.use { it.moveToFirst() }
                 } catch (e: SecurityException) {
                     false
                 }

@@ -5,6 +5,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.OperationCanceledException
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
@@ -104,13 +105,42 @@ class ThumbnailsTest {
         FakeMediaProvider.install(FileNotFoundException("gone"))
         assertNull(Thumbnails.bitmap(resolver, gone, 1024))
     }
-    @Test
-    fun `a picked uri that is not a content address has no thumbnail and asks nothing`() {
-        FakeMediaProvider.install(FileNotFoundException("gone"))
-        for (text in listOf("", "   ", "file:///storage/emulated/0/Movies/a.mp4", "/storage/emulated/0/a.mp4", "not a uri", "http://example.com/a.mp4")) {
-            assertNull(text, Thumbnails.loadFromUri(resolver, text, 96, 96))
+    /** The loader of `loadFromUri` records every address it is asked for; a `file:` or rubbish address must never reach it. */
+    private fun loadWith(
+        text: String,
+        loaded: MutableList<Uri>,
+        outcome: (Uri) -> Bitmap = { Bitmap.createBitmap(10, 10, Bitmap.Config.ARGB_8888) },
+    ): ByteArray? =
+        Thumbnails.loadFromUri(resolver, text, 96, 96) { uri, _ ->
+            loaded += uri
+            outcome(uri)
         }
-        assertTrue(FakeMediaProvider.opens.isEmpty())
+
+    @Test
+    fun `a picked uri that is not a content address asks nothing`() {
+        val loaded = mutableListOf<Uri>()
+        for (text in listOf("", "   ", "file:///storage/emulated/0/Movies/a.mp4", "FILE:///x", "/storage/emulated/0/a.mp4", "not a uri", "http://example.com/a.mp4", "android.resource://x/1")) {
+            assertNull(text, loadWith(text, loaded))
+        }
+        assertEquals(emptyList<Uri>(), loaded)
+    }
+
+    @Test
+    fun `a content address, in any case, is loaded once with its own address`() {
+        for (text in listOf("content://media/picker/0/x/media/1", "CONTENT://media/picker/0/x/media/1")) {
+            val loaded = mutableListOf<Uri>()
+            assertNotNull(text, loadWith(text, loaded))
+            assertEquals(listOf(Uri.parse(text)), loaded)
+        }
+    }
+
+    @Test
+    fun `a content address whose load is gone, refused or unreadable gives null`() {
+        for (error in listOf<Exception>(FileNotFoundException("gone"), SecurityException("lost"), IOException("x"))) {
+            val loaded = mutableListOf<Uri>()
+            assertNull(loadWith("content://media/picker/0/x/media/1", loaded) { throw error })
+            assertEquals(1, loaded.size)
+        }
     }
 
     @Test
