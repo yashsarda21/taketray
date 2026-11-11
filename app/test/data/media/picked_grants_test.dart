@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -65,6 +66,13 @@ class _BrokenSaved extends RecordingBridge {
     calls.add('persistedUris');
     throw StateError('broken');
   }
+}
+
+/// A second database next to the harness's, on purpose: silences drift's
+/// warning for the test, and puts it back after.
+void allowSecondDatabase() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  addTearDown(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
 }
 
 void main() {
@@ -186,6 +194,7 @@ void main() {
     });
 
     test('a failed database read throws and releases nothing', () async {
+      allowSecondDatabase();
       final db = testDatabase();
       final clips = ClipsRepository(db, h.clock);
       final reel = await ReelsRepository(db, h.clock).create('Goa');
@@ -205,6 +214,27 @@ void main() {
         ..failNext('releaseUris');
 
       await expectLater(grants.sweep(), throwsA(isA<PlatformException>()));
+    });
+
+    test('a releaseUris that never returns times out, ends the sweep and '
+        'does not hold the media queue', () async {
+      h.bridge.persisted = {_d};
+      h.bridge.gate('releaseUris'); // never completed
+      final short = PickedGrants(
+        h.bridge,
+        h.db,
+        h.queue,
+        bridgeTimeout: const Duration(milliseconds: 30),
+      );
+      var ran = false;
+
+      final sweeping = short.sweep();
+      final after = h.queue.run(() async => ran = true);
+
+      await expectLater(sweeping, throwsA(isA<TimeoutException>()));
+      await after;
+      expect(ran, isTrue, reason: 'the job behind the sweep ran');
+      expect(h.bridge.count('releaseUris'), 1, reason: 'it was asked');
     });
 
     test(
@@ -227,6 +257,7 @@ void main() {
 
     test('after a backup import it keeps every address the imported rows '
         'hold, and releases the ones only the replaced rows held', () async {
+      allowSecondDatabase();
       // The backup: picked clips A and B in a reel.
       final source = testDatabase();
       addTearDown(source.close);

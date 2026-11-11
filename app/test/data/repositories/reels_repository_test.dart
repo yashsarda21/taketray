@@ -729,6 +729,18 @@ void main() {
       );
     });
 
+    test('a picked clip with an empty address is not the cover', () async {
+      // A state the app never makes (the schema allows an empty address): it
+      // has no picture to ask for, so no cover is offered.
+      final goa = await repo.create('Goa');
+      await clips.addNewClipsToReel(goa.id, [picked('', _t0)]);
+
+      final summary = (await repo.watchReelSummaries().first).single;
+
+      expect(summary.clipCount, 1);
+      expect(summary.cover, isNull);
+    });
+
     test('a reel of picked clips only has a cover', () async {
       final goa = await repo.create('Goa');
       final ids = await clips.addNewClipsToReel(goa.id, [

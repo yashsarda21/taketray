@@ -393,6 +393,46 @@ void main() {
       expect(h.bridge.released, isEmpty);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
     });
+
+    testWidgets('a release call that never returns times out on the fake '
+        'clock, is logged by type only, and does not hold the scan', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      await h.media.turnOnNow();
+      h.bridge
+        ..persisted = {unused}
+        ..put([fakeVideo(id: 2, generation: 6)]);
+      h.bridge.gate('releaseUris'); // never completed
+      const timeout = Duration(milliseconds: 50);
+
+      await pumpLifecycle(
+        tester,
+        extra: [
+          pickedGrantsProvider.overrideWith(
+            (ref) => PickedGrants(
+              ref.watch(mediaBridgeProvider),
+              ref.watch(appDatabaseProvider),
+              ref.watch(mediaWorkQueueProvider),
+              bridgeTimeout: timeout,
+            ),
+          ),
+        ],
+      );
+      await work(tester);
+      // The timeout's timer runs on the test's fake clock.
+      await tester.pump(timeout + _slack);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(h.bridge.count('releaseUris'), 1, reason: 'it was asked');
+      expect(
+        logText(records),
+        contains('The picked grants clean-up failed: TimeoutException'),
+      );
+      expect(logText(records), isNot(contains('content')));
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
   });
 
   testWidgets(

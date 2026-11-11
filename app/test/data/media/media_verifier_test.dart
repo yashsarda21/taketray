@@ -437,6 +437,30 @@ void main() {
       expect(bridge.calls, isNot(contains('readableUris')));
     });
 
+    test('a picked clip with an empty address is skipped, not asked for and '
+        'not flagged gone', () async {
+      // A state the app never makes (the schema allows an empty address).
+      final empty = await pickedInReel(['']);
+
+      final result = await h.verifier.verify(empty);
+
+      expect(result, outcome(skipped: {empty.single.id}));
+      expect(bridge.calls, isNot(contains('readableUris')));
+      expect((await h.clip(empty.single.id)).missing, isFalse);
+    });
+
+    test('a picked clip with an empty address beside a real one: only the '
+        'real one is checked', () async {
+      final picked = await pickedInReel(['', 'content://p/1']);
+      bridge.readable = {'content://p/1'};
+
+      final result = await h.verifier.verify(picked);
+
+      expect(result, outcome(found: {picked[1].id}, skipped: {picked[0].id}));
+      expect(bridge.count('readableUris'), 1);
+      expect((await h.clip(picked[0].id)).missing, isFalse);
+    });
+
     test('verifyAll includes picked clips', () async {
       final picked = await pickedInReel(['content://p/1']);
       bridge.readable = {};

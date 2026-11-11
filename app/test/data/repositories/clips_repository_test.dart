@@ -2004,6 +2004,17 @@ void main() {
       expect(shown?.source, ClipSource.picker);
     });
 
+    test('watchFirstShowableClip skips a picked clip with an empty address '
+        '(it has no picture to ask for)', () async {
+      final reel = await reels.create('Goa');
+      await repo.addNewClipsToReel(reel.id, [pickerClip('')]);
+      expect(await repo.watchFirstShowableClip().first, isNull);
+
+      final ids = await repo.saveDetected([mediaStoreClip(10)]);
+
+      expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
+    });
+
     test('watchFirstShowableClip skips a clip that is missing', () async {
       final ids = await repo.saveDetected([
         mediaStoreClip(10),
