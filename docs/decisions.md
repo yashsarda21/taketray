@@ -1388,7 +1388,6 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Alternatives considered: androidx `PickVisualMedia` (a new dependency, no gain); `ACTION_GET_CONTENT` (no persistable grants, an older style of picker); the Storage Access Framework only (a file browser rather than the user's photos, no "Recent"); one `getAllVideosInFolder` list (a folder of thousands of clips in one reply); an empty answer for any failed `readableUris` (would let a failure release grants that are still in use).
 - Consequences: schema stays v1, no new Gradle or pub dependency, release permissions unchanged, no INTERNET. Kotlin logs counts only (picked, kept, release failures); never an address, name or folder (D-10). The shot-time order is SQL's approximation of Dart's `shotAt` (no plausibility window for a far-future date); the grid only needs a stable, close order, and Dart still decides each clip's own date. **On a phone (Task 7):** that the picker returns durable addresses, and that a null projection works on a picker address, are not provable with Robolectric.
 
-
 ### D-113 · Adding videos by hand: folder rules, the marks, what an add does to a clip TakeTray already has, and an Undo that takes back only what the add created
 - Date: 2026-11-11 · Phase: 7 · Task: 3 · Builds on D-111, D-112, D-57, D-84, D-94
 - Decision:

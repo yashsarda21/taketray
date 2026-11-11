@@ -1273,7 +1273,8 @@ class ClipsRepository {
   ///    `lastVerifiedAt` = now for both;
   /// 3. [gone] and [otherVideo] leave To tag and Skipped: the `inbox` rows of
   ///    those flagged `missing` (checked in the same transaction, so a clip
-  ///    that was not flagged, a picked one, keeps its row) go, then the clips
+  ///    that was not flagged keeps its row; a picked clip flagged missing by
+  ///    its own check leaves To tag like any other) go, then the clips
   ///    left in no reel and no list (the orphan rule, D-56). A clip in a reel
   ///    is only ever flagged, never removed: its link and its row stay, even
   ///    if it also has an `inbox` row (only that row goes). The video file is

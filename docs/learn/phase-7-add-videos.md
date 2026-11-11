@@ -15,7 +15,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 2. [The bridge: folder pages and the photo picker](#2-the-bridge-folder-pages-and-the-photo-picker)
 3. [Adding by hand, and Undo](#3-adding-by-hand-and-undo)
-4. Picked clips get pictures, verification and a grant clean-up (Task 4)
+4. [Picked clips get pictures, verification and a grant clean-up](#4-picked-clips-get-pictures-verification-and-a-grant-clean-up)
 5. The folder browser (Task 5)
 6. Manual mode (Task 6)
 7. On the S24 (Task 7)
