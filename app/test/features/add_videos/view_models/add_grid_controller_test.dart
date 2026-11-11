@@ -100,6 +100,58 @@ void main() {
     expect(now().loadingMore, isFalse);
   });
 
+  test('a page dropped because a refresh began, and that refresh then '
+      'fails: the grid is not left loading, and paging goes on', () async {
+    a.bridge.putFolder(whatsAppFolder, many(450));
+    await open();
+    final notifier = container.read(grid().notifier);
+    final gate = a.bridge.gate('videosInFolder');
+
+    final late = notifier.loadMore();
+    expect(now().loadingMore, isTrue);
+    // The refresh starts while the page is on its way, and fails to read.
+    a.bridge.failNext('videosInFolder');
+    await notifier.refresh();
+    gate.complete();
+    await late;
+
+    expect(now().loadingMore, isFalse);
+    expect(now().moreFailed, isFalse);
+    expect(ids(now()), [for (var i = 1; i <= 200; i++) i]);
+    expect(now().hasMore, isTrue);
+    // The screen asks again (it does not while loadingMore): the next page
+    // is read and shown.
+    await notifier.loadMore();
+    expect(ids(now()), hasLength(400));
+    expect(now().loadingMore, isFalse);
+  });
+
+  test('a refresh that fails while a valid next page (asked for after it '
+      'began) is on the way leaves that page loading', () async {
+    a.bridge.putFolder(whatsAppFolder, many(450));
+    await open();
+    final notifier = container.read(grid().notifier);
+    final stale = a.bridge.gate('videosInFolder');
+    final first = notifier.loadMore();
+    // A refresh begins and will fail; before it ends the screen asks for the
+    // next page again, which is valid (asked after the refresh began).
+    a.bridge.failNext('videosInFolder');
+    final refreshing = notifier.refresh();
+    final valid = a.bridge.gate('videosInFolder');
+    final second = notifier.loadMore();
+    await refreshing;
+
+    expect(now().loadingMore, isTrue, reason: 'the valid page is still coming');
+    stale.complete();
+    await first;
+    expect(now().loadingMore, isTrue, reason: 'the stale one changes nothing');
+    valid.complete();
+    await second;
+
+    expect(ids(now()), hasLength(400));
+    expect(now().loadingMore, isFalse);
+  });
+
   test('two loads at once ask for one page', () async {
     a.bridge.putFolder(whatsAppFolder, many(450));
     await open();
@@ -204,6 +256,47 @@ void main() {
 
     expect(await first, isA<AddDone>());
     expect(a.service.folderAdds, hasLength(1));
+  });
+
+  test(
+    'a refresh while an add runs reads nothing and changes nothing',
+    () async {
+      a.bridge.putFolder(whatsAppFolder, many(5));
+      await open();
+      final notifier = container.read(grid().notifier)..toggle(1);
+      final gate = a.service.gate = Completer<void>();
+      final running = notifier.add();
+      // The folder changes, as a resume would find.
+      a.bridge
+        ..deleteVideo(2)
+        ..put([folderVideo(9, today.add(const Duration(hours: 16)))]);
+      final reads = a.bridge.pages.length;
+
+      await notifier.refresh();
+
+      expect(a.bridge.pages, hasLength(reads));
+      expect(ids(now()), [1, 2, 3, 4, 5]);
+      expect(now().selected, {1});
+      expect(now().adding, isTrue);
+      gate.complete();
+      expect(await running, isA<AddDone>());
+    },
+  );
+
+  test('a refresh after an add worked (the screen is leaving) reads nothing: '
+      'the added video is not marked, the choice stays', () async {
+    a.bridge.putFolder(whatsAppFolder, many(5));
+    await open();
+    final notifier = container.read(grid().notifier)..toggle(1);
+    expect(await notifier.add(), isA<AddDone>());
+    final reads = a.bridge.pages.length;
+
+    await notifier.refresh();
+
+    expect(a.bridge.pages, hasLength(reads));
+    expect(now().marks, isEmpty);
+    expect(now().selected, {1});
+    expect(now().adding, isTrue);
   });
 
   test('a failed add keeps the choice and can run again', () async {

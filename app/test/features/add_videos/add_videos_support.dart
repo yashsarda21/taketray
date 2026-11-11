@@ -181,6 +181,9 @@ class AddHarness {
   late final Directory cacheFolder;
   late CountingAddVideos service;
 
+  /// More overrides for a test to add before it pumps.
+  final List<Override> extraOverrides = [];
+
   List<Override> get overrides => [
     ...h.overrides,
     mediaAccessControllerProvider.overrideWith(() => fakeAccess),
@@ -198,6 +201,7 @@ class AddHarness {
         ref.watch(clockProvider),
       ),
     ),
+    ...extraOverrides,
   ];
 
   /// Pumps a host page with one button, **open**, that opens Add videos for

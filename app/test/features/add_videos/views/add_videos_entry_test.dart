@@ -1,4 +1,5 @@
-import 'package:flutter/widgets.dart' show Size;
+import 'package:flutter/widgets.dart'
+    show Navigator, NavigatorState, Size, SizedBox;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -104,6 +105,78 @@ void main() {
       );
     });
 
+    testWidgets('a slow access read does not let a second tap open a second '
+        'list', (tester) async {
+      final bridge = await pumpToTag(tester);
+      final slow = bridge.gate('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      // Much longer than the window after a tap.
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(barButton('Add videos'));
+      await tester.pump(const Duration(seconds: 2));
+      slow.complete();
+      await tester.pumpAndSettle();
+
+      expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(1));
+      expect(
+        find.text(addVideosRouteMarker(null), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('taps are shut out for the whole read and then for the page '
+        'to arrive, and no longer', (tester) async {
+      final bridge = await pumpToTag(tester);
+      final slow = bridge.gate('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pump(const Duration(seconds: 5));
+      slow.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(addVideosRouteMarker(null)), findsOneWidget);
+
+      // Back to To tag: a new tap opens again.
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+      expect(find.text(addVideosRouteMarker(null)), findsNothing);
+      await tester.tap(barButton('Add videos'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(addVideosRouteMarker(null)), findsOneWidget);
+      expect(bridge.calls.where((c) => c == 'accessReport'), hasLength(2));
+    });
+
+    testWidgets('a read that fails lets the next tap try again', (
+      tester,
+    ) async {
+      final bridge = await pumpToTag(tester);
+      bridge.failNext('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pumpAndSettle();
+      expect(find.text(addVideosRouteMarker(null)), findsNothing);
+      await tester.tap(barButton('Add videos'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(addVideosRouteMarker(null)), findsOneWidget);
+    });
+
+    testWidgets('leaving To tag during a slow read leaves nothing pending', (
+      tester,
+    ) async {
+      final bridge = await pumpToTag(tester);
+      final slow = bridge.gate('accessReport');
+      await tester.tap(barButton('Add videos'));
+      await tester.pump();
+
+      await tester.pumpWidget(const SizedBox());
+      slow.complete();
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+    });
+
     for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
       testWidgets('without full access (${level.name}) the folder browser '
           'does not open', (tester) async {
@@ -178,6 +251,59 @@ void main() {
       await tapAndSettle(tester, find.widgetWithText(TtButton, 'Add videos'));
 
       expect(find.text(addVideosRouteMarker(id)), findsOneWidget);
+    });
+
+    testApp('a double tap on the app bar button opens Add videos once', (
+      tester,
+    ) async {
+      final id = await reelWithNoClips(tester);
+      await open(tester, id);
+
+      await tester.tap(barButton('Add videos'));
+      await tester.tap(barButton('Add videos'));
+      await settleApp(tester);
+
+      expect(
+        find.text(addVideosRouteMarker(id), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testApp('a slow access read does not let a second tap open a second '
+        'list', (tester) async {
+      final id = await reelWithNoClips(tester);
+      await open(tester, id);
+      final slow = h.bridge.gate('accessReport');
+
+      await tester.tap(barButton('Add videos'));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(find.widgetWithText(TtButton, 'Add videos'));
+      await tester.pump(const Duration(seconds: 2));
+      slow.complete();
+      await settleApp(tester);
+
+      expect(h.bridge.calls.where((c) => c == 'accessReport'), hasLength(1));
+      expect(
+        find.text(addVideosRouteMarker(id), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testApp('a double tap on the empty reel page Add videos opens it once', (
+      tester,
+    ) async {
+      final id = await reelWithNoClips(tester);
+      await open(tester, id);
+
+      final button = find.widgetWithText(TtButton, 'Add videos');
+      await tester.tap(button);
+      await tester.tap(button);
+      await settleApp(tester);
+
+      expect(
+        find.text(addVideosRouteMarker(id), skipOffstage: false),
+        findsOneWidget,
+      );
     });
   });
 

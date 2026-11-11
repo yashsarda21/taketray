@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/features/add_videos/view_models/add_folders_controller.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
@@ -371,6 +374,43 @@ void main() {
       expect(find.text("Keep friends' clips sharp"), findsNothing);
     });
 
+    testApp('is not shown while the answer is loading: not a flash for a '
+        'returning user', (tester) async {
+      threeFolders();
+      await tester.runAsync(a.h.media.phoneState.markFolderTipSeen);
+      final answer = Completer<bool>();
+      a.extraOverrides.add(
+        folderTipProvider.overrideWith(() => _SlowTip(answer.future)),
+      );
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+
+      // The folders are there, the answer is not.
+      expect(rowTitles(tester), hasLength(3));
+      expect(find.text("Keep friends' clips sharp"), findsNothing);
+
+      answer.complete(true);
+      await settleApp(tester);
+
+      expect(find.text("Keep friends' clips sharp"), findsNothing);
+    });
+
+    testApp('a first-time user sees it once the answer comes', (tester) async {
+      threeFolders();
+      final answer = Completer<bool>();
+      a.extraOverrides.add(
+        folderTipProvider.overrideWith(() => _SlowTip(answer.future)),
+      );
+      await a.pumpOrigin(tester, const AddToToTag());
+      await openBrowser(tester);
+      expect(find.text("Keep friends' clips sharp"), findsNothing);
+
+      answer.complete(false);
+      await settleApp(tester);
+
+      expect(find.text("Keep friends' clips sharp"), findsOneWidget);
+    });
+
     testApp('does not show once seen', (tester) async {
       threeFolders();
       await tester.runAsync(a.h.media.phoneState.markFolderTipSeen);
@@ -423,4 +463,14 @@ void main() {
       await expectTtAccessible(tester);
     });
   }
+}
+
+/// A [FolderTip] whose first answer arrives when [answer] completes.
+class _SlowTip extends FolderTip {
+  _SlowTip(this.answer);
+
+  final Future<bool> answer;
+
+  @override
+  Future<bool> build() => answer;
 }

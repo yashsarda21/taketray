@@ -127,8 +127,9 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// Opens Add videos once however fast the taps.
   final OpenOnce _addVideos = OpenOnce();
 
-  void _openAddVideos() => _addVideos.open(
-    () => openAddVideos(context, ref, AddToReel(widget.reelId)),
+  void _openAddVideos() => _addVideos.openSlow(
+    (pushing) =>
+        openAddVideos(context, ref, AddToReel(widget.reelId), pushing: pushing),
   );
 
   @override

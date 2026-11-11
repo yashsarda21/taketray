@@ -27,12 +27,15 @@ final Logger _log = Logger('addVideos');
 /// - **limited, denied, or a read that failed:** Manual mode, the photo
 ///   picker, which Task 6 adds here; for now nothing opens.
 ///
-/// The caller opens it through an `OpenOnce`, so a double tap opens one list.
+/// The caller opens it through `OpenOnce.openSlow`, so a double tap opens one
+/// list even when the access read is slow: it passes `openSlow`'s [pushing],
+/// which this calls just before it pushes the list.
 Future<void> openAddVideos(
   BuildContext context,
   WidgetRef ref,
-  AddTarget target,
-) async {
+  AddTarget target, {
+  VoidCallback? pushing,
+}) async {
   // Everything the end needs is read now: the caller may be gone by then.
   final bridge = ref.read(mediaBridgeProvider);
   final service = ref.read(addVideosServiceProvider);
@@ -56,9 +59,9 @@ Future<void> openAddVideos(
     AddToToTag() => null,
     AddToReel(:final reelId) => reelId,
   };
-  final result = await router.push<AddResult>(
-    Routes.addVideosTo(reelId: reelId),
-  );
+  final route = router.push<AddResult>(Routes.addVideosTo(reelId: reelId));
+  pushing?.call();
+  final result = await route;
   if (result == null) return;
   if (result.added == 0) {
     snacks.show(l10n.addVideosAlreadyAdded, done: false);

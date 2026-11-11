@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -358,6 +359,44 @@ void main() {
       expect(tile(tester, 4).selected, isFalse);
     });
 
+    testApp('at 200% text the marks of a reel grid are whole and apart: '
+        '"In this reel" and "In To tag" are not both "In t…"', (tester) async {
+      final videos = fiveVideos();
+      final goa = await a.makeReel(tester, 'Goa');
+      await putInReel(tester, goa, [videos[2]]);
+      await putInToTag(tester, [videos[0]]);
+      await putInReel(tester, await a.makeReel(tester, 'Bali'), [videos[3]]);
+
+      await openGrid(
+        tester,
+        target: AddToReel(goa.id),
+        videos: videos,
+        textScale: 2,
+      );
+
+      for (final label in ['In this reel', 'In To tag']) {
+        final text = find.text(label);
+        expect(text, findsOneWidget);
+        final paragraph = tester.renderObject<RenderParagraph>(text);
+        expect(paragraph.didExceedMaxLines, isFalse, reason: label);
+        // Painted inside its tile, at its real size (it wraps).
+        final id = label == 'In this reel' ? 3 : 1;
+        final painted = tester.getRect(text);
+        expect(
+          tester.getRect(tileOf(id)).contains(painted.topLeft),
+          isTrue,
+          reason: label,
+        );
+        expect(
+          tester.getRect(tileOf(id)).contains(painted.bottomRight),
+          isTrue,
+          reason: label,
+        );
+        expect(painted.height / paragraph.size.height, closeTo(1, 0.001));
+      }
+      expect(tester.takeException(), isNull);
+    });
+
     testApp('a marked tile cannot be picked: a tap says "Already added"', (
       tester,
     ) async {
@@ -606,6 +645,64 @@ void main() {
       expect(find.text(originMarker), findsOneWidget);
       expect((await a.pendingIds(tester)).toSet(), {1, 2});
     });
+
+    testApp('a failed add reads the folder again: a video that went during '
+        'the add leaves the grid and the choice, a new one shows', (
+      tester,
+    ) async {
+      await openGrid(tester);
+      await tapAndSettle(tester, tileOf(1));
+      await tapAndSettle(tester, tileOf(2));
+      final gate = a.service.gate = Completer<void>();
+      a.service.failNext = true;
+      await tester.tap(find.text('Add 2'));
+      await tester.pump();
+      // The phone changes while the add runs.
+      a.bridge
+        ..deleteVideo(2)
+        ..put([folderVideo(9, today.add(const Duration(hours: 14)))]);
+      final readsBefore = gridPages().length;
+
+      gate.complete();
+      await settleApp(tester);
+
+      expect(find.byType(AddGridScreen), findsOneWidget);
+      expect(snack("Couldn't add videos. Try again."), findsOneWidget);
+      expect(gridPages().length, readsBefore + 1);
+      expect(tileOf(2), findsNothing);
+      expect(tileOrder(tester), [9, 1, 4, 3, 5]);
+      expect(tile(tester, 1).selected, isTrue);
+      expect(bottomText('1 video picked'), findsOneWidget);
+      expect(addButton(tester).onPressed, isNotNull);
+    });
+
+    for (final level in [MediaAccessLevel.limited, MediaAccessLevel.denied]) {
+      testApp('a failed add reads the access again: lost meanwhile '
+          '(${level.name}), both screens close', (tester) async {
+        await openGrid(tester);
+        await tapAndSettle(tester, tileOf(1));
+        final gate = a.service.gate = Completer<void>();
+        a.service.failNext = true;
+        await tester.tap(find.text('Add 1'));
+        await tester.pump();
+        // The access is taken away in the phone's settings meanwhile: the app
+        // has not heard of it yet (no resume), so only a new read finds out.
+        a.bridge.access = MediaAccess(
+          level: level,
+          canAskAgain: true,
+          sdkInt: 34,
+        );
+
+        gate.complete();
+        await settleApp(tester);
+
+        expect(find.byType(AddGridScreen), findsNothing);
+        expect(find.byType(AddFoldersScreen), findsNothing);
+        expect(find.text(originMarker), findsOneWidget);
+        expect(await a.pendingIds(tester), isEmpty);
+        expect(tester.takeException(), isNull);
+      });
+    }
 
     testApp('nothing could be kept (the card went during the add): it stays '
         'on the grid and says so', (tester) async {

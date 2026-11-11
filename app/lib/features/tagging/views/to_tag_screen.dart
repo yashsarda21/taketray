@@ -203,8 +203,10 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
   void _openSkipped() =>
       _skippedPage.open(() => context.push<void>(Routes.skipped));
 
-  void _openAddVideos() =>
-      _addVideos.open(() => openAddVideos(context, ref, const AddToToTag()));
+  void _openAddVideos() => _addVideos.openSlow(
+    (pushing) =>
+        openAddVideos(context, ref, const AddToToTag(), pushing: pushing),
+  );
 
   @override
   Widget build(BuildContext context) {

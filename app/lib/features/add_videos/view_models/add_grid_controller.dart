@@ -278,6 +278,21 @@ class AddGridController extends _$AddGridController {
       );
     } on Object catch (error) {
       _log.warning('Reading the folder again failed: ${error.runtimeType}');
+      _dropStaleLoading(epoch);
+    }
+  }
+
+  /// A refresh that failed leaves the grid as it was, but a next page that was
+  /// on its way when it began is dropped when it arrives (it leaves the state
+  /// alone), so it would leave [AddGridState.loadingMore] set for good and
+  /// stop the paging. Clears it, unless the refresh has been overtaken or a
+  /// next page asked for after it began is on its way.
+  void _dropStaleLoading(int epoch) {
+    if (epoch != _epoch || !ref.mounted) return;
+    if (_loading != null && _loadingEpoch == _epoch) return;
+    final current = state.value;
+    if (current != null && current.loadingMore) {
+      _set(current.copyWith(loadingMore: false));
     }
   }
 

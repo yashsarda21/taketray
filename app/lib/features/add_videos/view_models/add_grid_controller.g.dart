@@ -110,7 +110,7 @@ final class AddGridControllerProvider
   }
 }
 
-String _$addGridControllerHash() => r'77adb7287da9d90ca815271b553b9d5de8980a22';
+String _$addGridControllerHash() => r'667b20ab87d719643fdd1d4d87b77c8cbbeeb9e7';
 
 /// One folder of one volume in Add videos' grid, for an add to [target]
 /// (D-114, Review Focus 1).
