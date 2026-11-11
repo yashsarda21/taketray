@@ -27,7 +27,7 @@
 - Offline: no INTERNET, ACCESS_NETWORK_STATE or WAKE_LOCK.
 - Logs (D-10): never video names, paths, URIs, folders, reel names, cities or the phone maker. Counts and error types only.
 - Strict TDD: write **all** of a change's edge-case tests red first, see them fail, then implement once. Mutation-check the key lines. Never steer one case per fix round.
-- Models: implementers, on-phone testing and all fixes on **Sonnet**. Main reviews and re-reviews on **Opus** (re-reviews resume the same reviewer). Never Haiku. Always pass the model explicitly.
+- Models: implementers of Tasks 2, 6 and 7, on-phone testing, all fixes and every task review and re-review on **Sonnet**; implementers of the heavy Tasks 3, 4 and 5 on **Opus**. Only the whole-phase final review and its re-review on **Opus** (re-reviews resume the same reviewer). Never Haiku. Always pass the model explicitly.
 - Review findings: Critical and Important fixed now; Minors parked for one batch before the final review.
 - Docs every task: `docs/decisions.md`, `docs/flow.md`, `docs/learn/phase-7-add-videos.md`, `docs/later.md`.
 - UI: design tokens only (`TtMetrics` and friends), l10n for every string, 48 dp targets, semantics labels, text scaling to 200%, light and dark. Copy comes from the prototype verbatim where it exists.
