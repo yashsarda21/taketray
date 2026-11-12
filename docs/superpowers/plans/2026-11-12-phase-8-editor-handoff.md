@@ -11,7 +11,7 @@
 
 **Tech Stack:** Flutter 3.47.7 via `tool/flutter`; Riverpod 3 codegen; Drift with `make-migrations` (schema v1 → v2); freezed; go_router; gen-l10n; alchemist goldens (macOS plus CI sets, D-61; app screen goldens macOS-only, D-97); Pigeon 29.0.11; Kotlin with platform APIs and kotlinx-coroutines only; Robolectric 4.17 (`tool/test_android`); Patrol 4.10 on the S24.
 
-**Spec:** `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`: §1, §3 (CapCut shown whenever installed; VN folder clash " (2)"), §8.1 (`vn_sessions`, `vn_copies`), §8.2 `EditorsApi`, §8.4 (VN file names), §8.5 (VN copies reminder), §8.6 (orphaned VN copies), §9 phase 8, §11 (package names may change → "Other app…"). Visual source: `design/prototype/assets/screens.js` (`edit-select`, `vn-space`, `vn-copy`, `vn-ready`, `vn-storage`, `sheets.editor`, `sheets.share`, dialogs `doneEditing`, `markStatus`, `stopCopy`, `editorMissing`, `deleteReel`, the reel page VN banner, `menus.reelSel`, the viewer's Share), `ui.js` (`reelCard` pill, the tile's VN mark), `app.js` (`editVideo`, `selEdit`, `editContinue`, `pickEditor`, `vnAddConfirm`, `vnCopy`, `copyTick`, `finishCopy`, `cancelVN`, `vnAddMore`, `confirmDoneEditing`, `copiedInfo`, `notifTap` `vn`), `states.js` group "Sending to editors" (screens 18 to 23, 26). Owner decisions: `.superpowers/sdd/phase-8-design/owner-decisions.md` in the main checkout (binding; they override the prototype where they differ).
+**Spec:** `docs/superpowers/specs/2026-10-24-taketray-v1-build-design.md`: §1, §3 (CapCut shown whenever installed; VN folder clash " (2)"), §8.1 (`vn_sessions`, `vn_copies`), §8.2 `EditorsApi`, §8.4 (VN file names), §8.5 (VN copies reminder), §8.6 (orphaned VN copies), §9 phase 8, §11 (package names may change → "Other app…"). Visual source: `design/prototype/assets/screens.js` (`edit-select`, `vn-space`, `vn-copy`, `vn-ready`, `vn-storage`, `sheets.editor`, `sheets.share`, dialogs `doneEditing`, `markStatus`, `stopCopy`, `editorMissing`, `deleteReel`, the reel page VN banner, `menus.reelSel`, the viewer's Share), `ui.js` (`reelCard` pill, the tile's VN mark), `app.js` (`editVideo`, `selEdit`, `editContinue`, `pickEditor`, `vnAddConfirm`, `vnCopy`, `copyTick`, `finishCopy`, `cancelVN`, `vnAddMore`, `confirmDoneEditing`, `copiedInfo`, `notifTap` `vn`), `states.js` group "Sending to editors" (screens 18 to 23, 26). Owner decisions: `.superpowers/sdd/phase-8-design/owner-decisions.md` in the main checkout (binding; they override the prototype where they differ). Superseded in the prototype (D-118; `design/` is not edited): `states.js:249` ("foreground service with a progress notification") and `screens.js:414` ("You can leave the app; copying continues.").
 
 **Owner decisions (2026-11-12, recorded as D-118):**
 1. VN cannot take several shared clips; CapCut and Edits can (owner tested). VN gets copies of every picked clip in `Movies/TakeTray/<Reel>`.
@@ -32,13 +32,13 @@
 - R5. For CapCut/Edits, the session and its sent clips are written **before** the share and rolled back if the share fails. **Other app…** and **Share** make no session and ask no status question.
 - R6. **The 3-day reminder** fires once per copy batch, 3 days after the last copy, for any session with copies (VN, or CapCut/Edits folder copies). Its on/off switch waits for Phase 10's Settings.
 - R7. The storage screen keeps the prototype's title "VN copies" and also lists CapCut/Edits folder copies ("for CapCut"). Copies TakeTray no longer knows (after a reinstall or import) are deleted only through Android's consent dialog.
-- R8. Removing or moving a clip out of an editing reel deletes its copy first (nothing is removed if the copy cannot be deleted). Undo brings the clip back under "New since you started editing", not into the folder. Deleting a reel deletes its copies first; Undo restores the reel without its editing session. Names: "Instagram Edits" in the sheet, snacks and dialogs; "Edits" in the card pill, banner and section button.
+- R8. Removing or moving a clip out of an editing reel deletes its copy first (nothing is removed if the copy cannot be deleted). Undo brings the clip back under "New since you started editing", not into the folder, unless it was sent to CapCut/Edits (its sent row is kept), then under "In your edit". Deleting a reel deletes its copies first; Undo restores the reel without its editing session. Names: "Instagram Edits" in the sheet, snacks and dialogs; "Edits" in the card pill, banner and section button.
 
 ## Global Constraints
 
 - **Schema v2**, the first change: `AppDatabase.schemaVersion = 2`, migration through `dart run drift_dev make-migrations` (`stepByStep`), generated step tests and a hand-filled data test. A newer database (a downgrade) is still refused and left untouched. The later.md "Before the first schema change (v2)" item is done in Task 3. Export format stays v1: editing sessions are never exported (spec §8.6).
 - No new Gradle or pub dependency. Pigeon regenerated with the repo's existing command; two new Pigeon files (`editors_api.dart`, `copy_api.dart`).
-- **Release permissions unchanged.** No `Service`, no foreground service, no copy notification. `tool/check_release_permissions` keeps its permission lists exactly (`FOREGROUND_SERVICE` and `WAKE_LOCK` stay forbidden; Task 4 only adds two debug-dex strings) and must end `RELEASE PERMISSIONS OK`. The screen stays on through the window flag `FLAG_KEEP_SCREEN_ON`, which needs no permission. Writing to `Movies/TakeTray/` needs no permission on API 30+ (scoped storage, app-owned rows).
+- **Release permissions unchanged.** No new `<service>` (only Phase 6's three JobServices), no `foregroundServiceType`, no foreground service, no copy notification. `tool/check_release_permissions` keeps its permission lists exactly (`FOREGROUND_SERVICE` and `WAKE_LOCK` stay forbidden; Task 4 only adds two debug-dex strings) and must end `RELEASE PERMISSIONS OK`. The screen stays on through the window flag `FLAG_KEEP_SCREEN_ON`, which needs no permission. Writing to `Movies/TakeTray/` needs no permission on API 30+ (scoped storage, app-owned rows).
 - **Originals are never modified, moved or deleted** (D-04). Originals are opened read-only. Every delete goes through `CopyFolder`'s guard (Task 4): a row is deleted only when its `RELATIVE_PATH` is `Movies/TakeTray/<folder>/`, its `DISPLAY_NAME` is the recorded file name and it is owned by TakeTray; anything else is refused and never deleted. The only other deletes are the copy engine's (Task 5): a row it created itself in this job (a cancel, a failed file), and `deletePendingIn`, which deletes only TakeTray-owned `IS_PENDING` rows in exactly `Movies/TakeTray/<folder>/`. Orphans (not owned, or not recorded) go only through `MediaStore.createDeleteRequest`, after the user's consent.
 - **Native never writes the database** (D-18, D-103). Dart records each copy as its "file finished" event arrives, and before a job starts saves its plan (job id, reel, folder, each clip's file name) as a phone-state row (D-71, never exported). After a restart, TakeTray's own finished rows in the folder, matched to that plan by file name, are the record; there is no journal file.
 - Package names live in Dart (`EditorApp.packageName`): CapCut `com.lemon.lvoverseas`, Edits `com.instagram.basel`, VN `com.frontrow.vlog`, each in the manifest's `<queries>` as `<package>`. A missing editor greys out; **Other app…** always works (spec §11).
@@ -47,7 +47,7 @@
 - Strict TDD: write **all** of a change's edge-case tests red first, see them fail, then implement once. Never steer one case per fix round. Mutation-check the key lines, one mutant at a time, naming the test that fails; a surviving mutant gets a test in the same task. Never weaken a test to pass.
 - Models: implementers of the heavy **Tasks 3, 4, 5, 6 and 11** on **Opus**; implementers of Tasks 2, 7, 8, 9, 10, 12, 13 and 14, on-phone testing, all fixes and every task review and re-review on **Sonnet**. Only the whole-phase final review and its re-review on **Opus** (re-reviews resume the same reviewer). Never Haiku. Always pass the model explicitly. A fixer reviews its own fix in per-task rounds; the final fix wave gets a separate re-review.
 - Review findings: Critical and Important fixed now; Minors parked for one batch before the final review. A step review may be skipped only where no code, phone safety or privacy is touched.
-- **Parallel worktrees:** after Task 2, Tasks 3, 4, 5 and 8 may run in parallel (Task 8 can also start beside Task 2). Task 7 may run beside Task 6. Task 13 (it reuses Task 11's Done editing dialog) may run beside the gate and Task 12. Tasks 9, 10 and 11 run in order. Expected merge conflicts (resolved by the controller, both sides kept): `MainActivity.kt`, `DebugEditorHooks.kt`, `app_en.arb`, `routes.dart`, `docs/*`. Each task keeps its own D-number below, so parallel tasks never clash.
+- **Parallel worktrees:** after Task 2, Tasks 3, 4, 5 and 8 may run in parallel (Task 8 can also start beside Task 2). Task 7 may run beside Task 6. Task 13 (it reuses Task 11's Done editing dialog) may run beside the gate and Task 12. Tasks 9, 10 and 11 run in order. Expected merge conflicts (resolved by the controller, both sides kept): `MainActivity.kt`, `src/debug/.../DebugHooks.kt` (Task 4 registers `DebugEditorHooks`, Task 5 `DebugCopyHooks`), `CopyFolderPath.kt` (identical in Tasks 4 and 5; keep Task 4's), `ManifestTest.kt`, `app_en.arb`, `routes.dart`, `docs/*`. Each task keeps its own D-number below, so parallel tasks never clash; at each merge the controller keeps `decisions.md` sorted by number. D-117 stays free for Phase 7's last entry. Merge `phase-7-add-videos` into this branch before Task 14 and again before the PR.
 - Docs every task: its D-number in `docs/decisions.md`, `docs/flow.md`, its section of `docs/learn/phase-8-editor-handoff.md`, and `docs/later.md` (delete what is done).
 - UI: design tokens only (`TtMetrics` and friends; `tool/check_styles`), l10n for every string, 48 dp targets, semantics labels, text scaling to 200 %, light and dark, reduced motion. Copy comes from the prototype verbatim where it exists; new copy is given in each task.
 - Phone rules: only `app.taketray.dev` runs tests. Never uninstall or clear `app.taketray`. Logcat with `--pid=` only. No screenshots. Never list shared storage or read other apps' files. Patrol videos only in `Movies/TakeTray Test/`; Patrol's copy folders are named `TakeTray Test <timestamp>` reels and deleted in the tear-down. Tests never start CapCut, Edits, VN, the Play Store or the share sheet: a debug-only hook records the outgoing intent instead (Task 4). After every Patrol run: build debug, `install -r`, `pm clear app.taketray.dev`.
@@ -92,6 +92,8 @@ extension EditorAppFacts on EditorApp {
 }
 String safeFolderName(String reelName);
 String copyExtension(String displayName, String mimeType);
+// localShotAt is the clip's ClipLocalTime.wallClock: the local wall clock held in the fields
+// of a UTC DateTime (D-83). Read year..second; never toLocal() or toUtc().
 class CopyNameSource { int clipId; DateTime localShotAt; String extension; }
 Map<int, String> copyFileNames(List<CopyNameSource> inShootingOrder, Set<String> taken);
 const int copyReserveBytes = 500 * 1000 * 1000;
@@ -109,29 +111,29 @@ Map<int, AddPick> addPicks(List<int> liveClipIds,
 ```
 
 - [ ] **Step 1: Write the failing tests:**
-  - `safeFolderName`: each of `/ \ : * ? " < > |` becomes `-` ("London/Paris" → "London-Paris"); C0 controls and U+007F are removed; runs of spaces become one; spaces and dots trimmed at both ends ("Goa." → "Goa", "  Goa  " → "Goa"); empty, ".", ".." and "..." become "Reel"; emoji and accents kept ("Goa 🌴", "Café"); a 40-character name stays whole; never longer than its input.
+  - `safeFolderName`: each of `/ \ : * ? " < > |` becomes `-` ("London/Paris" → "London-Paris"); C0 controls and U+007F are removed; runs of spaces become one; spaces and dots trimmed at both ends ("Goa." → "Goa", "  Goa  " → "Goa"); empty, ".", ".." and "..." become "Reel"; emoji and accents kept ("Goa 🌴", "Café"); a 40-character name stays whole; never longer than its input, except when the result is "Reel".
   - `copyExtension`: lower-cased extension of the display name when it is one of `mp4 mov m4v 3gp mkv webm` (`IMG_1.MOV` → `mov`); otherwise by MIME (`video/mp4` mp4, `video/quicktime` mov, `video/3gpp` 3gp, `video/x-matroska` mkv, `video/webm` webm); otherwise `mp4`; a name with no dot or a trailing dot falls back to MIME.
-  - `copyFileNames`: `2026-10-12_14-32-05.mp4` with zero padding (`2026-01-02_03-04-05`); two clips in one second → second gets `_2`, a third `_3`, in the order given; a `taken` name blocks it case-insensitively (`…05.MP4`); `taken` holding `…05.mp4` and `…05_2.mp4` gives `_3`; the same stem with different extensions does not clash; the repeated hour at a DST change gives `_2`, never an overwrite; keys are the clip ids; an empty list gives `{}`.
+  - `copyFileNames`: `2026-10-12_14-32-05.mp4` from `DateTime.utc(2026, 10, 12, 14, 32, 5)` (the fields as given, whatever the machine's zone), with zero padding (`2026-01-02_03-04-05`); two clips in one second → second gets `_2`, a third `_3`, in the order given; a `taken` name blocks it case-insensitively (`…05.MP4`); `taken` holding `…05.mp4` and `…05_2.mp4` gives `_3`; the same stem with different extensions does not clash; the repeated hour at a DST change gives `_2`, never an overwrite; keys are the clip ids; an empty list gives `{}`.
   - `spaceCheck`: enough exactly at `need + reserve == free`; one byte more is short with `shortByBytes == 1`; `freeAfterBytes = free - need`; `need == 0` is enough; a free below the reserve is short even for a tiny need.
-  - `byteSize` (decimal, as `fmt.size`): 0 → "0" MB; any non-zero below 1 MB (499,999) → "1" MB; 900,000,000 → "900" MB; 999,499,999 → "999" MB; 1,000,000,000 → "1" GB (".0" dropped); 1,250,000,000 → "1.3" GB (half up); 12,000,000,000 → "12" GB.
+  - `byteSize` (decimal, as `fmt.size`): 0 → "0" MB; any non-zero below 1 MB (499,999) → "1" MB; 900,000,000 → "900" MB; 999,499,999 → "999" MB; 1,000,000,000 → "1" GB (".0" dropped); 1,250,000,000 → "1.3" GB (half up); 12,000,000,000 → "12" GB; 999,500,000 → "1" GB (never "1000 MB": round first, then pick the unit); 1,049,999,999 → "1" GB; 9,950,000,000 → "10" GB (never "9.10"); 1 byte → "1" MB. Integer arithmetic only, no doubles.
   - `splitForEditing`: nothing sent or copied → all new; a sent clip and a clip with a live copy are in the edit; a copied clip whose copy is gone (not in `liveCopyIds`) and not sent → new; order kept in both lists; ids in the sets that are not in the list are ignored.
   - `addPicks`: fresh (neither), sentNotCopied, inFolder (a live copy wins over sent).
-  - `EditorApp`: the three package names exactly; `takesShares` false only for VN; `EditorApp.values.byName` round-trips.
+  - `EditorApp`: the three package names exactly; `takesShares` false only for VN; the stored names are literally `"capcut"`, `"edits"`, `"vn"` (the database contract).
   - `ClipRef.of`: a MediaStore clip gives volume and id (no URI); a picked clip gives its URI only, also when its `volumeName` is set (D-57's rule); the MIME type is the clip's.
 - [ ] **Step 2:** Run `cd app && ../tool/flutter test test/domain/`. Expected: FAIL (files do not exist).
 - [ ] **Step 3:** Implement. Grapheme-safe trimming with `characters`.
 - [ ] **Step 4:** Run them and `tool/check`. Expected: PASS. Mutation-check: the `-` replacement set (drop `:`), the `_2` start number, `<=` in `spaceCheck`, the half-up rounding.
-- [ ] **Step 5:** Docs: D-119 (the folder name rule, R2's names and extensions, R3's reserve and units, the split and pick states); `flow.md`; guide section 2. Commit `feat(editors): rules for folders, copy names, space and the edit split`.
+- [ ] **Step 5:** Docs: D-119 (the folder name rule, R2's names and extensions and the UTC-held wall clock, R3's reserve and units, the "1 MB minimum" that differs from `fmt.size`, the split and pick states); `flow.md`; guide section 2. Commit `feat(editors): rules for folders, copy names, space and the edit split`.
 
 ---
 
 ### Task 3: Schema v2 and the editing sessions repository (heavy)
 
 **Model:** Opus. **Files:**
-- Modify: `lib/data/database/tables.dart`, `app_database.dart`, `lib/domain/models/undo_record.dart`, `lib/data/repositories/reels_repository.dart` (delete record), `lib/data/repositories/undo_writer.dart`, `lib/data/backup/backup_service.dart` (clears ten tables), `tool/check_generated`, `tool/test/check_generated_test.dart`.
+- Modify: `lib/data/database/tables.dart`, `app_database.dart`, `lib/domain/models/undo_record.dart` (rename only), `lib/data/repositories/reels_repository.dart` (delete record), `lib/data/repositories/undo_writer.dart`, `lib/data/backup/backup_service.dart` (clears ten tables), `tool/check_generated`, `tool/test/check_generated_test.dart`.
 - Rename: `lib/domain/models/vn_session.dart` → `edit_session.dart`, `vn_copy.dart` → `edit_copy.dart`, `lib/data/repositories/vn_repository.dart` → `edit_sessions_repository.dart` (and their tests). SQL table names stay `vn_sessions` and `vn_copies` (spec §8.1; no table rename in the migration).
 - Create: `lib/domain/models/sent_clip.dart`, generated `drift_schemas/taketray/drift_schema_v2.json`, `lib/data/database/app_database.steps.dart`, `test/drift/taketray/generated/schema_v2.dart`, `test/drift/taketray/migration_test.dart` (generated, then filled).
-- Test: `test/data/repositories/edit_sessions_repository_test.dart`, extend `test/data/repositories/reels_repository_test.dart`, `test/data/backup/backup_service_test.dart`, `test/drift/taketray/schema_test.dart`.
+- Test: `test/data/repositories/edit_sessions_repository_test.dart`, extend `test/data/repositories/reels_repository_test.dart`, `test/data/backup/backup_service_test.dart`, `test/drift/taketray/schema_test.dart`; rename uses of the old names in `test/data/database/app_database_test.dart`, `test/data/repositories/undo_test.dart`, `clips_repository_test.dart`, `clips_repository_inbox_test.dart` and `test/domain/models/models_test.dart`.
 
 **Interfaces (consumes):** `EditorApp` (Task 2), `uniqueFolderName`. **Produces:**
 ```dart
@@ -139,7 +141,8 @@ Map<int, AddPick> addPicks(List<int> liveClipIds,
 class EditSessions extends Table { tableName 'vn_sessions'; reelId PK FK reels cascade;
   TextColumn editor = textEnum<EditorApp>().withDefault(const Constant('vn'))(); folderName; createdAt; }
 class EditCopies extends Table { tableName 'vn_copies'; reelId FK cascade; clipId (no FK, D-54);
-  copyMediaStoreId; fileName; sizeBytes; IntColumn copiedAt (UTC ms, NOT NULL DEFAULT 0); }
+  copyMediaStoreId; fileName; sizeBytes; PK (reelId, clipId) as today;
+  IntColumn copiedAt = integer().map(const UtcMillisConverter()).withDefault(const Constant(0))(); }
 class SentClips extends Table { tableName 'sent_clips'; reelId FK edit_sessions cascade; clipId (no FK);
   sentAt; PK (reelId, clipId); index sent_clips_clip_id; }
 
@@ -163,7 +166,8 @@ class EditSessionsRepository {
   Future<List<EditCopy>> copiesOf(int reelId);
   Future<void> endSession(int reelId);
 }
-// DeleteReelUndo: vnSession/vnCopies → editSession/editCopies/sentClips.
+// DeleteReelUndo: vnSession/vnCopies → editSession/editCopies (rename only, kept as defence in depth;
+// the app path ends the session before a delete, R8, so they are empty there). No sentClips field.
 ```
 
 - [ ] **Step 1: Write the failing repository tests** (in-memory database):
@@ -174,27 +178,27 @@ class EditSessionsRepository {
   - `watchEditState`: null without a session; emits after each send, copy and removal; `sentIds` is a set.
   - `watchSummaries`: only sessions, with `copyCount`, `copyBytes` (sum) and `lastCopiedAt` (max, null with no copies), the reel's current name; newest session first.
   - `endSession` cascades copies and sent rows; deleting the reel does too (foreign keys on).
-  - Undo of a reel delete restores the session with its editor, every copy row (also one whose clip cannot come back, D-54) and every sent row.
+  - the existing undo-delete tests pass with the renamed fields (no new undo tests).
   - Backup import deletes `sent_clips` rows too; export has no editing data; the v1 fixture still imports to the same summary.
 - [ ] **Step 2: Write the failing migration tests.** Bump `schemaVersion` to 2, run `cd app && ../tool/dart run drift_dev make-migrations` (writes the v2 dump, `app_database.steps.dart`, `schema_v2.dart` and `migration_test.dart`), then fill the generated data test:
   - `migration from v1 to v2 does not corrupt data`: v1 rows (a reel, two clips, a session "Goa" created at T, two copies) become v2 rows with `editor = vn`, each copy's `copiedAt = T` (the session's `createdAt`), no sent rows, and every other table unchanged.
   - after the upgrade, deleting the reel still cascades the session, copies and sent rows (`PRAGMA foreign_keys` on);
-  - `a version 3 database is refused and left untouched`: opening throws `UnsupportedError` and `user_version` is still 3;
+  - the downgrade refusal stays covered by `app_database_test.dart`'s existing "a database from a newer app version is not opened", which uses `schemaVersion + 1` (so 3 at v2); no second test;
   - `schema_test.dart` passes for v1 and v2 (`validateDropped: true`).
 - [ ] **Step 3: Write the failing `check_generated` tests** (`tool/test/check_generated_test.dart`): a stale or missing `lib/**/*.steps.dart` fails; a stale `test/drift/*/generated/schema_v*.dart` fails; a hand-filled `migration_test.dart` and `schema_test.dart` are never deleted or rewritten.
 - [ ] **Step 4:** Run `cd app && ../tool/flutter test test/data test/drift` and `cd tool && ../tool/dart test test/check_generated_test.dart`. Expected: FAIL.
 - [ ] **Step 5:** Implement. `onUpgrade`: `if (from > to) throw UnsupportedError(...)`, then `stepByStep(from1To2: (m, schema) async { addColumn editor; addColumn copiedAt; customStatement('UPDATE vn_copies SET copied_at = (SELECT created_at FROM vn_sessions s WHERE s.reel_id = vn_copies.reel_id)'); createTable sentClips; createIndex })`, all in Drift's migration transaction. `tool/check_generated` hashes `*.steps.dart` under `lib/`, deletes them and `test/drift/*/generated/` before regenerating, and keeps `drift_schemas/` and the hand-written tests (update its header comment).
 - [ ] **Step 6:** Run `tool/check_generated`, `tool/check`. Expected: PASS. Mutation-check: the `from > to` guard, the `copied_at` UPDATE, the "different copy id throws" branch, `sent_clips` in the backup delete list.
-- [ ] **Step 7:** Docs: D-120 (v2's columns and table, why the SQL names stay, the downgrade guard, copies and sent rows not exported, the check_generated change); amend D-54 (v2) and D-59 (ten tables); `flow.md` "Database open and migrations"; guide section 3; delete the later.md v2 section. Commit `feat(data): schema v2 for editing sessions, with a tested migration`.
+- [ ] **Step 7:** Docs: D-120 (v2's columns and table, why the SQL names stay, the undo fields kept but empty on the app path, the downgrade guard, copies and sent rows not exported, the check_generated change); amend D-54 (v2) and D-59 (ten tables); `flow.md` "Database open and migrations"; guide section 3; delete the later.md v2 section. Commit `feat(data): schema v2 for editing sessions, with a tested migration`.
 
 ---
 
 ### Task 4: The editors bridge and the copy folder guard (heavy)
 
 **Model:** Opus. **Files:**
-- Create: `app/pigeons/editors_api.dart`, `android/.../editors/EditorsHostApiImpl.kt`, `EditorApps.kt`, `ShareIntents.kt`, `CopyFolder.kt`, `DeleteRequests.kt`, `ActivityStarter.kt`; `android/app/src/debug/kotlin/app/taketray/DebugEditorHooks.kt`; `lib/platform/editors_bridge.dart`; `test/support/fake_editors_bridge.dart`.
-- Modify: `AndroidManifest.xml` (`<queries>` packages), `MainActivity.kt` (set up the API; forward the delete-request result), `src/debug/.../DebugHooks.kt`, `tool/check_release_permissions` (`FORBIDDEN_DEX_STRINGS += DebugEditorHooks test_editors`).
-- Test: `android/app/src/test/kotlin/app/taketray/editors/{EditorAppsTest,ShareIntentsTest,CopyFolderTest,DeleteRequestsTest}.kt`, `ManifestTest.kt` (extend), `DebugEditorHooksTest.kt`, `test/platform/editors_bridge_test.dart`, `test/platform/editor_packages_manifest_test.dart`.
+- Create: `app/pigeons/editors_api.dart`, `android/.../editors/EditorsHostApiImpl.kt`, `EditorApps.kt`, `ShareIntents.kt`, `CopyFolder.kt`, `CopyFolderPath.kt` (the one folder match, shared with Task 5), `DeleteRequests.kt`, `ActivityStarter.kt`; `android/app/src/debug/kotlin/app/taketray/DebugEditorHooks.kt`; `lib/platform/editors_bridge.dart`; `test/support/fake_editors_bridge.dart`.
+- Modify: `AndroidManifest.xml` (`<queries>` packages), `MainActivity.kt` (set up the API; forward the delete-request result), `src/debug/.../DebugHooks.kt`, `tool/check_release_permissions` (`FORBIDDEN_DEX_STRINGS += DebugEditorHooks test_editors DebugCopyHooks test_copy`, so Task 5 never touches the script).
+- Test: `android/app/src/test/kotlin/app/taketray/editors/{EditorAppsTest,ShareIntentsTest,CopyFolderTest,CopyFolderPathTest,DeleteRequestsTest,EditorsHostApiImplTest}.kt`, `ManifestTest.kt` (extend), `DebugEditorHooksTest.kt`, `test/platform/editors_bridge_test.dart`, `test/platform/editor_packages_manifest_test.dart`.
 
 **Interfaces (consumes):** `ClipRef`, `EditorApp` (Task 2). **Produces, Dart (Pigeon messages mirror them):**
 ```dart
@@ -219,6 +223,18 @@ abstract interface class EditorsBridge {
 }
 ```
 
+`CopyFolderPath.kt` (Task 5 creates the identical file in its worktree; the controller keeps Task 4's at merge):
+```kotlin
+object CopyFolderPath {
+    const val ROOT = "Movies/TakeTray/"
+    fun relativePath(folder: String): String = "$ROOT$folder/"
+    /** Exactly Movies/TakeTray/<folder>/, ignoring case; never a deeper folder or "TakeTray Test". */
+    fun isInFolder(rowRelativePath: String?, folder: String): Boolean =
+        rowRelativePath != null && rowRelativePath.equals(relativePath(folder), ignoreCase = true)
+    fun isOwn(ownerPackage: String?, ourPackage: String): Boolean = ownerPackage == ourPackage
+}
+```
+
 - [ ] **Step 1: Write the failing Robolectric tests:**
   - `EditorApps`: installed or not per package (shadow package manager); an icon is drawn to a PNG of `iconPx`; a package that disappears mid-call is `installed = false`; the call never throws for an unknown package.
   - `ShareIntents.send(pkg, uris)`: one clip → `ACTION_SEND` with `EXTRA_STREAM`; several → `ACTION_SEND_MULTIPLE` with `EXTRA_STREAM` as an `ArrayList<Uri>` **in the given order**; type `video/*`; `setPackage(pkg)`; `FLAG_GRANT_READ_URI_PERMISSION`; `ClipData` holding every URI in the same order; a MediaStore clip's URI is `MediaStore.Video.Media.getContentUri(volume)` + id; a picker clip uses its picker URI. `ActivityNotFoundException` → `notInstalled`; `SecurityException` and others → `failed`.
@@ -227,13 +243,15 @@ abstract interface class EditorsBridge {
   - `CopyFolder` guard (fake `ContentResolver` provider): `deleteCopies` deletes a row only when `RELATIVE_PATH` equals `Movies/TakeTray/<folder>/` (case-insensitive), `DISPLAY_NAME` equals the file name and `OWNER_PACKAGE_NAME` is TakeTray's package; a row in `Movies/TakeTray Test/`, in `DCIM/Camera/`, in a deeper folder, with another name or another owner is **refused** and untouched; an id with no row is `gone`; a delete that throws is `failed` and the rest continue. `existingCopies` uses the same match (a reused id with another name is not present); a failing query throws.
   - `copyFolderNames`: distinct first segments under `Movies/TakeTray/`, never `TakeTray Test`; `filesInCopyFolders`: one level deep only, with size and `ownedByTakeTray`.
   - `freeBytes`: `StatFs(Environment.getExternalStorageDirectory()).availableBytes`.
+  - `EditorsHostApiImplTest`: each host method reaches its helper off the main thread and a helper's exception arrives as a Pigeon error; `freeBytes` returns the StatFs value.
+  - `CopyFolderPathTest`: `Movies/TakeTray/Goa/` and `movies/taketray/goa/` match "Goa"; `Movies/TakeTray/Goa/sub/`, `Movies/TakeTray Test/`, `Movies/TakeTray/Goa2/`, null do not; `isOwn` is exact.
   - `DeleteRequests`: `createDeleteRequest` only for rows that pass the folder match (any owner); refused rows are never in the request; a result arriving with no caller is dropped; a second request while one is open fails with `busy`.
   - `DebugEditorHooks` (debug only, channel `app.taketray/test_editors`): `setInstalledOverride(Map<String,bool>?)`, `recordIntents(bool)`, `takeRecordedIntents()` returns each intent's action, package, type, the URIs as `volume:id` or `picker`, the grant flag and the `ClipData` count; while recording, no activity starts (`ActivityStarter` is replaced).
   - `ManifestTest`: the three `<package>` queries are present.
 - [ ] **Step 2: Write the failing Dart tests:** the bridge maps messages to domain types and passes `PlatformException` through unchanged; `editor_packages_manifest_test.dart` reads `android/app/src/main/AndroidManifest.xml` and finds every `EditorApp.packageName` in `<queries>`.
 - [ ] **Step 3:** Run `tool/test_android` and the Dart tests. Expected: FAIL.
 - [ ] **Step 4:** Add the Pigeon file, regenerate, implement. All binder work off the main thread. The fake bridge records calls and has settable `installed`, `freeBytes`, `existing`, `deleteReport` and a `sendResult`.
-- [ ] **Step 5:** Run `tool/test_android`, `tool/check`, `tool/check_release_permissions`. Expected: PASS. Mutation-check (each alone): the order of `EXTRA_STREAM`, the owner check, the name check, `RELATIVE_PATH` equality (make it a prefix match: the `TakeTray Test` and deeper-folder tests must fail), the `busy` guard.
+- [ ] **Step 5:** Run `tool/test_android`, `tool/check`, `tool/check_release_permissions`. Expected: PASS. Mutation-check (each alone): the order of `EXTRA_STREAM`, the owner check, the name check, `CopyFolderPath.isInFolder` equality (make it a prefix match: the `TakeTray Test` and deeper-folder tests must fail), the `busy` guard.
 - [ ] **Step 6:** Docs: D-121 (two Pigeon files instead of one `EditorsApi`, so Tasks 4 and 5 can run in parallel; the guard; `market://` only; the debug intent recorder); `flow.md`; guide section 4. Commit `feat(editors): editors bridge with a guarded copy folder`.
 
 ---
@@ -241,10 +259,10 @@ abstract interface class EditorsBridge {
 ### Task 5: Copying in the app (heavy)
 
 **Model:** Opus (it writes into shared storage and deletes files; a mistake can leave half files or delete a copy the user still needs). **Files:**
-- Create: `app/pigeons/copy_api.dart`, `android/.../editors/CopyEngine.kt` (a process-wide object owning at most one job), `CopyJob.kt` (the loop), `CopyStore.kt` (interface + MediaStore implementation), `CopyHostApiImpl.kt`; `lib/platform/copy_bridge.dart`; `test/support/fake_copy_bridge.dart`.
-- Modify: `MainActivity.kt` (set up the API; give it the activity's window for the screen-on flag), `src/debug/.../DebugEditorHooks.kt` (`setCopyThrottleMs(int)`, `keepScreenOnFlag()` reading the window flag).
-- Test: `android/app/src/test/kotlin/app/taketray/editors/{CopyJobTest,CopyEngineTest,CopyStoreTest,KeepScreenOnTest}.kt`, `ManifestTest.kt` (extend), `test/platform/copy_bridge_test.dart`.
-- No manifest change, no `Service`, no notification, no permission: `tool/check_release_permissions` is not touched.
+- Create: `app/pigeons/copy_api.dart`, `android/.../editors/CopyEngine.kt` (a process-wide object owning at most one job), `CopyJob.kt` (the loop), `CopyStore.kt` (interface + MediaStore implementation; its folder match uses `CopyFolderPath`), `CopyHostApiImpl.kt`, `CopyFolderPath.kt` (identical to Task 4's, see there); `android/app/src/debug/kotlin/app/taketray/DebugCopyHooks.kt` (channel `app.taketray/test_copy`: `setCopyThrottleMs(int)`, `keepScreenOnFlag()` reading the window flag); `lib/platform/copy_bridge.dart`; `test/support/fake_copy_bridge.dart`.
+- Modify: `MainActivity.kt` (set up the API; give it the activity's window for the screen-on flag), `src/debug/.../DebugHooks.kt` (register `DebugCopyHooks`).
+- Test: `android/app/src/test/kotlin/app/taketray/editors/{CopyJobTest,CopyEngineTest,CopyStoreTest,KeepScreenOnTest}.kt`, `DebugCopyHooksTest.kt`, `ManifestTest.kt` (extend), `test/platform/copy_bridge_test.dart`.
+- No manifest change, no new `<service>`, no notification, no permission: `tool/check_release_permissions` is not touched (Task 4 already lists `DebugCopyHooks` and `test_copy` in its dex check).
 
 **Interfaces (consumes):** `ClipRef` (Task 2). **Produces, Dart:**
 ```dart
@@ -260,7 +278,7 @@ class FolderRow { int mediaStoreId; String fileName; int sizeBytes; bool pending
 abstract interface class CopyBridge {
   Future<void> start(CopyRequest request);  // CopyBusy while a job runs or its result waits
   Future<CopyJob?> current();               // this process's running job or waiting result; null after a restart
-  Future<CopyJob> cancel(String jobId);     // stops; deletes this job's copies
+  Future<CopyJob?> cancel(String jobId);    // stops; deletes this job's copies; null for an unknown id
   Future<void> resume(String jobId);        // after spaceFull: the remaining items of this job
   Future<void> clear(String jobId);         // forget the result; another id does nothing
   Future<List<FolderRow>> ownRowsIn(String folderName);   // TakeTray-owned rows in Movies/TakeTray/<folder>/, pending ones included
@@ -285,24 +303,24 @@ update IS_PENDING 0; read back _ID and DISPLAY_NAME → item done (CopiedFile), 
 - [ ] **Step 1: Write the failing Robolectric tests** (fake `CopyStore` and sources):
   - happy path: every item copied in order, names read back (a MediaStore rename "x (1).mp4" is what is reported), `copied` in item order, state `finished`, one event per finished file plus progress events with `done` and `bytesDone` rising;
   - a source that cannot be opened (also a picked clip whose grant is gone), or is shorter than reported, is in `failedClipIds`, its pending row deleted, and the job goes on;
-  - space: the pre-check stops before the file (no row made); `ENOSPC` mid-file deletes that pending row; both give `spaceFull` with the earlier copies kept; `resume` continues with the remaining items only and fails again at once when space is still short;
+  - space: the pre-check stops before the file (no row made) when available space is one byte under `sizeBytes + 50 MB` and copies it at exactly that amount (the native hard floor; Dart's 500 MB reserve, R3, is checked before the job); `ENOSPC` mid-file deletes that pending row; both give `spaceFull` with the earlier copies kept; `resume` continues with the remaining items only and fails again at once when space is still short;
   - cancel mid-file: the pending row and every copy of **this job** are deleted, earlier jobs' files untouched, state `cancelled`, `copied` lists what was deleted; a copy that cannot be deleted is in `undeleted`;
   - cancel after `finished` but before `clear`: deletes this job's copies (Stop always means "delete the copies made so far");
-  - cancel, resume or clear with an unknown id: nothing changes;
+  - cancel with an unknown id returns null and changes nothing; resume or clear with an unknown id changes nothing;
   - `start` while running or while a result waits → `busy`, nothing changes;
   - the engine outlives the activity: a job started, the host API torn down (`onHostGone`) and set up again; the job is still running, `current()` returns it, and events reach the new listener only;
   - `ownRowsIn` lists only TakeTray-owned rows in exactly `Movies/TakeTray/<folder>/`, pending ones included (`QUERY_ARG_MATCH_PENDING`); never `Movies/TakeTray Test/`, a deeper folder or another owner's row;
   - `deletePendingIn` deletes only owned rows with `IS_PENDING = 1` in that folder; a finished row, another folder's pending row and another owner's row stay;
   - `keepScreenOn(true)` sets `FLAG_KEEP_SCREEN_ON` on the window, `false` clears it, both on the main thread; with no activity it does nothing and does not throw;
-  - the debug throttle sleeps per chunk only in debug builds;
+  - the throttle is 0 by default and only `DebugCopyHooks` sets it (the release dex check forbids `DebugCopyHooks`);
   - an original on another volume (an SD card) is copied to the primary volume, and the space check reads the primary volume;
   - a 200-item job: progress events are throttled (at most one per 250 ms during a file) and every finished file still gets its event;
-  - `ManifestTest`: still no `<service>` and no foreground-service permission.
+  - `ManifestTest`: the `<service>` elements are exactly `NewClipsJobService`, `NewClipsSettleJobService`, `EveningDeferJobService`; none has `foregroundServiceType`; no `FOREGROUND_SERVICE*` or `WAKE_LOCK` permission.
 - [ ] **Step 2:** Write the failing Dart bridge tests (mapping, the `busy` error, the event stream).
 - [ ] **Step 3:** Run `tool/test_android` and the Dart tests. Expected: FAIL.
 - [ ] **Step 4:** Implement. One worker coroutine on `Dispatchers.IO` in `CopyEngine`; cancel sets a flag the loop reads; file deletes after a cancel run on the same worker, after the loop ends, so they never race the file being written. `CopyFlutterApi.onCopyChanged` is called on the main thread, at most every 250 ms during a file, and always when a file finishes or the state changes.
 - [ ] **Step 5:** Run `tool/test_android`, `tool/check`, `tool/check_release_permissions` (unchanged; must end `RELEASE PERMISSIONS OK`). Mutation-check (each alone): publish (`IS_PENDING 0`) before the length check; skip deleting the pending row on cancel; `resume` restarting from item 0; `deletePendingIn` without the pending filter; the space margin.
-- [ ] **Step 6:** Docs: D-122 (copying in the app process with no foreground service, owner's change of 2026-11-12; the engine outliving the activity; the folder as the record after a restart; the loop; the screen-on flag; R4); `flow.md` a new "Copying clips" flow; guide section 5. Commit `feat(editors): copying in the app, with progress, cancel and the screen kept on`.
+- [ ] **Step 6:** Docs: D-122 (copying in the app process with no foreground service, owner's change of 2026-11-12; the engine outliving the activity; the folder as the record after a restart; the loop; the 50 MB native floor beside Dart's 500 MB reserve; the screen-on flag; R4); `flow.md` a new "Copying clips" flow; guide section 5. Commit `feat(editors): copying in the app, with progress, cancel and the screen kept on`.
 
 ---
 
@@ -310,7 +328,7 @@ update IS_PENDING 0; read back _ID and DISPLAY_NAME → item done (CopiedFile), 
 
 **Model:** Opus. **Files:**
 - Create: `lib/data/editors/edit_session_service.dart`, `lib/features/editors/view_models/copy_job_controller.dart`.
-- Modify: `lib/features/reels/view_models/reel_clip_actions.dart`, `reel_actions.dart`, `reel_detail_controller.dart` (`removeMissing`), `lib/app/media_lifecycle.dart` (start and resume), `lib/data/repositories/phone_state_repository.dart` (the `copyJobPlan` key).
+- Modify: `lib/features/reels/view_models/reel_clip_actions.dart`, `reel_actions.dart`, `reel_detail_controller.dart` (`removeMissing`), `lib/app/media_lifecycle.dart` (start), `lib/data/repositories/phone_state_repository.dart` (the `copyJobPlan` key).
 - Test: `test/data/editors/edit_session_service_test.dart`, `test/features/editors/copy_job_controller_test.dart`, extend the reels view-model tests.
 
 **Interfaces (consumes):** Tasks 2 to 5. **Produces:**
@@ -329,7 +347,7 @@ class CopyJobPlan { String jobId; int reelId; String folderName; bool startedSes
 
 class EditSessionService {
   Future<List<EditorChoice>> editorChoices();
-  Future<SendOutcome> sendOriginals(int reelId, EditorApp editor, List<int> clipIds); // capcut/edits only
+  Future<SendOutcome> sendOriginals(int reelId, EditorApp editor, List<int> clipIds); // capcut/edits; starts or adds to a same-editor session
   Future<bool> share(List<int> clipIds, String chooserTitle);
   Future<CopyPlan> planCopy(int reelId, EditorApp editor, List<int> clipIds);
   Future<String> startCopy(CopyPlan plan);              // returns the job id
@@ -339,11 +357,12 @@ class EditSessionService {
   Future<void> finishJob(String jobId);                 // apply, then clear
   Future<DoneEditingResult> doneEditing(int reelId);
   Future<void> verifyCopies(int reelId);
-  Future<void> beforeClipsLeaveReel(int reelId, Set<int> clipIds);
+  Future<int> beforeClipsLeaveReel(int reelId, Set<int> clipIds);   // how many copies it deleted
   Future<void> beforeReelDelete(int reelId);
   Future<StorageOverview> storage();
   Future<int> deleteOrphans(OrphanFolder folder);       // freed bytes; 0 when declined
-  Future<void> recoverAtStart();                        // returns the interrupted job (from the plan) or null
+  Future<CopyJob?> recoverAtStart();                    // the interrupted job built from the plan, or null
+  Future<({EditorApp editor, bool startedSession})?> jobContext(String jobId);  // from the saved plan; null when none
 }
 @Riverpod(keepAlive: true) class CopyJobController { CopyJob? build(); bool takeUnseenResult(); }
 // After a restart the controller holds an `interrupted` CopyJob built from the plan and the folder.
@@ -352,39 +371,40 @@ class EditSessionService {
 Every mutating method runs on the service's own serial queue, so two of them never interleave.
 
 - [ ] **Step 1: Write the failing service tests** (in-memory database, fake bridges, fake clock):
-  - `sendOriginals`: clips sent in shooting order (`inShootingOrder`), missing clips left out and not counted, gone ids dropped; the session (editor, reserved folder name from `safeFolderName` + `copyFolderNames`) and sent rows are written **before** the share; `notInstalled` or `failed` rolls both back; zero live clips sends nothing and returns `failed` with `sentCount 0`; VN or a reel that already has a session throws `StateError`; a double call sends once (single-flight per reel).
+  - `sendOriginals`: clips sent in shooting order (`inShootingOrder`), missing clips left out and not counted, gone ids dropped; the session (editor, reserved folder name from `safeFolderName` + `copyFolderNames`) and sent rows are written **before** the share; `notInstalled` or `failed` rolls both back; zero live clips sends nothing and returns `failed` with `sentCount 0`; VN, or a reel whose session is another editor's, throws `StateError`; a reel with a session of the **same** editor adds sent rows only, and a failed share rolls back only this call's new rows (rows already sent stay); a double call sends once (single-flight per reel).
   - `share`: live clips only, in shooting order, no session; all missing → false without a bridge call.
-  - `planCopy`: drops clips with a live copy in this reel's folder and missing clips; `needBytes` is the sum of `sizeBytes`; `startsSession` true for a reel with no session (VN only); an existing session of another editor than asked throws `StateError`; the folder name is the session's (a renamed reel keeps it).
+  - `planCopy`: runs `verifyCopies(reelId)` first (on the same queue), then drops clips with a live copy in this reel's folder and missing clips; a stale copy row (file deleted outside TakeTray) is removed by that verify, so the clip is offered again and its new copy records without a `StateError`; when the verify's bridge call throws, the row stays and the clip is not offered; `needBytes` is the sum of `sizeBytes`; `startsSession` true for a reel with no session (VN only); an existing session of another editor than asked throws `StateError`; the folder name is the session's (a renamed reel keeps it).
   - `startCopy`: starts the session first when `startsSession`; items in shooting order; names from `copyFileNames` (local shot times from `ClipTimeService.localTimes`, D-83; a clip with no time yet uses the phone's zone) with `taken` = the session's copy names plus the folder's current file names; the plan is saved (`copyJobPlan`) **before** `start`; `CopyBusy` or any other start failure ends a session it just started, removes the plan and rethrows; a double call starts one job.
   - `applyJob`: called for each finished-file event and for the result; records each `CopiedFile` once (a second apply of the same job adds nothing); a copy whose clip has **left the reel** or whose session is gone is deleted through `deleteCopies` and not recorded; `undeleted` files stay recorded; a cancelled job removes its deleted copies' rows.
   - `cancelCopy` of a job that started its session: when the session ends with no copies and no sent rows, it is ended.
   - `doneEditing`: deletes every copy (`deleteCopies`), then ends the session; `gone` counts as deleted; any `refused` or `failed` → `CopiesNotDeleted`, the session and the failed rows stay, the deleted rows go; refuses with `StateError` while a job for this reel runs; `freedBytes` sums deleted copies; works with no copies (CapCut).
   - `verifyCopies`: rows whose file is gone (`existingCopies`) are removed; a throwing bridge changes nothing.
-  - `beforeClipsLeaveReel`: deletes those clips' copies and rows first; a failure throws `CopiesNotDeleted` and removes nothing; a reel with no session does nothing; sent rows are kept.
+  - `beforeClipsLeaveReel`: deletes those clips' copies and rows first and returns how many (0 with none, 1, and several); a failure throws `CopiesNotDeleted` and removes nothing; a reel with no session does nothing; sent rows are kept.
   - `beforeReelDelete`: cancels this reel's running job, deletes every copy, ends the session; any failure throws and nothing is ended.
-  - `storage`: sessions from `watchSummaries` (first value); orphans = files in copy folders whose id is not a recorded copy, grouped by folder, with counts and bytes; a bridge failure gives sessions with no orphans (logged).
+  - `storage`: sessions from `watchSummaries` (first value); orphans = files in copy folders whose id is not a recorded copy, grouped by folder, with counts and bytes; the folder of a running job or a saved plan is never listed as orphans; a bridge failure gives sessions with no orphans (logged).
   - `deleteOrphans`: `requestDelete` with that folder's files; declined → 0.
   - `recoverAtStart` with an in-process job (`current()` not null; the activity was re-created): applies it, nothing deleted.
-  - `recoverAtStart` after a restart (`current()` null, a plan saved): `deletePendingIn(folder)` first; then `ownRowsIn(folder)` finished rows whose file name is a plan item's are recorded for that item's clip (an already recorded copy id is not added twice); a finished row matching no plan item is left for the storage screen (an orphan), never deleted; the result is an `interrupted` job listing the recorded items; no plan → nothing to recover.
+  - `recoverAtStart` after a restart (`current()` null, a plan saved): `deletePendingIn(folder)` first; then `ownRowsIn(folder)` finished rows whose file name is a plan item's are recorded for that item's clip (an already recorded copy id is not added twice); a finished row matching no plan item is left for the storage screen (an orphan), never deleted; a recovered copy's `copiedAt` is the clock at recovery; the result is an `interrupted` job listing the recorded items; no plan → nothing to recover.
   - after recovery, `resumeCopy` starts a new job with only the plan items not yet recorded, keeping their file names; when all were recorded it finishes at once; `cancelCopy` of the recovered job deletes the copies it recorded (guarded `deleteCopies`) and their rows;
+  - `jobContext` returns the plan's editor and `startedSession` while a plan is saved (also after a restart) and null after it is removed;
   - the plan is removed only after `finishJob`, `cancelCopy` or a failed start; a crash between recording and removing the plan leaves nothing recorded twice;
   - `recoverAtStart` also ends sessions with no copies, no sent rows and no plan; a throwing bridge is logged and changes nothing (the plan stays for the next start).
 - [ ] **Step 2: Write the failing controller and hook tests:**
   - `CopyJobController` follows `changes` (calling `applyJob` for each event with a new finished file), reads `current()` on build and on resume, holds the interrupted job `recoverAtStart` returned, and `takeUnseenResult()` is true once per job id per process for a non-running job;
   - `ReelClipActions.removeFromReel` and `moveToReel` call `beforeClipsLeaveReel(from, ids)` first and remove nothing when it throws; `ReelDetailController.removeMissing` too; `ReelActions.confirmDelete` calls `beforeReelDelete` first and deletes nothing when it throws; the Undo of such a delete restores the reel with no session;
-  - `media_lifecycle` runs `recoverAtStart` once per start, guarded, after the scan step.
+  - `media_lifecycle` runs `recoverAtStart` once per start, guarded, after the scan step (resume is the controller's `current()` read, not a second recovery).
 - [ ] **Step 3:** Run the tests. Expected: FAIL.
 - [ ] **Step 4:** Implement. Job ids are `'<reelId>-<UTC ms>'`. Never log names or paths.
-- [ ] **Step 5:** Run `tool/check`. Expected: PASS, coverage ≥ 80 % for the service. Mutation-check (each alone): write-before-share order, the rollback, the plan saved after `start` instead of before, recovery without `deletePendingIn`, recovery matching by size instead of file name, "clip left the reel" in `applyJob`, `doneEditing` ending the session after a failed delete, `beforeClipsLeaveReel` swallowing the error.
-- [ ] **Step 6:** Docs: D-123 (the service's queue, R1, R5, R8, the plan row, record-per-file then clear, recovery from the folder after a restart, what each failure leaves); amend D-56 and D-85's delete; `flow.md` "Editing a reel"; guide section 6. Commit `feat(editors): editing sessions, copies and their clean-up`.
+- [ ] **Step 5:** Run `tool/check`. Expected: PASS, coverage ≥ 80 % for the service. Mutation-check (each alone): write-before-share order, the rollback, the plan saved after `start` instead of before, recovery without `deletePendingIn`, recovery matching by size instead of file name, "clip left the reel" in `applyJob`, `doneEditing` ending the session after a failed delete, `beforeClipsLeaveReel` swallowing the error, `planCopy` without the verify.
+- [ ] **Step 6:** Docs: D-123 (the service's queue, R1, R5, R8, the plan row, record-per-file then clear, recovery from the folder after a restart, what each failure leaves); amend D-56 and D-85's delete; `flow.md` "Editing a reel"; guide section 6; in `docs/later.md` split the Phase 8 first bullet into three (Share + Edit video; the VN pieces; nothing else) and delete the sanitise and remove-copy items, which this task and Task 2 finish. Commit `feat(editors): editing sessions, copies and their clean-up`.
 
 ---
 
 ### Task 7: The copies reminder and the Done editing tap
 
 **Model:** Sonnet. **Files:**
-- Modify: `app/pigeons/background_api.dart`, `android/.../background/{BackgroundState,BackgroundStateStore,Arming,ReminderScheduler,ReminderTimes,ReminderReceiver,Notifier,LaunchActions}.kt`, `res/values/strings.xml`, `src/debug/.../DebugBackgroundHooks.kt` (`showCopiesReminderNow(reelId)`), `lib/data/background/background_sync.dart`, `lib/platform/background_bridge.dart`, `lib/features/notifications/view_models/launch_actions.dart`, `lib/app.dart`, `lib/router/routes.dart`.
-- Test: the matching Kotlin tests (`ReminderSchedulerTest`, `ReminderTimesTest`, `ReminderReceiverTest`, `NotifierTest`, `LaunchActionsTest`, `BackgroundStateStoreTest`), `test/data/background/background_sync_test.dart`, `test/features/notifications/launch_actions_test.dart`.
+- Modify: `app/pigeons/background_api.dart`, `android/.../background/{BackgroundState,BackgroundStateStore,BackgroundHostApiImpl,Arming,ReminderScheduler,ReminderTimes,ReminderReceiver,Notifier,LaunchActions}.kt`, `res/values/strings.xml`, `src/debug/.../DebugBackgroundHooks.kt` (`showCopiesReminderNow(reelId)`), `lib/data/background/background_sync.dart`, `lib/platform/background_bridge.dart`, `lib/features/notifications/view_models/launch_actions.dart`, `lib/app.dart`, `lib/router/routes.dart`.
+- Test: the matching Kotlin tests (`ReminderSchedulerTest`, `ReminderTimesTest`, `ReminderReceiverTest`, `NotifierTest`, `LaunchActionsTest`, `BackgroundStateStoreTest`, `BackgroundHostApiImplTest`), `test/data/background/background_sync_test.dart`, `test/platform/background_bridge_test.dart`, `test/features/notifications/launch_actions_test.dart`.
 
 **Interfaces (produces):**
 ```dart
@@ -400,12 +420,13 @@ static String reelDoneEditing(int id) => '${reel(id)}?done=1';
 - [ ] **Step 1: Write the failing tests:**
   - `BackgroundSync` writes one `CopiesReminderMsg` per session with copies (none for a CapCut session without copies), and writes again when copies change or a session ends;
   - `ReminderTimes.copiesDueAt(lastCopiedAtMs) = lastCopiedAtMs + 3 days`; one inexact alarm for the earliest due reminder not yet shown; a reminder is shown once per `(reelId, lastCopiedAtMs)` (stored), so a new copy batch re-arms it and a reboot does not repeat it; a reel dropped from the mirror cancels its alarm and its notification;
-  - the notification on the Reminders channel: title "%1$s copies are using %2$s" (`Formatter.formatShortFileSize`), text "Done editing? Tap to clean up.", action "Done editing"; private lock-screen version "TakeTray" / "Copies for an edit are still on your phone"; both taps launch `doneEditing` with the reel id; one notification per reel (id from the reel id);
+  - the notification on the Reminders channel: title "%1$s copies are using %2$s" (`Formatter.formatShortFileSize`), text "Done editing? Tap to clean up.", action "Done editing"; private lock-screen version "TakeTray" / "Copies for an edit are still on your phone"; both taps launch `doneEditing` with the reel id; one notification per reel with id `1000 + reelId` (ids 1 to 3 are Phase 6's), PendingIntent request codes `1_000_000 + 2 × reelId` (body) and `+ 1` (action), one alarm with request code 400; reels 1, 2 and 3 post beside New clips, Evening and Still shooting? without replacing them, and each tap opens its own reel;
+  - `BackgroundStateStore` loads a stored Phase 6 JSON state (no `copiesReminders` field) as an empty list;
   - Dart: `doneEditing` with a reel that still exists opens `Routes.reelDoneEditing(id)` (the reel page; Task 11 makes it show the Done editing dialog once when the reel still has a session); a reel that is gone, an unknown or a null reel id opens Reels.
 - [ ] **Step 2:** Run them (`tool/test_android`, Dart tests). Expected: FAIL.
 - [ ] **Step 3:** Implement on the Phase 6 patterns (D-105, D-106). The launch action stays an allow-list: the reel id is the only payload.
 - [ ] **Step 4:** Run `tool/test_android`, `tool/check`. Expected: PASS. Mutation-check the 3-day constant and the shown-once key.
-- [ ] **Step 5:** Docs: D-124 (R6, the payload, the private version); `flow.md` "Notification taps" and "Reminders"; guide section 7. Commit `feat(editors): copies reminder after 3 days, with Done editing`.
+- [ ] **Step 5:** Docs: D-124 (R6, the payload, the ids and request codes, the private version); `docs/later.md` Phase 10 "Onboarding takes over the notification ask" gains: the copies reminder needs the permission too, so a user who never turned Shooting mode on gets none until then; `flow.md` "Notification taps" and "Reminders"; guide section 7. Commit `feat(editors): copies reminder after 3 days, with Done editing`.
 
 ---
 
@@ -420,11 +441,14 @@ static String reelDoneEditing(int id) => '${reel(id)}?done=1';
 ```dart
 TtStorageBar.enough({required double needFraction, required String needLabel, required String freeAfterLabel, required String semanticLabel});
 TtStorageBar.short({required double haveFraction, required String haveLabel, required String shortLabel, required String semanticLabel});
+// short: the bar's scale is what the copies need; haveFraction (0 <= f < 1, asserted) is the solid part;
+// Task 10 passes clamp((free - copyReserveBytes) / need, 0, 1), the rest is the hatched shortfall.
 TtBottomBar({required String title, required String subtitle, required Widget action});
 TtIllustratedSteps({required List<TtIllustratedStep> steps});
 TtIllustratedStep.newProject({required String number, required String title, required String body});
 TtIllustratedStep.folders({..., required List<String> folders, required int highlighted});
 TtIllustratedStep.tiles({..., required List<ImageProvider> thumbnails});   // numbered 1..n, up to 6
+// Every text is a parameter (no VN wording in the package), so Task 12 reuses the three mocks.
 TtStatusLayout({required IconData icon, required TtStatusTone tone, required String title, Widget? body, required List<Widget> actions});
 enum TtStatusTone { primary, error, warning, success }
 TtAppIcon({Uint8List? png, required String fallbackLetters});              // 40 dp, the prototype's placeholder when null
@@ -433,7 +457,7 @@ TtAppIcon({Uint8List? png, required String fallbackLetters});              // 40
 - [ ] **Step 1: Write the failing widget tests and goldens:** storage bar enough (need share at least 4 % wide, the legend's two items) and short (solid "have", hatched error "short"), each with its `semanticLabel` as one node; bottom bar wraps both lines at 2x and keeps the button 48 dp; steps with the highlighted folder announced; status layout per tone (centred, actions full width); app icon with bytes and with the fallback.
 - [ ] **Step 2:** Run `cd packages/taketray_ui && ../../tool/flutter test`. Expected: FAIL.
 - [ ] **Step 3:** Implement to `proto.css` (`.storage`, `.bottombar`, `.vsteps`/`.vstep`/`.mock`, the `vn-copy` centred column, `editorIcon`). Add Widgetbook use cases with knobs.
-- [ ] **Step 4:** Run the package tests, `tool/check`, macOS goldens, then the CI goldens (`gh workflow run update-goldens.yml --ref <branch>`, `tool/pull_ci_goldens <run>`). Expected: PASS; the add grid's goldens unchanged.
+- [ ] **Step 4:** Run the package tests, `tool/check`, macOS goldens, then the CI goldens (`gh workflow run update-goldens.yml --ref <branch>`, `tool/pull_ci_goldens <run>`). Expected: PASS; the add grid's goldens unchanged. Mutation-check (each alone): the 4 % minimum width, solid vs hatched swapped in the short bar, the `haveFraction` assert.
 - [ ] **Step 5:** Docs: D-125; guide section 8. Commit `feat(ui): storage bar, bottom bar, illustrated steps, status layout, app icon`.
 
 ---
@@ -441,7 +465,7 @@ TtAppIcon({Uint8List? png, required String fallbackLetters});              // 40
 ### Task 9: Picking clips, the editor sheet, CapCut/Edits and Share
 
 **Model:** Sonnet. **Files:**
-- Create: `lib/features/editors/views/edit_select_screen.dart`, `editor_sheet.dart`, `mark_status_dialog.dart`, `editor_missing_dialog.dart`, `open_share.dart`; `view_models/edit_select_controller.dart`, `editor_choices.dart`.
+- Create: `lib/features/editors/views/edit_select_screen.dart`, `editor_sheet.dart`, `mark_status_dialog.dart`, `editor_missing_dialog.dart`, `open_share.dart` (`openShare(BuildContext, WidgetRef, List<int> clipIds)`: the chooser title, the call to `share`, the missing snack; used by the viewer and the ⋮ menu); `view_models/edit_select_controller.dart`, `editor_choices.dart` (a provider of `EditSessionService.editorChoices()` for the sheet, with the failure fallback below).
 - Modify: `lib/router/routes.dart`, `app_router.dart`, `lib/features/reels/views/reel_detail_screen.dart` (FAB and ⋮), `clip_viewer_screen.dart` (Share), `lib/l10n/app_en.arb`.
 - Test: `test/features/editors/{edit_select_screen_test,editor_sheet_test,mark_status_dialog_test}.dart`, extend the reel page and viewer tests; macOS goldens for the screen and the sheet (light, dark, 1x, 2x).
 
@@ -460,7 +484,7 @@ Copy, verbatim from the prototype: app bar "Pick clips to edit", subtitle the re
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement. Thumbnails through `ClipThumbnailImage`; `GridView.builder`.
 - [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check the "no session" FAB rule and the Collecting-only dialog.
-- [ ] **Step 5:** Docs: D-126; `flow.md`; guide section 9; delete the later.md Share / Edit video item. Commit `feat(editors): pick clips, choose an editor, send to CapCut or Edits, share`.
+- [ ] **Step 5:** Docs: D-126; `flow.md`; guide section 9; delete the later.md Share + Edit video bullet (Task 6 split it). Commit `feat(editors): pick clips, choose an editor, send to CapCut or Edits, share`.
 
 ---
 
@@ -471,22 +495,22 @@ Copy, verbatim from the prototype: app bar "Pick clips to edit", subtitle the re
 - Modify: `routes.dart`, `app_router.dart`, `lib/app.dart` (open the copy screen for an unseen result on start and resume), `app_en.arb`.
 - Test: `test/features/editors/{copy_space_screen_test,copy_progress_screen_test,copy_ready_screen_test}.dart`; macOS goldens for every state.
 
-**Interfaces (consumes):** `planCopy`, `startCopy`, `cancelCopy`, `resumeCopy`, `finishJob`, `CopyJobController`, `CopyBridge.keepScreenOn` (Task 5), Task 8's pieces, and Task 9's `copySpace` / `copyProgress` / `copyReady` locations. **Produces:** the three root routes registered in `app_router.dart`.
+**Interfaces (consumes):** `planCopy`, `startCopy`, `cancelCopy`, `resumeCopy`, `finishJob`, `jobContext` (first job or add job, and the editor, also after a restart), `CopyJobController`, `CopyBridge.keepScreenOn` (Task 5), Task 8's pieces, and Task 9's `copySpace` / `copyProgress` / `copyReady` locations. **Produces:** the three root routes registered in `app_router.dart`.
 
-Copy, verbatim: "Copy clips for VN"; "These {n} clips need {size}" / "You have {free} free."; legend "Copies: {size}", "Free after copying: {size}"; callouts "Why copies?" "VN needs all the clips in one folder. TakeTray copies them to **Movies/TakeTray/{folder}**. Your original clips stay where they are." and "Copies are temporary" "After you export from VN, tap Done editing and TakeTray deletes them."; **Copy {n} clips** / **Back**; "Not enough space" / "These {n} clips need {size}. You have {free} free."; "You have {free}", "Short by {size}"; "What you can do" "Select fewer clips, or free up space on your phone and try again."; **Select fewer clips** / **Cancel**; "Copying clips for VN" / "{done} of {total} clips" / "{doneSize} of {allSize} · into Movies/TakeTray/{folder}" / **Cancel**; "Stop copying?" / "The {n} copies made so far will be deleted. Your original clips aren't affected." **Keep copying** / **Stop**; snack "Copying stopped. No copies were kept."; "Phone storage is full" / "{done} of {total} clips were copied before space ran out. Free up some space, then try again." **Try again** / **Delete copies and stop**; "1 clip couldn't be copied" / "The clip from {time} may have been deleted or moved. The other {n} clips were copied." **Continue with {n} clips** / **Cancel**; "Ready for VN" / "In VN, tap **New project** and open the **{folder}** folder."; steps "Open VN, tap New project" "It's the big + button.", "Open the {folder} folder" "Inside Movies › TakeTray.", "Select all the clips" "They're already in shooting order."; **Open VN** / **Done**. New: on the copying screen, in place of the prototype's "This takes up to a minute. You can leave the app; copying continues.": "Keep TakeTray open until copying finishes. The screen stays on until then."; the reserve line "TakeTray keeps 500 MB free for your phone."; "{n} clips couldn't be copied" / "They may have been deleted or moved. The other {m} clips were copied."; all failed: "The clips couldn't be copied" / "They may have been deleted or moved." **Back**; interrupted (Android stopped TakeTray mid-copy): "Copying stopped" / "TakeTray was closed before copying finished. {done} of {total} clips were copied." **Try again** / **Delete copies and stop**; "Couldn't start copying. Try again."; add-job cancel snack "Copying stopped. The new copies were deleted."
+Strings that Task 12 reuses take `{editor}` from the start (VN passes "VN"): the space title "Copy clips for {editor}", the progress title "Copying clips for {editor}", the stop dialog, the result screens and the keep-open line; only the "Why copies?" / "Copies are temporary" callouts and the ready steps differ per editor. Copy, verbatim (shown for VN): "Copy clips for VN"; "These {n} clips need {size}" / "You have {free} free."; legend "Copies: {size}", "Free after copying: {size}"; callouts "Why copies?" "VN needs all the clips in one folder. TakeTray copies them to **Movies/TakeTray/{folder}**. Your original clips stay where they are." and "Copies are temporary" "After you export from VN, tap Done editing and TakeTray deletes them."; **Copy {n} clips** / **Back**; "Not enough space" / "These {n} clips need {size}. You have {free} free."; "You have {free}", "Short by {size}"; "What you can do" "Select fewer clips, or free up space on your phone and try again."; **Select fewer clips** / **Cancel**; "Copying clips for VN" / "{done} of {total} clips" / "{doneSize} of {allSize} · into Movies/TakeTray/{folder}" / **Cancel**; "Stop copying?" / "The {n} copies made so far will be deleted. Your original clips aren't affected." **Keep copying** / **Stop**; snack "Copying stopped. No copies were kept."; "Phone storage is full" / "{done} of {total} clips were copied before space ran out. Free up some space, then try again." **Try again** / **Delete copies and stop**; "1 clip couldn't be copied" / "The clip from {time} may have been deleted or moved. The other {n} clips were copied." **Continue with {n} clips** / **Cancel**; "Ready for VN" / "In VN, tap **New project** and open the **{folder}** folder."; steps "Open VN, tap New project" "It's the big + button.", "Open the {folder} folder" "Inside Movies › TakeTray.", "Select all the clips" "They're already in shooting order."; **Open VN** / **Done**. New: on the copying screen, in place of the prototype's "This takes up to a minute. You can leave the app; copying continues.": "Keep TakeTray open until copying finishes. The screen stays on until then."; the reserve line "TakeTray keeps 500 MB free for your phone."; "{n} clips couldn't be copied" / "They may have been deleted or moved. The other {m} clips were copied."; all failed: "The clips couldn't be copied" / "They may have been deleted or moved." **Back**; interrupted (Android stopped TakeTray mid-copy): "Copying stopped" / "TakeTray was closed before copying finished. {done} of {total} clips were copied." **Try again** / **Delete copies and stop**; "Couldn't start copying. Try again."; add-job cancel snack "Copying stopped. The new copies were deleted."
 
 - [ ] **Step 1: Write the failing tests:**
-  - space: enough and short from `planCopy` (the reserve applied, Task 2), the bar's labels and semantics; **Copy** starts once on a double tap and replaces the route with progress; `CopyBusy` or any start failure → "Couldn't start copying. Try again."; **Select fewer clips** pops to the selection;
+  - space: enough and short from `planCopy` (the reserve applied, Task 2), the bar's labels and semantics; short with free above need (free 1.2 GB, need 1 GB) gives `haveFraction` = (1.2 GB − 500 MB) / 1 GB = 0.7 and "Short by 300 MB"; free below the reserve gives 0; **Copy** starts once on a double tap and replaces the route with progress; `CopyBusy` or any start failure → "Couldn't start copying. Try again."; **Select fewer clips** pops to the selection;
   - progress follows the controller (`done`, sizes, progress bar semantics); **Cancel** and system back open the Stop dialog; **Keep copying** changes nothing; **Stop** → `cancelCopy`, the reel page and the snack (first job) or the add-job snack;
   - the screen is kept on (`CopyBridge.keepScreenOn(true)`) when progress shows a running job, and cleared (`false`) on each of: finished (clean or with failed clips), all failed, `spaceFull`, `interrupted`, Stop (cancel), leaving the screen (pop or replace) and dispose; **Try again** sets it again; it is never left on after the route is gone (a fake bridge records the calls in order);
-  - results: `spaceFull` and `interrupted` (also the one `recoverAtStart` built after a restart, opened on start through `takeUnseenResult`) → **Try again** calls `resumeCopy` and returns to progress; **Delete copies and stop** cancels; finished with failures → the "couldn't be copied" screen (time in the clip's local time), **Continue** calls `finishJob`; all failed → **Back** cancels (the empty session ends); finished cleanly → `finishJob` then the ready screen (first job) or the reel page with "{n} clips added to the VN folder" (add job);
+  - results: `spaceFull` and `interrupted` (also the one `recoverAtStart` built after a restart, opened on start through `takeUnseenResult`) → **Try again** calls `resumeCopy` and returns to progress; **Delete copies and stop** cancels; finished with failures → the "couldn't be copied" screen (time in the clip's local time), **Continue** calls `finishJob`; all failed → **Back** cancels (the empty session ends); finished cleanly → `finishJob` then the ready screen (first job, by `jobContext.startedSession`) or the reel page with "{n} clips added to the VN folder" (add job), also for a job recovered after a restart;
   - ready: the session's folder name (also after a rename), up to six numbered thumbnails, **Open VN** calls `openApp` (false → the missing dialog), **Done** and close go to the reel page;
   - the app coming to the front with an unseen result opens the progress route for it, once;
   - the reel deleted while a copy screen is open (the job is cancelled by Task 6's delete hook): the screen pops to Reels without an error.
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement with `TtStatusLayout`, `TtStorageBar`, `TtIllustratedSteps`.
-- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check the back-opens-Stop rule, first-job vs add-job routing, and the screen-on clear on `spaceFull` and on dispose (each alone).
-- [ ] **Step 5:** Docs: D-127; `flow.md`; guide section 10. Commit `feat(editors): VN space check, copying, results and ready steps`.
+- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check the back-opens-Stop rule, first-job vs add-job routing, the reserve in `haveFraction`, and the screen-on clear on `spaceFull` and on dispose (each alone).
+- [ ] **Step 5:** Docs: D-127 (the copy screens, the keep-open line replacing `screens.js:414`, the screen-on rule, `{editor}` strings); `flow.md`; guide section 10. Commit `feat(editors): VN space check, copying, results and ready steps`.
 
 ---
 
@@ -497,25 +521,26 @@ Copy, verbatim: "Copy clips for VN"; "These {n} clips need {size}" / "You have {
 - Modify: `reel_detail_screen.dart` (split it so it stays under ~700 lines), `reel_detail_controller.dart` (verify copies on open), `reels_screen.dart` (card pill), `delete_reel_dialog.dart`, `edit_select_screen.dart` and `edit_select_controller.dart` (VN add mode), `undo_snacks.dart`, `app_en.arb`.
 - Test: `test/features/reels/{reel_edit_sections_test,reel_edit_banner_test}.dart`, `test/features/editors/done_editing_dialog_test.dart`, extend the reel page, Home, delete dialog and edit-select tests; macOS goldens for the editing reel page (VN and CapCut, with and without new clips), the add picker and both dialogs.
 
-**Interfaces (consumes):** `watchEditState`, `watchEditors`, `splitForEditing`, `addPicks`, `doneEditing`, `verifyCopies`, `CopyJobController`, `Routes.reelDoneParameter` (Task 7), Tasks 9 and 10. **Produces:** `showDoneEditingDialog(BuildContext, WidgetRef, int reelId) → Future<void>` (Task 7 and Task 13 call it); `reelEditStateProvider(reelId)`.
+**Interfaces (consumes):** `watchEditState`, `watchEditors`, `splitForEditing`, `addPicks`, `doneEditing`, `verifyCopies`, `CopyJobController`, `Routes.reelDoneParameter` (Task 7), Tasks 9 and 10. **Produces:** `showDoneEditingDialog(BuildContext, WidgetRef, int reelId, {bool suggestPublished = true}) → Future<void>` (the reel page calls it, also for Task 7's `?done=1` route; Task 13 calls it with `suggestPublished: false`); `reelEditStateProvider(reelId)`.
 
-Copy, verbatim from the prototype: banner "Editing in VN · {size}" / "{n} copies in Movies/TakeTray/{folder}", **Done editing** / **Add more clips**; card pill "Editing in VN"; add mode "Add clips to VN folder", tile mark "In VN folder", "{n} new clips to copy" / "{size} · copies are added, never renamed", "Pick clips to add" / "{n} already in the VN folder", button **Copy**, snack "Already in the VN folder. Copies are deleted when you tap Done editing."; "Have you exported your video?" / "Once the copies are deleted, the VN project for **{name}** can't be edited any more. This frees {size}." / "Your original clips are safe in your gallery." **Not yet** / **Delete copies**; snack "Copies deleted · {size} freed"; "Mark {name} as Published?" / "It moves to the Published filter. You can change this any time." **Not now** / **Mark as Published**; delete line "The {n} VN copies ({size}) will also be deleted, and the VN project can't be edited after that." New copy: sections "New since you started editing" / "{n} clips · not in your edit yet" with **Copy to VN folder** (VN) or **Add to your CapCut project** / **Add to your Edits project**, and "In your edit" / "{n} clips · in the VN folder" (VN) or "{n} clips · sent to {editor} on {date}"; banner for CapCut/Edits "Editing in CapCut" (plus " · {size}" with copies) / "Sent on {date}" (plus " · {n} copies in Movies/TakeTray/{folder}"), **Done editing**; pills "Editing in CapCut", "Editing in Edits"; running job banner "Copying clips for VN" / "{done} of {total} clips", action **Show**; CapCut with copies "Have you exported your video?" / "Once the copies are deleted, clips you added to your CapCut project from the folder may show as missing. This frees {size}."; CapCut without copies "Done editing {name}?" / "TakeTray stops showing which clips are in your CapCut project. Nothing is deleted." **Not yet** / **Done editing**, snack "Done editing {name}"; delete line for CapCut copies "The {n} copies in Movies/TakeTray/{folder} ({size}) will also be deleted."; "Couldn't delete the copies. Try again."; remove snack suffix " Its copy in the folder was deleted." / " Their copies in the folder were deleted."
+Copy, verbatim from the prototype: banner "Editing in VN · {size}" / "{n} copies in Movies/TakeTray/{folder}", **Done editing** / **Add more clips**; card pill "Editing in VN"; add mode "Add clips to VN folder", tile mark "In VN folder", "{n} new clips to copy" / "{size} · copies are added, never renamed", "Pick clips to add" / "{n} already in the VN folder", button **Copy**, snack "Already in the VN folder. Copies are deleted when you tap Done editing."; "Have you exported your video?" / "Once the copies are deleted, the VN project for **{name}** can't be edited any more. This frees {size}." / "Your original clips are safe in your gallery." **Not yet** / **Delete copies**; snack "Copies deleted · {size} freed"; "Mark {name} as Published?" / "It moves to the Published filter. You can change this any time." **Not now** / **Mark as Published**; delete line "The {n} VN copies ({size}) will also be deleted, and the VN project can't be edited after that." New copy: sections "New since you started editing" / "{n} clips · not in your edit yet" with **Copy to VN folder** (VN; the CapCut/Edits button is Task 12's, after the gate), and "In your edit" / "{n} clips · in the VN folder" (VN) or "{n} clips · sent to {editor} on {date}"; banner for CapCut/Edits "Editing in CapCut" (plus " · {size}" with copies) / "Sent on {date}" (plus " · {n} copies in Movies/TakeTray/{folder}"), **Done editing** only (no **Add more clips** until Task 12); for CapCut/Edits the "New since you started editing" section shows its title and subtitle with no button until Task 12; pills "Editing in CapCut", "Editing in Edits"; running job banner "Copying clips for VN" / "{done} of {total} clips", action **Show**; CapCut with copies "Have you exported your video?" / "Once the copies are deleted, clips you added to your CapCut project from the folder may show as missing. This frees {size}."; CapCut without copies "Done editing {name}?" / "TakeTray stops showing which clips are in your CapCut project. Nothing is deleted." **Not yet** / **Done editing**, snack "Done editing {name}"; delete line for CapCut copies "The {n} copies in Movies/TakeTray/{folder} ({size}) will also be deleted."; "Couldn't delete the copies. Try again."; remove snack suffix " Its copy in the folder was deleted." / " Their copies in the folder were deleted."
 
 - [ ] **Step 1: Write the failing tests:**
   - no session: today's page, unchanged goldens; with a session: the banner above the clips; the split from `splitForEditing` (sent ∪ live copies), each section with its own day headers; no new clips → only "In your edit"; missing clips stay in their section; a clip tagged in meanwhile appears under "New since…" at once;
   - opening the page verifies copies (`verifyCopies`), guarded; a copy deleted outside TakeTray moves its clip (not sent) to "New since…";
   - `Routes.reelDoneEditing(id)` (Task 7's notification tap) shows the Done editing dialog once when the reel has a session, and just the page when it has none; going back and forth does not show it again;
-  - add mode (from the section button and **Add more clips**): every live clip; fresh ones pre-ticked; in-folder tiles ticked, locked, marked, tapping shows the snack; sent-not-copied selectable (CapCut only, Task 12); the bottom bar counts only clips to copy; **Copy** → Task 10's space route with only those clips;
+  - VN add mode (from the section button and **Add more clips**): every live clip; fresh ones pre-ticked; in-folder tiles ticked, locked, marked, tapping shows the snack;
+  - a CapCut/Edits session: the banner has **Done editing** only and the "New since…" section has no button; the bottom bar counts only clips to copy; **Copy** → Task 10's space route with only those clips;
   - a running job for this reel replaces the banner's actions with **Show** (opens progress); **Done editing** is not offered while it runs;
-  - Done editing: the right dialog per editor and copies; **Delete copies** runs once on a double tap; success → the snack (freed size) and, after 0.9 s, the Published dialog unless already Published; `CopiesNotDeleted` → "Couldn't delete the copies. Try again." and the banner stays;
+  - Done editing: the right dialog per editor and copies; **Delete copies** runs once on a double tap; success → the snack (freed size) and, after 0.9 s, the Published dialog unless already Published or `suggestPublished` is false; `CopiesNotDeleted` → "Couldn't delete the copies. Try again." and the banner stays;
   - delete dialog: the VN or folder line only with copies; a failed copy delete keeps the reel and shows the error in the dialog;
-  - remove and move during a session: the snack gets the suffix when a copy was deleted; `CopiesNotDeleted` → "Couldn't delete the copies. Try again." and nothing removed; Undo brings the clip back under "New since…";
+  - remove and move during a session: the snack gets the suffix when a copy was deleted; `CopiesNotDeleted` → "Couldn't delete the copies. Try again." and nothing removed; Undo brings a VN clip back under "New since…", and a clip sent to CapCut/Edits back under "In your edit" (its sent row stays);
   - Home: the card pill per editor and the label "{name}. {status}. {n} clips[, {m} missing]. Editing in VN";
   - text at 2x: banner actions under the text, section buttons wrap, nothing cut.
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement. The section header is `TtSceneHeader` (title, subtitle, action).
 - [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check the split's union, the locked in-folder tiles, and Done editing hidden while copying.
-- [ ] **Step 5:** Docs: D-128 (the split's headlines, R1, R8, the dialogs per editor); `flow.md` "Opening a reel" and "The delete reel dialog"; guide section 11; delete the later.md VN-pieces, sanitise and remove-copy items. Commit `feat(reels): the reel page while editing, Done editing and VN add-later`.
+- [ ] **Step 5:** Docs: D-128 (the split's headlines, R1, R8, the dialogs per editor); `flow.md` "Opening a reel" and "The delete reel dialog"; guide section 11; delete the later.md VN-pieces bullet (Task 6 split it). Commit `feat(reels): the reel page while editing, Done editing and VN add-later`.
 
 ---
 
@@ -532,17 +557,17 @@ The plan assumes **(a) true**: CapCut's and Edits' "add media to a project" pick
 ### Task 12: CapCut/Edits add-later through the folder (gated)
 
 **Model:** Sonnet. **Files:**
-- Modify: `edit_select_screen.dart` / `edit_select_controller.dart` (CapCut/Edits add mode), `copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`, `reel_edit_sections.dart`, `app_en.arb`.
+- Modify: `edit_select_screen.dart` / `edit_select_controller.dart` (CapCut/Edits add mode), `copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`, `reel_edit_sections.dart` and `reel_edit_banner.dart` (the CapCut/Edits section button **Add to your CapCut project** / **Add to your Edits project** and **Add more clips**, or the gate's alternative label), `app_en.arb`. The gate alternatives need no service change: `sendOriginals` already adds to a same-editor session (Task 6).
 - Test: extend the four screens' tests and goldens.
 
-**Interfaces (consumes):** Tasks 6, 10, 11 (all already editor-aware: `planCopy` and `startCopy` take `EditorApp`).
+**Interfaces (consumes):** Tasks 6, 10, 11 (all already editor-aware: `planCopy` and `startCopy` take `EditorApp`; Task 10's strings take `{editor}`; Task 8's step mocks take their text).
 
-Copy (new): add mode "Add clips to your CapCut project" / "Add clips to your Edits project"; tile mark "In the folder"; bottom bar "{n} clips to copy" / "{size} · into Movies/TakeTray/{folder}", "Pick clips to add" / "{n} already in the folder"; locked-tile snack "Already in the folder. Copies are deleted when you tap Done editing."; space title "Copy clips for {editor}"; callout "Why copies?" "{editor} adds clips to a project from an album. TakeTray copies the clips you picked to **Movies/TakeTray/{folder}**. Your original clips stay where they are." and "Copies are temporary" "After you export from {editor}, tap Done editing and TakeTray deletes them."; progress "Copying clips for {editor}"; ready "Ready to add in {editor}" / "In your {editor} project, tap **+** and open the **{folder}** album."; steps "Open your project in {editor}" "The one you started from TakeTray.", "Open the {folder} album" "It's in Movies › TakeTray.", "Pick the new clips" "They're in shooting order."; **Open {editor}** / **Done**.
+Copy (new): section button and banner action **Add to your CapCut project** / **Add to your Edits project**, **Add more clips**; add mode "Add clips to your CapCut project" / "Add clips to your Edits project"; tile mark "In the folder"; bottom bar "{n} clips to copy" / "{size} · into Movies/TakeTray/{folder}", "Pick clips to add" / "{n} already in the folder"; locked-tile snack "Already in the folder. Copies are deleted when you tap Done editing."; space title "Copy clips for {editor}"; callout "Why copies?" "{editor} adds clips to a project from an album. TakeTray copies the clips you picked to **Movies/TakeTray/{folder}**. Your original clips stay where they are." and "Copies are temporary" "After you export from {editor}, tap Done editing and TakeTray deletes them."; progress "Copying clips for {editor}"; ready "Ready to add in {editor}" / "In your {editor} project, tap **+** and open the **{folder}** album."; steps "Open your project in {editor}" "The one you started from TakeTray.", "Open the {folder} album" "It's in Movies › TakeTray.", "Pick the new clips" "They're in shooting order."; **Open {editor}** / **Done**.
 
-- [ ] **Step 1: Write the failing tests:** sent-not-copied clips are selectable and copy when ticked; fresh pre-ticked; in-folder locked with "In the folder"; a copy gone outside TakeTray is selectable again; the space and progress copy per editor; the ready screen per editor with the session's folder; a second batch adds to the same folder with new names only (`_2` against existing names), never renaming earlier copies.
+- [ ] **Step 1: Write the failing tests:** sent-not-copied clips are selectable and copy when ticked; fresh pre-ticked; in-folder locked with "In the folder"; a copy gone outside TakeTray is selectable again; the space and progress copy per editor; the ready screen per editor with the session's folder; a second batch adds to the same folder with new names only (`_2` against existing names), never renaming earlier copies; the section button appears for CapCut/Edits sessions and opens the add mode; failure paths: a copy start failure shows "Couldn't start copying. Try again.", a space shortfall shows the short state, and a cancel keeps the earlier copies and sent rows.
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement.
-- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS.
+- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check (each alone): sent-not-copied not selectable, the `_2` start against existing names, a second folder per batch instead of the session's.
 - [ ] **Step 5:** Docs: D-129 (the gate's answers and what was built); `flow.md`; guide section 12. Commit `feat(editors): add later clips to a CapCut or Edits project through the reel's folder`.
 
 ---
@@ -554,29 +579,29 @@ Copy (new): add mode "Add clips to your CapCut project" / "Add clips to your Edi
 - Modify: `lib/features/settings/views/settings_screen.dart` (an interim "Clips" group with one row), `routes.dart`, `app_router.dart`, `app_en.arb`.
 - Test: `test/features/editors/copies_storage_screen_test.dart`, extend the Settings test; macOS goldens (with copies, with orphans, empty).
 
-**Interfaces (consumes):** `EditSessionService.storage`, `deleteOrphans`, `showDoneEditingDialog`. **Produces:** `Routes.copiesStorage = '/settings/vn-copies'` (above the shell, like the help screen).
+**Interfaces (consumes):** `EditSessionService.storage`, `deleteOrphans`, `showDoneEditingDialog(..., suggestPublished: false)`, the reels' covers (the controller joins `ReelSummary.cover` by `reelId`). **Produces:** `Routes.copiesStorage = '/settings/vn-copies'` (above the shell, like the help screen).
 
 Copy, verbatim: row "Storage used by VN copies" / "{size} in {n} reels" or "None"; title "VN copies"; "{size}" / "used by VN copies in {n} reels"; row "{n} copies · {size} · since {date}", **Delete**; "Copies are only for VN. Deleting them never touches your original clips."; empty "No VN copies" / "When you edit a reel in VN, its temporary copies show up here.". New: CapCut/Edits rows "{n} copies for {editor} · {size} · since {date}"; orphan group "Not linked to a reel" with the line "Left from an earlier install or a backup import. Android asks before deleting them."; orphan row the folder name and "{n} files · {size}", **Delete**; without full access, the callout "With full video access, TakeTray can also find copies left from an earlier install."; snack "Copies deleted · {size} freed".
 
-- [ ] **Step 1: Write the failing tests:** total and per-session rows from `storage()`, newest first, cover thumbnails; **Delete** opens the Done editing dialog (same rules, Task 11) and the row leaves after success; orphans grouped by folder, **Delete** → `deleteOrphans` (declined → no snack, row stays; allowed → snack, row leaves); a failed `storage()` → the error with **Try again**; resume re-reads; the Settings row's summary; empty state.
+- [ ] **Step 1: Write the failing tests:** total and per-session rows from `storage()`, newest first, cover thumbnails joined by reel id (no cover → the movie icon); **Delete** opens the Done editing dialog (same rules, Task 11, no Published question here) and the row leaves after success; a failed delete keeps the row and shows "Couldn't delete the copies. Try again."; orphans grouped by folder, **Delete** → `deleteOrphans` (declined → no snack, row stays; allowed → snack, row leaves); a failed `storage()` → the error with **Try again**; resume re-reads; the Settings row's summary; empty state.
 - [ ] **Step 2:** Run them. Expected: FAIL.
 - [ ] **Step 3:** Implement.
-- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS.
+- [ ] **Step 4:** Run `tool/check` and goldens. Expected: PASS. Mutation-check (each alone): a declined consent still removing the row, per-session Delete skipping the dialog.
 - [ ] **Step 5:** Docs: D-130 (R7, the orphan route); `flow.md`; guide section 13. Commit `feat(editors): VN copies storage screen with orphaned copies`.
 
 ---
 
 ### Task 14: On the S24
 
-**Model:** Sonnet (phone safety rules apply). **Files:** `app/patrol_test/editors_test.dart`, `app/patrol_test/support/` (helpers for the editors hook), `docs/dev-setup.md` (the Phase 8 checks), `docs/decisions.md` (D-131), guide section 14.
+**Model:** Sonnet (phone safety rules apply). **Before this task:** merge `phase-7-add-videos` into this branch (its Patrol support moved on). **Files:** `app/patrol_test/editors_test.dart`, `app/patrol_test/support/` (helpers for the editors hook), `docs/dev-setup.md` (the Phase 8 checks), `docs/decisions.md` (D-131), guide section 14.
 
 - [ ] **Step 1: Write every flow with no device**, in one file, using only `Movies/TakeTray Test/` videos and reels named `TakeTray Test <timestamp>`. The editors hook is on (`recordIntents(true)`, `setInstalledOverride({all three: true})`), so no editor, store or share sheet ever opens.
-  - **CapCut send:** 3 test videos tagged into a new reel; **Edit video**, **Select all**, **Continue**, **CapCut**. The recorded intent: `ACTION_SEND_MULTIPLE`, package `com.lemon.lvoverseas`, 3 URIs in shooting order, the grant flag, `ClipData` of 3. Snack "Sent 3 clips to CapCut"; Ready dialog **Not now**; the page shows "In your edit". **Done editing** → **Done editing**; Published dialog **Not now**.
+  - **CapCut send:** 3 test videos tagged into a new reel; **Edit video**, **Select all**, **Continue**, **CapCut**. The recorded intent: `ACTION_SEND_MULTIPLE`, package `com.lemon.lvoverseas`, 3 URIs in shooting order, the grant flag, `ClipData` of 3. Snack "Sent 3 clips to CapCut"; Ready dialog **Not now**; the page shows "In your edit". **Done editing** on the banner → **Done editing** inside the dialog (found with `find.descendant` of the dialog, since both say "Done editing"); Published dialog **Not now**.
   - **Not installed:** override CapCut false; its row is greyed and says "Not installed".
-  - **VN copy, for real:** a new reel of 3 test videos; VN; the space screen; **Copy 3 clips**; the real copy runs in the app; the ready screen names the folder and `keepScreenOnFlag()` is false there; the hook counts exactly 3 rows in that one folder (queried by its exact path only). **Open VN** is recorded, not started. **Done editing** → **Delete copies**; the folder count is 0 and "Copies deleted · … freed" shows.
-  - **Cancel:** `setCopyThrottleMs(200)`; start a 3-clip copy; `keepScreenOnFlag()` is true while it runs; **Cancel** → **Stop**; folder count 0; "Copying stopped. No copies were kept."; `keepScreenOnFlag()` is false.
-  - **Add later:** during a VN session, tag a 4th test clip into the reel; "New since you started editing" shows 1; **Copy to VN folder**; the picker pre-ticks it; **Copy**; "1 clip added to the VN folder"; folder count 4.
-  - **Remove during a session:** remove one clip; folder count drops by 1.
+  - **VN copy, for real:** a new reel of 3 test videos; VN; the space screen; **Copy 3 clips**; the real copy runs in the app; the ready screen names the folder and `keepScreenOnFlag()` (`DebugCopyHooks`) is false there; `CopyBridge.ownRowsIn(folder)` returns exactly 3 finished rows (exact folder, TakeTray-owned only). **Open VN** is recorded, not started. **Done editing** (the banner's) → **Delete copies**; `ownRowsIn` is empty and "Copies deleted · … freed" shows.
+  - **Cancel:** `setCopyThrottleMs(200)` (`DebugCopyHooks`); start a 3-clip copy; `keepScreenOnFlag()` is true while it runs; **Cancel** → **Stop**; `ownRowsIn(folder)` is empty; "Copying stopped. No copies were kept."; `keepScreenOnFlag()` is false.
+  - **Add later:** during a VN session, tag a 4th test clip into the reel; "New since you started editing" shows 1; **Copy to VN folder**; the picker pre-ticks it; **Copy**; "1 clip added to the VN folder"; `ownRowsIn(folder)` has 4 rows.
+  - **Remove during a session:** remove one clip; `ownRowsIn(folder)` drops by 1.
   - **Share:** the viewer's Share records a chooser around `ACTION_SEND` with 1 URI and the grant.
   - **Reminder tap:** `showCopiesReminderNow(reelId)` (debug hook); tap the notification body while it is TakeTray's only notification; the reel page and the Done editing dialog show; **Not yet**.
   - Tear-down: Done editing on every test reel through the app (its own guarded delete), then the test media hook removes the test videos.
