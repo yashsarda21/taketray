@@ -14,7 +14,10 @@ import java.io.IOException
  * builds do not contain it (`tool/check_release_permissions` checks the dex).
  *
  * **Safety.** The app can only be told to delete a row that [TestMediaGuard]
- * accepts: in `Movies/TakeTray Test/` (any case) and owned by this very app. Anything else
+ * accepts: in `Movies/TakeTray Test/` or in its one sub-folder
+ * `Movies/TakeTray Test/WhatsApp/Sent/` (any case; the Sent folder is for the
+ * Add videos test that checks WhatsApp's Sent folder stays hidden), and owned
+ * by this very app. Anything else
  * is refused with [TestMediaRefused] and nothing is deleted. The files belong
  * to this app (MediaStore records the inserting package as the owner), so
  * deleting them needs no consent dialog.
@@ -44,7 +47,9 @@ class TestMedia(
     private val collection = MediaStore.Video.Media.getContentUri(volume)
 
     /**
-     * Puts [bytes] into `Movies/TakeTray Test/` as a video named [displayName]
+     * Puts [bytes] into `Movies/TakeTray Test/` (or, when [inWhatsAppSent],
+     * into `Movies/TakeTray Test/WhatsApp/Sent/`: the one sub-folder there is)
+     * as a video named [displayName]
      * (MediaStore renames it if the name is taken): the row is made with
      * IS_PENDING 1, the bytes are written, then IS_PENDING is set to 0, which
      * publishes it, as a camera app does. If anything fails on the way, the
@@ -53,6 +58,7 @@ class TestMedia(
     fun insertVideo(
         bytes: ByteArray,
         displayName: String,
+        inWhatsAppSent: Boolean = false,
     ): Inserted {
         require(bytes.isNotEmpty()) { "no video bytes" }
         require(displayName.isNotBlank() && '/' !in displayName) { "bad display name" }
@@ -62,7 +68,7 @@ class TestMedia(
                 ContentValues().apply {
                     put(MediaColumns.DISPLAY_NAME, displayName)
                     put(MediaColumns.MIME_TYPE, MIME_TYPE)
-                    put(MediaColumns.RELATIVE_PATH, TestMediaGuard.FOLDER)
+                    put(MediaColumns.RELATIVE_PATH, if (inWhatsAppSent) TestMediaGuard.SENT_FOLDER else TestMediaGuard.FOLDER)
                     put(MediaColumns.DATE_TAKEN, System.currentTimeMillis())
                     put(MediaColumns.IS_PENDING, 1)
                 },
@@ -100,18 +106,21 @@ class TestMedia(
     }
 
     /**
-     * Deletes every row in the test folder that this app owns (what an earlier
-     * run that crashed left behind), pending rows included. Rows in the folder
-     * that someone else owns are counted in [Cleanup.refused] and left alone.
+     * Deletes every row in the test folder and in its WhatsApp/Sent sub-folder
+     * that this app owns (what an earlier run that crashed left behind),
+     * pending rows included. Rows in those folders that someone else owns are
+     * counted in [Cleanup.refused] and left alone.
      */
     fun deleteLeftovers(): Cleanup {
         var deleted = 0
         var refused = 0
-        for (row in rowsIn(TestMediaGuard.FOLDER)) {
-            if (TestMediaGuard.allowsDelete(row.relativePath, row.ownerPackage, ownPackage)) {
-                if (deleteVideo(row.id)) deleted++
-            } else {
-                refused++
+        for (folder in listOf(TestMediaGuard.FOLDER, TestMediaGuard.SENT_FOLDER)) {
+            for (row in rowsIn(folder)) {
+                if (TestMediaGuard.allowsDelete(row.relativePath, row.ownerPackage, ownPackage)) {
+                    if (deleteVideo(row.id)) deleted++
+                } else {
+                    refused++
+                }
             }
         }
         return Cleanup(deleted, refused)
@@ -174,10 +183,16 @@ object TestMediaGuard {
     const val FOLDER = "Movies/TakeTray Test/"
 
     /**
-     * True only for a row whose folder is [FOLDER], ignoring case (no
-     * sub-folder, the trailing '/' and every other character as written: the
-     * media provider keeps the case of a folder that already exists, and its
-     * own folder query ignores case too) and whose owner is exactly
+     * The one sub-folder of [FOLDER] a test video may be in: where the Add
+     * videos test puts a video to check that WhatsApp's Sent folder is hidden.
+     */
+    const val SENT_FOLDER = "Movies/TakeTray Test/WhatsApp/Sent/"
+
+    /**
+     * True only for a row whose folder is [FOLDER] or [SENT_FOLDER], ignoring
+     * case (no other sub-folder, the trailing '/' and every other character as
+     * written: the media provider keeps the case of a folder that already
+     * exists, and its own folder query ignores case too) and whose owner is exactly
      * [ownPackage]. The owner is what keeps this safe: only this app can have
      * put a row there under its own package name. An unknown folder or owner
      * (null) is a no. The release app `app.taketray` is not the debug app
@@ -189,7 +204,7 @@ object TestMediaGuard {
         ownPackage: String,
     ): Boolean =
         relativePath != null &&
-            relativePath.equals(FOLDER, ignoreCase = true) &&
+            (relativePath.equals(FOLDER, ignoreCase = true) || relativePath.equals(SENT_FOLDER, ignoreCase = true)) &&
             ownerPackage != null &&
             ownPackage.isNotEmpty() &&
             ownerPackage == ownPackage
