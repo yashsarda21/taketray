@@ -3,14 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
-import 'package:taketray/data/repositories/vn_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
-import 'package:taketray/domain/models/vn_copy.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
@@ -96,8 +97,8 @@ void main() {
       rows(await db.select(db.clipReels).get()),
       rows(await db.select(db.inbox).get()),
       rows(await db.select(db.reelReferences).get()),
-      rows(await db.select(db.vnSessions).get()),
-      rows(await db.select(db.vnCopies).get()),
+      rows(await db.select(db.editSessions).get()),
+      rows(await db.select(db.editCopies).get()),
     ].join('\n---\n');
   }
 
@@ -697,17 +698,18 @@ void main() {
         label: 'Hook',
       );
       await references.add(goa.id, 'https://youtu.be/xyz');
-      final vn = VnRepository(db, clock);
-      await vn.startSession(goa.id, 'Goa');
-      await vn.addCopy(
-        VnCopy(
+      final sessions = EditSessionsRepository(db, clock);
+      await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+      await sessions.recordCopies([
+        EditCopy(
           reelId: goa.id,
           clipId: only,
           copyMediaStoreId: 900,
           fileName: 'copy.mp4',
           sizeBytes: 1010,
+          copiedAt: _t0.add(_minute),
         ),
-      );
+      ]);
       clock.advance(_minute);
       final before = await dump();
 
@@ -717,7 +719,7 @@ void main() {
       expect(await clipIds(), [shared]);
       expect(record.sweptClips.map((c) => c.id), [only]);
       expect(record.references, hasLength(2));
-      expect(record.vnCopies, hasLength(1));
+      expect(record.editCopies, hasLength(1));
 
       clock.advance(_minute);
       await reels.undo(record);
@@ -767,18 +769,19 @@ void main() {
         shot(10),
         picked('content://picker/1'),
       ]);
-      final vn = VnRepository(db, clock);
-      await vn.startSession(goa.id, 'Goa');
+      final sessions = EditSessionsRepository(db, clock);
+      await sessions.startSession(goa.id, EditorApp.vn, 'Goa');
       for (final (clipId, number) in [(kept, 900), (lost, 901)]) {
-        await vn.addCopy(
-          VnCopy(
+        await sessions.recordCopies([
+          EditCopy(
             reelId: goa.id,
             clipId: clipId,
             copyMediaStoreId: number,
             fileName: 'copy$number.mp4',
             sizeBytes: 1000,
+            copiedAt: _t0,
           ),
-        );
+        ]);
       }
       final record = await reels.delete(goa.id);
       expect(record.sweptClips.map((c) => c.id), [kept, lost]);
@@ -810,13 +813,13 @@ void main() {
       // holds and none ever will (ids are never reused), so it never
       // points at another clip.
       expect([
-        for (final c in await db.select(db.vnCopies).get())
+        for (final c in await db.select(db.editCopies).get())
           (c.clipId, c.copyMediaStoreId),
       ], unorderedEquals([(kept, 900), (lost, 901)]));
       expect(other, isNot(lost));
       expect(await clips.clipsByIds([lost]), isEmpty);
-      expect(await db.select(db.vnSessions).get(), hasLength(1));
-      expect(warnings.where((w) => w.contains('VN copy')), isEmpty);
+      expect(await db.select(db.editSessions).get(), hasLength(1));
+      expect(warnings.where((w) => w.contains('copy')), isEmpty);
     });
 
     test('an unknown id gives a record that restores nothing', () async {

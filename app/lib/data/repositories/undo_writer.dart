@@ -5,12 +5,12 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/domain/models/undo_record.dart';
-import 'package:taketray/domain/models/vn_copy.dart';
-import 'package:taketray/domain/models/vn_session.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 
 // Ids and counts only (D-10): never a name, a description, a display name or
@@ -295,18 +295,19 @@ class UndoWriter {
     for (final reference in record.references) {
       await _restoreReference(reference);
     }
-    final session = record.vnSession;
+    final session = record.editSession;
     if (session != null) {
       await _db
-          .into(_db.vnSessions)
+          .into(_db.editSessions)
           .insert(
-            VnSessionsCompanion.insert(
+            EditSessionsCompanion.insert(
               reelId: Value(session.reelId),
+              editor: Value(session.editor),
               folderName: session.folderName,
               createdAt: session.createdAt,
             ),
           );
-      for (final copy in record.vnCopies) {
+      for (final copy in record.editCopies) {
         // Every copy row comes back (D-54): it is the app's only record of a
         // file in `Movies/TakeTray/` and may outlive its clip. A swept clip
         // that came back under another id takes that id; one that could not
@@ -314,14 +315,15 @@ class UndoWriter {
         // (ids are AUTOINCREMENT, never reused).
         final clipId = ids[copy.clipId] ?? copy.clipId;
         await _db
-            .into(_db.vnCopies)
+            .into(_db.editCopies)
             .insert(
-              VnCopiesCompanion.insert(
+              EditCopiesCompanion.insert(
                 reelId: copy.reelId,
                 clipId: clipId,
                 copyMediaStoreId: copy.copyMediaStoreId,
                 fileName: copy.fileName,
                 sizeBytes: copy.sizeBytes,
+                copiedAt: Value(copy.copiedAt),
               ),
               mode: InsertMode.insertOrIgnore,
             );
@@ -654,18 +656,20 @@ ReelReference referenceFromRow(ReelReferenceRow row) => ReelReference(
   createdAt: row.createdAt,
 );
 
-/// A VN session row as the domain model.
-VnSession vnSessionFromRow(VnSessionRow row) => VnSession(
+/// An editing session row as the domain model.
+EditSession editSessionFromRow(EditSessionRow row) => EditSession(
   reelId: row.reelId,
+  editor: row.editor,
   folderName: row.folderName,
   createdAt: row.createdAt,
 );
 
-/// A VN copy row as the domain model.
-VnCopy vnCopyFromRow(VnCopyRow row) => VnCopy(
+/// An editing copy row as the domain model.
+EditCopy editCopyFromRow(EditCopyRow row) => EditCopy(
   reelId: row.reelId,
   clipId: row.clipId,
   copyMediaStoreId: row.copyMediaStoreId,
   fileName: row.fileName,
   sizeBytes: row.sizeBytes,
+  copiedAt: row.copiedAt,
 );

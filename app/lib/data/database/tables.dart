@@ -1,10 +1,11 @@
 import 'package:drift/drift.dart';
 import 'package:taketray/data/database/converters.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 
-// The schema, version 1 (spec §8.1, D-54). Changing anything here changes the
-// tables on users' phones: bump `AppDatabase.schemaVersion`, write the
-// migration and run `dart run drift_dev make-migrations` (docs/flow.md,
+// The schema, version 2 (spec §8.1, D-54, D-120). Changing anything here
+// changes the tables on users' phones: bump `AppDatabase.schemaVersion`, write
+// the migration step and run `dart run drift_dev make-migrations` (docs/flow.md,
 // "Database open and migrations").
 //
 // Rules for every table:
@@ -119,11 +120,22 @@ class ReelReferences extends Table {
   ];
 }
 
-/// A reel's copies for VN being edited: the folder they were copied into.
-@DataClassName('VnSessionRow')
-class VnSessions extends Table {
+/// A reel being edited: which editor it went to and the folder under
+/// `Movies/TakeTray/` its copies go into (D-120).
+///
+/// The SQL name stays `vn_sessions` from schema v1 (spec §8.1): renaming a
+/// table on users' phones would need a table rebuild for no gain.
+@DataClassName('EditSessionRow')
+class EditSessions extends Table {
+  @override
+  String get tableName => 'vn_sessions';
+
   IntColumn get reelId =>
       integer().references(Reels, #id, onDelete: KeyAction.cascade)();
+
+  /// Added in v2; every v1 session was a VN one.
+  TextColumn get editor =>
+      textEnum<EditorApp>().withDefault(const Constant('vn'))();
   TextColumn get folderName => text()();
   IntColumn get createdAt => integer().map(const UtcMillisConverter())();
 
@@ -131,22 +143,53 @@ class VnSessions extends Table {
   Set<Column> get primaryKey => {reelId};
 }
 
-/// One copied file of a VN session: the app's only record of a file it
-/// created in `Movies/TakeTray/`.
+/// One copied file of an editing session: the app's only record of a file it
+/// created in `Movies/TakeTray/`. The SQL name stays `vn_copies` (D-120).
 ///
 /// `clipId` is deliberately not a foreign key: the row must outlive the clip
 /// row (a clip removed from its last reel is deleted), so the session can
 /// still find and delete the copy. Clip ids are `AUTOINCREMENT`, never
 /// reused, so a dangling id cannot point at another clip.
-@DataClassName('VnCopyRow')
+@DataClassName('EditCopyRow')
 @TableIndex(name: 'vn_copies_clip_id', columns: {#clipId})
-class VnCopies extends Table {
-  IntColumn get reelId =>
-      integer().references(VnSessions, #reelId, onDelete: KeyAction.cascade)();
+class EditCopies extends Table {
+  @override
+  String get tableName => 'vn_copies';
+
+  IntColumn get reelId => integer().references(
+    EditSessions,
+    #reelId,
+    onDelete: KeyAction.cascade,
+  )();
   IntColumn get clipId => integer()();
   IntColumn get copyMediaStoreId => integer()();
   TextColumn get fileName => text()();
   IntColumn get sizeBytes => integer()();
+
+  /// Added in v2. The migration set it to the session's `created_at`; the
+  /// default (0) is only for an insert that leaves it out.
+  IntColumn get copiedAt => integer()
+      .map(const UtcMillisConverter())
+      .withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {reelId, clipId};
+}
+
+/// A clip sent to the editor of a reel's editing session (D-120, v2).
+///
+/// `clipId` is not a foreign key, for the same reason as `vn_copies`
+/// (D-54): the editor still has the clip after its row is deleted.
+@DataClassName('SentClipRow')
+@TableIndex(name: 'sent_clips_clip_id', columns: {#clipId})
+class SentClips extends Table {
+  IntColumn get reelId => integer().references(
+    EditSessions,
+    #reelId,
+    onDelete: KeyAction.cascade,
+  )();
+  IntColumn get clipId => integer()();
+  IntColumn get sentAt => integer().map(const UtcMillisConverter())();
 
   @override
   Set<Column> get primaryKey => {reelId, clipId};

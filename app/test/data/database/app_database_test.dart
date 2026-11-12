@@ -66,7 +66,7 @@ void main() {
     });
 
     test(
-      'deleting a reel cascades its links, references and VN session',
+      'deleting a reel cascades its links, references and editing session',
       () async {
         final goa = await db.into(db.reels).insert(_reel('Goa'));
         final other = await db.into(db.reels).insert(_reel('Other'));
@@ -93,24 +93,29 @@ void main() {
               ),
             );
         await db
-            .into(db.vnSessions)
+            .into(db.editSessions)
             .insert(
-              VnSessionsCompanion.insert(
+              EditSessionsCompanion.insert(
                 reelId: Value(goa),
                 folderName: 'Goa',
                 createdAt: _t0,
               ),
             );
         await db
-            .into(db.vnCopies)
+            .into(db.editCopies)
             .insert(
-              VnCopiesCompanion.insert(
+              EditCopiesCompanion.insert(
                 reelId: goa,
                 clipId: clip,
                 copyMediaStoreId: 2001,
                 fileName: '2026-10-26_09-00-00.mp4',
                 sizeBytes: 12000000,
               ),
+            );
+        await db
+            .into(db.sentClips)
+            .insert(
+              SentClipsCompanion.insert(reelId: goa, clipId: clip, sentAt: _t0),
             );
 
         await (db.delete(db.reels)..where((r) => r.id.equals(goa))).go();
@@ -119,6 +124,7 @@ void main() {
         expect(await count('reel_references'), 0);
         expect(await count('vn_sessions'), 0);
         expect(await count('vn_copies'), 0);
+        expect(await count('sent_clips'), 0);
         // Only the link to the other reel is left, and the clip itself stays:
         // deleting clips that are in no reel is the repositories' job.
         final links = await db.select(db.clipReels).get();
@@ -183,37 +189,53 @@ void main() {
       expect(await count('reels'), 1);
     });
 
-    test('deleting a clip keeps the record of its VN copy', () async {
-      // The copy is a file the app created in Movies/TakeTray/; its row is
-      // the only way the VN session can find and delete it later.
-      final reel = await db.into(db.reels).insert(_reel('Goa'));
-      final clip = await db.into(db.clips).insert(_mediaStoreClip());
-      await db
-          .into(db.vnSessions)
-          .insert(
-            VnSessionsCompanion.insert(
-              reelId: Value(reel),
-              folderName: 'Goa',
-              createdAt: _t0,
-            ),
-          );
-      await db
-          .into(db.vnCopies)
-          .insert(
-            VnCopiesCompanion.insert(
-              reelId: reel,
-              clipId: clip,
-              copyMediaStoreId: 2001,
-              fileName: '2026-10-26_09-00-00.mp4',
-              sizeBytes: 12000000,
-            ),
-          );
+    test(
+      'deleting a clip keeps the record of its copy and that it was sent',
+      () async {
+        // The copy is a file the app created in Movies/TakeTray/; its row is
+        // the only way the editing session can find and delete it later.
+        final reel = await db.into(db.reels).insert(_reel('Goa'));
+        final clip = await db.into(db.clips).insert(_mediaStoreClip());
+        await db
+            .into(db.editSessions)
+            .insert(
+              EditSessionsCompanion.insert(
+                reelId: Value(reel),
+                folderName: 'Goa',
+                createdAt: _t0,
+              ),
+            );
+        await db
+            .into(db.editCopies)
+            .insert(
+              EditCopiesCompanion.insert(
+                reelId: reel,
+                clipId: clip,
+                copyMediaStoreId: 2001,
+                fileName: '2026-10-26_09-00-00.mp4',
+                sizeBytes: 12000000,
+              ),
+            );
 
-      await (db.delete(db.clips)..where((c) => c.id.equals(clip))).go();
+        await db
+            .into(db.sentClips)
+            .insert(
+              SentClipsCompanion.insert(
+                reelId: reel,
+                clipId: clip,
+                sentAt: _t0,
+              ),
+            );
 
-      final copies = await db.select(db.vnCopies).get();
-      expect(copies.map((c) => (c.clipId, c.copyMediaStoreId)), [(clip, 2001)]);
-    });
+        await (db.delete(db.clips)..where((c) => c.id.equals(clip))).go();
+
+        final copies = await db.select(db.editCopies).get();
+        expect(copies.map((c) => (c.clipId, c.copyMediaStoreId)), [
+          (clip, 2001),
+        ]);
+        expect(await count('sent_clips'), 1, reason: 'no foreign key to clips');
+      },
+    );
 
     test('a picked clip is unique by its URI only', () async {
       // Picked clips have no MediaStore identity; SQLite treats those NULLs as

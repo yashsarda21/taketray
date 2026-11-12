@@ -105,19 +105,23 @@ class ReelsRepository {
   Future<void> setStatus(int id, ReelStatus status) =>
       _update(id, ReelsCompanion(status: Value(status)));
 
-  /// Deletes reel [id], its clip links, references and VN session, then every
-  /// clip that is left in no reel and not in To tag or Skipped. All of it
-  /// happens in one transaction: either everything goes or nothing does.
+  /// Deletes reel [id], its clip links, references and editing session (with
+  /// its copy and sent rows), then every clip that is left in no reel and not
+  /// in To tag or Skipped. All of it happens in one transaction: either
+  /// everything goes or nothing does.
   ///
   /// A clip that is also in another reel, or in To tag or Skipped, stays. The
   /// `vn_copies` rows of a removed clip stay too (D-54).
   ///
-  /// The caller deletes this reel's VN copy files first (phase 8): once the
-  /// reel is gone, nothing in the database says which files were copied.
+  /// The caller deletes this reel's copy files and ends its editing session
+  /// first (R8, D-120): once the reel is gone, nothing in the database says
+  /// which files were copied.
   ///
   /// Returns what [undo] needs to put it all back (D-84): the reel row, its
-  /// links, references, VN session and copy rows, and every field of the
-  /// clips the sweep deleted, read in the same transaction before they go.
+  /// links, references, editing session and copy rows (none on the app's
+  /// path, which ended the session), and every field of the clips the sweep
+  /// deleted, read in the same transaction before they go. Sent rows are not
+  /// kept.
   ///
   /// An unknown [id] deletes no reel, but the orphan sweep still runs, so any
   /// clip that is in no reel and no list is removed anyway. Its record
@@ -134,20 +138,21 @@ class ReelsRepository {
         _db.reelReferences,
       )..where((r) => r.reelId.equals(id))).get();
       final session = await (_db.select(
-        _db.vnSessions,
+        _db.editSessions,
       )..where((s) => s.reelId.equals(id))).getSingleOrNull();
       final copies = await (_db.select(
-        _db.vnCopies,
+        _db.editCopies,
       )..where((c) => c.reelId.equals(id))).get();
-      // The links, references and VN rows go with the reel: ON DELETE CASCADE.
+      // The links, references and editing rows (session, copies, sent clips)
+      // go with the reel: ON DELETE CASCADE.
       await (_db.delete(_db.reels)..where((r) => r.id.equals(id))).go();
       final swept = await _undo.sweepOrphans();
       return DeleteReelUndo(
         reel: reel == null ? null : reelFromRow(reel),
         links: [for (final link in links) linkFromRow(link)],
         references: [for (final r in references) referenceFromRow(r)],
-        vnSession: session == null ? null : vnSessionFromRow(session),
-        vnCopies: [for (final copy in copies) vnCopyFromRow(copy)],
+        editSession: session == null ? null : editSessionFromRow(session),
+        editCopies: [for (final copy in copies) editCopyFromRow(copy)],
         sweptClips: swept,
       );
     });

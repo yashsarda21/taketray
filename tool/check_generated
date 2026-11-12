@@ -3,9 +3,14 @@
 #
 # For every member whose pubspec.yaml has build_runner or pigeon in
 # dev_dependencies (or only the members named as arguments), it hashes the
-# generated files, deletes the *.g.dart / *.freezed.dart / *.g.kt ones,
-# regenerates everything (Pigeon for each pigeons/*.dart, then build_runner),
-# hashes again and reports every file that changed, appeared or disappeared. It
+# generated files, deletes the *.g.dart / *.freezed.dart / *.g.kt ones, the
+# drift step helpers (lib/**/*.steps.dart) and the drift schema helpers
+# (test/drift/*/generated/), regenerates everything (Pigeon for each
+# pigeons/*.dart, then build_runner, then drift_dev make-migrations), hashes
+# again and reports every file that changed, appeared or disappeared. The
+# schema dumps in drift_schemas/ and the hand-written tests in test/drift/*/
+# (migration_test.dart, which make-migrations writes only once, and
+# schema_test.dart) are hashed but never deleted (D-54, D-120). It
 # compares hashes, not `git status`, so a dirty working tree does not cause a
 # false failure; it checks the working tree, not what is committed. Run
 # `tool/flutter pub get` first (tool/check does).
@@ -46,9 +51,10 @@ fi
 
 # Prints "<path><TAB><sha1>" for every generated file of member $1, with paths
 # relative to the repo root, sorted. Generated files are *.g.dart and
-# *.freezed.dart under lib/ and test/, *.g.kt under android/app/src/ (Pigeon's
+# *.freezed.dart under lib/ and test/, *.steps.dart under lib/ (drift_dev
+# make-migrations' step helper), *.g.kt under android/app/src/ (Pigeon's
 # Kotlin output), everything under drift_schemas/ and everything under
-# test/drift/ (drift_dev make-migrations writes its schema helpers there).
+# test/drift/ (make-migrations writes its schema helpers there).
 # Absent folders are skipped.
 hash_generated() {
   local m="$1" d f sum
@@ -59,6 +65,7 @@ hash_generated() {
   [ "${#dirs[@]}" -eq 0 ] && return 0
   find "${dirs[@]}" -type f \( \
     -name '*.g.dart' -o -name '*.freezed.dart' -o -name '*.g.kt' \
+    -o -path "$m/lib/*.steps.dart" \
     -o -path "$m/drift_schemas/*" -o -path "$m/test/drift/*" \) -print0 |
     sort -z |
     while IFS= read -r -d '' f; do
@@ -67,12 +74,14 @@ hash_generated() {
     done
 }
 
-# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/, and the
+# Deletes the *.g.dart and *.freezed.dart files under lib/ and test/, the
+# *.steps.dart files under lib/, everything in test/drift/*/generated/, and the
 # *.g.kt files under android/app/src/, of member $1, so the generators must
 # write every one of them again. A file they no longer produce (an orphan) is
 # then gone from the "after" hashes and reported as stale; build_runner alone
-# would leave it if its build cache is cold. drift_schemas/ and test/drift/ are
-# kept: old schema dumps cannot be rebuilt.
+# would leave it if its build cache is cold. drift_schemas/ and the other files
+# in test/drift/ (the hand-written tests) are kept: old schema dumps cannot be
+# rebuilt, and make-migrations never rewrites an existing migration_test.dart.
 delete_generated_code() {
   local m="$1" d
   for d in lib test; do
@@ -80,6 +89,9 @@ delete_generated_code() {
     find "$m/$d" -type f \( -name '*.g.dart' -o -name '*.freezed.dart' \) \
       -not -path "$m/test/drift/*" -delete
   done
+  [ -d "$m/lib" ] && find "$m/lib" -type f -name '*.steps.dart' -delete
+  [ -d "$m/test/drift" ] &&
+    find "$m/test/drift" -type f -path "$m/test/drift/*/generated/*" -delete
   [ -d "$m/android/app/src" ] &&
     find "$m/android/app/src" -type f -name '*.g.kt' -delete
   return 0

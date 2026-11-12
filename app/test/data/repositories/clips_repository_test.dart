@@ -806,18 +806,18 @@ void main() {
         mediaStoreClip(10),
       ])).single;
       await db
-          .into(db.vnSessions)
+          .into(db.editSessions)
           .insert(
-            VnSessionsCompanion.insert(
+            EditSessionsCompanion.insert(
               reelId: Value(reel.id),
               folderName: 'Goa',
               createdAt: _t0,
             ),
           );
       await db
-          .into(db.vnCopies)
+          .into(db.editCopies)
           .insert(
-            VnCopiesCompanion.insert(
+            EditCopiesCompanion.insert(
               reelId: reel.id,
               clipId: id,
               copyMediaStoreId: 500,
@@ -829,7 +829,7 @@ void main() {
       await repo.removeClipsFromReel(reel.id, [id]);
 
       expect(await clipIds(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), hasLength(1));
+      expect(await db.select(db.editCopies).get(), hasLength(1));
     });
   });
 
