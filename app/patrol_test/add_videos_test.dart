@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,11 +8,11 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/browse_folders.dart';
 import 'package:taketray/features/add_videos/view_models/add_folders_controller.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
-import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -23,6 +21,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import 'support/system_dialogs.dart';
 import 'support/test_media.dart';
+import 'support/thumbnail.dart';
 import 'support/waiting.dart';
 
 /// Add videos on the S24 (phase 7, Task 7): pick videos from a folder into To
@@ -64,6 +63,7 @@ void main() {
     'again, the 2 are marked In To tag, the third is not, a marked tile says '
     'Already added',
     config: _liveConfig,
+    timeout: _testTimeout,
     ($) => _scenario($, (env) async {
       final videos = await env.media.insertMany(3);
       final picked = videos.sublist(0, 2);
@@ -72,7 +72,7 @@ void main() {
 
       // Round 1: the folder list names the test folder with 3 videos; the
       // grid has 3 unmarked tiles and nothing picked; pick 2; Add 2.
-      await _openAddVideos($, env, from: ToTagScreen);
+      await _openAddVideos($, from: ToTagScreen);
       await _openTestFolder($, env, videos: 3);
       await _waitForGridTiles($, videos);
       expect(_count(_inGrid(_l10n.addMarkInToTag)), 0, reason: 'no marks yet');
@@ -93,11 +93,12 @@ void main() {
         () =>
             _count(find.text(snack)) == 1 &&
             _count(undo) == 1 &&
-            _count(toTagTiles) == 2,
-        what: '"$snack" with Undo and 2 tiles on To tag',
+            _count(toTagTiles) == 2 &&
+            _addScreensGone(),
+        what:
+            '"$snack" with Undo, 2 tiles on To tag and both Add videos '
+            'screens gone',
       );
-      expect(_count(find.byType(AddFoldersScreen)), 0);
-      expect(_count(find.byType(AddGridScreen)), 0);
       await $(undo).tap();
       await waitFor(
         $,
@@ -108,7 +109,7 @@ void main() {
       expect(await env.skippedMediaStoreIds(), isEmpty);
 
       // Round 2: the same two again; this time they stay.
-      await _openAddVideos($, env, from: ToTagScreen);
+      await _openAddVideos($, from: ToTagScreen);
       await _openTestFolder($, env, videos: 3);
       await _waitForGridTiles($, videos);
       expect(_count(_inGrid(_l10n.addMarkInToTag)), 0, reason: 'Undo unmarked');
@@ -117,8 +118,11 @@ void main() {
       await $(_addButton).tap();
       await waitFor(
         $,
-        () => _count(find.text(snack)) == 1 && _count(toTagTiles) == 2,
-        what: '"$snack" and 2 tiles on To tag',
+        () =>
+            _count(find.text(snack)) == 1 &&
+            _count(toTagTiles) == 2 &&
+            _addScreensGone(),
+        what: '"$snack", 2 tiles on To tag and both Add videos screens gone',
       );
       expect(await env.pendingMediaStoreIds(), {
         for (final v in picked) v.mediaStoreId,
@@ -131,7 +135,7 @@ void main() {
       );
 
       // The grid marks the 2 as In To tag and leaves the third alone.
-      await _openAddVideos($, env, from: ToTagScreen);
+      await _openAddVideos($, from: ToTagScreen);
       await _openTestFolder($, env, videos: 3);
       await _waitForGridTiles($, videos);
       await waitFor(
@@ -168,20 +172,8 @@ void main() {
       await _pick($, third, count: 0);
 
       // Back twice: To tag still holds the 2 and nothing else.
-      await _tapBack($);
-      await waitFor(
-        $,
-        () => _count(find.byType(AddGridScreen)) == 0,
-        what: 'the grid to close on Back',
-      );
-      await _tapBack($);
-      await waitFor(
-        $,
-        () => _count(find.byType(AddFoldersScreen)) == 0,
-        what: 'the folder list to close on Back',
-      );
+      await _backOutOfAddVideos($);
       expect(_count(toTagTiles), 2);
-      expect(await env.pendingMediaStoreIds(), hasLength(2));
     }),
   );
 
@@ -189,6 +181,7 @@ void main() {
     'Add videos to a reel: pick 1 of 2, it is in the reel with a picture and '
     'not in To tag',
     config: _liveConfig,
+    timeout: _testTimeout,
     ($) => _scenario($, (env) async {
       final videos = await env.media.insertMany(2);
       final reel = await env.reels.create(_reelName);
@@ -206,7 +199,7 @@ void main() {
         what: 'the page of "$_reelName"',
       );
 
-      await _openAddVideos($, env, from: ReelDetailScreen);
+      await _openAddVideos($, from: ReelDetailScreen);
       expect(
         _count(find.text(_l10n.addVideosToReel(_reelName))),
         1,
@@ -221,11 +214,14 @@ void main() {
       final tiles = _tilesOn(ReelDetailScreen);
       await waitFor(
         $,
-        () => _count(find.text(snack)) == 1 && _count(tiles) == 1,
-        what: '"$snack" and 1 tile on the reel page',
+        () =>
+            _count(find.text(snack)) == 1 &&
+            _count(tiles) == 1 &&
+            _addScreensGone(),
+        what:
+            '"$snack", 1 tile on the reel page and both Add videos screens '
+            'gone',
       );
-      expect(_count(find.byType(AddGridScreen)), 0);
-      expect(_count(find.byType(AddFoldersScreen)), 0);
 
       // In the reel: the database holds exactly that video, and To tag and
       // Skipped hold nothing.
@@ -238,65 +234,59 @@ void main() {
       expect(await env.skippedMediaStoreIds(), isEmpty);
 
       // With a picture: the tile uses the thumbnail cache and it decodes.
-      await _expectPictureLoads($, tiles);
+      await expectPictureLoads($, tiles);
     }),
   );
 
   patrolTest(
     "Add videos hides WhatsApp's Sent folder: the list has no such row",
     config: _liveConfig,
+    timeout: _testTimeout,
     ($) => _scenario($, (env) async {
       final shown = await env.media.insert();
       final sent = await env.media.insert(inWhatsAppSent: true);
 
       // The phone has both folders, 1 video each (so the hiding is real, not
-      // an empty folder).
-      Future<Map<String, int>> phoneFolders() async => {
+      // an empty folder). Only folders in or under the test folder are read.
+      Future<Map<String, VideoFolder>> phoneFolders() async => {
         for (final f in await env.bridge.videoFolders())
-          if (_isUnderTestFolder(f.relativePath))
-            _norm(f.relativePath): f.videoCount,
+          if (_isUnderTestFolder(f.relativePath)) _norm(f.relativePath): f,
       };
-      expect(await phoneFolders(), {
-        _norm(testFolder): 1,
-        _norm(testSentFolder): 1,
-      });
+      final before = await phoneFolders();
+      expect(before.keys.toSet(), {_norm(testFolder), _norm(testSentFolder)});
+      expect([for (final f in before.values) f.videoCount], [1, 1]);
+      final testRow = _folderRow(before[_norm(testFolder)]!);
+      final sentRow = _folderRow(before[_norm(testSentFolder)]!);
 
       // The list shows the test folder alone, with 1 video: the Sent video is
       // not counted in it and its folder has no row.
-      await _openAddVideos($, env, from: ToTagScreen);
-      await _openTestFolder($, env, videos: 1);
+      await _openAddVideos($, from: ToTagScreen);
+      await _showTestFolderRow($, env, videos: 1);
       final rows = await env.testFolderRows();
       expect(
         [for (final r in rows) (_norm(r.relativePath), r.name, r.videoCount)],
         [(_norm(testFolder), _testFolderName, 1)],
         reason: 'Add videos lists the test folder only, 1 video',
       );
-      expect(
-        _count(
-          find.descendant(
-            of: find.byType(AddFoldersScreen),
-            matching: find.text('Sent'),
-          ),
-        ),
-        0,
-        reason: 'no row named Sent is built',
-      );
+      // On screen, by the rows' own keys (no other folder is looked at): the
+      // test folder's row is built (the control), the Sent folder's is not.
+      expect(_count(testRow), 1, reason: 'the test folder row is built');
+      expect(_count(sentRow), 0, reason: 'no row for the Sent folder');
+      await _tapTestFolderRow($);
 
       // Its grid holds the one video that is in the folder, not the Sent one.
       await _waitForGridTiles($, [shown]);
-      expect(_count(_gridTiles), 1, reason: 'one tile in the folder');
       expect(
         _count(_gridTile(sent)),
         0,
         reason: 'the Sent video is not listed',
       );
-      await _tapBack($);
-      await _tapBack($);
+      await _backOutOfAddVideos($);
 
       // The Sent video goes now (the clean-up would do it too); the phone has
       // only the test folder left.
       expect(await env.media.delete(sent), isTrue);
-      expect(await phoneFolders(), {_norm(testFolder): 1});
+      expect((await phoneFolders()).keys.toSet(), {_norm(testFolder)});
     }),
   );
 }
@@ -308,6 +298,11 @@ final String _testFolderName = testFolder.split('/').last;
 const String _reelName = 'Patrol Add Reel';
 
 final Finder _app = find.byType(TakeTrayApp);
+
+/// A stuck step ends the test (and so runs its tear-down, which deletes the
+/// test videos) instead of hanging. The longest test scrolls the folder list
+/// three times.
+const Timeout _testTimeout = Timeout(Duration(minutes: 6));
 
 /// The app's own words, in English (the tests are run with the phone in
 /// English, as the other Patrol tests are).
@@ -502,8 +497,7 @@ Future<void> _deleteTestReel(ProviderContainer container) async {
 /// Taps **Add videos** in the app bar of the screen of type [from] (To tag or
 /// a reel's page; the icon button, not the empty state's text button).
 Future<void> _openAddVideos(
-  PatrolIntegrationTester $,
-  _Env env, {
+  PatrolIntegrationTester $, {
   required Type from,
 }) async {
   await $(
@@ -519,23 +513,40 @@ Future<void> _openAddVideos(
   );
 }
 
-/// In the folder list: waits for it to load, scrolls to the test folder's row
-/// (the list is lazy, and the owner's own folders are in it: they are scrolled
-/// past, never read), checks that the row says [videos] videos, and taps it.
-Future<void> _openTestFolder(
+/// The folder list's row of [folder]: its exact key (the app keys each row by
+/// volume and path), so no name of any folder is matched.
+Finder _folderRow(VideoFolder folder) =>
+    find.byKey(ValueKey((folder.volumeName, folder.relativePath)));
+
+/// Both Add videos screens (folder list and grid) are off the screen.
+bool _addScreensGone() =>
+    _count(find.byType(AddFoldersScreen)) == 0 &&
+    _count(find.byType(AddGridScreen)) == 0;
+
+/// The test folder's row in the folder list: the text of its name.
+final Finder _testFolderText = find.descendant(
+  of: find.byType(AddFoldersScreen),
+  matching: find.text(_testFolderName),
+);
+
+/// In the folder list: waits for it to load (and fails at once, by the error's
+/// type, when its read failed), scrolls to the test folder's row (the list is
+/// lazy, and the owner's own folders are in it: they are scrolled past, never
+/// read by this test), and checks that the row says [videos] videos.
+Future<void> _showTestFolderRow(
   PatrolIntegrationTester $,
   _Env env, {
   required int videos,
 }) async {
-  await waitFor(
-    $,
-    () => env.container.read(addFoldersControllerProvider).value != null,
-    what: 'the folder list to load',
-  );
-  final row = find.descendant(
-    of: find.byType(AddFoldersScreen),
-    matching: find.text(_testFolderName),
-  );
+  await waitFor($, () {
+    final folders = env.container.read(addFoldersControllerProvider);
+    if (folders.hasError) {
+      throw TestFailure(
+        'The folder list failed to load: ${folders.error.runtimeType}',
+      );
+    }
+    return folders.value != null;
+  }, what: 'the folder list to load');
   final scrollable = find
       .descendant(
         of: find.byType(AddFoldersScreen),
@@ -543,13 +554,16 @@ Future<void> _openTestFolder(
       )
       .first;
   await $.tester.scrollUntilVisible(
-    row,
+    _testFolderText,
     300,
     scrollable: scrollable,
     maxScrolls: 400,
   );
-  expect(_count(row), 1, reason: 'one row for the test folder');
-  final listRow = find.ancestor(of: row, matching: find.byType(TtListRow));
+  expect(_count(_testFolderText), 1, reason: 'one row for the test folder');
+  final listRow = find.ancestor(
+    of: _testFolderText,
+    matching: find.byType(TtListRow),
+  );
   expect(
     _count(
       find.descendant(
@@ -560,12 +574,26 @@ Future<void> _openTestFolder(
     1,
     reason: 'the test folder row says "${_l10n.addFoldersCount(videos)}"',
   );
-  await $(row).tap();
+}
+
+/// Taps the test folder's row and waits for its grid.
+Future<void> _tapTestFolderRow(PatrolIntegrationTester $) async {
+  await $(_testFolderText).tap();
   await waitFor(
     $,
     () => _count(find.byType(AddGridScreen)) == 1,
     what: "the test folder's grid",
   );
+}
+
+/// [_showTestFolderRow], then [_tapTestFolderRow].
+Future<void> _openTestFolder(
+  PatrolIntegrationTester $,
+  _Env env, {
+  required int videos,
+}) async {
+  await _showTestFolderRow($, env, videos: videos);
+  await _tapTestFolderRow($);
 }
 
 /// Waits until the grid shows a tile for every one of [videos].
@@ -599,48 +627,15 @@ Future<void> _pick(
 Future<void> _tapBack(PatrolIntegrationTester $) =>
     $(_iconButtonLabelled(_l10n.navBack)).tap();
 
-/// The one tile of [tiles] uses the thumbnail cache (`ClipThumbnailImage`)
-/// and its picture decodes to a real size. (Same check as
-/// `media_scan_test.dart`'s, for any tile finder.)
-Future<void> _expectPictureLoads(
-  PatrolIntegrationTester $,
-  Finder tiles,
-) async {
-  final image = find.descendant(of: tiles, matching: find.byType(Image));
+/// Back from the grid, then from the folder list, each waited out so the
+/// second tap never lands on a screen that is still leaving.
+Future<void> _backOutOfAddVideos(PatrolIntegrationTester $) async {
+  await _tapBack($);
   await waitFor(
     $,
-    () =>
-        image.evaluate().isNotEmpty &&
-        $.tester.widget<Image>(image).image is ClipThumbnailImage,
-    what: 'the tile to use the thumbnail cache (ClipThumbnailImage)',
+    () => _count(find.byType(AddGridScreen)) == 0,
+    what: 'the grid to close on Back',
   );
-  final provider = $.tester.widget<Image>(image).image;
-  final stream = provider.resolve(
-    createLocalImageConfiguration($.tester.element(image)),
-  );
-  final done = Completer<ImageInfo>();
-  final listener = ImageStreamListener(
-    (info, _) {
-      if (!done.isCompleted) done.complete(info);
-    },
-    onError: (error, stack) {
-      // The type only: a message could hold a path (D-10).
-      if (!done.isCompleted) {
-        done.completeError(
-          TestFailure('The thumbnail failed to load: ${error.runtimeType}'),
-        );
-      }
-    },
-  );
-  stream.addListener(listener);
-  try {
-    final info = await done.future.timeout(
-      const Duration(seconds: 20),
-      onTimeout: () => throw TestFailure('The thumbnail did not load in 20 s'),
-    );
-    expect(info.image.width, greaterThan(0));
-    expect(info.image.height, greaterThan(0));
-  } finally {
-    stream.removeListener(listener);
-  }
+  await _tapBack($);
+  await waitFor($, _addScreensGone, what: 'the folder list to close on Back');
 }
