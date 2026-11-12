@@ -49,11 +49,19 @@ class CopyNameSource {
 /// twice): the first keeps it, the next gets `_2`, then `_3`. A name in
 /// [taken] (files already in the folder) is also skipped. Names are compared
 /// without regard to case, as Android's storage does; the same time with a
-/// different extension is a different name. The keys are clip ids.
+/// different extension is a different name. The keys are clip ids, so every
+/// [CopyNameSource.clipId] must be different: a repeated id would let one
+/// name overwrite the other in the map, so it throws an [ArgumentError].
 Map<int, String> copyFileNames(
   List<CopyNameSource> inShootingOrder,
   Set<String> taken,
 ) {
+  final ids = <int>{};
+  for (final clip in inShootingOrder) {
+    if (!ids.add(clip.clipId)) {
+      throw ArgumentError('clip ids must be unique');
+    }
+  }
   final used = {for (final name in taken) name.toLowerCase()};
   final names = <int, String>{};
   for (final clip in inShootingOrder) {

@@ -102,4 +102,44 @@ void main() {
     expect(a.hashCode, b.hashCode);
     expect(a == c, isFalse);
   });
+
+  test('refs differing in one field only are not equal', () {
+    const base = ClipRef(
+      volumeName: 'external_primary',
+      mediaStoreId: 42,
+      mimeType: 'video/mp4',
+    );
+    const sameAsBase = ClipRef(
+      volumeName: 'external_primary',
+      mediaStoreId: 42,
+      mimeType: 'video/mp4',
+    );
+    const otherMime = ClipRef(
+      volumeName: 'external_primary',
+      mediaStoreId: 42,
+      mimeType: 'video/quicktime',
+    );
+    const otherVolume = ClipRef(
+      volumeName: '1234-ABCD',
+      mediaStoreId: 42,
+      mimeType: 'video/mp4',
+    );
+    const otherId = ClipRef(
+      volumeName: 'external_primary',
+      mediaStoreId: 43,
+      mimeType: 'video/mp4',
+    );
+    const withUri = ClipRef(
+      volumeName: 'external_primary',
+      mediaStoreId: 42,
+      pickerUri: 'content://x',
+      mimeType: 'video/mp4',
+    );
+    expect(base, sameAsBase);
+    expect(base.hashCode, sameAsBase.hashCode);
+    for (final other in [otherMime, otherVolume, otherId, withUri]) {
+      expect(base == other, isFalse);
+      expect(base.hashCode == other.hashCode, isFalse);
+    }
+  });
 }

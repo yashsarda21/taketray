@@ -47,6 +47,11 @@ void main() {
       expect(copyExtension('a.xyz', 'application/octet-stream'), 'mp4');
     });
 
+    test('a name that starts with the dot is its extension', () {
+      expect(copyExtension('.mov', 'video/mp4'), 'mov');
+      expect(copyExtension('.xyz', 'video/quicktime'), 'mov');
+    });
+
     test('no dot or a trailing dot falls back to the MIME type', () {
       expect(copyExtension('noext', 'video/quicktime'), 'mov');
       expect(copyExtension('trailing.', 'video/webm'), 'webm');
@@ -164,6 +169,21 @@ void main() {
         1: '2026-10-25_01-30-00.mp4',
         2: '2026-10-25_01-30-00_2.mp4',
       });
+    });
+
+    test('a duplicate clip id is refused', () {
+      expect(
+        () => copyFileNames([src(1, shot), src(2, shot), src(1, shot)], {}),
+        throwsArgumentError,
+      );
+      expect(
+        () => copyFileNames([src(1, shot), src(1, shot)], {}),
+        throwsArgumentError,
+      );
+    });
+
+    test('distinct ids are accepted', () {
+      expect(copyFileNames([src(1, shot), src(2, shot)], {}).length, 2);
     });
 
     test('the taken set is not changed', () {
