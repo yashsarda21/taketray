@@ -1942,4 +1942,183 @@ abstract final class TtMetrics {
   /// Size of the folder icon of a preview with no pictures.
   // proto.css: .li .thumb .ms { font-size: 20px }
   static const double folderPreviewIconSize = 20;
+
+  // ---- Storage bar (the VN space check, Phase 8) ----
+
+  /// Height of the storage bar's track.
+  // proto.css: .storage .bar { height: 14px }
+  static const double storageBarHeight = 14;
+
+  /// Corner radius of the storage bar's track (half its height).
+  // proto.css: .storage .bar { border-radius: 7px }
+  static const double storageBarRadius = 7;
+
+  /// The least share of the track the copies' segment is drawn with, so a
+  /// small need still shows.
+  // screens.js: routes['vn-space'], `Math.max(4, (need / free) * 100)`
+  static const double storageMinNeedFraction = 0.04;
+
+  /// Width of a stripe of the hatched shortfall, along the bar.
+  // proto.css: .storage .bar .over { repeating-linear-gradient(45deg,
+  // … 6px … 12px) }
+  static const double storageHatchStripe = 6;
+
+  /// Opacity of the second stripe of the hatch (error at 70 %).
+  // proto.css: .storage .bar .over { color-mix(in srgb, error 70%,
+  // transparent) }
+  static const double storageHatchShade = 0.7;
+
+  /// Side of a legend swatch.
+  // proto.css: .storage .legend i { width: 10px; height: 10px }
+  static const double storageSwatchSize = 10;
+
+  /// Corner radius of a legend swatch.
+  // proto.css: .storage .legend i { border-radius: 3px }
+  static const double storageSwatchRadius = 3;
+
+  /// Gap between a legend swatch and its text.
+  // proto.css: .storage .legend span { gap: 6px }
+  static const double storageSwatchGap = 6;
+
+  /// Gap between two legend items on a line.
+  // proto.css: .storage .legend { gap: 6px 14px }
+  static const double storageLegendItemGap = 14;
+
+  /// Gap between two lines of the legend.
+  // proto.css: .storage .legend { gap: 6px 14px }
+  static const double storageLegendLineGap = 6;
+
+  // ---- Illustrated steps (the VN "Ready" screen, Phase 8) ----
+
+  /// Width of a step's picture.
+  // proto.css: .vstep { grid-template-columns: 112px … }
+  static const double stepMockWidth = 112;
+
+  /// Height of a step's picture.
+  // proto.css: .vstep .mock { height: 132px }
+  static const double stepMockHeight = 132;
+
+  /// Corner radius of a step's picture.
+  // proto.css: .vstep .mock { border-radius: 14px }
+  static const double stepMockRadius = 14;
+
+  /// Gap between a step's picture and its text.
+  // proto.css: .vstep { gap: 14px }
+  static const double stepMockGap = 14;
+
+  /// Gap between the parts inside a picture (bars, folder rows).
+  // proto.css: .vstep .mock { gap: 5px }
+  static const double stepMockInnerGap = 5;
+
+  /// Height of a grey bar in the New project picture.
+  // proto.css: .vstep .mock .bar { height: 8px }
+  static const double stepBarHeight = 8;
+
+  /// Width of the first grey bar, as a share of the picture's inner width.
+  // screens.js: routes['vn-ready'], `style="width:60%"`
+  static const double stepBarFirstFraction = 0.6;
+
+  /// Width of the second grey bar, as a share of the picture's inner width.
+  // screens.js: routes['vn-ready'], `style="width:40%"`
+  static const double stepBarSecondFraction = 0.4;
+
+  /// Side of the big plus button in the New project picture.
+  // proto.css: .vstep .mock .plus { width: 56px; height: 56px }
+  static const double stepPlusSize = 56;
+
+  /// Width of the ring round the plus button.
+  // proto.css: .vstep .mock .plus { box-shadow: 0 0 0 4px tertiary-container }
+  static const double stepPlusRing = 4;
+
+  /// Height of a folder row in the folders picture.
+  // proto.css: .vstep .mock .fl { height: 20px }
+  static const double stepFolderHeight = 20;
+
+  /// Corner radius of a folder row.
+  // proto.css: .vstep .mock .fl { border-radius: 6px }
+  static const double stepFolderRadius = 6;
+
+  /// Inner space at each side of a folder row, and between its icon and name.
+  // proto.css: .vstep .mock .fl { padding: 0 5px; gap: 5px }
+  static const double stepFolderPadding = 5;
+
+  /// Font size of a folder name in the picture. The picture is a drawing, so
+  /// its text does not follow the text size setting.
+  // proto.css: .vstep .mock .fl { font: 600 9.5px/1 }
+  static const double stepFolderFontSize = 9.5;
+
+  /// Weight of a folder name in the picture.
+  // proto.css: .vstep .mock .fl { font: 600 9.5px/1 }
+  static const FontWeight stepFolderWeight = FontWeight.w600;
+
+  /// Size of the folder icon in a folder row.
+  // proto.css: .vstep .mock .fl .ms { font-size: 13px }
+  static const double stepFolderIconSize = 13;
+
+  /// Most folder rows the folders picture holds (the prototype shows four).
+  // 4 rows of 20 dp with 5 dp gaps fill 95 of the 116 dp inside the picture;
+  // a fifth would not fit.
+  static const int stepFoldersMax = 4;
+
+  /// Most thumbnails the tiles picture holds: two rows of three.
+  // screens.js: routes['vn-ready'], `slice(0, 6)`
+  static const int stepTilesMax = 6;
+
+  /// Tiles on a row of the tiles picture.
+  // proto.css: .vstep .mock .tg { grid-template-columns: repeat(3, 1fr) }
+  static const int stepTileColumns = 3;
+
+  /// Gap between the tiles of the tiles picture.
+  // proto.css: .vstep .mock .tg { gap: 3px }
+  static const double stepTileGap = 3;
+
+  /// Corner radius of a tile of the tiles picture.
+  // proto.css: .vstep .mock .tg i { border-radius: 3px }
+  static const double stepTileRadius = 3;
+
+  /// Width of a tile over its height (3:4).
+  // proto.css: .vstep .mock .tg i { aspect-ratio: 3/4 }
+  static const double stepTileAspect = 3 / 4;
+
+  /// Side of a tile's number badge.
+  // proto.css: .vstep .mock .tg i b { width: 12px; height: 12px }
+  static const double stepBadgeSize = 12;
+
+  /// Distance of a number badge from its tile's top and start edges.
+  // proto.css: .vstep .mock .tg i b { left: 2px; top: 2px }
+  static const double stepBadgeInset = 2;
+
+  /// Font size of a number badge (a drawing: not scaled with the text size).
+  // proto.css: .vstep .mock .tg i b { font: 700 8px/12px }
+  static const double stepBadgeFontSize = 8;
+
+  /// Weight of a number badge.
+  // proto.css: .vstep .mock .tg i b { font: 700 8px/12px }
+  static const FontWeight stepBadgeWeight = FontWeight.w700;
+
+  /// Vertical space round a step's title.
+  // proto.css: .vstep > div > b { margin: 2px 0 }
+  static const double stepTitleMargin = 2;
+
+  // ---- Status layout (the VN copy screens, Phase 8) ----
+
+  /// Size of the icon of a status layout.
+  // screens.js: routes['vn-copy'], `class="ms s48"`; proto.css:
+  // .ms.s48 { font-size: 48px }
+  static const double statusIconSize = 48;
+
+  // ---- App icon (an editor's icon, Phase 8) ----
+
+  /// Side of an app icon.
+  // Phase 8 plan, Task 8: 40 dp (the prototype's `.appic-g` is 48 px)
+  static const double appIconSize = 40;
+
+  /// Font size of the letters of the placeholder icon (a drawing: not scaled
+  /// with the text size).
+  // proto.css: .appic-g { font: 800 14px } at 48 px, scaled to 40 dp
+  static const double appIconLetterSize = 12;
+
+  /// Weight of the letters of the placeholder icon.
+  // proto.css: .appic-g { font: 800 14px }
+  static const FontWeight appIconLetterWeight = FontWeight.w800;
 }

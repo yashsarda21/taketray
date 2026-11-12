@@ -521,8 +521,6 @@ class _BottomBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
-    final scheme = context.scheme;
     final state = this.state;
     final picked = state?.selected.length ?? 0;
     final title = picked == 0
@@ -532,62 +530,14 @@ class _BottomBar extends StatelessWidget {
         ? l10n.addBarMarkedHint
         : l10n.addBarPickedDetail(formatClipDuration(state!.pickedDurationMs));
     final canAdd = picked > 0 && !state!.adding;
-    // proto.css: .bottombar { padding: 12px 16px; gap: 12px; background:
-    // surface-container; border-top: 1px solid outline-variant }
-    return DecoratedBox(
+    return TtBottomBar(
       key: const ValueKey<String>('add-videos-bottom-bar'),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainer,
-        border: Border(
-          // proto.css: border-top 1px (Flutter's default side width).
-          top: BorderSide(color: scheme.outlineVariant),
-        ),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: tt.spacing.gutter,
-            vertical: tt.spacing.s,
-          ),
-          child: Row(
-            spacing: tt.spacing.s,
-            children: [
-              Expanded(
-                child: Semantics(
-                  // The count is read out each time it changes.
-                  liveRegion: true,
-                  container: true,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        title,
-                        style: tt.text.material.titleSmall!.copyWith(
-                          color: scheme.onSurface,
-                        ),
-                      ),
-                      Text(
-                        detail,
-                        style: tt.text.material.bodySmall!.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-              TtButton(
-                key: const ValueKey<String>('add-videos-add'),
-                label: picked == 0
-                    ? l10n.addBarAdd
-                    : l10n.addBarAddCount(picked),
-                onPressed: canAdd ? onAdd : null,
-              ),
-            ],
-          ),
-        ),
+      title: title,
+      subtitle: detail,
+      action: TtButton(
+        key: const ValueKey<String>('add-videos-add'),
+        label: picked == 0 ? l10n.addBarAdd : l10n.addBarAddCount(picked),
+        onPressed: canAdd ? onAdd : null,
       ),
     );
   }
