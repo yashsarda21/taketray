@@ -207,6 +207,16 @@ void main() {
       expect(safeFolderName('${'a' * 197}. .bcd'), 'a' * 197);
     });
 
+    test('leading dots and spaces are trimmed before the cap counts', () {
+      expect(safeFolderName('..${'a' * 200}'), 'a' * 200);
+      expect(safeFolderName(' ${'a' * 200}'), 'a' * 200);
+      expect(safeFolderName('. . ${'a' * 200}'), 'a' * 200);
+      expect(safeFolderName('\t${'a' * 200}'), 'a' * 200);
+      expect(safeFolderName('..${'a' * 201}'), 'a' * 200);
+      expect(safeFolderName('${'a' * 200}..'), 'a' * 200);
+      expect(safeFolderName('..${'é' * 100}'), 'é' * 100);
+    });
+
     test('a combining mark is never cut from its base', () {
       expect(safeFolderName('${'a' * 198}é'), 'a' * 198);
       expect(safeFolderName('${'a' * 197}é'), '${'a' * 197}é');
