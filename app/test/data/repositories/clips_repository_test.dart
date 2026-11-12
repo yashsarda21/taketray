@@ -1160,6 +1160,121 @@ void main() {
         expect(await snapshot(), before);
       });
 
+      // Phase 7 final review I-1 (D-116): a picked clip whose address cannot
+      // be read may be on an unplugged drive; it is flagged, never removed.
+      test('flagOnly clips are flagged missing and keep their place in To tag, '
+          'Skipped and a reel; nothing is deleted', () async {
+        final [inTag, inSkipped, inReel] = [
+          for (final n in [1, 2, 3])
+            (await repo.saveDetected([pickerClip('content://p/$n')])).single,
+        ];
+        await repo.skipClips([inSkipped]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(inReel, {goa});
+        clock.advance(_minute);
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {inTag, inSkipped, inReel},
+        );
+
+        expect(removed, 0);
+        for (final id in [inTag, inSkipped, inReel]) {
+          final row = await rowOf(id);
+          expect((row.missing, row.lastVerifiedAt), (true, clock.now()));
+          expect(row.pickerUri, isNotNull, reason: 'its address is kept');
+        }
+        expect(await clipIds(), unorderedEquals([inTag, inSkipped, inReel]));
+        expect(
+          {for (final r in await inboxRows()) r.clipId: r.state},
+          {inTag: InboxState.pending, inSkipped: InboxState.skipped},
+        );
+        expect(await reelIdsOf(inReel), {goa});
+      });
+
+      test('flagOnly beside gone: the gone clip leaves, the flagOnly one '
+          'stays', () async {
+        final [gone] = await detect([10]);
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {gone},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+
+        expect(removed, 1);
+        expect(await clipIds(), [picked]);
+        expect((await rowOf(picked)).missing, isTrue);
+        expect((await inboxRows()).single.clipId, picked);
+      });
+
+      test('flagOnly alone is not "nothing to apply"', () async {
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+        clock.advance(_minute);
+
+        await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+
+        expect((await rowOf(picked)).missing, isTrue);
+      });
+
+      test('a flagged flagOnly clip found again is un-flagged by the next '
+          'verification', () async {
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+        await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+        clock.advance(_minute);
+
+        await repo.applyVerification(found: {picked}, gone: {}, otherVideo: {});
+
+        final row = await rowOf(picked);
+        expect((row.missing, row.lastVerifiedAt), (false, clock.now()));
+        expect((await inboxRows()).single.clipId, picked);
+      });
+
+      test(
+        'a clip in flagOnly and another set throws and writes nothing',
+        () async {
+          final [a, b] = await detect([10, 11]);
+          final before = await snapshot();
+          for (final call in <Future<int> Function()>[
+            () => repo.applyVerification(
+              found: {a},
+              gone: {},
+              otherVideo: {},
+              flagOnly: {a},
+            ),
+            () => repo.applyVerification(
+              found: {},
+              gone: {a},
+              otherVideo: {},
+              flagOnly: {a},
+            ),
+            () => repo.applyVerification(
+              found: {b},
+              gone: {},
+              otherVideo: {a},
+              flagOnly: {a},
+            ),
+          ]) {
+            await expectLater(call(), throwsArgumentError);
+          }
+          expect(await snapshot(), before);
+        },
+      );
+
       test('detaching twice keeps the negative id', () async {
         final [a] = await detect([10]);
         final goa = (await reels.create('Goa')).id;

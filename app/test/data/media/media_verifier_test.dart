@@ -417,15 +417,68 @@ void main() {
       expect(bridge.calls, isNot(contains('videosByIds')));
     });
 
-    test('a picked clip only in To tag that is gone leaves To tag, as a '
-        'MediaStore clip does', () async {
+    // Phase 7 final review I-1 (D-116). Replaces "a picked clip only in To
+    // tag that is gone leaves To tag, as a MediaStore clip does": Android
+    // cannot tell an unplugged SD card or USB drive from a deleted video for
+    // a picker address, and a MediaStore clip on an unmounted volume is
+    // skipped, so a picked clip is never deleted by a verify.
+    test('RULE: a picked clip in To tag whose address cannot be read (an '
+        'unplugged drive) survives verify, flagged missing', () async {
       final ids = await h.clips.saveDetected([pickedClip('content://p/1')]);
       bridge.readable = {};
 
       final result = await h.verifier.verify(await h.clips.clipsByIds(ids));
 
       expect(result.missing, {ids.single});
-      expect(await h.toTag(), isEmpty);
+      final inTag = await h.toTag();
+      expect(inTag.map((c) => c.id), ids);
+      expect(inTag.single.missing, isTrue);
+      expect(inTag.single.pickerUri, 'content://p/1');
+    });
+
+    test('a picked clip in Skipped that cannot be read survives verify, '
+        'flagged missing', () async {
+      final ids = await h.clips.saveDetected([pickedClip('content://p/1')]);
+      await h.clips.skipClips(ids);
+      bridge.readable = {};
+
+      await h.verifier.verify(await h.clips.clipsByIds(ids));
+
+      final skipped = await h.skipped();
+      expect(skipped.map((c) => c.id), ids);
+      expect(skipped.single.missing, isTrue);
+    });
+
+    test('a picked clip in To tag that was flagged missing is un-flagged '
+        'when it can be read again (the drive is back)', () async {
+      final ids = await h.clips.saveDetected([pickedClip('content://p/1')]);
+      bridge.readable = {};
+      await h.verifier.verify(await h.clips.clipsByIds(ids));
+      expect((await h.toTag()).single.missing, isTrue);
+      bridge.readable = {'content://p/1'};
+      h.clock.advance(const Duration(hours: 1));
+
+      final result = await h.verifier.verify(await h.clips.clipsByIds(ids));
+
+      expect(result, outcome(found: {ids.single}));
+      final back = (await h.toTag()).single;
+      expect((back.missing, back.lastVerifiedAt), (false, h.clock.now()));
+    });
+
+    test('a MediaStore clip that is gone still leaves To tag beside a '
+        'picked one that cannot be read', () async {
+      final media = await stored([video(1)]);
+      final picked = await h.clips.saveDetected([pickedClip('content://p/1')]);
+      bridge
+        ..put([])
+        ..readable = {};
+
+      await h.verifier.verify([
+        ...media.values,
+        ...await h.clips.clipsByIds(picked),
+      ]);
+
+      expect((await h.toTag()).map((c) => c.id), picked);
     });
 
     test('with no picked clips readableUris is not called', () async {

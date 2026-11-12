@@ -24,11 +24,12 @@ final Logger _log = Logger('verifier');
 /// exactly one of them.
 ///
 /// [missing] holds the clips whose video is gone (a picked clip whose
-/// address can no longer be read too) *and* the ones whose number now holds a
-/// different video (those are also detached). [skipped] holds the clips that
-/// could not be checked: a MediaStore clip without full access, a detached
-/// clip, a volume that is not mounted or did not answer, picked clips when
-/// `readableUris` failed, a clip that no longer exists.
+/// address can no longer be read too, which is only flagged, D-116) *and* the
+/// ones whose number now holds a different video (those are also detached).
+/// [skipped] holds the clips that could not be checked: a MediaStore clip
+/// without full access, a detached clip, a volume that is not mounted or did
+/// not answer, picked clips when `readableUris` failed, a clip that no longer
+/// exists.
 @immutable
 class VerifyOutcome {
   const VerifyOutcome({
@@ -81,10 +82,13 @@ class MediaVerifier {
   ///    skipped.
   /// 2. **Picked clips** (Phase 7) are checked by their picker address,
   ///    whatever the access: `readableUris` in batches of [batchSize]. An
-  ///    address it keeps is found; one it leaves out is gone (its video was
-  ///    deleted or its grant revoked). **When any batch throws, every picked
-  ///    clip is skipped**: a failed read never means "gone" (Phase 7 review
-  ///    focus 5).
+  ///    address it keeps is found; one it leaves out is **only flagged
+  ///    missing, never removed** (D-116): its video may be deleted, its grant
+  ///    revoked, or its SD card or USB drive just unplugged, and Android does
+  ///    not tell them apart. It keeps its place in To tag, Skipped or a
+  ///    reel, and is un-flagged when it can be read again. **When any batch
+  ///    throws, every picked clip is skipped**: a failed read never means
+  ///    "gone" (Phase 7 review focus 5).
   /// 3. Without full access every other clip is skipped and the library is
   ///    not asked: a limited query returns only the picked videos, so every
   ///    other clip would look gone (Review Focus 1).
@@ -104,8 +108,9 @@ class MediaVerifier {
   ///    row is not returned is gone. When anything about a volume fails, its
   ///    unchecked clips are skipped: an error never means "missing".
   /// 7. One write (`applyVerification`): detach the other-video clips, flag
-  ///    found and gone (picked ones too), take gone and detached clips out of
-  ///    the lists.
+  ///    found and gone, flag the unreadable picked ones (they stay in their
+  ///    lists, D-116), take gone and detached MediaStore clips out of the
+  ///    lists.
   Future<VerifyOutcome> _verify(Set<int> ids) async {
     if (ids.isEmpty) {
       return const VerifyOutcome(found: {}, missing: {}, skipped: {});
@@ -215,16 +220,20 @@ class MediaVerifier {
     }
 
     found.addAll(pickedCheck.found);
-    gone.addAll(pickedCheck.gone);
+    // A picked clip that cannot be read is only flagged (D-116): its drive
+    // may be unplugged, which Android does not tell from a deleted video.
+    final unreadable = pickedCheck.gone;
     final removed = await _clips.applyVerification(
       found: found,
       gone: gone,
       otherVideo: otherVideo,
+      flagOnly: unreadable,
     );
-    final missing = {...gone, ...otherVideo, ...lost};
+    final missing = {...gone, ...unreadable, ...otherVideo, ...lost};
     _log.info(
       'Verified ${ids.length} clips: ${found.length} found, '
-      '${gone.length} gone, ${otherVideo.length} now another video, '
+      '${gone.length} gone, ${unreadable.length} picked unreadable, '
+      '${otherVideo.length} now another video, '
       '${lost.length} lost in a rebuild, ${skipped.length} skipped, '
       '$removed left the lists',
     );
@@ -264,7 +273,7 @@ class MediaVerifier {
     }
     _log.info(
       'Checked ${picked.length} picked clips: ${found.length} found, '
-      '${gone.length} gone',
+      '${gone.length} unreadable',
     );
     return _PickedCheck(found: found, gone: gone);
   }

@@ -102,8 +102,11 @@ final Logger _log = Logger('toTag');
 /// tiles), so 300 clips over 60 scenes build a screenful.
 ///
 /// A clip flagged missing shows as the "Missing from phone" tile, with no
-/// Remove button and not selectable; the verifier already takes missing clips
-/// that are only in To tag out of the list (D-72), so none should reach it.
+/// Remove button and not selectable. The verifier takes a missing MediaStore
+/// clip that is only in To tag out of the list (D-72), but a picked clip whose
+/// address cannot be read is only flagged and stays here (D-116: an unplugged
+/// drive looks like a deleted video), until it can be read again. Remove for
+/// this tile is parked in `later.md`.
 ///
 /// **Add videos** opens the folder browser for To tag (`openAddVideos`, once
 /// however fast the taps); the videos it adds arrive here, with a snack and

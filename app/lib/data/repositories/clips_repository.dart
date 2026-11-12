@@ -1294,12 +1294,17 @@ class ClipsRepository {
   ///    `lastVerifiedAt` = now for both;
   /// 3. [gone] and [otherVideo] leave To tag and Skipped: the `inbox` rows of
   ///    those flagged `missing` (checked in the same transaction, so a clip
-  ///    that was not flagged keeps its row; a picked clip flagged missing by
-  ///    its own check leaves To tag like any other) go, then the clips
+  ///    that was not flagged keeps its row) go, then the clips
   ///    left in no reel and no list (the orphan rule, D-56). A clip in a reel
   ///    is only ever flagged, never removed: its link and its row stay, even
   ///    if it also has an `inbox` row (only that row goes). The video file is
-  ///    never touched, and neither is a `vn_copies` row (D-54).
+  ///    never touched, and neither is a `vn_copies` row (D-54);
+  /// 4. [flagOnly] are flagged missing like [gone] and **never leave a list or
+  ///    the database** (D-116): a picked clip whose address cannot be read
+  ///    may be on an unplugged SD card or USB drive, which Android does not
+  ///    tell apart from a deleted video. It keeps its address, its place in
+  ///    To tag, Skipped or a reel, and a later verification that finds it
+  ///    ([found]) un-flags it.
   ///
   /// Returns how many clips were deleted. Throws [ArgumentError], writing
   /// nothing, when a clip is in two of the sets. Empty sets write nothing.
@@ -1307,24 +1312,35 @@ class ClipsRepository {
     required Set<int> found,
     required Set<int> gone,
     required Set<int> otherVideo,
+    Set<int> flagOnly = const {},
   }) async {
     if (found.intersection(gone).isNotEmpty ||
         found.intersection(otherVideo).isNotEmpty ||
-        gone.intersection(otherVideo).isNotEmpty) {
+        gone.intersection(otherVideo).isNotEmpty ||
+        flagOnly.intersection(found).isNotEmpty ||
+        flagOnly.intersection(gone).isNotEmpty ||
+        flagOnly.intersection(otherVideo).isNotEmpty) {
       throw ArgumentError('A clip can be in only one verification set');
     }
-    if (found.isEmpty && gone.isEmpty && otherVideo.isEmpty) return 0;
+    if (found.isEmpty &&
+        gone.isEmpty &&
+        otherVideo.isEmpty &&
+        flagOnly.isEmpty) {
+      return 0;
+    }
     final deleted = await _db.transaction(() async {
       final now = _clock.storedNow();
       await _markDetached(otherVideo, now);
       await _markVerified(gone, isMissing: true, at: now);
+      await _markVerified(flagOnly, isMissing: true, at: now);
       await _markVerified(found, isMissing: false, at: now);
       final missing = {...gone, ...otherVideo};
       return missing.isEmpty ? 0 : await _removeMissing(missing);
     });
     _log.info(
       'Applied a verification: ${found.length} found, ${gone.length} gone, '
-      '${otherVideo.length} detached, $deleted left the lists',
+      '${otherVideo.length} detached, ${flagOnly.length} flagged only, '
+      '$deleted left the lists',
     );
     return deleted;
   }
