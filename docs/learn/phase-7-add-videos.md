@@ -159,7 +159,7 @@ It ends with `All tests passed!`. Now open `lib/domain/rules/browse_folders.dart
 **What we built:** a video added through Android's photo picker now behaves like any other clip.
 
 - **A picture.** Its tile, a reel's cover and the Shooting mode card's backdrop show its thumbnail.
-- **A check.** When To tag or a reel page checks its clips, a picked clip whose video was deleted (or whose access was taken away) is flagged missing, and comes back if it can be read again.
+- **A check.** When To tag or a reel page checks its clips, a picked clip that can no longer be read (its video was deleted, its access was taken away, or its SD card or USB drive was unplugged) is flagged missing, in To tag, Skipped and reels alike. It is never removed by the check, and it comes back if it can be read again. (A reel's missing tile has **Remove**; To tag's and Skipped's does not yet.)
 - **A clean-up.** Once per app start, TakeTray gives back the saved read grants that no clip uses any more.
 - **A fix from the parked list.** The reel picker no longer fails every time when one of its clips was deleted while it was open.
 
@@ -188,7 +188,7 @@ It ends with `All tests passed!`. Now open `lib/domain/rules/browse_folders.dart
   }
   ```
 
-  If a failure were read as "gone", one bad moment of the phone would flag every picked clip missing and take the To tag ones out of the list.
+  If a failure were read as "gone", one bad moment of the phone would flag every picked clip missing. Even a real "gone" only flags: Android cannot tell a deleted video from an unplugged drive for a picked address, so the check never takes a picked clip out of To tag (a MediaStore clip on a card that is not mounted is skipped for the same reason).
 
 - **Picked clips are checked without full access.** MediaStore clips are skipped in Manual mode, because a limited query sees only some videos and everything else would look gone. A picked clip's address is not affected by that, and Manual mode is exactly where picked clips live, so they are always checked.
 
@@ -206,6 +206,8 @@ It ends with `All tests passed!`. Now open `lib/domain/rules/browse_folders.dart
 
 - **Timing matters.** A grant is taken by Android the moment the user confirms the picker, and the clip row is written a moment later. A clean-up that ran in between would see a grant with no row and give it back. So the clean-up runs on the media queue (an Add queued before it finishes first), and it is queued on the very first frame, before the start's scan: nobody can open the picker and choose videos before it is done. Its bridge calls give up after 15 seconds, so a call that never answers cannot hold the scans behind it.
 
+- **Two guards on the clean-up, and Android's own cap.** The clean-up reads the saved grants *first* and the clip rows *second*, so a grant taken between the two reads is not in the list it releases from; three tests pin that order and fail when the two lines are swapped. And if clips hold addresses and grants are saved but not one saved grant matches any held address, it releases nothing and logs two counts: that would be a difference in how Android spells the two lists, not a phone full of unused grants, and releasing would revoke every picked clip for good. Android itself keeps at most 512 saved grants per app and, beyond that, quietly releases the oldest ones with no error (AOSP `maybePrunePersistedUriGrantsLocked`). Such a clip reads as unreadable and shows as missing; picking the video again brings it back. A warning near the cap is parked in `later.md`.
+
 - **Ids that went away.** The reel picker keeps the ids of the chosen clips while it is open. If a verify deletes one meanwhile, adding a clip that does not exist fails the whole transaction, and every later confirm failed the same way until Cancel. Now `ReelClipActions.addToReels` reads the ids again and drops the ones that are gone; if none is left, nothing is written and no snack is shown.
 
 - **Tests that can fail.** Every edge case was written first and run against an empty `PickedGrants` that only threw: 59 tests failed for the real reasons (no picked key, picked clips skipped, the sweep not there, the picker's confirm failing). After the code was written, each key line was broken on purpose and the right tests went red, then it was put back: the "held by a row" filter, a failed read that releases nothing, "a throw means skipped", the hash in the file name, the picker's dropped ids, the cover rule, the timeout, the spelling match, the queue, the start-up order, the check without full access, the provider's equality and the silent tag of nothing.
@@ -220,7 +222,7 @@ cd app && ../tool/flutter test test/data/media/picked_grants_test.dart
 
 It ends with `All tests passed!`. Now open `app/lib/data/media/picked_grants.dart` and replace the line `if (!heldForms.contains(uri) && !heldForms.contains(_canonical(uri)))` with `if (true)`, then run it again. Several tests fail, among them `releases only the saved grants that no clip row holds`: every grant, used or not, would be given back. Put the line back.
 
-**Decisions:** D-74 and D-84 point 3 (amended), D-112 (the bridge calls this builds on).
+**Decisions:** D-74 and D-84 point 3 (amended), D-112 (the bridge calls this builds on, and the 512 cap), D-116 (unreadable means flagged, not removed; the clean-up's guards).
 
 ## 5. The folder browser
 

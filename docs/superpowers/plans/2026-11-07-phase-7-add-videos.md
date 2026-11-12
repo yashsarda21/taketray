@@ -233,7 +233,7 @@ Copy, verbatim: "Pick videos yourself"; "TakeTray can see only some of your vide
   2. WhatsApp's Sent folder does not appear.
   3. Add a clip from another device's folder, or an SD card if available.
   4. Set TakeTray Dev to "Select photos and videos": the sheet appears, the picker opens, the picked clip plays with a picture, and it survives closing the app and a phone restart.
-  5. Delete a picked video in the gallery: its tile shows as missing with Remove.
+  5. Add a picked video to a reel, then delete it in the gallery: in the reel its tile shows as missing with Remove. A picked video in To tag stays as a missing tile too (it is only flagged, never removed, D-116); To tag's missing tile has no Remove yet (`later.md`). If a USB drive or SD card is at hand: pick a video from it into To tag, unplug it, open To tag (the tile shows as missing), plug it back (the tile comes back).
 - [ ] **Step 5:** D-115 (what the phone showed, what is proven by hand only); guide Section 7. Commit `test(add-videos): Patrol flows on the S24`, push.
 
 ---
