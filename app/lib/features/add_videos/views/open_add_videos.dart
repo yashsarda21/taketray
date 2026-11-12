@@ -28,6 +28,9 @@ final Logger _log = Logger('addVideos');
 ///   videos yourself" (`showManualPickSheet`), which sends the user to
 ///   Android's photo picker (it needs no permission).
 ///
+/// If the caller is gone when the access read ends (Back on the page), nothing
+/// opens, on either route.
+///
 /// Either way an add ends with one snack on the root messenger (so it still
 /// works after switching tabs), whatever the route:
 /// "{n} videos added to {target}" with **Undo**; "Already added" when every
@@ -128,6 +131,9 @@ Future<void> openAddVideos(
     return;
   }
 
+  // The caller may be gone after a slow read (Back on the page): the list
+  // must not open over whatever took its place (final review M-7).
+  if (!context.mounted) return;
   final route = router.push<AddResult>(Routes.addVideosTo(reelId: reelId));
   pushing?.call();
   final result = await route;

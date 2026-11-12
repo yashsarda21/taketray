@@ -654,6 +654,23 @@ void main() {
       },
     );
 
+    test('two picked keys that differ only in the address are not equal, '
+        'whatever their hash codes say (== is pinned on its own)', () {
+      final a = ClipThumbnailKey.of(pickedOf(uri: 'content://p/1'), 300)!;
+      final b = ClipThumbnailKey.of(pickedOf(uri: 'content://p/2'), 300)!;
+
+      // `==` called directly: a Set or a Map would hide a missing term
+      // behind the different hash codes.
+      expect(a == b, isFalse);
+      expect(b == a, isFalse);
+      expect(a, isNot(equals(b)));
+      expect(
+        a == ClipThumbnailKey.of(pickedOf(uri: 'content://p/1'), 300),
+        isTrue,
+      );
+      expect(a.hashCode, isNot(b.hashCode));
+    });
+
     test('the same address and fingerprint under another clip id share the '
         'picture', () async {
       bridge.uriThumbnails[pickedUri] = bytesOf(10);

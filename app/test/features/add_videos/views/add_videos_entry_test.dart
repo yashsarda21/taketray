@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart'
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -17,6 +18,7 @@ import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/media_bridge.dart';
+import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/fake_media_bridge.dart';
@@ -178,6 +180,30 @@ void main() {
       slow.complete();
       await tester.pumpAndSettle();
 
+      expect(tester.takeException(), isNull);
+    });
+
+    // Phase 7 final review M-7: the full-access branch checks the caller is
+    // still there before it pushes, as the Manual branch does.
+    testWidgets('with full access, leaving To tag during a slow read opens '
+        'no folder list over the page that took its place', (tester) async {
+      final bridge = await pumpToTag(tester);
+      final slow = bridge.gate('accessReport');
+      await tester.tap(barButton('Add videos'));
+      await tester.pump();
+      GoRouter.of(tester.element(find.byType(ToTagScreen))).go(Routes.reels);
+      await tester.pumpAndSettle();
+      expect(find.byType(ToTagScreen), findsNothing);
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+
+      slow.complete();
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(addVideosRouteMarker(null), skipOffstage: false),
+        findsNothing,
+      );
+      expect(find.text(reelsRouteMarker), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
