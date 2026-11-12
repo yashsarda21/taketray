@@ -57,6 +57,23 @@ void main() {
           ),
         ]),
       ),
+      TtScenario(
+        'seven thumbnails (six shown); none',
+        _steps([
+          TtIllustratedStep.tiles(
+            number: 'Step 3',
+            title: 'Select all the clips',
+            body: 'A reel with more clips than the picture holds.',
+            thumbnails: [for (var i = 0; i < 7; i++) fixtureThumb(i % 6 + 1)],
+          ),
+          const TtIllustratedStep.tiles(
+            number: 'Step 3',
+            title: 'Select all the clips',
+            body: 'Every clip is gone.',
+            thumbnails: [],
+          ),
+        ]),
+      ),
     ],
   );
 }

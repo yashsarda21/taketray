@@ -108,8 +108,9 @@ void main() {
       final n = tester.getRect(find.text('Step 1'));
       final t = tester.getRect(find.text('Open VN, tap New project'));
       final b = tester.getRect(find.text("It's the big + button."));
-      expect(n.bottom, lessThanOrEqualTo(t.top));
-      expect(t.bottom, lessThanOrEqualTo(b.top));
+      // The title has 2 dp above and below it.
+      expect(t.top - n.bottom, 2);
+      expect(b.top - t.bottom, 2);
       final mock = tester.getRect(_mockOf('Open VN, tap New project'));
       expect(((n.top + b.bottom) / 2 - mock.center.dy).abs(), lessThan(4));
     });
@@ -492,11 +493,60 @@ void main() {
       }
     });
 
-    test('no thumbnails, or more than six, is refused', () {
-      expect(() => _tiles(count: 0), throwsAssertionError);
-      expect(() => _tiles(count: 7), throwsAssertionError);
-      expect(() => _tiles(count: 1), returnsNormally);
-      expect(_tiles, returnsNormally);
+    testWidgets('more than six thumbnails show the first six, numbered 1 to '
+        '6, and nothing spills out of the picture', (tester) async {
+      for (final count in [7, 12, 200]) {
+        await tester.pumpWidget(ttTestApp(_steps([_tiles(count: count)])));
+        expect(tester.takeException(), isNull, reason: '$count');
+        expect(
+          find.byKey(const ValueKey('tt-step-tile-5')),
+          findsOneWidget,
+          reason: '$count',
+        );
+        expect(
+          find.byKey(const ValueKey('tt-step-tile-6')),
+          findsNothing,
+          reason: '$count',
+        );
+        expect(find.byKey(const ValueKey('tt-step-badge-6')), findsNothing);
+        for (var i = 0; i < 6; i++) {
+          final image = tester.widget<Image>(
+            find.descendant(
+              of: find.byKey(ValueKey('tt-step-tile-$i')),
+              matching: find.byType(Image),
+            ),
+          );
+          expect(image.image, fixtureThumb(i + 1), reason: '$count tile $i');
+        }
+        final mock = tester.getRect(_mockOf('Select all the clips'));
+        final last = tester.getRect(
+          find.byKey(const ValueKey('tt-step-tile-5')),
+        );
+        expect(mock.contains(last.bottomRight), isTrue, reason: '$count');
+      }
+    });
+
+    testWidgets('exactly six show all six', (tester) async {
+      await tester.pumpWidget(ttTestApp(_steps([_tiles()])));
+      expect(find.byKey(const ValueKey('tt-step-tile-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tt-step-tile-6')), findsNothing);
+    });
+
+    testWidgets('no thumbnails (every clip gone) leave the plain picture '
+        'with no tile, no badge and no error, at 1x and 2x', (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          ttTestApp(_steps([_tiles(count: 0)]), textScale: scale),
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          tester.getSize(_mockOf('Select all the clips')),
+          const Size(112, 132),
+        );
+        expect(find.byKey(const ValueKey('tt-step-tile-0')), findsNothing);
+        expect(find.byKey(const ValueKey('tt-step-badge-0')), findsNothing);
+        expect(find.text('Select all the clips'), findsOneWidget);
+      }
     });
 
     testWidgets('a thumbnail that cannot load leaves its tile in a quiet '

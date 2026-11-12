@@ -32,7 +32,9 @@ enum TtStatusTone {
 /// A plain `Text` [body] is drawn in body-medium on-surface-variant,
 /// centred; any other widget, such as a progress bar, is placed as given.
 /// The layout fills the height it is given, so use it as the body of a
-/// screen.
+/// screen. In a parent with no height limit (a list, a scroll view) it is as
+/// tall as its content and the actions follow it. It keeps the system bars'
+/// inset under the actions itself: do not wrap it in a bottom `SafeArea`.
 class TtStatusLayout extends StatelessWidget {
   /// A status screen.
   const new({
@@ -75,59 +77,38 @@ class TtStatusLayout extends StatelessWidget {
     // screens.js: routes['vn-copy']: `flex:1; display:flex; column;
     // align-items:center; justify-content:center; text-align:center; gap:12px;
     // padding:24px 32px`, then the buttons: `padding:12px 16px 16px; gap:8px`.
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Expanded(
-          child: LayoutBuilder(
-            builder: (context, constraints) => SingleChildScrollView(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minHeight: constraints.maxHeight),
-                child: Center(
-                  child: Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: tt.spacing.xxl,
-                      vertical: tt.spacing.xl,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      spacing: tt.spacing.s,
-                      children: [
-                        ExcludeSemantics(
-                          child: Icon(
-                            icon,
-                            size: TtMetrics.statusIconSize,
-                            color: color,
-                          ),
-                        ),
-                        Semantics(
-                          header: true,
-                          child: Text(
-                            title,
-                            textAlign: TextAlign.center,
-                            style: text.headlineSmall!.copyWith(
-                              color: scheme.onSurface,
-                            ),
-                          ),
-                        ),
-                        if (body != null)
-                          DefaultTextStyle.merge(
-                            style: text.bodyMedium!.copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
-                            textAlign: TextAlign.center,
-                            child: body,
-                          ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+    final block = Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: tt.spacing.xxl,
+        vertical: tt.spacing.xl,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        spacing: tt.spacing.s,
+        children: [
+          ExcludeSemantics(
+            child: Icon(icon, size: TtMetrics.statusIconSize, color: color),
+          ),
+          Semantics(
+            header: true,
+            child: Text(
+              title,
+              textAlign: TextAlign.center,
+              style: text.headlineSmall!.copyWith(color: scheme.onSurface),
             ),
           ),
-        ),
-        if (actions.isNotEmpty)
-          SafeArea(
+          if (body != null)
+            DefaultTextStyle.merge(
+              style: text.bodyMedium!.copyWith(color: scheme.onSurfaceVariant),
+              textAlign: TextAlign.center,
+              child: body,
+            ),
+        ],
+      ),
+    );
+    final buttons = actions.isEmpty
+        ? null
+        : SafeArea(
             top: false,
             child: Padding(
               padding: EdgeInsets.fromLTRB(
@@ -143,8 +124,35 @@ class TtStatusLayout extends StatelessWidget {
                 children: actions,
               ),
             ),
-          ),
-      ],
+          );
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (!constraints.hasBoundedHeight) {
+          // In a list or a scroll view there is no height to fill: the block
+          // is as tall as it is, with the buttons under it.
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [block, ?buttons],
+          );
+        }
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, space) => SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: space.maxHeight),
+                    child: Center(child: block),
+                  ),
+                ),
+              ),
+            ),
+            ?buttons,
+          ],
+        );
+      },
     );
   }
 }

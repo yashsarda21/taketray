@@ -1958,7 +1958,8 @@ abstract final class TtMetrics {
   // screens.js: routes['vn-space'], `Math.max(4, (need / free) * 100)`
   static const double storageMinNeedFraction = 0.04;
 
-  /// Width of a stripe of the hatched shortfall, along the bar.
+  /// Thickness of a stripe of the hatched shortfall, measured across the
+  /// stripe (the CSS gradient length, not the width along the bar).
   // proto.css: .storage .bar .over { repeating-linear-gradient(45deg,
   // … 6px … 12px) }
   static const double storageHatchStripe = 6;

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/components/internal/hatch_painter.dart';
+import 'package:taketray_ui/src/components/internal/unit_share.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -23,18 +24,18 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 class TtStorageBar extends StatelessWidget {
   /// A bar for copies that fit.
   ///
-  /// [needFraction] is the copies' share of the free space, 0 up to 1 (more
-  /// than 1 draws a full bar). [needLabel] names the copies' size (such as
-  /// "Copies: 1.2 GB"), [freeAfterLabel] the space left (such as "Free after
-  /// copying: 3.1 GB").
+  /// [needFraction] is the copies' share of the free space, 0 up to 1. Any
+  /// other value is drawn safely: more than 1 or infinity is a full bar, and
+  /// less than 0, minus infinity or NaN is the 4 % minimum. [needLabel] names
+  /// the copies' size (such as "Copies: 1.2 GB"), [freeAfterLabel] the space
+  /// left (such as "Free after copying: 3.1 GB").
   const new enough({
     required double this.needFraction,
     required String this.needLabel,
     required String this.freeAfterLabel,
     required this.semanticLabel,
     super.key,
-  }) : assert(needFraction >= 0, 'needFraction must be 0 or more'),
-       haveFraction = null,
+  }) : haveFraction = null,
        haveLabel = null,
        shortLabel = null;
 
@@ -183,9 +184,10 @@ class TtStorageBar extends StatelessWidget {
   }
 
   Widget _enough(ColorScheme scheme, double width) {
-    final share = math.min(
-      1,
-      math.max(needFraction!, TtMetrics.storageMinNeedFraction),
+    // A share that is not a number or out of range is made safe first.
+    final share = math.max(
+      unitShare(needFraction!),
+      TtMetrics.storageMinNeedFraction,
     );
     return Align(
       alignment: AlignmentDirectional.centerStart,
@@ -202,7 +204,8 @@ class TtStorageBar extends StatelessWidget {
   }
 
   Widget _short(ColorScheme scheme, double width) {
-    final have = width * haveFraction!;
+    // The assert refuses a bad share in debug; in release it is made safe.
+    final have = width * unitShare(haveFraction!);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

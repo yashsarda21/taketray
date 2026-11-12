@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/src/components/internal/hatch_painter.dart';
+import 'package:taketray_ui/src/components/internal/unit_share.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
@@ -127,6 +128,25 @@ void main() {
       }
     });
 
+    testWidgets('a share that is not a number or not finite is drawn safely: '
+        'NaN, minus infinity and negatives as the 4 % minimum, infinity as '
+        'the full bar', (tester) async {
+      for (final fraction in [
+        double.nan,
+        double.negativeInfinity,
+        -0.5,
+        -1e9,
+      ]) {
+        await tester.pumpWidget(ttTestApp(_enough(fraction: fraction)));
+        expect(tester.takeException(), isNull, reason: '$fraction');
+        final width = tester.getRect(find.byKey(_need)).width;
+        expect(width, closeTo(312 * 0.04, 0.01), reason: '$fraction');
+      }
+      await tester.pumpWidget(ttTestApp(_enough(fraction: double.infinity)));
+      expect(tester.takeException(), isNull);
+      expect(tester.getRect(find.byKey(_need)).width, closeTo(312, 0.01));
+    });
+
     testWidgets('has no have or short segment and nothing hatched', (
       tester,
     ) async {
@@ -241,8 +261,8 @@ void main() {
       expect(tester.takeException(), isNull);
       final first = tester.getRect(find.text('Copies: 12.3 GB'));
       final second = tester.getRect(find.text('Free after copying: 31.1 GB'));
-      // The second item moved under the first.
-      expect(second.top, greaterThanOrEqualTo(first.bottom));
+      // The second item moved under the first, 6 dp lower.
+      expect(second.top - first.bottom, 6);
       for (final text in ['Copies: 12.3 GB', 'Free after copying: 31.1 GB']) {
         expect(
           tester
@@ -434,7 +454,68 @@ void main() {
     });
   });
 
+  group('unitShare', () {
+    test('keeps 0 to 1 and makes anything else safe', () {
+      expect(unitShare(0), 0);
+      expect(unitShare(0.4), 0.4);
+      expect(unitShare(1), 1);
+      expect(unitShare(1.5), 1);
+      expect(unitShare(double.infinity), 1);
+      expect(unitShare(-0.3), 0);
+      expect(unitShare(double.negativeInfinity), 0);
+      expect(unitShare(double.nan), 0);
+    });
+  });
+
   group('HatchPainter', () {
+    testWidgets('the stripes run from the top left to the bottom right (a '
+        'backslash), start solid at the bottom left, and are 6 dp thick', (
+      tester,
+    ) async {
+      const width = 96;
+      const height = 14;
+      final image = await tester.runAsync(() {
+        final recorder = ui.PictureRecorder();
+        const HatchPainter(
+          color: Color(0xFFFF0000),
+          stripe: 6,
+          shade: 0.7,
+        ).paint(Canvas(recorder), const Size(96, 14));
+        return recorder.endRecording().toImage(width, height);
+      });
+      final data = (await tester.runAsync(image!.toByteData))!;
+      // true for a solid stripe, false for the 70 % one.
+      bool solid(int x, int y) => data.getUint8((y * width + x) * 4 + 3) > 216;
+      var along = 0;
+      var alongSame = 0;
+      var across = 0;
+      var acrossSame = 0;
+      for (var y = 1; y < height - 1; y++) {
+        for (var x = 1; x < width - 1; x++) {
+          along++;
+          if (solid(x, y) == solid(x + 1, y + 1)) alongSame++;
+          across++;
+          if (solid(x, y) == solid(x + 1, y - 1)) acrossSame++;
+        }
+      }
+      // Along a stripe ("\") the colour does not change (but for the soft
+      // edge); across it, it does every few pixels.
+      expect(alongSame / along, greaterThan(0.97));
+      expect(acrossSame / across, lessThan(0.9));
+      // The first stripe starts at the bottom left corner and is solid; the
+      // next one along the bottom edge is the 70 % one.
+      expect(solid(0, height - 1), isTrue);
+      expect(solid(3, height - 1), isTrue);
+      expect(solid(10, height - 1), isFalse);
+      expect(solid(20, height - 1), isTrue);
+      // A stripe is 6 dp thick, so it is 6 * sqrt(2) wide along the bottom.
+      var run = 0;
+      while (run < width && solid(run, height - 1)) {
+        run++;
+      }
+      expect(run, inInclusiveRange(7, 9));
+    });
+
     test('shouldRepaint is false for equal values, true for any change', () {
       const base = HatchPainter(
         color: Color(0xFFB3261E),

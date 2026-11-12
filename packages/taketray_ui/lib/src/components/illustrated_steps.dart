@@ -70,18 +70,14 @@ class TtIllustratedStep {
   /// A step whose picture is a grid of [thumbnails], numbered 1 to n in the
   /// order given.
   ///
-  /// There must be one to six thumbnails.
+  /// The picture holds six: of more, the first six are shown. With none
+  /// (every clip gone) the picture is left plain, with no tiles.
   const new tiles({
     required this.number,
     required this.title,
     required this.body,
     required this.thumbnails,
-  }) : assert(thumbnails.length > 0, 'a grid needs a thumbnail'),
-       assert(
-         thumbnails.length <= TtMetrics.stepTilesMax,
-         'the picture holds six thumbnails at most',
-       ),
-       _kind = _StepKind.tiles,
+  }) : _kind = _StepKind.tiles,
        folders = const [],
        highlighted = 0;
 
@@ -100,7 +96,8 @@ class TtIllustratedStep {
   /// Which of [folders] is marked.
   final int highlighted;
 
-  /// The pictures of a [TtIllustratedStep.tiles] step.
+  /// The pictures of a [TtIllustratedStep.tiles] step (the first six are
+  /// shown).
   final List<ImageProvider> thumbnails;
 
   final _StepKind _kind;
@@ -178,7 +175,9 @@ class _Mock extends StatelessWidget {
         folders: step.folders,
         highlighted: step.highlighted,
       ),
-      _StepKind.tiles => _TilesPicture(thumbnails: step.thumbnails),
+      _StepKind.tiles => _TilesPicture(
+        thumbnails: step.thumbnails.take(TtMetrics.stepTilesMax).toList(),
+      ),
     };
     // proto.css: .vstep .mock { height: 132px; border-radius: 14px;
     // background: surface-container-highest; padding: 8px; overflow: hidden;

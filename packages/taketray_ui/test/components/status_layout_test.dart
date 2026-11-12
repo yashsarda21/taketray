@@ -103,13 +103,13 @@ void main() {
       await tester.pumpWidget(ttTestApp(_layout()));
       final first = tester.getRect(find.byIcon(_icon));
       final last = tester.getRect(find.textContaining('7 of 12'));
-      final actions = tester.getRect(find.text('Try again'));
+      final actions = tester.getRect(find.byType(TtButton).first);
       final area = tester.getRect(find.byKey(const ValueKey('area')));
       final above = Rect.fromLTRB(
         area.left,
         area.top,
         area.right,
-        actions.top - 12 - 4,
+        actions.top - 12,
       );
       final block = Rect.fromLTRB(
         first.left,
@@ -117,7 +117,8 @@ void main() {
         first.right,
         last.bottom,
       );
-      expect(block.center.dy, closeTo(above.center.dy, 12));
+      // Centred in the space above the actions' 12 dp top padding.
+      expect(block.center.dy, closeTo(above.center.dy, 1));
     });
 
     testWidgets('keeps 32 dp at the sides: a long title and body wrap inside '
@@ -304,6 +305,121 @@ void main() {
       final area = tester.getRect(find.byKey(const ValueKey('area')));
       final last = tester.getRect(find.byType(TtButton).last);
       expect(area.bottom - last.bottom, 16 + 24);
+    });
+  });
+
+  group('TtStatusLayout measured numbers', () {
+    testWidgets('the actions have 12 dp above them, the block 24 dp above and '
+        'below it when it fills the space', (tester) async {
+      const height = 420.0;
+      await tester.pumpWidget(
+        ttTestApp(
+          _layout(
+            height: height,
+            body: const Text(
+              'A body of enough words to make the block exactly as tall as '
+              'the space above the buttons or taller than it, so that its '
+              'padding shows at both ends of the scroll. '
+              'A body of enough words to make the block exactly as tall as '
+              'the space above the buttons or taller than it.',
+            ),
+          ),
+          textScale: 1.5,
+        ),
+      );
+      final area = tester.getRect(find.byKey(const ValueKey('area')));
+      final icon = tester.getRect(find.byIcon(_icon));
+      final body = find.textContaining('A body of enough');
+      final actionsTop = tester.getRect(find.byType(TtButton).first).top;
+      // The block is taller than the space: it starts 24 dp down.
+      expect(tester.getRect(body).bottom, greaterThan(actionsTop - 12 - 24));
+      expect(icon.top - area.top, 24);
+      // Scrolled to the end it ends 24 dp above the space's end, which is
+      // 12 dp above the first action.
+      await tester.drag(find.byType(Scrollable), const Offset(0, -2000));
+      await tester.pump();
+      // Within a pixel: the text's last line has its own leading.
+      expect(actionsTop - 12 - tester.getRect(body).bottom, closeTo(24, 1));
+    });
+
+    testWidgets('the first action is 12 dp under the space that holds the '
+        'content', (tester) async {
+      await tester.pumpWidget(ttTestApp(_layout()));
+      final viewport = tester.getRect(find.byType(Scrollable));
+      final first = tester.getRect(find.byType(TtButton).first);
+      expect(first.top - viewport.bottom, 12);
+    });
+  });
+
+  group('TtStatusLayout in a parent with no height limit', () {
+    testWidgets('inside a ListView it lays out below the content, with the '
+        'actions under it, and does not fail', (tester) async {
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            ListView(
+              children: [
+                TtStatusLayout(
+                  icon: _icon,
+                  tone: TtStatusTone.warning,
+                  title: 'Phone storage is full',
+                  body: const Text('Free up some space, then try again.'),
+                  actions: [
+                    TtButton(label: 'Try again', onPressed: () {}),
+                    TtButton(
+                      label: 'Cancel',
+                      kind: TtButtonKind.text,
+                      onPressed: () {},
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            textScale: scale,
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: '$scale');
+        final icon = tester.getRect(find.byIcon(_icon));
+        final title = tester.getRect(find.text('Phone storage is full'));
+        final first = tester.getRect(find.text('Try again'));
+        final second = tester.getRect(find.byType(TtButton).last);
+        expect(icon.bottom, lessThanOrEqualTo(title.top));
+        expect(title.bottom, lessThanOrEqualTo(first.top));
+        expect(find.byType(TtButton), findsNWidgets(2));
+        expect(
+          tester.getRect(find.byType(TtButton).first).width,
+          800 - 32,
+          reason: '$scale',
+        );
+        expect(
+          second.top - tester.getRect(find.byType(TtButton).first).bottom,
+          8,
+        );
+        // Centred, with the content's 24 dp at the top.
+        expect(icon.center.dx, closeTo(400, 0.5));
+        expect(icon.top, 24);
+      }
+    });
+
+    testWidgets('inside a scroll view and a Column the same', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          SingleChildScrollView(
+            child: Column(
+              children: [
+                TtStatusLayout(
+                  icon: _icon,
+                  tone: TtStatusTone.error,
+                  title: 'T',
+                  actions: [TtButton(label: 'Go', onPressed: () {})],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Go'), findsOneWidget);
     });
   });
 

@@ -78,11 +78,16 @@ To be written in Task 7 (decision D-124).
 
   Read it like this: the screen decides what the words are, in the user's language, and the bar only draws.
 
-- **A fraction you can't misdraw.** `haveFraction` must be at least 0 and under 1. A share of 1 would mean "it fits", which is the other look, so the constructor refuses it (`assert`). The copies' share in the other look is never drawn narrower than 4 %, or 8 MB next to 4 GB would be invisible:
+- **A fraction you can't misdraw.** `haveFraction` must be at least 0 and under 1. A share of 1 would mean "it fits", which is the other look, so the constructor refuses it (`assert`, in debug). In a release build there are no asserts, so a share that is NaN (a division by zero somewhere) or out of range goes through `unitShare` first, which turns it into something a layout can use. The copies' share in the other look is never drawn narrower than 4 %, or 8 MB next to 4 GB would be invisible:
 
   ```dart
-  final share = math.min(1, math.max(needFraction!, TtMetrics.storageMinNeedFraction));
+  final share = math.max(
+    unitShare(needFraction!),
+    TtMetrics.storageMinNeedFraction,
+  );
   ```
+
+- **Odd input never crashes a screen.** A reel can have any number of clips, so `TtIllustratedStep.tiles` shows the first six and, with none, a plain picture. `TtStatusLayout` works in a list too (as tall as its content, with the buttons under it) instead of throwing when it has no height to fill.
 
 - **One node for the bar.** A screen reader hears one sentence ("Free space 4.3 GB, copies need 1.2 GB"), not the bar, then each legend item again. The bar and legend sit under `ExcludeSemantics` inside one `Semantics(label: ...)`.
 
@@ -92,7 +97,7 @@ To be written in Task 7 (decision D-124).
 
 - **A broken picture is not a broken icon.** `TtAppIcon` shows the letters tile when the bytes are empty, or when Flutter cannot decode them. A test gives it three garbage bytes and checks that the letters appear and nothing throws.
 
-- **Tests that can fail.** All the tests were written first against empty stand-ins and failed for the right reasons (a missing widget, a wrong size, a missing assert). Then key lines were broken on purpose, one at a time, and each broke a named test: the 4 % minimum (removed, and lowered to 2 %), the solid and hatched parts swapped, each part of the `haveFraction` assert, the one-node semantics, the hatch's second stripe, the live region, the bottom inset, the selected folder, the badge numbers, the picture's text scaling, the warning colour, the scrolling, the heading, and the icon's two fallbacks.
+- **Tests that can fail.** All the tests were written first against empty stand-ins and failed for the right reasons (a missing widget, a wrong size, a missing assert). Then key lines were broken on purpose, one at a time, and each broke a named test: the 4 % minimum (removed, and lowered to 2 %), the solid and hatched parts swapped, each part of the `haveFraction` assert, the stripe angle and its start, `unitShare`'s NaN and clamp, the first-six cut, the padding numbers of the status layout, the legend's line gap and the step title's margin, the one-node semantics, the hatch's second stripe, the live region, the bottom inset, the selected folder, the badge numbers, the picture's text scaling, the warning colour, the scrolling, the heading, and the icon's two fallbacks.
 
 **Where it lives:** `packages/taketray_ui/lib/src/components/` (`storage_bar.dart`, `bottom_bar.dart`, `illustrated_steps.dart`, `status_layout.dart`, `app_icon.dart`, and `internal/hatch_painter.dart`), their numbers in `lib/src/theme/tt_metrics.dart`, the Add videos grid in `app/lib/features/add_videos/views/add_grid_screen.dart`, the Widgetbook use cases in `widgetbook/lib/components/`. Tests: `packages/taketray_ui/test/components/*_test.dart` and `*_golden_test.dart`.
 

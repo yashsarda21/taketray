@@ -8,9 +8,11 @@ import 'package:flutter/widgets.dart';
 /// This is the CSS `repeating-linear-gradient(45deg, c 0 6px, c70% 6px 12px)`
 /// of the storage bar's shortfall: the colour changes along a line that runs
 /// from the bottom left corner to the top right, so the stripes themselves
-/// run from the top left down to the bottom right, starting at the bottom left
-/// corner. Use it as a `CustomPaint`'s painter; it repaints only when one of
-/// its values changes.
+/// run from the top left down to the bottom right (a backslash), starting at
+/// the bottom left corner. A stripe is [stripe] thick measured across the
+/// stripe, along that line; along the bottom edge it spans `stripe * sqrt(2)`,
+/// and the pattern repeats every `2 * stripe * sqrt(2)` there. Use it as a
+/// `CustomPaint`'s painter; it repaints only when one of its values changes.
 class HatchPainter extends CustomPainter {
   /// A hatch of [color] with stripes [stripe] wide.
   const new({required this.color, required this.stripe, required this.shade});
@@ -18,7 +20,7 @@ class HatchPainter extends CustomPainter {
   /// The colour of the first stripe of each pair.
   final Color color;
 
-  /// The width of a stripe, measured along the horizontal edge.
+  /// The thickness of a stripe, measured across it (along the colour line).
   final double stripe;
 
   /// The opacity of [color] in the second stripe of each pair, 0 to 1.

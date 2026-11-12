@@ -29,33 +29,36 @@ Future<void> _decode(WidgetTester tester) async {
 
 void main() {
   group('TtAppIcon without bytes', () {
-    testWidgets('is a 40 dp rounded tile in inverse-surface with the bold '
-        'letters in the colour on it', (tester) async {
-      await tester.pumpWidget(ttTestApp(_icon()));
-      final scheme = tester.element(find.byType(TtAppIcon)).scheme;
-      expect(tester.getSize(find.byType(TtAppIcon)), const Size.square(40));
-      final deco =
-          tester
-                  .widget<DecoratedBox>(
-                    find.descendant(
-                      of: find.byType(TtAppIcon),
-                      matching: find.byType(DecoratedBox),
-                    ),
-                  )
-                  .decoration
-              as BoxDecoration;
-      expect(deco.color, scheme.inverseSurface);
-      expect(deco.borderRadius, BorderRadius.circular(12));
-      final style = tester.widget<Text>(find.text('VN')).style!;
-      expect(style.color, scheme.onInverseSurface);
-      expect(style.fontWeight, FontWeight.w800);
-      expect(find.byType(Image), findsNothing);
-      // Centred.
-      expect(
-        tester.getRect(find.text('VN')).center,
-        tester.getRect(find.byType(TtAppIcon)).center,
-      );
-    });
+    testWidgets(
+      'is a 40 dp rounded tile in surface-container-highest with the bold '
+      'letters in on-surface-variant',
+      (tester) async {
+        await tester.pumpWidget(ttTestApp(_icon()));
+        final scheme = tester.element(find.byType(TtAppIcon)).scheme;
+        expect(tester.getSize(find.byType(TtAppIcon)), const Size.square(40));
+        final deco =
+            tester
+                    .widget<DecoratedBox>(
+                      find.descendant(
+                        of: find.byType(TtAppIcon),
+                        matching: find.byType(DecoratedBox),
+                      ),
+                    )
+                    .decoration
+                as BoxDecoration;
+        expect(deco.color, scheme.surfaceContainerHighest);
+        expect(deco.borderRadius, BorderRadius.circular(12));
+        final style = tester.widget<Text>(find.text('VN')).style!;
+        expect(style.color, scheme.onSurfaceVariant);
+        expect(style.fontWeight, FontWeight.w800);
+        expect(find.byType(Image), findsNothing);
+        // Centred.
+        expect(
+          tester.getRect(find.text('VN')).center,
+          tester.getRect(find.byType(TtAppIcon)).center,
+        );
+      },
+    );
 
     testWidgets('one letter, two and a long run all fit in one line', (
       tester,
@@ -112,8 +115,10 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(deco.color, scheme.inverseSurface);
+      expect(deco.color, scheme.surfaceContainerHighest);
       expect(scheme.brightness, Brightness.dark);
+      // A quiet tile that is not the page's own colour.
+      expect(deco.color, isNot(scheme.surface));
     });
 
     testWidgets('is decoration: no label of its own for a screen reader', (

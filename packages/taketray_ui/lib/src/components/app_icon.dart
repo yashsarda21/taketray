@@ -7,10 +7,11 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// An editor's app icon, 40 dp, with rounded corners.
 ///
 /// Android supplies the real icon as PNG bytes ([png]). When there are none,
-/// or they are empty or not a picture, a placeholder is drawn instead: a tile
-/// in the inverse-surface colour with [fallbackLetters] in bold (the
-/// prototype's `appic-g`, without its "app icon" tag, which only marked it as
-/// a stand-in in the mock-up).
+/// or they are empty or not a picture, a placeholder is drawn instead: a quiet
+/// tile in the surface-container-highest colour (the colour of the step
+/// pictures, so it reads as a tile in light and dark) with [fallbackLetters]
+/// in bold (the prototype's `appic-g`, without its "app icon" tag, which only
+/// marked it as a stand-in in the mock-up).
 ///
 /// The icon is decoration: the editor's name is in the row beside it, so a
 /// screen reader skips the icon. It keeps its size at large text; the
@@ -33,7 +34,7 @@ class TtAppIcon extends StatelessWidget {
     final png = this.png;
     final placeholder = DecoratedBox(
       decoration: BoxDecoration(
-        color: scheme.inverseSurface,
+        color: scheme.surfaceContainerHighest,
         borderRadius: radius,
       ),
       child: Center(
@@ -49,7 +50,7 @@ class TtAppIcon extends StatelessWidget {
                 maxLines: 1,
                 softWrap: false,
                 style: tt.text.material.labelMedium!.copyWith(
-                  color: scheme.onInverseSurface,
+                  color: scheme.onSurfaceVariant,
                   fontSize: TtMetrics.appIconLetterSize,
                   fontWeight: TtMetrics.appIconLetterWeight,
                 ),

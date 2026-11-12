@@ -3,8 +3,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_golden.dart';
 
-/// A status screen's area: the height of a phone's screen.
-const _height = 640.0;
+/// A status screen's area: a phone's height (a Galaxy S24 is 780 dp).
+const _height = 780.0;
 
 Widget _layout(
   TtStatusTone tone,
