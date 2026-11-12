@@ -307,9 +307,11 @@ void main() {
       tester,
     ) async {
       final ids = await waiting(tester, 3);
-      // The verifier takes a missing clip out of To tag (D-72), so a clip
-      // shows as missing only for the moment between the flag and that
-      // removal: plant the flag alone.
+      // The verifier takes a missing MediaStore clip out of To tag (D-72),
+      // so one shows as missing only for the moment between the flag and that
+      // removal. A picked clip that cannot be read is only flagged and stays
+      // in To tag until the user removes it (D-116), so there it is a lasting
+      // state: the tag player still gets it. Plant the flag alone.
       await real(
         tester,
         () => h.media.db.customStatement(
