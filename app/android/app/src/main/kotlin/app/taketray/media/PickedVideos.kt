@@ -21,7 +21,17 @@ data class SavedGrant(
  * record every call. The real one is [ResolverGrants].
  */
 interface UriGrants {
-    /** Saves [flags] access to [uri]; throws when Android will not (no persistable grant, or the limit is reached). */
+    /**
+     * Saves [flags] access to [uri]; throws when Android will not (the address
+     * carries no persistable grant). It does **not** throw at the cap: Android
+     * keeps at most 512 saved grants per app and, when one more is taken,
+     * silently releases the **oldest** (least recently saved) ones and returns
+     * normally (AOSP `UriGrantsManagerService.maybePrunePersistedUriGrantsLocked`,
+     * `MAX_PERSISTED_URI_GRANTS = 512`; D-112, final review I-2). So a `take`
+     * that returns is no promise the grant lasts, and an old picked clip can
+     * lose its grant without any error: it reads as unreadable and is flagged
+     * missing, never deleted (D-116).
+     */
     fun take(
         uri: Uri,
         flags: Int,

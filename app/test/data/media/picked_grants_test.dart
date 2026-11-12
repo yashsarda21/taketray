@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show driftRuntimeOptions;
+import 'package:drift/drift.dart' show QueryExecutor, driftRuntimeOptions;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +19,7 @@ import 'package:taketray/platform/media_bridge.dart';
 import '../../support/clip_setup.dart';
 import '../../support/fake_media_bridge.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/statement_log.dart';
 import '../../support/test_database.dart';
 import 'media_harness.dart';
 
@@ -334,6 +335,131 @@ void main() {
     });
   });
 
+  // Phase 7 final review I-3 and M-6.
+  group('sweep order and the spelling guard', () {
+    late _HookedLog log;
+    late PickedGrants logged;
+    late ClipsRepository loggedClips;
+    late ReelsRepository loggedReels;
+    late FakeMediaBridge bridge;
+
+    setUp(() {
+      allowSecondDatabase();
+      log = _HookedLog();
+      final db = loggedTestDatabase(log);
+      addTearDown(db.close);
+      bridge = FakeMediaBridge();
+      loggedClips = ClipsRepository(db, h.clock);
+      loggedReels = ReelsRepository(db, h.clock);
+      logged = PickedGrants(bridge, db, MediaWorkQueue());
+    });
+
+    Future<void> holdInReel(List<String> uris) async {
+      final reel = await loggedReels.create('Held');
+      await loggedClips.addNewClipsToReel(reel.id, [
+        for (final u in uris) _picked(u),
+      ]);
+    }
+
+    test('the saved grants are read before the rows: a grant taken after '
+        'the first read is not released', () async {
+      await holdInReel([_a]);
+      bridge.persisted = {_a};
+      // A pick finishes and takes grant D the moment the sweep first reads
+      // the rows. With "grants first, rows second", D is not in the list the
+      // sweep releases from; with the order swapped it is, and is released.
+      log
+        ..clear()
+        ..onSelect = () => bridge.persisted.add(_d);
+
+      expect(await logged.sweep(), 0);
+
+      expect(bridge.released, isEmpty);
+      expect(bridge.persisted, {_a, _d});
+    });
+
+    test('the rows are not read until persistedUris has answered', () async {
+      await holdInReel([_a]);
+      bridge.persisted = {_a};
+      final gate = bridge.gate('persistedUris');
+      log.clear();
+
+      final sweeping = logged.sweep();
+      await Future<void>.delayed(Duration.zero);
+      expect(bridge.calls, contains('persistedUris'));
+      expect(log.selects, isEmpty, reason: 'rows second');
+      gate.complete();
+      await sweeping;
+
+      expect(log.selects, isNotEmpty);
+    });
+
+    test('no saved grants: the database is not read at all', () async {
+      await holdInReel([_a]);
+      bridge.persisted = {};
+      log.clear();
+
+      expect(await logged.sweep(), 0);
+
+      expect(log.selects, isEmpty);
+      expect(bridge.calls, ['persistedUris']);
+    });
+
+    test('M-6: rows hold addresses but none matches any saved grant: '
+        'nothing is released and only counts are logged', () async {
+      await holdInReel([_a, _b]);
+      bridge.persisted = {_c, _d, _e};
+      final logs = captureLogs();
+
+      expect(await logged.sweep(), 0);
+
+      expect(bridge.calls, isNot(contains('releaseUris')));
+      expect(bridge.persisted, {_c, _d, _e});
+      final text = logText(logs);
+      expect(text, contains('3'), reason: 'saved grants');
+      expect(text, contains('2'), reason: 'held addresses');
+      expect(text, isNot(contains('content')));
+      expect(text, isNot(contains('picker')));
+      expect(text, isNot(contains('document')));
+    });
+
+    test(
+      'M-6: one match is enough, the other unused grants are released',
+      () async {
+        await holdInReel([_a, _b]);
+        bridge.persisted = {_a, _d, _e};
+
+        expect(await logged.sweep(), 2);
+
+        expect(bridge.persisted, {_a});
+      },
+    );
+
+    test(
+      'M-6: a match only in another spelling still counts as a match',
+      () async {
+        await holdInReel([_e]);
+        bridge.persisted = {
+          'content://COM.android.providers.media.documents/document/video%3a5',
+          _d,
+        };
+
+        expect(await logged.sweep(), 1);
+
+        expect(bridge.released, [
+          [_d],
+        ]);
+      },
+    );
+
+    test('M-6: no clip row holds an address: every saved grant is released '
+        '(the guard needs held addresses)', () async {
+      bridge.persisted = {_c, _d};
+
+      expect(await logged.sweep(), 2);
+    });
+  });
+
   test('pickedGrantsProvider builds one sweeper, kept alive, on the shared '
       'queue', () async {
     final db = testDatabase();
@@ -366,5 +492,22 @@ class _TwiceSaved extends FakeMediaBridge {
   Future<List<String>> persistedUris() async {
     final once = await super.persistedUris();
     return [...once, ...once];
+  }
+}
+
+/// A statement log that tells a test when a query runs.
+class _HookedLog extends StatementLog {
+  void Function()? onSelect;
+
+  @override
+  Future<List<Map<String, Object?>>> runSelect(
+    QueryExecutor executor,
+    String statement,
+    List<Object?> args,
+  ) {
+    final hook = onSelect;
+    onSelect = null;
+    hook?.call();
+    return super.runSelect(executor, statement, args);
   }
 }

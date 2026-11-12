@@ -21,14 +21,21 @@ const Duration pickedGrantsTimeout = Duration(seconds: 15);
 /// The clean-up of saved picker grants (Phase 7, D-112).
 ///
 /// The photo picker gives the app a saved (persistable) read grant for each
-/// picked video, and Android caps how many an app may hold. A grant is kept
-/// while any clip row holds its address; one that no row holds (the clip was
-/// removed, an Add was undone, the video was picked and never stored, a
-/// backup import replaced the rows) is given back.
+/// picked video. Android keeps at most 512 per app and, past that, silently
+/// releases the oldest ones without any error (AOSP
+/// `maybePrunePersistedUriGrantsLocked`; D-112, D-116), so giving back the
+/// unused ones keeps room for the ones in use. A grant is kept while any clip
+/// row holds its address; one that no row holds (the clip was removed, an Add
+/// was undone, the video was picked and never stored, a backup import
+/// replaced the rows) is given back.
 ///
 /// **It never gives back a grant still in use:**
-/// - it runs on the shared [MediaWorkQueue], so an Add, an import's rows or
-///   a verify that is queued before it has finished, and their rows are read;
+/// - it runs on the shared [MediaWorkQueue], so an Add or a verify that is
+///   queued before it has finished, and their rows are read. A backup import
+///   is **not** on the queue today (`BackupService.importJson` writes
+///   directly; there is no import UI before Phase 10): nothing sweeps while
+///   one can run because the sweep runs only at app start, and Phase 10 must
+///   run its import on the queue or never sweep during one (`later.md`);
 /// - the saved grants are read first and the rows second, so a grant taken
 ///   after the first read is not in the list it releases from;
 /// - any row with that address holds it: a missing clip, a skipped one, one
@@ -36,7 +43,11 @@ const Duration pickedGrantsTimeout = Duration(seconds: 15);
 ///   case of the host, the case of a `%` escape, as `Uri` normalises them)
 ///   counts as the same;
 /// - a failed or late (over [bridgeTimeout]) bridge call, or a failed
-///   database read, throws before anything is released.
+///   database read, throws before anything is released;
+/// - when clips hold addresses and grants are saved but **none** of the
+///   saved grants is held, nothing is released and a count-only warning is
+///   logged: it would mean the two lists are spelled differently, not that
+///   every grant is unused (final review M-6, D-116).
 ///
 /// `MediaLifecycle` runs [sweep] once per app start, on the first frame,
 /// before the start's scan: no pick can have finished by then, so no grant
@@ -72,10 +83,23 @@ class PickedGrants {
     final heldForms = {
       for (final uri in held) ...{uri, _canonical(uri)},
     };
+    bool isHeld(String uri) =>
+        heldForms.contains(uri) || heldForms.contains(_canonical(uri));
+    // Spelling guard (final review M-6): clips hold addresses and grants are
+    // saved, yet not one grant is one a clip holds. That is not what unused
+    // grants look like; it is what a difference in how Android spells the
+    // two lists looks like. Releasing then would revoke every picked clip's
+    // grant, which cannot be undone, so nothing is released.
+    if (held.isNotEmpty && !saved.any(isHeld)) {
+      _log.warning(
+        'None of ${saved.length} saved grants matches any of '
+        '${held.length} addresses held by clips: released none',
+      );
+      return 0;
+    }
     final unused = [
       for (final uri in saved)
-        if (!heldForms.contains(uri) && !heldForms.contains(_canonical(uri)))
-          uri,
+        if (!isHeld(uri)) uri,
     ];
     if (unused.isNotEmpty) {
       await _bridge.releaseUris(unused).timeout(bridgeTimeout);
