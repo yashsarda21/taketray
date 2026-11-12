@@ -29,7 +29,51 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 ## 2. Editing rules
 
-To be written in Task 2 (decision D-119).
+**What we built:** the small, pure pieces of logic that every later step of this phase leans on. They do no file or phone work; they take numbers and text and give back an answer.
+
+- **`safeFolderName`**: turns a reel's name into a name Android's storage accepts for a folder (no forbidden characters, no hidden direction marks, at most 200 bytes).
+- **`copyExtension` and `copyFileNames`**: decide what each copied file is called.
+- **`spaceCheck`**: decides whether the copies fit and still leave the phone some room.
+- **`byteSize`**: turns a number of bytes into "900 MB" or "1.3 GB" (the screen adds the unit word).
+- **`splitForEditing` and `addPicks`**: decide which clips are "In your edit" and which are "New since you started editing", and what the add-later picker shows for each clip.
+- **`EditorApp`** (CapCut, Edits, VN) and **`ClipRef`** (how the Android side finds a clip's video).
+
+**Why TakeTray needs it:** a wrong answer here can overwrite a file, fill the phone, or hide a clip. Because they are plain functions, we can test every odd case (two clips shot in the same second, a reel called `Goa.`, exactly enough free space) on a laptop, long before any screen or phone code exists.
+
+**Key ideas:**
+
+- **A time held in a UTC box.** A clip's "when it was shot" is the clock on the wall where it was shot (D-83). It is stored in a `DateTime` marked UTC, but only because that type has no gaps: the number inside is just the wall-clock reading, not a real moment. So the file name reads the fields and never converts:
+
+  ```dart
+  return '$year-${two(t.month)}-${two(t.day)}_'
+      '${two(t.hour)}-${two(t.minute)}-${two(t.second)}';
+  ```
+
+  Converting it to "local" would shift it by the phone's time zone and give a different name on a different phone.
+
+- **Two clips, one second.** Names are `2026-10-12_14-32-05.mp4`. When the next clip has the same name (burst shots, or the hour that happens twice when clocks go back), it becomes `..._2.mp4`, then `_3`, in shooting order, and a name already in the folder counts too. Android treats `A.mp4` and `a.MP4` as the same file, so names are compared in lower case:
+
+  ```dart
+  for (var n = 2; used.contains(name.toLowerCase()); n++) {
+    name = '${stem}_$n.${clip.extension}';
+  }
+  ```
+
+- **Round first, then pick the unit.** If 999,500,000 bytes were rounded as MB it would read "1000 MB"; as GB it is "1 GB". So `byteSize` rounds to whole MB first and only then decides the unit. It uses whole-number maths only, because decimals like 0.1 cannot be stored exactly and rounding them can go wrong at the edge. One deliberate difference from the prototype: anything above 0 shows at least "1 MB".
+
+- **Enough means enough plus 500 MB.** `spaceCheck` is true exactly when `free >= need + 500,000,000`. One byte less is short by exactly 1 byte, which a test checks.
+
+- **A copy that is gone is not a copy.** `splitForEditing` and `addPicks` only look at the copies that still exist (`liveCopyIds`). If the user deleted a copy, the clip is "new" again (or "sent, not copied"), so TakeTray never claims a file is in the folder when it is not.
+
+- **Bytes, not letters.** The app limits a reel name to 40 characters, but Android limits a folder name to 255 *bytes*, and a character can be many bytes (a family emoji is 18). `safeFolderName` drops whole characters from the end until the name is at most 200 bytes, so Android never shortens it behind our back (which would make the folder differ from the name we saved, and TakeTray would refuse to delete its copies).
+
+- **Strings stored in the database are a promise.** `EditorApp.vn.name` is `"vn"`, and a test pins all three spellings, so renaming an enum value cannot silently orphan saved sessions.
+
+**Where it lives:** `app/lib/domain/rules/` (`edit_folder_name.dart`, `copy_file_names.dart`, `space_check.dart`, `byte_size.dart`, `edit_split.dart`) and `app/lib/domain/models/` (`editor_app.dart`, `clip_ref.dart`), with tests in the matching `app/test/domain/` folders.
+
+**Try it yourself:** `cd app && ../tool/flutter test test/domain/rules/copy_file_names_test.dart`. Then change `var n = 2` to `3` in `copy_file_names.dart` and run it again: the clash tests fail. Put it back.
+
+**Decisions:** D-119, with D-118 (R2 names, R3 space) and D-83 (the wall-clock time) as background.
 
 ## 3. Schema v2 and the editing sessions repository
 
