@@ -1,6 +1,8 @@
 import 'package:taketray_widgetbook/components/app_bar.dart';
+import 'package:taketray_widgetbook/components/app_icon.dart';
 import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/banners.dart';
+import 'package:taketray_widgetbook/components/bottom_bar.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
 import 'package:taketray_widgetbook/components/clip_tile.dart';
 import 'package:taketray_widgetbook/components/date_range_calendar.dart';
@@ -11,6 +13,7 @@ import 'package:taketray_widgetbook/components/expand_card.dart';
 import 'package:taketray_widgetbook/components/glass.dart';
 import 'package:taketray_widgetbook/components/grouped_rows.dart';
 import 'package:taketray_widgetbook/components/headers.dart';
+import 'package:taketray_widgetbook/components/illustrated_steps.dart';
 import 'package:taketray_widgetbook/components/menu.dart';
 import 'package:taketray_widgetbook/components/nav_pill.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
@@ -28,8 +31,10 @@ import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
 import 'package:taketray_widgetbook/components/snack.dart';
 import 'package:taketray_widgetbook/components/stat_strip.dart';
+import 'package:taketray_widgetbook/components/status_layout.dart';
 import 'package:taketray_widgetbook/components/status_pill.dart';
 import 'package:taketray_widgetbook/components/step_list.dart';
+import 'package:taketray_widgetbook/components/storage_bar.dart';
 import 'package:taketray_widgetbook/components/tag_done.dart';
 import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
@@ -61,7 +66,12 @@ final List<WidgetbookNode> ttCatalog = [
   ),
   WidgetbookFolder(
     name: 'Navigation',
-    children: [ttAppBarComponent, ttNavPillComponent, ttPillTabsComponent],
+    children: [
+      ttAppBarComponent,
+      ttNavPillComponent,
+      ttPillTabsComponent,
+      ttBottomBarComponent,
+    ],
   ),
   WidgetbookFolder(
     name: 'Clips',
@@ -77,7 +87,12 @@ final List<WidgetbookNode> ttCatalog = [
   ),
   WidgetbookFolder(
     name: 'Status',
-    children: [ttStatusPillComponent, ttStatStripComponent],
+    children: [
+      ttStatusPillComponent,
+      ttStatStripComponent,
+      ttStorageBarComponent,
+      ttStatusLayoutComponent,
+    ],
   ),
   WidgetbookFolder(
     name: 'Cards',
@@ -127,6 +142,8 @@ final List<WidgetbookNode> ttCatalog = [
       ttCalloutComponent,
       ttExpandCardComponent,
       ttStepListComponent,
+      ttIllustratedStepsComponent,
+      ttAppIconComponent,
       ttInfoBarComponent,
       ttProgressBarComponent,
       ttIllustrationComponent,
