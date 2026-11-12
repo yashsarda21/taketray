@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:drift/drift.dart' show QueryExecutor;
+import 'package:drift/drift.dart' show QueryExecutor, Value;
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
@@ -8,6 +8,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 
@@ -186,6 +187,322 @@ void main() {
         pending: (InboxState.pending, _t0),
       });
       expect(await clips.watchReelIdsOf(tagged).first, {goa.id});
+    });
+  });
+
+  // Remove a missing clip from To tag or Skipped (final fix wave, D-116): the
+  // clip's inbox row goes, then the orphan rule (D-56) deletes the clip if it
+  // is in no reel and no list. Undo puts back exactly that.
+  group('removeMissingFromInbox', () {
+    NewClip picked(String uri) => NewClip.picker(
+      pickerUri: uri,
+      fingerprint: ClipFingerprint(
+        sizeBytes: 5,
+        durationMs: 5,
+        dateTakenUtc: _t0,
+        displayName: 'p.mp4',
+      ),
+      width: 0,
+      height: 0,
+      mimeType: 'video/mp4',
+    );
+
+    Future<void> flag(Set<int> ids, {bool missing = true}) =>
+        flagClips(db, ids, missing: missing, at: clock.now());
+
+    Future<List<int>> clipIds() async =>
+        (await db.select(db.clips).get()).map((c) => c.id).toList()..sort();
+
+    test('a missing clip in To tag loses its row and, with no other place, '
+        'is deleted; the record holds the row and the clip', () async {
+      final [a, b] = await clips.saveDetected([shot(1), shot(2)]);
+      await flag({a});
+      final before = (await clips.clipsByIds({a})).single;
+      final addedAt = (await inbox())[a]!.$2;
+      clock.advance(_minute);
+
+      final record = await clips.removeMissingFromInbox(a);
+
+      expect(record.isEmpty, isFalse);
+      expect(record.removed, [pendingAt(a, addedAt)]);
+      expect(record.sweptClips, [before]);
+      expect(await clipIds(), [b]);
+      expect((await inbox()).keys, [b]);
+    });
+
+    test('a missing clip in Skipped is removed the same way, and the record '
+        'keeps its state', () async {
+      final [a, b] = await clips.saveDetected([shot(1), shot(2)]);
+      await clips.skipClips({a, b});
+      await flag({a});
+      final kept = (await inbox())[b]!;
+
+      final record = await clips.removeMissingFromInbox(a);
+
+      expect(record.removed.single.state, InboxState.skipped);
+      expect(await clipIds(), [b]);
+      expect(await inbox(), {b: kept});
+    });
+
+    test('a missing picked clip is removed the same way (picked and '
+        'MediaStore alike)', () async {
+      final [p] = await clips.saveDetected([picked('content://p/1')]);
+      await flag({p});
+
+      final record = await clips.removeMissingFromInbox(p);
+
+      expect(record.sweptClips.single.pickerUri, 'content://p/1');
+      expect(await clipIds(), isEmpty);
+      expect(await inbox(), isEmpty);
+    });
+
+    test('a clip that is not flagged missing is left alone: an empty '
+        'record, nothing written', () async {
+      final [a] = await clips.saveDetected([shot(1)]);
+      final snapshotBefore = await inbox();
+      _hook.clear();
+
+      final record = await clips.removeMissingFromInbox(a);
+
+      expect(record.isEmpty, isTrue);
+      expect(await inbox(), snapshotBefore);
+      expect(await clipIds(), [a]);
+      expect(_hook.writes, isEmpty);
+    });
+
+    test('an unknown id, and a missing clip with no inbox row, change '
+        'nothing', () async {
+      final reel = await reels.create('Goa');
+      final [inReel] = await clips.addNewClipsToReel(reel.id, [shot(1)]);
+      await flag({inReel});
+      _hook.clear();
+
+      expect((await clips.removeMissingFromInbox(9999)).isEmpty, isTrue);
+      expect((await clips.removeMissingFromInbox(inReel)).isEmpty, isTrue);
+
+      expect(await clipIds(), [inReel]);
+      expect(_hook.writes, isEmpty);
+    });
+
+    test('a missing clip that is also in a reel keeps its link and its '
+        'clip; only the inbox row goes', () async {
+      final [a] = await clips.saveDetected([shot(1)]);
+      final reel = await reels.create('Goa');
+      // Both at once is not a state the app makes (D-57); the data could
+      // still hold it (a backup), and the reel must lose nothing.
+      await db
+          .into(db.clipReels)
+          .insert(
+            ClipReelsCompanion.insert(clipId: a, reelId: reel.id, addedAt: _t0),
+          );
+      await flag({a});
+
+      final record = await clips.removeMissingFromInbox(a);
+
+      expect(record.removed.single.clipId, a);
+      expect(record.sweptClips, isEmpty);
+      expect(await clipIds(), [a]);
+      expect(await inbox(), isEmpty);
+      expect((await db.select(db.clipReels).get()).single.reelId, reel.id);
+    });
+
+    test('other clips, rows and reels are untouched, and no reel is touched '
+        'in time', () async {
+      final [a, b, c] = await clips.saveDetected([shot(1), shot(2), shot(3)]);
+      await clips.skipClips({c});
+      final reel = await reels.create('Goa');
+      final updated = (await reels.getById(reel.id))!.updatedAt;
+      await flag({a});
+      final others = await inbox()
+        ..remove(a);
+      clock.advance(_minute);
+
+      await clips.removeMissingFromInbox(a);
+
+      expect(await inbox(), others);
+      expect(await clipIds(), [b, c]);
+      expect((await reels.getById(reel.id))!.updatedAt, updated);
+    });
+
+    test('the VN copy row of the clip it deletes stays (D-54)', () async {
+      final [a] = await clips.saveDetected([shot(1)]);
+      final reel = await reels.create('Goa');
+      await db
+          .into(db.vnSessions)
+          .insert(
+            VnSessionsCompanion.insert(
+              reelId: Value(reel.id),
+              folderName: 'Goa',
+              createdAt: _t0,
+            ),
+          );
+      await db
+          .into(db.vnCopies)
+          .insert(
+            VnCopiesCompanion.insert(
+              reelId: reel.id,
+              clipId: a,
+              copyMediaStoreId: 500,
+              fileName: 'VID_1.mp4',
+              sizeBytes: 1001,
+            ),
+          );
+      await flag({a});
+
+      await clips.removeMissingFromInbox(a);
+
+      expect(await clipIds(), isEmpty);
+      expect(await db.select(db.vnCopies).get(), hasLength(1));
+    });
+
+    test('one transaction: a failing step changes nothing', () async {
+      final [a] = await clips.saveDetected([shot(1)]);
+      await flag({a});
+      await db.customStatement(
+        'CREATE TRIGGER no_delete BEFORE DELETE ON clips '
+        "BEGIN SELECT RAISE(ABORT, 'disk full'); END",
+      );
+      final before = await inbox();
+
+      await expectLater(clips.removeMissingFromInbox(a), throwsA(anything));
+
+      expect(await inbox(), before);
+      expect(await clipIds(), [a]);
+    });
+
+    test('logs counts only, never an address', () async {
+      final logs = <String>[];
+      final sub = Logger.root.onRecord.listen((r) => logs.add(r.message));
+      addTearDown(sub.cancel);
+      final [p] = await clips.saveDetected([picked('content://p/secret')]);
+      await flag({p});
+
+      await clips.removeMissingFromInbox(p);
+
+      expect(logs.join('\n'), isNot(contains('secret')));
+      expect(logs.join('\n'), isNot(contains('content')));
+    });
+
+    group('Undo', () {
+      test('puts back the row (state and addedAt) and the deleted clip with '
+          'its id and every field', () async {
+        final [a, b] = await clips.saveDetected([shot(1), shot(2)]);
+        await clips.skipClips({a});
+        await flag({a});
+        final clipBefore = (await clips.clipsByIds({a})).single;
+        final inboxBefore = await inbox();
+        clock.advance(_minute);
+        final record = await clips.removeMissingFromInbox(a);
+        expect(await clipIds(), [b]);
+
+        await clips.undo(record);
+
+        expect(await inbox(), inboxBefore);
+        expect((await clips.clipsByIds({a})).single, clipBefore);
+        expect((await clips.clipsByIds({a})).single.missing, isTrue);
+      });
+
+      test('puts back a To tag row too', () async {
+        final [a] = await clips.saveDetected([shot(1)]);
+        await flag({a});
+        final inboxBefore = await inbox();
+        final record = await clips.removeMissingFromInbox(a);
+
+        await clips.undo(record);
+
+        expect(await inbox(), inboxBefore);
+        expect(await clipIds(), [a]);
+      });
+
+      test('a second Undo changes nothing', () async {
+        final [a] = await clips.saveDetected([shot(1)]);
+        await flag({a});
+        final record = await clips.removeMissingFromInbox(a);
+        await clips.undo(record);
+        final after = await inbox();
+        _hook.clear();
+
+        await clips.undo(record);
+
+        expect(await inbox(), after);
+        expect(_hook.writes, isEmpty);
+      });
+
+      test('an empty record puts nothing back', () async {
+        final [a] = await clips.saveDetected([shot(1)]);
+        final record = await clips.removeMissingFromInbox(a);
+        _hook.clear();
+
+        await clips.undo(record);
+
+        expect(_hook.writes, isEmpty);
+      });
+
+      test('the clip was put in a reel meanwhile: it stays there, and '
+          'is not also put back in the list', () async {
+        final [p] = await clips.saveDetected([picked('content://p/1')]);
+        await flag({p});
+        final record = await clips.removeMissingFromInbox(p);
+        // Undo restores the clip; the user (Add videos) had put the same
+        // video in a reel in between, as a new clip with the same address.
+        final reel = await reels.create('Goa');
+        final [again] = await clips.addNewClipsToReel(reel.id, [
+          picked('content://p/1'),
+        ]);
+
+        await clips.undo(record);
+
+        expect(await inbox(), isEmpty);
+        expect(await clipIds(), [again]);
+        expect((await db.select(db.clipReels).get()).single.clipId, again);
+      });
+
+      test('the same video was added to To tag meanwhile: nothing doubles '
+          "and the row stays that clip's", () async {
+        final [p] = await clips.saveDetected([picked('content://p/1')]);
+        await flag({p});
+        final record = await clips.removeMissingFromInbox(p);
+        final [again] = await clips.saveDetected([picked('content://p/1')]);
+        final inboxNow = await inbox();
+
+        await clips.undo(record);
+
+        expect(await inbox(), inboxNow);
+        expect(await clipIds(), [again]);
+      });
+
+      test('a clip already linked to a reel gets no list row back', () async {
+        final [a] = await clips.saveDetected([shot(1)]);
+        final reel = await reels.create('Goa');
+        await db
+            .into(db.clipReels)
+            .insert(
+              ClipReelsCompanion.insert(
+                clipId: a,
+                reelId: reel.id,
+                addedAt: _t0,
+              ),
+            );
+        await flag({a});
+        final record = await clips.removeMissingFromInbox(a);
+
+        await clips.undo(record);
+
+        expect(await inbox(), isEmpty);
+        expect(await clipIds(), [a]);
+      });
+
+      test('undoAll with a skip record before it runs last to first', () async {
+        final [a, b] = await clips.saveDetected([shot(1), shot(2)]);
+        await flag({a});
+        final remove = await clips.removeMissingFromInbox(a);
+        final skip = await clips.skipClips({b});
+
+        await clips.undoAll([remove, skip]);
+
+        expect((await inbox())[a]?.$1, InboxState.pending);
+        expect((await inbox())[b]?.$1, InboxState.pending);
+      });
     });
   });
 

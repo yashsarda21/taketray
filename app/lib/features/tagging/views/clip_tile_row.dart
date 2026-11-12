@@ -18,9 +18,13 @@ const int clipGridColumns = 3;
 ///
 /// - **The time** is where the clip was shot ([times], D-83), or the
 ///   phone's until that is known.
-/// - **A clip flagged missing** is the "Missing from phone" tile, with no
-///   Remove button, and takes no taps (the verifier takes such clips out of
-///   both lists, D-72, so this is a safety net).
+/// - **A clip flagged missing** is the "Missing from phone" tile and takes no
+///   taps. With [onRemoveMissing] it has the same **Remove** button as on the
+///   reel page (D-87), and a row with such a tile is as tall as the tile needs
+///   at the phone's text size (its neighbours keep their 3:4 shape at the
+///   top). The verifier takes a missing MediaStore clip out of both lists
+///   (D-72), but a picked clip that cannot be read is only flagged and stays
+///   (D-116), so the user needs this to remove one that is really gone.
 /// - **The caller decides the rest:** whether a tile is chosen ([selected],
 ///   null when not choosing), what a tap and a long press do, and what a
 ///   screen reader hears ([semanticLabel], given the time and the length).
@@ -38,6 +42,7 @@ class ClipTileRow extends StatelessWidget {
     required this.onLongPress,
     required this.semanticLabel,
     this.decorate,
+    this.onRemoveMissing,
     super.key,
   }) : assert(clips.length <= clipGridColumns, 'one row of the grid');
 
@@ -60,9 +65,33 @@ class ClipTileRow extends StatelessWidget {
   /// Wraps a clip's tile, or returns it as it is.
   final Widget Function(Clip clip, Widget tile)? decorate;
 
+  /// Called when **Remove** on a missing clip's tile is tapped; null for a
+  /// missing tile with no Remove button.
+  final void Function(Clip clip)? onRemoveMissing;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
+    final l10n = AppLocalizations.of(context);
+    final tileWidth =
+        (MediaQuery.sizeOf(context).width -
+            2 * tt.spacing.gutter -
+            (clipGridColumns - 1) * tt.spacing.gridGap) /
+        clipGridColumns;
+    final natural = tileWidth / tt.sizes.clipTileAspect;
+    // A row with a missing tile and a Remove button is as tall as the tile
+    // needs at this text size, as on the reel page (D-87): not shrunk to fit
+    // a 3:4 cell. At the normal text size that is less than 3:4, so nothing
+    // grows.
+    final needed = onRemoveMissing != null && clips.any((c) => c.missing)
+        ? TtMissingClipTile.heightFor(
+            context,
+            width: tileWidth,
+            label: l10n.clipMissing,
+            removeLabel: l10n.clipRemove,
+          )
+        : 0.0;
+    final grown = needed > natural;
     return Padding(
       padding: EdgeInsets.fromLTRB(
         tt.spacing.gutter,
@@ -77,10 +106,17 @@ class ClipTileRow extends StatelessWidget {
           for (var i = 0; i < clipGridColumns; i++)
             Expanded(
               child: i < clips.length
-                  ? AspectRatio(
-                      aspectRatio: tt.sizes.clipTileAspect,
-                      child: _tile(context, clips[i]),
-                    )
+                  ? (grown && clips[i].missing
+                        // Fills the row; a picture tile keeps its 3:4 shape
+                        // at the top of it.
+                        ? SizedBox(
+                            height: needed,
+                            child: _tile(context, clips[i], tileWidth),
+                          )
+                        : AspectRatio(
+                            aspectRatio: tt.sizes.clipTileAspect,
+                            child: _tile(context, clips[i], tileWidth),
+                          ))
                   : const SizedBox.shrink(),
             ),
         ],
@@ -88,11 +124,17 @@ class ClipTileRow extends StatelessWidget {
     );
   }
 
-  Widget _tile(BuildContext context, Clip clip) {
+  Widget _tile(BuildContext context, Clip clip, double tileWidth) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     if (clip.missing) {
-      return TtMissingClipTile(key: ValueKey(clip.id), label: l10n.clipMissing);
+      final remove = onRemoveMissing;
+      return TtMissingClipTile(
+        key: ValueKey(clip.id),
+        label: l10n.clipMissing,
+        removeLabel: remove == null ? null : l10n.clipRemove,
+        onRemove: remove == null ? null : () => remove(clip),
+      );
     }
     final localTime = times[clip.id];
     final time = localTime != null
@@ -108,11 +150,6 @@ class ClipTileRow extends StatelessWidget {
           );
     final length = formatClipDuration(clip.fingerprint.durationMs);
     // The picture is asked for at the tile's height, the longer side.
-    final tileWidth =
-        (MediaQuery.sizeOf(context).width -
-            2 * tt.spacing.gutter -
-            (clipGridColumns - 1) * tt.spacing.gridGap) /
-        clipGridColumns;
     final tile = TtClipTile(
       key: ValueKey(clip.id),
       thumbnail: clipThumbnail(

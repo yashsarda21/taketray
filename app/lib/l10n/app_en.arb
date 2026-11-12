@@ -961,7 +961,7 @@
   },
   "missingClipRemovedSnack": "Missing clip removed",
   "@missingClipRemovedSnack": {
-    "description": "Snack shown after a missing clip is taken out of a reel, with an Undo button."
+    "description": "Snack shown after a missing clip is taken out of a reel, To tag or Skipped, with an Undo button."
   },
   "cameraFailedSnack": "Couldn't open the camera.",
   "@cameraFailedSnack": {

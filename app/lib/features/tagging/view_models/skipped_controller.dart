@@ -53,6 +53,9 @@ class SkippedController extends _$SkippedController {
   Future<InboxUndo> restore(Iterable<int> clipIds) =>
       ref.read(clipsRepositoryProvider).restoreClips(clipIds);
 
+  Future<InboxRemoveUndo> removeMissing(int clipId) =>
+      ref.read(clipsRepositoryProvider).removeMissingFromInbox(clipId);
+
   /// The reads of `ref` are inside the guarded step: after the provider was
   /// disposed (the screen closed at once) `ref.read` throws, and that must
   /// be logged like any other error, not leak out of an unawaited call.

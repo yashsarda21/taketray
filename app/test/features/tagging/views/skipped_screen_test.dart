@@ -5,7 +5,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/database/app_database.dart'
+    show ClipReelsCompanion;
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/enums.dart';
@@ -54,6 +57,31 @@ class _FailingRestore extends ClipsRepository {
 
   @override
   Future<InboxUndo> restoreClips(Iterable<int> clipIds) =>
+      Future.error(StateError('disk full'));
+}
+
+/// A clips repository that counts remove-a-missing-clip writes and can hold
+/// the first one.
+class _CountingRemoveMissing extends ClipsRepository {
+  _CountingRemoveMissing(VmHarness h) : super(h.media.db, h.media.clock);
+
+  int removes = 0;
+  Completer<void>? gate;
+
+  @override
+  Future<InboxRemoveUndo> removeMissingFromInbox(int clipId) async {
+    removes++;
+    await gate?.future;
+    return await super.removeMissingFromInbox(clipId);
+  }
+}
+
+/// A clips repository whose remove-a-missing-clip write fails.
+class _FailingRemoveMissing extends ClipsRepository {
+  _FailingRemoveMissing(VmHarness h) : super(h.media.db, h.media.clock);
+
+  @override
+  Future<InboxRemoveUndo> removeMissingFromInbox(int clipId) =>
       Future.error(StateError('disk full'));
 }
 
@@ -724,6 +752,238 @@ void main() {
 
       expect(find.text(toTagRouteMarker), findsOneWidget);
     });
+  });
+
+  // Remove on a missing tile (final fix wave, D-116): the same tile, copy and
+  // snack as the reel page's; it takes the clip's row out of Skipped and the
+  // clip with it when it has no other place; Undo puts back exactly that.
+  group('Remove on a missing clip', () {
+    /// Three skipped clips, the middle one flagged missing in place.
+    Future<List<int>> withMissing(WidgetTester tester) async {
+      final ids = await skipped(tester, [
+        DateTime.utc(2026, 10, 28, 12, 1),
+        DateTime.utc(2026, 10, 28, 12, 2),
+        DateTime.utc(2026, 10, 28, 12, 3),
+      ]);
+      await real(tester, () => flagInPlaceForTest(h, {ids[1]}));
+      return ids;
+    }
+
+    testApp('the missing tile has Remove, named Remove, in a 48 dp target', (
+      tester,
+    ) async {
+      await withMissing(tester);
+      await open(tester);
+
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(find.text('Missing from phone'), findsOneWidget);
+      expect(find.text('Remove'), findsOneWidget);
+      final size = tester.getSize(
+        find.descendant(
+          of: find.byType(TtMissingClipTile),
+          matching: find.byType(TtButton),
+        ),
+      );
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(
+        find.bySemanticsLabel('Remove'),
+        findsOneWidget,
+        reason: 'a screen reader hears the action by name',
+      );
+    });
+
+    testApp('Remove takes the clip out of Skipped and deletes it, with a '
+        '"Missing clip removed" snack', (tester) async {
+      final ids = await withMissing(tester);
+      await open(tester);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.byType(TtMissingClipTile), findsNothing);
+      expect(tiles(tester), hasLength(2));
+      expect(await skippedIds(tester), [ids[0], ids[2]]);
+      expect(await real(tester, h.media.clips.allClipIds), {
+        ids[0],
+        ids[2],
+      }, reason: 'the clip is in no reel and no list: deleted (D-56)');
+      expect(find.text('Missing clip removed'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    });
+
+    testApp('Undo puts back the row in Skipped and the clip with its id', (
+      tester,
+    ) async {
+      final ids = await withMissing(tester);
+      await open(tester);
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      await snackUndo(tester);
+
+      expect(await skippedIds(tester), ids);
+      expect(await real(tester, h.media.clips.allClipIds), ids.toSet());
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(await pendingIds(tester), isEmpty);
+    });
+
+    testApp('a clip that is also in a reel keeps its link: only its Skipped '
+        'row goes', (tester) async {
+      final ids = await withMissing(tester);
+      final reel = await real(
+        tester,
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      );
+      // Both at once is not made by the app (D-57); the data could hold it.
+      await real(
+        tester,
+        () => h.media.db
+            .into(h.media.db.clipReels)
+            .insert(
+              ClipReelsCompanion.insert(
+                clipId: ids[1],
+                reelId: reel.id,
+                addedAt: DateTime.utc(2026, 10, 28, 13),
+              ),
+            ),
+      );
+      await open(tester);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(await skippedIds(tester), [ids[0], ids[2]]);
+      expect(await real(tester, h.media.clips.allClipIds), ids.toSet());
+      expect(
+        (await real(
+          tester,
+          () => h.media.db.select(h.media.db.clipReels).get(),
+        )).single.reelId,
+        reel.id,
+      );
+    });
+
+    testApp('Remove twice removes once', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+      final remove = find.text('Remove');
+
+      await tester.tap(remove);
+      await tester.tap(remove, warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.text('Missing clip removed'), findsOneWidget);
+      expect(tiles(tester), hasLength(2));
+    });
+
+    testApp('a second tap on Remove while the first write runs writes '
+        'nothing more', (tester) async {
+      await withMissing(tester);
+      final counting = _CountingRemoveMissing(h)..gate = Completer<void>();
+      await open(
+        tester,
+        overrides: [clipsRepositoryProvider.overrideWithValue(counting)],
+      );
+
+      await tester.tap(find.text('Remove'));
+      await tester.pump();
+      await tester.tap(find.text('Remove'), warnIfMissed: false);
+      await tester.pump();
+      counting.gate!.complete();
+      await settleApp(tester);
+
+      expect(counting.removes, 1);
+      expect(find.text('Missing clip removed'), findsOneWidget);
+    });
+
+    testApp('a failed Remove says so and keeps the tile', (tester) async {
+      await withMissing(tester);
+      await open(
+        tester,
+        overrides: [
+          clipsRepositoryProvider.overrideWithValue(_FailingRemoveMissing(h)),
+        ],
+      );
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    testApp('a tile that was found again is not removed', (tester) async {
+      final ids = await withMissing(tester);
+      await open(tester);
+      // The video is back and a verify has found it while the tile is still
+      // on the screen.
+      await real(tester, () => flagForTest(h, {ids[1]}, missing: false));
+
+      await tester.tap(find.text('Remove'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.text('Missing clip removed'), findsNothing);
+      expect(await skippedIds(tester), ids);
+    });
+
+    testApp('a missing tile still cannot be chosen or restored; its Remove '
+        'does not start choosing', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+
+      await tester.longPress(find.byType(TtMissingClipTile));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+
+      await tester.tap(button('Select'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TtMissingClipTile), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      expect(find.text('0 selected'), findsOneWidget);
+      // Remove still works while choosing, and does not choose.
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+      expect(find.text('0 selected'), findsOneWidget);
+      expect(find.text('Missing clip removed'), findsOneWidget);
+    });
+
+    testApp('Undo works after leaving the screen', (tester) async {
+      final ids = await withMissing(tester);
+      await open(tester);
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await snackUndo(tester);
+
+      expect(await skippedIds(tester), ids);
+    });
+
+    for (final scale in [1.0, 2.0]) {
+      testApp('a missing tile with Remove at ${scale}x: nothing overflows, '
+          'and it is accessible', (tester) async {
+        final ids = await withMissing(tester);
+        await open(tester, textScale: scale);
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(TtMissingClipTile), findsOneWidget);
+        final missing = tester.getSize(find.byType(TtMissingClipTile));
+        expect(
+          missing.height,
+          greaterThanOrEqualTo(missing.width * 4 / 3 - 0.5),
+        );
+        if (scale > 1) {
+          // The row grew past 3:4 to hold the content at full size, and the
+          // picture tiles keep their 3:4 shape inside it.
+          final normal = tester.getSize(find.byType(TtClipTile).first);
+          expect(normal.height, closeTo(normal.width * 4 / 3, 0.5));
+        }
+        await expectTtAccessible(tester);
+        expect(ids, hasLength(3));
+      });
+    }
   });
 
   group('large text and accessibility', () {

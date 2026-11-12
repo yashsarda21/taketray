@@ -574,6 +574,47 @@ class ClipsRepository {
     return record;
   }
 
+  /// **Remove** on a missing tile in To tag or Skipped (D-116): takes clip
+  /// [clipId]'s `inbox` row out, then runs the orphan sweep (D-56), so the
+  /// clip is deleted when it is in no reel and no list. One transaction.
+  /// The video file and the `vn_copies` rows are never touched (D-54), and no
+  /// reel is.
+  ///
+  /// Only a clip that is flagged `missing` **and** has an `inbox` row (in
+  /// either state) is removed: if a verify found its video again, or the
+  /// clip is in a reel only, or is unknown, nothing is written and the record
+  /// is empty. A clip that is also in a reel (not a state the app makes,
+  /// D-57) keeps its link and its row in the reel; only the list row goes.
+  /// MediaStore and picked clips alike.
+  ///
+  /// Returns what [undo] needs: the row as it was, and every field of each
+  /// clip the sweep deleted.
+  Future<InboxRemoveUndo> removeMissingFromInbox(int clipId) async {
+    final record = await _db.transaction(() async {
+      final missing = _db.selectOnly(_db.clips)
+        ..addColumns([_db.clips.id])
+        ..where(_db.clips.missing.equals(true));
+      final rows =
+          await (_db.select(_db.inbox)..where(
+                (i) => i.clipId.equals(clipId) & i.clipId.isInQuery(missing),
+              ))
+              .get();
+      if (rows.isEmpty) {
+        return InboxRemoveUndo(removed: const [], sweptClips: const []);
+      }
+      await (_db.delete(_db.inbox)..where((i) => i.clipId.equals(clipId))).go();
+      return InboxRemoveUndo(
+        removed: [for (final row in rows) _entryOf(row)],
+        sweptClips: await _undo.sweepOrphans(),
+      );
+    });
+    _log.info(
+      'Removed ${record.removed.length} missing clips from their list, '
+      'swept ${record.sweptClips.length}',
+    );
+    return record;
+  }
+
   /// Skip all (D-94): moves every clip in To tag to Skipped, in one
   /// transaction that reads the rows and writes them, so a clip a scan saves
   /// meanwhile is either in the record (it was saved first) or still in To

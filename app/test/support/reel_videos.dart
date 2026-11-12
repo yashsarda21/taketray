@@ -57,3 +57,9 @@ Future<void> flagForTest(VmHarness h, Set<int> ids, {required bool missing}) =>
       gone: missing ? ids : {},
       otherVideo: {},
     );
+
+/// Flags clips [ids] as `missing` and leaves them where they are: the way
+/// a picked clip whose address cannot be read looks after a verify (D-116),
+/// in To tag, Skipped or a reel.
+Future<void> flagInPlaceForTest(VmHarness h, Set<int> ids) => h.media.clips
+    .applyVerification(found: {}, gone: {}, otherVideo: {}, flagOnly: ids);

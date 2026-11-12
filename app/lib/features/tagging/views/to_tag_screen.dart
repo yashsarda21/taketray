@@ -32,6 +32,7 @@ import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
 import 'package:taketray/features/tagging/views/clip_tile_row.dart';
 import 'package:taketray/features/tagging/views/day_header_text.dart';
+import 'package:taketray/features/tagging/views/remove_missing_clip.dart';
 import 'package:taketray/features/tagging/views/skip_all_dialog.dart';
 import 'package:taketray/features/tagging/views/time_range_text.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -101,12 +102,12 @@ final Logger _log = Logger('toTag');
 /// The list is one lazy sliver of rows (day header, scene header, three
 /// tiles), so 300 clips over 60 scenes build a screenful.
 ///
-/// A clip flagged missing shows as the "Missing from phone" tile, with no
-/// Remove button and not selectable. The verifier takes a missing MediaStore
-/// clip that is only in To tag out of the list (D-72), but a picked clip whose
-/// address cannot be read is only flagged and stays here (D-116: an unplugged
-/// drive looks like a deleted video), until it can be read again. Remove for
-/// this tile is parked in `later.md`.
+/// A clip flagged missing shows as the "Missing from phone" tile, not
+/// selectable, with **Remove** (the reel page's tile and snack, with **Undo**,
+/// D-116). The verifier takes a missing MediaStore clip that is only in To tag
+/// out of the list (D-72), but a picked clip whose address cannot be read is
+/// only flagged and stays here (an unplugged drive looks like a deleted
+/// video), until it can be read again or the user removes it.
 ///
 /// **Add videos** opens the folder browser for To tag (`openAddVideos`, once
 /// however fast the taps); the videos it adds arrive here, with a snack and
@@ -129,7 +130,10 @@ class ToTagScreen extends ConsumerStatefulWidget {
 }
 
 class _ToTagScreenState extends ConsumerState<ToTagScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with
+        WidgetsBindingObserver,
+        SingleTickerProviderStateMixin,
+        RemoveMissingClip<ToTagScreen> {
   /// Whether the tab was showing the last time its dependencies changed.
   bool _wasActive = true;
 
@@ -809,6 +813,12 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
           ? notifier.toggle(clip.id)
           : notifier.start(clip.id),
       semanticLabel: l10n.clipTileSemantics,
+      onRemoveMissing: (clip) => unawaited(
+        removeMissingClip(
+          clip.id,
+          ref.read(toTagControllerProvider.notifier).removeMissing,
+        ),
+      ),
       decorate: (clip, tile) {
         final span = _spans[clip.id];
         return span == null

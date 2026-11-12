@@ -191,6 +191,18 @@ void main() {
     expect(find.widgetWithText(TtButton, 'Add videos'), findsOneWidget);
   }, dark: true);
 
+  // The missing tile with its Remove button (D-116), among picture tiles.
+  both('a missing clip with Remove', 'missing', (
+    tester,
+    scale,
+    brightness,
+  ) async {
+    await waiting(tester);
+    await tester.runAsync(() => flagInPlaceForTest(h, {2}));
+    await open(tester, textScale: scale, brightness: brightness);
+    expect(find.byType(TtMissingClipTile), findsOneWidget);
+  });
+
   both('choosing clips', 'selection', (tester, scale, brightness) async {
     await waiting(tester);
     await open(tester, textScale: scale, brightness: brightness);

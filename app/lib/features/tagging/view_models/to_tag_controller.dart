@@ -8,6 +8,7 @@ import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/models/undo_record.dart';
 
 part 'to_tag_controller.g.dart';
 
@@ -43,6 +44,9 @@ class ToTagController extends _$ToTagController {
   /// To tag came back to the front (the app resumed while it is open): scans
   /// and verifies again.
   Future<void> onResume() => _refresh();
+
+  Future<InboxRemoveUndo> removeMissing(int clipId) =>
+      ref.read(clipsRepositoryProvider).removeMissingFromInbox(clipId);
 
   /// The reads of `ref` are inside the guarded steps: after the provider was
   /// disposed (the screen closed, then a late resume) `ref.read` throws, and

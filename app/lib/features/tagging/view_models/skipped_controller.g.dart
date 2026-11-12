@@ -72,7 +72,7 @@ final class SkippedControllerProvider
   SkippedController create() => SkippedController();
 }
 
-String _$skippedControllerHash() => r'aacb1be90d49d9f77bd8b940790d3399ef97fb8f';
+String _$skippedControllerHash() => r'b5fc654cd9f884f32c2a02ac9c5f606319e59574';
 
 /// The clips in Skipped, **newest first** (D-99).
 ///
