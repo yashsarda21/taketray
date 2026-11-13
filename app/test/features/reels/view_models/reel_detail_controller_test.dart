@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -10,6 +11,7 @@ import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 
 import '../../../support/reel_videos.dart';
+import '../../../support/spy_edit_session_service.dart';
 import '../../../support/vm_harness.dart';
 
 /// A verifier that only records what it was asked about.
@@ -476,6 +478,54 @@ void main() {
       final record = await notifier.removeMissing(ids.single);
 
       expect(record.removedLinks, hasLength(1));
+    });
+
+    test("deletes the clip's copy first (R8); when that fails nothing is "
+        'removed (p8-task6)', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)], onPhone: false);
+      final spy = SpyEditSessionService(h)
+        ..failLeave = const CopiesNotDeleted(1);
+      final container = open(
+        goa.id,
+        extra: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+      await stateOf(container, goa.id);
+      await settle();
+      final notifier = container.read(
+        reelDetailControllerProvider(goa.id).notifier,
+      );
+
+      await expectLater(
+        notifier.removeMissing(ids.single),
+        throwsA(isA<CopiesNotDeleted>()),
+      );
+      expect(spy.calls, ['leave ${goa.id} ${ids.single}']);
+      expect(await clips.clipIdsOfReel(goa.id), {ids.single});
+
+      spy.failLeave = null;
+      final record = await notifier.removeMissing(ids.single);
+      expect(spy.calls, hasLength(2));
+      expect(spy.reelClipsAtLeave.last, {ids.single});
+      expect(record.removedLinks, hasLength(1));
+    });
+
+    test('a clip that is not removed asks for no clean-up', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final spy = SpyEditSessionService(h);
+      final container = open(
+        goa.id,
+        extra: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+      await stateOf(container, goa.id);
+      await settle();
+
+      await container
+          .read(reelDetailControllerProvider(goa.id).notifier)
+          .removeMissing(ids.single);
+
+      expect(spy.calls, isEmpty);
     });
   });
 }

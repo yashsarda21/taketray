@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/background/background_sync.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
+import 'package:taketray/features/editors/view_models/copy_job_controller.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -34,7 +36,13 @@ final Logger _log = Logger('mediaLifecycle');
 /// 4. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
 ///    shooting? button tapped in the shade needs no step of its own: every
 ///    scan applies it first, inside its own job (D-106);
-/// 5. after a scan that read every volume (`ScanDone` with no failed volume;
+/// 5. the copy job (D-123): on the first run of this mount (the app's start)
+///    `EditSessionService.recoverAtStart`, once, after building the
+///    `CopyJobController` so the job is followed from then on; on every later
+///    run (a resume) `CopyJobController.onResume`, which only reads the
+///    engine's job again, never a second recovery. It runs whatever the scan
+///    did (Shooting mode off skips the scan, not this);
+/// 6. after a scan that read every volume (`ScanDone` with no failed volume;
 ///    an end from the shade counts), `BackgroundSync.flush` and then
 ///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
 ///    To tag now. The new baselines reach the phone's copy first, so the
@@ -68,6 +76,7 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   late final AppLifecycleListener _listener;
   bool _running = false;
   bool _again = false;
+  bool _recovered = false;
 
   @override
   void initState() {
@@ -129,6 +138,8 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       'The scan',
       () => ref.read(mediaScannerProvider).scan(),
     );
+    if (!mounted) return;
+    await _copyJob();
     // A volume that failed may still hold clips the job counts.
     if (scanned is! ScanDone || scanned.failedVolumes.isNotEmpty || !mounted) {
       return;
@@ -143,6 +154,23 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       _log,
       'Clearing the new clips notification',
       () => ref.read(backgroundBridgeProvider).clearNewClipsNotification(),
+    );
+  }
+
+  /// Step 5: recovery once per start, then only a read of the job.
+  Future<void> _copyJob() async {
+    if (!_recovered) {
+      _recovered = true;
+      await guarded(_log, 'The copy recovery', () async {
+        ref.read(copyJobControllerProvider);
+        await ref.read(editSessionServiceProvider).recoverAtStart();
+      });
+      return;
+    }
+    await guarded(
+      _log,
+      'Reading the copy job',
+      () => ref.read(copyJobControllerProvider.notifier).onResume(),
     );
   }
 

@@ -1486,6 +1486,28 @@ void main() {
       });
     });
 
+    group('clipIdsOfReel (p8-task6)', () {
+      test("is the reel's clip ids, read once; other reels and unknown "
+          'reels are not mixed in', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final inGoa = await repo.addNewClipsToReel(goa.id, [
+          mediaStoreClip(21),
+          mediaStoreClip(22),
+        ]);
+        final inParis = await repo.addNewClipsToReel(paris.id, [
+          mediaStoreClip(23),
+        ]);
+
+        expect(await repo.clipIdsOfReel(goa.id), inGoa.toSet());
+        expect(await repo.clipIdsOfReel(paris.id), inParis.toSet());
+        expect(await repo.clipIdsOfReel(999), isEmpty);
+
+        await repo.removeClipsFromReel(goa.id, [inGoa.first]);
+        expect(await repo.clipIdsOfReel(goa.id), {inGoa.last});
+      });
+    });
+
     group('mediaStoreClipsOn', () {
       test('excludes detached clips and other volumes', () async {
         final [a, b] = await detect([10, 11]);

@@ -6,10 +6,14 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/platform/copy_bridge.dart';
+import 'package:taketray/platform/editors_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 import '../data/media/media_harness.dart';
 import 'fake_background_bridge.dart';
+import 'fake_copy_bridge.dart';
+import 'fake_editors_bridge.dart';
 
 export '../data/media/media_harness.dart';
 
@@ -17,7 +21,9 @@ export '../data/media/media_harness.dart';
 /// clock) plus a [ProviderContainer] whose database, bridges and clock are the
 /// harness's, so the view models and `harness.store(...)` see the same data.
 /// The background bridge is a [FakeBackgroundBridge] ([background]), so the
-/// app's background copy (D-106) never reaches a phone channel.
+/// app's background copy (D-106) never reaches a phone channel; the editors
+/// and copy bridges are a [FakeEditorsBridge] ([editors]) and a
+/// [FakeCopyBridge] ([copy]), for the same reason (Phase 8).
 ///
 /// The container is disposed when the test ends.
 class VmHarness {
@@ -37,12 +43,20 @@ class VmHarness {
 
   RecordingBridge get bridge => media.bridge;
 
+  /// The editors bridge in the overrides.
+  final FakeEditorsBridge editors = FakeEditorsBridge();
+
+  /// The copy bridge in the overrides.
+  final FakeCopyBridge copy = FakeCopyBridge();
+
   /// The overrides that put the harness's database, bridge and clock into any
   /// container or `ProviderScope`.
   late final List<Override> overrides = [
     appDatabaseProvider.overrideWithValue(media.db),
     mediaBridgeProvider.overrideWithValue(media.bridge),
     backgroundBridgeProvider.overrideWithValue(background),
+    editorsBridgeProvider.overrideWithValue(editors),
+    copyBridgeProvider.overrideWithValue(copy),
     clockProvider.overrideWithValue(media.clock),
   ];
 

@@ -963,6 +963,15 @@ class ClipsRepository {
     return [for (final row in rows) _toClip(row)];
   }
 
+  /// The ids of the clips in reel [reelId], read once (empty for an unknown
+  /// reel).
+  Future<Set<int>> clipIdsOfReel(int reelId) async => {
+    for (final link in await (_db.select(
+      _db.clipReels,
+    )..where((l) => l.reelId.equals(reelId))).get())
+      link.clipId,
+  };
+
   /// The ids of every stored clip.
   Future<Set<int>> allClipIds() async {
     final query = _db.selectOnly(_db.clips)..addColumns([_db.clips.id]);

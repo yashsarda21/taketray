@@ -7,6 +7,8 @@ import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/copy_job_plan.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/rematch_window.dart';
 
@@ -357,6 +359,148 @@ void main() {
       await BackupService(db, clock).importJson(fixture);
 
       expect(await repo.folderTipSeen(), isFalse);
+    });
+  });
+
+  group('copy job plan (D-123, p8-task6)', () {
+    CopyJobPlan plan(String jobId, {int reelId = 3}) => CopyJobPlan(
+      jobId: jobId,
+      reelId: reelId,
+      editor: EditorApp.vn,
+      folderName: 'Goa trip',
+      startedSession: true,
+      items: const [
+        (clipId: 11, fileName: '2026-10-12_14-32-05.mp4', sizeBytes: 900),
+        (clipId: 12, fileName: '2026-10-12_14-32-05_2.mov', sizeBytes: 5),
+      ],
+    );
+
+    test(
+      'none until saved; saved, it reads back equal, under its key',
+      () async {
+        expect(PhoneStateRepository.copyJobPlanKey, 'copyJobPlan');
+        expect(await repo.copyJobPlan(), isNull);
+
+        await repo.saveCopyJobPlan(plan('3-100'));
+
+        expect(await repo.copyJobPlan(), plan('3-100'));
+        expect(await _raw('copyJobPlan'), contains('"jobId":"3-100"'));
+      },
+    );
+
+    test('keeps the editor, startedSession and the items in order', () async {
+      final other = CopyJobPlan(
+        jobId: '4-1',
+        reelId: 4,
+        editor: EditorApp.capcut,
+        folderName: 'Paris',
+        startedSession: false,
+        items: const [
+          (clipId: 9, fileName: 'b.mp4', sizeBytes: 1),
+          (clipId: 2, fileName: 'a.mp4', sizeBytes: 3000000000),
+        ],
+      );
+      await repo.saveCopyJobPlan(other);
+
+      final read = (await repo.copyJobPlan())!;
+      expect(read.editor, EditorApp.capcut);
+      expect(read.startedSession, isFalse);
+      expect([for (final i in read.items) i.clipId], [9, 2]);
+      expect(read.items.last.sizeBytes, 3000000000);
+    });
+
+    test("saving the same job again replaces it; another job's plan throws "
+        'StateError and is not written', () async {
+      await repo.saveCopyJobPlan(plan('3-100'));
+      final again = CopyJobPlan(
+        jobId: '3-100',
+        reelId: 3,
+        editor: EditorApp.vn,
+        folderName: 'Goa trip',
+        startedSession: false,
+        items: const [],
+      );
+      await repo.saveCopyJobPlan(again);
+      expect(await repo.copyJobPlan(), again);
+
+      await expectLater(
+        repo.saveCopyJobPlan(plan('5-200', reelId: 5)),
+        throwsStateError,
+      );
+      expect(await repo.copyJobPlan(), again);
+    });
+
+    test(
+      'remove takes only the plan of that job, and says whether it did',
+      () async {
+        await repo.saveCopyJobPlan(plan('3-100'));
+
+        expect(await repo.removeCopyJobPlan('3-999'), isFalse);
+        expect(await repo.copyJobPlan(), plan('3-100'));
+
+        expect(await repo.removeCopyJobPlan('3-100'), isTrue);
+        expect(await repo.copyJobPlan(), isNull);
+        expect(await _raw('copyJobPlan'), isNull);
+        expect(await repo.removeCopyJobPlan('3-100'), isFalse);
+      },
+    );
+
+    test('an unreadable value is no plan, logged by key only, and a save '
+        'replaces it', () async {
+      final records = _record();
+      const goa = '"folderName":"Goa trip"';
+      const on = '"startedSession":true';
+      const oneBadItem = '"items":[{"clipId":1,"fileName":"x.mp4"}]';
+      for (final bad in <String>[
+        '{not json',
+        '"Goa trip"',
+        '{"jobId":"3-1","reelId":3,"editor":"vn",$goa,$on}',
+        '{"jobId":"3-1","reelId":3,"editor":"imovie",$goa,$on,"items":[]}',
+        '{"jobId":"3-1","reelId":"3","editor":"vn",$goa,$on,"items":[]}',
+        '{"jobId":"3-1","reelId":3,"editor":"vn",$goa,$on,$oneBadItem}',
+        '{"jobId":"","reelId":3,"editor":"vn",$goa,$on,"items":[]}',
+      ]) {
+        await _put('copyJobPlan', bad);
+        expect(await repo.copyJobPlan(), isNull, reason: bad);
+      }
+      final lines = records.map((r) => r.message).join('\n');
+      expect(lines, contains('copyJobPlan'));
+      expect(lines, isNot(contains('Goa trip')));
+      expect(lines, isNot(contains('x.mp4')));
+
+      await repo.saveCopyJobPlan(plan('3-100'));
+      expect(await repo.copyJobPlan(), plan('3-100'));
+    });
+
+    test('logs neither the folder nor a file name', () async {
+      final records = _record();
+      await repo.saveCopyJobPlan(plan('3-100'));
+      await repo.copyJobPlan();
+      await repo.removeCopyJobPlan('3-100');
+
+      final lines = records.map((r) => r.message).join('\n');
+      expect(lines, isNot(contains('Goa trip')));
+      expect(lines, isNot(contains('14-32-05')));
+      expect(plan('3-100').toString(), isNot(contains('Goa trip')));
+      expect(plan('3-100').toString(), isNot(contains('14-32-05')));
+    });
+
+    test('is not exported, and an import forgets it', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.copyJobPlanKey)),
+      );
+      await repo.saveCopyJobPlan(plan('3-100'));
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('copyJobPlan')),
+      );
+      final fixture = File('test/data/backup/fixtures/backup_v1.json')
+          .readAsStringSync();
+
+      await BackupService(db, clock).importJson(fixture);
+
+      expect(await repo.copyJobPlan(), isNull);
     });
   });
 

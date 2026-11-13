@@ -87,6 +87,11 @@ class EditSessionsRepository {
     return row == null ? null : _toSession(row);
   }
 
+  /// Reel [reelId]'s session with its copies and sent clips, read once (one
+  /// transaction); null without a session. What [watchEditState] gives, for a
+  /// caller that must not hold a stream (`EditSessionService`).
+  Future<EditState?> editState(int reelId) => _editState(reelId);
+
   /// Reel [reelId]'s session with its copies and sent clips, now and again
   /// after every change to them; null while the reel has no session.
   ///

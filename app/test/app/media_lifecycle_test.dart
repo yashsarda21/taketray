@@ -7,15 +7,18 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 import '../support/fake_background_bridge.dart';
 import '../support/fake_media_bridge.dart';
+import '../support/spy_edit_session_service.dart';
 import '../support/vm_harness.dart';
 
 /// A cache that only counts how often it is pruned.
@@ -232,6 +235,94 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
+  });
+
+  group('copy recovery (D-123, p8-task6)', () {
+    late SpyEditSessionService spy;
+
+    setUp(() => spy = SpyEditSessionService(h));
+
+    Future<void> start(WidgetTester tester) => pumpLifecycle(
+      tester,
+      extra: [editSessionServiceProvider.overrideWithValue(spy)],
+    );
+
+    testWidgets('recoverAtStart runs once per start, after the scan; a '
+        'resume reads the job again instead of a second recovery', (
+      tester,
+    ) async {
+      await h.media.turnOnNow();
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(spy.mediaCallsAtRecover.single, contains('videosAddedAfter'));
+      final currents = h.copy.calls.where((c) => c == 'current').length;
+
+      await resume(tester);
+      await work(tester);
+      await resume(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(h.copy.calls.where((c) => c == 'current').length, currents + 2);
+    });
+
+    testWidgets('runs with Shooting mode off too (the scan is skipped)', (
+      tester,
+    ) async {
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+    });
+
+    testWidgets('the copy job is followed from the start: an event is '
+        'applied with no copy screen open', (tester) async {
+      await start(tester);
+      await work(tester);
+      final now = h.media.clock.now().millisecondsSinceEpoch;
+
+      h.copy.emit(
+        CopyJob(
+          jobId: '1-$now',
+          reelId: 1,
+          folderName: 'Goa',
+          state: CopyState.running,
+          total: 1,
+          done: 1,
+          bytesDone: 1,
+          bytesTotal: 1,
+          copied: [
+            CopiedFile(
+              clipId: 1,
+              copyMediaStoreId: 601,
+              fileName: 'a.mp4',
+              sizeBytes: 1,
+              copiedAt: h.media.clock.now(),
+            ),
+          ],
+          failedClipIds: const [],
+          undeleted: const [],
+        ),
+      );
+      await work(tester);
+
+      expect(spy.applied, hasLength(1));
+    });
+
+    testWidgets('a failing recovery is logged by type and not surfaced', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      spy.failRecover = StateError('boom');
+
+      await start(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(records.map((r) => r.message).join('\n'), contains('StateError'));
     });
   });
 

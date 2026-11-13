@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/clip_time.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -154,7 +155,9 @@ class ReelDetailController extends _$ReelDetailController {
   ///
   /// Only a clip that is flagged missing and is in this reel is removed: if
   /// the verify found its video again, or the clip is not here, nothing
-  /// changes and the record is empty (the view then says nothing).
+  /// changes and the record is empty (the view then says nothing). During an
+  /// editing session its copy is deleted first (R8); when it cannot be,
+  /// `CopiesNotDeleted` is thrown and nothing is removed.
   ///
   /// Single-flight per clip: a second tap while the first runs gets the same
   /// future, so the link is removed once and there is one record. Throws when
@@ -164,7 +167,8 @@ class ReelDetailController extends _$ReelDetailController {
     final running = _removing[clipId];
     if (running != null) return running;
     final repository = ref.read(clipsRepositoryProvider);
-    final run = _remove(repository, clipId);
+    final editing = ref.read(editSessionServiceProvider);
+    final run = _remove(repository, editing, clipId);
     _removing[clipId] = run;
     unawaited(
       run.then<void>((_) {}, onError: (_) {}).then<void>((_) {
@@ -174,7 +178,11 @@ class ReelDetailController extends _$ReelDetailController {
     return run;
   }
 
-  Future<RemoveUndo> _remove(ClipsRepository clips, int clipId) async {
+  Future<RemoveUndo> _remove(
+    ClipsRepository clips,
+    EditSessionService editing,
+    int clipId,
+  ) async {
     final id = reelId;
     try {
       final inReel = await clips.watchReelClips(id).first;
@@ -187,6 +195,8 @@ class ReelDetailController extends _$ReelDetailController {
           touch: null,
         );
       }
+      // Its copy goes first (R8); if it cannot, nothing is removed.
+      await editing.beforeClipsLeaveReel(id, {clipId});
       return await clips.removeClipsFromReel(id, [clipId]);
     } on Object catch (error) {
       _log.warning(

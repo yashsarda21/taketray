@@ -785,6 +785,7 @@ Tests: `packages/taketray_ui/test/components/{storage_bar,bottom_bar,illustrated
 3. **Run, step 2: access.** `MediaAccessController.refresh()`: reads `bridge.accessReport()`; seeing `full` for the first time stores `mediaAccessWasFull`; the new `MediaAccessView(level, banner, canAskAgain)` is shown. The banner (`bannerFor`): full → `none`; limited → `manual`; denied with `accessWasFull` → `lost`; denied without it → `manual`. Several calls at once: only the last one to start writes the state. If the very first read fails the state is an `AsyncError` until a later `refresh()` or `allow()` succeeds; a first read that fails after one of those already published a view hands that view back instead of replacing it.
 3b. **Run, step 2b: notification permission.** `NotificationAccessController.refresh()` (D-107): reads `BackgroundBridge.notificationAccess()` and shows it, so the Notifications row in Settings is right when the user comes back from the phone's settings. Guarded like every step.
 4. **Run, step 3: scan.** `MediaScanner.scan()` (see "Finding new clips"). Its gate applies a Still shooting? button tapped in the shade first (D-106), so the run has no shade step of its own (fix round 2: a separate apply was a second try of the same end).
+4b. **Run, step 3b: the copy job** (D-123), whatever the scan returned. On the first run of the mount (the app's start): `ref.read(copyJobControllerProvider)` (so the copy job is followed from now on), then `EditSessionService.recoverAtStart()`, once (see "Editing a reel" › "After Android stopped TakeTray"). On every later run (a resume): `CopyJobController.onResume()`, which only reads the engine's job again (`CopyBridge.current()`) and records what it holds; never a second recovery.
 5. **Run, step 4: after a scan that read every volume** (`ScanDone` with no failed volumes; a capped end from the shade counts; not after `ScanShootingOff`, `ScanNoAccess`, `ScanDeferred`, a failed volume, which may still hold clips the job counts, or a scan that threw): `BackgroundSync.flush()`, then `BackgroundBridge.clearNewClipsNotification()` (D-106). The flush writes the moved baselines into the phone's copy first, so a new-clips job that runs after the clear counts with them, not the old ones, and cannot post the clips just scanned again. A failed write is logged by the flush, and the clear still runs.
 6. **Prune, once per app start (once per mount of `MediaLifecycle`):** awaits `thumbnailCacheProvider.future`, then `ThumbnailCache.prune()`. Not repeated on resume.
 7. **Every step is guarded** (`core/guarded.dart › guarded`): an error of any kind is logged as `<step> failed: <ErrorType>` (never the message or a stack trace, which may hold a path) and the next step still runs. Nothing reaches the UI as an uncaught error; the UI never waits for a run.
@@ -901,7 +902,7 @@ Tests: `packages/taketray_ui/test/components/{storage_bar,bottom_bar,illustrated
 
 1. A screen calls `showDeleteReelDialog(context, reel)` (the reel page's ⋮ ▸ Delete reel, Task 8). Before awaiting anything it captures the words, `ReelSnacks.of(context)`, `GoRouter.of(context)` and `ReelActions`.
 2. `showTtDialog` shows a `TtDialog` with the delete icon, "Delete {name}?", a `TtDialogNote` ("Your videos stay in your gallery. Only this reel and its tags are removed.") and **Cancel** / **Delete reel** (danger). The route pops with `true` only for **Delete reel**; Cancel, a tap outside and Android back return false or null and nothing happens. While the dialog closes the route ignores more taps.
-3. `ReelActions.confirmDelete(id)` is single-flight per reel id: a second call while one runs returns the first call's future. It calls `ReelsRepository.delete(id)` (one transaction: the reel, its links, references and VN session go; the orphan sweep reads then deletes the clips left in no reel and no list) and returns the `DeleteReelUndo` record. A failure is logged by type and rethrown.
+3. `ReelActions.confirmDelete(id)` is single-flight per reel id: a second call while one runs returns the first call's future. It first calls `EditSessionService.beforeReelDelete(id)` (D-123: cancels the reel's copy job, deletes every copy through the guard, ends the editing session; a throw, such as `CopiesNotDeleted`, deletes nothing), then `ReelsRepository.delete(id)` (one transaction: the reel, its links, references and any editing rows go; the orphan sweep reads then deletes the clips left in no reel and no list) and returns the `DeleteReelUndo` record. A failure is logged by type and rethrown.
 4. Back in the dialog function: a record that is not empty (`reel != null`) goes to `ReelSnacks.showUndo("{name} deleted", record)`, an **Undo** snack on the root messenger; then `router.go(Routes.reels)`. A failure shows `reelActionFailed` and leaves the app where it is.
 5. **Undo** (`ReelSnacks._undo`): `ReelsRepository.undoAll([record])` (`data/repositories/undo_writer.dart`, see "Undo") puts the reel, its links and the swept clips back with the same ids. The snack runs the action once however often it is tapped (`showTtSnackOn` guards it). If it throws, the type is logged and "Couldn't undo. Try again." (`undoFailed`) is shown. Because the messenger, container and words were captured in step 1, Undo works after the dialog's screen has gone, until the snack closes. The remove, move and add snacks of Tasks 8 to 10 use the same `ReelSnacks` (`showUndo`, `showUndoAll`).
 
@@ -930,7 +931,7 @@ Tests: `packages/taketray_ui/test/components/{storage_bar,bottom_bar,illustrated
 
 **Remove on a missing tile:**
 1. The screen looks up `ReelSnacks.of(context)`, the words and the notifier **before** awaiting.
-2. `ReelDetailController.removeMissing(clipId)`: a second call for the same clip while one runs returns the same future. It reads the reel's clips; if the clip is not in the reel, or is no longer flagged missing (a verify found the video again), it returns an empty `RemoveUndo` and changes nothing. Else `ClipsRepository.removeClipsFromReel(reelId, [clipId])` (one transaction; the orphan sweep may delete the clip row, and the record keeps it, D-84).
+2. `ReelDetailController.removeMissing(clipId)`: a second call for the same clip while one runs returns the same future. It reads the reel's clips; if the clip is not in the reel, or is no longer flagged missing (a verify found the video again), it returns an empty `RemoveUndo` and changes nothing. Else `EditSessionService.beforeClipsLeaveReel(reelId, {clipId})` (its copy is deleted first during an editing session, D-123; `CopiesNotDeleted` → nothing removed, the error goes to the view), then `ClipsRepository.removeClipsFromReel(reelId, [clipId])` (one transaction; the orphan sweep may delete the clip row, and the record keeps it, D-84).
 3. A record that is not empty → "Missing clip removed" with **Undo** on the root messenger. Undo (`ReelsRepository.undo`) puts back the link with its `addedAt` and, if it was swept, the same clip with its id; it still works after the page has been left. An empty record shows nothing. A thrown error shows "Something went wrong. Try again." and the tile stays.
 
 **A reel that is gone** (deleted here, deleted elsewhere, or an id that names none): `detail.hasValue && detail.value == null` → after the frame, once, `context.go(Routes.reels)`.
@@ -954,7 +955,7 @@ Tests: `packages/taketray_ui/test/components/{storage_bar,bottom_bar,illustrated
 
 **Tag mode** (D-98) is the picker's third mode, opened by To tag: `excludeReelId` / `fromReelId` are null (add and move assert one), `_multi` is true, `LastTags.set` runs after the write, and its snack and Undo are in "To tag" above.
 
-**Remove** (`_removeChosen`): `ReelClipActions.removeFromReel(reelId, ids)` → one `ClipsRepository.removeClipsFromReel` (the orphan sweep may delete a clip that was only here; the record keeps it). A non-empty record → "{n} clips removed from {reel}. The videos are still in your gallery." (singular for one clip) with **Undo**, then `clear()`. A second tap while it runs does nothing. A failure shows "Something went wrong. Try again." and keeps the selection.
+**Remove** (`_removeChosen`): `ReelClipActions.removeFromReel(reelId, ids)` → `EditSessionService.beforeClipsLeaveReel(reelId, ids)` first (D-123: during an editing session the clips' copies are deleted and the count goes into `ClipActionOutcome.copiesDeleted`; a copy not deleted throws `CopiesNotDeleted` and nothing is removed; a move calls it for the source reel the same way), then one `ClipsRepository.removeClipsFromReel` (the orphan sweep may delete a clip that was only here; the record keeps it). A non-empty record → "{n} clips removed from {reel}. The videos are still in your gallery." (singular for one clip) with **Undo**, then `clear()`. A second tap while it runs does nothing. A failure shows "Something went wrong. Try again." and keeps the selection.
 
 **In tests:** `test/features/reels/views/reel_selection_screen_test.dart` (the whole page with a real in-memory database), `view_models/reel_selection_test.dart`, `reel_picker_test.dart`, `reel_clip_actions_test.dart`; `flagForTest` in `test/support/reel_videos.dart` flags clips missing.
 
@@ -1181,6 +1182,64 @@ Copies a reel's clips into `Movies/TakeTray/<folder>/` in the app's own process,
 **Debug hooks:** `DebugHooks.register(engine, activity)` → `DebugCopyHooks.register`: channel `app.taketray/test_copy` with `setCopyThrottleMs(int)` (sets `CopyEngine.shared(...).throttleMs`; a negative or non-whole number is `bad-argument`) and `keepScreenOnFlag()` (the activity window's flag now).
 
 **In tests:** Robolectric (`tool/test_android`): `editors/{CopyJobTest,CopyEngineTest,CopyStoreTest,CopyHostApiImplTest,KeepScreenOnTest}.kt` over `FakeCopyStore` and `FakeCopyProvider`, `DebugCopyHooksTest.kt`, `ManifestTest.kt`; Dart: `test/platform/copy_bridge_test.dart`, `test/platform/fake_copy_bridge_test.dart`; `test/support/fake_copy_bridge.dart` keeps the engine's rules for later tasks.
+
+### Editing a reel (`lib/data/editors/edit_session_service.dart`, `lib/features/editors/view_models/copy_job_controller.dart`, Phase 8 Task 6, D-123)
+
+`EditSessionService` (kept alive, `editSessionServiceProvider`) runs every editing session over `EditSessionsRepository`, `ClipsRepository`, `ReelsRepository`, `PhoneStateRepository`, `EditorsBridge`, `CopyBridge`, `ClipTimeService` and the clock. Every method that writes is queued on its own serial queue (`_serial`: each call runs after the ones queued before it, whatever they did), so two never interleave; inside a slot only private steps run. `editorChoices`, `share`, `jobContext` and `deleteOrphans` are not queued. Logs: ids, counts, bytes, the editor's enum name and error types (D-10).
+
+**Editor sheet:** `editorChoices()` → `EditorsBridge.apps([capcut, edits, vn] packages, iconPx: 144)` → one `EditorChoice(editor, installed, icon)` each, in that order.
+
+**Send to CapCut or Edits** (`sendOriginals(reelId, editor, clipIds)`, single-flight per reel, queued):
+1. VN → `StateError`; a session of another editor → `StateError`.
+2. `clipsByIds`, keep the ones not missing and in the reel (`clipIdsOfReel`), `inShootingOrder`. None → `SendOutcome(failed, 0)`, nothing written.
+3. No session: `startSession(reel, editor, safeFolderName(reel name), alsoTaken: copyFolderNames())`.
+4. `recordSent(reel, ids)` → the ids this call added.
+5. `sendTo(editor.packageName, ClipRef.of each)`. `sent` → `SendOutcome(sent, n)`. `notInstalled`/`failed`/a throw → roll back: `endSession` if step 3 started it, else `removeSent(reel, added)`; a throw is rethrown.
+
+**Share** (`share(clipIds, title)`): live clips in shooting order → `shareWithChooser`; none → false, no call. No session, no row.
+
+**Plan a copy** (`planCopy(reel, editor, clipIds)`, queued): session checks (another editor → `StateError`; CapCut/Edits with no session → `StateError`); with a session, `_verify(reel)` (`existingCopies`; gone rows removed; a throw is logged and the rows stay); live clips of the reel with no recorded copy, in shooting order; `needBytes` their sizes; `freeBytes()`; `spaceCheck`; the folder: the session's, or `uniqueFolderName(safeFolderName(name), session folders + copyFolderNames())`; `startsSession` = no session.
+
+**Start a copy** (`startCopy(plan)`, single-flight per reel, queued):
+1. A saved `copyJobPlan` → `CopyBusy`, nothing written.
+2. Clips still live, in the reel, without a copy; none → `StateError`.
+3. First VN copy: `startSession(...)` (folder reserved, R1).
+4. Names: `ClipTimeService.localTimes(clips)` → `CopyNameSource(id, wallClock, copyExtension(displayName, mime))` → `copyFileNames(..., taken)`, `taken` = the session's copy names + `filesInCopyFolders()` names in that folder (folder compared ignoring case).
+5. Job id `<reelId>-<UTC ms>`. `PhoneStateRepository.saveCopyJobPlan(CopyJobPlan(jobId, reel, editor, folder, startedSession, items))` (refused while another job's plan is saved).
+6. `CopyBridge.start(CopyRequest(...))`. Any failure in 3 to 6 → `removeCopyJobPlan(jobId)` and `_endIfEmpty(reel)` if step 3 ran; rethrow.
+
+**While it copies:** `CopyJobController` (kept alive; `MediaLifecycle` builds it at start) listens to `CopyBridge.changes` and `EditSessionService.localJobs`; its state is the job. An engine event whose `(jobId, copied count, undeleted count, end state)` changed since the last apply → `applyJob(job)` (errors logged by type). An event of an older job id (smaller time) is ignored. `onResume()` reads `current()` and treats it like an event. `takeUnseenResult()`: true once per job id per process for a job not running.
+
+**`applyJob(job)`** (queued): ignored unless `job.jobId` is the saved plan's. Cancelled: the `copied` ids (deleted by the engine) are forgotten and their rows removed; `undeleted` go through the record step. Otherwise `copied` go through the record step: drop ids this process deleted or found gone; drop ones already recorded (same clip and id); a copy whose clip is not in the reel or whose reel has no session → `deleteCopies` (guarded), deleted/gone forgotten, one not deleted is recorded if the session exists; the rest → `recordCopies` one at a time (a `StateError` is logged by ids).
+
+**`finishJob(jobId)`** (queued): the engine's job, if it is this one: running → `StateError`; else `_apply`. Then copies of plan items whose clip left the reel → `deleteCopies`, rows of deleted/gone removed. `clear(jobId)`; `_endIfEmpty` if the job started the session; `removeCopyJobPlan(jobId)`.
+
+**`cancelCopy(jobId)`** (queued): `CopyBridge.cancel(jobId)`; an answer → `_apply` it and `clear`. No answer but the plan is this job's (recovered after a restart) → the recorded copies of its items → `deleteCopies`; deleted/gone rows removed; a `cancelled` job (deleted in `copied`, the rest in `undeleted`) on `localJobs`. Then `_endIfEmpty` if it started the session, and `removeCopyJobPlan`. A throw keeps the plan.
+
+**`resumeCopy(jobId)`** (queued): the engine's job → `resume`; another engine job → `CopyBusy`. After a restart: the plan's items with no recorded copy whose clip is live and in the reel → `CopyBridge.start` with the **same** job id and the plan's names; none → a `finished` job on `localJobs` (the rest in `failedClipIds`).
+
+**After Android stopped TakeTray** (`recoverAtStart()`, queued, once per start):
+1. `current()` not null (the process lived): `_apply` it, end empty sessions except its reel and the plan's; null.
+2. No plan: end empty sessions; null.
+3. `deletePendingIn(plan.folder)`, then `ownRowsIn(plan.folder)`: each finished row whose `fileName` is an item's → a `CopiedFile` for that item's clip at `storedNow()`. Session gone → those are deleted (`deleteCopies`), the plan removed, null. Else the record step (as in `applyJob`); a row matching no item is left alone.
+4. The `interrupted` job from the plan, listing the items with a recorded copy (by clip), on `localJobs`; then sessions with no copies, no sent rows and no plan end.
+5. Any throw: logged by type, nothing more changes, null (the plan stays).
+
+**`jobContext(jobId)`**: the saved plan's `(editor, startedSession)` while it is that job's; else null.
+
+**Done editing** (`doneEditing(reel)`, queued): a saved plan for the reel → `StateError`; no session → `StateError`; every copy → `deleteCopies`; deleted and gone rows removed; any refused/failed (or a throw) → `CopiesNotDeleted(count)` and the session stays; else `endSession`; `DoneEditingResult(editor, bytes of the deleted)`.
+
+**`verifyCopies(reel)`** (queued): `existingCopies` of the recorded copies; the gone rows removed (and forgotten); a throw changes nothing and is rethrown.
+
+**Before clips leave a reel** (`beforeClipsLeaveReel(reel, ids)`, queued): no session → 0; those clips' copies → `deleteCopies`; deleted/gone rows removed; returns how many; any left → `CopiesNotDeleted`. Callers: `ReelClipActions.removeFromReel` and `moveToReel` (source reel), `ReelDetailController.removeMissing`.
+
+**Before a reel is deleted** (`beforeReelDelete(reel)`, queued): the engine's job for this reel, or the saved plan's → `_cancel`; then every copy → `deleteCopies` (any left → `CopiesNotDeleted`, nothing ended); `endSession`. Caller: `ReelActions.confirmDelete`, before `ReelsRepository.delete`.
+
+**Storage** (`storage()`, queued): `summaries()`; `filesInCopyFolders()` (a throw → no orphans, logged); files whose id is no session's copy, minus the folders of the saved plan and the engine's job, grouped by folder → `OrphanFolder(folder, count, bytes, refs)`, folders sorted ignoring case. **`deleteOrphans(folder)`**: `requestDelete(files)` → the folder's bytes, or 0 when declined.
+
+**The plan row:** `PhoneStateRepository.copyJobPlanKey = 'copyJobPlan'`, JSON `{jobId, reelId, editor, folderName, startedSession, items: [{clipId, fileName, sizeBytes}]}`; an unreadable value is none (key name logged); `saveCopyJobPlan` refuses another job's plan (`StateError`); `removeCopyJobPlan(jobId)` is compare-and-delete. Not exported; an import deletes it.
+
+**In tests:** `test/data/editors/edit_session_service_test.dart` (in-memory database, `FakeEditorsBridge`, `FakeCopyBridge`, a fixed clock; a "restart" is a new service with a new `FakeCopyBridge` keeping the folder rows), `test/features/editors/copy_job_controller_test.dart`, `test/support/spy_edit_session_service.dart` (the real service noting the reel hooks), and `VmHarness`, which now overrides both bridges with fakes (`h.editors`, `h.copy`).
 
 ### Error logging
 

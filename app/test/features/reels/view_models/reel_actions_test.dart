@@ -3,11 +3,17 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_actions.dart';
 
+import '../../../support/reel_videos.dart';
+import '../../../support/spy_edit_session_service.dart';
 import '../../../support/vm_harness.dart';
 
 class _SlowReels extends ReelsRepository {
@@ -43,7 +49,7 @@ void main() {
   setUp(() {
     h = VmHarness();
     reels = _SlowReels(h.media.db, h.media.clock);
-    actions = ReelActions(reels);
+    actions = ReelActions(reels, h.container.read(editSessionServiceProvider));
   });
 
   test('two deletes at once delete once and share the record', () async {
@@ -103,5 +109,67 @@ void main() {
       throwsA(isA<StateError>()),
     );
     expect((await reels.getById(goa.id))!.status, ReelStatus.published);
+  });
+  group('editing session (R8, D-123, p8-task6)', () {
+    late SpyEditSessionService spy;
+
+    setUp(() {
+      spy = SpyEditSessionService(h);
+      actions = ReelActions(reels, spy);
+      reels.gate.complete();
+    });
+
+    test("ends the reel's session (its copies deleted) before the delete, "
+        'and Undo restores the reel with no session', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final sessions = EditSessionsRepository(h.media.db, h.media.clock);
+      await sessions.startSession(goa.id, EditorApp.vn, 'Goa');
+      await sessions.recordCopies([
+        EditCopy(
+          reelId: goa.id,
+          clipId: ids.single,
+          copyMediaStoreId: 501,
+          fileName: 'c.mp4',
+          sizeBytes: 10,
+          copiedAt: reelTestNow,
+        ),
+      ]);
+      h.editors.existing = {501};
+
+      final record = await actions.confirmDelete(goa.id);
+
+      expect(spy.calls, ['reelDelete ${goa.id}']);
+      expect(h.editors.existing, isEmpty);
+      expect(record.editSession, isNull);
+      expect(record.editCopies, isEmpty);
+      await reels.undo(record);
+      expect(await reels.getById(goa.id), isNotNull);
+      expect(await sessions.sessionOf(goa.id), isNull);
+    });
+
+    test('when the copies cannot be deleted nothing is deleted', () async {
+      final goa = await reels.create('Goa');
+      spy.failReelDelete = const CopiesNotDeleted(2);
+
+      await expectLater(
+        actions.confirmDelete(goa.id),
+        throwsA(isA<CopiesNotDeleted>()),
+      );
+      expect(reels.deletes, 0);
+      expect(await reels.getById(goa.id), isNotNull);
+    });
+
+    test('a double tap cleans up once', () async {
+      final goa = await reels.create('Goa');
+
+      await Future.wait([
+        actions.confirmDelete(goa.id),
+        actions.confirmDelete(goa.id),
+      ]);
+
+      expect(spy.calls, ['reelDelete ${goa.id}']);
+      expect(reels.deletes, 1);
+    });
   });
 }

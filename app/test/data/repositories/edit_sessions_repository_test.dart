@@ -795,6 +795,27 @@ void main() {
     });
   });
 
+  group('editState (one read, p8-task6)', () {
+    test('is null without a session, then the same state watchEditState '
+        'gives, read once', () async {
+      final reel = await reels.create('Goa');
+      expect(await repo.editState(reel.id), isNull);
+
+      await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+      await repo.recordSent(reel.id, [7]);
+      await repo.recordCopies([_copy(reel.id, 2), _copy(reel.id, 1)]);
+
+      final once = await repo.editState(reel.id);
+      expect(once, await repo.watchEditState(reel.id).first);
+      expect(once!.session.editor, EditorApp.vn);
+      expect(once.sentIds, {7});
+      expect([for (final c in once.copies) c.clipId], [1, 2]);
+
+      await repo.endSession(reel.id);
+      expect(await repo.editState(reel.id), isNull);
+    });
+  });
+
   group('watchEditors', () {
     test('maps each reel with a session to its editor, after every '
         'change', () async {

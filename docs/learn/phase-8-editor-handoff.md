@@ -248,7 +248,44 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 ## 6. EditSessionService
 
-To be written in Task 6 (decision D-123).
+**What we built:** the one class that runs an editing session from start to finish, `EditSessionService`, and the `CopyJobController` the copy screens follow:
+
+- sending the original clips to CapCut or Edits, and sharing to any app;
+- planning a copy (which clips, how much space, which folder), starting it, recording each copy as it finishes, finishing, cancelling and trying again;
+- Done editing (delete the copies, end the session);
+- deleting a clip's copy before the clip leaves the reel, and every copy before a reel is deleted;
+- the numbers for the storage screen, with the "orphan" copies no session knows;
+- and, after Android stopped TakeTray in the middle of a copy, putting the record straight at the next start.
+
+**Why TakeTray needs it:** the earlier sections built the pieces (the rules, the tables, the guard, the copy engine). Each piece is safe alone, but the order in which they are used decides whether a file is ever lost track of. This service is that order, in one place.
+
+**Key ideas:**
+
+- **One queue.** Every method that writes waits for the one before it to finish (`_serial`). So "remove this clip" can never run half way through "record the copy that just finished", and Done editing can never interleave with Stop. It is the simplest lock there is: a chain of futures.
+
+  ```dart
+  Future<T> _serial<T>(Future<T> Function() body) {
+    final run = _tail.then((_) => body());
+    _tail = run.then<void>((_) {}, onError: (_) {});
+    return run;
+  }
+  ```
+
+  The second line keeps the queue going when a call fails.
+
+- **Write the record first, then act; take it back if the act fails.** A share to CapCut first writes the session and the "sent" rows, then shares. If CapCut is not installed, the service removes exactly what it added (`recordSent` tells it which rows were new), so clips sent earlier stay "In your edit".
+
+- **The plan is saved before the copy starts.** The copy runs in Android; if Android stops TakeTray mid-copy, the job is gone. So before starting, Dart saves the plan (which folder, which clip gets which file name) in the settings table. At the next start TakeTray deletes the half-written (pending) files, reads the finished ones in the folder, and matches them to the plan **by file name**, never by size (two clips can have the same size). Each finished copy is recorded once: recording one that is already recorded changes nothing.
+
+- **Copies go first.** Before a clip leaves an editing reel, its copy is deleted; if it cannot be, the clip stays (and the user sees "Couldn't delete the copies"). Before a reel is deleted, its copy job is stopped, its copies deleted and its session ended, so Undo brings the reel back without a session.
+
+- **Nothing stuck.** A session with no copies and no sent clips (a first copy that never finished, a share that was interrupted) is ended at the next start.
+
+**Where it lives:** `app/lib/data/editors/edit_session_service.dart`, `app/lib/features/editors/view_models/copy_job_controller.dart`, `app/lib/domain/models/copy_job_plan.dart`, the `copyJobPlan` key in `app/lib/data/repositories/phone_state_repository.dart`, and the hooks in `app/lib/features/reels/view_models/` and `app/lib/app/media_lifecycle.dart`. Tests: `app/test/data/editors/edit_session_service_test.dart` and `app/test/features/editors/copy_job_controller_test.dart`.
+
+**Try it yourself:** `cd app && ../tool/flutter test test/data/editors/edit_session_service_test.dart`. Then, in `_recover`, change `if (rows[i.fileName] case final row?)` so that it looks the row up by size instead (for example build `rows` keyed by `r.sizeBytes` and look up `i.sizeBytes`) and run it again: "matches by file name, never by size" fails, because a file would be recorded for the wrong clip. Put it back.
+
+**Decisions:** D-123, with D-118 (R1, R4, R5, R8), D-120 (the tables), D-121 (the guard) and D-122 (the copy engine) as background.
 
 ## 7. The copies reminder and the Done editing tap
 

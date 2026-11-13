@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/domain/models/copy_job_plan.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/rematch_window.dart';
 
@@ -20,9 +21,10 @@ final Logger _log = Logger('phoneState');
 /// permission, which rebuilt volumes have clips to match again, and whether
 /// Add videos' folder tip was dismissed.
 ///
-/// It lives in the `settings` table under six keys, `shootingMode`,
+/// It lives in the `settings` table under seven keys, `shootingMode`,
 /// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked`,
-/// `mediaRematchWindows` and `folderTipSeen`. None is in
+/// `mediaRematchWindows`, `folderTipSeen` and `copyJobPlan` (the running copy
+/// job's plan, D-123). None is in
 /// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
 /// import deletes them (D-71, D-72, D-108):
 /// after a restore Shooting mode is off, and no volume version or re-match
@@ -44,6 +46,7 @@ class PhoneStateRepository {
   static const notificationsAskedKey = 'notificationsAsked';
   static const rematchWindowsKey = 'mediaRematchWindows';
   static const folderTipSeenKey = 'folderTipSeen';
+  static const copyJobPlanKey = 'copyJobPlan';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -311,6 +314,65 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Marked the folder tip as seen');
+  }
+
+  /// The copy job's saved plan (D-123), or null when none is saved. An
+  /// unreadable value is none (only the key's name is logged, never a
+  /// folder or file name).
+  Future<CopyJobPlan?> copyJobPlan() async =>
+      _parsePlan(await _rawValue(copyJobPlanKey));
+
+  /// Saves [plan] before its job starts (R4: one at a time). Saving the plan
+  /// of the job already saved replaces it; while the plan of **another** job
+  /// is saved this throws [StateError] and writes nothing, so a recovery
+  /// record is never lost. An unreadable value is replaced.
+  Future<void> saveCopyJobPlan(CopyJobPlan plan) async {
+    await _db.transaction(() async {
+      final current = await copyJobPlan();
+      if (current != null && current.jobId != plan.jobId) {
+        throw StateError(
+          'The plan of job ${current.jobId} is saved; not saving '
+          '${plan.jobId}',
+        );
+      }
+      await _db
+          .into(_db.settings)
+          .insertOnConflictUpdate(
+            SettingsCompanion.insert(
+              key: copyJobPlanKey,
+              value: jsonEncode(plan.toJson()),
+            ),
+          );
+    });
+    _log.info(
+      'Saved the plan of copy job ${plan.jobId}, ${plan.items.length} items',
+    );
+  }
+
+  /// Removes the saved plan when it is job [jobId]'s (compare-and-delete), and
+  /// returns whether it did. Another job's plan stays.
+  Future<bool> removeCopyJobPlan(String jobId) async {
+    final removed = await _db.transaction(() async {
+      if ((await copyJobPlan())?.jobId != jobId) return false;
+      await (_db.delete(
+        _db.settings,
+      )..where((s) => s.key.equals(copyJobPlanKey))).go();
+      return true;
+    });
+    if (removed) _log.info('Removed the plan of copy job $jobId');
+    return removed;
+  }
+
+  CopyJobPlan? _parsePlan(String? text) {
+    if (text == null) return null;
+    try {
+      final plan = CopyJobPlan.fromJson(jsonDecode(text));
+      if (plan != null) return plan;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $copyJobPlanKey is corrupt, reading it as none');
+    return null;
   }
 
   /// The re-match window open on [volume], or null when there is none
