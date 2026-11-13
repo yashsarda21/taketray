@@ -425,7 +425,49 @@ It ends with `All tests passed!`. Now open `lib/features/editors/views/editor_sh
 
 ## 10. The VN copy screens
 
-To be written in Task 10 (decision D-127).
+**What we built:** the three screens a VN copy goes through. First a **space check**: "Copy clips for VN", "These 12 clips need 900 MB", "You have 6.2 GB free.", a bar that shows the copies' share of the free space, two notes (why VN needs copies, and that the copies are temporary) and **Copy 12 clips**. When the phone is too full, the same screen says "Not enough space" instead, with a bar whose red hatched end is what is missing, and **Select fewer clips**. Then the **copying screen**: "Copying clips for VN", "7 of 12 clips", a progress bar, "Keep TakeTray open until copying finishes. The screen stays on until then." and **Cancel**. Last the **ready screen**: "Ready for VN", three pictured steps (tap New project, open the folder, select all the clips) and **Open VN**. In between are the screens for when it does not go well: "Phone storage is full", "Copying stopped" (TakeTray was closed in the middle), "1 clip couldn't be copied" and "The clips couldn't be copied".
+
+**Why TakeTray needs it:** copying is the one job in this app that makes the user wait, and the one that can go wrong in the most ways: the phone fills up, the system closes the app, a video was deleted a minute ago. Without a foreground service (decision 2 of D-118) a copy only goes on while TakeTray runs, so the screen has to say "keep me open", keep the phone awake, and always know what to show when the copy stops.
+
+**Key ideas:**
+
+- **The bar counts the reserve.** TakeTray never fills the last 500 MB of the phone. So when the phone has 1.2 GB free and the copies need 1 GB, the bar shows 0.7 solid ("what you really have") and "Short by 300 MB", not "you have enough". The number is a small pure function of the plan:
+
+  ```dart
+  final usable = plan.freeBytes - copyReserveBytes;
+  if (usable <= 0) return 0;
+  final share = usable / need;
+  return share >= 1 ? _belowOne : share;
+  ```
+
+- **One word for what a job is doing.** The engine has five states, and a finished job can have failed clips. `copyStageOf(job)` turns that into one of seven stages (`running`, `finished`, `someFailed`, `allFailed`, `spaceFull`, `interrupted`, `cancelled`), and the screen is a `switch` over it. A clip listed twice counts once, and "every clip failed" is `failed >= total`, so a bad count from below can never crash the screen.
+- **The phone stays awake only while a copy runs.** Dart decides (`CopyBridge.keepScreenOn`), and the rule is written once, in `_syncScreen`: on for `running`, off for every other stage, off when Stop begins, off when the screen leaves, off in `dispose`. A flag left on would keep the user's screen lit for ever, so the last one is the one that matters. And when the app comes back to the front it asks again, because Android may have made a new activity whose window never got the flag.
+
+  ```dart
+  void _setScreen(bool on, {bool force = false}) {
+    if (_screenOn == on && !force) return;
+    _screenOn = on;
+    unawaited(_askBridge(on));
+  }
+  ```
+
+- **First copy or add?** Stopping a first copy says "No copies were kept." and removes the whole session; stopping an add keeps the older copies and says "The new copies were deleted.". The screen learns which it is from the saved plan (`jobContext(...).startedSession`), and reads it **before** it cancels, because cancelling removes the plan.
+- **An exit that fails keeps the screen.** `cancelCopy` and `finishJob` can throw ("not cleared yet"). The screen then says "Something went wrong. Try again." under the words (a snack would cover the buttons) and keeps working. When the engine did cancel but could not clear the result, the Cancel button turns into **Try again**.
+- **A job that is gone is a normal ending.** After a finish, a cancel or Done editing, the controller's job is `null`. A screen that sees `null` after it has seen the job goes back to the reel without a word; a screen that has not seen the job yet reads the engine once before it gives up, because the first event can arrive after the start call returns.
+- **Results nobody saw.** If Android closed TakeTray mid-copy, the next start builds an `interrupted` job from the folder. `CopyResultOpener` (in the app's `builder`) asks `takeUnseenResult()` and opens the copying screen for it, once. It does the same when the app comes back to the front, and for a copy that still runs with no screen left.
+- **Words that other editors reuse.** The titles and the result lines take `{editor}` (VN passes "VN"), so Task 12 does not rewrite them. Bold words inside a translated sentence use two tiny helpers: `boldMark('New project')` wraps a part in a marker character and `boldSpans(text)` turns the marked parts into bold spans.
+
+**Where it lives:** `app/lib/features/editors/views/` (`copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`, `stop_copy_dialog.dart`, `copy_result_opener.dart`, `editor_text.dart`), `app/lib/features/editors/view_models/` (`copy_space_controller.dart`, `copy_ready_controller.dart`, `copy_stage.dart`, `copy_screens.dart`), `app/lib/router/` (`routes.dart`, `app_router.dart`), `app/lib/app.dart` and `app/lib/l10n/app_en.arb`.
+
+**Try it yourself:** run the screen-on tests, then break the rule that matters most:
+
+```bash
+cd app && ../tool/flutter test test/features/editors/copy_progress_screen_test.dart --plain-name "the screen is let go on every way out"
+```
+
+They end with `All tests passed!`. Now open `lib/features/editors/views/copy_progress_screen.dart`, find `dispose` and delete the line `_setScreen(false);`. Run the command again: "the whole app goes away (dispose)" fails, because the last call to the bridge is `true`, which on a phone would leave the screen lit. Put the line back. For the reserve, change `plan.freeBytes - copyReserveBytes` in `copy_space_controller.dart` to `plan.freeBytes` and run `test/features/editors/copy_space_screen_test.dart`: the bar test for 1.2 GB against 1 GB fails (it gets 1 instead of 0.7).
+
+**Decisions:** D-127 (all of this section), with D-118 (decision 2, R3, R4, R5), D-122 (copying and the screen flag), D-123 (the service and the job controller) and D-125 (the bar, the status layout and the steps) as background.
 
 ## 11. The reel page while editing
 

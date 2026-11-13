@@ -7,10 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/copy_progress_screen.dart';
+import 'package:taketray/features/editors/views/copy_ready_screen.dart';
+import 'package:taketray/features/editors/views/copy_space_screen.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
@@ -20,6 +25,7 @@ import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
@@ -742,6 +748,140 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(find.byType(EditSelectScreen), findsNothing);
+        expect(find.byType(ReelsScreen), findsOneWidget);
+      });
+    }
+  });
+
+  group('The VN copy screens (Phase 8, D-127)', () {
+    ReelsRepository reels0(VmHarness h) =>
+        h.container.read(reelsRepositoryProvider);
+
+    testApp('the space check is full screen, above the nav pill, with the '
+        'reel, the editor and the clips in the order given', (tester) async {
+      final h = reelHarness();
+      h.editors.allow({'freeBytes', 'copyFolderNames'});
+      final goa = (await tester.runAsync(() => reels0(h).create('Goa')))!;
+      final ids = (await tester.runAsync(
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push(Routes.copySpaceOf(goa.id, EditorApp.vn, ids)));
+      await _settle(tester);
+
+      final screen = tester.widget<CopySpaceScreen>(
+        find.byType(CopySpaceScreen),
+      );
+      expect(screen.reelId, goa.id);
+      expect(screen.editor, EditorApp.vn);
+      expect(screen.clipIds, ids);
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+      expect(find.text('Copy clips for VN'), findsOneWidget);
+
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(CopySpaceScreen), findsNothing);
+    });
+
+    testApp('the progress screen is full screen with the job id', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(() => reels0(h).create('Goa')))!;
+      final jobId = '${goa.id}-1700000000000';
+      h.copy
+        ..allowAll()
+        ..job = CopyJob(
+          jobId: jobId,
+          reelId: goa.id,
+          folderName: 'Goa',
+          state: CopyState.running,
+          total: 2,
+          done: 0,
+          bytesDone: 0,
+          bytesTotal: 2,
+          copied: const [],
+          failedClipIds: const [],
+          undeleted: const [],
+        );
+      final (_, router) = await _pumpApp(tester, harness: h);
+      await _settle(tester);
+      // The app itself opened it (a job that runs, found at start): leave it
+      // and open it by its location.
+      router.go(Routes.reels);
+      await _settle(tester);
+
+      unawaited(router.push(Routes.copyProgressOf(jobId)));
+      await _settle(tester);
+
+      expect(
+        tester
+            .widget<CopyProgressScreen>(find.byType(CopyProgressScreen))
+            .jobId,
+        jobId,
+      );
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+    });
+
+    testApp('the ready screen is full screen with the reel', (tester) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(() => reels0(h).create('Goa')))!;
+      // A session with a copy: an empty one is ended by the app's start.
+      final ids = (await tester.runAsync(
+        () => putInReel(h, goa.id, [reelVideo(1)]),
+      ))!;
+      await tester.runAsync(() async {
+        final sessions = h.container.read(editSessionsRepositoryProvider);
+        await sessions.startSession(goa.id, EditorApp.vn, 'Goa');
+        await sessions.recordCopies([
+          EditCopy(
+            reelId: goa.id,
+            clipId: ids.single,
+            copyMediaStoreId: 700,
+            fileName: 'c.mp4',
+            sizeBytes: 1,
+            copiedAt: DateTime.utc(2026, 10, 30),
+          ),
+        ]);
+      });
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push(Routes.copyReadyOf(goa.id)));
+      await _settle(tester);
+
+      expect(
+        tester.widget<CopyReadyScreen>(find.byType(CopyReadyScreen)).reelId,
+        goa.id,
+      );
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+      expect(find.text('Ready for VN'), findsOneWidget);
+    });
+
+    for (final location in [
+      '/edit/space',
+      '/edit/space?reel=0&editor=vn&clips=1',
+      '/edit/space?reel=abc&editor=vn&clips=1',
+      '/edit/space?reel=3&clips=1',
+      '/edit/space?reel=3&editor=word&clips=1',
+      '/edit/space?reel=3&editor=vn',
+      '/edit/space?reel=3&editor=vn&clips=x,0',
+      '/edit/copying',
+      '/edit/copying?job=',
+      '/edit/ready',
+      '/edit/ready?reel=0',
+      '/edit/ready?reel=-2',
+      '/edit/ready?reel=x',
+    ]) {
+      testApp('$location is unknown: Reels', (tester) async {
+        final (_, router) = await _pumpApp(tester);
+
+        router.go(location);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(CopySpaceScreen), findsNothing);
+        expect(find.byType(CopyProgressScreen), findsNothing);
+        expect(find.byType(CopyReadyScreen), findsNothing);
         expect(find.byType(ReelsScreen), findsOneWidget);
       });
     }

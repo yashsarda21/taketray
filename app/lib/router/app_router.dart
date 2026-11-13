@@ -3,8 +3,12 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/copy_progress_screen.dart';
+import 'package:taketray/features/editors/views/copy_ready_screen.dart';
+import 'package:taketray/features/editors/views/copy_space_screen.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
@@ -168,6 +172,7 @@ GoRouter appRouter(Ref ref) {
       ),
       addVideosRoute(),
       editSelectRoute(),
+      ...copyRoutes(),
     ],
   );
   ref.onDispose(router.dispose);
@@ -247,3 +252,70 @@ GoRoute editSelectRoute() => GoRoute(
     );
   },
 );
+
+/// The VN copy screens (Phase 8, D-127), top-level routes on the root
+/// navigator, above the tab shell and its nav pill like the picking screen:
+/// the space check `/edit/space`, the progress `/edit/copying` and the ready
+/// steps `/edit/ready`. A location with a missing or bad parameter (a reel
+/// that is not a positive whole number, an editor that is not one of ours, no
+/// clips, an empty job id) is as unknown as one no route matches: Reels. The
+/// location is not logged (D-10).
+List<RouteBase> copyRoutes() => [
+  GoRoute(
+    path: Routes.copySpace,
+    redirect: (context, state) {
+      final query = state.uri.queryParameters;
+      if (_positive(query[Routes.editReelParameter]) != null &&
+          _editorOf(query[Routes.copyEditorParameter]) != null &&
+          Routes.clipIdsIn(query[Routes.editClipsParameter]).isNotEmpty) {
+        return null;
+      }
+      _log.warning('Unknown location; showing Reels');
+      return Routes.reels;
+    },
+    builder: (context, state) {
+      final query = state.uri.queryParameters;
+      return CopySpaceScreen(
+        reelId: _positive(query[Routes.editReelParameter])!,
+        editor: _editorOf(query[Routes.copyEditorParameter])!,
+        clipIds: Routes.clipIdsIn(query[Routes.editClipsParameter]),
+      );
+    },
+  ),
+  GoRoute(
+    path: Routes.copyProgress,
+    redirect: (context, state) {
+      if ((state.uri.queryParameters[Routes.copyJobParameter] ?? '')
+          .isNotEmpty) {
+        return null;
+      }
+      _log.warning('Unknown location; showing Reels');
+      return Routes.reels;
+    },
+    builder: (context, state) => CopyProgressScreen(
+      jobId: state.uri.queryParameters[Routes.copyJobParameter]!,
+    ),
+  ),
+  GoRoute(
+    path: Routes.copyReady,
+    redirect: (context, state) {
+      if (_positive(state.uri.queryParameters[Routes.editReelParameter]) !=
+          null) {
+        return null;
+      }
+      _log.warning('Unknown location; showing Reels');
+      return Routes.reels;
+    },
+    builder: (context, state) => CopyReadyScreen(
+      reelId: _positive(state.uri.queryParameters[Routes.editReelParameter])!,
+    ),
+  ),
+];
+
+/// The editor named [name], or null.
+EditorApp? _editorOf(String? name) {
+  for (final editor in EditorApp.values) {
+    if (editor.name == name) return editor;
+  }
+  return null;
+}

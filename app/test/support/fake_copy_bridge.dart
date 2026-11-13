@@ -24,7 +24,9 @@ import 'package:taketray/platform/copy_bridge.dart';
 /// - [folders] holds each folder's rows for `ownRowsIn`; `deletePendingIn`
 ///   removes the pending ones and returns how many ([CopyBusy] while a job
 ///   runs).
-/// - [screenOn] is the last `keepScreenOn` value (null before any).
+/// - [screenOn] is the last `keepScreenOn` value (null before any), and
+///   [screenOnCalls] every value asked, in order (the copy screens must
+///   leave it off whenever they are gone).
 /// - [calls] logs every call by name, in order, including one that fails.
 ///   [failNext] makes the next call of a method throw a `PlatformException`;
 ///   [gate] makes it wait until the returned completer completes.
@@ -43,6 +45,8 @@ class FakeCopyBridge implements CopyBridge {
   Set<int> cancelUndeleted = {};
 
   bool? screenOn;
+
+  final List<bool> screenOnCalls = [];
 
   final List<String> calls = [];
 
@@ -177,8 +181,10 @@ class FakeCopyBridge implements CopyBridge {
       });
 
   @override
-  Future<void> keepScreenOn(bool on) =>
-      _call('keepScreenOn', () => screenOn = on);
+  Future<void> keepScreenOn(bool on) => _call('keepScreenOn', () {
+    screenOn = on;
+    screenOnCalls.add(on);
+  });
 
   @override
   Stream<CopyJob> get changes => _changes.stream;

@@ -2373,5 +2373,464 @@
   "shareClipsMissing": "These clips are missing from your phone.",
   "@shareClipsMissing": {
     "description": "Snack when a share found no clip left on the phone."
+  },
+  "copySpaceTitle": "Copy clips for {editor}",
+  "@copySpaceTitle": {
+    "description": "Title of the screen that checks the phone has room for the copies an editor needs. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceNeed": "{count, plural, one{This clip needs {size}} other{These {count} clips need {size}}}",
+  "@copySpaceNeed": {
+    "description": "Headline of the space check when the copies fit: how many clips and the size of their copies, such as 900 MB.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceFree": "You have {free} free.",
+  "@copySpaceFree": {
+    "description": "Line under the space check headline: how much room the phone has, such as 6.2 GB.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyLegendCopies": "Copies: {size}",
+  "@copyLegendCopies": {
+    "description": "Legend of the storage bar: the size of the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyLegendFreeAfter": "Free after copying: {size}",
+  "@copyLegendFreeAfter": {
+    "description": "Legend of the storage bar: the room that is left after the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceBarSemantics": "Free space {free}, copies need {need}",
+  "@copySpaceBarSemantics": {
+    "description": "What a screen reader says for the storage bar when the copies fit.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "copyReserveNote": "TakeTray keeps {size} free for your phone.",
+  "@copyReserveNote": {
+    "description": "Small note on the space check: the room TakeTray never fills, such as 500 MB.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyWhyTitle": "Why copies?",
+  "@copyWhyTitle": {
+    "description": "Title of the note that explains why an editor needs copies."
+  },
+  "vnCopyWhyBody": "VN needs all the clips in one folder. TakeTray copies them to {folder}. Your original clips stay where they are.",
+  "@vnCopyWhyBody": {
+    "description": "Body of the Why copies? note for VN. The folder is the path under Movies, such as Movies/TakeTray/Goa, shown in bold.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyTemporaryTitle": "Copies are temporary",
+  "@copyTemporaryTitle": {
+    "description": "Title of the note that says the copies are deleted later."
+  },
+  "vnCopyTemporaryBody": "After you export from VN, tap Done editing and TakeTray deletes them.",
+  "@vnCopyTemporaryBody": {
+    "description": "Body of the Copies are temporary note for VN."
+  },
+  "copyStart": "{count, plural, one{Copy 1 clip} other{Copy {count} clips}}",
+  "@copyStart": {
+    "description": "Button of the space check that starts copying.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyBack": "Back",
+  "@copyBack": {
+    "description": "Button of the space check, and of the screen where no clip could be copied, that goes back."
+  },
+  "copyShortTitle": "Not enough space",
+  "@copyShortTitle": {
+    "description": "Headline of the space check when the copies do not fit."
+  },
+  "copyShortBody": "{count, plural, one{This clip needs {size}. You have {free} free.} other{These {count} clips need {size}. You have {free} free.}}",
+  "@copyShortBody": {
+    "description": "Line under the Not enough space headline: the size of the copies and the room the phone has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortHave": "You have {free}",
+  "@copyShortHave": {
+    "description": "Legend of the storage bar when the copies do not fit: the room the phone has.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortBy": "Short by {size}",
+  "@copyShortBy": {
+    "description": "Legend of the storage bar when the copies do not fit: how much more room is needed, with the room TakeTray keeps free.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortBarSemantics": "Copies need {need}, you have {free}, short by {size}",
+  "@copyShortBarSemantics": {
+    "description": "What a screen reader says for the storage bar when the copies do not fit.",
+    "placeholders": {
+      "need": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortHelpTitle": "What you can do",
+  "@copyShortHelpTitle": {
+    "description": "Title of the note on the Not enough space screen."
+  },
+  "copyShortHelpBody": "Select fewer clips, or free up space on your phone and try again.",
+  "@copyShortHelpBody": {
+    "description": "Body of the note on the Not enough space screen."
+  },
+  "copySelectFewer": "Select fewer clips",
+  "@copySelectFewer": {
+    "description": "Button of the Not enough space screen that goes back to choosing clips."
+  },
+  "copyNothingTitle": "Nothing to copy",
+  "@copyNothingTitle": {
+    "description": "Headline of the space check when no clip is left to copy."
+  },
+  "copyNothingBody": "These clips are already copied, or missing from your phone.",
+  "@copyNothingBody": {
+    "description": "Line under the Nothing to copy headline."
+  },
+  "copyStartFailed": "Couldn't start copying. Try again.",
+  "@copyStartFailed": {
+    "description": "Message on the space check when copying could not start, or the phone's free room could not be read."
+  },
+  "copyProgressTitle": "Copying clips for {editor}",
+  "@copyProgressTitle": {
+    "description": "Title of the screen that shows the copying going on. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyProgressCount": "{done} of {total} clips",
+  "@copyProgressCount": {
+    "description": "Under the copying title: how many clips are done out of all.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyProgressBytes": "{done} of {all} · into Movies/TakeTray/{folder}",
+  "@copyProgressBytes": {
+    "description": "Under the clip count: the size copied so far, the whole size and the folder the copies go to.",
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "all": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyPercent": "{percent}%",
+  "@copyPercent": {
+    "description": "What a screen reader says for the progress bar: the percent done.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "copyKeepOpen": "Keep TakeTray open until copying finishes. The screen stays on until then.",
+  "@copyKeepOpen": {
+    "description": "Line on the copying screen. Copying stops if TakeTray is closed, so the user is asked to keep it open."
+  },
+  "copyStopTitle": "Stop copying?",
+  "@copyStopTitle": {
+    "description": "Title of the dialog that asks whether to stop copying."
+  },
+  "copyStopBody": "{count, plural, =0{No copies have been made yet. Your original clips aren't affected.} one{The 1 copy made so far will be deleted. Your original clips aren't affected.} other{The {count} copies made so far will be deleted. Your original clips aren't affected.}}",
+  "@copyStopBody": {
+    "description": "Body of the Stop copying dialog: how many copies will be deleted.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyKeepCopying": "Keep copying",
+  "@copyKeepCopying": {
+    "description": "Button of the Stop copying dialog that carries on."
+  },
+  "copyStop": "Stop",
+  "@copyStop": {
+    "description": "Button of the Stop copying dialog that stops and deletes the copies."
+  },
+  "copyStoppedFirst": "Copying stopped. No copies were kept.",
+  "@copyStoppedFirst": {
+    "description": "Snack after the user stopped the first copy of a reel."
+  },
+  "copyStoppedAdd": "Copying stopped. The new copies were deleted.",
+  "@copyStoppedAdd": {
+    "description": "Snack after the user stopped a copy that was adding clips to a folder that already had copies."
+  },
+  "copySpaceFullTitle": "Phone storage is full",
+  "@copySpaceFullTitle": {
+    "description": "Headline when the phone ran out of room while copying."
+  },
+  "copySpaceFullBody": "{done} of {total} clips were copied before space ran out. Free up some space, then try again.",
+  "@copySpaceFullBody": {
+    "description": "Line under the Phone storage is full headline.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyDeleteStop": "Delete copies and stop",
+  "@copyDeleteStop": {
+    "description": "Button that deletes the copies made so far and stops."
+  },
+  "copyInterruptedTitle": "Copying stopped",
+  "@copyInterruptedTitle": {
+    "description": "Headline when TakeTray was closed (by the phone, or by the user) in the middle of copying."
+  },
+  "copyInterruptedBody": "TakeTray was closed before copying finished. {done} of {total} clips were copied.",
+  "@copyInterruptedBody": {
+    "description": "Line under the Copying stopped headline.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedTitle": "{count, plural, one{1 clip couldn't be copied} other{{count} clips couldn't be copied}}",
+  "@copyFailedTitle": {
+    "description": "Headline when some clips could not be copied and the others were.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedOneBody": "The clip from {time} may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedOneBody": {
+    "description": "Line under the headline when one clip could not be copied. The time is when the clip was shot.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedOneBodyNoTime": "It may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedOneBodyNoTime": {
+    "description": "Line under the headline when one clip could not be copied and its time is not known.",
+    "placeholders": {
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedManyBody": "They may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedManyBody": {
+    "description": "Line under the headline when several clips could not be copied.",
+    "placeholders": {
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyContinueWith": "{count, plural, one{Continue with 1 clip} other{Continue with {count} clips}}",
+  "@copyContinueWith": {
+    "description": "Button that goes on with the clips that were copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAllFailedTitle": "{count, plural, one{The clip couldn't be copied} other{The clips couldn't be copied}}",
+  "@copyAllFailedTitle": {
+    "description": "Headline when no clip could be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAllFailedBody": "{count, plural, one{It may have been deleted or moved.} other{They may have been deleted or moved.}}",
+  "@copyAllFailedBody": {
+    "description": "Line under the headline when no clip could be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAddedSnack": "{count, plural, one{1 clip added to the {editor} folder} other{{count} clips added to the {editor} folder}}",
+  "@copyAddedSnack": {
+    "description": "Snack after more clips were copied into a folder that already had copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyReadyTitle": "Ready for {editor}",
+  "@copyReadyTitle": {
+    "description": "Headline of the screen that says the copies are made. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "vnReadyNewProject": "New project",
+  "@vnReadyNewProject": {
+    "description": "The VN button the user is told to tap, shown in bold."
+  },
+  "vnReadyIntro": "In VN, tap {newProject} and open the {folder} folder.",
+  "@vnReadyIntro": {
+    "description": "Line under the Ready for VN headline. The button name and the folder are shown in bold.",
+    "placeholders": {
+      "newProject": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyStepNumber": "Step {number}",
+  "@copyStepNumber": {
+    "description": "Small label above a step title.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "vnStep1Title": "Open VN, tap New project",
+  "@vnStep1Title": {
+    "description": "Title of step 1 of the VN instructions."
+  },
+  "vnStep1Body": "It's the big + button.",
+  "@vnStep1Body": {
+    "description": "Help line of step 1 of the VN instructions."
+  },
+  "vnStep2Title": "Open the {folder} folder",
+  "@vnStep2Title": {
+    "description": "Title of step 2 of the VN instructions.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "vnStep2Body": "Inside Movies › TakeTray.",
+  "@vnStep2Body": {
+    "description": "Help line of step 2 of the VN instructions."
+  },
+  "vnStep3Title": "Select all the clips",
+  "@vnStep3Title": {
+    "description": "Title of step 3 of the VN instructions."
+  },
+  "vnStep3Body": "They're already in shooting order.",
+  "@vnStep3Body": {
+    "description": "Help line of step 3 of the VN instructions."
+  },
+  "vnFolderCamera": "Camera",
+  "@vnFolderCamera": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "vnFolderDownload": "Download",
+  "@vnFolderDownload": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "vnFolderWhatsApp": "WhatsApp Video",
+  "@vnFolderWhatsApp": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "copyOpenEditor": "Open {editor}",
+  "@copyOpenEditor": {
+    "description": "Button of the Ready screen that opens the editor.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyDone": "Done",
+  "@copyDone": {
+    "description": "Button of the Ready screen that goes back to the reel."
   }
 }

@@ -10,7 +10,8 @@ import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
-import 'package:taketray/router/app_router.dart' show addVideosRoute;
+import 'package:taketray/router/app_router.dart'
+    show addVideosRoute, copyRoutes;
 import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -65,6 +66,19 @@ String editSelectRouteMarker(Object? reel, Object? clips, Object? add) =>
 String copySpaceRouteMarker(Object? reel, Object? editor, Object? clips) =>
     'the space check of reel $reel for $editor, clips $clips';
 
+/// What the copy progress route shows in a test that only has one screen:
+/// the job id (`?job=`).
+String copyProgressRouteMarker(Object? job) => 'the copy progress of job $job';
+
+/// What the ready route shows in a test that only has one screen: the reel id
+/// (`?reel=`).
+String copyReadyRouteMarker(Object? reel) => 'the ready screen of reel $reel';
+
+/// The router of the app [tester] pumped with [pumpScreen] (to push a route
+/// over the screen).
+GoRouter routerOf(WidgetTester tester) =>
+    GoRouter.of(tester.element(find.byType(Scaffold).first));
+
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
 /// [toTagRouteMarker], a `/reels` route that shows [reelsRouteMarker] and a
 /// `/reels/<id>` route that shows [reelRouteMarker], and a
@@ -77,7 +91,9 @@ String copySpaceRouteMarker(Object? reel, Object? editor, Object? clips) =>
 /// [copySpaceRouteMarker] (Task 10 registers the real space screen), and a
 /// `/add-videos` route that shows
 /// [addVideosRouteMarker], or with [addVideos] the app's own Add videos
-/// screens)
+/// screens; the three VN copy routes show [copySpaceRouteMarker],
+/// [copyProgressRouteMarker] and [copyReadyRouteMarker], or with
+/// [copyScreens] the app's own copy screens)
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -106,6 +122,7 @@ Future<ProviderContainer> pumpScreen(
   Locale? locale,
   bool midnightTick = false,
   bool addVideos = false,
+  bool copyScreens = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -183,21 +200,45 @@ Future<ProviderContainer> pumpScreen(
           );
         },
       ),
-      GoRoute(
-        path: Routes.copySpace,
-        builder: (context, state) {
-          final query = state.uri.queryParameters;
-          return Scaffold(
+      if (copyScreens)
+        ...copyRoutes()
+      else ...[
+        GoRoute(
+          path: Routes.copySpace,
+          builder: (context, state) {
+            final query = state.uri.queryParameters;
+            return Scaffold(
+              body: Text(
+                copySpaceRouteMarker(
+                  query[Routes.editReelParameter],
+                  query[Routes.copyEditorParameter],
+                  query[Routes.editClipsParameter],
+                ),
+              ),
+            );
+          },
+        ),
+        GoRoute(
+          path: Routes.copyProgress,
+          builder: (context, state) => Scaffold(
             body: Text(
-              copySpaceRouteMarker(
-                query[Routes.editReelParameter],
-                query[Routes.copyEditorParameter],
-                query[Routes.editClipsParameter],
+              copyProgressRouteMarker(
+                state.uri.queryParameters[Routes.copyJobParameter],
               ),
             ),
-          );
-        },
-      ),
+          ),
+        ),
+        GoRoute(
+          path: Routes.copyReady,
+          builder: (context, state) => Scaffold(
+            body: Text(
+              copyReadyRouteMarker(
+                state.uri.queryParameters[Routes.editReelParameter],
+              ),
+            ),
+          ),
+        ),
+      ],
       GoRoute(
         path: Routes.notificationsHelp,
         builder: (context, state) =>
