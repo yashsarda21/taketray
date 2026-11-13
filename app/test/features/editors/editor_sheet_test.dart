@@ -599,6 +599,25 @@ void main() {
       });
     });
 
+    testApp('after Not installed and Choose another, the rows work again: a '
+        'send to another editor goes through', (tester) async {
+      h.editors.sendResult = SendResult.notInstalled;
+      final (goa, ids) = await twoClips(tester);
+      await openSheet(tester, goa, ids);
+      await tapRow(tester, 'CapCut');
+      await tester.tap(find.text('Choose another'));
+      await settleApp(tester);
+      expect(find.text('Edit 2 clips in…'), findsOneWidget);
+
+      h.editors.sendResult = SendResult.sent;
+      await tapRow(tester, 'Instagram Edits');
+
+      expect(h.editors.sent.map((s) => s.$1), [_capcut, _edits]);
+      expect(find.text('Sent 2 clips to Instagram Edits'), findsOneWidget);
+      expect(find.text(reelRouteMarker(goa.id)), findsOneWidget);
+      await flushOffer(tester);
+    });
+
     group('failed', () {
       testApp('the editor did not open: a line in the sheet, the sheet and '
           'the screen stay, and nothing is left behind', (tester) async {

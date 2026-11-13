@@ -327,6 +327,45 @@ void main() {
     });
   });
 
+  group('one sheet', () {
+    testApp('a second Continue while the sheet is opening opens no second '
+        'sheet: one Back closes the only one', (tester) async {
+      final (goa, ids) = await threeClips(tester);
+      h.editors.allow({'apps'});
+      await open(tester, goa.id, ticked: ids);
+
+      // Two calls of the button in one frame, as two fast taps would be.
+      final onPressed = continueButton(tester).onPressed!;
+      onPressed();
+      onPressed();
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.text('Edit 3 clips in…'), findsNothing);
+    });
+
+    testApp('Continue opens a sheet again after the first was closed', (
+      tester,
+    ) async {
+      final (goa, ids) = await threeClips(tester);
+      h.editors.allow({'apps'});
+      await open(tester, goa.id, ticked: ids);
+      await tester.tap(find.text('Continue'));
+      await settleApp(tester);
+      await tester.binding.handlePopRoute();
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsNothing);
+
+      await tester.tap(find.text('Continue'));
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+  });
+
   group('the look', () {
     for (final scale in [1.0, 2.0]) {
       testApp('the screen at ${scale}x text does not overflow and is '
