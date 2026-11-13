@@ -4,8 +4,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
@@ -13,6 +15,7 @@ import 'package:taketray/features/reels/view_models/reel_detail_controller.dart'
 import '../../../support/reel_videos.dart';
 import '../../../support/spy_edit_session_service.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart';
 
 /// A verifier that only records what it was asked about.
 class _RecordingVerifier implements MediaVerifier {
@@ -194,6 +197,89 @@ void main() {
         container.read(reelDetailControllerProvider(goa.id)).hasError,
         isFalse,
       );
+    });
+  });
+
+  group('opening a reel checks its copies (R8)', () {
+    test('a copy deleted outside TakeTray is forgotten', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final copies = await startEditing(h, goa.id, EditorApp.vn, copied: ids);
+      // The second copy is gone from the folder.
+      h.editors.existing = {copies[0]};
+      final container = open(goa.id);
+
+      await stateOf(container, goa.id);
+      await settle();
+
+      final state = await container
+          .read(editSessionsRepositoryProvider)
+          .editState(goa.id);
+      expect([for (final c in state!.copies) c.clipId], [ids[0]]);
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(1));
+    });
+
+    test('once per open, not again when the clips change', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      await startEditing(h, goa.id, EditorApp.vn, copied: ids);
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+
+      await putInReel(h, goa.id, [reelVideo(2)]);
+      await settle();
+
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(1));
+      container.dispose();
+
+      final again = open(goa.id);
+      await stateOf(again, goa.id);
+      await settle();
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(2));
+    });
+
+    test('a reel with no session asks the phone nothing', () async {
+      final goa = await reels.create('Goa');
+      await putInReel(h, goa.id, [reelVideo(1)]);
+      final container = open(goa.id);
+
+      await stateOf(container, goa.id);
+      await settle();
+
+      expect(h.editors.calls, isEmpty);
+    });
+
+    test('a check that fails leaves the page and the copies as they are, '
+        'and logs the error type only', () async {
+      final goa = await reels.create('Goa Secret Trip');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      await startEditing(
+        h,
+        goa.id,
+        EditorApp.vn,
+        copied: ids,
+        folder: 'Goa Secret Trip',
+      );
+      h.editors.failNext('existingCopies');
+      final logs = captureLogs();
+      final container = open(goa.id);
+
+      final state = await stateOf(container, goa.id);
+      await settle();
+
+      expect(state!.clipCount, 1);
+      expect(
+        container.read(reelDetailControllerProvider(goa.id)).hasError,
+        isFalse,
+      );
+      final edit = await container
+          .read(editSessionsRepositoryProvider)
+          .editState(goa.id);
+      expect(edit!.copies, hasLength(1));
+      final text = logText(logs);
+      expect(text, contains('PlatformException'));
+      expect(text, isNot(contains('Goa Secret Trip')));
     });
   });
 

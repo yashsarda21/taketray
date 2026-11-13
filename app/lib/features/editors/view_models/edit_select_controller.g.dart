@@ -18,6 +18,14 @@ part of 'edit_select_controller.dart';
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+///   live clip again, by `addPicks` against the reel's session. A fresh clip
+///   (neither sent nor copied) starts ticked, a sent one without a copy
+///   starts unticked and can be ticked, a clip whose copy is in the folder is
+///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+///   follows the session too: a copy recorded meanwhile locks its clip, a
+///   copy forgotten (deleted outside TakeTray) frees it, unticked.
 ///
 /// Auto-disposes with the screen.
 
@@ -34,6 +42,14 @@ final editSelectControllerProvider = EditSelectControllerFamily._();
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+///   live clip again, by `addPicks` against the reel's session. A fresh clip
+///   (neither sent nor copied) starts ticked, a sent one without a copy
+///   starts unticked and can be ticked, a clip whose copy is in the folder is
+///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+///   follows the session too: a copy recorded meanwhile locks its clip, a
+///   copy forgotten (deleted outside TakeTray) frees it, unticked.
 ///
 /// Auto-disposes with the screen.
 final class EditSelectControllerProvider
@@ -48,6 +64,14 @@ final class EditSelectControllerProvider
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
+  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+  ///   live clip again, by `addPicks` against the reel's session. A fresh clip
+  ///   (neither sent nor copied) starts ticked, a sent one without a copy
+  ///   starts unticked and can be ticked, a clip whose copy is in the folder is
+  ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+  ///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+  ///   follows the session too: a copy recorded meanwhile locks its clip, a
+  ///   copy forgotten (deleted outside TakeTray) frees it, unticked.
   ///
   /// Auto-disposes with the screen.
   EditSelectControllerProvider._({
@@ -87,7 +111,7 @@ final class EditSelectControllerProvider
 }
 
 String _$editSelectControllerHash() =>
-    r'6e823b1becc16a379e36eff397632031e01a13eb';
+    r'83b9af8a2b805f1b712c032c35052110a72a36f4';
 
 /// The clips ticked on the picking screen of one reel (D-126).
 ///
@@ -99,6 +123,14 @@ String _$editSelectControllerHash() =>
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+///   live clip again, by `addPicks` against the reel's session. A fresh clip
+///   (neither sent nor copied) starts ticked, a sent one without a copy
+///   starts unticked and can be ticked, a clip whose copy is in the folder is
+///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+///   follows the session too: a copy recorded meanwhile locks its clip, a
+///   copy forgotten (deleted outside TakeTray) frees it, unticked.
 ///
 /// Auto-disposes with the screen.
 
@@ -130,6 +162,14 @@ final class EditSelectControllerFamily extends $Family
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
+  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+  ///   live clip again, by `addPicks` against the reel's session. A fresh clip
+  ///   (neither sent nor copied) starts ticked, a sent one without a copy
+  ///   starts unticked and can be ticked, a clip whose copy is in the folder is
+  ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+  ///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+  ///   follows the session too: a copy recorded meanwhile locks its clip, a
+  ///   copy forgotten (deleted outside TakeTray) frees it, unticked.
   ///
   /// Auto-disposes with the screen.
 
@@ -150,6 +190,14 @@ final class EditSelectControllerFamily extends $Family
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+///   live clip again, by `addPicks` against the reel's session. A fresh clip
+///   (neither sent nor copied) starts ticked, a sent one without a copy
+///   starts unticked and can be ticked, a clip whose copy is in the folder is
+///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
+///   follow-up never un-tick it). Only the other ticked clips are to copy. It
+///   follows the session too: a copy recorded meanwhile locks its clip, a
+///   copy forgotten (deleted outside TakeTray) frees it, unticked.
 ///
 /// Auto-disposes with the screen.
 
@@ -173,93 +221,4 @@ abstract class _$EditSelectController extends $AsyncNotifier<EditSelectState?> {
             >;
     return element.handleCreate(ref, () => build(_$args));
   }
-}
-
-/// Whether reel [reelId] has an editing session (D-120); no value until the
-/// database has answered. A reel being edited cannot start another edit
-/// (R1).
-
-@ProviderFor(reelInEditingSession)
-final reelInEditingSessionProvider = ReelInEditingSessionFamily._();
-
-/// Whether reel [reelId] has an editing session (D-120); no value until the
-/// database has answered. A reel being edited cannot start another edit
-/// (R1).
-
-final class ReelInEditingSessionProvider
-    extends $FunctionalProvider<AsyncValue<bool>, bool, Stream<bool>>
-    with $FutureModifier<bool>, $StreamProvider<bool> {
-  /// Whether reel [reelId] has an editing session (D-120); no value until the
-  /// database has answered. A reel being edited cannot start another edit
-  /// (R1).
-  ReelInEditingSessionProvider._({
-    required ReelInEditingSessionFamily super.from,
-    required int super.argument,
-  }) : super(
-         retry: null,
-         name: r'reelInEditingSessionProvider',
-         isAutoDispose: true,
-         dependencies: null,
-         $allTransitiveDependencies: null,
-       );
-
-  @override
-  String debugGetCreateSourceHash() => _$reelInEditingSessionHash();
-
-  @override
-  String toString() {
-    return r'reelInEditingSessionProvider'
-        ''
-        '($argument)';
-  }
-
-  @$internal
-  @override
-  $StreamProviderElement<bool> $createElement($ProviderPointer pointer) =>
-      $StreamProviderElement(pointer);
-
-  @override
-  Stream<bool> create(Ref ref) {
-    final argument = this.argument as int;
-    return reelInEditingSession(ref, argument);
-  }
-
-  @override
-  bool operator ==(Object other) {
-    return other is ReelInEditingSessionProvider && other.argument == argument;
-  }
-
-  @override
-  int get hashCode {
-    return argument.hashCode;
-  }
-}
-
-String _$reelInEditingSessionHash() =>
-    r'151413a1b1b7b97e7465fa7c7f44a6fb8e7a173b';
-
-/// Whether reel [reelId] has an editing session (D-120); no value until the
-/// database has answered. A reel being edited cannot start another edit
-/// (R1).
-
-final class ReelInEditingSessionFamily extends $Family
-    with $FunctionalFamilyOverride<Stream<bool>, int> {
-  ReelInEditingSessionFamily._()
-    : super(
-        retry: null,
-        name: r'reelInEditingSessionProvider',
-        dependencies: null,
-        $allTransitiveDependencies: null,
-        isAutoDispose: true,
-      );
-
-  /// Whether reel [reelId] has an editing session (D-120); no value until the
-  /// database has answered. A reel being edited cannot start another edit
-  /// (R1).
-
-  ReelInEditingSessionProvider call(int reelId) =>
-      ReelInEditingSessionProvider._(argument: reelId, from: this);
-
-  @override
-  String toString() => r'reelInEditingSessionProvider';
 }

@@ -96,10 +96,20 @@ Future<Map<int, ClipLocalTime>> reelClipTimes(Ref ref, int reelId) async {
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 @Riverpod(retry: noRetry)
 class ReelDetailController extends _$ReelDetailController {
   /// Whether this open has started its verify.
   bool _verifyStarted = false;
+
+  /// Whether this open has started its copy check.
+  bool _copiesChecked = false;
 
   /// The removals that are running, by clip id.
   final Map<int, Future<RemoveUndo>> _removing = {};
@@ -115,6 +125,10 @@ class ReelDetailController extends _$ReelDetailController {
 
     final reel = await reelFuture;
     if (reel == null) return null;
+    if (!_copiesChecked) {
+      _copiesChecked = true;
+      unawaited(_checkCopies());
+    }
     final clips = await clipsFuture;
     if (!_verifyStarted && clips.isNotEmpty) {
       _verifyStarted = true;
@@ -147,6 +161,14 @@ class ReelDetailController extends _$ReelDetailController {
         '${outcome.missing.length} missing, ${outcome.skipped.length} skipped',
       );
     },
+  );
+
+  /// Forgets the copies of this reel whose files are gone. Never throws,
+  /// for the same reason as [_verify].
+  Future<void> _checkCopies() => guarded<void>(
+    _log,
+    'The copy check',
+    () => ref.read(editSessionServiceProvider).verifyCopies(reelId),
   );
 
   /// Takes the missing clip [clipId] out of this reel and returns what Undo

@@ -9,12 +9,13 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
-import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -1268,8 +1269,8 @@ void main() {
         goa.id,
         overrides: [
           // The database has not answered about the session yet.
-          reelInEditingSessionProvider(goa.id)
-              .overrideWith((ref) => const Stream<bool>.empty()),
+          reelEditSessionProvider(goa.id)
+              .overrideWith((ref) => const Stream<EditState?>.empty()),
         ],
       );
 

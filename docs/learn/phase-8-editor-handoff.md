@@ -471,7 +471,61 @@ They end with `All tests passed!`. Now open `lib/features/editors/views/copy_pro
 
 ## 11. The reel page while editing
 
-To be written in Task 11 (decision D-128).
+**What we built:** the reel's own page while the reel is being edited. Under the reel's name a banner says where the edit is: "Editing in VN · 1.2 GB" over "4 copies in Movies/TakeTray/Goa food trip", with **Done editing** and **Add more clips** (CapCut and Edits: "Editing in CapCut" over "Sent on Oct 30", with **Done editing**). The clips come in two parts: "New since you started editing" (clips the editor does not have yet, with **Copy to VN folder**) and "In your edit". **Done editing** asks "Have you exported your video?", deletes the copies, says "Copies deleted · 900 MB freed" and, a moment later, offers "Mark Goa as Published?". **Add more clips** opens the clip picker in an add mode, where the clips already in the folder are ticked and locked. Around it: Home's cards get an "Editing in VN" pill, the delete dialog says the copies go too, and every remove, move or undo that has to delete a copy first says so, or says "Couldn't delete the copies. Try again." and changes nothing.
+
+**Why TakeTray needs it:** once a reel is in an editor, the question the user has is "what is left to do?". New clips keep arriving (a clip tagged after the first send), copies can be deleted in the gallery, and a copy that stays forever wastes gigabytes. The page answers the question, keeps the folder in step with the reel, and makes the clean-up one tap.
+
+**Key ideas:**
+
+- **The split is one union.** A clip is "in your edit" when it was sent to the editor **or** its copy is in the folder; everything else is new. Missing clips stay where they were, and a clip tagged in meanwhile is new at once, because the split follows the reel's clips:
+
+  ```dart
+  final split = splitForEditing<ReelClip>(
+    clips,
+    (c) => c.clip.id,
+    sentIds: edit.sentIds,
+    liveCopyIds: {for (final c in edit.copies) c.clipId},
+  );
+  ```
+
+  A recorded copy counts as live because opening the page checks the copies once (`verifyCopies`): the ones deleted outside TakeTray are forgotten, so their clips are new again.
+- **Two parts, one calendar.** Each part has its own day headers, but a part never renumbers its days: Day 2 is still "Day 2" when it is the only day with new clips. `_daysOf` cuts the reel's own days down to a part's clips and drops the empty ones.
+- **Done editing is never offered mid-copy.** `doneEditing` refuses a running copy job, so the page does not even show the button then: the banner says "Copying clips for VN", "7 of 12 clips" and **Show**. One tiny function decides it, and both the banner and the dialog use it:
+
+  ```dart
+  CopyJob? runningCopyJobOf(CopyJob? job, int reelId) =>
+      job != null && job.reelId == reelId && job.state == CopyState.running
+      ? job
+      : null;
+  ```
+
+- **The question fits the editor.** With copies, VN warns that "the VN project for **Goa** can't be edited any more", CapCut that "clips you added to your CapCut project from the folder may show as missing", and both say what it frees. Without copies (CapCut and Edits got the originals) nothing is deleted, so the question is "Done editing Goa?" and the button says **Done editing**. Any failure says "Couldn't delete the copies. Try again." and the session stays, so the user can just tap again.
+- **The Published offer outlives the page.** It waits 900 ms on the app (not on the page), then asks from the root navigator with the provider container, the same way the Ready to edit offer works after a send.
+- **A locked tile is locked in the controller, not only on screen.** In the add picker a clip whose copy is in the folder is always ticked, and the user's own ticks never contain it:
+
+  ```dart
+  void _set(Set<int> next) {
+    if (state.value == null) return;
+    _selected = next.difference(_inFolder);
+    state = AsyncData(_stateNow());
+  }
+  ```
+
+  So a tap on it (which only says "Already in the VN folder…") can never tick it behind the scenes for the day its copy is deleted in the gallery.
+- **A dialog that stays.** The delete dialog now keeps itself open while the delete runs: a `PopScope` in its content turns each button, Back and a tap outside into a decision. When the copies cannot be deleted, the reel is not deleted and the dialog says so under its text, ready for a second try.
+- **`?done=1` asks once per page.** The copies reminder opens `/reels/<id>?done=1`. The page decides the first time it knows whether there is a session, and never again, so going to the viewer and back does not ask twice.
+
+**Where it lives:** `app/lib/features/reels/view_models/reel_edit_state.dart` (the split, `runningCopyJobOf`, the editors for Home), `app/lib/features/reels/views/` (`reel_edit_banner.dart`, `reel_edit_sections.dart`, `reel_detail_screen.dart`, `reels_screen.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart`, `reel_picker_sheet.dart`), `app/lib/features/editors/views/done_editing_dialog.dart`, the add mode in `app/lib/features/editors/{view_models/edit_select_controller,views/edit_select_screen}.dart`, `app/lib/router/app_router.dart` and `app/lib/l10n/app_en.arb`.
+
+**Try it yourself:** run the split's tests, then break the union:
+
+```bash
+cd app && ../tool/flutter test test/features/reels/view_models/reel_edit_state_test.dart
+```
+
+They end with `All tests passed!`. Now open `lib/features/reels/view_models/reel_edit_state.dart` and change `sentIds: edit.sentIds,` to `sentIds: const {},`. Run it again: "a sent clip with no copy is in the edit (the union, not only copies)" fails, because a clip sent to CapCut would show up as new. Put it back. For the lock, change `_selected = next.difference(_inFolder);` in `edit_select_controller.dart` to `_selected = next;` and run `test/features/editors/edit_select_controller_test.dart`: "a tap on a folder clip never ticks it behind the scenes" fails.
+
+**Decisions:** D-128 (all of this section), with D-118 (decisions 5 and 7, R1, R8), D-119 (the split), D-123 (the service and Done editing), D-124 (the reminder's `?done=1`) and D-126 (the Published offer's way of asking) as background.
 
 ## 12. CapCut/Edits add-later through the folder
 

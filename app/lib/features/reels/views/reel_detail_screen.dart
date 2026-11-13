@@ -1,45 +1,39 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
-import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
-import 'package:taketray/domain/models/reel_clip.dart';
-import 'package:taketray/domain/rules/shooting_days.dart';
 import 'package:taketray/domain/rules/shooting_order.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
-import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
-import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
+import 'package:taketray/features/editors/view_models/copy_job_controller.dart';
+import 'package:taketray/features/editors/views/done_editing_dialog.dart';
 import 'package:taketray/features/editors/views/open_share.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_selection.dart';
 import 'package:taketray/features/reels/views/delete_reel_dialog.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
+import 'package:taketray/features/reels/views/reel_edit_banner.dart';
+import 'package:taketray/features/reels/views/reel_edit_sections.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/reel_picker_sheet.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
-import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart'
     show formatClipDuration;
 import 'package:taketray/l10n/gen/app_localizations.dart';
+import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
-
-/// Columns of a day's clip grid (proto.css: `.grid3`).
-const int _columns = 3;
-
-/// Skeleton tiles shown while the reel loads (the prototype shows 9).
-const int _skeletonTiles = 9;
 
 /// What the ⋮ menu can do.
 enum _ReelAction { details, select, delete }
@@ -112,12 +106,30 @@ enum _SelectionAction { edit, selectAll, share }
 /// clips ticked and ends choosing, **Select all** is as before, and **Share**
 /// opens Android's share menu for the chosen clips (the choice stays).
 ///
-/// Not built: the editing banner and sections (later in Phase 8) and
-/// References (Phase 9), all hidden (D-80).
+/// **While the reel is being edited** (D-128; `reelEditStateProvider`) the
+/// editing banner (`ReelEditBanner`) sits under the header, and the clips
+/// come in two parts (`reelEditSlivers`): "New since you started editing"
+/// and "In your edit", each with its own day headers. **Done editing** asks
+/// `showDoneEditingDialog`; **Add more clips** and **Copy to VN folder** open
+/// the picking screen in add mode (`Routes.editSelectOf(add: true)`). While
+/// a copy job of the reel runs the banner shows its progress and **Show**,
+/// which opens the copying screen, and Done editing is not offered. Opening
+/// the page also checks the copies (`ReelDetailController`). With
+/// [askDoneEditing] (`?done=1`, the copies reminder, D-124) the page asks
+/// Done editing once, as soon as it knows the reel has a session; a reel with
+/// none shows just the page, and the page never asks twice. Removing or
+/// moving clips deletes their copies first (R8): the snack says so ("Its
+/// copy in the folder was deleted."), and copies that cannot be deleted
+/// remove nothing and say "Couldn't delete the copies. Try again.".
+///
+/// Not built: References (Phase 9), hidden (D-80).
 class ReelDetailScreen extends ConsumerStatefulWidget {
-  const new({required this.reelId, super.key});
+  const new({required this.reelId, this.askDoneEditing = false, super.key});
 
   final int reelId;
+
+  /// Whether to ask Done editing once on open (`Routes.reelDoneEditing`).
+  final bool askDoneEditing;
 
   @override
   ConsumerState<ReelDetailScreen> createState() => _ReelDetailScreenState();
@@ -161,6 +173,31 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     () => context.push(Routes.editSelectOf(widget.reelId, clipIds: clipIds)),
   );
 
+  /// **Add more clips** and **Copy to VN folder**: the picking screen in add
+  /// mode.
+  void _openAdd() => _edit.open(
+    () => context.push(Routes.editSelectOf(widget.reelId, add: true)),
+  );
+
+  /// Opens the copying screen of the running job once however fast the taps.
+  final OpenOnce _progress = OpenOnce();
+
+  /// Whether this page has decided about [ReelDetailScreen.askDoneEditing].
+  bool _doneAsked = false;
+
+  /// With `?done=1`: asks Done editing once, after this frame, as soon as it
+  /// is known whether the reel has a session (and none of its copy jobs
+  /// runs). A session that starts later is not asked about.
+  void _askDoneOnce(AsyncValue<ReelEditState?> edit, CopyJob? job) {
+    if (!widget.askDoneEditing || _doneAsked || !edit.hasValue) return;
+    _doneAsked = true;
+    if (edit.value == null || job != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(showDoneEditingDialog(context, ref, widget.reelId));
+    });
+  }
+
   /// The chosen clips' ids in shooting order.
   List<int> _chosenInOrder() {
     final chosen = ref.read(reelSelectionProvider(widget.reelId)).selected;
@@ -190,6 +227,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   void dispose() {
     _viewer.dispose();
     _edit.dispose();
+    _progress.dispose();
     _addVideos.dispose();
     super.dispose();
   }
@@ -229,14 +267,37 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     final selectionNotifier = ref.read(
       reelSelectionProvider(widget.reelId).notifier,
     );
+    // The editing session, if any (D-128), and the reel's running copy job.
+    final editAsync = ref.watch(reelEditStateProvider(widget.reelId));
+    final edit = editAsync.value;
+    final job = runningCopyJobOf(
+      ref.watch(copyJobControllerProvider),
+      widget.reelId,
+    );
+    _askDoneOnce(editAsync, job);
     // Edit video: a live clip, nothing being chosen, and no editing session
     // (R1). Until the session is known the button and the menu entry wait.
-    final inSession = ref.watch(reelInEditingSessionProvider(widget.reelId));
+    final noSession = editAsync.hasValue && edit == null;
     final showEdit =
         state != null &&
         state.clipCount > state.missingCount &&
         !selection.selecting &&
-        inSession.value == false;
+        noSession;
+    final tiles = ReelTiles(
+      times: state?.times ?? const {},
+      cache: cache,
+      locale: locale,
+      use24Hour: use24Hour,
+      selection: selection,
+      // While choosing, a tap (or a long press) chooses or un-chooses; it
+      // does not open the viewer.
+      onTap: (id) =>
+          selection.selecting ? selectionNotifier.toggle(id) : _openViewer(id),
+      onLongPress: (id) => selection.selecting
+          ? selectionNotifier.toggle(id)
+          : selectionNotifier.start(id),
+      onRemoveMissing: (id) => unawaited(_remove(id)),
+    );
     return PopScope(
       // Back ends choosing; it leaves the page only when nothing is chosen.
       canPop: !selection.selecting,
@@ -245,11 +306,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       },
       child: Scaffold(
         appBar: selection.selecting
-            ? _selectionBar(
-                context,
-                selection,
-                editHidden: inSession.value != false,
-              )
+            ? _selectionBar(context, selection, editHidden: !noSession)
             : TtAppBar(
                 title: '',
                 leading: TtIconButton(
@@ -307,9 +364,25 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                 // tag.
                 const SliverToBoxAdapter(child: MediaAccessBanner()),
                 if (state == null)
-                  ..._loading(context)
+                  ...reelLoadingSlivers(context)
                 else ...[
                   SliverToBoxAdapter(child: _header(context, state)),
+                  if (edit != null || job != null)
+                    SliverToBoxAdapter(
+                      child: ReelEditBanner(
+                        key: const ValueKey<String>('reel-edit-banner'),
+                        edit: edit,
+                        job: job,
+                        today: today,
+                        onDoneEditing: () => unawaited(
+                          showDoneEditingDialog(context, ref, widget.reelId),
+                        ),
+                        onAddMore: _openAdd,
+                        onShowJob: () => _progress.open(
+                          () => context.push(Routes.copyProgressOf(job!.jobId)),
+                        ),
+                      ),
+                    ),
                   if (state.clipCount == 0)
                     SliverToBoxAdapter(
                       child: TtEmptyState(
@@ -332,32 +405,21 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                         ],
                       ),
                     )
+                  else if (edit != null)
+                    ...reelEditSlivers(
+                      context,
+                      edit,
+                      tiles: tiles,
+                      today: today,
+                      onCopyNew: job == null ? _openAdd : null,
+                    )
                   else
-                    for (final day in state.days) ...[
-                      SliverToBoxAdapter(
-                        child: TtDayHeader(
-                          title: l10n.reelDayTitle(
-                            day.number,
-                            ttDayWeekdayText(context, day.date, today: today),
-                          ),
-                          trailing: l10n.reelDayClips(day.clips.length),
-                        ),
-                      ),
-                      SliverPadding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: tt.spacing.gutter,
-                        ),
-                        sliver: _dayGrid(
-                          context,
-                          day,
-                          times: state.times,
-                          cache: cache,
-                          locale: locale,
-                          use24Hour: use24Hour,
-                          selection: selection,
-                        ),
-                      ),
-                    ],
+                    ...reelDaySlivers(
+                      context,
+                      state.days,
+                      tiles: tiles,
+                      today: today,
+                    ),
                 ],
                 // Room to scroll the last row clear of the floating nav pill
                 // (and of the Edit video button above it).
@@ -397,44 +459,6 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     }
   }
 
-  /// A skeleton day header and [_skeletonTiles] skeleton tiles, read as
-  /// "Loading".
-  List<Widget> _loading(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
-    return [
-      SliverToBoxAdapter(
-        child: Semantics(
-          container: true,
-          label: l10n.loading,
-          child: Padding(
-            // The same room as a day header (`TtDayHeader`).
-            padding: EdgeInsets.fromLTRB(
-              tt.spacing.gutter,
-              tt.spacing.l,
-              tt.spacing.gutter,
-              tt.spacing.xxs,
-            ),
-            child: const TtSkeletonLine(widthFactor: _skeletonDayWidth),
-          ),
-        ),
-      ),
-      SliverPadding(
-        padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
-        sliver: SliverGrid.builder(
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: _columns,
-            mainAxisSpacing: tt.spacing.gridGap,
-            crossAxisSpacing: tt.spacing.gridGap,
-            childAspectRatio: tt.sizes.clipTileAspect,
-          ),
-          itemCount: _skeletonTiles,
-          itemBuilder: (_, _) => const TtClipTileSkeleton(),
-        ),
-      ),
-    ];
-  }
-
   Widget _header(BuildContext context, ReelDetailState state) {
     final l10n = AppLocalizations.of(context);
     final reel = state.reel;
@@ -461,139 +485,6 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       shotIdeasTitle: l10n.shotIdeasTitle,
       showMoreLabel: l10n.showMore,
       showLessLabel: l10n.showLess,
-    );
-  }
-
-  /// One day's tiles, three to a row, built on demand.
-  Widget _dayGrid(
-    BuildContext context,
-    ShootingDay<ReelClip> day, {
-    required Map<int, ClipLocalTime> times,
-    required ThumbnailCache? cache,
-    required String locale,
-    required bool use24Hour,
-    required ReelSelectionState selection,
-  }) {
-    final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
-    final hasMissing = day.clips.any((c) => c.clip.missing);
-    return SliverLayoutBuilder(
-      builder: (context, constraints) {
-        final tileWidth =
-            (constraints.crossAxisExtent -
-                (_columns - 1) * tt.spacing.gridGap) /
-            _columns;
-        final natural = tileWidth / tt.sizes.clipTileAspect;
-        // A row with a missing tile is as tall as the tile needs at this text
-        // size, so it is not shrunk to fit a 3:4 cell (D-87); its neighbours
-        // keep their 3:4 shape at the top. Without one, the plain 3:4 grid.
-        final needed = hasMissing
-            ? TtMissingClipTile.heightFor(
-                context,
-                width: tileWidth,
-                label: l10n.clipMissing,
-                removeLabel: l10n.clipRemove,
-              )
-            : 0.0;
-        final extent = math.max(natural, needed);
-        final grown = extent > natural;
-        return SliverGrid.builder(
-          gridDelegate: grown
-              ? SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _columns,
-                  mainAxisSpacing: tt.spacing.gridGap,
-                  crossAxisSpacing: tt.spacing.gridGap,
-                  mainAxisExtent: extent,
-                )
-              : SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: _columns,
-                  mainAxisSpacing: tt.spacing.gridGap,
-                  crossAxisSpacing: tt.spacing.gridGap,
-                  childAspectRatio: tt.sizes.clipTileAspect,
-                ),
-          itemCount: day.clips.length,
-          itemBuilder: (context, index) {
-            final item = day.clips[index];
-            final tile = _tile(
-              context,
-              item,
-              localTime: times[item.clip.id],
-              cache: cache,
-              tileHeight: natural,
-              locale: locale,
-              use24Hour: use24Hour,
-              selection: selection,
-            );
-            // Under a tall row a picture tile stays 3:4; a missing tile fills
-            // the row.
-            return grown && !item.clip.missing
-                ? Align(alignment: Alignment.topCenter, child: tile)
-                : tile;
-          },
-        );
-      },
-    );
-  }
-
-  Widget _tile(
-    BuildContext context,
-    ReelClip item, {
-    required ClipLocalTime? localTime,
-    required ThumbnailCache? cache,
-    required double tileHeight,
-    required String locale,
-    required bool use24Hour,
-    required ReelSelectionState selection,
-  }) {
-    final l10n = AppLocalizations.of(context);
-    final clip = item.clip;
-    final notifier = ref.read(reelSelectionProvider(widget.reelId).notifier);
-    if (clip.missing) {
-      return TtMissingClipTile(
-        key: ValueKey(clip.id),
-        label: l10n.clipMissing,
-        removeLabel: l10n.clipRemove,
-        onRemove: () => unawaited(_remove(clip.id)),
-      );
-    }
-    // Where it was shot (D-83); the phone's time until that is known.
-    final time = localTime != null
-        ? wallClockTimeText(
-            localTime.wallClock,
-            locale: locale,
-            use24Hour: use24Hour,
-          )
-        : timeOfDayText(
-            clip.fingerprint.dateTakenUtc,
-            locale: locale,
-            use24Hour: use24Hour,
-          );
-    final length = formatClipDuration(clip.fingerprint.durationMs);
-    return TtClipTile(
-      key: ValueKey(clip.id),
-      thumbnail: clipThumbnail(
-        clip: clip,
-        logicalSize: tileHeight,
-        cache: cache,
-      ),
-      timeText: time,
-      durationText: length,
-      reelCount: item.reelCount,
-      horizontal: clip.width > clip.height,
-      semanticLabel: item.reelCount > 1
-          ? l10n.clipTileSemanticsInReels(time, length, item.reelCount)
-          : l10n.clipTileSemantics(time, length),
-      selected: selection.selecting
-          ? selection.selected.contains(clip.id)
-          : null,
-      // While choosing, a tap (or a long press) chooses or un-chooses; it
-      // does not open the viewer.
-      onTap: selection.selecting
-          ? () => notifier.toggle(clip.id)
-          : () => _openViewer(clip.id),
-      onLongPress: () => selection.selecting
-          ? notifier.toggle(clip.id)
-          : notifier.start(clip.id),
     );
   }
 
@@ -735,12 +626,24 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         clipIds: chosen,
       );
       if (!done.isEmpty) {
+        final removed = l10n.clipsRemovedSnack(
+          done.clipCount,
+          done.reelNames.single,
+        );
         snacks.showUndoAll(
-          l10n.clipsRemovedSnack(done.clipCount, done.reelNames.single),
+          done.copiesDeleted > 0
+              ? l10n.removedWithCopies(
+                  removed,
+                  l10n.copiesDeletedSuffix(done.copiesDeleted),
+                )
+              : removed,
           done.records,
         );
       }
       if (mounted) notifier.clear();
+    } on CopiesNotDeleted {
+      // Nothing was removed (R8); the choice is kept to try again.
+      snacks.show(l10n.copiesNotDeleted, done: false);
     } on Object {
       // The actions logged the type; the choice is kept to try again.
       snacks.show(l10n.reelActionFailed, done: false);
@@ -763,12 +666,12 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       if (!record.isEmpty) {
         snacks.showUndo(l10n.missingClipRemovedSnack, record);
       }
+    } on CopiesNotDeleted {
+      // Its copy could not be deleted, so it stays (R8).
+      snacks.show(l10n.copiesNotDeleted, done: false);
     } on Object {
       // The controller logged the type.
       snacks.show(l10n.reelActionFailed, done: false);
     }
   }
 }
-
-/// How wide the skeleton day header is, of the width it has.
-const double _skeletonDayWidth = 0.35;

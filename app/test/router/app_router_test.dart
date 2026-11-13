@@ -31,6 +31,7 @@ import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import '../features/reels/edit_session_support.dart' show startEditing;
 import '../support/fake_video_player.dart';
 import '../support/reel_videos.dart';
 import '../support/test_app.dart';
@@ -185,6 +186,74 @@ void main() {
     expect(router.routerDelegate.currentConfiguration.uri.queryParameters, {
       Routes.reelDoneParameter: '1',
     });
+  });
+
+  testApp('the Done editing location asks Done editing once for a reel with '
+      'a session; Back and forth does not ask again', (tester) async {
+    FakeVideoPlayerPlatform.install();
+    final h = reelHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final ids = (await tester.runAsync(
+      () => putInReel(h, reel.id, [reelVideo(1), reelVideo(2)]),
+    ))!;
+    await tester.runAsync(
+      () => startEditing(h, reel.id, EditorApp.vn, copied: [ids[0]]),
+    );
+    final (_, router) = await _pumpApp(tester, harness: h);
+
+    router.go(Routes.reelDoneEditing(reel.id));
+    await _settle(tester);
+    expect(
+      tester
+          .widget<ReelDetailScreen>(find.byType(ReelDetailScreen))
+          .askDoneEditing,
+      isTrue,
+    );
+    expect(find.text('Have you exported your video?'), findsOneWidget);
+    await tester.tap(find.text('Not yet'));
+    await _settle(tester);
+    expect(find.byType(TtDialog<bool>), findsNothing);
+
+    // The viewer and back.
+    unawaited(router.push(Routes.clip(reel.id, ids[1])));
+    await _settle(tester);
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(find.byType(TtDialog<bool>), findsNothing);
+
+    // Another tab and back.
+    Finder tab(String label) =>
+        find.descendant(of: find.byType(TtNavPill), matching: find.text(label));
+    await tester.tap(tab('Settings'));
+    await _settle(tester);
+    await tester.tap(tab('Reels'));
+    await _settle(tester);
+    expect(find.byType(TtDialog<bool>), findsNothing);
+  });
+
+  testApp('a plain reel location never asks Done editing', (tester) async {
+    final h = reelHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final ids = (await tester.runAsync(
+      () => putInReel(h, reel.id, [reelVideo(1)]),
+    ))!;
+    await tester.runAsync(
+      () => startEditing(h, reel.id, EditorApp.vn, copied: ids),
+    );
+    final (_, router) = await _pumpApp(tester, harness: h);
+
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+
+    expect(
+      tester
+          .widget<ReelDetailScreen>(find.byType(ReelDetailScreen))
+          .askDoneEditing,
+      isFalse,
+    );
+    expect(find.byType(TtDialog<bool>), findsNothing);
+    expect(find.text('Done editing'), findsOneWidget);
   });
 
   testApp('unknown id route goes to Reels', (tester) async {
@@ -634,6 +703,14 @@ void main() {
       final goa = (await tester.runAsync(
         () => h.container.read(reelsRepositoryProvider).create('Goa'),
       ))!;
+      // Add mode stays only for a reel in a VN session (D-128); one with a
+      // copy, as the app's start ends a session that holds nothing.
+      final ids = (await tester.runAsync(
+        () => putInReel(h, goa.id, [reelVideo(1)]),
+      ))!;
+      await tester.runAsync(
+        () => startEditing(h, goa.id, EditorApp.vn, copied: ids),
+      );
       final (_, router) = await _pumpApp(tester, harness: h);
 
       unawaited(

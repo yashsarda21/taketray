@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
@@ -61,8 +62,10 @@ class ReelSnacks {
   /// A snack saying [message] with **Undo**, which puts back what every one
   /// of [records] changed, last to first, in one transaction (an add to
   /// three reels is three records): all of them or none. If it fails,
-  /// nothing was undone and "Couldn't undo. Try again." is shown. Null when
-  /// the app is gone.
+  /// nothing was undone and "Couldn't undo. Try again." is shown, or, when
+  /// the undo would take clips out of a reel being edited and their copies
+  /// could not be deleted first (R8), "Couldn't delete the copies. Try
+  /// again.". Null when the app is gone.
   ///
   /// [undo] replaces the plain put-back for a screen that must do more with
   /// it (the tag player's Undo also takes the player back to the clip, D-97);
@@ -93,6 +96,9 @@ class ReelSnacks {
       } else {
         await _container.read(reelsRepositoryProvider).undoAll(records);
       }
+    } on CopiesNotDeleted {
+      _log.warning('Undo failed: CopiesNotDeleted');
+      show(_l10n.copiesNotDeleted, done: false);
     } on Object catch (error) {
       _log.warning('Undo failed: ${error.runtimeType}');
       show(_l10n.undoFailed, done: false);

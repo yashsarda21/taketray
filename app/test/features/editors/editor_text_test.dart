@@ -1,6 +1,8 @@
-import 'package:flutter/painting.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
+import 'package:taketray/l10n/gen/app_localizations.dart';
 
 /// The text and the weight of each span of [span].
 List<(String, int?)> parts(InlineSpan span) {
@@ -15,6 +17,28 @@ List<(String, int?)> parts(InlineSpan span) {
 }
 
 void main() {
+  testWidgets('the short editor names (R8): Edits, CapCut, VN', (tester) async {
+    late AppLocalizations l10n;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            l10n = AppLocalizations.of(context);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(
+      [for (final e in EditorApp.values) editorShortName(l10n, e)],
+      ['CapCut', 'Edits', 'VN'],
+    );
+    expect(editorName(l10n, EditorApp.edits), 'Instagram Edits');
+  });
+
   group('boldMark and boldSpans', () {
     test('a marked part is bold, the rest is plain', () {
       final text =

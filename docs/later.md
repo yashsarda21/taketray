@@ -10,10 +10,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
-## Phase 8 (editor handoff)
-
-- Phase 4 left these too (D-80): the VN pieces, the "Editing in VN" banner, the card pill and the delete dialog's line. Task 11.
-
 ## Phase 9 (references)
 
 - Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas).

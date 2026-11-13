@@ -298,6 +298,13 @@ final class ReelClipTimesFamily extends $Family
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 
 @ProviderFor(ReelDetailController)
 final reelDetailControllerProvider = ReelDetailControllerFamily._();
@@ -324,6 +331,13 @@ final reelDetailControllerProvider = ReelDetailControllerFamily._();
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 final class ReelDetailControllerProvider
     extends $AsyncNotifierProvider<ReelDetailController, ReelDetailState?> {
   /// The page of one reel (D-87): the reel, its clips by shooting day, and the
@@ -348,6 +362,13 @@ final class ReelDetailControllerProvider
   ///   by type. A clip whose video is gone is flagged, the list emits again,
   ///   and the tile turns into the missing tile. A later change of the list
   ///   (or of the times) does not verify again; opening the reel again does.
+  /// - **Opening the reel checks its copies** (D-128): once per open,
+  ///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+  ///   editing session whose files were deleted outside TakeTray, so their
+  ///   clips show under "New since you started editing" again. A reel with no
+  ///   session asks the phone nothing. Like the verify, it never blocks or
+  ///   fails the page: an error is logged by type and the copies stay as they
+  ///   were.
   ReelDetailControllerProvider._({
     required ReelDetailControllerFamily super.from,
     required int super.argument,
@@ -385,7 +406,7 @@ final class ReelDetailControllerProvider
 }
 
 String _$reelDetailControllerHash() =>
-    r'5012bf8879d85980e5d3cdd0df95abdf1b8d9959';
+    r'370ae572512cd2ca174ad862994caa0b86619849';
 
 /// The page of one reel (D-87): the reel, its clips by shooting day, and the
 /// counts of its header.
@@ -409,6 +430,13 @@ String _$reelDetailControllerHash() =>
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 
 final class ReelDetailControllerFamily extends $Family
     with
@@ -450,6 +478,13 @@ final class ReelDetailControllerFamily extends $Family
   ///   by type. A clip whose video is gone is flagged, the list emits again,
   ///   and the tile turns into the missing tile. A later change of the list
   ///   (or of the times) does not verify again; opening the reel again does.
+  /// - **Opening the reel checks its copies** (D-128): once per open,
+  ///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+  ///   editing session whose files were deleted outside TakeTray, so their
+  ///   clips show under "New since you started editing" again. A reel with no
+  ///   session asks the phone nothing. Like the verify, it never blocks or
+  ///   fails the page: an error is logged by type and the copies stay as they
+  ///   were.
 
   ReelDetailControllerProvider call(int reelId) =>
       ReelDetailControllerProvider._(argument: reelId, from: this);
@@ -480,6 +515,13 @@ final class ReelDetailControllerFamily extends $Family
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 
 abstract class _$ReelDetailController extends $AsyncNotifier<ReelDetailState?> {
   late final _$args = ref.$arg as int;

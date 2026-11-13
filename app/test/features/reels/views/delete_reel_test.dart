@@ -7,10 +7,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/views/delete_reel_dialog.dart';
@@ -22,6 +24,7 @@ import '../../../support/accessibility.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart' show startEditing;
 
 /// A repository that counts deletes and undos, and can be made to fail.
 class _CountingReels extends ReelsRepository {
@@ -34,6 +37,9 @@ class _CountingReels extends ReelsRepository {
   int undos = 0;
   bool deleteFails = false;
   bool undoFails = false;
+
+  /// What the next undos throw, when set.
+  Exception? undoError;
 
   /// Holds a delete until it completes (a slow database).
   Completer<void>? hold;
@@ -50,6 +56,8 @@ class _CountingReels extends ReelsRepository {
   Future<void> undoAll(List<UndoRecord> records) async {
     undos++;
     if (undoFails) throw StateError('disk full');
+    final error = undoError;
+    if (error != null) throw error;
     await super.undoAll(records);
   }
 }
@@ -250,6 +258,153 @@ void main() {
     });
   });
 
+  group('during an editing session (R8)', () {
+    Future<void> editing(
+      WidgetTester tester,
+      EditorApp editor, {
+      int copies = 0,
+    }) async {
+      final ids = (await tester.runAsync(
+        () => clips.addNewClipsToReel(goa.id, [shot(8), shot(9)]),
+      ))!;
+      await tester.runAsync(
+        () => startEditing(
+          h,
+          goa.id,
+          editor,
+          copied: [clipId, ...ids].take(copies).toList(),
+        ),
+      );
+    }
+
+    String dialogText(WidgetTester tester) => [
+      for (final t in tester.widgetList<Text>(
+        find.descendant(
+          of: find.byType(TtDialog<bool>),
+          matching: find.byType(Text),
+        ),
+      ))
+        t.data ?? '',
+    ].join('\n').replaceAll('\u00a0', ' ');
+
+    testApp('VN copies: their count and size, and the project', (tester) async {
+      await editing(tester, EditorApp.vn, copies: 2);
+      await pumpHost(tester);
+      await openDialog(tester);
+
+      expect(
+        dialogText(tester),
+        contains(
+          'The 2 VN copies (600 MB) will also be deleted, and the VN project '
+          "can't be edited after that.",
+        ),
+      );
+    });
+
+    testApp('one VN copy', (tester) async {
+      await editing(tester, EditorApp.vn, copies: 1);
+      await pumpHost(tester);
+      await openDialog(tester);
+
+      expect(
+        dialogText(tester),
+        contains(
+          'The 1 VN copy (300 MB) will also be deleted, and the VN project '
+          "can't be edited after that.",
+        ),
+      );
+    });
+
+    testApp('CapCut copies: the folder', (tester) async {
+      await editing(tester, EditorApp.capcut, copies: 1);
+      await pumpHost(tester);
+      await openDialog(tester);
+
+      expect(
+        dialogText(tester),
+        contains(
+          'The 1 copy in Movies/TakeTray/Goa (300 MB) will also be deleted.',
+        ),
+      );
+    });
+
+    for (final editor in EditorApp.values) {
+      testApp('a ${editor.name} session with no copies adds no line', (
+        tester,
+      ) async {
+        await editing(tester, editor);
+        await pumpHost(tester);
+        await openDialog(tester);
+
+        expect(dialogText(tester), isNot(contains('will also be deleted')));
+        expect(find.textContaining('VN'), findsNothing);
+      });
+    }
+
+    testApp('copies that cannot be deleted: the reel stays and the dialog '
+        'says so; a retry deletes it', (tester) async {
+      await editing(tester, EditorApp.vn, copies: 1);
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      await pumpHost(tester);
+      await openDialog(tester);
+
+      await confirm(tester);
+
+      expect(find.byType(TtDialog<bool>), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TtDialog<bool>),
+          matching: find.text("Couldn't delete the copies. Try again."),
+        ),
+        findsOneWidget,
+      );
+      expect(reels.deletes, 0);
+      expect(await allReels(tester), hasLength(1));
+      expect(find.text(reelsRouteMarker), findsNothing);
+      expect(find.text('Goa deleted'), findsNothing);
+
+      await confirm(tester);
+
+      expect(find.byType(TtDialog<bool>), findsNothing);
+      expect(await allReels(tester), isEmpty);
+      expect(find.text('Goa deleted'), findsOneWidget);
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+    });
+
+    testApp('while the delete runs, Cancel and Back wait', (tester) async {
+      reels.hold = Completer<void>();
+      await pumpHost(tester);
+      await openDialog(tester);
+      await tester.tap(find.text('Delete reel'));
+      await tester.pump();
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pump();
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(find.byType(TtDialog<bool>), findsOneWidget);
+
+      reels.hold!.complete();
+      await settleApp(tester);
+      expect(find.byType(TtDialog<bool>), findsNothing);
+      expect(find.text('Goa deleted'), findsOneWidget);
+    });
+
+    testApp('the dialog with the VN line at 2x, dark, is accessible', (
+      tester,
+    ) async {
+      await editing(tester, EditorApp.vn, copies: 2);
+      for (final brightness in Brightness.values) {
+        await pumpHost(tester, brightness: brightness, textScale: 2);
+        await openDialog(tester);
+        expect(tester.takeException(), isNull);
+        await expectTtAccessible(tester);
+      }
+    });
+  });
+
   group('Undo', () {
     testApp('delete Undo restores the reel and its clips', (tester) async {
       await tester.pumpWidget(
@@ -366,6 +521,55 @@ void main() {
       expect(find.text('Undo'), findsNothing);
       expect(reels.undos, 1);
       expect(await allReels(tester), isEmpty);
+    });
+
+    testApp('an Undo whose copies cannot be deleted says so (R8)', (
+      tester,
+    ) async {
+      reels.undoError = const CopiesNotDeleted(1);
+      await pumpHost(tester);
+      await openDialog(tester);
+      await confirm(tester);
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
+      expect(find.text("Couldn't undo. Try again."), findsNothing);
+      expect(await allReels(tester), isEmpty);
+    });
+
+    testApp('a custom Undo (the tag player) that cannot delete the copies '
+        'says so too', (tester) async {
+      await pumpScreen(
+        tester,
+        Scaffold(
+          body: Builder(
+            builder: (context) => TtButton(
+              label: 'snack',
+              onPressed: () => ReelSnacks.of(context).showUndoAll(
+                'Added to Goa',
+                const [],
+                undo: () => Future.error(const CopiesNotDeleted(2)),
+              ),
+            ),
+          ),
+        ),
+        overrides: overrides(),
+      );
+      await tester.tap(find.text('snack'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
     });
 
     testApp('a second tap on Undo undoes once', (tester) async {

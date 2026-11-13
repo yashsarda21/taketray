@@ -90,8 +90,13 @@ GoRouter appRouter(Ref ref) {
                       _log.warning('Unknown location; showing Reels');
                       return Routes.reels;
                     },
-                    builder: (context, state) =>
-                        ReelDetailScreen(reelId: _reelId(state)!),
+                    // `?done=1` (the copies reminder) asks Done editing once.
+                    builder: (context, state) => ReelDetailScreen(
+                      reelId: _reelId(state)!,
+                      askDoneEditing:
+                          state.uri.queryParameters[Routes.reelDoneParameter] ==
+                          '1',
+                    ),
                     routes: [
                       GoRoute(
                         path: 'clip/:${Routes.clipIdParameter}',

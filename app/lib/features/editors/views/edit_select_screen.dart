@@ -7,12 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
 import 'package:taketray/features/editors/views/editor_sheet.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
+import 'package:taketray/features/reels/views/open_once.dart';
+import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart'
     show formatClipDuration;
@@ -44,7 +47,18 @@ const int _columns = 3;
 /// - A reel that is gone (an id that names none, or one deleted while the
 ///   screen is open) sends the app to Reels.
 ///
-/// [addMode] is the add mode of Phase 8's later task; it changes nothing yet.
+/// **Add mode** ([addMode], `&add=1`, D-128), from the VN editing banner's
+/// **Add more clips** and the reel page's **Copy to VN folder**: "Add clips to
+/// VN folder" over every live clip; the fresh ones start ticked, a clip whose
+/// copy is in the folder is ticked, locked and marked "In VN folder" (a tap
+/// says "Already in the VN folder. Copies are deleted when you tap Done
+/// editing."), a clip sent before can be ticked. The bottom bar counts only
+/// the clips to copy ("{n} new clips to copy" / "{size} · copies are added,
+/// never renamed", or "Pick clips to add" / "{n} already in the VN folder")
+/// and **Copy** opens the space check (`Routes.copySpaceOf`) with them, in
+/// shooting order, once however fast the taps. A reel with no VN session
+/// (Done editing ran meanwhile; CapCut and Edits wait for Task 12) goes back
+/// to its page.
 class EditSelectScreen extends ConsumerStatefulWidget {
   const new({
     required this.reelId,
@@ -75,7 +89,17 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
   late final EditSelectArgs _args = EditSelectArgs(
     widget.reelId,
     widget.clipIds,
+    addMode: widget.addMode,
   );
+
+  /// Opens the space check once however fast the taps (add mode).
+  final OpenOnce _copy = OpenOnce();
+
+  @override
+  void dispose() {
+    _copy.dispose();
+    super.dispose();
+  }
 
   EditSelectControllerProvider get _provider =>
       editSelectControllerProvider(_args);
@@ -90,6 +114,26 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
 
   void _close() =>
       context.canPop() ? context.pop() : context.go(Routes.reel(widget.reelId));
+
+  /// Add mode with no VN session to add to: back to the reel's page, once,
+  /// after this frame.
+  void _leaveToReel() {
+    if (_leaving) return;
+    _leaving = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _close();
+    });
+  }
+
+  /// **Copy** (add mode): the space check for the clips to copy.
+  void _copyPicked(EditSelectState state) {
+    final editor = state.addEditor;
+    if (editor == null || state.toCopyInOrder.isEmpty) return;
+    final ids = state.toCopyInOrder;
+    _copy.open(
+      () => context.push(Routes.copySpaceOf(widget.reelId, editor, ids)),
+    );
+  }
 
   Future<void> _continue(EditSelectState state) async {
     if (_sheetOpen || state.pickedInOrder.isEmpty) return;
@@ -112,6 +156,11 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final select = ref.watch(_provider);
     final state = select.value;
     if (select.hasValue && state == null) _leave();
+    // Add mode needs the reel's VN session (CapCut and Edits: Task 12).
+    if (state != null && state.addMode && state.addEditor != EditorApp.vn) {
+      _leaveToReel();
+    }
+    final adding = state?.addMode ?? widget.addMode;
     final notifier = ref.read(_provider.notifier);
     final cache = ref.watch(thumbnailCacheProvider).value;
     final today =
@@ -122,7 +171,9 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
 
     return Scaffold(
       appBar: TtAppBar(
-        title: l10n.editSelectTitle,
+        title: adding
+            ? l10n.editAddTitle(l10n.editorNameVn)
+            : l10n.editSelectTitle,
         subtitle: state?.reel.name,
         leading: TtIconButton(
           icon: Symbols.close_rounded,
@@ -136,7 +187,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                 ? l10n.editSelectClear
                 : l10n.selectionSelectAll,
             kind: TtButtonKind.text,
-            onPressed: state == null || state.liveCount == 0
+            onPressed: state == null || state.liveCount <= state.inFolder.length
                 ? null
                 : state.allPicked
                 ? notifier.clear
@@ -227,6 +278,12 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                     use24Hour: use24Hour,
                   );
             final length = formatClipDuration(clip.fingerprint.durationMs);
+            final label = l10n.clipTileSemantics(time, length);
+            // Add mode: its copy is in the folder; ticked, locked, marked.
+            final locked = state.inFolder.contains(clip.id);
+            final editor = l10n.editorNameVn;
+            void onTap() =>
+                locked ? _alreadyInFolder(context) : notifier.toggle(clip.id);
             return TtClipTile(
               key: ValueKey<int>(clip.id),
               thumbnail: clipThumbnail(
@@ -237,11 +294,14 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
               timeText: time,
               durationText: length,
               horizontal: clip.width > clip.height,
-              semanticLabel: l10n.clipTileSemantics(time, length),
+              semanticLabel: locked
+                  ? l10n.clipTileSemanticsInFolder(label, editor)
+                  : label,
+              vnLabel: locked ? l10n.editInFolderMark(editor) : null,
               // Always picking: every tile shows its check circle.
               selected: state.selected.contains(clip.id),
-              onTap: () => notifier.toggle(clip.id),
-              onLongPress: () => notifier.toggle(clip.id),
+              onTap: onTap,
+              onLongPress: onTap,
             );
           },
         );
@@ -249,7 +309,34 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
   }
 
+  /// "Already in the VN folder. …", for a tap on a locked tile.
+  void _alreadyInFolder(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    ReelSnacks.of(context)
+        .show(l10n.editAlreadyInFolderSnack(l10n.editorNameVn), done: false);
+  }
+
+  /// Add mode's bar: only the clips to copy count.
+  Widget _addBar(BuildContext context, EditSelectState? state) {
+    final l10n = AppLocalizations.of(context);
+    final count = state?.toCopyInOrder.length ?? 0;
+    final editor = l10n.editorNameVn;
+    return TtBottomBar(
+      key: const ValueKey<String>('edit-select-bottom-bar'),
+      title: count == 0 ? l10n.editAddBarNone : l10n.editAddBarCount(count),
+      subtitle: count == 0
+          ? l10n.editAddBarInFolder(state?.inFolder.length ?? 0, editor)
+          : l10n.editAddBarDetail(byteSizeText(l10n, state!.toCopyBytes)),
+      action: TtButton(
+        key: const ValueKey<String>('edit-select-continue'),
+        label: l10n.editAddCopy,
+        onPressed: count == 0 ? null : () => _copyPicked(state!),
+      ),
+    );
+  }
+
   Widget _bottomBar(BuildContext context, EditSelectState? state) {
+    if (state?.addMode ?? widget.addMode) return _addBar(context, state);
     final l10n = AppLocalizations.of(context);
     final picked = state?.selected.length ?? 0;
     return TtBottomBar(

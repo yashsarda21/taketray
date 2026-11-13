@@ -2832,5 +2832,372 @@
   "copyDone": "Done",
   "@copyDone": {
     "description": "Button of the Ready screen that goes back to the reel."
+  },
+  "editorShortEdits": "Edits",
+  "@editorShortEdits": {
+    "description": "Instagram Edits in the short places: the reel card pill, the editing banner and a section button (R8). CapCut and VN keep their names."
+  },
+  "reelEditingIn": "Editing in {editor}",
+  "@reelEditingIn": {
+    "description": "A reel card's pill, and the editing banner's title, while the reel is being edited in {editor} (\"VN\", \"CapCut\", \"Edits\").",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingInSize": "Editing in {editor} · {size}",
+  "@reelEditingInSize": {
+    "description": "The editing banner's title when the reel's folder holds copies: their total size.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingCopies": "{count, plural, one{1 copy in Movies/TakeTray/{folder}} other{{count} copies in Movies/TakeTray/{folder}}}",
+  "@reelEditingCopies": {
+    "description": "The VN editing banner's second line: the copies and the folder they are in.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingSentOn": "Sent on {date}",
+  "@reelEditingSentOn": {
+    "description": "The CapCut or Edits editing banner's second line: the day the clips were first sent.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingSentOnCopies": "Sent on {date} · {count, plural, one{1 copy in Movies/TakeTray/{folder}} other{{count} copies in Movies/TakeTray/{folder}}}",
+  "@reelEditingSentOnCopies": {
+    "description": "The CapCut or Edits editing banner's second line when clips added later were copied into the folder.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDoneEditing": "Done editing",
+  "@reelDoneEditing": {
+    "description": "Button of the editing banner, and the confirm button of the Done editing question when there are no copies to delete."
+  },
+  "reelAddMoreClips": "Add more clips",
+  "@reelAddMoreClips": {
+    "description": "Button of the VN editing banner: opens the picker that copies more clips into the reel's folder."
+  },
+  "reelCopyShow": "Show",
+  "@reelCopyShow": {
+    "description": "Button of the banner shown while a reel's clips are being copied: opens the copying screen."
+  },
+  "reelNewSinceTitle": "New since you started editing",
+  "@reelNewSinceTitle": {
+    "description": "Title of the part of a reel's page with the clips the editor does not have yet."
+  },
+  "reelNewSinceSubtitle": "{count, plural, one{1 clip · not in your edit yet} other{{count} clips · not in your edit yet}}",
+  "@reelNewSinceSubtitle": {
+    "description": "Line under \"New since you started editing\".",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCopyToFolder": "Copy to {editor} folder",
+  "@reelCopyToFolder": {
+    "description": "Button of the \"New since you started editing\" part: opens the picker that copies clips into the editor's folder.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelInEditTitle": "In your edit",
+  "@reelInEditTitle": {
+    "description": "Title of the part of a reel's page with the clips the editor already has."
+  },
+  "reelInEditFolder": "{count, plural, one{1 clip · in the {editor} folder} other{{count} clips · in the {editor} folder}}",
+  "@reelInEditFolder": {
+    "description": "Line under \"In your edit\" for VN: the clips whose copy is in the folder.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelInEditSent": "{count, plural, one{1 clip · sent to {editor} on {date}} other{{count} clips · sent to {editor} on {date}}}",
+  "@reelInEditSent": {
+    "description": "Line under \"In your edit\" for CapCut or Edits: the clips sent, and the day they were first sent.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsEditing": "{card}. {editing}",
+  "@reelCardSemanticsEditing": {
+    "description": "What a screen reader says for a reel card while the reel is being edited: the card's usual words, then \"Editing in {editor}\".",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      },
+      "editing": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddTitle": "Add clips to {editor} folder",
+  "@editAddTitle": {
+    "description": "Title of the picker that copies more clips into a reel's editing folder.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editInFolderMark": "In {editor} folder",
+  "@editInFolderMark": {
+    "description": "Mark on a clip tile of that picker: the clip's copy is in the folder already.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "clipTileSemanticsInFolder": "{label}, already in {editor} folder",
+  "@clipTileSemanticsInFolder": {
+    "description": "What a screen reader says for a clip tile whose copy is in the folder already: the tile's usual words, then this.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarCount": "{count, plural, one{1 new clip to copy} other{{count} new clips to copy}}",
+  "@editAddBarCount": {
+    "description": "Bottom bar of the add picker: how many ticked clips will be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAddBarDetail": "{size} · copies are added, never renamed",
+  "@editAddBarDetail": {
+    "description": "Second line of the add picker's bottom bar: the size of the clips to copy.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarNone": "Pick clips to add",
+  "@editAddBarNone": {
+    "description": "Bottom bar of the add picker when no new clip is ticked."
+  },
+  "editAddBarInFolder": "{count} already in the {editor} folder",
+  "@editAddBarInFolder": {
+    "description": "Second line of the add picker's bottom bar when no new clip is ticked.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddCopy": "Copy",
+  "@editAddCopy": {
+    "description": "Button of the add picker's bottom bar: goes on to the space check."
+  },
+  "editAlreadyInFolderSnack": "Already in the {editor} folder. Copies are deleted when you tap Done editing.",
+  "@editAlreadyInFolderSnack": {
+    "description": "Snack when a clip that is already in the folder is tapped in the add picker.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingExportedTitle": "Have you exported your video?",
+  "@doneEditingExportedTitle": {
+    "description": "Title of the Done editing question when copies will be deleted."
+  },
+  "doneEditingVnBody": "Once the copies are deleted, the VN project for {name} can't be edited any more. This frees {size}.",
+  "@doneEditingVnBody": {
+    "description": "Body of the Done editing question for VN; {name} is the reel's name, shown in bold.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingCopiesBody": "Once the copies are deleted, clips you added to your {editor} project from the folder may show as missing. This frees {size}.",
+  "@doneEditingCopiesBody": {
+    "description": "Body of the Done editing question for CapCut or Instagram Edits when the folder holds copies.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingSafe": "Your original clips are safe in your gallery.",
+  "@doneEditingSafe": {
+    "description": "Reassurance in the Done editing question."
+  },
+  "doneEditingNotYet": "Not yet",
+  "@doneEditingNotYet": {
+    "description": "Button of the Done editing question that changes nothing."
+  },
+  "doneEditingDeleteCopies": "Delete copies",
+  "@doneEditingDeleteCopies": {
+    "description": "Button of the Done editing question that deletes the copies and ends the editing."
+  },
+  "doneEditingFreedSnack": "Copies deleted · {size} freed",
+  "@doneEditingFreedSnack": {
+    "description": "Snack after Done editing deleted the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingFreedLeftSnack": "Copies deleted · {size} freed. {count, plural, one{1 file was changed outside TakeTray, so it was left in the folder.} other{{count} files were changed outside TakeTray, so they were left in the folder.}}",
+  "@doneEditingFreedLeftSnack": {
+    "description": "Snack after Done editing when some files in the folder were no longer TakeTray's copies and were kept.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "doneEditingTitle": "Done editing {name}?",
+  "@doneEditingTitle": {
+    "description": "Title of the Done editing question when there are no copies to delete.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingNoCopiesBody": "TakeTray stops showing which clips are in your {editor} project. Nothing is deleted.",
+  "@doneEditingNoCopiesBody": {
+    "description": "Body of the Done editing question when there are no copies to delete.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingSnack": "Done editing {name}",
+  "@doneEditingSnack": {
+    "description": "Snack after Done editing when nothing was deleted.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesNotDeleted": "Couldn't delete the copies. Try again.",
+  "@copiesNotDeleted": {
+    "description": "Said when copies in an editing folder could not be deleted, so nothing that needed them gone was done."
+  },
+  "deleteReelVnCopies": "{count, plural, one{The 1 VN copy ({size}) will also be deleted, and the VN project can't be edited after that.} other{The {count} VN copies ({size}) will also be deleted, and the VN project can't be edited after that.}}",
+  "@deleteReelVnCopies": {
+    "description": "Line of the Delete reel question when the reel has VN copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteReelFolderCopies": "{count, plural, one{The 1 copy in Movies/TakeTray/{folder} ({size}) will also be deleted.} other{The {count} copies in Movies/TakeTray/{folder} ({size}) will also be deleted.}}",
+  "@deleteReelFolderCopies": {
+    "description": "Line of the Delete reel question when the reel has CapCut or Edits copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesDeletedSuffix": "{count, plural, one{Its copy in the folder was deleted.} other{Their copies in the folder were deleted.}}",
+  "@copiesDeletedSuffix": {
+    "description": "Added to the remove or move snack when the clips' copies in the editing folder were deleted.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "removedWithCopies": "{message} {copies}",
+  "@removedWithCopies": {
+    "description": "The remove snack ({message}) followed by the copies sentence ({copies}).",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "copies": {
+        "type": "String"
+      }
+    }
+  },
+  "movedToCopiesSnack": "Moved to {reel}. {copies}",
+  "@movedToCopiesSnack": {
+    "description": "The move snack followed by the copies sentence ({copies}).",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      },
+      "copies": {
+        "type": "String"
+      }
+    }
   }
 }

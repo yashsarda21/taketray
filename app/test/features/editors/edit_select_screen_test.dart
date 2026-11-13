@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -11,6 +12,7 @@ import '../../support/pump_screen.dart';
 import '../../support/reel_videos.dart';
 import '../../support/test_app.dart';
 import '../../support/vm_harness.dart';
+import '../reels/edit_session_support.dart';
 import 'editors_support.dart';
 
 void main() {
@@ -39,13 +41,14 @@ void main() {
     WidgetTester tester,
     int id, {
     List<int> ticked = const [],
+    bool add = false,
     double textScale = 1,
     Brightness brightness = Brightness.light,
     List<Override> overrides = const [],
   }) async {
     await pumpScreen(
       tester,
-      EditSelectScreen(reelId: id, clipIds: ticked),
+      EditSelectScreen(reelId: id, clipIds: ticked, addMode: add),
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
@@ -364,6 +367,182 @@ void main() {
 
       expect(find.byType(TtSheet), findsOneWidget);
     });
+  });
+
+  group('add mode (VN add-later)', () {
+    /// "Goa" with [threeClips] in a VN session: the first clip copied, the
+    /// second sent (not copied), the third fresh.
+    Future<(Reel, List<int>)> editing(WidgetTester tester) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          EditorApp.vn,
+          copied: [ids[0]],
+          sent: [ids[1]],
+        ),
+      );
+      return (goa, ids);
+    }
+
+    testApp('the title, every live clip, the folder clip ticked and marked, '
+        'the fresh one ticked, the sent one not', (tester) async {
+      final (goa, ids) = await editing(tester);
+
+      await open(tester, goa.id, add: true);
+
+      final appBar = tester.widget<TtAppBar>(find.byType(TtAppBar));
+      expect(appBar.title, 'Add clips to VN folder');
+      expect(appBar.subtitle, 'Goa');
+      expect(ticks(tester), [true, false, true]);
+      expect(
+        [for (final t in tiles(tester)) t.vnLabel],
+        ['In VN folder', null, null],
+      );
+      expect(
+        tiles(tester).first.semanticLabel,
+        endsWith(', already in VN folder'),
+      );
+      expect(bar(tester).title, '1 new clip to copy');
+      expect(
+        bar(tester).subtitle.replaceAll('\u00a0', ' '),
+        '300 MB · copies are added, never renamed',
+      );
+      expect(continueButton(tester).label, 'Copy');
+      expect(ids, hasLength(3));
+    });
+
+    testApp('a tap on the folder clip keeps it ticked and says why', (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      expect(ticks(tester), [true, false, true]);
+      expect(
+        find.text(
+          'Already in the VN folder. Copies are deleted when you tap Done '
+          'editing.',
+        ),
+        findsOneWidget,
+      );
+      expect(bar(tester).title, '1 new clip to copy');
+    });
+
+    testApp('nothing new picked: "Pick clips to add", how many are in the '
+        'folder, and Copy is off', (tester) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+
+      expect(ticks(tester), [true, false, false]);
+      expect(bar(tester).title, 'Pick clips to add');
+      expect(bar(tester).subtitle, '1 already in the VN folder');
+      expect(continueButton(tester).onPressed, isNull);
+    });
+
+    testApp('Copy opens the space check with only the clips to copy, in '
+        'shooting order', (tester) async {
+      final (goa, ids) = await editing(tester);
+      await open(tester, goa.id, add: true);
+      // Tick the sent clip as well: it is copied too.
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+      expect(bar(tester).title, '2 new clips to copy');
+
+      await tester.tap(find.text('Copy'));
+      await tester.tap(find.text('Copy'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(
+        find.text(
+          copySpaceRouteMarker('${goa.id}', 'vn', '${ids[1]},${ids[2]}'),
+        ),
+        findsOneWidget,
+      );
+      // One screen, however fast the taps.
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(EditSelectScreen), findsOneWidget);
+    });
+
+    testApp('Select all and Clear leave the folder clip ticked', (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(selectAllButton());
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
+
+      await tester.tap(selectAllButton());
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, false, false]);
+    });
+
+    testApp('a reel with no session goes back to its page', (tester) async {
+      final (goa, _) = await threeClips(tester);
+
+      await open(tester, goa.id, add: true);
+
+      expect(find.text(reelRouteMarker('${goa.id}')), findsOneWidget);
+    });
+
+    testApp('a CapCut session goes back to its page too (Task 12 adds it)', (
+      tester,
+    ) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
+      );
+
+      await open(tester, goa.id, add: true);
+
+      expect(find.text(reelRouteMarker('${goa.id}')), findsOneWidget);
+    });
+
+    testApp('the plain mode shows no folder marks', (tester) async {
+      final (goa, _) = await editing(tester);
+
+      await open(tester, goa.id);
+
+      expect([for (final t in tiles(tester)) t.vnLabel], [null, null, null]);
+      expect(
+        tester.widget<TtAppBar>(find.byType(TtAppBar)).title,
+        'Pick clips to edit',
+      );
+    });
+
+    for (final (scale, brightness) in [
+      (2.0, Brightness.light),
+      (1.0, Brightness.dark),
+    ]) {
+      testApp('at ${scale}x, ${brightness.name}: nothing cut, accessible', (
+        tester,
+      ) async {
+        final (goa, _) = await editing(tester);
+        await open(
+          tester,
+          goa.id,
+          add: true,
+          textScale: scale,
+          brightness: brightness,
+        );
+
+        expect(tester.takeException(), isNull);
+        await expectTtAccessible(tester);
+      });
+    }
   });
 
   group('the look', () {

@@ -12,6 +12,14 @@ String editorName(AppLocalizations l10n, EditorApp editor) => switch (editor) {
   EditorApp.vn => l10n.editorNameVn,
 };
 
+/// [editor]'s name where room is short (R8): the reel card pill, the editing
+/// banner and a section button say "Edits" for Instagram Edits.
+String editorShortName(AppLocalizations l10n, EditorApp editor) =>
+    switch (editor) {
+      EditorApp.edits => l10n.editorShortEdits,
+      _ => editorName(l10n, editor),
+    };
+
 /// [bytes] as decimal MB or GB, such as "900 MB" or "1.2 GB" (D-119).
 String byteSizeText(AppLocalizations l10n, int bytes) {
   final size = byteSize(bytes);

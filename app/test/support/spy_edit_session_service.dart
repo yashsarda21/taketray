@@ -17,6 +17,9 @@ import 'vm_harness.dart';
 /// - `recoverAtStart` notes `recover`; [failRecover] throws.
 /// - `applyJob` notes each job in [applied] (and then applies it), or
 ///   throws [failApply].
+/// - `doneEditing` notes `done <reel>`; [failDone] throws that error
+///   instead, and [doneResult] is returned instead of the real result (after
+///   the real Done editing ran).
 class SpyEditSessionService extends EditSessionService {
   SpyEditSessionService(this.h)
     : super(
@@ -41,6 +44,8 @@ class SpyEditSessionService extends EditSessionService {
   Object? failReelDelete;
   Object? failRecover;
   Object? failApply;
+  Object? failDone;
+  DoneEditingResult? doneResult;
 
   @override
   Future<int> beforeClipsLeaveReel(int reelId, Set<int> clipIds) async {
@@ -66,6 +71,15 @@ class SpyEditSessionService extends EditSessionService {
     final fail = failRecover;
     if (fail != null) Error.throwWithStackTrace(fail, StackTrace.current);
     return await super.recoverAtStart();
+  }
+
+  @override
+  Future<DoneEditingResult> doneEditing(int reelId) async {
+    calls.add('done $reelId');
+    final fail = failDone;
+    if (fail != null) Error.throwWithStackTrace(fail, StackTrace.current);
+    final result = await super.doneEditing(reelId);
+    return doneResult ?? result;
   }
 
   @override
