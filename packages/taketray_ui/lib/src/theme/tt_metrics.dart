@@ -1928,4 +1928,18 @@ abstract final class TtMetrics {
   /// Weight of the name in a pick row.
   // proto.css: .li .txt b { font-weight: 500 }
   static const FontWeight pickRowNameWeight = FontWeight.w500;
+
+  // ---- Add videos (the folder list and the video grid, Phase 7) ----
+
+  /// Side of a folder's preview (the 2×2 mosaic) in the Add videos list.
+  // screens.js: routes['add-folders'], `.thumb` style="width:56px;height:56px"
+  static const double folderPreviewSize = 56;
+
+  /// Gap between the pictures of a folder's preview.
+  // screens.js: routes['add-folders'], the mosaic's `gap:2px`
+  static const double folderPreviewGap = 2;
+
+  /// Size of the folder icon of a preview with no pictures.
+  // proto.css: .li .thumb .ms { font-size: 20px }
+  static const double folderPreviewIconSize = 20;
 }

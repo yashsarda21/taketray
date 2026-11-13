@@ -7,12 +7,14 @@ import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
+import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/scenes.dart';
+import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
@@ -30,6 +32,7 @@ import 'package:taketray/features/tagging/view_models/to_tag_times.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
 import 'package:taketray/features/tagging/views/clip_tile_row.dart';
 import 'package:taketray/features/tagging/views/day_header_text.dart';
+import 'package:taketray/features/tagging/views/remove_missing_clip.dart';
 import 'package:taketray/features/tagging/views/skip_all_dialog.dart';
 import 'package:taketray/features/tagging/views/time_range_text.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -43,7 +46,8 @@ final Logger _log = Logger('toTag');
 /// grouped into scenes.
 ///
 /// From the top:
-/// - a large app bar "To tag", with a ⋮ menu: **Add earlier videos** while
+/// - a large app bar "To tag", with **Add videos** (`openAddVideos`, Phase 7,
+///   D-114) and a ⋮ menu: **Add earlier videos** while
 ///   TakeTray has full access (Shooting mode on or off, D-73), **Select
 ///   clips**, **Skipped ({n})** and **Skip all** (the last three only when
 ///   there is something to act on; with nothing in the menu there is no
@@ -63,7 +67,8 @@ final Logger _log = Logger('toTag');
 /// - **Start tagging** (a `TtFab`, lifted over a snack, D-82) while clips
 ///   wait and nothing is chosen;
 /// - or, when nothing waits, "All caught up" (Shooting mode on) or "Nothing to
-///   tag" (off), with **Skipped ({n})** under it when anything is skipped.
+///   tag" (off, with **Add videos** under **Turn on Shooting mode**), with
+///   **Skipped ({n})** under it when anything is skipped.
 ///
 /// **Opening the player.** A tap on a tile opens the tag player on that clip
 /// (`Routes.tagFrom`), **Start tagging** on the first clip; both through
@@ -97,12 +102,17 @@ final Logger _log = Logger('toTag');
 /// The list is one lazy sliver of rows (day header, scene header, three
 /// tiles), so 300 clips over 60 scenes build a screenful.
 ///
-/// A clip flagged missing shows as the "Missing from phone" tile, with no
-/// Remove button and not selectable; the verifier already takes missing clips
-/// that are only in To tag out of the list (D-72), so none should reach it.
+/// A clip flagged missing shows as the "Missing from phone" tile, not
+/// selectable, with **Remove** (the reel page's tile and snack, with **Undo**,
+/// D-116). The verifier takes a missing MediaStore clip that is only in To tag
+/// out of the list (D-72), but a picked clip whose address cannot be read is
+/// only flagged and stays here (an unplugged drive looks like a deleted
+/// video), until it can be read again or the user removes it.
 ///
-/// **Not built here:** "Add videos" and picking clips yourself (Phase 7).
-/// **Skipped ({n})** opens the Skipped screen (`SkippedScreen`, D-99).
+/// **Add videos** opens the folder browser for To tag (`openAddVideos`, once
+/// however fast the taps); the videos it adds arrive here, with a snack and
+/// **Undo**. **Skipped ({n})** opens the Skipped screen (`SkippedScreen`,
+/// D-99).
 ///
 /// **Open camera** (the strip and "All caught up") tells the user when the
 /// camera cannot open (`openCameraOrSay`, D-86), and the screen watches
@@ -120,7 +130,10 @@ class ToTagScreen extends ConsumerStatefulWidget {
 }
 
 class _ToTagScreenState extends ConsumerState<ToTagScreen>
-    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+    with
+        WidgetsBindingObserver,
+        SingleTickerProviderStateMixin,
+        RemoveMissingClip<ToTagScreen> {
   /// Whether the tab was showing the last time its dependencies changed.
   bool _wasActive = true;
 
@@ -130,6 +143,9 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
 
   /// Opens the Skipped page once however fast the taps.
   final OpenOnce _skippedPage = OpenOnce();
+
+  /// Opens Add videos once however fast the taps.
+  final OpenOnce _addVideos = OpenOnce();
 
   /// A Tag, Skip or Skip all is running (its picker or dialog is open, or its
   /// write is), so a second tap on any of them does nothing.
@@ -164,6 +180,7 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
     WidgetsBinding.instance.removeObserver(this);
     _player.dispose();
     _skippedPage.dispose();
+    _addVideos.dispose();
     _leave.dispose();
     super.dispose();
   }
@@ -192,6 +209,11 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
 
   void _openSkipped() =>
       _skippedPage.open(() => context.push<void>(Routes.skipped));
+
+  void _openAddVideos() => _addVideos.openSlow(
+    (pushing) =>
+        openAddVideos(context, ref, const AddToToTag(), pushing: pushing),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -350,6 +372,12 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
                                   icon: Symbols.videocam_rounded,
                                   onPressed: () => controller.setOn(true),
                                 ),
+                                TtButton(
+                                  label: l10n.addVideosTitle,
+                                  icon: Symbols.library_add_rounded,
+                                  kind: TtButtonKind.text,
+                                  onPressed: _openAddVideos,
+                                ),
                               ],
                             ),
                           ?skippedButton,
@@ -441,6 +469,12 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
       large: true,
       title: l10n.navToTag,
       actions: [
+        TtIconButton(
+          icon: Symbols.library_add_rounded,
+          semanticLabel: l10n.addVideosTitle,
+          style: TtIconButtonStyle.circle,
+          onPressed: _openAddVideos,
+        ),
         if (items.isNotEmpty)
           TtMenuButton<_ToTagAction>(
             items: items,
@@ -779,6 +813,12 @@ class _ToTagScreenState extends ConsumerState<ToTagScreen>
           ? notifier.toggle(clip.id)
           : notifier.start(clip.id),
       semanticLabel: l10n.clipTileSemantics,
+      onRemoveMissing: (clip) => unawaited(
+        removeMissingClip(
+          clip.id,
+          ref.read(toTagControllerProvider.notifier).removeMissing,
+        ),
+      ),
       decorate: (clip, tile) {
         final span = _spans[clip.id];
         return span == null

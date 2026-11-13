@@ -29,6 +29,37 @@ NewClip newClipFrom(
   generationAdded: v.generationAdded,
 );
 
+/// The clip to save for a video picked in Android's photo picker (D-113).
+///
+/// Its identity is the picked address. The fingerprint is the size (`0`
+/// when the provider gave none), the duration (`0` when unknown), the
+/// shooting date by the same plausibility rule as a scan ([shotAtFrom] on
+/// the taken date: a missing or impossible one is [now]) and the display
+/// name (`''` when none). An unknown width or height is `0`, an unknown type
+/// is [defaultVideoMimeType]. [zoneId] is stored as given.
+NewClip newClipFromPicked(
+  PickedVideo p, {
+  required DateTime now,
+  required String? zoneId,
+}) => NewClip.picker(
+  pickerUri: p.uri,
+  fingerprint: ClipFingerprint(
+    sizeBytes: p.sizeBytes,
+    durationMs: p.durationMs ?? 0,
+    dateTakenUtc: pickedShotAt(p, now: now),
+    displayName: p.displayName,
+  ),
+  width: p.width ?? 0,
+  height: p.height ?? 0,
+  mimeType: p.mimeType ?? defaultVideoMimeType,
+  timeZoneId: zoneId,
+);
+
+/// When the picked video [p] was shot: its taken date when plausible, else
+/// [now] (the [shotAtFrom] rule).
+DateTime pickedShotAt(PickedVideo p, {required DateTime now}) =>
+    shotAtFrom(takenMs: p.dateTakenMs, now: now);
+
 /// Whether [v] can be a clip: it is finished (not pending) and has a length
 /// and a size.
 ///

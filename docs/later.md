@@ -14,25 +14,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - `tool/check_generated` must also hash `app/lib/data/database/app_database.steps.dart`, which `make-migrations` writes from v2. At v1 it also never regenerates `app/test/drift/.../generated/`.
 
-## Phase 7 (add videos and Manual mode)
-
-- Phase 4 left these (final review M-6, D-80):
-  - **Add videos** on the reel page (hidden in Phase 4).
-  - **Covers exclude picked clips** (Ruling D, D-84 point 3: `hasPicture` needs a MediaStore number). When picked clips can be added, decide how a cover gets a picture for them: they need a thumbnail path of their own.
-- Phase 5 left this (minors batch, item 44): the reel picker's clip ids are fixed while it is open. If a verify deletes one of them, every confirm fails until Cancel (Phase 4's picker has the same). Drop the ids that are gone before writing.
-
-Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7, before deciding anything.
-
-- **Friends' videos.** Pick up videos the owner didn't shoot, such as WhatsApp downloads and Quick Share, behind a Settings switch. Today only `DCIM/Camera` is watched, so these never reach To tag. This may be done through Phase 10's editable watched folders. Open risks:
-  - busy groups and forwards could flood To tag;
-  - WhatsApp's "Sent" copies would duplicate the owner's own camera clips;
-  - WhatsApp strips the original shooting date, so a clip would be dated when it was received.
-- **Action cameras (GoPro, Insta360).** Open points:
-  - their phone apps save to their own folders;
-  - Insta360's raw 360° files must be reframed and exported first, so only the exported clip is useful;
-  - a whole day of clips is often copied at once;
-  - camera clocks and time zones are often wrong, which would put clips on the wrong day.
-
 ## Phase 8 (editor handoff)
 
 - Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share), **Edit video** (the FAB and the multi-select ⋮ item), and the VN pieces: the "Editing in VN" banner, the card pill and the delete dialog's line.
@@ -50,6 +31,8 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 
 ## Phase 10 (onboarding and settings)
 
+- **Automatic friends' and device folders (Phase 7 rulings, D-111).** Phase 7 adds them by hand only (Add videos). Watching more folders automatically belongs to the Watched folders screen. Open risks from the owner's request (2026-10-30): busy WhatsApp groups and forwards could flood To tag; WhatsApp's Sent copies duplicate the owner's own clips (Add videos hides Sent folders); WhatsApp strips the shooting date, so a clip is dated when it was received. Shooting devices (GoPro, Insta360, DJI, a mirrorless camera, a second phone) are folders like any other, with no brand code; their apps save to their own folders, a whole day is often copied at once, and Insta360's raw 360° files must be exported first.
+- **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.
 - **Onboarding takes over the notification ask** (D-107). Today the permission is asked once, the first time Shooting mode is turned on (`ShootingModeController._turnOn` → `NotificationAccessController.askOnce`, stored as `notificationsAsked`), then only from the Allow button in Settings. Give it its own onboarding step (`ob-notif` in the prototype), and then remove the call from `_turnOn` or keep it as the fallback for a user who skipped onboarding.
 - **"Remind me to turn it off" feeds `stillReminderEnabled`** (D-107). The Settings switch (`routes.settings` in the prototype) must store the setting, and `BackgroundSync` must read it: today it writes `stillReminderEnabled: true` always, so the 14-day question cannot be turned off. The in-app dialog (`StillShootingPrompt`) should follow the same switch.
 - **Two TakeTray notifications at once are grouped, and Still shooting? is folded even alone (product note, no change now).** When Still shooting? and the new-clips notification are both in the shade, the phone (seen on the S24, 2026-11-06) groups them and folds the older one away; the user expands the group to reach "Turn off". The S24 also showed Still shooting? collapsed when it was the app's only notification: its text showed and its buttons did not, until it was expanded (final review M-3). The body tap to Reels, where the dialog asks, always works. That is standard Android behaviour, so TakeTray does nothing about it. The Patrol flow for "Turn off" avoids it by tapping while Still shooting? is the app's only notification (D-109). Revisit only if the owner finds the folded Still shooting? question easy to miss (for example with a notification group key of our own, or a longer gap between the two).
@@ -69,8 +52,13 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 - `.ib.tonal` icon button.
 - `TtListRow` tall and disabled variants.
 - The disabled-on `TtSwitch` tick is at full opacity.
+- **A picked clip and its folder twin** (D-115, D-57). After full access comes back, a video added through the photo picker and the same video added from its folder are two clips (the address and the MediaStore number are different identities; the fingerprint is not one). The scan can make a twin too, with no second action by the user: Shooting mode on, access drops to limited, a camera video is picked into To tag, full access returns, and the next scan adds the same video past the baseline as a MediaStore clip (final review M-3). Both are undoable and removable. If it bites, offer to merge the two when a folder add finds a picked clip with the same fingerprint, asking the user first; never merge silently.
+- **Phase 10's import must not run beside the grant clean-up** (final review M-2). `BackupService.importJson` does not use `MediaWorkQueue`, so the `PickedGrants` doc cannot say its rows are queued. No race exists today (the sweep runs only at app start and import has no UI). When Phase 10 adds the import UI: run the import on the media queue, or never sweep while one can run. Also say in the import summary (or the docs) that picked clips restored from a backup come back missing when their grants were released at an earlier start; that is unavoidable.
 
 ## Phase 11 (polish and release)
+
+- **Name an SD card and a USB drive apart in Add videos** (D-114). A volume's name cannot tell them apart, so every volume but the phone's is "Other storage" (numbered when there are two). Android's `StorageVolume.getDescription` would give "SD card" or the drive's name, for one more bridge call. Only seen when two folders with one name are on two storages.
+- **Add videos' grid pages by offset** (D-114). A video deleted from the folder between two page reads can be skipped until the next resume (a new one is kept once, not twice). Keyset paging (after the last date and id shown) would close it, for a new bridge call. Rare: the folder must change while the user scrolls it.
 
 - **A shade Turn off is lost when listing the volumes fails** (Phase 6 final re-review M-7). `ShadeActionReceiver` names every mounted volume for the tap; if that MediaStore call throws, the Turn off is dropped silently: Shooting mode stays on and the Still shooting? notification is gone. No clip is lost (the session continues). Fix idea: record the tap with no generations and let the capped end treat every volume as "at the tap", or keep the notification so the user can tap again.
 - **A clip trashed in a gallery and restored does not come back (M-6).** The queries leave out `IS_TRASHED` rows, so the verifier takes a trashed video for gone and removes an inbox-only clip. Restoring it does not give the row a newer generation, so the scan never adds it again. A clip in a reel recovers (the next verify un-flags it). Moved here from Phase 6 (D-108): rare, and the Phase 6 job only counts and never scans, so the background work does not make it more likely.
@@ -114,3 +102,6 @@ Owner requests (2026-10-30). Discuss these with the owner while planning Phase 7
 - `TtThemeData` value equality; badge `TextPainter` re-measures on every build.
 - Zone-id aliases after a tz data rename (D-83). `Europe/Kiev` and `Europe/Kyiv` are the same zone but compare unequal as strings. So a clip stored with the old id on a phone that now reports the new one gets `isPhoneZone` false, and the viewer would say "Kiev time". Fix it by canonicalising both ids on the native side in a batch like `zoneOffsetsMs` (`android.icu.util.TimeZone.getCanonicalID(id)`, which follows the tz data's links; `ZoneId.normalized()` only turns a fixed-offset id into a `ZoneOffset` and does not resolve aliases), or by comparing the zones' offset rules (`ZoneId.of(a).rules == ZoneId.of(b).rules`) instead of their ids.
 - The theme doc should steer feature code to `Tt*` widgets, since stock Switch, Checkbox, TextField and AlertDialog are not themed.
+- **A late native release can outlive its timeout** (D-112, Task 4 review m4). On a timeout `PickedGrants` gives up after 15 s but the Kotlin loop (`PickedVideos.release`) goes on releasing the addresses it already chose. If the user re-picks one of those videos in that window (the picker address is stable per video), the late release removes the new grant and the clip looks missing. Accepted: it needs a stall of more than 15 s plus a pick in the window, and the sweep runs before the UI. Revisit only if the S24 shows it.
+- **A cancelled photo picker closes the sheet** (D-115). The prototype's sheet closes when **Open photo picker** is tapped, so a user who cancels the picker has to open Add videos again. Revisit after the S24 hand check (Task 7) if it feels like one tap too many.
+- **Warn near Android's cap of 512 saved picker grants** (D-112 as amended, D-116; Phase 10 or 11). Past 512 Android silently releases the oldest grants, so a heavy Manual-mode user's oldest picked clips turn into missing tiles without any message. Count the clips with a `picker_uri` and warn when it nears the cap (for example at 480: "TakeTray keeps up to 512 picked videos"). Re-picking the video recovers it. Trigger: the S24 check shows `persistedUris().length` stops at 512, or a user reports old picked clips going missing.

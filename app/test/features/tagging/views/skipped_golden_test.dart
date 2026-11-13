@@ -179,6 +179,18 @@ void main() {
     await showPictures(tester);
   }, dark: true);
 
+  // The missing tile with its Remove button (D-116), among picture tiles.
+  both('a missing clip with Remove', 'missing', (
+    tester,
+    scale,
+    brightness,
+  ) async {
+    await skipped(tester);
+    await tester.runAsync(() => flagInPlaceForTest(h, {8}));
+    await open(tester, textScale: scale, brightness: brightness);
+    expect(find.byType(TtMissingClipTile), findsOneWidget);
+  });
+
   both('nothing skipped', 'empty', (tester, scale, brightness) async {
     await open(tester, textScale: scale, brightness: brightness);
   });

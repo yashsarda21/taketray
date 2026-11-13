@@ -101,9 +101,12 @@ Future<List<int>?> showReelPicker(
 ///   the sheet stays open (D-85).
 /// - **The snack comes after the sheet closes**, with **Undo** for everything
 ///   the action changed (`ReelSnacks.showUndoAll`); an add that changed
-///   nothing (the clips were there already) shows the plain snack, and a
-///   move that moved nothing (every chosen clip had left the reel meanwhile)
-///   shows none, as a remove of nothing does. If the
+///   nothing (the clips were there already) shows the plain snack. **No
+///   snack at all** when nothing happened: a move that moved nothing (every
+///   chosen clip had left the reel meanwhile), and an add or a tag whose
+///   chosen clips are **all gone** by the confirm (a verify deleted them
+///   while the picker was open): nothing is written, [onSnack] still runs,
+///   and for a tag `LastTags` is not set. If the
 ///   sheet was dragged away while the action ran, nothing is modal any more,
 ///   so `perform` shows the snack itself when it finishes (or the failure
 ///   snack). [onSnack] is called after a success (also when no snack was
@@ -139,6 +142,13 @@ Future<ClipActionOutcome?> pickAndPerform(
   List<int>? tagSet;
   var closed = false;
   void tell(ClipActionOutcome done) {
+    // Every chosen clip was gone by the confirm (or, for a move, had left the
+    // reel): nothing happened, so nothing is said, as for a remove of
+    // nothing.
+    if (done.clipCount == 0) {
+      onSnack?.call();
+      return;
+    }
     final message = switch (mode) {
       ReelPickerMode.add => addedToText(l10n, done.reelNames),
       ReelPickerMode.move => l10n.movedToSnack(done.reelNames.single),
@@ -193,7 +203,8 @@ Future<ClipActionOutcome?> pickAndPerform(
                 clipIds: clipIds,
               )
             : await actions.addToReels(clipIds: clipIds, reelIds: reelIds);
-        if (lastTags != null) {
+        // A tag of nothing (every clip gone) is not remembered.
+        if (lastTags != null && done.clipCount > 0) {
           tagBefore = lastTags.current;
           tagSet = lastTags.set(reelIds);
         }

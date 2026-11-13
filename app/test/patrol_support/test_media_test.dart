@@ -11,17 +11,20 @@ void main() {
   late int nextId;
   late Set<int> failingDeletes;
   late int refusedLeftovers;
+  late List<Object?> sentFlags;
 
   setUp(() {
     calls = [];
     nextId = 1;
     failingDeletes = {};
     refusedLeftovers = 0;
+    sentFlags = [];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           switch (call.method) {
             case 'insertVideo':
               calls.add('insert');
+              sentFlags.add((call.arguments as Map)['inWhatsAppSent']);
               return {
                 'volumeName': 'external_primary',
                 'mediaStoreId': nextId++,
@@ -104,6 +107,18 @@ void main() {
       expect(media.inserted.map((v) => v.mediaStoreId), [1, 3]);
     },
   );
+
+  test('insert says whether the video goes into WhatsApp/Sent, and only '
+      'then', () async {
+    final media = TestMedia.withChannel(channel);
+    await media.insert();
+    await media.insert(inWhatsAppSent: true);
+    await media.insert();
+
+    expect(sentFlags, [false, true, false]);
+    // Both kinds are registered for the clean-up.
+    expect(media.inserted, hasLength(3));
+  });
 
   test(
     'start fails when the folder holds a file this app does not own',

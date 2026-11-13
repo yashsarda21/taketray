@@ -481,6 +481,83 @@ data class VideoFolderMsg (
 }
 
 /**
+ * One video the user picked in Android's photo picker (or its document
+ * picker fallback), identified by its content [uri]. Facts the provider does
+ * not give stay null; Kotlin maps a null size to 0 and a null name to ''.
+ * [persisted] is true when Android agreed to keep read access to [uri] across
+ * restarts (takePersistableUriPermission did not throw).
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class PickedVideoMsg (
+  val uri: String,
+  val sizeBytes: Long,
+  val durationMs: Long? = null,
+  val dateTakenMs: Long? = null,
+  val displayName: String,
+  val width: Long? = null,
+  val height: Long? = null,
+  val mimeType: String? = null,
+  val persisted: Boolean
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): PickedVideoMsg {
+      val uri = pigeonVar_list[0] as String
+      val sizeBytes = pigeonVar_list[1] as Long
+      val durationMs = pigeonVar_list[2] as Long?
+      val dateTakenMs = pigeonVar_list[3] as Long?
+      val displayName = pigeonVar_list[4] as String
+      val width = pigeonVar_list[5] as Long?
+      val height = pigeonVar_list[6] as Long?
+      val mimeType = pigeonVar_list[7] as String?
+      val persisted = pigeonVar_list[8] as Boolean
+      return PickedVideoMsg(uri, sizeBytes, durationMs, dateTakenMs, displayName, width, height, mimeType, persisted)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      uri,
+      sizeBytes,
+      durationMs,
+      dateTakenMs,
+      displayName,
+      width,
+      height,
+      mimeType,
+      persisted,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as PickedVideoMsg
+    return MediaApiPigeonUtils.deepEquals(this.uri, other.uri) && MediaApiPigeonUtils.deepEquals(this.sizeBytes, other.sizeBytes) && MediaApiPigeonUtils.deepEquals(this.durationMs, other.durationMs) && MediaApiPigeonUtils.deepEquals(this.dateTakenMs, other.dateTakenMs) && MediaApiPigeonUtils.deepEquals(this.displayName, other.displayName) && MediaApiPigeonUtils.deepEquals(this.width, other.width) && MediaApiPigeonUtils.deepEquals(this.height, other.height) && MediaApiPigeonUtils.deepEquals(this.mimeType, other.mimeType) && MediaApiPigeonUtils.deepEquals(this.persisted, other.persisted)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.uri)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.sizeBytes)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.durationMs)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.dateTakenMs)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.displayName)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.width)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.height)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.mimeType)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.persisted)
+    return result
+  }
+  override fun toString(): String {
+    return "PickedVideoMsg(uri=$uri, sizeBytes=$sizeBytes, durationMs=$durationMs, dateTakenMs=$dateTakenMs, displayName=$displayName, width=$width, height=$height, mimeType=$mimeType, persisted=$persisted)"
+  }
+}
+
+/**
  * "From [atMs] (UTC milliseconds) the phone was in [zoneId]."
  *
  * Generated class from Pigeon that represents data sent in messages.
@@ -559,6 +636,11 @@ private open class MediaApiPigeonCodec : StandardMessageCodec() {
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          PickedVideoMsg.fromList(it)
+        }
+      }
+      136.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           ZoneChangeMsg.fromList(it)
         }
       }
@@ -591,8 +673,12 @@ private open class MediaApiPigeonCodec : StandardMessageCodec() {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is ZoneChangeMsg -> {
+      is PickedVideoMsg -> {
         stream.write(135)
+        writeValue(stream, value.toList())
+      }
+      is ZoneChangeMsg -> {
+        stream.write(136)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -634,6 +720,41 @@ interface MediaHostApi {
    * at 4096; the picture's longer side is at most max(widthPx, heightPx).
    */
   suspend fun thumbnail(volumeName: String, mediaStoreId: Long, widthPx: Long, heightPx: Long): ByteArray?
+  /**
+   * One page of a folder: non-pending videos with DURATION > 0 in exactly
+   * [relativePath] (case-insensitive; '' is the volume root), newest shot
+   * first (DATE_TAKEN, then DATE_ADDED, then DATE_MODIFIED), the id as the
+   * tie-break so pages never repeat. At most [limit] rows from [offset].
+   * A volume that is gone gives `[]`, never an error.
+   */
+  suspend fun videosInFolder(volumeName: String, relativePath: String, limit: Long, offset: Long): List<VideoRowMsg>
+  /**
+   * Opens Android's photo picker (the document picker where it is missing)
+   * and answers with what the user picked: `[]` when cancelled. Fails with
+   * code `busy` while one is already open, and `host-gone` if the activity
+   * closes first.
+   */
+  suspend fun pickVideos(): List<PickedVideoMsg>
+  /**
+   * Like [thumbnail], for a content [uri] (a picked video). Null when the
+   * video is gone or unreadable, or [uri] is not a content address.
+   */
+  suspend fun thumbnailOfUri(uri: String, widthPx: Long, heightPx: Long): ByteArray?
+  /**
+   * The subset of [uris] that can still be read. Only a read that is refused
+   * (SecurityException) or a cursor with no row means gone and leaves a uri
+   * out. Every other failure fails the whole call, so "failed" is never read
+   * as "gone": any other exception, and a null cursor (the provider is not
+   * installed or its process died), which is code `no-cursor`.
+   */
+  suspend fun readableUris(uris: List<String>): List<String>
+  /** Every address this app still holds a saved read grant for. */
+  suspend fun persistedUris(): List<String>
+  /**
+   * Gives up the saved grants of exactly [uris]; one that fails does not stop
+   * the rest.
+   */
+  suspend fun releaseUris(uris: List<String>)
   fun currentZoneId(): String
   /**
    * The UTC offset, in milliseconds, of `zoneIds[i]` at `instantsMs[i]` (UTC
@@ -834,6 +955,122 @@ interface MediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.thumbnail(volumeNameArg, mediaStoreIdArg, widthPxArg, heightPxArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.videosInFolder$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val volumeNameArg = args[0] as String
+            val relativePathArg = args[1] as String
+            val limitArg = args[2] as Long
+            val offsetArg = args[3] as Long
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.videosInFolder(volumeNameArg, relativePathArg, limitArg, offsetArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.pickVideos$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.pickVideos())
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.thumbnailOfUri$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val uriArg = args[0] as String
+            val widthPxArg = args[1] as Long
+            val heightPxArg = args[2] as Long
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.thumbnailOfUri(uriArg, widthPxArg, heightPxArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.readableUris$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val urisArg = args[0] as List<String>
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.readableUris(urisArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.persistedUris$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.persistedUris())
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.releaseUris$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val urisArg = args[0] as List<String>
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                api.releaseUris(urisArg)
+                listOf(null)
               } catch (exception: Throwable) {
                 MediaApiPigeonUtils.wrapError(exception)
               }

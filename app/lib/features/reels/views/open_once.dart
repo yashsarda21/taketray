@@ -19,18 +19,42 @@ final Duration _settle = kThemeAnimationDuration * 2;
 class OpenOnce {
   Timer? _window;
 
-  /// Whether a page was opened a moment ago.
-  bool get busy => _window != null;
+  /// A slow open ([openSlow]) has not reached its push yet.
+  bool _waiting = false;
+
+  /// Whether a page was opened a moment ago, or one is being prepared.
+  bool get busy => _window != null || _waiting;
 
   /// Calls [push] unless a page was opened less than the window ago.
   void open(Future<Object?> Function() push) {
-    if (_window != null) return;
+    if (busy) return;
     _window = Timer(_settle, () => _window = null);
     unawaited(push());
   }
 
+  /// Like [open], for an open that waits on something slow (a call to the
+  /// phone) before it pushes the page: the window is shut for the whole wait,
+  /// and then for the usual window from the push, so a second tap while the
+  /// call runs, or while the page arrives, does nothing.
+  ///
+  /// [open] is given `pushing`, which it calls just before it pushes the
+  /// page; a later call does nothing. If [open] ends or throws without
+  /// having called it (nothing opened), the window is released then, at once.
+  void openSlow(Future<void> Function(VoidCallback pushing) open) {
+    if (busy) return;
+    _waiting = true;
+    void pushing() {
+      if (!_waiting) return;
+      _waiting = false;
+      _window = Timer(_settle, () => _window = null);
+    }
+
+    unawaited(open(pushing).whenComplete(() => _waiting = false));
+  }
+
   /// Cancels the window.
   void dispose() {
+    _waiting = false;
     _window?.cancel();
     _window = null;
   }

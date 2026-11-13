@@ -599,14 +599,14 @@ void main() {
       ]);
     });
 
-    testWidgets('a clip flagged missing shows the Missing tile, no Remove', (
+    testWidgets('a clip flagged missing shows the Missing tile with Remove', (
       tester,
     ) async {
       await pump(tester, clips: [testClip(1, missing: true), testClip(2)]);
 
       expect(find.byType(TtMissingClipTile), findsOneWidget);
       expect(find.text('Missing from phone'), findsOneWidget);
-      expect(find.text('Remove'), findsNothing);
+      expect(find.text('Remove'), findsOneWidget);
       expect(find.byType(TtClipTile), findsOneWidget);
     });
 

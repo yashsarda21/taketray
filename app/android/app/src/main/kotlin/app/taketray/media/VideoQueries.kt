@@ -38,6 +38,17 @@ object VideoQueries {
     private const val ID_ORDER = "${MediaColumns._ID} ASC"
     private const val NEWEST_ORDER = "${MediaColumns.GENERATION_ADDED} DESC, ${MediaColumns._ID} DESC"
 
+    /**
+     * Newest shot first: DATE_TAKEN (ms) where there is one, else DATE_ADDED,
+     * else DATE_MODIFIED (both seconds, so times 1000). A zero is no date (the
+     * same as Dart's shotAt; its far-future rule is not repeated here). The id
+     * breaks ties, so a page boundary never repeats or skips a clip; a clip
+     * with no date at all comes last.
+     */
+    const val SHOT_NEWEST_ORDER =
+        "COALESCE(NULLIF(${MediaColumns.DATE_TAKEN}, 0), NULLIF(${MediaColumns.DATE_ADDED}, 0) * 1000, " +
+            "NULLIF(${MediaColumns.DATE_MODIFIED}, 0) * 1000) DESC, ${MediaColumns._ID} DESC"
+
     /** The columns the new-clips count reads (D-104). */
     val NEW_CLIPS_PROJECTION: Array<String> =
         arrayOf(
@@ -92,6 +103,22 @@ object VideoQueries {
             "$clause AND (${MediaColumns.DATE_TAKEN} >= ? OR ${MediaColumns.DATE_ADDED} >= ? OR " +
                 "${MediaColumns.DATE_MODIFIED} >= ? OR ${MediaColumns.DATE_ADDED} IS NULL)"
         return selection to (folderArgs + listOf(sinceMs.toString(), sinceSec.toString(), sinceSec.toString())).toTypedArray()
+    }
+
+    /**
+     * One folder (D-112): exact path, ignoring case of A to Z only, with a
+     * positive DURATION (a clip still being written has none). The volume root
+     * ('' or only slashes) is a missing or empty RELATIVE_PATH, as `videoFolders`
+     * reports it.
+     */
+    fun inFolderSelection(folder: String): Pair<String, Array<String>> {
+        val (clause, folderArgs) =
+            if (folder.trim('/').isEmpty()) {
+                "(${MediaColumns.RELATIVE_PATH} IS NULL OR ${MediaColumns.RELATIVE_PATH} = '')" to emptyList()
+            } else {
+                folderClause(listOf(folder))
+            }
+        return "$clause AND ${MediaColumns.DURATION} > 0" to folderArgs.toTypedArray()
     }
 
     /** `_ID IN (?,...)` for 1 to [MAX_IDS] ids. */
@@ -149,6 +176,20 @@ object VideoQueries {
             NEWEST_ORDER,
         ).apply { putInt(ContentResolver.QUERY_ARG_LIMIT, 1) }
     }
+
+    /**
+     * One page of a folder, [SHOT_NEWEST_ORDER], pending and trashed rows left
+     * out. A limit or offset beyond Int is capped; a negative offset is 0.
+     */
+    fun inFolderArgs(
+        folder: String,
+        limit: Long,
+        offset: Long,
+    ): Bundle =
+        args(inFolderSelection(folder), MediaStore.MATCH_EXCLUDE, SHOT_NEWEST_ORDER).apply {
+            putInt(ContentResolver.QUERY_ARG_LIMIT, limit.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
+            putInt(ContentResolver.QUERY_ARG_OFFSET, offset.coerceIn(0, Int.MAX_VALUE.toLong()).toInt())
+        }
 
     /** Pending and trashed rows left out, newest generation first, no limit. */
     fun newClipsArgs(

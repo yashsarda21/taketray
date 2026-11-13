@@ -218,6 +218,26 @@ final class InboxUndo extends UndoRecord {
   bool get isEmpty => before.isEmpty;
 }
 
+/// What `ClipsRepository.removeMissingFromInbox` changed: a missing clip's
+/// row in To tag or Skipped, and the clip itself if the orphan sweep (D-56)
+/// then deleted it (D-116).
+final class InboxRemoveUndo extends UndoRecord {
+  InboxRemoveUndo({
+    required List<InboxEntry> removed,
+    required List<Clip> sweptClips,
+  }) : removed = List.unmodifiable(removed),
+       sweptClips = List.unmodifiable(sweptClips);
+
+  /// The rows that were deleted, as they were (state and `addedAt`).
+  final List<InboxEntry> removed;
+
+  /// Every field of each clip the orphan sweep deleted.
+  final List<Clip> sweptClips;
+
+  @override
+  bool get isEmpty => removed.isEmpty;
+}
+
 /// What `ReelsRepository.delete` changed.
 final class DeleteReelUndo extends UndoRecord {
   DeleteReelUndo({

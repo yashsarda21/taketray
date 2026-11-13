@@ -182,6 +182,80 @@ void main() {
       );
     });
 
+    test('clips that have gone since the picker opened are dropped before '
+        'the write (Phase 5 later item)', () async {
+      final goa = await reels.create('Goa');
+      final london = await reels.create('London');
+      final ids = await putInReel(h, goa.id, [
+        reelVideo(1),
+        reelVideo(2),
+        reelVideo(3),
+      ]);
+      // Clip 2 is removed and swept (in no other reel) while the picker is
+      // open, as a verify or another screen can do.
+      await clips.removeClipsFromReel(goa.id, [ids[1]]);
+      expect(await clips.clipsByIds([ids[1]]), isEmpty);
+
+      final outcome = await actions.addToReels(
+        clipIds: ids.toSet(),
+        reelIds: [london.id],
+      );
+
+      expect(await clipIdsOf(london.id), {ids[0], ids[2]});
+      expect(outcome.clipCount, 2, reason: 'only the clips still there');
+      expect(outcome.isEmpty, isFalse);
+      final created = (outcome.records.single as AddUndo).createdLinks;
+      expect(created.map((l) => l.clipId).toSet(), {ids[0], ids[2]});
+    });
+
+    test('every confirm keeps working, not only the first', () async {
+      final goa = await reels.create('Goa');
+      final london = await reels.create('London');
+      final paris = await reels.create('Paris');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      await clips.removeClipsFromReel(goa.id, [ids[0]]);
+
+      await actions.addToReels(clipIds: ids.toSet(), reelIds: [london.id]);
+      await actions.addToReels(clipIds: ids.toSet(), reelIds: [paris.id]);
+
+      expect(await clipIdsOf(london.id), {ids[1]});
+      expect(await clipIdsOf(paris.id), {ids[1]});
+    });
+
+    test('every clip gone: nothing is written, the outcome is empty and '
+        'counts 0', () async {
+      final goa = await reels.create('Goa');
+      final london = await reels.create('London');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      await clips.removeClipsFromReel(goa.id, ids);
+      final before = (await reels.getById(london.id))!.updatedAt;
+
+      final outcome = await actions.addToReels(
+        clipIds: ids.toSet(),
+        reelIds: [london.id],
+      );
+
+      expect(outcome.isEmpty, isTrue);
+      expect(outcome.clipCount, 0);
+      expect(outcome.reelNames, ['London']);
+      expect(await clipIdsOf(london.id), isEmpty);
+      expect((await reels.getById(london.id))!.updatedAt, before);
+    });
+
+    test(
+      'a reel that is gone still fails, even when clips are gone too',
+      () async {
+        final goa = await reels.create('Goa');
+        final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+        await clips.removeClipsFromReel(goa.id, ids);
+
+        await expectLater(
+          actions.addToReels(clipIds: ids.toSet(), reelIds: [999]),
+          throwsStateError,
+        );
+      },
+    );
+
     test('adding a clip out of To tag takes it out of To tag, and undo '
         'brings it back', () async {
       final goa = await reels.create('Goa');

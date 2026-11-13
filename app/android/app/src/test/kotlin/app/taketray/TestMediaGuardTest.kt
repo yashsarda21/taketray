@@ -6,7 +6,8 @@ import org.junit.Test
 
 /**
  * The delete rule (D-77) as a pure function: a row may be deleted only when it
- * is in exactly `Movies/TakeTray Test/` and owned by this very app.
+ * is in exactly `Movies/TakeTray Test/` or its one sub-folder `WhatsApp/Sent/`
+ * (Phase 7's hidden-folder test) and owned by this very app.
  */
 class TestMediaGuardTest {
     private val own = "app.taketray.dev"
@@ -15,6 +16,48 @@ class TestMediaGuardTest {
     @Test
     fun `the test folder and this app as owner is allowed`() {
         assertTrue(TestMediaGuard.allowsDelete(folder, own, own))
+    }
+
+    private val sent = "Movies/TakeTray Test/WhatsApp/Sent/"
+
+    @Test
+    fun `the Sent sub-folder and this app as owner is allowed, in any case`() {
+        assertTrue(TestMediaGuard.allowsDelete(sent, own, own))
+        assertTrue(TestMediaGuard.allowsDelete("movies/taketray test/whatsapp/sent/", own, own))
+        assertTrue(TestMediaGuard.allowsDelete("MOVIES/TAKETRAY TEST/WHATSAPP/SENT/", own, own))
+    }
+
+    @Test
+    fun `the Sent sub-folder is refused for another owner or none`() {
+        assertFalse(TestMediaGuard.allowsDelete(sent, "com.whatsapp", own))
+        assertFalse(TestMediaGuard.allowsDelete(sent, "app.taketray", own))
+        assertFalse(TestMediaGuard.allowsDelete(sent, null, own))
+        assertFalse(TestMediaGuard.allowsDelete(sent, "", ""))
+    }
+
+    @Test
+    fun `no other sub-folder of the test folder is allowed, and not the real WhatsApp Sent`() {
+        for (other in listOf(
+            "Movies/TakeTray Test/WhatsApp/",
+            "Movies/TakeTray Test/WhatsApp/Sent",
+            "Movies/TakeTray Test/WhatsApp/Sent/deeper/",
+            "Movies/TakeTray Test/WhatsApp/Sent//",
+            "Movies/TakeTray Test/Sent/",
+            "Movies/TakeTray Test/WhatsApp/Received/",
+            "Movies/TakeTray Test/WhatsApp Video/Sent/",
+            "Movies/TakeTray Test2/WhatsApp/Sent/",
+            "Movies/WhatsApp/Sent/",
+            "WhatsApp/Sent/",
+            "/Movies/TakeTray Test/WhatsApp/Sent/",
+            "Movies/TakeTray Test/../WhatsApp/Sent/",
+        )) {
+            assertFalse("folder '$other'", TestMediaGuard.allowsDelete(other, own, own))
+        }
+    }
+
+    @Test
+    fun `the Sent folder constant is the one MediaStore stores`() {
+        assertTrue(TestMediaGuard.SENT_FOLDER == "Movies/TakeTray Test/WhatsApp/Sent/")
     }
 
     @Test

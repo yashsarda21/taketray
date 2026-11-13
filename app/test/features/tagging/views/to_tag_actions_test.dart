@@ -1,7 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/database/app_database.dart'
+    show ClipReelsCompanion;
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
@@ -45,6 +49,31 @@ class _FailingWrites extends ClipsRepository {
 
   @override
   Future<InboxUndo> skipAllPending() => Future.error(StateError('disk full'));
+}
+
+/// A clips repository that counts remove-a-missing-clip writes and can hold
+/// the first one.
+class _CountingRemoveMissing extends ClipsRepository {
+  _CountingRemoveMissing(VmHarness h) : super(h.media.db, h.media.clock);
+
+  int removes = 0;
+  Completer<void>? gate;
+
+  @override
+  Future<InboxRemoveUndo> removeMissingFromInbox(int clipId) async {
+    removes++;
+    await gate?.future;
+    return await super.removeMissingFromInbox(clipId);
+  }
+}
+
+/// A clips repository whose remove-a-missing-clip write fails.
+class _FailingRemoveMissing extends ClipsRepository {
+  _FailingRemoveMissing(VmHarness h) : super(h.media.db, h.media.clock);
+
+  @override
+  Future<InboxRemoveUndo> removeMissingFromInbox(int clipId) =>
+      Future.error(StateError('disk full'));
 }
 
 void main() {
@@ -385,6 +414,66 @@ void main() {
       await settleApp(tester);
 
       expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('a clip removed by a verify while the picker is open is dropped: '
+        'confirm tags the rest (Phase 5 later item)', (tester) async {
+      await waiting(tester);
+      final london = await newReel(tester, 'London Food');
+      final container = await open(tester);
+
+      await tester.tap(tagScene(0));
+      await settleApp(tester);
+      await tester.tap(pickRow('London Food'));
+      await tester.pumpAndSettle();
+      // A verify finds clip 2's video gone: it leaves To tag and is deleted.
+      await real(
+        tester,
+        () => clips.applyVerification(
+          found: const {},
+          gone: {ids[1]},
+          otherVideo: const {},
+        ),
+      );
+      await settleApp(tester);
+      await tester.tap(sheetButton('Tag 3 clips'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), {ids[0], ids[2]});
+      expect(find.text('2 clips added to London Food'), findsOneWidget);
+      expect(container.read(lastTagsProvider), [london.id]);
+    });
+
+    testApp('every clip removed while the picker is open: confirm closes the '
+        'sheet with no snack and remembers nothing', (tester) async {
+      await waiting(tester);
+      final london = await newReel(tester, 'London Food');
+      final container = await open(tester);
+
+      await tester.tap(tagScene(0));
+      await settleApp(tester);
+      await tester.tap(pickRow('London Food'));
+      await tester.pumpAndSettle();
+      await real(
+        tester,
+        () => clips.applyVerification(
+          found: const {},
+          gone: {ids[0], ids[1], ids[2]},
+          otherVideo: const {},
+        ),
+      );
+      await settleApp(tester);
+      await tester.tap(sheetButton('Tag 3 clips'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(await clipIdsOf(tester, london.id), isEmpty);
+      expect(find.textContaining('added to'), findsNothing);
+      expect(find.text('Undo'), findsNothing);
+      expect(container.read(lastTagsProvider), isEmpty);
     });
 
     testApp('a failed tag is told in the sheet and remembers nothing', (
@@ -881,5 +970,204 @@ void main() {
       expect(tester.takeException(), isNull);
       await expectTtAccessible(tester);
     });
+  });
+  // Remove on a missing tile (final fix wave, D-116): the reel page's tile,
+  // copy and snack; the clip's pending row goes, and the clip with it when it
+  // has no other place; Undo puts back exactly that.
+  group('Remove on a missing clip', () {
+    /// The five waiting clips, the second one flagged missing in place.
+    Future<void> withMissing(WidgetTester tester) async {
+      await waiting(tester);
+      await real(tester, () => flagInPlaceForTest(h, {ids[1]}));
+    }
+
+    testApp('the missing tile has Remove, named Remove, in a 48 dp target', (
+      tester,
+    ) async {
+      await withMissing(tester);
+      await open(tester);
+
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(find.text('Remove'), findsOneWidget);
+      final size = tester.getSize(
+        find.descendant(
+          of: find.byType(TtMissingClipTile),
+          matching: find.byType(TtButton),
+        ),
+      );
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(find.bySemanticsLabel('Remove'), findsOneWidget);
+    });
+
+    testApp('Remove takes the clip out of To tag and deletes it, with a '
+        '"Missing clip removed" snack', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.byType(TtMissingClipTile), findsNothing);
+      expect(await pendingIds(tester), [ids[0], ids[2], ids[3], ids[4]]);
+      expect(await real(tester, clips.allClipIds), {
+        ids[0],
+        ids[2],
+        ids[3],
+        ids[4],
+      });
+      expect(find.text('Missing clip removed'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+    });
+
+    testApp('Undo puts back the row in To tag and the clip with its id', (
+      tester,
+    ) async {
+      await withMissing(tester);
+      await open(tester);
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      await snackUndo(tester);
+
+      expect(await pendingIds(tester), ids);
+      expect(await real(tester, clips.allClipIds), ids.toSet());
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(await skippedIds(tester), isEmpty);
+    });
+
+    testApp('a clip that is also in a reel keeps its link: only its To tag '
+        'row goes', (tester) async {
+      await withMissing(tester);
+      final goa = await newReel(tester, 'Goa');
+      // Both at once is not made by the app (D-57); the data could hold it.
+      await real(
+        tester,
+        () => h.media.db
+            .into(h.media.db.clipReels)
+            .insert(
+              ClipReelsCompanion.insert(
+                clipId: ids[1],
+                reelId: goa.id,
+                addedAt: DateTime.utc(2026, 10, 28, 13),
+              ),
+            ),
+      );
+      await open(tester);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(await pendingIds(tester), [ids[0], ids[2], ids[3], ids[4]]);
+      expect(await real(tester, clips.allClipIds), ids.toSet());
+      expect(await clipIdsOf(tester, goa.id), {ids[1]});
+    });
+
+    testApp('Remove twice removes once', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+
+      await tester.tap(find.text('Remove'));
+      await tester.tap(find.text('Remove'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.text('Missing clip removed'), findsOneWidget);
+      expect(await pendingIds(tester), hasLength(4));
+    });
+
+    testApp('a second tap on Remove while the first write runs writes '
+        'nothing more', (tester) async {
+      await withMissing(tester);
+      final counting = _CountingRemoveMissing(h)..gate = Completer<void>();
+      await open(
+        tester,
+        overrides: [clipsRepositoryProvider.overrideWithValue(counting)],
+      );
+
+      await tester.tap(find.text('Remove'));
+      await tester.pump();
+      await tester.tap(find.text('Remove'), warnIfMissed: false);
+      await tester.pump();
+      counting.gate!.complete();
+      await settleApp(tester);
+
+      expect(counting.removes, 1);
+      expect(find.text('Missing clip removed'), findsOneWidget);
+    });
+
+    testApp('a failed Remove says so and keeps the tile', (tester) async {
+      await withMissing(tester);
+      await open(
+        tester,
+        overrides: [
+          clipsRepositoryProvider.overrideWithValue(_FailingRemoveMissing(h)),
+        ],
+      );
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+      expect(find.text('Undo'), findsNothing);
+    });
+
+    testApp('a tile that was found again is not removed', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+      await real(tester, () => flagForTest(h, {ids[1]}, missing: false));
+
+      await tester.tap(find.text('Remove'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.text('Missing clip removed'), findsNothing);
+      expect(await pendingIds(tester), ids);
+    });
+
+    testApp('a missing tile still cannot be chosen; Remove does not start '
+        'choosing', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+
+      await tester.longPress(find.byType(TtMissingClipTile));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+      expect(find.textContaining('selected'), findsNothing);
+      expect(find.text('Missing clip removed'), findsOneWidget);
+    });
+
+    testApp('a missing tile cannot be added to a choice', (tester) async {
+      await withMissing(tester);
+      await open(tester);
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(TtMissingClipTile), warnIfMissed: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 selected'), findsOneWidget);
+    });
+
+    for (final scale in [1.0, 2.0]) {
+      testApp('a missing tile with Remove at ${scale}x: nothing overflows, '
+          'and it is accessible', (tester) async {
+        await withMissing(tester);
+        await open(tester, textScale: scale);
+
+        expect(tester.takeException(), isNull);
+        final missing = tester.getSize(find.byType(TtMissingClipTile));
+        expect(
+          missing.height,
+          greaterThanOrEqualTo(missing.width * 4 / 3 - 0.5),
+        );
+        if (scale > 1) {
+          final normal = tester.getSize(find.byType(TtClipTile).first);
+          expect(normal.height, closeTo(normal.width * 4 / 3, 0.5));
+        }
+        await expectTtAccessible(tester);
+      });
+    }
   });
 }

@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.ext.SdkExtensions
 import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
@@ -40,6 +41,8 @@ class MediaHostApiImpl(
     activity: Activity,
     private val volumeSource: Volumes = MediaStoreVolumes(activity.applicationContext),
     private val offsetsOf: (List<String>, List<Long>) -> List<Long?> = ZoneOffsets::offsetsMs,
+    private val extensionLevelOf: () -> Int = ::readExtensionLevel,
+    private val pickLimitOf: () -> Int = PickedVideos::systemLimit,
     private val askPermissions: (Activity, Array<String>, Int) -> Unit = { host, permissions, code ->
         host.requestPermissions(permissions, code)
     },
@@ -54,6 +57,11 @@ class MediaHostApiImpl(
 
     /** The one permission request in flight; touched on the main thread only. */
     private val permission = PendingPermission(PERMISSION_REQUEST_CODE)
+
+    /** The one photo-picker request in flight; touched on the main thread only. */
+    private val picks = PickedVideos()
+
+    private val grants: UriGrants = ResolverGrants(resolver)
 
     private val sdkInt get() = Build.VERSION.SDK_INT
 
@@ -104,6 +112,7 @@ class MediaHostApiImpl(
     fun onHostGone() {
         activity = null
         permission.fail(FlutterError("host-gone", "the activity closed before the permission result"))
+        picks.fail(FlutterError("host-gone", "the activity closed before the picker answered"))
     }
 
     override fun openAppSettings() =
@@ -215,6 +224,81 @@ class MediaHostApiImpl(
 
     private fun Long.toPixels(): Int = coerceIn(0, MAX_THUMBNAIL_PX.toLong()).toInt()
 
+    /**
+     * One page of one folder. A volume that is gone (not in the volume list, or
+     * removed while the query ran) is an empty page, never an error: the folder
+     * is simply not there. Any other failure is an error, not an empty page.
+     */
+    override suspend fun videosInFolder(
+        volumeName: String,
+        relativePath: String,
+        limit: Long,
+        offset: Long,
+    ): List<VideoRowMsg> =
+        io("videosInFolder") {
+            if (limit <= 0 || volumeName !in volumeSource.names()) {
+                emptyList()
+            } else {
+                try {
+                    rows(volumeName, VideoQueries.inFolderArgs(relativePath, limit, offset))
+                } catch (e: IllegalArgumentException) {
+                    // MediaProvider says "Volume ... not found" this way.
+                    if (volumeName in volumeSource.names()) throw e else emptyList()
+                }
+            }
+        }
+
+    // ---- The photo picker and saved addresses (D-112) ----
+
+    override suspend fun pickVideos(): List<PickedVideoMsg> {
+        val host = activity ?: throw FlutterError("no-activity", "pickVideos needs the activity")
+        if (picks.isWaiting) throw FlutterError("busy", "a picker is already open")
+        val uris =
+            guarded("pickVideos") {
+                picks.await {
+                    try {
+                        host.startActivityForResult(
+                            PickedVideos.intent(sdkInt, extensionLevelOf(), pickLimitOf),
+                            PickedVideos.REQUEST_CODE,
+                        )
+                    } catch (e: ActivityNotFoundException) {
+                        throw FlutterError("no-picker", "no app can pick videos")
+                    }
+                }
+            }
+        if (uris.isEmpty()) return emptyList()
+        val picked = io("pickVideos") { PickedVideos.describe(resolver, grants, uris) }
+        Log.i(LOG_TAG, "picked ${picked.size} videos, ${picked.count { it.persisted }} kept")
+        return picked
+    }
+
+    /**
+     * Called by MainActivity.onActivityResult. True when it answered a waiting
+     * pick; a result with nobody waiting (the process died while the picker was
+     * open) is dropped.
+     */
+    fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ): Boolean = picks.onResult(requestCode, resultCode, data)
+
+    override suspend fun thumbnailOfUri(
+        uri: String,
+        widthPx: Long,
+        heightPx: Long,
+    ): ByteArray? = io("thumbnailOfUri") { Thumbnails.loadFromUri(resolver, uri, widthPx.toPixels(), heightPx.toPixels()) }
+
+    override suspend fun readableUris(uris: List<String>): List<String> = io("readableUris") { PickedVideos.readable(resolver, uris) }
+
+    override suspend fun persistedUris(): List<String> = io("persistedUris") { PickedVideos.persisted(grants) }
+
+    override suspend fun releaseUris(uris: List<String>) =
+        io("releaseUris") {
+            val failed = PickedVideos.release(grants, uris)
+            if (failed > 0) Log.w(LOG_TAG, "releaseUris: $failed of ${uris.size} could not be released")
+        }
+
     // ---- Time zones ----
     //
     // zoneOffsetsMs is async and runs on Dispatchers.IO like the MediaStore
@@ -262,6 +346,14 @@ class MediaHostApiImpl(
         private const val MAX_THUMBNAIL_PX = 4096
     }
 }
+
+/** The R extension level (2 or more ships the photo picker on API 30 to 32); 0 when it cannot be read. */
+internal fun readExtensionLevel(): Int =
+    try {
+        SdkExtensions.getExtensionVersion(Build.VERSION_CODES.R)
+    } catch (e: Exception) {
+        0
+    }
 
 /** Runs [block]; an unexpected exception becomes [nativeError] (`bridge/BridgeSupport.kt`). */
 private inline fun <T> guarded(

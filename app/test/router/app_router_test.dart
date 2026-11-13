@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
+import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
@@ -544,5 +547,138 @@ void main() {
 
     expect(find.byType(NotificationsHelpScreen), findsNothing);
     expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  group('Add videos (Phase 7, D-114)', () {
+    test('the locations', () {
+      expect(Routes.addVideos, '/add-videos');
+      expect(Routes.addVideosFolder, '/add-videos/folder');
+      expect(Routes.addVideosTo(), '/add-videos');
+      expect(Routes.addVideosTo(reelId: 7), '/add-videos?reel=7');
+      final folder = Uri.parse(
+        Routes.addVideosFolderOf('1234-5678', 'A & B/?#ü/', reelId: 7),
+      );
+      expect(folder.path, Routes.addVideosFolder);
+      expect(folder.queryParameters, {
+        Routes.addVideosVolumeParameter: '1234-5678',
+        Routes.addVideosPathParameter: 'A & B/?#ü/',
+        Routes.addVideosReelParameter: '7',
+      });
+      final root = Uri.parse(Routes.addVideosFolderOf('external_primary', ''));
+      expect(root.queryParameters, {
+        Routes.addVideosVolumeParameter: 'external_primary',
+        Routes.addVideosPathParameter: '',
+      });
+    });
+
+    testApp('the folder list is full screen, for To tag or for a reel', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push(Routes.addVideosTo()));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<AddFoldersScreen>(find.byType(AddFoldersScreen)).target,
+        const AddToToTag(),
+      );
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AddFoldersScreen), findsNothing);
+      unawaited(router.push(Routes.addVideosTo(reelId: goa.id)));
+      await _settle(tester);
+
+      expect(
+        tester.widget<AddFoldersScreen>(find.byType(AddFoldersScreen)).target,
+        AddToReel(goa.id),
+      );
+    });
+
+    testApp('the grid gets its folder and target from the location', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(
+        router.push(
+          Routes.addVideosFolderOf('1234-5678', 'DCIM/A & B/', reelId: goa.id),
+        ),
+      );
+      await _settle(tester);
+
+      final grid = tester.widget<AddGridScreen>(find.byType(AddGridScreen));
+      expect(grid.volumeName, '1234-5678');
+      expect(grid.relativePath, 'DCIM/A & B/');
+      expect(grid.target, AddToReel(goa.id));
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+    });
+
+    testApp('Add videos for a reel that does not exist closes at once', (
+      tester,
+    ) async {
+      final (_, router) = await _pumpApp(tester);
+      router.go(Routes.toTag);
+      await tester.pumpAndSettle();
+
+      unawaited(router.push(Routes.addVideosTo(reelId: 99)));
+      await _settle(tester);
+
+      expect(find.byType(AddFoldersScreen), findsNothing);
+      expect(find.byType(ToTagScreen), findsOneWidget);
+    });
+
+    testApp('a grid location with no path is the volume root', (tester) async {
+      final (_, router) = await _pumpApp(tester);
+
+      unawaited(
+        router.push('${Routes.addVideosFolder}?volume=external_primary'),
+      );
+      await tester.pumpAndSettle();
+
+      final grid = tester.widget<AddGridScreen>(find.byType(AddGridScreen));
+      expect(grid.relativePath, '');
+      expect(grid.target, const AddToToTag());
+    });
+
+    for (final location in [
+      '/add-videos?reel=abc',
+      '/add-videos?reel=0',
+      '/add-videos?reel=-3',
+      '/add-videos/folder',
+      '/add-videos/folder?volume=',
+      '/add-videos/folder?volume=external_primary&reel=x',
+    ]) {
+      testApp('a bad Add videos location ($location) lands on Reels, and is '
+          'not logged', (tester) async {
+        final (_, router) = await _pumpApp(tester);
+        router.go(Routes.toTag);
+        await tester.pumpAndSettle();
+        final logged = <LogRecord>[];
+        final sub = Logger.root.onRecord.listen(logged.add);
+        addTearDown(sub.cancel);
+
+        router.go(location);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AddFoldersScreen), findsNothing);
+        expect(find.byType(AddGridScreen), findsNothing);
+        expect(find.byType(ReelsScreen), findsOneWidget);
+        expect(
+          logged.map((r) => r.message).join(),
+          isNot(contains('add-videos')),
+        );
+      });
+    }
   });
 }

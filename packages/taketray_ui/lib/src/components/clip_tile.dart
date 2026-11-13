@@ -19,7 +19,8 @@ class TtClipMark {
   /// The glyph, drawn filled.
   final IconData icon;
 
-  /// The words; one line, with an ellipsis if too long.
+  /// The words; one line at normal text, wrapped between words at large text
+  /// and shrunk to fit the tile as a last resort, never cut short.
   final String label;
 }
 
@@ -507,13 +508,12 @@ class _MarkOverlay extends StatelessWidget {
                         color: scheme.onInverseSurface,
                         fill: 1,
                       ),
+                      // The label wraps between words over as many lines as it
+                      // takes (at 200 % text "In this reel" and "In To tag"
+                      // must not both end up as "In t…"), and is shrunk, never
+                      // cut, when it still does not fit the tile.
                       Flexible(
-                        child: Text(
-                          mark.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: style,
-                        ),
+                        child: FitHeight(child: Text(mark.label, style: style)),
                       ),
                     ],
                   ),

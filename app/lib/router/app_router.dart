@@ -2,6 +2,9 @@ import 'package:flutter/widgets.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/data/media/add_videos_service.dart';
+import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
+import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
@@ -162,8 +165,56 @@ GoRouter appRouter(Ref ref) {
           ),
         ],
       ),
+      addVideosRoute(),
     ],
   );
   ref.onDispose(router.dispose);
   return router;
 }
+
+/// The target of an Add videos location: To tag without
+/// [Routes.addVideosReelParameter], the reel it names otherwise. Null when it
+/// names no reel (not a positive whole number), which is as unknown as a
+/// location no route matches.
+AddTarget? _addTarget(GoRouterState state) {
+  final reel = state.uri.queryParameters[Routes.addVideosReelParameter];
+  if (reel == null) return const AddToToTag();
+  final id = _positive(reel);
+  return id == null ? null : AddToReel(id);
+}
+
+/// Sends a bad Add videos location to Reels. The location is not logged: it
+/// can carry a folder's path (D-10).
+String? _badAddVideos(GoRouterState state) {
+  final grid = state.matchedLocation == Routes.addVideosFolder;
+  final volume = state.uri.queryParameters[Routes.addVideosVolumeParameter];
+  if (_addTarget(state) != null &&
+      (!grid || (volume != null && volume.isNotEmpty))) {
+    return null;
+  }
+  _log.warning('Unknown location; showing Reels');
+  return Routes.reels;
+}
+
+/// Add videos (Phase 7, D-114): the folder list at [Routes.addVideos] and
+/// the grid of one folder at [Routes.addVideosFolder] above it. Both are
+/// full screen, on the root navigator (a top-level route), above the tab
+/// shell and its nav pill; the page that opened them stays under them, so
+/// Back, and an add, return there.
+GoRoute addVideosRoute() => GoRoute(
+  path: Routes.addVideos,
+  redirect: (context, state) => _badAddVideos(state),
+  builder: (context, state) => AddFoldersScreen(target: _addTarget(state)!),
+  routes: [
+    GoRoute(
+      path: 'folder',
+      redirect: (context, state) => _badAddVideos(state),
+      builder: (context, state) => AddGridScreen(
+        target: _addTarget(state)!,
+        volumeName: state.uri.queryParameters[Routes.addVideosVolumeParameter]!,
+        relativePath:
+            state.uri.queryParameters[Routes.addVideosPathParameter] ?? '',
+      ),
+    ),
+  ],
+);

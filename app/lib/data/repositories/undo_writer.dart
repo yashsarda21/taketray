@@ -86,18 +86,7 @@ class UndoWriter {
             );
             continue;
           }
-          switch (record) {
-            case RemoveUndo():
-              await _undoRemove(record);
-            case MoveUndo():
-              await _undoMove(record);
-            case AddUndo():
-              await _undoAdd(record);
-            case DeleteReelUndo():
-              await _undoDelete(record);
-            case InboxUndo():
-              await _undoInbox(record);
-          }
+          await applyUndo(record);
           _undone[record] = true;
           marked.add(record);
         }
@@ -110,6 +99,27 @@ class UndoWriter {
         _undone[record] = null;
       }
       rethrow;
+    }
+  }
+
+  /// Puts back what [record] changed, as [undo] does, inside the caller's
+  /// transaction and **without** the once-only mark: the caller undoes it at
+  /// most once (`ClipsRepository.undoHandAdd` marks its own record only after
+  /// its transaction commits, so a rolled-back undo can run again).
+  Future<void> applyUndo(UndoRecord record) async {
+    switch (record) {
+      case RemoveUndo():
+        await _undoRemove(record);
+      case MoveUndo():
+        await _undoMove(record);
+      case AddUndo():
+        await _undoAdd(record);
+      case DeleteReelUndo():
+        await _undoDelete(record);
+      case InboxUndo():
+        await _undoInbox(record);
+      case InboxRemoveUndo():
+        await _undoInboxRemove(record);
     }
   }
 
@@ -212,6 +222,48 @@ class UndoWriter {
     _log.info(
       'Undid a move to ${record.after.name}: $back of '
       '${record.before.length} back',
+    );
+  }
+
+  /// Puts back the rows [record] took out (D-116), and the clips the sweep
+  /// deleted with them, with their old ids (or the id of the clip that holds
+  /// their identity now, as for a reel remove). A row goes back only while
+  /// its clip has no `inbox` row and no reel link: a clip the user put in a
+  /// reel since stays there (never in a reel and a list at once, D-57), and
+  /// one already in To tag or Skipped keeps that row. A swept clip no row
+  /// needs stays gone.
+  Future<void> _undoInboxRemove(InboxRemoveUndo record) async {
+    if (record.isEmpty) return;
+    final needed = {for (final entry in record.removed) entry.clipId};
+    final ids = <int, int?>{};
+    for (final clip in record.sweptClips) {
+      if (needed.contains(clip.id)) ids[clip.id] = await _restoreClip(clip);
+    }
+    var back = 0;
+    for (final entry in record.removed) {
+      final clipId = ids.containsKey(entry.clipId)
+          ? ids[entry.clipId]
+          : entry.clipId;
+      if (clipId == null ||
+          !await _clipExists(clipId) ||
+          await _hasInboxRow(clipId) ||
+          await _hasAnyLink(clipId)) {
+        continue;
+      }
+      await _db
+          .into(_db.inbox)
+          .insert(
+            InboxCompanion.insert(
+              clipId: Value(clipId),
+              state: entry.state,
+              addedAt: entry.addedAt,
+            ),
+          );
+      back++;
+    }
+    _log.info(
+      'Undid a remove from the lists: $back of ${record.removed.length} '
+      'rows back, ${ids.length} swept clips',
     );
   }
 
@@ -523,6 +575,10 @@ class UndoWriter {
       (l) => !ours.any((o) => o.reelId == l.reelId && o.addedAt == l.addedAt),
     );
   }
+
+  Future<bool> _hasAnyLink(int clipId) async => await (_db.select(
+    _db.clipReels,
+  )..where((l) => l.clipId.equals(clipId))).get().then((r) => r.isNotEmpty);
 
   Future<bool> _hasInboxRow(int clipId) async =>
       await (_db.select(

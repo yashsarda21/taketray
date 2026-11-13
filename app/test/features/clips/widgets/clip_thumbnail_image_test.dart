@@ -32,7 +32,34 @@ class SizeRecordingBridge extends FakeMediaBridge {
     sizes.add((widthPx, heightPx));
     return super.thumbnail(volumeName, mediaStoreId, widthPx, heightPx);
   }
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) {
+    sizes.add((widthPx, heightPx));
+    return super.thumbnailOfUri(uri, widthPx, heightPx);
+  }
 }
+
+const String pickedUri =
+    'content://media/picker/0/com.android.providers.media.photopicker/'
+    'media/1000017';
+
+Clip pickedOf({String uri = pickedUri, int id = 1}) => Clip(
+  id: id,
+  source: ClipSource.picker,
+  pickerUri: uri,
+  fingerprint: ClipFingerprint(
+    sizeBytes: 2000000,
+    durationMs: 8000,
+    dateTakenUtc: DateTime.utc(2026, 5, 3, 8),
+    displayName: 'picked.mp4',
+  ),
+  width: 1080,
+  height: 1920,
+  mimeType: 'video/mp4',
+  firstSeenAt: DateTime.utc(2026, 5, 4),
+  missing: false,
+);
 
 Clip clipOf({int mediaStoreId = 42, int sizeBytes = 1000000}) => Clip(
   id: 1,
@@ -308,6 +335,58 @@ void main() {
           .obtainKey(ImageConfiguration.empty);
 
       expect(key.sizePx, 100);
+    });
+
+    testWidgets('a picked clip resolves to an image from thumbnailOfUri', (
+      tester,
+    ) async {
+      bridge.uriThumbnails[pickedUri] = onePixel;
+
+      final info = await tester.runAsync(
+        () => resolve(providerFor(pickedOf()), 3),
+      );
+
+      expect(info!.image.width, 1);
+      expect(info.scale, 3);
+      expect(bridge.sizes, [(300, 300)]);
+      expect(bridge.calls, ['thumbnailOfUri']);
+    });
+
+    testWidgets('a picked clip with no picture gives an image error', (
+      tester,
+    ) async {
+      await tester.runAsync(() async {
+        await expectLater(
+          resolve(providerFor(pickedOf()), 3),
+          throwsA(isA<StateError>()),
+        );
+      });
+
+      expect(bridge.calls, ['thumbnailOfUri']);
+    });
+
+    test('picked providers are equal for one address; another address or a '
+        'MediaStore clip is not', () {
+      final a = providerFor(pickedOf());
+      final b = providerFor(pickedOf(id: 99));
+
+      expect(a, b);
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(providerFor(pickedOf(uri: '${pickedUri}8'))));
+      expect(a, isNot(providerFor(clipOf())));
+      expect(providerFor(clipOf()), isNot(a));
+    });
+
+    test('a picked provider and its key never print the address', () async {
+      final provider = providerFor(pickedOf());
+      final key = await provider.obtainKey(ImageConfiguration.empty);
+
+      for (final text in [provider.toString(), key.toString()]) {
+        expect(text, isNot(contains('content')));
+        expect(text, isNot(contains('photopicker')));
+        expect(text, isNot(contains('1000017')));
+        expect(text, isNot(contains('/')));
+      }
     });
 
     test('the key does not depend on the clip row id or the cache', () async {

@@ -685,11 +685,13 @@ void main() {
         shot(10, at: _t0.subtract(hour * 6)), // missing
         shot(11, at: _t0.subtract(hour * 5)), // detached
         shot(15, at: _t0.subtract(hour * 4)), // number below 1, not missing
-        picked('content://picked/1', _t0.subtract(hour * 3)), // no picture
+        // Picked and missing: no picture (Phase 7: a picked clip that is
+        // not missing has one, see the next test).
+        picked('content://picked/1', _t0.subtract(hour * 3)),
         shot(13, at: _t0.subtract(hour * 2)), // the cover: oldest left
         shot(14, at: _t0.subtract(hour * 2)), // the same time, higher id
       ]);
-      await flagClips(db, {ids[1]}, missing: true, at: _t0);
+      await flagClips(db, {ids[1], ids[4]}, missing: true, at: _t0);
       await detachClips(db, {ids[2]}, at: _t0);
       // A state the app never makes (a detached clip that is not missing),
       // written by hand: it still has no picture to ask for.
@@ -702,6 +704,53 @@ void main() {
 
       expect(cover, (await clips.clipsByIds([ids[5]])).single);
       expect(ids[6], greaterThan(ids[5]));
+    });
+
+    test('a picked clip that is not missing can be the cover (Phase 7, '
+        'D-84 point 3)', () async {
+      final goa = await repo.create('Goa');
+      const hour = Duration(hours: 1);
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        shot(12, at: _t0),
+        picked('content://picked/1', _t0.subtract(hour * 3)),
+      ]);
+
+      Future<Clip?> cover() async => (await repo.watchReelSummaries().first)
+          .singleWhere((s) => s.reel.id == goa.id)
+          .cover;
+
+      expect(await cover(), (await clips.clipsByIds([ids[1]])).single);
+
+      await flagClips(db, {ids[1]}, missing: true, at: _t0);
+      expect(
+        await cover(),
+        (await clips.clipsByIds([ids[0]])).single,
+        reason: 'a missing picked clip has no picture',
+      );
+    });
+
+    test('a picked clip with an empty address is not the cover', () async {
+      // A state the app never makes (the schema allows an empty address): it
+      // has no picture to ask for, so no cover is offered.
+      final goa = await repo.create('Goa');
+      await clips.addNewClipsToReel(goa.id, [picked('', _t0)]);
+
+      final summary = (await repo.watchReelSummaries().first).single;
+
+      expect(summary.clipCount, 1);
+      expect(summary.cover, isNull);
+    });
+
+    test('a reel of picked clips only has a cover', () async {
+      final goa = await repo.create('Goa');
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        picked('content://picked/2', _t0),
+      ]);
+
+      final summary = (await repo.watchReelSummaries().first).single;
+
+      expect(summary.cover?.id, ids.single);
+      expect(summary.cover?.pickerUri, 'content://picked/2');
     });
 
     test('a reel with no clips has a null cover and zeros', () async {

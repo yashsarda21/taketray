@@ -14,6 +14,7 @@ import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/scenes.dart';
 import 'package:taketray/domain/rules/shooting_order.dart';
 import 'package:taketray/domain/rules/tag_queue.dart';
+import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/tagging/view_models/last_tags.dart';
 import 'package:taketray_ui/taketray_ui.dart' show TtMotion;
 
@@ -214,6 +215,7 @@ class _Counted {
 class TagSessionController extends _$TagSessionController {
   late ClipsRepository _clips;
   late ReelsRepository _reels;
+  late ReelClipActions _actions;
   late LastTags _lastTags;
   late TagQueue _queue;
   late List<Clip> _latest;
@@ -237,6 +239,7 @@ class TagSessionController extends _$TagSessionController {
   Future<TagSessionState> build(int? startClipId) async {
     _clips = ref.watch(clipsRepositoryProvider);
     _reels = ref.watch(reelsRepositoryProvider);
+    _actions = ref.watch(reelClipActionsProvider);
     _lastTags = ref.read(lastTagsProvider.notifier);
     final first = Completer<void>();
     final watch = _clips
@@ -588,13 +591,25 @@ class TagSessionController extends _$TagSessionController {
 
   /// Puts clip [clipId] into [reelIds] (one transaction), remembers them for
   /// "Same as previous" and what to count back on Undo. [names] holds at
-  /// least their names.
-  Future<TagOutcome> _write(
+  /// least their names. Null, with nothing written or remembered, when the
+  /// clip is gone by now (a verify deleted it since the tap): the add is the
+  /// shared one of the reel pickers, which drops clips that no longer exist
+  /// (`ReelClipActions.addToReels`), and the player moves on from the clip
+  /// as it does when a verify removes the clip showing.
+  Future<TagOutcome?> _write(
     int clipId,
     List<int> reelIds,
     Map<int, String> names,
   ) async {
-    final records = await _clips.addClipsToReels(reelIds.toSet(), [clipId]);
+    final added = await _actions.addToReels(
+      clipIds: {clipId},
+      reelIds: reelIds,
+    );
+    if (added.clipCount == 0) {
+      _log.info('Clip $clipId is gone; nothing tagged');
+      return null;
+    }
+    final records = added.records;
     final before = _lastTags.current;
     final after = _lastTags.set(reelIds);
     final counted = _Counted(

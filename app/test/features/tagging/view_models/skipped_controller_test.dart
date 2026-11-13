@@ -6,6 +6,7 @@ import 'package:taketray/features/tagging/view_models/skipped_controller.dart';
 import 'package:taketray/features/tagging/view_models/skipped_selection.dart';
 
 import '../../../support/fake_media_bridge.dart';
+import '../../../support/reel_videos.dart';
 import '../../../support/vm_harness.dart';
 
 void main() {
@@ -164,6 +165,32 @@ void main() {
     final again = await controller.restore(ids);
 
     expect(again.isEmpty, isTrue);
+  });
+
+  test('removeMissing takes a missing skipped clip out and returns what Undo '
+      'needs; a clip that is not missing is left alone', () async {
+    h.bridge.put([
+      for (final id in [1, 2])
+        fakeVideo(
+          id: id,
+          generation: id,
+          dateTakenMs: 1780000000000 + id * 60000,
+        ),
+    ]);
+    final ids = await skipped([1, 2]);
+    open();
+    // The opening verify finds both videos; then one is flagged missing.
+    await settle();
+    await flagInPlaceForTest(h, {ids[0]});
+    final controller = h.container.read(skippedControllerProvider.notifier);
+
+    final left = await controller.removeMissing(ids[1]);
+    final record = await controller.removeMissing(ids[0]);
+
+    expect(left.isEmpty, isTrue);
+    expect([for (final c in await h.media.skipped()) c.id], [ids[1]]);
+    await clips.undoAll([record]);
+    expect([for (final c in await h.media.skipped()) c.id], ids);
   });
 
   test('retry reads the list and verifies again', () async {

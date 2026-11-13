@@ -10,18 +10,32 @@ import 'package:taketray/domain/models/media.dart';
 /// [now] plus one day (24 hours). Container metadata holds garbage: QuickTime
 /// epochs (1904), wrong units, clocks set years ahead. Such a date would sort
 /// the clip to the far end of To tag and of its reels.
-DateTime shotAt(MediaVideo v, {required DateTime now}) {
+DateTime shotAt(MediaVideo v, {required DateTime now}) => shotAtFrom(
+  takenMs: v.dateTakenMs,
+  addedSec: v.dateAddedSec,
+  modifiedSec: v.dateModifiedSec,
+  now: now,
+);
+
+/// The [shotAt] rule on dates given one by one: [takenMs] (milliseconds),
+/// then [addedSec] and [modifiedSec] (seconds); the first plausible one wins,
+/// else [now]. A video from the photo picker has only a taken date (D-113).
+DateTime shotAtFrom({
+  required DateTime now,
+  int? takenMs,
+  int? addedSec,
+  int? modifiedSec,
+}) {
   final nowUtc = now.toUtc();
   final latestMs = nowUtc.add(const Duration(days: 1)).millisecondsSinceEpoch;
   // Compared in seconds, so a huge value cannot overflow when it is
   // multiplied by 1000 and wrap around into a plausible date.
   final latestSec = latestMs ~/ 1000;
 
-  final taken = v.dateTakenMs;
-  if (taken != null && taken >= 0 && taken <= latestMs) {
-    return DateTime.fromMillisecondsSinceEpoch(taken, isUtc: true);
+  if (takenMs != null && takenMs >= 0 && takenMs <= latestMs) {
+    return DateTime.fromMillisecondsSinceEpoch(takenMs, isUtc: true);
   }
-  for (final seconds in [v.dateAddedSec, v.dateModifiedSec]) {
+  for (final seconds in [addedSec, modifiedSec]) {
     if (seconds != null && seconds >= 0 && seconds <= latestSec) {
       return DateTime.fromMillisecondsSinceEpoch(seconds * 1000, isUtc: true);
     }

@@ -1160,6 +1160,121 @@ void main() {
         expect(await snapshot(), before);
       });
 
+      // Phase 7 final review I-1 (D-116): a picked clip whose address cannot
+      // be read may be on an unplugged drive; it is flagged, never removed.
+      test('flagOnly clips are flagged missing and keep their place in To tag, '
+          'Skipped and a reel; nothing is deleted', () async {
+        final [inTag, inSkipped, inReel] = [
+          for (final n in [1, 2, 3])
+            (await repo.saveDetected([pickerClip('content://p/$n')])).single,
+        ];
+        await repo.skipClips([inSkipped]);
+        final goa = (await reels.create('Goa')).id;
+        await repo.tagClip(inReel, {goa});
+        clock.advance(_minute);
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {inTag, inSkipped, inReel},
+        );
+
+        expect(removed, 0);
+        for (final id in [inTag, inSkipped, inReel]) {
+          final row = await rowOf(id);
+          expect((row.missing, row.lastVerifiedAt), (true, clock.now()));
+          expect(row.pickerUri, isNotNull, reason: 'its address is kept');
+        }
+        expect(await clipIds(), unorderedEquals([inTag, inSkipped, inReel]));
+        expect(
+          {for (final r in await inboxRows()) r.clipId: r.state},
+          {inTag: InboxState.pending, inSkipped: InboxState.skipped},
+        );
+        expect(await reelIdsOf(inReel), {goa});
+      });
+
+      test('flagOnly beside gone: the gone clip leaves, the flagOnly one '
+          'stays', () async {
+        final [gone] = await detect([10]);
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+
+        final removed = await repo.applyVerification(
+          found: {},
+          gone: {gone},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+
+        expect(removed, 1);
+        expect(await clipIds(), [picked]);
+        expect((await rowOf(picked)).missing, isTrue);
+        expect((await inboxRows()).single.clipId, picked);
+      });
+
+      test('flagOnly alone is not "nothing to apply"', () async {
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+        clock.advance(_minute);
+
+        await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+
+        expect((await rowOf(picked)).missing, isTrue);
+      });
+
+      test('a flagged flagOnly clip found again is un-flagged by the next '
+          'verification', () async {
+        final [picked] = await repo.saveDetected([pickerClip('content://p/1')]);
+        await repo.applyVerification(
+          found: {},
+          gone: {},
+          otherVideo: {},
+          flagOnly: {picked},
+        );
+        clock.advance(_minute);
+
+        await repo.applyVerification(found: {picked}, gone: {}, otherVideo: {});
+
+        final row = await rowOf(picked);
+        expect((row.missing, row.lastVerifiedAt), (false, clock.now()));
+        expect((await inboxRows()).single.clipId, picked);
+      });
+
+      test(
+        'a clip in flagOnly and another set throws and writes nothing',
+        () async {
+          final [a, b] = await detect([10, 11]);
+          final before = await snapshot();
+          for (final call in <Future<int> Function()>[
+            () => repo.applyVerification(
+              found: {a},
+              gone: {},
+              otherVideo: {},
+              flagOnly: {a},
+            ),
+            () => repo.applyVerification(
+              found: {},
+              gone: {a},
+              otherVideo: {},
+              flagOnly: {a},
+            ),
+            () => repo.applyVerification(
+              found: {b},
+              gone: {},
+              otherVideo: {a},
+              flagOnly: {a},
+            ),
+          ]) {
+            await expectLater(call(), throwsArgumentError);
+          }
+          expect(await snapshot(), before);
+        },
+      );
+
       test('detaching twice keeps the negative id', () async {
         final [a] = await detect([10]);
         final goa = (await reels.create('Goa')).id;
@@ -1968,6 +2083,203 @@ void main() {
     });
   });
 
+  group('addByHand (phase 7, D-113)', () {
+    bool same(Clip stored, NewClip incoming) =>
+        stored.fingerprint.sizeBytes == incoming.fingerprint.sizeBytes;
+
+    test('to To tag: new clips pending at now, one transaction with their '
+        'rows', () async {
+      clock.advance(_minute);
+      final add = await repo.addByHand([
+        mediaStoreClip(10),
+        pickerClip('content://p/1'),
+      ], sameVideo: same);
+
+      expect((add.added, add.alreadyThere), (2, 0));
+      final rows = await inboxRows();
+      expect(rows.map((r) => r.state).toSet(), {InboxState.pending});
+      expect(rows.map((r) => r.addedAt).toSet(), {_t0.add(_minute)});
+      expect(rows.map((r) => r.clipId).toSet(), (await clipIds()).toSet());
+      expect(await db.select(db.clipReels).get(), isEmpty);
+    });
+
+    test('to a reel: a link, no inbox row, the reel touched', () async {
+      final reel = await reels.create('Goa');
+      clock.advance(_minute);
+
+      final add = await repo.addByHand(
+        [mediaStoreClip(10)],
+        reelId: reel.id,
+        sameVideo: same,
+      );
+
+      expect(add.added, 1);
+      final [id] = await clipIds();
+      expect(await reelIdsOf(id), {reel.id});
+      expect(await inboxRows(), isEmpty);
+      expect(await updatedAt(reel.id), _t0.add(_minute));
+    });
+
+    test('a reel that does not exist: StateError, nothing saved', () async {
+      await expectLater(
+        repo.addByHand([mediaStoreClip(10)], reelId: 404, sameVideo: same),
+        throwsStateError,
+      );
+      expect(await clipIds(), isEmpty);
+    });
+
+    test('a known clip that is another video is detached in the same '
+        'transaction as the insert', () async {
+      final [old] = await repo.saveDetected([mediaStoreClip(10)]);
+      final other = mediaStoreClip(10).copyWith(
+        fingerprint: mediaStoreClip(10).fingerprint.copyWith(sizeBytes: 9),
+      );
+
+      final add = await repo.addByHand([other], sameVideo: same);
+
+      expect(add.added, 1);
+      final ids = await clipIds();
+      expect(ids, isNot(contains(old)), reason: 'detached, only in To tag');
+      final row = await db.select(db.clips).getSingle();
+      expect((row.mediaStoreId, row.sizeBytes), (10, 9));
+    });
+
+    for (final toReel in [false, true]) {
+      test('a known clip with no place (a backup can leave one) gets its '
+          'place, ${toReel ? 'in the reel' : 'in To tag'}, and is not '
+          'reported already there', () async {
+        final reel = await reels.create('Goa');
+        final [orphan] = await repo.saveDetected([mediaStoreClip(10)]);
+        await db.delete(db.inbox).go();
+        expect(await inboxRows(), isEmpty);
+        expect(await reelIdsOf(orphan), isEmpty);
+        clock.advance(_minute);
+
+        final add = await repo.addByHand(
+          [mediaStoreClip(10)],
+          reelId: toReel ? reel.id : null,
+          sameVideo: same,
+        );
+
+        expect((add.added, add.alreadyThere), (1, 0));
+        expect(await clipIds(), [orphan], reason: 'the same clip, no copy');
+        if (toReel) {
+          expect(await reelIdsOf(orphan), {reel.id});
+          expect(await inboxRows(), isEmpty);
+        } else {
+          final [row] = await inboxRows();
+          expect((row.clipId, row.state), (orphan, InboxState.pending));
+          expect(row.addedAt, _t0.add(_minute));
+        }
+
+        // Undo takes the place away again, so the sweep removes the clip.
+        await repo.undoHandAdd(add.undo);
+
+        expect(await clipIds(), isEmpty);
+      });
+    }
+
+    test('undoHandAdd removes the new clips and is idempotent', () async {
+      final [keep] = await repo.saveDetected([mediaStoreClip(5)]);
+      final add = await repo.addByHand([
+        mediaStoreClip(5),
+        mediaStoreClip(10),
+      ], sameVideo: same);
+      expect((add.added, add.alreadyThere), (1, 1));
+
+      await repo.undoHandAdd(add.undo);
+      await repo.undoHandAdd(add.undo);
+
+      expect(await clipIds(), [keep]);
+    });
+
+    test('placesOf: inbox state and reels per number, attached and not '
+        'missing only, in batches', () async {
+      final reel = await reels.create('Goa');
+      final [pending, skipped, tagged, missing] = await repo.saveDetected([
+        mediaStoreClip(1),
+        mediaStoreClip(2),
+        mediaStoreClip(3),
+        mediaStoreClip(4),
+      ]);
+      await repo.skipClips([skipped]);
+      await repo.tagClip(tagged, {reel.id});
+      await repo.tagClip(missing, {reel.id});
+      await flagClips(db, {missing}, missing: true, at: _t0);
+      final many = [
+        for (var i = 0; i < ClipsRepository.idBatch + 3; i++) 9000 + i,
+      ];
+
+      final places = await repo.placesOf('external_primary', [
+        1,
+        2,
+        3,
+        4,
+        77,
+        ...many,
+      ]);
+
+      expect(places.keys.toSet(), {1, 2, 3});
+      expect(places[1]!.inbox, InboxState.pending);
+      expect(places[1]!.reelIds, isEmpty);
+      expect(places[2]!.inbox, InboxState.skipped);
+      expect(places[3]!.inbox, isNull);
+      expect(places[3]!.reelIds, {reel.id});
+      expect(pending, isNot(skipped));
+      expect(await repo.placesOf('other_volume', [1, 2, 3]), isEmpty);
+    });
+
+    group('a sweep while clips are being added cannot delete them (R6b)', () {
+      test('to To tag', () async {
+        final sweeping = _SweepingClock(_t0, db)..arm();
+
+        await ClipsRepository(
+          db,
+          sweeping,
+        ).addByHand([mediaStoreClip(10)], sameVideo: same);
+
+        expect(sweeping.sweep, isNotNull, reason: 'the sweep was started');
+        expect(await sweeping.sweep, 0);
+        expect(await clipIds(), hasLength(1));
+        expect(await inboxRows(), hasLength(1));
+      });
+
+      test('to a reel', () async {
+        final reel = await reels.create('Goa');
+        final sweeping = _SweepingClock(_t0, db)..arm();
+
+        await ClipsRepository(db, sweeping).addByHand(
+          [mediaStoreClip(10), pickerClip('content://p/1')],
+          reelId: reel.id,
+          sameVideo: same,
+        );
+
+        expect(sweeping.sweep, isNotNull, reason: 'the sweep was started');
+        expect(await sweeping.sweep, 0);
+        expect(await clipIds(), hasLength(2));
+      });
+
+      test(
+        'undo and a reel delete at once: the undo removes only its clip',
+        () async {
+          final goa = await reels.create('Goa');
+          final paris = await reels.create('Paris');
+          final add = await repo.addByHand(
+            [mediaStoreClip(10)],
+            reelId: goa.id,
+            sameVideo: same,
+          );
+          await repo.addClipsToReel(paris.id, await clipIds());
+          final [other] = await repo.saveDetected([mediaStoreClip(11)]);
+
+          await (repo.undoHandAdd(add.undo), reels.delete(paris.id)).wait;
+
+          expect(await clipIds(), [other]);
+        },
+      );
+    });
+  });
+
   group('watching', () {
     test(
       'watchFirstShowableClip is the lowest-id clip with a picture',
@@ -1978,7 +2290,8 @@ void main() {
         final picked = await repo.addNewClipsToReel(reel.id, [
           pickerClip('content://p/1'),
         ]);
-        // A picked clip has no thumbnail to ask for: it is not offered.
+        // A missing picked clip has no picture: it is not offered.
+        await flagClips(db, picked.toSet(), missing: true, at: clock.now());
         expect(await repo.watchFirstShowableClip().first, isNull);
 
         final ids = await repo.saveDetected([
@@ -1989,6 +2302,30 @@ void main() {
         expect((await repo.watchFirstShowableClip().first)!.id, ids[0]);
       },
     );
+
+    test('watchFirstShowableClip offers a picked clip that is not missing '
+        '(Phase 7: the Shooting mode backdrop)', () async {
+      final reel = await reels.create('Goa');
+      final picked = await repo.addNewClipsToReel(reel.id, [
+        pickerClip('content://p/1'),
+      ]);
+
+      final shown = await repo.watchFirstShowableClip().first;
+
+      expect(shown?.id, picked.single);
+      expect(shown?.source, ClipSource.picker);
+    });
+
+    test('watchFirstShowableClip skips a picked clip with an empty address '
+        '(it has no picture to ask for)', () async {
+      final reel = await reels.create('Goa');
+      await repo.addNewClipsToReel(reel.id, [pickerClip('')]);
+      expect(await repo.watchFirstShowableClip().first, isNull);
+
+      final ids = await repo.saveDetected([mediaStoreClip(10)]);
+
+      expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
+    });
 
     test('watchFirstShowableClip skips a clip that is missing', () async {
       final ids = await repo.saveDetected([

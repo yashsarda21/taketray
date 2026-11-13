@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -422,87 +423,134 @@ void main() {
       // Kotlin keeps taps until Dart has taken the start action once (D-103).
       // A take that fails before it reaches Kotlin would strand every later
       // tap until the app restarts, so the bridge tries again.
-      test('is tried again, and the start action still arrives', () async {
-        api
-          ..takeFailures = 2
-          ..startAction = LaunchActionMsg.reels;
-        final seen = <LaunchAction>[];
-        final errors = <Object>[];
-        final sub = bridge.launchActions.listen(seen.add, onError: errors.add);
-        addTearDown(sub.cancel);
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
-        expect(seen, [LaunchAction.reels]);
-        expect(errors, isEmpty);
-        // Later taps come through as usual.
-        await nativeSends(LaunchActionMsg.toTag);
-        await pumpEventQueue();
-        expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
-      });
+      // These run in fake time: the retry timer fires only when the test
+      // elapses it, so a loaded machine cannot make it fire early or late.
+      PigeonBackgroundBridge retrying() => PigeonBackgroundBridge(
+        api: api,
+        takeRetryDelay: const Duration(milliseconds: 5),
+      );
 
-      test(
-        'a retry that finds no start action adds none and no error',
-        () async {
-          api.takeFailures = 1;
+      /// Kotlin sending a tap, inside a `fakeAsync` zone.
+      void tapIn(FakeAsync async, LaunchActionMsg action) {
+        var replied = false;
+        unawaited(
+          messenger.handlePlatformMessage(
+            flutterChannel,
+            BackgroundFlutterApi.pigeonChannelCodec.encodeMessage(<Object?>[
+              action,
+            ]),
+            (_) => replied = true,
+          ),
+        );
+        async.flushMicrotasks();
+        expect(replied, isTrue);
+      }
+
+      test('is tried again, and the start action still arrives', () {
+        fakeAsync((async) {
+          api
+            ..takeFailures = 2
+            ..startAction = LaunchActionMsg.reels;
+          final waiting = retrying();
           final seen = <LaunchAction>[];
           final errors = <Object>[];
-          final sub = bridge.launchActions.listen(
+          final sub = waiting.launchActions.listen(
             seen.add,
             onError: errors.add,
           );
-          addTearDown(sub.cancel);
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+          async.elapse(const Duration(milliseconds: 100));
+          expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
+          expect(seen, [LaunchAction.reels]);
+          expect(errors, isEmpty);
+          // Later taps come through as usual.
+          tapIn(async, LaunchActionMsg.toTag);
+          expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+          unawaited(sub.cancel());
+          waiting.dispose();
+          async.flushMicrotasks();
+        });
+      });
+
+      test('a retry that finds no start action adds none and no error', () {
+        fakeAsync((async) {
+          api.takeFailures = 1;
+          final waiting = retrying();
+          final seen = <LaunchAction>[];
+          final errors = <Object>[];
+          final sub = waiting.launchActions.listen(
+            seen.add,
+            onError: errors.add,
+          );
+          async.elapse(const Duration(milliseconds: 100));
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(2));
           expect(seen, isEmpty);
           expect(errors, isEmpty);
-        },
-      );
+          unawaited(sub.cancel());
+          waiting.dispose();
+          async.flushMicrotasks();
+        });
+      });
 
       test('three failures in a row reach the stream once, and taps '
-          'still come through', () async {
-        api.takeFailures = 10;
-        final seen = <LaunchAction>[];
-        final errors = <Object>[];
-        final sub = bridge.launchActions.listen(seen.add, onError: errors.add);
-        addTearDown(sub.cancel);
-        await Future<void>.delayed(const Duration(milliseconds: 100));
-        expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
-        expect(errors, hasLength(1));
-        expect(errors.single, isA<PlatformException>());
-        await nativeSends(LaunchActionMsg.toTag);
-        await pumpEventQueue();
-        expect(seen, [LaunchAction.toTag]);
+          'still come through', () {
+        fakeAsync((async) {
+          api.takeFailures = 10;
+          final waiting = retrying();
+          final seen = <LaunchAction>[];
+          final errors = <Object>[];
+          final sub = waiting.launchActions.listen(
+            seen.add,
+            onError: errors.add,
+          );
+          async.elapse(const Duration(milliseconds: 100));
+          expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
+          expect(errors, hasLength(1));
+          expect(errors.single, isA<PlatformException>());
+          tapIn(async, LaunchActionMsg.toTag);
+          expect(seen, [LaunchAction.toTag]);
+          unawaited(sub.cancel());
+          waiting.dispose();
+          async.flushMicrotasks();
+        });
       });
 
       test(
         'a tap that arrives during the retries follows the start action',
-        () async {
-          api
-            ..takeFailures = 1
-            ..startAction = LaunchActionMsg.reels;
-          final seen = <LaunchAction>[];
-          final sub = bridge.launchActions.listen(seen.add);
-          addTearDown(sub.cancel);
-          await pumpEventQueue();
-          await nativeSends(LaunchActionMsg.toTag);
-          await Future<void>.delayed(const Duration(milliseconds: 100));
-          expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+        () {
+          fakeAsync((async) {
+            api
+              ..takeFailures = 1
+              ..startAction = LaunchActionMsg.reels;
+            final waiting = retrying();
+            final seen = <LaunchAction>[];
+            final sub = waiting.launchActions.listen(seen.add);
+            async.flushMicrotasks();
+            tapIn(async, LaunchActionMsg.toTag);
+            async.elapse(const Duration(milliseconds: 100));
+            expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+            unawaited(sub.cancel());
+            waiting.dispose();
+            async.flushMicrotasks();
+          });
         },
       );
 
-      test(
-        'dispose while waiting stops the retries and throws nothing',
-        () async {
+      test('dispose while waiting stops the retries and throws nothing', () {
+        // Fake time: the retry timer fires only when the test elapses it,
+        // so a loaded machine cannot let it fire early (or late).
+        fakeAsync((async) {
           api.takeFailures = 10;
-          final sub = bridge.launchActions.listen((_) {});
-          addTearDown(sub.cancel);
-          await pumpEventQueue();
+          final waiting = retrying();
+          final sub = waiting.launchActions.listen((_) {});
+          async.flushMicrotasks();
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
-          bridge.dispose();
-          await Future<void>.delayed(const Duration(milliseconds: 100));
+          waiting.dispose();
+          async.elapse(const Duration(milliseconds: 100));
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
-        },
-      );
+          unawaited(sub.cancel());
+          async.flushMicrotasks();
+        });
+      });
     });
 
     test('nothing is asked before someone listens', () async {

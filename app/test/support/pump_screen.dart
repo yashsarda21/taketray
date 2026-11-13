@@ -10,6 +10,7 @@ import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
+import 'package:taketray/router/app_router.dart' show addVideosRoute;
 import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -41,6 +42,10 @@ const notificationsHelpRouteMarker = 'the notifications help route';
 /// What the Reels route shows in a test that only has one screen.
 const reelsRouteMarker = 'the Reels route';
 
+/// What the Add videos route shows in a test that only has one screen: the
+/// reel id of its target (`?reel=`), "null" for To tag.
+String addVideosRouteMarker(Object? reel) => 'the Add videos route for $reel';
+
 /// What the route of reel [id] shows in a test that only has one screen.
 String reelRouteMarker(Object id) => 'the route of reel $id';
 
@@ -56,7 +61,9 @@ String clipRouteMarker(Object reelId, Object clipId) =>
 /// `/to-tag/play` route that shows [tagPlayerRouteMarker] and a
 /// `/to-tag/skipped` route that shows [skippedRouteMarker], and a
 /// `/settings/notifications-help` route that shows
-/// [notificationsHelpRouteMarker])
+/// [notificationsHelpRouteMarker], and a `/add-videos` route that shows
+/// [addVideosRouteMarker], or with [addVideos] the app's own Add videos
+/// screens)
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
@@ -84,6 +91,7 @@ Future<ProviderContainer> pumpScreen(
   bool use24Hour = false,
   Locale? locale,
   bool midnightTick = false,
+  bool addVideos = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -133,6 +141,19 @@ Future<ProviderContainer> pumpScreen(
           ),
         ],
       ),
+      if (addVideos)
+        addVideosRoute()
+      else
+        GoRoute(
+          path: Routes.addVideos,
+          builder: (context, state) => Scaffold(
+            body: Text(
+              addVideosRouteMarker(
+                state.uri.queryParameters[Routes.addVideosReelParameter],
+              ),
+            ),
+          ),
+        ),
       GoRoute(
         path: Routes.notificationsHelp,
         builder: (context, state) =>

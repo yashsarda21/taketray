@@ -41,6 +41,27 @@ void main() {
         ),
         width: _tileWidth,
       ),
+      // Add videos' marks: one line at 1x, wrapped between words at 2x.
+      TtScenario(
+        'mark, In this reel',
+        _tile(
+          mark: const TtClipMark(
+            icon: Symbols.check_circle_rounded,
+            label: 'In this reel',
+          ),
+        ),
+        width: _tileWidth,
+      ),
+      TtScenario(
+        'mark, In To tag',
+        _tile(
+          mark: const TtClipMark(
+            icon: Symbols.sell_rounded,
+            label: 'In To tag',
+          ),
+        ),
+        width: _tileWidth,
+      ),
       TtScenario(
         'in the VN folder',
         _tile(vnLabel: 'In VN folder'),

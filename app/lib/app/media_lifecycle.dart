@@ -6,6 +6,7 @@ import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/media/media_scanner.dart';
+import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
@@ -41,8 +42,14 @@ final Logger _log = Logger('mediaLifecycle');
 ///
 /// Each step runs even if the one before it failed. Nothing is waited for by
 /// the UI, and no error reaches it: every step is guarded and logs only the
-/// error's type. The first frame also prunes the thumbnail cache, once per
-/// app start (once per mount of this widget; not on resume).
+/// error's type. The first frame also prunes the thumbnail cache, and queues
+/// the clean-up of saved picker grants (`PickedGrants.sweep`, Phase 7) on the
+/// media queue before the run's scan, once per app start (once per mount of
+/// this widget; not on resume). The clean-up goes first so that no pick can
+/// have finished before it: a grant is never read as unused between its pick
+/// and its clip row. Its failure is logged by type and blocks nothing; a
+/// bridge call that hangs gives up after `pickedGrantsTimeout`, so the scan
+/// behind it on the queue waits at most that long.
 ///
 /// Runs never overlap. A trigger that comes while a run is going (a resume
 /// during the start) costs exactly one more run after it, however many
@@ -69,6 +76,7 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       unawaited(_prune());
+      unawaited(_sweepGrants());
       _trigger();
     });
   }
@@ -142,6 +150,12 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
     final cache = await ref.read(thumbnailCacheProvider.future);
     await cache.prune();
   });
+
+  Future<void> _sweepGrants() => guarded(
+    _log,
+    'The picked grants clean-up',
+    () => ref.read(pickedGrantsProvider).sweep(),
+  );
 
   @override
   Widget build(BuildContext context) => widget.child;

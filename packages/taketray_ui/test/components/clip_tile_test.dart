@@ -110,6 +110,104 @@ void main() {
       expect(find.text('0:32'), findsNothing);
     });
 
+    group('a mark at large text', () {
+      // The marks Add videos puts on a clip, and a one-word mark.
+      const labels = {
+        'In this reel': Symbols.check_circle_rounded,
+        'In To tag': Symbols.sell_rounded,
+        'In a reel': Symbols.video_library_rounded,
+        'Skipped': Symbols.visibility_off_rounded,
+      };
+
+      for (final scale in [1.0, 1.5, 2.0, 3.0]) {
+        for (final MapEntry(key: label, value: icon) in labels.entries) {
+          testWidgets('"$label" at ${scale}x is whole and inside the tile', (
+            tester,
+          ) async {
+            await tester.pumpWidget(
+              ttTestApp(
+                _tile(
+                  mark: TtClipMark(icon: icon, label: label),
+                ),
+                textScale: scale,
+              ),
+            );
+
+            final text = find.text(label);
+            expect(text, findsOneWidget);
+            final paragraph = tester.renderObject<RenderParagraph>(text);
+            // Never cut short by a line limit.
+            expect(paragraph.didExceedMaxLines, isFalse);
+            // Painted inside the tile, whatever the scale did to it.
+            final tile = tester.getRect(find.byType(TtClipTile));
+            final painted = tester.getRect(text);
+            expect(tile.contains(painted.topLeft), isTrue);
+            expect(tile.contains(painted.bottomRight), isTrue);
+            // At normal text it is one line at its real size, as drawn in
+            // the prototype.
+            final lines = _lineCount(paragraph);
+            final shrunk = painted.height / paragraph.size.height;
+            if (scale == 1) {
+              expect(lines, 1);
+              expect(shrunk, closeTo(1, 0.001));
+            }
+            // Up to 200 % text (the largest setting phones offer), a mark of
+            // several words wraps between words and keeps its size, and a
+            // word that cannot fit the tile shrinks but stays readable (not
+            // below 60 %). Beyond that it only has to stay whole and inside.
+            if (scale <= 2) {
+              final oneWord = !label.contains(' ');
+              if (!oneWord) expect(shrunk, closeTo(1, 0.001));
+              expect(shrunk, greaterThanOrEqualTo(0.6));
+            }
+          });
+        }
+      }
+
+      testWidgets('at 2x the marks of Add videos stay apart: each shows all '
+          'its words', (tester) async {
+        // The lines the mark's own paragraph is laid out in, with its limits.
+        Future<List<String>> linesOf(String label) async {
+          await tester.pumpWidget(
+            ttTestApp(
+              _tile(
+                mark: TtClipMark(icon: Symbols.sell_rounded, label: label),
+              ),
+              textScale: 2,
+            ),
+          );
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.text(label),
+          );
+          final painter = TextPainter(
+            text: paragraph.text,
+            textDirection: paragraph.textDirection,
+            textScaler: paragraph.textScaler,
+            maxLines: paragraph.maxLines,
+            ellipsis: paragraph.overflow == TextOverflow.ellipsis ? '…' : null,
+          )..layout(maxWidth: paragraph.size.width);
+          expect(painter.didExceedMaxLines, isFalse);
+          final lines = <String>[];
+          var offset = 0;
+          while (offset < label.length) {
+            final line = painter.getLineBoundary(TextPosition(offset: offset));
+            lines.add(label.substring(line.start, line.end).trim());
+            offset = line.end;
+          }
+          painter.dispose();
+          return lines;
+        }
+
+        final thisReel = await linesOf('In this reel');
+        final toTag = await linesOf('In To tag');
+
+        expect(thisReel.join(' '), 'In this reel');
+        expect(toTag.join(' '), 'In To tag');
+        expect(thisReel.length, greaterThan(1), reason: 'it wraps');
+        expect(toTag.length, greaterThan(1), reason: 'it wraps');
+      });
+    });
+
     testWidgets('vnLabel shows the VN folder mark', (tester) async {
       await tester.pumpWidget(ttTestApp(_tile(vnLabel: 'In VN folder')));
       expect(find.text('In VN folder'), findsOneWidget);

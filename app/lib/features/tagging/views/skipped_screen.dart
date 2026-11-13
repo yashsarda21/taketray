@@ -16,6 +16,7 @@ import 'package:taketray/features/tagging/view_models/skipped_controller.dart';
 import 'package:taketray/features/tagging/view_models/skipped_selection.dart';
 import 'package:taketray/features/tagging/views/clip_tile_row.dart';
 import 'package:taketray/features/tagging/views/day_header_text.dart';
+import 'package:taketray/features/tagging/views/remove_missing_clip.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -48,6 +49,10 @@ final Logger _log = Logger('skippedScreen');
 ///   (`ReelSnacks`, D-85) and holds the `InboxUndo` itself, so its **Undo**
 ///   works after the screen has gone. The snack counts the rows that really
 ///   moved; none moved (the clip was tagged elsewhere meanwhile) says nothing.
+/// - **Remove on a missing tile** (D-116): a picked clip that cannot be read
+///   is flagged and stays here; its tile has the reel page's **Remove**, which
+///   takes it out of Skipped (and deletes it when it has no other place) with
+///   "Missing clip removed" and **Undo**. It cannot be chosen or restored.
 /// - A failure shows "Something went wrong. Try again." and the choice stays.
 /// - With nothing skipped: "No skipped clips" and its line. While the list
 ///   loads: skeleton tiles; if it cannot be read: To tag's "Couldn't load your
@@ -62,7 +67,8 @@ class SkippedScreen extends ConsumerStatefulWidget {
   ConsumerState<SkippedScreen> createState() => _SkippedScreenState();
 }
 
-class _SkippedScreenState extends ConsumerState<SkippedScreen> {
+class _SkippedScreenState extends ConsumerState<SkippedScreen>
+    with RemoveMissingClip<SkippedScreen> {
   /// The clips whose restore is being written; a tap on one of them (or a
   /// **Restore** that holds one) does nothing for that clip until it is done.
   final Set<int> _restoring = {};
@@ -314,6 +320,12 @@ class _SkippedScreenState extends ConsumerState<SkippedScreen> {
       semanticLabel: selection.selecting
           ? l10n.clipTileSemantics
           : l10n.skippedTileSemantics,
+      onRemoveMissing: (clip) => unawaited(
+        removeMissingClip(
+          clip.id,
+          ref.read(skippedControllerProvider.notifier).removeMissing,
+        ),
+      ),
     );
   }
 

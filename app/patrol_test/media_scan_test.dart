@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -7,7 +5,6 @@ import 'package:patrol/patrol.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/media.dart';
-import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -16,6 +13,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import 'support/system_dialogs.dart';
 import 'support/test_media.dart';
+import 'support/thumbnail.dart';
 import 'support/waiting.dart';
 
 /// Android finds new videos for TakeTray, on the S24 (phase 3, Task 11).
@@ -72,7 +70,7 @@ void main() {
       );
       await pumpFor($, const Duration(seconds: 2));
       expect(_tiles, findsOneWidget, reason: 'exactly one tile');
-      await _expectPictureLoads($);
+      await expectPictureLoads($, _tiles);
 
       // 4. Delete the video, come back to the app: the clip leaves the list.
       expect(await media.delete(first), isTrue);
@@ -264,46 +262,4 @@ Future<void> _setShootingMode(
     () => stored() == on,
     what: 'Shooting mode to be stored as ${on ? 'on' : 'off'}',
   );
-}
-
-/// The one tile's picture resolves: the thumbnail cache is ready, and the
-/// `ClipThumbnailImage` decodes to a picture without an error.
-Future<void> _expectPictureLoads(PatrolIntegrationTester $) async {
-  final image = find.descendant(of: _tiles, matching: find.byType(Image));
-  await waitFor(
-    $,
-    () =>
-        image.evaluate().isNotEmpty &&
-        $.tester.widget<Image>(image).image is ClipThumbnailImage,
-    what: 'the tile to use the thumbnail cache (ClipThumbnailImage)',
-  );
-  final provider = $.tester.widget<Image>(image).image;
-  final stream = provider.resolve(
-    createLocalImageConfiguration($.tester.element(image)),
-  );
-  final done = Completer<ImageInfo>();
-  final listener = ImageStreamListener(
-    (info, _) {
-      if (!done.isCompleted) done.complete(info);
-    },
-    onError: (error, stack) {
-      // The type only: a message could hold a path (D-10).
-      if (!done.isCompleted) {
-        done.completeError(
-          TestFailure('The thumbnail failed to load: ${error.runtimeType}'),
-        );
-      }
-    },
-  );
-  stream.addListener(listener);
-  try {
-    final info = await done.future.timeout(
-      const Duration(seconds: 20),
-      onTimeout: () => throw TestFailure('The thumbnail did not load in 20 s'),
-    );
-    expect(info.image.width, greaterThan(0));
-    expect(info.image.height, greaterThan(0));
-  } finally {
-    stream.removeListener(listener);
-  }
 }

@@ -1,9 +1,14 @@
 import 'dart:io';
 
+import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app/media_lifecycle.dart';
+import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/media/media_work_queue.dart';
+import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -72,6 +77,13 @@ class _OrderedBackground extends FakeBackgroundBridge {
   }
 }
 
+/// A second harness next to the one `setUp` made, on purpose: silences
+/// drift's warning for the test, and puts it back after.
+void allowSecondDatabase() {
+  driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+  addTearDown(() => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false);
+}
+
 void main() {
   late VmHarness h;
   late _CountingCache cache;
@@ -85,6 +97,7 @@ void main() {
   Future<void> pumpLifecycle(
     WidgetTester tester, {
     Future<ThumbnailCache> Function()? thumbnails,
+    List<Override> extra = const [],
   }) async {
     await tester.pumpWidget(
       ProviderScope(
@@ -93,6 +106,7 @@ void main() {
           thumbnailCacheProvider.overrideWith(
             (ref) => thumbnails == null ? cache : thumbnails(),
           ),
+          ...extra,
         ],
         child: const MaterialApp(home: MediaLifecycle(child: Text('the app'))),
       ),
@@ -167,6 +181,7 @@ void main() {
 
     setUp(() {
       order.clear();
+      allowSecondDatabase();
       h = VmHarness(
         bridge: _OrderedMedia(order),
         background: _OrderedBackground(order),
@@ -298,6 +313,135 @@ void main() {
     );
     expect(logText(records), isNot(contains('/data')));
     expect(await tester.runAsync(h.media.toTag), hasLength(1));
+  });
+
+  group('the picked grants clean-up (Phase 7)', () {
+    const unused =
+        'content://media/picker/0/com.android.providers.media.photopicker/'
+        'media/9';
+
+    testWidgets('runs once on the first frame, on the media queue before the '
+        "start's scan, and not on resume", (tester) async {
+      await h.media.turnOnNow();
+      h.bridge
+        ..persisted = {unused}
+        ..put([fakeVideo(id: 2, generation: 6)]);
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(h.bridge.released, [
+        [unused],
+      ]);
+      expect(first('persistedUris'), isNonNegative);
+      expect(first('persistedUris'), lessThan(first('videosAddedAfter')));
+      expect(
+        (await tester.runAsync(h.media.toTag))!.map((c) => c.mediaStoreId),
+        [2],
+      );
+
+      h.bridge.persisted = {unused};
+      await resume(tester);
+      await work(tester);
+
+      expect(h.bridge.count('persistedUris'), 1);
+      expect(h.bridge.released, hasLength(1));
+    });
+
+    testWidgets('a failing clean-up is logged by type only and the start '
+        'still scans', (tester) async {
+      final records = captureLogs();
+      await h.media.turnOnNow();
+      h.bridge
+        ..persisted = {unused}
+        ..failNext('persistedUris')
+        ..put([fakeVideo(id: 2, generation: 6)]);
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(
+        logText(records),
+        contains('The picked grants clean-up failed: PlatformException'),
+      );
+      expect(logText(records), isNot(contains('content')));
+      expect(logText(records), isNot(contains('on purpose')));
+      expect(h.bridge.released, isEmpty);
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
+
+    testWidgets('a clean-up whose bridge call never answers gives up and '
+        'does not hold the scan for ever', (tester) async {
+      await h.media.turnOnNow();
+      h.bridge
+        ..persisted = {unused}
+        ..put([fakeVideo(id: 2, generation: 6)]);
+      h.bridge.gate('persistedUris'); // never completed
+      const timeout = Duration(milliseconds: 50);
+
+      await pumpLifecycle(
+        tester,
+        extra: [
+          pickedGrantsProvider.overrideWith(
+            (ref) => PickedGrants(
+              ref.watch(mediaBridgeProvider),
+              ref.watch(appDatabaseProvider),
+              ref.watch(mediaWorkQueueProvider),
+              bridgeTimeout: timeout,
+            ),
+          ),
+        ],
+      );
+      await work(tester);
+      // The timeout's timer runs on the test's fake clock.
+      await tester.pump(timeout + _slack);
+      await work(tester);
+
+      expect(h.bridge.count('persistedUris'), 1, reason: 'it was asked');
+      expect(h.bridge.released, isEmpty);
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
+
+    testWidgets('a release call that never returns times out on the fake '
+        'clock, is logged by type only, and does not hold the scan', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      await h.media.turnOnNow();
+      h.bridge
+        ..persisted = {unused}
+        ..put([fakeVideo(id: 2, generation: 6)]);
+      h.bridge.gate('releaseUris'); // never completed
+      const timeout = Duration(milliseconds: 50);
+
+      await pumpLifecycle(
+        tester,
+        extra: [
+          pickedGrantsProvider.overrideWith(
+            (ref) => PickedGrants(
+              ref.watch(mediaBridgeProvider),
+              ref.watch(appDatabaseProvider),
+              ref.watch(mediaWorkQueueProvider),
+              bridgeTimeout: timeout,
+            ),
+          ),
+        ],
+      );
+      await work(tester);
+      // The timeout's timer runs on the test's fake clock.
+      await tester.pump(timeout + _slack);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(h.bridge.count('releaseUris'), 1, reason: 'it was asked');
+      expect(
+        logText(records),
+        contains('The picked grants clean-up failed: TimeoutException'),
+      );
+      expect(logText(records), isNot(contains('content')));
+      expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
   });
 
   testWidgets(
@@ -495,6 +639,7 @@ void main() {
       'lifecycle writes the new baselines before clearing the notification',
       (tester) async {
         final recorder = _ClearRecorder();
+        allowSecondDatabase();
         h = VmHarness(background: recorder);
         h.bridge.put([fakeVideo(id: 1, generation: 5)]);
         await h.media.turnOnNow();
@@ -602,3 +747,5 @@ void main() {
     });
   });
 }
+
+const Duration _slack = Duration(milliseconds: 200);

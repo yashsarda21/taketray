@@ -26,9 +26,9 @@ class ClipActionOutcome {
   /// moved to, or the reel removed from. In the order they were picked.
   final List<String> reelNames;
 
-  /// How many clips the action was about: an add, every clip asked for
-  /// (also those a reel had already); a move or a remove, how many links it
-  /// took out of the source reel.
+  /// How many clips the action was about: an add, every clip asked for that
+  /// still exists (also those a reel had already); a move or a remove, how
+  /// many links it took out of the source reel.
   final int clipCount;
 
   /// Whether nothing changed (every clip was there already), so Undo would
@@ -56,6 +56,12 @@ class ReelClipActions {
 
   /// Adds [clipIds] to every reel of [reelIds] (they stay where they are).
   ///
+  /// The ids of clips that no longer exist are dropped first: the picker
+  /// holds its ids while it is open, and a verify (or another screen) may
+  /// delete one meanwhile, which would otherwise fail every confirm. When
+  /// every clip is gone, nothing is written and the outcome is empty with a
+  /// [ClipActionOutcome.clipCount] of 0.
+  ///
   /// All or nothing: the repository adds to every reel in one transaction,
   /// so if one reel fails (or is gone), nothing was added to any. Throws
   /// [ArgumentError] for no reels.
@@ -66,11 +72,19 @@ class ReelClipActions {
     if (reelIds.isEmpty) throw ArgumentError.value(reelIds, 'reelIds');
     final names = [for (final id in reelIds) await _nameOf(id)];
     try {
-      final records = await _clips.addClipsToReels(reelIds.toSet(), clipIds);
+      final present = {
+        for (final clip in await _clips.clipsByIds(clipIds)) clip.id,
+      };
+      if (present.length < clipIds.length) {
+        _log.info(
+          'Dropped ${clipIds.length - present.length} clips that are gone',
+        );
+      }
+      final records = await _clips.addClipsToReels(reelIds.toSet(), present);
       return ClipActionOutcome(
         records: records,
         reelNames: names,
-        clipCount: clipIds.length,
+        clipCount: present.length,
       );
     } on Object catch (error) {
       _log.warning(

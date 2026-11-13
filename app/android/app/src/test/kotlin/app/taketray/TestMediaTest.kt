@@ -28,6 +28,7 @@ class TestMediaTest {
     private val resolver: ContentResolver = context.contentResolver
     private val own = context.packageName
     private val folder = "Movies/TakeTray Test/"
+    private val sentFolder = "Movies/TakeTray Test/WhatsApp/Sent/"
     private lateinit var media: TestMedia
 
     @Before
@@ -66,6 +67,49 @@ class TestMediaTest {
         assertEquals("published, not pending", 0, row.values.getAsInteger(MediaColumns.IS_PENDING))
         assertEquals(own, row.owner)
         assertArrayEquals(bytes, row.file.readBytes())
+    }
+
+    @Test
+    fun `insert into the Sent sub-folder makes a row there, and only when asked`() {
+        val plain = media.insertVideo(byteArrayOf(1), "plain.mp4")
+        val sent = media.insertVideo(byteArrayOf(2), "sent.mp4", inWhatsAppSent = true)
+
+        assertEquals(folder, FakeVideoStore.rows.getValue(plain.mediaStoreId).path)
+        assertEquals(sentFolder, FakeVideoStore.rows.getValue(sent.mediaStoreId).path)
+        assertEquals(own, FakeVideoStore.rows.getValue(sent.mediaStoreId).owner)
+    }
+
+    @Test
+    fun `an own video in the Sent sub-folder is deleted`() {
+        val sent = media.insertVideo(byteArrayOf(2), "sent.mp4", inWhatsAppSent = true)
+
+        assertTrue(media.deleteVideo(sent.mediaStoreId))
+        assertTrue(FakeVideoStore.rows.isEmpty())
+    }
+
+    @Test
+    fun `a row of another app in the Sent sub-folder is refused and nothing is deleted`() {
+        val row = seed(sentFolder, "com.whatsapp")
+
+        assertThrows(TestMediaRefused::class.java) { media.deleteVideo(row.id) }
+        assertTrue(FakeVideoStore.rows.containsKey(row.id))
+    }
+
+    @Test
+    fun `leftovers removes this app's rows in both folders, counts the others, deletes nothing else`() {
+        val a = media.insertVideo(byteArrayOf(1), "a.mp4")
+        val b = media.insertVideo(byteArrayOf(2), "b.mp4", inWhatsAppSent = true)
+        val foreign = seed(sentFolder, "com.whatsapp")
+        val elsewhere = seed("Movies/TakeTray Test/WhatsApp/", own)
+
+        val cleanup = media.deleteLeftovers()
+
+        assertEquals(2, cleanup.deleted)
+        assertEquals(1, cleanup.refused)
+        assertFalse(FakeVideoStore.rows.containsKey(a.mediaStoreId))
+        assertFalse(FakeVideoStore.rows.containsKey(b.mediaStoreId))
+        assertTrue(FakeVideoStore.rows.containsKey(foreign.id))
+        assertTrue("a folder that is neither is not even looked at", FakeVideoStore.rows.containsKey(elsewhere.id))
     }
 
     @Test

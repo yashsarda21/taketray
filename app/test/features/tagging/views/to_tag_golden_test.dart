@@ -23,7 +23,8 @@ import 'to_tag_screen_test.dart' show FailsOnce;
 
 /// To tag's screenshots (Task 8, D-98): the scenes, choosing, the error
 /// state, the Skip all dialog and the reel picker in tag mode, at text 1x and
-/// 2x (the scenes also in dark).
+/// 2x (the scenes also in dark), and (Phase 7) the empty state with Add videos
+/// (also in dark).
 ///
 /// **macOS only, and not on CI** (D-61), like the tag player's: the images are
 /// made with real text on the owner's Mac (`goldens/macos/`). Make or update
@@ -177,6 +178,30 @@ void main() {
     await waiting(tester);
     await open(tester, textScale: scale, brightness: brightness);
   }, dark: true);
+
+  // Shooting mode off and nothing waiting: "Nothing to tag", with Turn on
+  // Shooting mode and, under it, Add videos (Phase 7, D-114).
+  both('nothing to tag, with Add videos', 'empty', (
+    tester,
+    scale,
+    brightness,
+  ) async {
+    await open(tester, textScale: scale, brightness: brightness);
+    expect(find.text('Nothing to tag'), findsOneWidget);
+    expect(find.widgetWithText(TtButton, 'Add videos'), findsOneWidget);
+  }, dark: true);
+
+  // The missing tile with its Remove button (D-116), among picture tiles.
+  both('a missing clip with Remove', 'missing', (
+    tester,
+    scale,
+    brightness,
+  ) async {
+    await waiting(tester);
+    await tester.runAsync(() => flagInPlaceForTest(h, {2}));
+    await open(tester, textScale: scale, brightness: brightness);
+    expect(find.byType(TtMissingClipTile), findsOneWidget);
+  });
 
   both('choosing clips', 'selection', (tester, scale, brightness) async {
     await waiting(tester);

@@ -37,4 +37,49 @@ abstract final class Routes {
   /// The location of the viewer on clip [clipId] of reel [reelId], above the
   /// reel's page (`/reels/:reelId/clip/:clipId`).
   static String clip(int reelId, int clipId) => '${reel(reelId)}/clip/$clipId';
+
+  /// Add videos' folder list (Phase 7, D-114): full screen above the tab
+  /// shell, on the root navigator, so it can be opened from To tag and from a
+  /// reel's page. Its target is To tag, or the reel in [addVideosReelParameter]
+  /// (`?reel=<id>`). Back returns to where it was opened.
+  static const addVideos = '/add-videos';
+
+  /// Add videos' video grid, above the folder list: one folder of one volume
+  /// ([addVideosVolumeParameter], [addVideosPathParameter]; no path is the
+  /// volume's root), for the target in [addVideosReelParameter].
+  static const addVideosFolder = '$addVideos/folder';
+
+  /// The name of the target reel's id in an Add videos location; none means
+  /// To tag.
+  static const addVideosReelParameter = 'reel';
+
+  /// The name of the folder's volume in the grid's location.
+  static const addVideosVolumeParameter = 'volume';
+
+  /// The name of the folder's relative path in the grid's location.
+  static const addVideosPathParameter = 'path';
+
+  /// The folder list's location for To tag, or for reel [reelId].
+  static String addVideosTo({int? reelId}) => Uri(
+    path: addVideos,
+    queryParameters: reelId == null
+        ? null
+        : {addVideosReelParameter: '$reelId'},
+  ).toString();
+
+  /// The grid's location for the folder [relativePath] of volume
+  /// [volumeName], for To tag or reel [reelId]. The path travels encoded, so
+  /// any folder name works. Never log it (D-10).
+  static String addVideosFolderOf(
+    String volumeName,
+    String relativePath, {
+    int? reelId,
+  }) => Uri(
+    path: addVideosFolder,
+    queryParameters: {
+      addVideosVolumeParameter: volumeName,
+      addVideosPathParameter: relativePath,
+      if (reelId != null) addVideosReelParameter: '$reelId',
+    },
+  ).toString();
 }

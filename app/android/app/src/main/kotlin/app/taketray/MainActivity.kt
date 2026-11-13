@@ -89,6 +89,17 @@ class MainActivity : FlutterActivity() {
         background?.onPermissionResult(requestCode)
     }
 
+    /** The photo picker's answer (D-112): the media bridge takes it, or drops it when no call waits (the process died). */
+    @Deprecated("Deprecated in Java")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+        media?.onActivityResult(requestCode, resultCode, data)
+    }
+
     override fun onDestroy() {
         // A permission request still waiting (for example, the activity is
         // recreated while the dialog is up) fails instead of hanging. The engine

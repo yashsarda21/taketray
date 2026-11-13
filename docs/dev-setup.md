@@ -225,3 +225,44 @@ The phone must be unlocked, on the home screen, with USB debugging allowed, and 
 **Closing the shade.** The tests close the shade with Home, never Back: with the shade closed, Back finishes the app's root activity, the Flutter engine stops and the running test dies with an `EOFException` ("server prematurely closed the connection").
 
 **After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above. Do them after **every** run, also when you start another run straight away.
+
+## Phase 7 check
+
+Phase 7 is Add videos: the **Add videos** button (To tag, and a reel's page) opens a list of the phone's video folders, a grid of one folder's videos to pick from (newest first, already-added ones marked "In To tag", "In this reel" or "In a reel"), and **Add {n}** puts the picks in To tag or in the reel, with Undo. WhatsApp's Sent folder is never listed. In Manual mode (limited access) the same button opens Android's photo picker instead, and TakeTray keeps the right to read each picked clip. The controller runs the on-device test `app/patrol_test/add_videos_test.dart` on the phone (see below). It puts 2 to 3 test videos into `Movies/TakeTray Test/` (one into `Movies/TakeTray Test/WhatsApp/Sent/`) and deletes them again, and taps only the folder called "TakeTray Test", so it never shows or reads the names of your own folders. It checks three flows: **To tag from a folder** (pick 2 of 3, **Add 2**, To tag holds 2 and the third has no mark, **Undo** takes the 2 off, add them again, the 2 show "In To tag", a marked tile says "Already added"), **a reel** (pick 1 of 2: it is in the reel with a picture and not in To tag) and **WhatsApp's Sent folder** (the test video in `WhatsApp/Sent/` has no row in the list and is not counted). The tests cannot use Android's photo picker, because it shows your own videos, and they cannot use your real folders, so the checks below are yours. Then the controller reinstalls the normal debug build. Check these yourself on the S24, in **TakeTray Dev** (the debug copy; your real TakeTray is not used for this check). Open TakeTray Dev and allow video access again first (To tag › **Allow full access** › **Allow all**):
+
+1. **Real WhatsApp video, To tag and a reel.** On To tag tap **Add videos**, open the folder WhatsApp saves received videos in, pick one video and tap **Add 1**. "1 video added to To tag" shows with **Undo**; the clip is in To tag with a picture and plays when you tap it. Open Reels, make or open a reel, tap **Add videos** on its page, pick one WhatsApp video: it is in the reel with a picture, plays, and is not in To tag.
+2. **WhatsApp's Sent folder does not appear.** In the folder list there is a row for WhatsApp's received videos (if you have any) and no row for "Sent". Videos you sent are not offered anywhere.
+3. **Another device's folder, or an SD card.** Add a clip from a folder that came from another device (a Quick Share or Bluetooth folder, say) or from an SD card if you have one: the folder shows in the list (an SD card as "Other storage"), the clip adds and plays with a picture.
+4. **Manual mode and the photo picker.** In the phone's settings (Apps › TakeTray Dev › Permissions › Photos and videos) choose **Select photos and videos** (or Allow limited access) and pick a video or two. Open TakeTray Dev and tap **Add videos** on To tag: a sheet appears, "Pick videos yourself" ("TakeTray can see only some of your videos (Manual mode), so it opens Android's photo picker."), and **Open photo picker** opens Android's picker. Pick one clip: it is added, plays and has a picture. Swipe TakeTray Dev away from Recents and open it again: the clip is still there and plays. Restart the phone, open TakeTray Dev: the clip is still there, plays and has a picture. This is the proof that the picked address stays readable.
+5. **A picked video deleted in the gallery.** With picked clips in a reel, in To tag and in Skipped (skip one), delete each video in the phone's gallery app, then open TakeTray Dev. In the reel, in To tag and in Skipped the tile shows as missing, with **Remove** (a picked clip that cannot be read is only flagged, never removed by the check, D-116). Tap **Remove**: the tile goes, "Missing clip removed" shows with **Undo**, and Undo brings the tile back (in the same place, with its state). If a USB drive or SD card is at hand: pick a video from it into To tag, unplug it, open To tag (the tile shows as missing), plug it back in: the tile comes back by itself.
+
+Also look at these (they were left to the phone by the reviews; write down what you see):
+
+6. **Saved grants after a restart (needs the log).** After step 4's restart, with picked clips in TakeTray Dev, open TakeTray Dev and keep it open, then on the computer (the phone connected; this reads only TakeTray Dev's own log):
+
+   ```
+   PID=$(tool/adb -s RZCY80PHWCZ shell pidof app.taketray.dev | tr -d '\r')
+   [ -n "$PID" ] && tool/adb -s RZCY80PHWCZ logcat -d --pid="$PID" | grep -E "saved grants"
+   ```
+
+   The line must read `Released 0 of N saved grants (N addresses held by clips)`, with N at least 1. It must **not** say `None of N saved grants matches any of ... released none`: that would mean Android spells the saved list and the clips' addresses differently. If the first command prints nothing, TakeTray Dev is not running; open it and run again. The check runs once each time the app starts, so if the line is missing, swipe TakeTray Dev away from Recents, open it again and run the commands again.
+7. **Pictures from picked addresses.** A clip added through the photo picker has a picture in To tag, in a reel's tile, as the picture on the reel's card on Reels (when it is the reel's first clip) and as the Shooting mode backdrop, if the clip is the newest.
+8. **The picker interrupted.** (a) Open the photo picker from the sheet, then from the computer stop only the app: `tool/adb -s RZCY80PHWCZ shell am kill app.taketray.dev`. Open TakeTray Dev again: nothing was added, no sheet, no message. (b) Phone Settings › Developer options › **Don't keep activities** on. In TakeTray Dev tap **Add videos** › **Open photo picker**, pick a clip: "Couldn't add videos. Try again." shows and nothing is added. Turn **Don't keep activities** off again.
+9. **A big folder.** Open the folder with the most videos (camera, or a WhatsApp folder with thousands): the grid fills in pages without a freeze, scrolls smoothly to the bottom and the picture tiles keep up. Note how long the first screen takes and whether the phone gets slow.
+10. **A drive removed while its grid is open.** Open a folder on an SD card or USB drive in Add videos, pull the drive: the grid shows the empty state ("No videos in this folder") and nothing stays picked.
+11. **The 512-clip limit (optional).** Android keeps at most 512 picked-clip grants and quietly drops the oldest ones past that (D-116); a dropped clip shows as missing, it is never deleted. To see the count, run the command in step 6: N in `Released 0 of N saved grants` is how many are saved.
+12. **A cloud-only video (Google Photos).** If Google Photos is the picker's cloud provider, pick a video that is not on the phone: it adds, then plays or fails calmly (a message, no crash), with a picture.
+13. **The date of a picked WhatsApp video.** Pick a WhatsApp video through the photo picker that the picker gives no date for: in To tag the clip is dated sensibly (the day you added it, D-113). Say what day it shows.
+14. **A missing picked clip in the player.** With a picked clip flagged missing and still waiting in To tag, tap **Start tagging**: the player shows "This video can't be played", and tagging or skipping it still works.
+
+If a step does not behave like this, write down the step number and what you saw.
+
+### Running `add_videos_test.dart` (the controller does this)
+
+```
+tool/patrol test -d RZCY80PHWCZ -t patrol_test/add_videos_test.dart
+```
+
+The phone must be unlocked, on the home screen, with USB debugging allowed. The run takes about 1 minute 15 seconds. The test uses only `Movies/TakeTray Test/` (and `Movies/TakeTray Test/WhatsApp/Sent/`), taps the folder by the exact text "TakeTray Test", and prints no other folder name.
+
+**After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above. Do them after **every** run, also when you start another run straight away.

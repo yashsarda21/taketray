@@ -26,6 +26,15 @@ class SizeRecordingBridge extends FakeMediaBridge {
     requests.add((volumeName, mediaStoreId, widthPx, heightPx));
     return super.thumbnail(volumeName, mediaStoreId, widthPx, heightPx);
   }
+
+  /// Every `thumbnailOfUri` request: the address and both sides.
+  final List<(String, int, int)> uriRequests = [];
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) {
+    uriRequests.add((uri, widthPx, heightPx));
+    return super.thumbnailOfUri(uri, widthPx, heightPx);
+  }
 }
 
 /// A bridge whose thumbnail call throws something that is not a
@@ -66,6 +75,48 @@ Clip clipOf({
   firstSeenAt: DateTime.utc(2026, 5, 2),
   missing: false,
 );
+
+/// A picked clip (D-111): a picker address and no MediaStore identity.
+Clip pickedOf({
+  int id = 7,
+  String uri = pickedUri,
+  int sizeBytes = 2000000,
+  DateTime? dateTaken,
+}) => Clip(
+  id: id,
+  source: ClipSource.picker,
+  pickerUri: uri,
+  fingerprint: ClipFingerprint(
+    sizeBytes: sizeBytes,
+    durationMs: 8000,
+    dateTakenUtc: dateTaken ?? DateTime.utc(2026, 5, 3, 8),
+    displayName: 'picked_$id.mp4',
+  ),
+  width: 1080,
+  height: 1920,
+  mimeType: 'video/mp4',
+  firstSeenAt: DateTime.utc(2026, 5, 4),
+  missing: false,
+);
+
+/// A photo-picker address as Android gives one.
+const String pickedUri =
+    'content://media/picker/0/com.android.providers.media.photopicker/'
+    'media/1000017';
+
+/// What a picked thumbnail's file name looks like: `picked-`, 16 hex digits
+/// of the address's hash, then the fingerprint and the size.
+final RegExp pickedName = RegExp(r'^picked-[0-9a-f]{16}_\d+_-?\d+_\d+\.jpg$');
+
+/// No part of [uri] that could name a video, a folder or an app.
+void expectNoAddressIn(String text, [String uri = pickedUri]) {
+  expect(text, isNot(contains(uri)));
+  expect(text, isNot(contains('content')));
+  expect(text, isNot(contains('/')));
+  expect(text, isNot(contains('://')));
+  expect(text, isNot(contains('photopicker')));
+  expect(text, isNot(contains('1000017')));
+}
 
 /// The file name of `clipOf()` at 300 px.
 final String baseFile =
@@ -294,29 +345,23 @@ void main() {
       },
     );
 
-    test(
-      'detached and picker clips give null without asking the bridge',
-      () async {
-        final cache = cacheWith();
-        final detached = clipOf(mediaStoreId: -5);
-        final zero = clipOf(mediaStoreId: 0);
-        final picker = clipOf().copyWith(
-          source: ClipSource.picker,
-          mediaStoreId: null,
-          volumeName: null,
-          pickerUri: 'content://x',
-        );
-        final noVolume = clipOf().copyWith(volumeName: null);
-        final blankVolume = clipOf(volume: '');
+    test('detached clips and clips with no volume give null without asking the '
+        'bridge', () async {
+      // Amended in Phase 7 (D-74): a picked clip now has a picture (group
+      // 'picked clips'); it used to be in this list.
+      final cache = cacheWith();
+      final detached = clipOf(mediaStoreId: -5);
+      final zero = clipOf(mediaStoreId: 0);
+      final noVolume = clipOf().copyWith(volumeName: null);
+      final blankVolume = clipOf(volume: '');
 
-        for (final clip in [detached, zero, picker, noVolume, blankVolume]) {
-          expect(await cache.load(clip, 300), isNull);
-        }
+      for (final clip in [detached, zero, noVolume, blankVolume]) {
+        expect(await cache.load(clip, 300), isNull);
+      }
 
-        expect(bridge.calls, isEmpty);
-        expect(names(), isEmpty);
-      },
-    );
+      expect(bridge.calls, isEmpty);
+      expect(names(), isEmpty);
+    });
 
     test('sizePx is clamped to 4096 before the call and the key', () async {
       bridge.thumbnails[('external_primary', 42)] = bytesOf(10);
@@ -507,6 +552,297 @@ void main() {
         expect(names(), [baseFile], reason: 'the fresh file was kept');
       },
     );
+  });
+
+  group('picked clips (D-74 amended in Phase 7)', () {
+    List<LogRecord> captureLogs() {
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final previous = Logger.root.level;
+      Logger.root.level = Level.ALL;
+      addTearDown(() => Logger.root.level = previous);
+      return records;
+    }
+
+    String textOf(List<LogRecord> records) =>
+        records.map((r) => '${r.message} ${r.error ?? ''}').join('\n');
+
+    test('a picked clip gets a key: a hash of the address, the fingerprint '
+        'and the size, never the address', () {
+      final key = ClipThumbnailKey.of(pickedOf(), 300)!;
+
+      expect(key.fileName, matches(pickedName));
+      expect(
+        key.fileName,
+        endsWith(
+          '_2000000_${DateTime.utc(2026, 5, 3, 8).millisecondsSinceEpoch}'
+          '_300.jpg',
+        ),
+      );
+      expectNoAddressIn(key.fileName);
+      expectNoAddressIn(key.toString());
+      expect(key.sizePx, 300);
+    });
+
+    test('the hash is FNV-1a 64 of the address, so a name survives a '
+        'restart', () {
+      // The published FNV-1a 64-bit test vector for "foobar".
+      final key = ClipThumbnailKey.of(pickedOf(uri: 'foobar'), 1)!;
+
+      expect(key.fileName, startsWith('picked-85944171f73967e8_'));
+      expect(
+        ClipThumbnailKey.of(pickedOf(uri: 'a'), 1)!.fileName,
+        startsWith('picked-af63dc4c8601ec8c_'),
+      );
+    });
+
+    test('a miss asks thumbnailOfUri with the address, writes the file and '
+        'returns the bytes', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final cache = cacheWith();
+
+      final got = await cache.load(pickedOf(), 300);
+
+      expect(got, bytesOf(10));
+      expect(bridge.uriRequests, [(pickedUri, 300, 300)]);
+      expect(bridge.requests, isEmpty, reason: 'no MediaStore call');
+      expect(names(), [ClipThumbnailKey.of(pickedOf(), 300)!.fileName]);
+      expect(names().single, matches(pickedName));
+      expectNoAddressIn(names().single);
+    });
+
+    test('a disk hit avoids the bridge', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final cache = cacheWith();
+      await cache.load(pickedOf(), 300);
+      bridge.calls.clear();
+      bridge.uriThumbnails.clear();
+
+      expect(await cache.load(pickedOf(), 300), bytesOf(10));
+      expect(bridge.calls, isEmpty);
+    });
+
+    test(
+      'the key changes with the address, the fingerprint and the size',
+      () async {
+        const other = '${pickedUri}8';
+        bridge.uriThumbnails[pickedUri] = bytesOf(10);
+        bridge.uriThumbnails[other] = bytesOf(11);
+        final cache = cacheWith();
+        final variants = <(Clip, int)>[
+          (pickedOf(), 300),
+          (pickedOf(uri: other), 300),
+          (pickedOf(sizeBytes: 2000001), 300),
+          (pickedOf(dateTaken: DateTime.utc(2026, 5, 3, 8, 0, 1)), 300),
+          (pickedOf(), 301),
+        ];
+
+        for (final (clip, size) in variants) {
+          await cache.load(clip, size);
+        }
+
+        expect(
+          bridge.calls.where((c) => c == 'thumbnailOfUri'),
+          hasLength(variants.length),
+          reason: "no variant may reuse another variant's picture",
+        );
+        expect(names(), hasLength(variants.length));
+        expect({
+          for (final (c, size) in variants) ClipThumbnailKey.of(c, size),
+        }, hasLength(variants.length));
+      },
+    );
+
+    test('two picked keys that differ only in the address are not equal, '
+        'whatever their hash codes say (== is pinned on its own)', () {
+      final a = ClipThumbnailKey.of(pickedOf(uri: 'content://p/1'), 300)!;
+      final b = ClipThumbnailKey.of(pickedOf(uri: 'content://p/2'), 300)!;
+
+      // `==` called directly: a Set or a Map would hide a missing term
+      // behind the different hash codes.
+      expect(a == b, isFalse);
+      expect(b == a, isFalse);
+      expect(a, isNot(equals(b)));
+      expect(
+        a == ClipThumbnailKey.of(pickedOf(uri: 'content://p/1'), 300),
+        isTrue,
+      );
+      expect(a.hashCode, isNot(b.hashCode));
+    });
+
+    test('the same address and fingerprint under another clip id share the '
+        'picture', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final cache = cacheWith();
+      await cache.load(pickedOf(), 300);
+      bridge.calls.clear();
+
+      await cache.load(pickedOf(id: 99), 300);
+
+      expect(bridge.calls, isEmpty);
+      expect(
+        ClipThumbnailKey.of(pickedOf(), 300),
+        ClipThumbnailKey.of(pickedOf(id: 99), 300),
+      );
+    });
+
+    test('a picked key never equals a MediaStore key, and their files never '
+        'share a name', () {
+      final picked = ClipThumbnailKey.of(pickedOf(uri: 'foobar'), 300)!;
+      // A volume crafted to look like the picked name's start.
+      final crafted = ClipThumbnailKey.of(
+        clipOf(
+          volume: 'picked-85944171f73967e8',
+          mediaStoreId: 2000000,
+          sizeBytes: DateTime.utc(2026, 5, 3, 8).millisecondsSinceEpoch,
+        ),
+        300,
+      )!;
+
+      expect(picked, isNot(crafted));
+      expect(picked.fileName, isNot(crafted.fileName));
+    });
+
+    test('a null from the bridge is "no picture": nothing cached, asked '
+        'again next time', () async {
+      final cache = cacheWith();
+
+      expect(await cache.load(pickedOf(), 300), isNull);
+      expect(names(), isEmpty);
+
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      expect(await cache.load(pickedOf(), 300), bytesOf(10));
+      expect(bridge.calls.where((c) => c == 'thumbnailOfUri'), hasLength(2));
+    });
+
+    test('an empty answer is "no picture" too', () async {
+      bridge.uriThumbnails[pickedUri] = Uint8List(0);
+
+      expect(await cacheWith().load(pickedOf(), 300), isNull);
+      expect(names(), isEmpty);
+    });
+
+    test('a PlatformException gives null; the log has the code and never the '
+        'address', () async {
+      final records = captureLogs();
+      bridge.failNext('thumbnailOfUri');
+
+      expect(await cacheWith().load(pickedOf(), 300), isNull);
+
+      expect(names(), isEmpty);
+      final text = textOf(records);
+      expect(text, contains('fake-failure'));
+      expect(text, isNot(contains('on purpose')), reason: 'no error message');
+      expectNoAddressIn(text);
+    });
+
+    test('another failure gives null; the log has the type only', () async {
+      final records = captureLogs();
+
+      expect(
+        await cacheWith(using: _ThrowingUriBridge()).load(pickedOf(), 300),
+        isNull,
+      );
+
+      final text = textOf(records);
+      expect(text, contains('MissingPluginException'));
+      expectNoAddressIn(text);
+    });
+
+    test('a bridge that never answers gives null after the timeout; the log '
+        'has no address', () async {
+      final records = captureLogs();
+      final stuck = _StuckBridge();
+      final cache = cacheWith(
+        using: stuck,
+        bridgeTimeout: const Duration(milliseconds: 30),
+      );
+
+      expect(await cache.load(pickedOf(), 300), isNull);
+
+      expect(names(), isEmpty);
+      final text = textOf(records);
+      expect(text, contains('timeout'));
+      expectNoAddressIn(text);
+    });
+
+    test('a failed write is logged with the type only', () async {
+      final records = captureLogs();
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final cache = cacheWith(
+        renameFile: (temp, finalPath) async =>
+            throw const FileSystemException('disk full', '/data/x'),
+      );
+
+      expect(await cache.load(pickedOf(), 300), bytesOf(10));
+
+      final text = textOf(records);
+      expect(text, contains('FileSystemException'));
+      expectNoAddressIn(text);
+    });
+
+    test('no address, an empty address or a size below 1 gives null without '
+        'a call', () async {
+      final cache = cacheWith();
+      final none = pickedOf().copyWith(pickerUri: null);
+      final empty = pickedOf(uri: '');
+
+      expect(await cache.load(none, 300), isNull);
+      expect(await cache.load(empty, 300), isNull);
+      expect(await cache.load(pickedOf(), 0), isNull);
+      expect(ClipThumbnailKey.of(none, 300), isNull);
+      expect(ClipThumbnailKey.of(empty, 300), isNull);
+      expect(bridge.calls, isEmpty);
+    });
+
+    test('a size above 4096 is asked and kept as 4096', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+
+      await cacheWith().load(pickedOf(), 5000);
+
+      expect(bridge.uriRequests, [(pickedUri, 4096, 4096)]);
+      expect(names().single, endsWith('_4096.jpg'));
+    });
+
+    test('two loads of one picked key at once share one call', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final gate = bridge.gate('thumbnailOfUri');
+      final cache = cacheWith();
+
+      final a = cache.load(pickedOf(), 300);
+      final b = cache.load(pickedOf(), 300);
+      await Future<void>.delayed(Duration.zero);
+      gate.complete();
+
+      expect(await a, bytesOf(10));
+      expect(await b, bytesOf(10));
+      expect(bridge.calls.where((c) => c == 'thumbnailOfUri'), hasLength(1));
+    });
+
+    test('discard deletes a picked file', () async {
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      final cache = cacheWith();
+      await cache.load(pickedOf(), 300);
+
+      await cache.discard(pickedOf(), 300);
+
+      expect(names(), isEmpty);
+    });
+
+    test('prune counts and removes picked files like the others', () async {
+      final cache = cacheWith(maxBytes: 15);
+      bridge.uriThumbnails[pickedUri] = bytesOf(10);
+      await cache.load(pickedOf(), 300);
+      final picked = File('${dir.path}/${names().single}')
+        ..setLastModifiedSync(DateTime.utc(2020));
+      jpg('newer.jpg', 10, DateTime.utc(2026));
+
+      await cache.prune();
+
+      expect(picked.existsSync(), isFalse);
+      expect(names(), ['newer.jpg']);
+    });
   });
 
   group('bridge timeout', () {
@@ -862,6 +1198,12 @@ class _StuckBridge extends FakeMediaBridge {
     calls.add('thumbnail');
     return answer.future;
   }
+
+  @override
+  Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) {
+    calls.add('thumbnailOfUri');
+    return answer.future;
+  }
 }
 
 /// Stands for the process being killed: an [Error], so no `on Exception`
@@ -885,5 +1227,19 @@ class _CodeBridge extends FakeMediaBridge {
   ) async {
     calls.add('thumbnail');
     throw PlatformException(code: code, message: '/storage/1234-5678/secret');
+  }
+}
+
+/// A bridge whose `thumbnailOfUri` throws something that is not a
+/// `PlatformException`, with an address in its message.
+class _ThrowingUriBridge extends FakeMediaBridge {
+  @override
+  Future<Uint8List?> thumbnailOfUri(
+    String uri,
+    int widthPx,
+    int heightPx,
+  ) async {
+    calls.add('thumbnailOfUri');
+    throw MissingPluginException('no plugin for $uri');
   }
 }

@@ -12,6 +12,10 @@ import '../fixtures/test_video.dart';
 /// nothing outside it is ever deleted (D-77).
 const String testFolder = 'Movies/TakeTray Test';
 
+/// The one sub-folder of [testFolder] the hook accepts, where WhatsApp keeps
+/// the videos it sent. Add videos hides it (D-111).
+const String testSentFolder = 'Movies/TakeTray Test/WhatsApp/Sent';
+
 /// Makes the app watch only [testFolder], so no query it makes ever names a
 /// folder with the owner's videos. Returns a function that puts the settings
 /// back as they were; call it at the end of the test body.
@@ -85,11 +89,17 @@ class TestMedia {
   }
 
   /// Puts the test video into the test folder, published (not pending), as
-  /// `taketray-test-N.mp4`.
-  Future<InsertedVideo> insert() async {
+  /// `taketray-test-N.mp4`. With [inWhatsAppSent] it goes into the test
+  /// folder's `WhatsApp/Sent/` sub-folder instead (the one sub-folder the hook
+  /// accepts), for the test that checks Add videos hides a Sent folder.
+  Future<InsertedVideo> insert({bool inWhatsAppSent = false}) async {
     final reply = await _channel.invokeMapMethod<String, Object?>(
       'insertVideo',
-      {'bytes': testVideoBytes, 'displayName': 'taketray-test-${++_count}.mp4'},
+      {
+        'bytes': testVideoBytes,
+        'displayName': 'taketray-test-${++_count}.mp4',
+        'inWhatsAppSent': inWhatsAppSent,
+      },
     );
     final video = InsertedVideo(
       volumeName: reply!['volumeName']! as String,

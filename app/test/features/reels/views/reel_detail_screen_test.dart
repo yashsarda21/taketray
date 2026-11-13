@@ -586,13 +586,16 @@ void main() {
             .metaText,
         'No clips yet',
       );
-      // One button: Add videos is Phase 7.
+      // Two buttons: Go to To tag, and Add videos (Phase 7, D-114).
       final buttons = find.descendant(
         of: find.byType(TtEmptyState),
         matching: find.byType(TtButton),
       );
-      expect(buttons, findsOneWidget);
-      expect(tester.widget<TtButton>(buttons).kind, TtButtonKind.tonal);
+      expect(buttons, findsNWidgets(2));
+      expect(tester.widget<TtButton>(buttons.first).label, 'Go to To tag');
+      expect(tester.widget<TtButton>(buttons.first).kind, TtButtonKind.tonal);
+      expect(tester.widget<TtButton>(buttons.last).label, 'Add videos');
+      expect(tester.widget<TtButton>(buttons.last).kind, TtButtonKind.text);
       expect(find.byType(TtDayHeader), findsNothing);
 
       await tester.tap(find.text('Go to To tag'));
@@ -864,9 +867,24 @@ void main() {
       expect(find.text('Reel details'), findsOneWidget);
       expect(find.text('Select clips'), findsOneWidget);
       expect(find.text('Delete reel'), findsOneWidget);
-      // Edit video, Add videos and Share are not built yet: hidden.
+      // Edit video and Share are not built yet: hidden. Add videos (Phase 7,
+      // D-114) is a button of its own in the app bar, not in the menu.
       expect(find.textContaining('Edit video'), findsNothing);
-      expect(find.textContaining('Add videos'), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is TtIconButton && w.semanticLabel == 'Add videos',
+        ),
+        findsOneWidget,
+      );
+      // The only "Add videos" words on screen are the empty reel's button.
+      expect(find.text('Add videos'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(TtEmptyState),
+          matching: find.text('Add videos'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testApp('Reel details opens the form and Save shows the new name', (

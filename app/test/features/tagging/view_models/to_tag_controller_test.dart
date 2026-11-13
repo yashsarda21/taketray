@@ -1,9 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 
 import '../../../support/fake_media_bridge.dart';
+import '../../../support/reel_videos.dart';
 import '../../../support/vm_harness.dart';
 
 void main() {
@@ -35,6 +37,29 @@ void main() {
     await h.container.read(toTagControllerProvider.future);
 
     expect(shownIds(), [3, 2]);
+  });
+
+  test('removeMissing takes a missing waiting clip out and returns what Undo '
+      'needs; a clip that is not missing is left alone', () async {
+    final videos = [
+      fakeVideo(id: 2, generation: 2, dateTakenMs: 1780000200000),
+      fakeVideo(id: 3, generation: 3, dateTakenMs: 1780000100000),
+    ];
+    h.bridge.put(videos);
+    final ids = await h.media.store(videos);
+    open();
+    // The opening verify finds both videos; then one is flagged missing.
+    await settle();
+    await flagInPlaceForTest(h, {ids[0]});
+    final controller = h.container.read(toTagControllerProvider.notifier);
+
+    final left = await controller.removeMissing(ids[1]);
+    final record = await controller.removeMissing(ids[0]);
+
+    expect(left.isEmpty, isTrue);
+    expect([for (final c in await h.media.toTag()) c.id], [ids[1]]);
+    await h.container.read(clipsRepositoryProvider).undoAll([record]);
+    expect({for (final c in await h.media.toTag()) c.id}, ids.toSet());
   });
 
   test('scans, then verifies the waiting clips, when it opens', () async {
