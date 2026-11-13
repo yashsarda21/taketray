@@ -107,4 +107,28 @@ class ManifestTest {
         val others = queried.filter { it !in editors }
         assertTrue("unexpected package queries: $others", others.all { p -> testTooling.any { p.startsWith(it) } })
     }
+
+    @Test
+    fun `copying adds no service, no foreground service and no wake lock`() {
+        // Copying runs in the app's own process (D-122): the only services are Phase 6's three JobServices.
+        val info = pm.getPackageInfo(app.packageName, PackageManager.GET_SERVICES)
+        val services = info.services.orEmpty()
+        assertEquals(
+            setOf(
+                "app.taketray.background.NewClipsJobService",
+                "app.taketray.background.NewClipsSettleJobService",
+                "app.taketray.background.EveningDeferJobService",
+            ),
+            services.map { it.name }.toSet(),
+        )
+        assertEquals(3, services.size)
+        for (service in services) {
+            assertEquals("${service.name} has a foregroundServiceType", 0, service.foregroundServiceType)
+        }
+        val requested = pm.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+        for (permission in requested) {
+            assertFalse("$permission is requested", permission.startsWith("android.permission.FOREGROUND_SERVICE"))
+        }
+        assertFalse("WAKE_LOCK is requested", "android.permission.WAKE_LOCK" in requested)
+    }
 }
