@@ -28,6 +28,10 @@ import 'package:taketray/platform/copy_bridge.dart';
 /// - [calls] logs every call by name, in order, including one that fails.
 ///   [failNext] makes the next call of a method throw a `PlatformException`;
 ///   [gate] makes it wait until the returned completer completes.
+/// - [allowed] limits the methods it answers (null: all, the default).
+///   Another method is noted in [calls] and [unexpected] and throws a
+///   `StateError`, so a stray bridge call in a test fails loudly; a test
+///   opts in with [allow] or [allowAll].
 class FakeCopyBridge implements CopyBridge {
   CopyJob? job;
 
@@ -45,6 +49,24 @@ class FakeCopyBridge implements CopyBridge {
   final Map<String, int> _failures = {};
   final Map<String, Completer<void>> _gates = {};
 
+  /// The methods this fake answers; null for all.
+  Set<String>? allowed;
+
+  /// The calls of methods that were not allowed, in order.
+  final List<String> unexpected = [];
+
+  /// Answers only [methods] from now on.
+  void allowOnly(Set<String> methods) => allowed = {...methods};
+
+  /// Also answers [methods] (a no-op when every method is answered).
+  void allow(Set<String> methods) {
+    final now = allowed;
+    if (now != null) allowed = {...now, ...methods};
+  }
+
+  /// Answers every method again.
+  void allowAll() => allowed = null;
+
   final StreamController<CopyJob> _changes =
       StreamController<CopyJob>.broadcast();
 
@@ -61,6 +83,11 @@ class FakeCopyBridge implements CopyBridge {
 
   Future<T> _call<T>(String method, T Function() answer) async {
     calls.add(method);
+    final only = allowed;
+    if (only != null && !only.contains(method)) {
+      unexpected.add(method);
+      throw StateError('Unexpected copy bridge call: $method');
+    }
     final gate = _gates.remove(method);
     if (gate != null) await gate.future;
     final failures = _failures[method] ?? 0;

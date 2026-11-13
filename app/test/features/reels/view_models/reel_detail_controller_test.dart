@@ -391,6 +391,9 @@ void main() {
       expect(record.isEmpty, isFalse);
       expect(record.reelId, goa.id);
       expect(record.removedLinks.single.clipId, ids.single);
+      // A reel with no editing session touches no bridge (D-123).
+      expect(h.editors.calls, isEmpty);
+      expect(h.copy.calls, isEmpty);
       expect(
         container.read(reelDetailControllerProvider(goa.id)).value!.clipCount,
         0,

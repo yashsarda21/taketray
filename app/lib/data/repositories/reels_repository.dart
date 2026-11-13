@@ -5,6 +5,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/clip_rules.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/repositories/clip_leave_hook.dart';
 import 'package:taketray/data/repositories/undo_writer.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
@@ -30,11 +31,18 @@ final Logger _log = Logger('reels');
 /// bring back a reel whose name another reel has taken meanwhile: they do not
 /// go through [create].
 class ReelsRepository {
-  new(this._db, this._clock) : _undo = UndoWriter(_db, _clock);
+  new(this._db, this._clock, {BeforeClipsLeave? beforeLeave})
+    : _undo = UndoWriter(_db, _clock, beforeLeave: beforeLeave);
 
   final AppDatabase _db;
   final Clock _clock;
   final UndoWriter _undo;
+
+  /// The clean-up the undo of an add or a move runs before it takes a clip
+  /// out of a reel (R8; null: none). The editing service's provider sets it
+  /// when it is built.
+  BeforeClipsLeave? get beforeLeave => _undo.beforeLeave;
+  set beforeLeave(BeforeClipsLeave? hook) => _undo.beforeLeave = hook;
 
   /// Saves a new reel, `collecting`, created and updated now.
   ///

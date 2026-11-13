@@ -130,24 +130,36 @@ class CopyPlan {
 /// What Done editing did.
 @immutable
 class DoneEditingResult {
-  const DoneEditingResult({required this.editor, required this.freedBytes});
+  const DoneEditingResult({
+    required this.editor,
+    required this.freedBytes,
+    this.leftBehind = 0,
+  });
 
   final EditorApp editor;
 
   /// The sizes of the copies it deleted.
   final int freedBytes;
 
+  /// How many copies the guard refused to delete (the file in that place is
+  /// no longer TakeTray's copy): their rows are gone with the session and
+  /// the files stay for the storage screen (R7).
+  final int leftBehind;
+
   @override
   bool operator ==(Object other) =>
       other is DoneEditingResult &&
       other.editor == editor &&
-      other.freedBytes == freedBytes;
+      other.freedBytes == freedBytes &&
+      other.leftBehind == leftBehind;
 
   @override
-  int get hashCode => Object.hash(editor, freedBytes);
+  int get hashCode => Object.hash(editor, freedBytes, leftBehind);
 
   @override
-  String toString() => 'DoneEditingResult(${editor.name}, $freedBytes bytes)';
+  String toString() =>
+      'DoneEditingResult(${editor.name}, $freedBytes bytes, '
+      '$leftBehind left behind)';
 }
 
 /// Files in one copy folder that no session records (left from an earlier
@@ -258,6 +270,7 @@ class EditSessionService {
   final Clock _clock;
 
   final StreamController<CopyJob> _local = StreamController.broadcast();
+  final StreamController<String> _cleared = StreamController.broadcast();
   CopyJob? _lastLocal;
 
   Future<void> _tail = Future<void>.value();
@@ -275,6 +288,11 @@ class EditSessionService {
 
   /// The last job sent on [localJobs], or null.
   CopyJob? get lastLocalJob => _lastLocal;
+
+  /// Ids of jobs that ended for good: finished, cancelled or settled by Done
+  /// editing (the plan is removed and the engine's result cleared). The copy
+  /// job controller drops such a job.
+  Stream<String> get clearedJobs => _cleared.stream;
 
   /// Runs [body] after every call queued before it, whatever they did.
   Future<T> _serial<T>(Future<T> Function() body) {
@@ -305,6 +323,10 @@ class EditSessionService {
   void _emit(CopyJob job) {
     _lastLocal = job;
     if (!_local.isClosed) _local.add(job);
+  }
+
+  void _emitCleared(String jobId) {
+    if (!_cleared.isClosed) _cleared.add(jobId);
   }
 
   /// Each editor in [EditorApp] order, installed or not, with its icon.
@@ -496,6 +518,8 @@ class EditSessionService {
   Future<String> _start(CopyPlan plan) async {
     final reelId = plan.reelId;
     if (await _phone.copyJobPlan() != null) throw const CopyBusy();
+    // A new job: MediaStore may give an id an earlier job's copy had back.
+    _forgotten.clear();
     var session = await _sessions.sessionOf(reelId);
     if (plan.startsSession && session != null) {
       throw StateError('Reel $reelId already has an editing session');
@@ -618,6 +642,7 @@ class EditSessionService {
       if (plan.startedSession) await _endIfEmpty(plan.reelId);
       await _phone.removeCopyJobPlan(jobId);
     }
+    if (answer != null || mine) _emitCleared(jobId);
     _log.info('Cancelled copy job $jobId');
   }
 
@@ -856,6 +881,7 @@ class EditSessionService {
       if (plan.startedSession) await _endIfEmpty(plan.reelId);
       await _phone.removeCopyJobPlan(jobId);
     }
+    _emitCleared(jobId);
     _log.info('Finished copy job $jobId');
   });
 
@@ -884,40 +910,78 @@ class EditSessionService {
 
   /// Done editing: deletes every copy of reel [reelId] through the guard,
   /// then ends the session. A copy already gone counts as deleted;
-  /// `freedBytes` sums the ones deleted now. Any copy refused or not deleted
-  /// (or a delete that throws): [CopiesNotDeleted], the session and those
-  /// rows stay, the deleted rows go. [StateError] while a copy job for the
-  /// reel runs or waits, or with no session.
+  /// `freedBytes` sums the ones deleted now.
+  ///
+  /// It is never stuck behind a job that is over. A copy job of this reel
+  /// that runs ([CopyState.running]) throws [StateError]. Any other job of the
+  /// reel (finished and never continued, cancelled, `spaceFull`,
+  /// `interrupted`, or a plan left after a restart) is settled first on this
+  /// queue: the engine's result is applied (so its copies are deleted too),
+  /// cleared, and the plan removed (D-123).
+  ///
+  /// A copy the guard refuses (the file in that place is no longer
+  /// TakeTray's) does not stop it: its row goes with the session, the file
+  /// stays for the storage screen (R7) and [DoneEditingResult.leftBehind]
+  /// counts it. A copy whose delete failed (or a delete that throws)
+  /// throws [CopiesNotDeleted]: the session and the rows not deleted stay
+  /// (the refused ones too), the deleted rows go, and Done editing can be
+  /// tried again. [StateError] with no session.
   Future<DoneEditingResult> doneEditing(int reelId) => _serial(() async {
-    if ((await _phone.copyJobPlan())?.reelId == reelId) {
-      throw StateError('A copy job for reel $reelId is not finished');
-    }
+    await _settleJobOf(reelId);
     final state = await _sessions.editState(reelId);
     if (state == null) {
       throw StateError('Reel $reelId has no editing session');
     }
-    final (_, freed) = await _deleteCopies(
+    final (_, freed, refused) = await _deleteCopies(
       reelId,
       state.session.folderName,
       state.copies,
+      dropRefused: true,
     );
     await _sessions.endSession(reelId);
     _log.info(
       'Done editing reel $reelId (${state.session.editor.name}): '
-      '$freed bytes freed',
+      '$freed bytes freed, $refused left behind',
     );
-    return DoneEditingResult(editor: state.session.editor, freedBytes: freed);
+    return DoneEditingResult(
+      editor: state.session.editor,
+      freedBytes: freed,
+      leftBehind: refused,
+    );
   });
 
+  /// Settles the copy job of reel [reelId] that is over, for [doneEditing]
+  /// (see there); throws [StateError] for one that runs.
+  Future<void> _settleJobOf(int reelId) async {
+    final current = await _copy.current();
+    if (current != null &&
+        current.reelId == reelId &&
+        current.state == CopyState.running) {
+      throw StateError('A copy job for reel $reelId is still running');
+    }
+    final plan = await _phone.copyJobPlan();
+    if (plan == null || plan.reelId != reelId) return;
+    if (current != null && current.jobId == plan.jobId) {
+      await _apply(current);
+      await _copy.clear(plan.jobId);
+    }
+    await _phone.removeCopyJobPlan(plan.jobId);
+    _emitCleared(plan.jobId);
+    _log.info('Settled copy job ${plan.jobId} for Done editing');
+  }
+
   /// Deletes [copies] of reel [reelId] through the guard and removes the
-  /// rows of the ones deleted or gone; returns how many and the bytes freed.
-  /// Throws [CopiesNotDeleted] when any is left.
-  Future<(int, int)> _deleteCopies(
+  /// rows of the ones deleted or gone; returns how many, the bytes freed and
+  /// how many the guard refused and [dropRefused] let go (their rows are
+  /// removed too, the files stay). Throws [CopiesNotDeleted] when any is
+  /// left; then a refused row stays as well.
+  Future<(int, int, int)> _deleteCopies(
     int reelId,
     String folder,
-    List<EditCopy> copies,
-  ) async {
-    if (copies.isEmpty) return (0, 0);
+    List<EditCopy> copies, {
+    bool dropRefused = false,
+  }) async {
+    if (copies.isEmpty) return (0, 0, 0);
     final DeleteReport report;
     try {
       report = await _editors.deleteCopies([
@@ -932,7 +996,11 @@ class EditSessionService {
     }
     final done = {...report.deleted, ...report.gone};
     _forgotten.addAll(done);
-    await _sessions.removeCopies(reelId, done);
+    final asked = {for (final c in copies) c.copyMediaStoreId};
+    final letGo = dropRefused ? report.refused.intersection(asked) : <int>{};
+    final unsettled = copies.length - done.length - letGo.length;
+    final rows = unsettled > 0 ? done : {...done, ...letGo};
+    await _sessions.removeCopies(reelId, rows);
     final removed = [
       for (final c in copies)
         if (done.contains(c.copyMediaStoreId)) c,
@@ -942,14 +1010,19 @@ class EditSessionService {
         if (report.deleted.contains(c.copyMediaStoreId)) c.sizeBytes,
     ].fold(0, (sum, size) => sum + size);
     final left = copies.length - removed.length;
-    if (left > 0) {
+    if (unsettled > 0) {
       _log.warning(
         'Reel $reelId: ${removed.length} copies deleted, $left not '
         '(refused ${report.refused.length}, failed ${report.failed.length})',
       );
       throw CopiesNotDeleted(left);
     }
-    return (removed.length, freed);
+    if (letGo.isNotEmpty) {
+      _log.warning(
+        'Reel $reelId: ${letGo.length} copies left behind (refused)',
+      );
+    }
+    return (removed.length, freed, letGo.length);
   }
 
   /// Forgets the copies of reel [reelId] whose files are gone (deleted
@@ -985,7 +1058,7 @@ class EditSessionService {
           for (final c in state.copies)
             if (clipIds.contains(c.clipId)) c,
         ];
-        final (count, _) = await _deleteCopies(
+        final (count, _, _) = await _deleteCopies(
           reelId,
           state.session.folderName,
           copies,
@@ -1260,21 +1333,40 @@ class EditSessionService {
   );
 
   /// Stops [localJobs] (the provider is disposed).
-  void dispose() => unawaited(_local.close());
+  void dispose() {
+    unawaited(_local.close());
+    unawaited(_cleared.close());
+  }
 }
 
 @Riverpod(keepAlive: true)
 EditSessionService editSessionService(Ref ref) {
+  final clips = ref.watch(clipsRepositoryProvider);
+  final reels = ref.watch(reelsRepositoryProvider);
   final service = EditSessionService(
     ref.watch(editSessionsRepositoryProvider),
-    ref.watch(clipsRepositoryProvider),
-    ref.watch(reelsRepositoryProvider),
+    clips,
+    reels,
     ref.watch(phoneStateRepositoryProvider),
     ref.watch(editorsBridgeProvider),
     ref.watch(copyBridgeProvider),
     ref.watch(clipTimeServiceProvider),
     ref.watch(clockProvider),
   );
-  ref.onDispose(service.dispose);
+  // The paths that take a clip out of a reel without a screen of their own
+  // (an undo, a merge) run the copy clean-up first (R8, D-123). The
+  // repositories cannot read this provider (it reads them), so it hands
+  // them the hook.
+  Future<void> beforeLeave(int reelId, Set<int> clipIds) async {
+    await service.beforeClipsLeaveReel(reelId, clipIds);
+  }
+
+  clips.beforeLeave = beforeLeave;
+  reels.beforeLeave = beforeLeave;
+  ref.onDispose(() {
+    clips.beforeLeave = null;
+    reels.beforeLeave = null;
+    service.dispose();
+  });
   return service;
 }

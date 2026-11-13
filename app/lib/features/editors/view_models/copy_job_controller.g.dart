@@ -21,6 +21,12 @@ part of 'copy_job_controller.dart';
 /// alone records nothing. An event of an older job than the one held (job ids
 /// are `<reelId>-<UTC ms>`) is ignored.
 ///
+/// A job that ended for good (`EditSessionService.clearedJobs`: finished,
+/// cancelled, or settled by Done editing) is dropped: the controller holds
+/// nothing for it and ignores its late events, so the copy screen is never
+/// opened for a job with no plan. A job that keeps its id through Try again
+/// is unseen again when it stops in another state (see [takeUnseenResult]).
+///
 /// Kept alive: the app's start builds it (`MediaLifecycle`), so a job is
 /// followed and recorded whether or not a copy screen is open.
 
@@ -40,6 +46,12 @@ final copyJobControllerProvider = CopyJobControllerProvider._();
 /// alone records nothing. An event of an older job than the one held (job ids
 /// are `<reelId>-<UTC ms>`) is ignored.
 ///
+/// A job that ended for good (`EditSessionService.clearedJobs`: finished,
+/// cancelled, or settled by Done editing) is dropped: the controller holds
+/// nothing for it and ignores its late events, so the copy screen is never
+/// opened for a job with no plan. A job that keeps its id through Try again
+/// is unseen again when it stops in another state (see [takeUnseenResult]).
+///
 /// Kept alive: the app's start builds it (`MediaLifecycle`), so a job is
 /// followed and recorded whether or not a copy screen is open.
 final class CopyJobControllerProvider
@@ -56,6 +68,12 @@ final class CopyJobControllerProvider
   /// calls `EditSessionService.applyJob`, which records the copies; progress
   /// alone records nothing. An event of an older job than the one held (job ids
   /// are `<reelId>-<UTC ms>`) is ignored.
+  ///
+  /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
+  /// cancelled, or settled by Done editing) is dropped: the controller holds
+  /// nothing for it and ignores its late events, so the copy screen is never
+  /// opened for a job with no plan. A job that keeps its id through Try again
+  /// is unseen again when it stops in another state (see [takeUnseenResult]).
   ///
   /// Kept alive: the app's start builds it (`MediaLifecycle`), so a job is
   /// followed and recorded whether or not a copy screen is open.
@@ -86,7 +104,7 @@ final class CopyJobControllerProvider
   }
 }
 
-String _$copyJobControllerHash() => r'a037aa0d4fbfa7ec857da1aa0ce58370c080a019';
+String _$copyJobControllerHash() => r'f9fc7ee78d8aafd14fd8d765275d20efc17126db';
 
 /// The copy job the copy screens follow (D-123): the engine's job, or the
 /// one `EditSessionService` built itself (the interrupted job a restart
@@ -100,6 +118,12 @@ String _$copyJobControllerHash() => r'a037aa0d4fbfa7ec857da1aa0ce58370c080a019';
 /// calls `EditSessionService.applyJob`, which records the copies; progress
 /// alone records nothing. An event of an older job than the one held (job ids
 /// are `<reelId>-<UTC ms>`) is ignored.
+///
+/// A job that ended for good (`EditSessionService.clearedJobs`: finished,
+/// cancelled, or settled by Done editing) is dropped: the controller holds
+/// nothing for it and ignores its late events, so the copy screen is never
+/// opened for a job with no plan. A job that keeps its id through Try again
+/// is unseen again when it stops in another state (see [takeUnseenResult]).
 ///
 /// Kept alive: the app's start builds it (`MediaLifecycle`), so a job is
 /// followed and recorded whether or not a copy screen is open.

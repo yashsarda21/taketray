@@ -420,7 +420,9 @@ void main() {
           .read(editSessionsRepositoryProvider)
           .startSession(goa.id, EditorApp.vn, 'Goa');
       await copyOf(goa.id, ids.first, 501);
-      h.editors.existing = {501};
+      h.editors
+        ..allow({'deleteCopies'})
+        ..existing = {501};
 
       final outcome = await hooked.removeFromReel(
         reelId: goa.id,
@@ -433,6 +435,24 @@ void main() {
       expect(outcome.clipCount, 1);
       expect(h.editors.existing, isEmpty);
       expect(await clipIdsOf(goa.id), {ids.last});
+    });
+
+    test('a remove and a move in a reel with no session touch no bridge '
+        '(D-123)', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+
+      await hooked.moveToReel(
+        fromReelId: goa.id,
+        toReelId: paris.id,
+        clipIds: {ids.first},
+      );
+      await hooked.removeFromReel(reelId: goa.id, clipIds: {ids.last});
+
+      expect(spy.calls, hasLength(2));
+      expect(h.editors.calls, isEmpty);
+      expect(h.copy.calls, isEmpty);
     });
 
     test('a remove whose copies cannot be deleted removes nothing and '

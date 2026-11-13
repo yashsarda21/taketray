@@ -119,6 +119,17 @@ void main() {
       reels.gate.complete();
     });
 
+    test('a reel with no session: the delete reads the engine job and '
+        'nothing else (a stray bridge call fails loudly)', () async {
+      final goa = await reels.create('Goa');
+
+      await actions.confirmDelete(goa.id);
+
+      expect(h.copy.calls, ['current']);
+      expect(h.editors.calls, isEmpty);
+      expect(h.copy.unexpected, isEmpty);
+    });
+
     test("ends the reel's session (its copies deleted) before the delete, "
         'and Undo restores the reel with no session', () async {
       final goa = await reels.create('Goa');
@@ -135,7 +146,9 @@ void main() {
           copiedAt: reelTestNow,
         ),
       ]);
-      h.editors.existing = {501};
+      h.editors
+        ..allow({'deleteCopies'})
+        ..existing = {501};
 
       final record = await actions.confirmDelete(goa.id);
 

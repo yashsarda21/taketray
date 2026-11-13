@@ -15,6 +15,7 @@ CopyJob job(
   String id, {
   CopyState state = CopyState.running,
   List<CopiedFile> copied = const [],
+  List<CopiedFile> undeleted = const [],
   int bytesDone = 0,
 }) => CopyJob(
   jobId: id,
@@ -27,7 +28,7 @@ CopyJob job(
   bytesTotal: 300,
   copied: copied,
   failedClipIds: const [],
-  undeleted: const [],
+  undeleted: undeleted,
 );
 
 CopiedFile file(int clipId) => CopiedFile(
@@ -45,6 +46,9 @@ void main() {
 
   setUp(() {
     h = reelHarness();
+    // These tests drive a real service through both fake bridges.
+    h.editors.allowAll();
+    h.copy.allowAll();
     service = SpyEditSessionService(h);
     container = ProviderContainer.test(
       overrides: [
@@ -57,6 +61,16 @@ void main() {
   CopyJob? read() => container.read(copyJobControllerProvider);
   CopyJobController notifier() =>
       container.read(copyJobControllerProvider.notifier);
+
+  /// A real VN copy job of two clips, started through the service.
+  Future<(int, String, int, int)> startedJob() async {
+    final goa = (await h.container.read(reelsRepositoryProvider).create('Goa'))
+        .id;
+    final [a, b] = await putInReel(h, goa, [reelVideo(1), reelVideo(2)]);
+    final plan = await service.planCopy(goa, EditorApp.vn, [a, b]);
+    final jobId = await service.startCopy(plan);
+    return (goa, jobId, a, b);
+  }
 
   test("reads the engine's job on build and applies it", () async {
     final held = job('1-2000', copied: [file(1)]);
@@ -185,8 +199,11 @@ void main() {
     expect(notifier().takeUnseenResult(), isTrue);
     expect(notifier().takeUnseenResult(), isFalse);
 
+    // The same job id ends in another state (Try again ran in between, the
+    // running event may have been dropped): a new result to show.
     h.copy.emit(job('1-2000', state: CopyState.finished));
     await settle();
+    expect(notifier().takeUnseenResult(), isTrue);
     expect(notifier().takeUnseenResult(), isFalse);
 
     h.copy.emit(job('1-3000', state: CopyState.finished));
@@ -222,4 +239,286 @@ void main() {
       expect(service.applied, hasLength(1));
     },
   );
+
+  group('a resumed job keeps its id (fix round 1, I1)', () {
+    test(
+      'the result of a job that went back to running is unseen again',
+      () async {
+        read();
+        await settle();
+        h.copy.emit(job('1-2000', state: CopyState.spaceFull));
+        await settle();
+        expect(notifier().takeUnseenResult(), isTrue);
+        expect(notifier().takeUnseenResult(), isFalse);
+
+        h.copy.emit(job('1-2000'));
+        await settle();
+        expect(notifier().takeUnseenResult(), isFalse, reason: 'it runs');
+        h.copy.emit(
+          job('1-2000', copied: [file(1)], state: CopyState.finished),
+        );
+        await settle();
+
+        expect(notifier().takeUnseenResult(), isTrue);
+        expect(notifier().takeUnseenResult(), isFalse);
+      },
+    );
+
+    test(
+      'a second stop of the same kind after a resume is unseen too',
+      () async {
+        read();
+        await settle();
+        h.copy.emit(job('1-2000', state: CopyState.spaceFull));
+        await settle();
+        expect(notifier().takeUnseenResult(), isTrue);
+
+        h.copy.emit(job('1-2000'));
+        h.copy.emit(job('1-2000', state: CopyState.spaceFull));
+        await settle();
+
+        expect(notifier().takeUnseenResult(), isTrue);
+      },
+    );
+
+    test('events dropped while the app was away: the engine now holds the '
+        'finished job of a stopped id the user already saw', () async {
+      read();
+      await settle();
+      h.copy.emit(job('1-2000', state: CopyState.spaceFull));
+      await settle();
+      expect(notifier().takeUnseenResult(), isTrue);
+      h.copy.job = job('1-2000', copied: [file(1)], state: CopyState.finished);
+
+      await notifier().onResume();
+
+      expect(read()!.state, CopyState.finished);
+      expect(notifier().takeUnseenResult(), isTrue);
+    });
+
+    test('recovered after a restart, Try again, finished: the screen opens '
+        'again for the same id', () async {
+      final (goa, jobId, _, _) = await startedJob();
+      h.copy.job = null;
+      final sessionService = SpyEditSessionService(h);
+      final restarted = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          editSessionServiceProvider.overrideWithValue(sessionService),
+        ],
+      );
+      addTearDown(restarted.dispose);
+      restarted.read(copyJobControllerProvider);
+      await sessionService.recoverAtStart();
+      await settle();
+      final controller = restarted.read(copyJobControllerProvider.notifier);
+      expect(
+        restarted.read(copyJobControllerProvider)!.state,
+        CopyState.interrupted,
+      );
+      expect(controller.takeUnseenResult(), isTrue);
+      expect(goa, isNonNegative);
+
+      await sessionService.resumeCopy(jobId);
+      await settle();
+      expect(controller.takeUnseenResult(), isFalse, reason: 'it runs');
+      h.copy.emit(h.copy.job!.copyWith(state: CopyState.finished, done: 2));
+      await settle();
+
+      expect(restarted.read(copyJobControllerProvider)!.jobId, jobId);
+      expect(controller.takeUnseenResult(), isTrue);
+    });
+  });
+
+  group('a finished job is dropped (fix round 1, I2)', () {
+    test('finishJob: the controller holds nothing, and a job that was only '
+        'watched (never taken) does not reopen the screen', () async {
+      final (_, jobId, a, b) = await startedJob();
+      read();
+      h.copy.emit(
+        h.copy.job!.copyWith(
+          state: CopyState.finished,
+          copied: [
+            CopiedFile(
+              clipId: a,
+              copyMediaStoreId: 601,
+              fileName: 'a.mp4',
+              sizeBytes: 1,
+              copiedAt: DateTime.utc(2026, 10, 30),
+            ),
+          ],
+          done: 1,
+        ),
+      );
+      await settle();
+      expect(read()!.jobId, jobId);
+
+      await service.finishJob(jobId);
+      await settle();
+
+      expect(read(), isNull);
+      expect(notifier().takeUnseenResult(), isFalse);
+      expect(b, isNonNegative);
+    });
+
+    test('cancelCopy of the engine job', () async {
+      final (_, jobId, _, _) = await startedJob();
+      read();
+      await settle();
+      expect(read()!.state, CopyState.running);
+
+      await service.cancelCopy(jobId);
+      await settle();
+
+      expect(read(), isNull);
+      expect(notifier().takeUnseenResult(), isFalse);
+    });
+
+    test('cancelCopy of a job recovered after a restart (the cancelled job '
+        "is the service's own)", () async {
+      final (_, jobId, _, _) = await startedJob();
+      h.copy.job = null;
+      final sessionService = SpyEditSessionService(h);
+      final restarted = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          editSessionServiceProvider.overrideWithValue(sessionService),
+        ],
+      );
+      addTearDown(restarted.dispose);
+      restarted.read(copyJobControllerProvider);
+      await sessionService.recoverAtStart();
+      await settle();
+      expect(restarted.read(copyJobControllerProvider), isNotNull);
+
+      await sessionService.cancelCopy(jobId);
+      await settle();
+
+      expect(restarted.read(copyJobControllerProvider), isNull);
+      expect(
+        restarted.read(copyJobControllerProvider.notifier).takeUnseenResult(),
+        isFalse,
+      );
+    });
+
+    test('Done editing that settles a job left behind', () async {
+      final (goa, _, _, _) = await startedJob();
+      read();
+      h.copy.emit(h.copy.job!.copyWith(state: CopyState.finished));
+      await settle();
+      expect(read()!.state, CopyState.finished);
+
+      await service.doneEditing(goa);
+      await settle();
+
+      expect(read(), isNull);
+      expect(notifier().takeUnseenResult(), isFalse);
+    });
+
+    test('a late event of the dropped job changes nothing; a new job is '
+        'followed again', () async {
+      final (_, jobId, _, _) = await startedJob();
+      read();
+      h.copy.emit(h.copy.job!.copyWith(state: CopyState.finished));
+      await settle();
+      await service.finishJob(jobId);
+      await settle();
+      expect(read(), isNull);
+
+      h.copy.emit(job(jobId, state: CopyState.finished));
+      await settle();
+      expect(read(), isNull);
+      expect(notifier().takeUnseenResult(), isFalse);
+
+      final far = DateTime.now().millisecondsSinceEpoch + 100000;
+      h.copy.emit(job('1-$far'));
+      await settle();
+      expect(read()!.jobId, '1-$far');
+    });
+
+    test('a job finished and cleared by someone else leaves the controller '
+        'with the next job only', () async {
+      final (_, jobId, _, _) = await startedJob();
+      read();
+      h.copy.emit(h.copy.job!.copyWith(state: CopyState.finished));
+      await settle();
+      await service.finishJob(jobId);
+      await settle();
+      h.copy.job = null;
+
+      await notifier().onResume();
+
+      expect(read(), isNull);
+    });
+  });
+
+  test('a local job older than the held job is ignored', () async {
+    final sessions = EditSessionsRepository(h.media.db, h.media.clock);
+    final goa = (await h.container.read(reelsRepositoryProvider).create('Goa'))
+        .id;
+    final [a] = await putInReel(h, goa, [reelVideo(1)]);
+    await sessions.startSession(goa, EditorApp.vn, 'Goa');
+    await h.media.phoneState.saveCopyJobPlan(
+      CopyJobPlan(
+        jobId: '$goa-1000',
+        reelId: goa,
+        editor: EditorApp.vn,
+        folderName: 'Goa',
+        startedSession: true,
+        items: [(clipId: a, fileName: 'a.mp4', sizeBytes: 1)],
+      ),
+    );
+    read();
+    h.copy.emit(job('$goa-2000'));
+    await settle();
+    h.copy.job = null;
+
+    final recovered = await service.recoverAtStart();
+    await settle();
+
+    expect(recovered!.jobId, '$goa-1000');
+    expect(read()!.jobId, '$goa-2000');
+  });
+
+  test('an event whose only news is an undeleted file is applied', () async {
+    read();
+    await settle();
+    h.copy.emit(job('1-2000'));
+    await settle();
+    expect(service.applied, isEmpty);
+
+    h.copy.emit(job('1-2000', undeleted: [file(1)]));
+    await settle();
+
+    expect(service.applied, hasLength(1));
+  });
+
+  test('an applyJob that fails with any error type is logged by type and '
+      'the next event still applies', () async {
+    final logs = captureLogs();
+    read();
+    service.failApply = const FormatException('boom');
+    h.copy.emit(job('1-2000', copied: [file(1)]));
+    await settle();
+    service.failApply = null;
+    h.copy.emit(job('1-2000', copied: [file(1), file(2)]));
+    await settle();
+
+    expect(service.applied, hasLength(2));
+    expect(logs.map((r) => r.message).join('\n'), contains('FormatException'));
+  });
+
+  test("cancelCopy of an id that is neither the engine's nor the saved "
+      "plan's drops nothing the controller holds", () async {
+    final (_, jobId, _, _) = await startedJob();
+    read();
+    await settle();
+    expect(read()!.jobId, jobId);
+
+    await service.cancelCopy('9-9');
+    await settle();
+
+    expect(read()!.jobId, jobId);
+    expect(read()!.state, CopyState.running);
+  });
 }

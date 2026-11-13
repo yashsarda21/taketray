@@ -3,6 +3,7 @@ import 'package:logging/logging.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
+import 'package:taketray/data/repositories/clip_leave_hook.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
@@ -27,10 +28,50 @@ final Expando<bool> _undone = Expando<bool>('undone');
 /// Shared by `ClipsRepository` and `ReelsRepository`; screens call `undo` on
 /// either. Every method except [undo] runs inside the caller's transaction.
 class UndoWriter {
-  new(this._db, this._clock);
+  new(this._db, this._clock, {this.beforeLeave});
 
   final AppDatabase _db;
   final Clock _clock;
+
+  /// The clean-up that runs before an undo deletes a link (null: none).
+  BeforeClipsLeave? beforeLeave;
+
+  /// The links undoing [record] would delete: the ones its add or move
+  /// created (`_deleteCreatedLinks`).
+  static List<ClipLink> linksUndoDeletes(UndoRecord? record) =>
+      switch (record) {
+        AddUndo() => record.createdLinks,
+        MoveUndo() => record.createdLinks,
+        _ => const [],
+      };
+
+  /// Before [links] are deleted by an undo (R8): asks the leave hook, once
+  /// for each reel, about the clips whose link is still there as it was
+  /// created (same reel, same `addedAt`; any other link is the user's). A
+  /// hook that throws stops the undo before anything changed. The check
+  /// ignores whether the clip keeps another place, so it may delete the
+  /// copy of a clip whose link stays; a copy is rebuilt from the original.
+  Future<void> beforeLinksGo(Iterable<ClipLink> links) async {
+    final hook = beforeLeave;
+    if (hook == null) return;
+    final byReel = <int, Set<int>>{};
+    for (final link in links) {
+      final there =
+          await (_db.select(_db.clipReels)..where(
+                (l) =>
+                    l.clipId.equals(link.clipId) &
+                    l.reelId.equals(link.reelId) &
+                    l.addedAt.equalsValue(link.addedAt),
+              ))
+              .getSingleOrNull();
+      if (there != null) {
+        byReel.putIfAbsent(link.reelId, () => {}).add(link.clipId);
+      }
+    }
+    for (final MapEntry(key: reelId, value: clipIds) in byReel.entries) {
+      await hook(reelId, clipIds);
+    }
+  }
 
   /// Runs the orphan sweep (D-56) and returns every field of each clip it
   /// deleted. Run inside a transaction, so the rows read are the rows
@@ -75,6 +116,9 @@ class UndoWriter {
   /// same list can be undone again. A record undone already is skipped.
   Future<void> undoAll(List<UndoRecord> records) async {
     final marked = <UndoRecord>[];
+    await beforeLinksGo([
+      for (final record in records) ...linksUndoDeletes(record),
+    ]);
     try {
       await _db.transaction(() async {
         for (final record in records.reversed) {

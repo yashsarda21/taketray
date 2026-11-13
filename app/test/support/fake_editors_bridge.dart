@@ -17,6 +17,10 @@ import 'package:taketray/platform/editors_bridge.dart';
 ///   fails), [sent] (package and clips of each `sendTo`), [chooserShares],
 ///   [openedApps], [openedListings], [deleteAsked] and [deleteRequested].
 /// - [failNext] makes the next call of a method throw a `PlatformException`.
+/// - [allowed] limits the methods it answers (null: all, the default).
+///   Another method is noted in [calls] and [unexpected] and throws a
+///   `StateError`, so a stray bridge call in a test fails loudly; a test
+///   opts in with [allow] or [allowAll].
 class FakeEditorsBridge implements EditorsBridge {
   Map<String, bool> installed = {};
   Map<String, Uint8List> icons = {};
@@ -41,6 +45,24 @@ class FakeEditorsBridge implements EditorsBridge {
 
   final Map<String, int> _failures = {};
 
+  /// The methods this fake answers; null for all.
+  Set<String>? allowed;
+
+  /// The calls of methods that were not allowed, in order.
+  final List<String> unexpected = [];
+
+  /// Answers only [methods] from now on.
+  void allowOnly(Set<String> methods) => allowed = {...methods};
+
+  /// Also answers [methods] (a no-op when every method is answered).
+  void allow(Set<String> methods) {
+    final now = allowed;
+    if (now != null) allowed = {...now, ...methods};
+  }
+
+  /// Answers every method again.
+  void allowAll() => allowed = null;
+
   /// The next call of [method] throws a `PlatformException`. Calling it twice
   /// fails two calls.
   void failNext(String method) =>
@@ -48,6 +70,11 @@ class FakeEditorsBridge implements EditorsBridge {
 
   void _call(String method) {
     calls.add(method);
+    final only = allowed;
+    if (only != null && !only.contains(method)) {
+      unexpected.add(method);
+      throw StateError('Unexpected editors bridge call: $method');
+    }
     final left = _failures[method] ?? 0;
     if (left > 0) {
       _failures[method] = left - 1;

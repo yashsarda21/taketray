@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
@@ -25,6 +26,13 @@ export '../data/media/media_harness.dart';
 /// and copy bridges are a [FakeEditorsBridge] ([editors]) and a
 /// [FakeCopyBridge] ([copy]), for the same reason (Phase 8).
 ///
+/// Those two fakes are strict: a view model or hook that calls a bridge
+/// method nobody expected throws a `StateError` (the editors bridge answers
+/// nothing, the copy bridge only `current`, which the reel delete, the app
+/// start and the copy job controller read), and the test fails at its end
+/// even if the caller swallowed the error. A test that means to use them
+/// says so: `h.editors.allow({'deleteCopies'})`, `h.copy.allowAll()`.
+///
 /// The container is disposed when the test ends.
 class VmHarness {
   VmHarness({
@@ -33,6 +41,20 @@ class VmHarness {
     FakeBackgroundBridge? background,
   }) : media = MediaHarness(now: now, bridge: bridge, background: background) {
     container = ProviderContainer.test(overrides: overrides);
+    editors.allowOnly(const {});
+    copy.allowOnly(const {'current'});
+    addTearDown(() {
+      expect(
+        editors.unexpected,
+        isEmpty,
+        reason: 'an editors bridge call nobody allowed',
+      );
+      expect(
+        copy.unexpected,
+        isEmpty,
+        reason: 'a copy bridge call nobody allowed',
+      );
+    });
   }
 
   final MediaHarness media;

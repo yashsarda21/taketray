@@ -8,6 +8,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/clip_rules.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/database/housekeeping.dart';
+import 'package:taketray/data/repositories/clip_leave_hook.dart';
 import 'package:taketray/data/repositories/undo_writer.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
@@ -38,11 +39,28 @@ final Expando<bool> _handUndone = Expando<bool>('handUndone');
 /// Every `Iterable<int>` / `Set<int>` of ids is treated as a set: duplicates
 /// are ignored.
 class ClipsRepository {
-  new(this._db, this._clock) : _undo = UndoWriter(_db, _clock);
+  new(this._db, this._clock, {BeforeClipsLeave? beforeLeave})
+    : _beforeLeave = beforeLeave,
+      _undo = UndoWriter(_db, _clock, beforeLeave: beforeLeave);
 
   final AppDatabase _db;
   final Clock _clock;
   final UndoWriter _undo;
+
+  /// Deletes the copies of clips about to leave a reel, for the paths that
+  /// have no screen-level clean-up (R8): [undoHandAdd], [tagClip],
+  /// [untagToInbox], [reattachDetached] and the undo of an add or a move.
+  /// `removeClipsFromReel` and `moveClips` are cleaned up by their callers.
+  BeforeClipsLeave? _beforeLeave;
+
+  /// The clean-up those paths run (null: none). The editing service's
+  /// provider sets it when it is built, because a repository cannot read the
+  /// service: the service reads the repository.
+  BeforeClipsLeave? get beforeLeave => _beforeLeave;
+  set beforeLeave(BeforeClipsLeave? hook) {
+    _beforeLeave = hook;
+    _undo.beforeLeave = hook;
+  }
 
   /// Saves clips read from the phone's media library (Shooting mode, a
   /// rescan, "Add earlier videos") and puts the new ones in To tag as
@@ -323,6 +341,13 @@ class ClipsRepository {
       _log.info('Undo of a hand add that was undone already');
       return;
     }
+    final handReel = record.reelId;
+    await _undo.beforeLinksGo([
+      ...UndoWriter.linksUndoDeletes(record._record),
+      if (handReel != null)
+        for (final id in record._inserted)
+          ClipLink(clipId: id, reelId: handReel, addedAt: record.at),
+    ]);
     final swept = await _db.transaction(() async {
       final inner = record._record;
       if (inner != null && !inner.isEmpty) await _undo.applyUndo(inner);
@@ -501,6 +526,9 @@ class ClipsRepository {
     if (reelIds.isEmpty) {
       throw ArgumentError.value(reelIds, 'reelIds', 'must not be empty');
     }
+    await _beforeLeaving({
+      clipId,
+    }, (await _reelIdsOf(clipId)).difference(reelIds));
     final changed = await _db.transaction(() async {
       await _requireClip(clipId);
       await _requireReels(reelIds);
@@ -535,6 +563,7 @@ class ClipsRepository {
   /// row of a clip that is already pending (its `addedAt` becomes now). The
   /// clip stays in the database: it has an `inbox` row again.
   Future<void> untagToInbox(int clipId) async {
+    await _beforeLeaving({clipId}, await _reelIdsOf(clipId));
     await _db.transaction(() async {
       await _requireClip(clipId);
       final now = _clock.storedNow();
@@ -1179,13 +1208,16 @@ class ClipsRepository {
       );
     }
     if (matches.isEmpty) return const ReattachResult(0, 0, 0);
+    // A duplicate that is merged away leaves its reels: delete its copies
+    // first (R8), and leave the pairs where that fails for the next scan.
+    final allowed = await _matchesWithCopiesGone(volumeName, matches);
 
     final result = await _db.transaction(() async {
       final now = _clock.storedNow();
       var reattached = 0;
       var merged = 0;
-      for (final clipId in matches.keys.toList()..sort()) {
-        final videoId = matches[clipId]!;
+      for (final clipId in allowed.keys.toList()..sort()) {
+        final videoId = allowed[clipId]!;
         final detached =
             await (_db.select(_db.clips)..where(
                   (c) =>
@@ -1665,6 +1697,68 @@ class ClipsRepository {
   }) => (_db.update(_db.clips)..where((c) => c.id.isIn(ids))).write(
     ClipsCompanion(missing: Value(isMissing), lastVerifiedAt: Value(at)),
   );
+
+  /// Asks the leave hook, for each of [reelIds], about [clipIds] (see
+  /// [_beforeLeave]); a throw stops the caller.
+  Future<void> _beforeLeaving(Set<int> clipIds, Set<int> reelIds) async {
+    final hook = _beforeLeave;
+    if (hook == null) return;
+    for (final reelId in reelIds) {
+      await hook(reelId, clipIds);
+    }
+  }
+
+  /// [matches] without the pairs that would merge a duplicate clip whose
+  /// copies cannot be deleted first (R8): the duplicate leaves its reels in
+  /// the merge. Those pairs stay detached; the next scan tries again.
+  Future<Map<int, int>> _matchesWithCopiesGone(
+    String volumeName,
+    Map<int, int> matches,
+  ) async {
+    if (_beforeLeave == null) return matches;
+    final allowed = <int, int>{};
+    for (final clipId in matches.keys.toList()..sort()) {
+      final videoId = matches[clipId]!;
+      final detached =
+          await (_db.select(_db.clips)..where(
+                (c) =>
+                    c.id.equals(clipId) &
+                    c.source.equalsValue(ClipSource.mediaStore) &
+                    c.volumeName.equals(volumeName) &
+                    c.mediaStoreId.isSmallerThanValue(0),
+              ))
+              .getSingleOrNull();
+      final holder = detached == null
+          ? null
+          : await (_db.select(_db.clips)..where(
+                  (c) =>
+                      c.volumeName.equals(volumeName) &
+                      c.mediaStoreId.equals(videoId),
+                ))
+                .getSingleOrNull();
+      final merges =
+          detached != null &&
+          holder != null &&
+          holder.source == ClipSource.mediaStore &&
+          sameFingerprint(
+            _toClip(detached).fingerprint,
+            _toClip(holder).fingerprint,
+          );
+      if (merges) {
+        try {
+          await _beforeLeaving({holder.id}, await _reelIdsOf(holder.id));
+        } on Object catch (e) {
+          _log.warning(
+            'Not merging clip $clipId into ${holder.id}: its copies could '
+            'not be deleted (${e.runtimeType})',
+          );
+          continue;
+        }
+      }
+      allowed[clipId] = videoId;
+    }
+    return allowed;
+  }
 
   Future<Set<int>> _reelIdsOf(int clipId) async => {
     for (final l in await (_db.select(

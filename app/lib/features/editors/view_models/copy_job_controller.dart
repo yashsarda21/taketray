@@ -23,11 +23,21 @@ final Logger _log = Logger('copyJob');
 /// alone records nothing. An event of an older job than the one held (job ids
 /// are `<reelId>-<UTC ms>`) is ignored.
 ///
+/// A job that ended for good (`EditSessionService.clearedJobs`: finished,
+/// cancelled, or settled by Done editing) is dropped: the controller holds
+/// nothing for it and ignores its late events, so the copy screen is never
+/// opened for a job with no plan. A job that keeps its id through Try again
+/// is unseen again when it stops in another state (see [takeUnseenResult]).
+///
 /// Kept alive: the app's start builds it (`MediaLifecycle`), so a job is
 /// followed and recorded whether or not a copy screen is open.
 @Riverpod(keepAlive: true)
 class CopyJobController extends _$CopyJobController {
-  final Set<String> _seen = {};
+  /// The end state in which each job id was last shown (taken).
+  final Map<String, CopyState> _seen = {};
+
+  /// Ids of jobs that ended for good: their events are ignored.
+  final Set<String> _dropped = {};
 
   /// What the last `applyJob` call was for: job id, copied count,
   /// undeleted count, and the end state (null while running).
@@ -39,9 +49,11 @@ class CopyJobController extends _$CopyJobController {
     final bridge = ref.watch(copyBridgeProvider);
     final engine = bridge.changes.listen(_onEngine);
     final local = service.localJobs.listen(_onLocal);
+    final cleared = service.clearedJobs.listen(_onCleared);
     ref.onDispose(() {
       unawaited(engine.cancel());
       unawaited(local.cancel());
+      unawaited(cleared.cancel());
     });
     unawaited(_readEngine());
     return service.lastLocalJob;
@@ -51,12 +63,18 @@ class CopyJobController extends _$CopyJobController {
   /// records what it holds.
   Future<void> onResume() => _readEngine();
 
-  /// True once per job id in this process, for a job that is not running:
-  /// the result the app opens the copy screen for (on start or resume).
+  /// True once for each stop of a job that is not running: the result the
+  /// app opens the copy screen for (on start or resume).
+  ///
+  /// A resumed job keeps its id (Try again), so "seen" is kept per job id and
+  /// end state: a job seen as `spaceFull` that comes back to running and
+  /// ends (or is found ended after events were dropped) is unseen again.
   bool takeUnseenResult() {
     final job = state;
     if (job == null || job.state == CopyState.running) return false;
-    return _seen.add(job.jobId);
+    if (_seen[job.jobId] == job.state) return false;
+    _seen[job.jobId] = job.state;
+    return true;
   }
 
   Future<void> _readEngine() async {
@@ -72,12 +90,19 @@ class CopyJobController extends _$CopyJobController {
   }
 
   void _onLocal(CopyJob job) {
-    if (!ref.mounted || _isOlder(job)) return;
+    if (!ref.mounted || _dropped.contains(job.jobId) || _isOlder(job)) return;
     state = job;
   }
 
+  void _onCleared(String jobId) {
+    if (!ref.mounted) return;
+    _dropped.add(jobId);
+    if (state?.jobId == jobId) state = null;
+  }
+
   void _onEngine(CopyJob job) {
-    if (!ref.mounted || _isOlder(job)) return;
+    if (!ref.mounted || _dropped.contains(job.jobId) || _isOlder(job)) return;
+    if (job.state == CopyState.running) _seen.remove(job.jobId);
     state = job;
     final key = (
       job.jobId,
