@@ -432,4 +432,71 @@ class CopyEngineTest {
         assertEquals(CopyState.FINISHED, engine.current()!!.state)
         assertEquals(listOf(1L, 2L, 3L), engine.current()!!.copied.map { it.clipId })
     }
+
+    /**
+     * An engine whose `post` holds the calling (test) thread's posts until the
+     * worker has sent a terminal event, bounded at 300 ms: the slow caller of
+     * a loaded machine. Events then arrive in the order they were posted.
+     */
+    private fun slowCallerEngine(events: MutableList<CopySnapshot>): CopyEngine {
+        val pool = Executors.newSingleThreadExecutor().also { pools += it }
+        val caller = Thread.currentThread()
+        val engine =
+            CopyEngine(
+                store,
+                io = pool.asCoroutineDispatcher(),
+                post = {
+                    if (Thread.currentThread() === caller) {
+                        // Polls, bounded: a terminal event that arrived after this post was asked for.
+                        val mark = synchronized(events) { events.size }
+                        val limit = System.nanoTime() + 300_000_000L
+                        while (System.nanoTime() < limit && synchronized(events) { events.drop(mark).none { s -> s.state != CopyState.RUNNING } }) {
+                            Thread.sleep(5)
+                        }
+                    }
+                    it.run()
+                },
+                clock = { 0L },
+                wallClock = { WALL_MS },
+                chunkBytes = 1024,
+            )
+        engine.attach { snapshot -> synchronized(events) { events += snapshot } }
+        return engine
+    }
+
+    @Test
+    fun `the first running event of start goes out before the worker's, however slow the caller is`() {
+        val events = java.util.Collections.synchronizedList(mutableListOf<CopySnapshot>())
+        val slow = slowCallerEngine(events)
+        slow.start(h.request(h.item(1)))
+        h.timed { slow.awaitIdle() }
+
+        assertEquals(CopyState.FINISHED, slow.current()!!.state)
+        val all = synchronized(events) { events.toList() }
+        assertEquals(CopyState.RUNNING, all.first().state)
+        assertEquals(0, all.first().done)
+        assertEquals("the last event is the job's final state", CopyState.FINISHED, all.last().state)
+        assertEquals(1, all.count { it.state == CopyState.FINISHED })
+        all.zipWithNext().forEach { (a, b) -> assertTrue("done never goes back", b.done >= a.done) }
+    }
+
+    @Test
+    fun `the running event of resume goes out before the worker's, however slow the caller is`() {
+        val events = java.util.Collections.synchronizedList(mutableListOf<CopySnapshot>())
+        val slow = slowCallerEngine(events)
+        // Space is short: the job stops, then resume with space still short fails within microseconds.
+        store.available = { 0L }
+        slow.start(h.request(h.item(1)))
+        h.timed { slow.awaitIdle() }
+        assertEquals(CopyState.SPACE_FULL, slow.current()!!.state)
+        val before = synchronized(events) { events.size }
+
+        slow.resume("job-1")
+        h.timed { slow.awaitIdle() }
+
+        assertEquals(CopyState.SPACE_FULL, slow.current()!!.state)
+        val after = synchronized(events) { events.drop(before) }
+        assertEquals(CopyState.RUNNING, after.first().state)
+        assertEquals("the last event is the job's final state", CopyState.SPACE_FULL, after.last().state)
+    }
 }

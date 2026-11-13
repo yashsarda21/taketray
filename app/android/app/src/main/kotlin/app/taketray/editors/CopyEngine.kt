@@ -80,22 +80,21 @@ class CopyEngine(
      * not one plain path segment, or a negative size; nothing is written then.
      */
     fun start(request: CopyRequest) {
-        val snapshot =
-            synchronized(lock) {
-                if (job != null || sweeps > 0) throw CopyBusyException()
-                require(request.jobId.isNotBlank()) { "no job id" }
-                requireSegment(request.folderName)
-                for (item in request.items) {
-                    requireSegment(item.fileName)
-                    require(item.sizeBytes >= 0) { "negative size" }
-                }
-                val created =
-                    CopyJob(request, store, lock, clock, wallClock, chunkBytes, { throttleMs }, sleep, ::emit)
-                job = created
-                launchWorker { created.run() }
-                created.snapshot()
+        synchronized(lock) {
+            if (job != null || sweeps > 0) throw CopyBusyException()
+            require(request.jobId.isNotBlank()) { "no job id" }
+            requireSegment(request.folderName)
+            for (item in request.items) {
+                requireSegment(item.fileName)
+                require(item.sizeBytes >= 0) { "negative size" }
             }
-        emit(snapshot)
+            val created =
+                CopyJob(request, store, lock, clock, wallClock, chunkBytes, { throttleMs }, sleep, ::emit)
+            job = created
+            // Posted before the worker exists, so no event of the worker can overtake it.
+            emit(created.snapshot())
+            launchWorker { created.run() }
+        }
     }
 
     /** Caller holds [lock]: the next worker starts after the one before it is over, so there is only ever one. */
@@ -150,17 +149,16 @@ class CopyEngine(
      * runs (it must not delete the row the resumed job would write).
      */
     fun resume(jobId: String) {
-        val snapshot =
-            synchronized(lock) {
-                val target = job?.takeIf { it.request.jobId == jobId } ?: return
-                if (target.cancelRequested) return
-                if (target.state != CopyState.SPACE_FULL && target.state != CopyState.INTERRUPTED) return
-                if (sweeps > 0) throw CopyBusyException()
-                target.markRunning()
-                launchWorker { target.run() }
-                target.snapshot()
-            }
-        emit(snapshot)
+        synchronized(lock) {
+            val target = job?.takeIf { it.request.jobId == jobId } ?: return
+            if (target.cancelRequested) return
+            if (target.state != CopyState.SPACE_FULL && target.state != CopyState.INTERRUPTED) return
+            if (sweeps > 0) throw CopyBusyException()
+            target.markRunning()
+            // Posted before the worker exists, so no event of the worker can overtake it.
+            emit(target.snapshot())
+            launchWorker { target.run() }
+        }
     }
 
     /** Forgets the result of [jobId]. Another id, a running job or one still deleting its copies is left alone. */
