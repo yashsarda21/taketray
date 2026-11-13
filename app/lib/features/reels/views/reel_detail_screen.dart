@@ -13,8 +13,11 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
+import 'package:taketray/domain/rules/shooting_order.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
+import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
+import 'package:taketray/features/editors/views/open_share.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
@@ -40,6 +43,9 @@ const int _skeletonTiles = 9;
 
 /// What the ⋮ menu can do.
 enum _ReelAction { details, select, delete }
+
+/// What the ⋮ menu of the selection bar can do.
+enum _SelectionAction { edit, selectAll, share }
 
 /// A reel's page (`routes.reel`, D-87), inside the Reels tab so the nav pill
 /// stays. From the top:
@@ -98,8 +104,16 @@ enum _ReelAction { details, select, delete }
 /// **Add videos** opens the folder browser for this reel (once however fast
 /// the taps); the videos it adds arrive here, with a snack and **Undo**.
 ///
-/// Not built: Edit video and the VN banner (Phase 8) and References (Phase
-/// 9), all hidden (D-80).
+/// **Edit video** (Phase 8, D-126) is an extended button above the nav pill. It
+/// shows when the reel has a live clip, nothing is being chosen and the reel
+/// is **not in an editing session** (R1: Done editing comes first); it opens
+/// the clip picking screen with nothing ticked. In the selection bar's ⋮
+/// menu, **Edit video** (hidden during a session) opens it with the chosen
+/// clips ticked and ends choosing, **Select all** is as before, and **Share**
+/// opens Android's share menu for the chosen clips (the choice stays).
+///
+/// Not built: the editing banner and sections (later in Phase 8) and
+/// References (Phase 9), all hidden (D-80).
 class ReelDetailScreen extends ConsumerStatefulWidget {
   const new({required this.reelId, super.key});
 
@@ -128,6 +142,12 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   void _openViewer(int clipId) =>
       _viewer.open(() => context.push(Routes.clip(widget.reelId, clipId)));
 
+  /// Opens the clip picking screen once however fast the taps.
+  final OpenOnce _edit = OpenOnce();
+
+  /// A share is opening, so a second tap on Share does nothing.
+  bool _sharing = false;
+
   /// Opens Add videos once however fast the taps.
   final OpenOnce _addVideos = OpenOnce();
 
@@ -136,9 +156,40 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         openAddVideos(context, ref, AddToReel(widget.reelId), pushing: pushing),
   );
 
+  /// Opens the clip picking screen with [clipIds] ticked.
+  void _openEdit([List<int> clipIds = const []]) => _edit.open(
+    () => context.push(Routes.editSelectOf(widget.reelId, clipIds: clipIds)),
+  );
+
+  /// The chosen clips' ids in shooting order.
+  List<int> _chosenInOrder() {
+    final chosen = ref.read(reelSelectionProvider(widget.reelId)).selected;
+    final clips = ref.read(reelClipsProvider(widget.reelId)).value ?? const [];
+    return [
+      for (final clip in inShootingOrder([
+        for (final c in clips)
+          if (chosen.contains(c.clip.id)) c.clip,
+      ]))
+        clip.id,
+    ];
+  }
+
+  /// ⋮ **Share**: Android's share menu for the chosen clips, once however
+  /// fast the taps. The choice stays.
+  Future<void> _share() async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      await openShare(context, ref, _chosenInOrder());
+    } finally {
+      _sharing = false;
+    }
+  }
+
   @override
   void dispose() {
     _viewer.dispose();
+    _edit.dispose();
     _addVideos.dispose();
     super.dispose();
   }
@@ -178,6 +229,14 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     final selectionNotifier = ref.read(
       reelSelectionProvider(widget.reelId).notifier,
     );
+    // Edit video: a live clip, nothing being chosen, and no editing session
+    // (R1). Until the session is known the button and the menu entry wait.
+    final inSession = ref.watch(reelInEditingSessionProvider(widget.reelId));
+    final showEdit =
+        state != null &&
+        state.clipCount > state.missingCount &&
+        !selection.selecting &&
+        inSession.value == false;
     return PopScope(
       // Back ends choosing; it leaves the page only when nothing is chosen.
       canPop: !selection.selecting,
@@ -186,7 +245,11 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       },
       child: Scaffold(
         appBar: selection.selecting
-            ? _selectionBar(context, selection)
+            ? _selectionBar(
+                context,
+                selection,
+                editHidden: inSession.value != false,
+              )
             : TtAppBar(
                 title: '',
                 leading: TtIconButton(
@@ -235,66 +298,88 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                     ),
                 ],
               ),
-        body: CustomScrollView(
-          slivers: [
-            // Why Add videos sends the user to the photo picker, or why it
-            // took them back here when access was lost (D-111): as on To tag.
-            const SliverToBoxAdapter(child: MediaAccessBanner()),
-            if (state == null)
-              ..._loading(context)
-            else ...[
-              SliverToBoxAdapter(child: _header(context, state)),
-              if (state.clipCount == 0)
-                SliverToBoxAdapter(
-                  child: TtEmptyState(
-                    illustration: TtIllustrationKind.emptyReel,
-                    title: l10n.reelNoClips,
-                    body: l10n.reelEmptyBody,
-                    actions: [
-                      TtButton(
-                        label: l10n.reelEmptyAction,
-                        icon: Symbols.sell_rounded,
-                        kind: TtButtonKind.tonal,
-                        onPressed: () => context.go(Routes.toTag),
+        body: Stack(
+          children: [
+            CustomScrollView(
+              slivers: [
+                // Why Add videos sends the user to the photo picker, or why it
+                // took them back here when access was lost (D-111): as on To
+                // tag.
+                const SliverToBoxAdapter(child: MediaAccessBanner()),
+                if (state == null)
+                  ..._loading(context)
+                else ...[
+                  SliverToBoxAdapter(child: _header(context, state)),
+                  if (state.clipCount == 0)
+                    SliverToBoxAdapter(
+                      child: TtEmptyState(
+                        illustration: TtIllustrationKind.emptyReel,
+                        title: l10n.reelNoClips,
+                        body: l10n.reelEmptyBody,
+                        actions: [
+                          TtButton(
+                            label: l10n.reelEmptyAction,
+                            icon: Symbols.sell_rounded,
+                            kind: TtButtonKind.tonal,
+                            onPressed: () => context.go(Routes.toTag),
+                          ),
+                          TtButton(
+                            label: l10n.addVideosTitle,
+                            icon: Symbols.library_add_rounded,
+                            kind: TtButtonKind.text,
+                            onPressed: _openAddVideos,
+                          ),
+                        ],
                       ),
-                      TtButton(
-                        label: l10n.addVideosTitle,
-                        icon: Symbols.library_add_rounded,
-                        kind: TtButtonKind.text,
-                        onPressed: _openAddVideos,
+                    )
+                  else
+                    for (final day in state.days) ...[
+                      SliverToBoxAdapter(
+                        child: TtDayHeader(
+                          title: l10n.reelDayTitle(
+                            day.number,
+                            ttDayWeekdayText(context, day.date, today: today),
+                          ),
+                          trailing: l10n.reelDayClips(day.clips.length),
+                        ),
+                      ),
+                      SliverPadding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: tt.spacing.gutter,
+                        ),
+                        sliver: _dayGrid(
+                          context,
+                          day,
+                          times: state.times,
+                          cache: cache,
+                          locale: locale,
+                          use24Hour: use24Hour,
+                          selection: selection,
+                        ),
                       ),
                     ],
-                  ),
-                )
-              else
-                for (final day in state.days) ...[
-                  SliverToBoxAdapter(
-                    child: TtDayHeader(
-                      title: l10n.reelDayTitle(
-                        day.number,
-                        ttDayWeekdayText(context, day.date, today: today),
-                      ),
-                      trailing: l10n.reelDayClips(day.clips.length),
-                    ),
-                  ),
-                  SliverPadding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: tt.spacing.gutter,
-                    ),
-                    sliver: _dayGrid(
-                      context,
-                      day,
-                      times: state.times,
-                      cache: cache,
-                      locale: locale,
-                      use24Hour: use24Hour,
-                      selection: selection,
-                    ),
-                  ),
                 ],
-            ],
-            // Room to scroll the last row clear of the floating nav pill.
-            SliverToBoxAdapter(child: SizedBox(height: bottomSpace)),
+                // Room to scroll the last row clear of the floating nav pill
+                // (and of the Edit video button above it).
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: showEdit
+                        ? bottomSpace + TtMetrics.fabHeight + tt.spacing.m
+                        : bottomSpace,
+                  ),
+                ),
+              ],
+            ),
+            if (showEdit)
+              PositionedDirectional(
+                end: tt.spacing.gutter,
+                bottom: TtNavPill.fabBottom(context),
+                child: TtFab(
+                  label: l10n.reelEditVideo,
+                  icon: Symbols.movie_edit_rounded,
+                  onPressed: _openEdit,
+                ),
+              ),
           ],
         ),
       ),
@@ -513,11 +598,13 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   }
 
   /// The selection bar (`routes.reel`, `sel`): close, "{n} selected", the
-  /// three actions, and a ⋮ with Select all (Edit video and Share are Phase 8).
+  /// three actions, and a ⋮ with Edit video (not during an editing session),
+  /// Select all and Share.
   PreferredSizeWidget _selectionBar(
     BuildContext context,
-    ReelSelectionState selection,
-  ) {
+    ReelSelectionState selection, {
+    required bool editHidden,
+  }) {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(reelSelectionProvider(widget.reelId).notifier);
     final any = selection.selected.isNotEmpty;
@@ -555,15 +642,38 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
           style: TtIconButtonStyle.circle,
           onPressed: any ? () => unawaited(_removeChosen()) : null,
         ),
-        TtMenuButton<void>(
+        TtMenuButton<_SelectionAction>(
           items: [
-            TtMenuItem<void>(
-              null,
+            // A reel that is being edited finishes that edit first (R1).
+            if (!editHidden)
+              TtMenuItem(
+                _SelectionAction.edit,
+                l10n.reelEditVideo,
+                icon: Symbols.movie_edit_rounded,
+              ),
+            TtMenuItem(
+              _SelectionAction.selectAll,
               l10n.selectionSelectAll,
               icon: Symbols.select_all_rounded,
             ),
+            TtMenuItem(
+              _SelectionAction.share,
+              l10n.reelMenuShare,
+              icon: Symbols.share_rounded,
+            ),
           ],
-          onSelected: (_) => notifier.selectAll(),
+          onSelected: (action) {
+            switch (action) {
+              case _SelectionAction.edit:
+                final ids = _chosenInOrder();
+                notifier.clear();
+                _openEdit(ids);
+              case _SelectionAction.selectAll:
+                notifier.selectAll();
+              case _SelectionAction.share:
+                unawaited(_share());
+            }
+          },
           builder: (context, open) => TtIconButton(
             icon: Symbols.more_vert_rounded,
             semanticLabel: l10n.moreOptions,

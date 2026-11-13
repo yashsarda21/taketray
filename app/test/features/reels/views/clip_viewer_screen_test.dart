@@ -1013,6 +1013,120 @@ void main() {
     });
   });
 
+  group('Share (Phase 8)', () {
+    setUp(() => h.editors.allow({'shareWithChooser'}));
+
+    testApp('Share is the fourth action, after Remove', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+
+      await open(tester, goa.id, ids.single);
+
+      expect(
+        [
+          for (final a
+              in tester
+                  .widget<TtViewerActions>(find.byType(TtViewerActions))
+                  .actions)
+            a.label,
+        ],
+        ['Add to reel', 'Move', 'Remove', 'Share'],
+      );
+    });
+
+    testApp("Share opens Android's share menu with this clip, no session", (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[1]);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+      final (clipsShared, chooserTitle) = h.editors.chooserShares.single;
+      expect([for (final c in clipsShared) c.mediaStoreId], [2]);
+      expect(chooserTitle, 'Share video');
+      expect(h.editors.sent, isEmpty);
+      expect(find.byType(TtSnack), findsNothing);
+      expect(title(tester), '2 of 2 · Goa');
+    });
+
+    testApp('a second tap while the share is opening opens no second '
+        'chooser', (tester) async {
+      h.editors.hold('shareWithChooser');
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.tap(find.text('Share'), warnIfMissed: false);
+      await tester.runAsync(settle);
+      h.editors.release('shareWithChooser');
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+
+      // Once it is over, Share works again.
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      expect(h.editors.chooserShares, hasLength(2));
+    });
+
+    testApp('a clip that went missing meanwhile: the missing snack, no '
+        'share', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+      // The viewer has not noticed yet; the share finds out.
+      await real(tester, () => flagForTest(h, {ids[0]}, missing: true));
+
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.pump();
+
+      expect(h.editors.chooserShares, isEmpty);
+      expect(
+        find.text('These clips are missing from your phone.'),
+        findsOneWidget,
+      );
+    });
+
+    testApp('nothing opened: the same snack', (tester) async {
+      h.editors.chooserResult = false;
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(
+        find.text('These clips are missing from your phone.'),
+        findsOneWidget,
+      );
+    });
+
+    testApp('a share that throws says something went wrong, and can be '
+        'tried again', (tester) async {
+      h.editors.failNext('shareWithChooser');
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      // The attempt that threw is not recorded by the fake.
+      expect(h.editors.chooserShares, hasLength(1));
+    });
+  });
+
   group('large text and accessibility', () {
     for (final brightness in Brightness.values) {
       testApp('2x text at 360 dp, ${brightness.name}', (tester) async {
@@ -1045,6 +1159,7 @@ void main() {
         expect(find.text('Add to reel'), findsOneWidget);
         expect(find.text('Move'), findsOneWidget);
         expect(find.text('Remove'), findsOneWidget);
+        expect(find.text('Share'), findsOneWidget);
         await expectTtAccessible(tester);
       });
 

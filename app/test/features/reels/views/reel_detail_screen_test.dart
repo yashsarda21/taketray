@@ -6,12 +6,15 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -1145,6 +1148,160 @@ void main() {
       );
       await open(tester, goa.id);
 
+      await expectTtAccessible(tester);
+    });
+  });
+
+  group('the Edit video button (Phase 8)', () {
+    Finder fab() => find.byType(TtFab);
+
+    testApp('shows with a live clip, no choice and no session; opens the '
+        'picking screen with nothing ticked', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id);
+
+      expect(fab(), findsOneWidget);
+      expect(tester.widget<TtFab>(fab()).label, 'Edit video');
+
+      await tester.tap(fab());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(editSelectRouteMarker('${goa.id}', null, null)),
+        findsOneWidget,
+      );
+    });
+
+    testApp('a double tap pushes the picking screen once', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id);
+
+      await tester.tap(fab());
+      await tester.tap(fab(), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+    });
+
+    testApp('is not there for a reel with no clips', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await open(tester, goa.id);
+
+      expect(fab(), findsNothing);
+    });
+
+    testApp('is not there when every clip is missing', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await real(
+        tester,
+        () =>
+            putInReel(h, goa.id, [reelVideo(1), reelVideo(2)], onPhone: false),
+      );
+      await real(tester, () => flagForTest(h, ids.toSet(), missing: true));
+      await open(tester, goa.id);
+
+      expect(find.byType(TtMissingClipTile), findsNWidgets(2));
+      expect(fab(), findsNothing);
+    });
+
+    testApp('is there when only some clips are missing', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final [_, gone] = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      );
+      await real(tester, () => flagForTest(h, {gone}, missing: true));
+      await open(tester, goa.id);
+
+      expect(fab(), findsOneWidget);
+    });
+
+    testApp('is hidden while choosing clips and back after', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id);
+
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(fab(), findsNothing);
+
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is TtIconButton && w.semanticLabel == 'Close',
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(fab(), findsOneWidget);
+    });
+
+    testApp('is hidden during an editing session, back when it ends', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      await open(tester, goa.id);
+      expect(fab(), findsOneWidget);
+
+      await real(
+        tester,
+        () => sessions.startSession(goa.id, EditorApp.capcut, 'Goa'),
+      );
+      await settleApp(tester);
+      expect(fab(), findsNothing);
+
+      await real(tester, () => sessions.endSession(goa.id));
+      await settleApp(tester);
+      expect(fab(), findsOneWidget);
+    });
+
+    testApp('waits until it is known that there is no session', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+
+      await open(
+        tester,
+        goa.id,
+        overrides: [
+          // The database has not answered about the session yet.
+          reelInEditingSessionProvider(goa.id)
+              .overrideWith((ref) => const Stream<bool>.empty()),
+        ],
+      );
+
+      expect(find.byType(TtClipTile), findsOneWidget);
+      expect(fab(), findsNothing);
+    });
+
+    testApp('a session of another reel does not hide it', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await real(
+        tester,
+        () => h.container
+            .read(editSessionsRepositoryProvider)
+            .startSession(london.id, EditorApp.vn, 'London'),
+      );
+
+      await open(tester, goa.id);
+
+      expect(fab(), findsOneWidget);
+    });
+
+    testApp('the page with the button at 2x text is accessible, dark too', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id, textScale: 2, brightness: Brightness.dark);
+
+      expect(fab(), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await expectTtAccessible(tester);
     });
   });

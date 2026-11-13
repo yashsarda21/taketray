@@ -12,8 +12,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 8 (editor handoff)
 
-- Phase 4 left these (final review M-6, D-80): **Share** (the viewer action and the multi-select item, generic share) and **Edit video** (the FAB and the multi-select ⋮ item). The service behind them is done (D-123: `EditSessionService.share`, `sendOriginals`, `planCopy`); the screens are Task 9.
-
 - Phase 4 left these too (D-80): the VN pieces, the "Editing in VN" banner, the card pill and the delete dialog's line. Task 11.
 
 ## Phase 9 (references)

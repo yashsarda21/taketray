@@ -5,10 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -156,6 +159,16 @@ void main() {
   Finder confirm(String label) =>
       find.widgetWithText(TtButton, label, skipOffstage: false);
 
+  /// The labels of the open ⋮ menu's entries, top to bottom.
+  List<String> menuOrder(WidgetTester tester) {
+    final entries = [
+      for (final label in ['Edit video', 'Select all', 'Share'])
+        if (find.text(label).evaluate().isNotEmpty)
+          (label, tester.getTopLeft(find.text(label)).dy),
+    ]..sort((a, b) => a.$2.compareTo(b.$2));
+    return [for (final e in entries) e.$1];
+  }
+
   group('selection mode', () {
     testApp('long press starts selection', (tester) async {
       final goa = await newReel(tester, 'Goa');
@@ -203,10 +216,8 @@ void main() {
       expect(barButton('Remove from this reel'), findsOneWidget);
       expect(barButton('Close'), findsOneWidget);
       await openMenu(tester);
-      expect(find.text('Select all'), findsOneWidget);
-      // Edit video and Share are Phase 8.
-      expect(find.textContaining('Edit video'), findsNothing);
-      expect(find.text('Share'), findsNothing);
+      // Phase 8: Edit video, Select all and Share, in that order.
+      expect(menuOrder(tester), ['Edit video', 'Select all', 'Share']);
     });
 
     testApp('a tap toggles a tile and does not open the viewer', (
@@ -1175,6 +1186,199 @@ void main() {
       await tester.pumpAndSettle();
 
       await expectTtAccessible(tester);
+    });
+  });
+  group('Edit video and Share in the ⋮ menu (Phase 8)', () {
+    setUp(() => h.editors.allow({'shareWithChooser'}));
+
+    /// A reel with three clips shot in the reverse order of their ids: the
+    /// tile order is shooting order, the first tile is video 3.
+    Future<(Reel, List<int>)> reelWithThree(WidgetTester tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [
+          reelVideo(1, shot: DateTime.utc(2026, 10, 28, 12)),
+          reelVideo(2, shot: DateTime.utc(2026, 10, 28, 11)),
+          reelVideo(3, shot: DateTime.utc(2026, 10, 28, 10)),
+        ]),
+      );
+      return (goa, ids);
+    }
+
+    testApp('the menu lists Edit video, Select all and Share', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      await openMenu(tester);
+
+      expect(menuOrder(tester), ['Edit video', 'Select all', 'Share']);
+    });
+
+    testApp('during an editing session Edit video is hidden, the others '
+        'stay', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await real(
+        tester,
+        () => h.container
+            .read(editSessionsRepositoryProvider)
+            .startSession(goa.id, EditorApp.capcut, 'Goa'),
+      );
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      await openMenu(tester);
+
+      expect(menuOrder(tester), ['Select all', 'Share']);
+    });
+
+    testApp('Edit video waits in the menu until it is known that there is '
+        'no session', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(
+        tester,
+        goa.id,
+        overrides: [
+          reelInEditingSessionProvider(goa.id)
+              .overrideWith((ref) => const Stream<bool>.empty()),
+        ],
+      );
+      await select(tester, 1);
+
+      await openMenu(tester);
+
+      expect(menuOrder(tester), ['Select all', 'Share']);
+    });
+
+    testApp('Edit video opens the picking screen with the chosen clips '
+        'ticked, in shooting order, and ends choosing', (tester) async {
+      final (goa, ids) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      // Tiles are in shooting order: video 3, 2, 1. Choose the first and
+      // the last tile: videos 3 and 1.
+      await select(tester, 1);
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+      await openMenu(tester);
+
+      await tester.tap(find.text('Edit video'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(
+          editSelectRouteMarker('${goa.id}', '${ids[2]},${ids[0]}', null),
+        ),
+        findsOneWidget,
+      );
+      // Back on the reel's page nothing is chosen any more.
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+      expect(find.textContaining('selected'), findsNothing);
+      expect(tiles(tester).map((t) => t.selected), [null, null, null]);
+    });
+
+    testApp('Edit video with nothing chosen opens it with nothing ticked', (
+      tester,
+    ) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await openMenu(tester);
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+      await openMenu(tester);
+
+      await tester.tap(find.text('Edit video'));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(editSelectRouteMarker('${goa.id}', null, null)),
+        findsOneWidget,
+      );
+    });
+
+    testApp('Share opens the share menu with the chosen clips in shooting '
+        'order, and keeps the choice', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 2);
+      await openMenu(tester);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+      final (shared, chooserTitle) = h.editors.chooserShares.single;
+      expect([for (final c in shared) c.mediaStoreId], [3, 2]);
+      expect(chooserTitle, 'Share 2 videos');
+      expect(h.editors.sent, isEmpty);
+      expect(find.text('2 selected'), findsOneWidget);
+    });
+
+    testApp('a second Share while the first is opening opens no second '
+        'chooser', (tester) async {
+      h.editors.hold('shareWithChooser');
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      await openMenu(tester);
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.pumpAndSettle();
+      await openMenu(tester);
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.pumpAndSettle();
+      h.editors.release('shareWithChooser');
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+    });
+
+    testApp('Share of one clip says Share video', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+      await openMenu(tester);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares.single.$2, 'Share video');
+    });
+
+    testApp('Share with nothing chosen does nothing', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await openMenu(tester);
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+      await openMenu(tester);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, isEmpty);
+      expect(find.byType(TtSnack), findsNothing);
+    });
+
+    testApp('a chosen clip that goes missing is left out of the share', (
+      tester,
+    ) async {
+      final (goa, ids) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 2);
+      await openMenu(tester);
+      // Tiles are in shooting order: video 3 then video 2. Video 2 goes.
+      await real(tester, () => flagForTest(h, {ids[1]}, missing: true));
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      final (shared, chooserTitle) = h.editors.chooserShares.single;
+      expect([for (final c in shared) c.mediaStoreId], [3]);
+      expect(chooserTitle, 'Share video');
     });
   });
 }

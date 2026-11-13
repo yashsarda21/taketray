@@ -8,6 +8,7 @@ import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/zone_city.dart';
 import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
+import 'package:taketray/features/editors/views/open_share.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
 import 'package:taketray/features/reels/view_models/clip_viewer_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
@@ -43,7 +44,8 @@ const double _bottomMaxFraction = 0.6;
 ///   clip was shot (`ClipLocalTime.wallClock`, never converted) and " ·
 ///   {city} time" only when that is not the phone's zone; the mute switch.
 /// - **Bottom:** the scrubber, "In" with a tag for each reel the clip is in,
-///   and **Add to reel**, **Move** and **Remove**. Add and Move open the
+///   and **Add to reel**, **Move**, **Remove** and **Share** (Android's share
+///   menu for this clip, D-126). Add and Move open the
 ///   reel picker (D-88); Remove takes the clip out with "Removed from
 ///   {reel}. The video is still in your gallery." and **Undo**. Move and
 ///   Remove go on to the clip that takes its place, the one before it at the
@@ -77,6 +79,9 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
 
   /// A remove is running, so a second tap does nothing.
   bool _removing = false;
+
+  /// A share is opening, so a second tap on Share does nothing.
+  bool _sharing = false;
 
   /// The clip whose page the user is swiping away from, until the swipe
   /// settles. The pager moves the viewer to the next clip at the middle of
@@ -209,6 +214,11 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
               icon: Symbols.playlist_remove_rounded,
               label: l10n.viewerRemove,
               onPressed: () => unawaited(_remove(current.clip.id)),
+            ),
+            TtViewerAction(
+              icon: Symbols.share_rounded,
+              label: l10n.viewerShare,
+              onPressed: () => unawaited(_share(current.clip.id)),
             ),
           ],
         ),
@@ -436,6 +446,20 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
       _pickerOpen = false;
     }
     if (mounted) _leaveIfGone();
+  }
+
+  /// **Share**: opens Android's share menu for the clip showing, once however
+  /// fast the taps (D-126). The pager holds only clips that are on the phone;
+  /// one that went missing a moment ago is left out by the share, which then
+  /// says the clips are missing.
+  Future<void> _share(int clipId) async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      await openShare(context, ref, [clipId]);
+    } finally {
+      _sharing = false;
+    }
   }
 
   /// **Remove** (and **Remove from reel** under "can't be played"): takes the

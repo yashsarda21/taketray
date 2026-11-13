@@ -54,6 +54,17 @@ String reelRouteMarker(Object id) => 'the route of reel $id';
 String clipRouteMarker(Object reelId, Object clipId) =>
     'the viewer of clip $clipId of reel $reelId';
 
+/// What the clip picking route shows in a test that only has one screen: the
+/// reel id (`?reel=`), the preselected clips (`&clips=`, "null" for none)
+/// and the add flag (`&add=`, "null" for none).
+String editSelectRouteMarker(Object? reel, Object? clips, Object? add) =>
+    'the picking screen of reel $reel, clips $clips, add $add';
+
+/// What the VN space route shows in a test that only has one screen: the
+/// reel id, the editor and the clips, as in its location.
+String copySpaceRouteMarker(Object? reel, Object? editor, Object? clips) =>
+    'the space check of reel $reel for $editor, clips $clips';
+
 /// Pumps [screen] at `/` of a small router (with a `/to-tag` route that shows
 /// [toTagRouteMarker], a `/reels` route that shows [reelsRouteMarker] and a
 /// `/reels/<id>` route that shows [reelRouteMarker], and a
@@ -61,7 +72,10 @@ String clipRouteMarker(Object reelId, Object clipId) =>
 /// `/to-tag/play` route that shows [tagPlayerRouteMarker] and a
 /// `/to-tag/skipped` route that shows [skippedRouteMarker], and a
 /// `/settings/notifications-help` route that shows
-/// [notificationsHelpRouteMarker], and a `/add-videos` route that shows
+/// [notificationsHelpRouteMarker], and an `/edit` route that shows
+/// [editSelectRouteMarker] with an `/edit/space` route that shows
+/// [copySpaceRouteMarker] (Task 10 registers the real space screen), and a
+/// `/add-videos` route that shows
 /// [addVideosRouteMarker], or with [addVideos] the app's own Add videos
 /// screens)
 /// inside a `ProviderScope` with [overrides], the TakeTray
@@ -154,6 +168,36 @@ Future<ProviderContainer> pumpScreen(
             ),
           ),
         ),
+      GoRoute(
+        path: Routes.editSelect,
+        builder: (context, state) {
+          final query = state.uri.queryParameters;
+          return Scaffold(
+            body: Text(
+              editSelectRouteMarker(
+                query[Routes.editReelParameter],
+                query[Routes.editClipsParameter],
+                query[Routes.editAddParameter],
+              ),
+            ),
+          );
+        },
+      ),
+      GoRoute(
+        path: Routes.copySpace,
+        builder: (context, state) {
+          final query = state.uri.queryParameters;
+          return Scaffold(
+            body: Text(
+              copySpaceRouteMarker(
+                query[Routes.editReelParameter],
+                query[Routes.copyEditorParameter],
+                query[Routes.editClipsParameter],
+              ),
+            ),
+          );
+        },
+      ),
       GoRoute(
         path: Routes.notificationsHelp,
         builder: (context, state) =>

@@ -386,7 +386,42 @@ It ends with `All tests passed!`. Now open `lib/src/components/storage_bar.dart`
 
 ## 9. Picking clips, the editor sheet, CapCut/Edits and Share
 
-To be written in Task 9 (decision D-126).
+**What we built:** the first screens of the hand-off. On a reel's page an **Edit video** button opens a screen where you tick the clips you want ("Pick clips to edit"), with a bar at the bottom that says how many, how long and how big. **Continue** opens a sheet, "Edit 4 clips in…", with **CapCut**, **Instagram Edits**, **VN** and **Other app…**. CapCut and Edits get your original clips in one share, in the order you shot them. VN goes on to the copy screens (section 10). Other app… opens Android's share menu. The viewer also got a **Share** action, and the ⋮ menu of a reel's page, while you are choosing clips, now has **Edit video** and **Share**.
+
+**Why TakeTray needs it:** this is the moment a reel leaves TakeTray. Everything that can go wrong happens here: the editor is not installed, the share fails, a clip went missing a second ago, someone taps twice. The service from section 6 makes sure the writes are right; these screens decide what the user sees for each outcome.
+
+**Key ideas:**
+
+- **Where a failure is told.** A sheet is modal: a snack shown while it is open lies behind its dark curtain, where nobody sees it. So when sending to CapCut fails, the line "Couldn't open CapCut. Try again." appears **inside the sheet**, which stays open for another try. When the send works, the sheet and the picking screen close and the snack goes on the app's root messenger, where it outlives them:
+
+  ```dart
+  case SendResult.failed:
+    setState(() { _busy = false; _failed = editor; });
+  ```
+
+- **The sheet's own guard, because the service has one too.** `sendOriginals` is single-flight per *reel*: a second call while one runs gets the first call's answer, whatever editor it names. A tap on Edits a moment after a tap on CapCut would therefore be told "Sent to Edits" for CapCut's share. So the sheet keeps a `_busy` flag, every row ignores taps while it is set, and the sheet cannot be dragged away while a send runs (`PopScope(canPop: !_busy)`).
+- **A question that comes after the screen is gone.** After a send, 1.3 seconds later, TakeTray asks "Mark Goa as Ready to edit?", but only if the reel is still Collecting at that moment. By then the picking screen and the sheet are gone, so the wait cannot belong to them: it is a plain `Future.delayed`, and the dialog is shown from the root navigator's overlay. It takes the app's `ProviderContainer`, not a `WidgetRef`: Riverpod refuses a ref once its widget is disposed.
+- **Choosing, not guessing.** The picking screen's choice lives in a controller that follows the reel's clips: a clip that goes missing leaves the choice, a clip from another reel can never be ticked, and the ids handed on are sorted by when they were shot, never by id. Ids in the address (`/edit?reel=3&clips=8,2`) are cut down the same way, so a stale link cannot send a clip that is not there:
+
+  ```dart
+  _selected = (_seeded ? _selected : args.preselected.toSet())
+      .intersection(liveIds);
+  ```
+
+- **No editor is a wall.** An editor the phone lacks is greyed out with "Not installed". If asking the phone fails, all three look installed and the share decides, because a sheet that shows nothing is worse than one that answers "not installed" after a tap. That answer opens a dialog with **Open Play Store** and **Choose another**; the sheet stays, asks the phone again, and the row turns grey.
+- **The button hides while you are editing.** A reel can be in one editing session at a time (R1), so **Edit video** is gone from the button and the menu until Done editing. The button also waits until the database has said "no session", so it never flashes and vanishes.
+
+**Where it lives:** `app/lib/features/editors/views/` (`edit_select_screen.dart`, `editor_sheet.dart`, `editor_missing_dialog.dart`, `mark_status_dialog.dart`, `open_share.dart`, `editor_text.dart`), `app/lib/features/editors/view_models/` (`edit_select_controller.dart`, `editor_choices.dart`), `app/lib/router/` (`routes.dart`, `app_router.dart`), and the reel page and viewer in `app/lib/features/reels/views/`. Tests: `app/test/features/editors/` (`edit_select_screen_test.dart`, `editor_sheet_test.dart`, `mark_status_dialog_test.dart`, `edit_select_controller_test.dart`, and the macOS-only `editors_golden_test.dart`), `app/test/router/app_router_test.dart`, and the new groups in `reel_detail_screen_test.dart`, `reel_selection_screen_test.dart` and `clip_viewer_screen_test.dart`.
+
+**Try it yourself:** run the double-tap test, then break its guard:
+
+```bash
+cd app && ../tool/flutter test test/features/editors/editor_sheet_test.dart --plain-name "a tap on another editor"
+```
+
+It ends with `All tests passed!`. Now open `lib/features/editors/views/editor_sheet.dart`, find `_choose`, and delete the line `if (_busy) return;`. Run it again: it fails, because the second tap (on Instagram Edits) joins CapCut's send and the snack names the wrong editor. Put the line back. For the Ready to edit rule, change `reel.status != ReelStatus.collecting` in `_offerReady` to `false` and run `--plain-name "a published reel gets no offer"`: it fails because a Published reel is asked too.
+
+**Decisions:** D-126 (all of this section), with D-85 (a sheet tells its own failure inside), D-118 (R1 and R5), D-123 (the service) and D-125 (the bottom bar and the app icon) as background.
 
 ## 10. The VN copy screens
 

@@ -5,6 +5,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
@@ -166,6 +167,7 @@ GoRouter appRouter(Ref ref) {
         ],
       ),
       addVideosRoute(),
+      editSelectRoute(),
     ],
   );
   ref.onDispose(router.dispose);
@@ -217,4 +219,31 @@ GoRoute addVideosRoute() => GoRoute(
       ),
     ),
   ],
+);
+
+/// The clip picking screen (Phase 8, D-126) at [Routes.editSelect]: full
+/// screen, on the root navigator (a top-level route), above the tab shell and
+/// its nav pill, so Back returns to the reel's page that opened it. A
+/// location with no reel (`?reel=` not a positive whole number) is as unknown
+/// as one no route matches: Reels. The location is not logged (D-10). The VN
+/// copy screens (`/edit/space`, `/edit/copying`, `/edit/ready`) are top-level
+/// routes of their own, registered with it.
+GoRoute editSelectRoute() => GoRoute(
+  path: Routes.editSelect,
+  redirect: (context, state) {
+    if (_positive(state.uri.queryParameters[Routes.editReelParameter]) !=
+        null) {
+      return null;
+    }
+    _log.warning('Unknown location; showing Reels');
+    return Routes.reels;
+  },
+  builder: (context, state) {
+    final query = state.uri.queryParameters;
+    return EditSelectScreen(
+      reelId: _positive(query[Routes.editReelParameter])!,
+      clipIds: Routes.clipIdsIn(query[Routes.editClipsParameter]),
+      addMode: query[Routes.editAddParameter] == '1',
+    );
+  },
 );

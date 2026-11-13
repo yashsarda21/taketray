@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:taketray/domain/models/clip_ref.dart';
 import 'package:taketray/platform/editors_bridge.dart';
@@ -17,6 +19,9 @@ import 'package:taketray/platform/editors_bridge.dart';
 ///   fails), [sent] (package and clips of each `sendTo`), [chooserShares],
 ///   [openedApps], [openedListings], [deleteAsked] and [deleteRequested].
 /// - [failNext] makes the next call of a method throw a `PlatformException`.
+/// - [hold] makes the calls of `sendTo` or `shareWithChooser` wait, after
+///   they are noted in [calls], until [release]: a test can tap again while
+///   the first call is still running.
 /// - [allowed] limits the methods it answers (null: all, the default).
 ///   Another method is noted in [calls] and [unexpected] and throws a
 ///   `StateError`, so a stray bridge call in a test fails loudly; a test
@@ -44,6 +49,7 @@ class FakeEditorsBridge implements EditorsBridge {
   final List<List<CopyFileRef>> deleteRequested = [];
 
   final Map<String, int> _failures = {};
+  final Map<String, Completer<void>> _holds = {};
 
   /// The methods this fake answers; null for all.
   Set<String>? allowed;
@@ -67,6 +73,13 @@ class FakeEditorsBridge implements EditorsBridge {
   /// fails two calls.
   void failNext(String method) =>
       _failures[method] = (_failures[method] ?? 0) + 1;
+
+  /// Makes `sendTo` or `shareWithChooser` wait until [release] is called for
+  /// it.
+  void hold(String method) => _holds[method] = Completer<void>();
+
+  /// Ends the hold on [method]; the calls that wait go on.
+  void release(String method) => _holds.remove(method)?.complete();
 
   void _call(String method) {
     calls.add(method);
@@ -104,6 +117,7 @@ class FakeEditorsBridge implements EditorsBridge {
     List<ClipRef> clipsInOrder,
   ) async {
     _call('sendTo');
+    await _holds['sendTo']?.future;
     sent.add((packageName, List.of(clipsInOrder)));
     return sendResult;
   }
@@ -114,6 +128,7 @@ class FakeEditorsBridge implements EditorsBridge {
     String chooserTitle,
   ) async {
     _call('shareWithChooser');
+    await _holds['shareWithChooser']?.future;
     chooserShares.add((List.of(clipsInOrder), chooserTitle));
     return chooserResult;
   }

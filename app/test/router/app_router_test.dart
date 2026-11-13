@@ -8,8 +8,10 @@ import 'package:logging/logging.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
@@ -573,6 +575,176 @@ void main() {
 
     expect(find.byType(NotificationsHelpScreen), findsNothing);
     expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  group('Picking clips for an editor (Phase 8, D-126)', () {
+    test('the locations', () {
+      expect(Routes.editSelect, '/edit');
+      expect(Routes.editSelectOf(7), '/edit?reel=7');
+      expect(
+        Routes.editSelectOf(7, clipIds: [3, 5, 9]),
+        '/edit?reel=7&clips=3%2C5%2C9',
+      );
+      expect(Routes.editSelectOf(7, add: true), '/edit?reel=7&add=1');
+      final both = Uri.parse(Routes.editSelectOf(7, clipIds: [4], add: true));
+      expect(both.path, '/edit');
+      expect(both.queryParameters, {
+        Routes.editReelParameter: '7',
+        Routes.editClipsParameter: '4',
+        Routes.editAddParameter: '1',
+      });
+      expect(Routes.copySpace, '/edit/space');
+      final space = Uri.parse(Routes.copySpaceOf(7, EditorApp.vn, [8, 2]));
+      expect(space.path, '/edit/space');
+      expect(space.queryParameters, {
+        Routes.editReelParameter: '7',
+        Routes.copyEditorParameter: 'vn',
+        Routes.editClipsParameter: '8,2',
+      });
+      expect(Routes.copyProgress, '/edit/copying');
+      final progress = Uri.parse(Routes.copyProgressOf('7-1700000000000'));
+      expect(progress.path, '/edit/copying');
+      expect(progress.queryParameters, {
+        Routes.copyJobParameter: '7-1700000000000',
+      });
+      expect(Routes.copyReady, '/edit/ready');
+      final ready = Uri.parse(Routes.copyReadyOf(7));
+      expect(ready.path, '/edit/ready');
+      expect(ready.queryParameters, {Routes.editReelParameter: '7'});
+    });
+
+    test('clipIdsIn keeps the positive whole numbers once, in order', () {
+      expect(Routes.clipIdsIn('3,5,9'), [3, 5, 9]);
+      expect(Routes.clipIdsIn('9,3,9,5,3'), [9, 3, 5]);
+      expect(Routes.clipIdsIn('3,x,,0,-4,5.5,8'), [3, 8]);
+      expect(Routes.clipIdsIn(''), isEmpty);
+      expect(Routes.clipIdsIn(null), isEmpty);
+      expect(Routes.clipIdsIn('x'), isEmpty);
+    });
+
+    testApp('the picking screen is full screen, above the nav pill, with '
+        'the reel, the preselected clips and the add flag', (tester) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(
+        router.push(Routes.editSelectOf(goa.id, clipIds: [4, 5], add: true)),
+      );
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<EditSelectScreen>(
+        find.byType(EditSelectScreen),
+      );
+      expect(screen.reelId, goa.id);
+      expect(screen.clipIds, [4, 5]);
+      expect(screen.addMode, isTrue);
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+
+      router.pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(EditSelectScreen), findsNothing);
+    });
+
+    testApp('without clips or the flag: nothing preselected, no add mode', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push(Routes.editSelectOf(goa.id)));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<EditSelectScreen>(
+        find.byType(EditSelectScreen),
+      );
+      expect(screen.clipIds, isEmpty);
+      expect(screen.addMode, isFalse);
+    });
+
+    testApp('bad clip ids are left out, a flag other than 1 is no add mode', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      unawaited(router.push('/edit?reel=${goa.id}&clips=3,x,0,5&add=yes'));
+      await tester.pumpAndSettle();
+
+      final screen = tester.widget<EditSelectScreen>(
+        find.byType(EditSelectScreen),
+      );
+      expect(screen.clipIds, [3, 5]);
+      expect(screen.addMode, isFalse);
+    });
+
+    testApp('from a reel: Edit video, pick, Continue, CapCut leaves the '
+        'picking screen for the reel page under it, with the snack', (
+      tester,
+    ) async {
+      final h = reelHarness();
+      h.editors
+        ..allow({'apps', 'sendTo', 'copyFolderNames'})
+        ..installed = {EditorApp.capcut.packageName: true};
+      final goa = (await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      ))!;
+      await tester.runAsync(
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      );
+      final (_, router) = await _pumpApp(tester, harness: h);
+      router.go(Routes.reel(goa.id));
+      await _settle(tester);
+
+      await tester.tap(find.byType(TtFab));
+      await _settle(tester);
+      expect(find.byType(EditSelectScreen), findsOneWidget);
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+      await tester.tap(find.text('Select all'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Continue'));
+      await _settle(tester);
+      await tester.tap(find.text('CapCut'));
+      await _settle(tester);
+
+      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.text('Sent 2 clips to CapCut'), findsOneWidget);
+      expect(h.editors.sent, hasLength(1));
+      // Back on the reel's page: Back goes to Reels, not to the picker.
+      expect(router.canPop(), isTrue);
+      // The offer of Ready to edit comes 1.3 s later.
+      await tester.pump(const Duration(milliseconds: 1500));
+      await _settle(tester);
+      expect(find.text('Mark Goa as Ready to edit?'), findsOneWidget);
+    });
+
+    for (final location in [
+      '/edit',
+      '/edit?reel=',
+      '/edit?reel=0',
+      '/edit?reel=-3',
+      '/edit?reel=abc',
+      '/edit?clips=3,4',
+    ]) {
+      testApp('$location is unknown: Reels', (tester) async {
+        final (_, router) = await _pumpApp(tester);
+
+        router.go(location);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(EditSelectScreen), findsNothing);
+        expect(find.byType(ReelsScreen), findsOneWidget);
+      });
+    }
   });
 
   group('Add videos (Phase 7, D-114)', () {

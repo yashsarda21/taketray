@@ -1,3 +1,5 @@
+import 'package:taketray/domain/models/editor_app.dart';
+
 /// Top-level locations of the three tabs.
 abstract final class Routes {
   static const reels = '/reels';
@@ -88,5 +90,95 @@ abstract final class Routes {
       addVideosPathParameter: relativePath,
       if (reelId != null) addVideosReelParameter: '$reelId',
     },
+  ).toString();
+
+  /// Picking a reel's clips for an editor (Phase 8, D-126): full screen above
+  /// the tab shell, on the root navigator, opened from a reel's page. The reel
+  /// is in [editReelParameter] (`?reel=ID`); [editClipsParameter]
+  /// (`&clips=ID,ID,…`) preselects clips (the ⋮ menu's Edit video), and
+  /// [editAddParameter] (`&add=1`) is the add mode of Task 11. Back returns to
+  /// the reel's page.
+  static const editSelect = '/edit';
+
+  /// The name of the reel id in the picking screen's location, and in the
+  /// copy screens' locations.
+  static const editReelParameter = 'reel';
+
+  /// The name of the clip ids (comma separated, in shooting order) in the
+  /// picking screen's and the space screen's locations.
+  static const editClipsParameter = 'clips';
+
+  /// The name of the add-mode flag (`1`) in the picking screen's location.
+  static const editAddParameter = 'add';
+
+  /// The name of the editor (an [EditorApp] name) in the space screen's
+  /// location.
+  static const copyEditorParameter = 'editor';
+
+  /// The name of the copy job's id in the progress screen's location.
+  static const copyJobParameter = 'job';
+
+  /// The picking screen for reel [reelId], with [clipIds] ticked, or in add
+  /// mode when [add] is true.
+  static String editSelectOf(
+    int reelId, {
+    Iterable<int> clipIds = const [],
+    bool add = false,
+  }) => Uri(
+    path: editSelect,
+    queryParameters: {
+      editReelParameter: '$reelId',
+      if (clipIds.isNotEmpty) editClipsParameter: clipIds.join(','),
+      if (add) editAddParameter: '1',
+    },
+  ).toString();
+
+  /// The clip ids in [text] (`3,5,9`): the positive whole numbers, in the
+  /// order given, each once. Anything else in it is left out; none gives an
+  /// empty list.
+  static List<int> clipIdsIn(String? text) {
+    final ids = <int>[];
+    for (final part in (text ?? '').split(',')) {
+      final id = int.tryParse(part);
+      if (id != null && id > 0 && !ids.contains(id)) ids.add(id);
+    }
+    return ids;
+  }
+
+  /// The VN space check (Task 10 registers the screen), above the picking
+  /// screen.
+  static const copySpace = '/edit/space';
+
+  /// The space check of reel [reelId] for [editor], for [clipIds] in shooting
+  /// order.
+  static String copySpaceOf(
+    int reelId,
+    EditorApp editor,
+    Iterable<int> clipIds,
+  ) => Uri(
+    path: copySpace,
+    queryParameters: {
+      editReelParameter: '$reelId',
+      copyEditorParameter: editor.name,
+      editClipsParameter: clipIds.join(','),
+    },
+  ).toString();
+
+  /// The copy progress screen (Task 10).
+  static const copyProgress = '/edit/copying';
+
+  /// The progress of copy job [jobId].
+  static String copyProgressOf(String jobId) => Uri(
+    path: copyProgress,
+    queryParameters: {copyJobParameter: jobId},
+  ).toString();
+
+  /// The "ready for the editor" screen (Task 10).
+  static const copyReady = '/edit/ready';
+
+  /// The ready screen of reel [reelId].
+  static String copyReadyOf(int reelId) => Uri(
+    path: copyReady,
+    queryParameters: {editReelParameter: '$reelId'},
   ).toString();
 }

@@ -2137,5 +2137,241 @@
   "manualPickAllow": "Allow full access instead",
   "@manualPickAllow": {
     "description": "Button of the Manual mode sheet that asks for full video access, so Add videos can show folders."
+  },
+  "editSelectTitle": "Pick clips to edit",
+  "@editSelectTitle": {
+    "description": "Title of the screen where the clips to send to an editor are picked. The reel's name is under it."
+  },
+  "editSelectClear": "Clear",
+  "@editSelectClear": {
+    "description": "Top bar button on the clip picking screen that un-ticks every clip. It replaces Select all while every clip is ticked."
+  },
+  "editSelectInfo": "Clips go to your editor in the order you shot them.",
+  "@editSelectInfo": {
+    "description": "Note under the title of the clip picking screen."
+  },
+  "editBarNone": "No clips picked",
+  "@editBarNone": {
+    "description": "Bottom bar of the clip picking screen when nothing is ticked."
+  },
+  "editBarNoneHint": "Tap the clips you want to edit",
+  "@editBarNoneHint": {
+    "description": "Line under No clips picked."
+  },
+  "editBarPicked": "{count, plural, one{1 clip} other{{count} clips}} · {duration}",
+  "@editBarPicked": {
+    "description": "Bottom bar of the clip picking screen: how many clips are ticked and their total length, such as 12 clips · 1:18.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "editBarPickedDetail": "{size} · in shooting order",
+  "@editBarPickedDetail": {
+    "description": "Line under the ticked count on the clip picking screen: their total size, such as 900 MB, and that they go in the order they were shot.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editContinue": "Continue",
+  "@editContinue": {
+    "description": "Button of the clip picking screen that opens the editor sheet. It is off while no clip is ticked."
+  },
+  "sizeMegabytes": "{number}\u00a0MB",
+  "@sizeMegabytes": {
+    "description": "A size in decimal megabytes, with a no-break space before the unit so the number and the unit never part. {number} is a whole number such as 900.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeGigabytes": "{number}\u00a0GB",
+  "@sizeGigabytes": {
+    "description": "A size in decimal gigabytes, with a no-break space before the unit so the number and the unit never part. {number} is a number with at most one decimal such as 1.2.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "editorSheetTitle": "{count, plural, one{Edit 1 clip in…} other{Edit {count} clips in…}}",
+  "@editorSheetTitle": {
+    "description": "Title of the editor sheet: how many clips go to the editor chosen below.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editorSheetSubtitle": "{duration} · in shooting order",
+  "@editorSheetSubtitle": {
+    "description": "Line under the editor sheet title: the clips' total length, such as 1:18, and that they go in the order they were shot.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "editorNameCapcut": "CapCut",
+  "@editorNameCapcut": {
+    "description": "Name of the CapCut editor app."
+  },
+  "editorNameEdits": "Instagram Edits",
+  "@editorNameEdits": {
+    "description": "Name of the Instagram Edits editor app in the editor sheet, snacks and dialogs."
+  },
+  "editorNameVn": "VN",
+  "@editorNameVn": {
+    "description": "Name of the VN editor app."
+  },
+  "editorOther": "Other app…",
+  "@editorOther": {
+    "description": "Row of the editor sheet that opens Android's share menu."
+  },
+  "editorGetsOriginals": "Gets your original clips",
+  "@editorGetsOriginals": {
+    "description": "Line under CapCut and Instagram Edits in the editor sheet: they open the clips themselves, not copies."
+  },
+  "editorMakesCopies": "Makes temporary copies · {size}",
+  "@editorMakesCopies": {
+    "description": "Line under VN in the editor sheet: TakeTray copies the clips, and the size of the copies, such as 900 MB.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editorOtherSub": "Opens Android's share menu",
+  "@editorOtherSub": {
+    "description": "Line under Other app… in the editor sheet."
+  },
+  "editorNotInstalled": "Not installed",
+  "@editorNotInstalled": {
+    "description": "Line under an editor that is not on the phone, in the editor sheet."
+  },
+  "editorNotInstalledSemantics": "{editor}, not installed",
+  "@editorNotInstalledSemantics": {
+    "description": "Screen-reader label of a greyed-out editor row in the editor sheet.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorGreyedNote": "Editors you don't have are greyed out.",
+  "@editorGreyedNote": {
+    "description": "Note at the bottom of the editor sheet when an editor is not installed."
+  },
+  "editorSentSnack": "{count, plural, one{Sent 1 clip to {editor}} other{Sent {count} clips to {editor}}}",
+  "@editorSentSnack": {
+    "description": "Snack after the clips were handed to CapCut or Instagram Edits.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorOpenFailed": "Couldn't open {editor}. Try again.",
+  "@editorOpenFailed": {
+    "description": "Line in the editor sheet when CapCut or Instagram Edits did not open with the clips.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingTitle": "{editor} isn't installed",
+  "@editorMissingTitle": {
+    "description": "Title of the dialog shown when the phone has no such editor app.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingBody": "Install {editor} from the Play Store, or choose another editor.",
+  "@editorMissingBody": {
+    "description": "Body of the dialog shown when the phone has no such editor app.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingChoose": "Choose another",
+  "@editorMissingChoose": {
+    "description": "Button of the editor-missing dialog that goes back to the editor sheet."
+  },
+  "editorMissingStore": "Open Play Store",
+  "@editorMissingStore": {
+    "description": "Button of the editor-missing dialog that opens the editor's Play Store page."
+  },
+  "markStatusTitle": "Mark {name} as {status}?",
+  "@markStatusTitle": {
+    "description": "Title of the dialog that offers a new status for a reel. The status is Ready to edit or Published.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "markStatusReadyBody": "Helps you find it under Ready to edit. You can change this any time.",
+  "@markStatusReadyBody": {
+    "description": "Body of the dialog that offers to mark a reel Ready to edit."
+  },
+  "markStatusPublishedBody": "It moves to the Published filter. You can change this any time.",
+  "@markStatusPublishedBody": {
+    "description": "Body of the dialog that offers to mark a reel Published."
+  },
+  "markStatusNotNow": "Not now",
+  "@markStatusNotNow": {
+    "description": "Button of the mark-status dialog that changes nothing."
+  },
+  "markStatusConfirm": "Mark as {status}",
+  "@markStatusConfirm": {
+    "description": "Button of the mark-status dialog that sets the status. The status is Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditVideo": "Edit video",
+  "@reelEditVideo": {
+    "description": "Button on a reel's page, and its three-dot menu entry, that opens the clip picking screen for an editor."
+  },
+  "reelMenuShare": "Share",
+  "@reelMenuShare": {
+    "description": "Entry in the three-dot menu of a reel's page while clips are chosen: shares them through Android's share menu."
+  },
+  "viewerShare": "Share",
+  "@viewerShare": {
+    "description": "Action of the clip viewer that shares the clip through Android's share menu."
+  },
+  "shareChooserTitle": "{count, plural, one{Share video} other{Share {count} videos}}",
+  "@shareChooserTitle": {
+    "description": "Title of Android's share menu when clips are shared.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shareClipsMissing": "These clips are missing from your phone.",
+  "@shareClipsMissing": {
+    "description": "Snack when a share found no clip left on the phone."
   }
 }
