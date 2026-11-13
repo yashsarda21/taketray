@@ -86,6 +86,8 @@ class ShareIntentsTest {
         assertNull(ShareIntents.uriOf(picked("")))
         assertNull("a file address would crash the share", ShareIntents.uriOf(picked("file:///sdcard/a.mp4")))
         assertNull(ShareIntents.uriOf(picked("not a uri")))
+        assertNull("a content address with no authority", ShareIntents.uriOf(picked("content:///x")))
+        assertNull("a content address with an empty authority", ShareIntents.uriOf(picked("content://")))
     }
 
     // ---------------------------------------------------------------- send

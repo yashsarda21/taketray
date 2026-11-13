@@ -36,6 +36,29 @@ class CopyFolderPathTest {
     }
 
     @Test
+    fun `a Unicode lookalike never folds onto an ASCII letter`() {
+        // Kelvin sign U+212A lowercases to k; dotless i U+0131 uppercases to I; long s U+017F uppercases to S.
+        assertFalse(CopyFolderPath.isInFolder("Movies/Ta\u212AeTray/Goa/", "Goa"))
+        assertFalse(CopyFolderPath.isInFolder("Movies/TakeTray/Goa tr\u0131p/", "Goa trip"))
+        assertFalse(CopyFolderPath.isInFolder("Movies/TakeTray/Goa trip/", "Goa tr\u0131p"))
+        assertFalse(CopyFolderPath.isInFolder("Movies/TakeTray/\u017Fouth/", "south"))
+        assertFalse(CopyFolderPath.isInFolder("Movies/TakeTray/\u212Aerala/", "Kerala"))
+        assertFalse(CopyFolderPath.isInFolder("MoV\u0131es/TakeTray/Goa/", "Goa"))
+        // The real thing, in any ASCII case, still matches.
+        assertTrue(CopyFolderPath.isInFolder("MOVIES/TAKETRAY/KERALA/", "Kerala"))
+    }
+
+    @Test
+    fun `startsWithRoot is ASCII-case-insensitive and never folds lookalikes`() {
+        assertTrue(CopyFolderPath.startsWithRoot("Movies/TakeTray/Goa/"))
+        assertTrue(CopyFolderPath.startsWithRoot("movies/TAKETRAY/Goa/"))
+        assertFalse(CopyFolderPath.startsWithRoot("Movies/Ta\u212AeTray/Goa/"))
+        assertFalse(CopyFolderPath.startsWithRoot("Movies/TakeTray Test/"))
+        assertFalse(CopyFolderPath.startsWithRoot("Movies/TakeTray"))
+        assertFalse(CopyFolderPath.startsWithRoot(""))
+    }
+
+    @Test
     fun `isOwn is exact`() {
         assertTrue(CopyFolderPath.isOwn("app.taketray", "app.taketray"))
         assertFalse(CopyFolderPath.isOwn("app.taketray.dev", "app.taketray"))

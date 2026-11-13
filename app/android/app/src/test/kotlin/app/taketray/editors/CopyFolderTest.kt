@@ -174,6 +174,60 @@ class CopyFolderTest {
     }
 
     @Test
+    fun `a row that moves to another folder between the check and the delete is not deleted`() {
+        own(1)
+        own(2)
+        CopyFolderProvider.beforeDelete = { id -> if (id == 1L) CopyFolderProvider.move(1, "DCIM/Camera/") }
+
+        val report = folder.deleteCopies(listOf(ref(1), ref(2)))
+
+        assertEquals(listOf(2L), report.deleted)
+        assertEquals(listOf(1L), report.gone)
+        assertTrue(report.refused.isEmpty() && report.failed.isEmpty())
+        assertEquals(listOf(1L), CopyFolderProvider.ids())
+    }
+
+    @Test
+    fun `a row whose owner changes between the check and the delete is not deleted`() {
+        own(1)
+        own(2)
+        CopyFolderProvider.beforeDelete = { id -> if (id == 1L) CopyFolderProvider.setOwner(1, other) }
+
+        val report = folder.deleteCopies(listOf(ref(1), ref(2)))
+
+        assertEquals(listOf(2L), report.deleted)
+        assertEquals(listOf(1L), report.gone)
+        assertTrue(report.refused.isEmpty() && report.failed.isEmpty())
+        assertEquals(listOf(1L), CopyFolderProvider.ids())
+    }
+
+    @Test
+    fun `a row whose id is reused by another app's video in another folder is not deleted`() {
+        own(1)
+        CopyFolderProvider.beforeDelete = { id ->
+            CopyFolderProvider.remove(id)
+            CopyFolderProvider.add(id, "DCIM/Camera/", "2026-10-12_14-32-05.mp4", other)
+        }
+
+        val report = folder.deleteCopies(listOf(ref(1)))
+
+        assertTrue(report.deleted.isEmpty())
+        assertEquals(listOf(1L), report.gone)
+        assertEquals(listOf(1L), CopyFolderProvider.ids())
+    }
+
+    @Test
+    fun `a lookalike folder row is refused and untouched`() {
+        own(1, path = "Movies/Ta\u212AeTray/Goa/") // Kelvin sign for the k
+        own(2, path = "Movies/TakeTray/Goa tr\u0131p/", name = "a.mp4") // dotless i
+        val report = folder.deleteCopies(listOf(ref(1), ref(2, folderName = "Goa trip", name = "a.mp4")))
+        assertEquals(listOf(1L, 2L), report.refused)
+        assertTrue(report.deleted.isEmpty())
+        assertTrue(CopyFolderProvider.deletes.isEmpty())
+        assertEquals(listOf(1L, 2L), CopyFolderProvider.ids())
+    }
+
+    @Test
     fun `the delete names the row by its item URI on the primary volume`() {
         own(7)
         folder.deleteCopies(listOf(ref(7)))

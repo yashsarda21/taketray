@@ -15,7 +15,7 @@ import java.io.IOException
  * and **the guard** every delete goes through (D-121).
  *
  * A row is deleted only when [allowsDelete] says yes: its RELATIVE_PATH is
- * exactly `Movies/TakeTray/<folder>/` ([CopyFolderPath.isInFolder], any case,
+ * exactly `Movies/TakeTray/<folder>/` ([CopyFolderPath.isInFolder], any ASCII case, no Unicode lookalike,
  * never a deeper folder or `Movies/TakeTray Test/`), its DISPLAY_NAME is the
  * recorded file name (exactly), and its OWNER_PACKAGE_NAME is this app
  * ([CopyFolderPath.isOwn]; the release app and the debug app are different
@@ -250,9 +250,9 @@ class CopyFolder(
         private fun plainSegment(folder: String): Boolean =
             folder.isNotEmpty() && folder != "." && folder != ".." && '/' !in folder && '\u0000' !in folder
 
-        /** What follows the root in [path] (ignoring case), or null when [path] is not under it. */
+        /** What follows the root in [path] (ignoring ASCII case), or null when [path] is not under it. */
         private fun folderOf(path: String): String? =
-            if (path.startsWith(CopyFolderPath.ROOT, ignoreCase = true)) {
+            if (CopyFolderPath.startsWithRoot(path)) {
                 path.substring(CopyFolderPath.ROOT.length).takeIf { it.isNotEmpty() }
             } else {
                 null

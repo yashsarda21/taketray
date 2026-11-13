@@ -223,6 +223,22 @@ class CopyFolderProvider : ContentProvider() {
             db.execSQL("UPDATE $TABLE SET ${MediaColumns.DISPLAY_NAME} = ? WHERE ${MediaColumns._ID} = ?", arrayOf<Any?>(name, id))
         }
 
+        /** Changes a row's folder in place (a moved file, or an id reused). */
+        fun move(
+            id: Long,
+            path: String,
+        ) {
+            db.execSQL("UPDATE $TABLE SET ${MediaColumns.RELATIVE_PATH} = ? WHERE ${MediaColumns._ID} = ?", arrayOf<Any?>(path, id))
+        }
+
+        /** Changes a row's owner in place (an id reused by another app). */
+        fun setOwner(
+            id: Long,
+            owner: String?,
+        ) {
+            db.execSQL("UPDATE $TABLE SET ${MediaColumns.OWNER_PACKAGE_NAME} = ? WHERE ${MediaColumns._ID} = ?", arrayOf<Any?>(owner, id))
+        }
+
         fun remove(id: Long) {
             db.execSQL("DELETE FROM $TABLE WHERE ${MediaColumns._ID} = ?", arrayOf<Any?>(id))
         }
