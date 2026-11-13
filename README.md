@@ -37,8 +37,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 4 | Reels screens | ✅ Done |
 | 5 | Tagging (To tag and the tag player) | ✅ Done |
 | 6 | Background detection and notifications | ✅ Done |
-| 7 | Adding friends' videos | Next |
-| 8 | Sending clips to editors (CapCut, Edits, VN) | Planned |
+| 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
+| 8 | Sending clips to editors (CapCut, Edits, VN) | Next |
 | 9 | Reference reels | Planned |
 | 10 | Onboarding, settings, error log | Planned |
 | 11 | Release prep for the Play Store | Planned |
@@ -163,6 +163,23 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Still offline and light**: only two permissions added (notifications, and starting after a restart). No exact alarms, no always-running service, no internet.
 - **Phone tests** on the S24: the new-clips notification opening To tag, turning off removing it, the evening reminder's count, the real evening alarm, Still shooting? Turn off adding only pre-tap clips, the dialog, and one waiting check after bursts of new videos. Every on-phone test file passes. The physical buttons in the shade and opening from a notification are checked by hand ([docs/dev-setup.md](docs/dev-setup.md)).
 - **Learning guide**: [docs/learn/phase-6-background.md](docs/learn/phase-6-background.md) explains the whole phase in plain English, with the real code.
+
+### Phase 7: Add videos and Manual mode
+- **Add videos**: a button on To tag and on a reel's page for clips TakeTray did not see you shoot (a friend's WhatsApp or Quick Share video, a clip from an action camera or an SD card):
+  - a list of your phone's video folders, with how many videos each holds;
+  - open a folder to see its videos as a grid (newest first; it loads a page at a time, so a folder with thousands of videos stays smooth), tick the ones you want and tap **Add**;
+  - clips already in To tag or in a reel are marked ("In To tag", "In this reel"), and tapping one says "Already added";
+  - WhatsApp's **Sent** folder is never shown, because it holds copies of your own videos;
+  - **Undo** takes back only what that add made, and still works after you leave the screen;
+  - a one-time tip, "Keep friends' clips sharp", suggests asking friends to send videos as HD or by Quick Share to keep full quality.
+- **Manual mode**: when you share only some of your videos with TakeTray, or none, **Add videos** opens a sheet that opens Android's own photo picker. You choose videos there and TakeTray adds them, with the same message and **Undo**. **Allow full access instead** asks Android for full access, so next time you get the folder list. What you pick is kept even if you close the sheet while the picker is open.
+- **Picked videos stay yours to keep**: they keep working after you close the app or restart the phone, they get a picture like any other clip, and TakeTray gives back Android's saved permission for a picked video only when no clip uses it any more.
+- **If a picked video can't be read** (deleted in the gallery, or an SD card or USB drive taken out), its tile is shown as missing, never deleted for you. In To tag, in Skipped and in a reel, a missing tile has **Remove**, with **Undo**, and it comes back by itself if the video can be read again.
+- **Clear messages**: "3 videos added to To tag", "Already added", or "Couldn't add 2 videos." when some could not be kept. A reel's page now shows the same banner as To tag when TakeTray can't see your videos, so a screen closing because access was lost always says why.
+- **Phone tests** on the S24: adding from a folder to To tag, with the marks, "Already added" and Undo; adding to a reel; and the Sent folder staying hidden. All three passed the first time, and a deliberately wrong expectation failed as it should. Every other on-phone test file passes, and the background tests, where one flow timed out while the phone was warm (the heat hold from Phase 6), passed 7 of 7 when re-run on a cool phone (thermal status 0, 2026-11-13). The photo picker itself can't be used by a test, so the owner checked it by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 7 check, 14 steps): all behaved as written.
+- **Quality gates**: the whole `tool/check` suite is now about 3,040 tests, and the release check still confirms no internet permission and no test-only code.
+- **Still to come**: friends' and other devices' folders are added by hand only; watching them automatically belongs to the Watched folders screen in Phase 10.
+- **Learning guide**: [docs/learn/phase-7-add-videos.md](docs/learn/phase-7-add-videos.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 

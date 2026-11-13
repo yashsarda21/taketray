@@ -92,6 +92,20 @@ class TestMediaHandlerTest {
     }
 
     @Test
+    fun `insertVideo puts the video in the Sent sub-folder only when inWhatsAppSent is true`() {
+        val args = mapOf("bytes" to byteArrayOf(1, 2, 3), "displayName" to "a.mp4")
+        val plain = call("insertVideo", args)
+        val sent = call("insertVideo", args + ("inWhatsAppSent" to true))
+        val off = call("insertVideo", args + ("inWhatsAppSent" to false))
+
+        @Suppress("UNCHECKED_CAST")
+        fun pathOf(reply: Reply) = FakeVideoStore.rows.getValue((reply.success as Map<String, Any?>)["mediaStoreId"] as Long).path
+        assertEquals("Movies/TakeTray Test/", pathOf(plain))
+        assertEquals("Movies/TakeTray Test/WhatsApp/Sent/", pathOf(sent))
+        assertEquals("Movies/TakeTray Test/", pathOf(off))
+    }
+
+    @Test
     fun `deleteVideo accepts an int or a long id and answers true, then false`() {
         val made = TestMedia(context.contentResolver, own).insertVideo(byteArrayOf(1), "b.mp4")
 

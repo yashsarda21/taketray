@@ -1,12 +1,18 @@
 # Learning guide: Phase 7, adding videos by hand
 
-This guide explains how TakeTray adds videos you pick yourself: friends' WhatsApp and Quick Share videos, clips from any shooting device, and, when TakeTray can't see all your videos, Android's photo picker (Manual mode).
+This guide explains how TakeTray adds videos you pick yourself: friends' WhatsApp and Quick Share videos, clips from any shooting device, and, when TakeTray can't see all your videos, Android's photo picker (Manual mode). Until Phase 6, a clip reached TakeTray only by being shot while Shooting mode was on (or by Add earlier videos, by date). Phase 7 adds the other way in: you choose the video.
 
 Every snippet is real code from this repository. You don't need to know Flutter or Android well to follow it; basic programming knowledge is enough.
 
 ## How to read this guide
 
-- **Order.** The sections follow the order the phase was built. Step 1 was the plan and decision D-111 (the owner's rulings), so it has no section here.
+- **The big picture first.**
+  - Android's media library is asked for one folder's videos a page at a time (2), and Android's own photo picker gives back videos TakeTray cannot list itself (2).
+  - An add puts a video in To tag or in a reel in one step, with an Undo that takes back only what that add made (3).
+  - A picked video has an address instead of a media-library number, so it needs its own pictures, its own check that it still exists and its own tidy-up of the permissions Android keeps for it (4).
+  - Two screens use all of this: the folder browser (5) and Manual mode (6).
+  - The proof on the phone is split in two: what a test can do on the S24, and what only the owner's hands can (7).
+- **Order.** The sections follow the order the phase was built. Step 1 was the plan and decision D-111 (the owner's rulings), so it has no section here. The last section is the phone.
 - **Names you will meet.** `D-xx` is an entry in `docs/decisions.md`; this phase's start at D-111.
 - **Commands.** Run them from the repository root, through the wrappers in `tool/`.
 - **Every section has the same shape:** **what we built**, **why TakeTray needs it**, **key ideas** (with short snippets of real code), **where it lives**, **try it yourself** and **decisions**.
@@ -18,7 +24,7 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 4. [Picked clips get pictures, verification and a grant clean-up](#4-picked-clips-get-pictures-verification-and-a-grant-clean-up)
 5. [The folder browser](#5-the-folder-browser)
 6. [Manual mode](#6-manual-mode)
-7. On the S24 (Task 7)
+7. [On the S24](#7-on-the-s24)
 
 ## 2. The bridge: folder pages and the photo picker
 
@@ -341,3 +347,38 @@ It ends with `All tests passed!`. Now open `app/lib/features/add_videos/views/ma
 
 **Decisions:** D-115 (all of this section), with D-111 (the owner's rulings), D-112 (the photo picker and the clean-up), D-113 (what "not kept" means), D-114 (the folder list and who closes when), D-57 (a clip's identity) and D-86 (one tap opens one page) as background.
 
+## 7. On the S24
+
+**What we built:** the proof on a real phone, in two halves. The first is three flows in `app/patrol_test/add_videos_test.dart`, run by Patrol on the S24 in the real app. The second is fourteen checks the owner did by hand, written in `docs/dev-setup.md` under "Phase 7 check". Between them they cover what a computer's pretend Android (Robolectric) cannot.
+
+**Why TakeTray needs it:** the new code leans on things only a phone can answer: whether Android's folder list and picker really hand over what we expect, whether a picked video's permission survives the app being closed and the phone restarting, and whether a video behaves when the drive it was on is pulled out.
+
+**Key ideas:**
+
+- **What Patrol does here.** Each flow starts from cleared data and only ever opens the folder `Movies/TakeTray Test/`, by its exact name; it prints no other folder name.
+  1. Three test videos go in. **Add videos**, open the test folder, pick two, **Add 2**. To tag has the two; the third has no mark and the two show "In To tag". Tapping a marked tile says "Already added". **Undo** removes the two, and they can be added again.
+  2. A new reel, **Add videos**, pick one. It is in the reel with a picture, and not in To tag.
+  3. A test video is put in `Movies/TakeTray Test/WhatsApp/Sent/`. The folder list has no row for it, because WhatsApp's Sent folder holds copies of your own videos (D-113). The test deletes it afterwards.
+- **What Patrol cannot do.** It cannot use the photo picker: the picker belongs to Android, shows *your* photos and videos, and looks different on each Android version. A test must never read or tap your own videos. So the picker, and everything that depends on a real picked video, is a **hand check**. A test also cannot restart the phone, pull a drive out, or delete a video in the gallery app. Those are hand checks too. The fourteen checks are: a real WhatsApp video added to To tag and to a reel; no Sent folder; a clip from another device or an SD card; Manual mode with the picker, a picked clip surviving closing the app and a restart; pictures for picked clips; a picked video deleted in the gallery (a missing tile with **Remove** and **Undo**); the picker interrupted; a big folder; a drive pulled with its grid open; the limit of 512 saved picker permissions; a cloud-only video; the date of a picked WhatsApp video; and a missing clip in the tag player. The owner did all of them on 2026-11-13 and reported "lgtm".
+- **A test that cannot fail proves nothing.** After the first green run, one expectation on the fastest flow was changed on purpose (`expect(_count(sentRow), 0, ...)` became `1`), the flow was run on its own, and it failed at that line, as it should. Then the change was put back. Patrol has no way to pick one test by name, so the flow was given a tag for that run (`--tags deliberate`) and the tag was removed again.
+- **The results.** `add_videos_test` passed 3 of 3 the first time, with no fixing. Every other Patrol file passed too (`app_shell`, `database`, `media_access` with its one known skip, `media_scan`, `reels`, `tagging`), and `tool/check_release_permissions` printed `RELEASE PERMISSIONS OK`. `background_test` passed 6 of 7.
+- **The heat, again.** The seventh background flow, "new clips notification appears and opens To tag", timed out after 420 seconds. The phone said thermal status 2 (moderate), the same hold as in Phase 6 (D-109): a warm phone makes Android's job scheduler wait before it runs our job, however long we wait. A timeout would blame the app, so the test was not touched and no wait was made longer. The right next step was to let the phone cool to status 0 and run `background_test.dart` alone. That was done on 2026-11-13 (thermal status 0 before and after): **all 7 flows passed** (10m39s in all, the notification flow taking 318 s of it, the five quiet minutes plus the wait for the job). So the timeout was the heat, not the code. The result is in D-117.
+- **After every run**, the debug app is rebuilt and installed again and its data is cleared (`flutter build apk --debug`, `adb install -r`, `pm clear app.taketray.dev`). The real TakeTray (`app.taketray`) is never touched.
+
+**Where it lives:** `app/patrol_test/add_videos_test.dart`, the helpers in `app/patrol_test/support/` (including the test media hook that adds a video to `WhatsApp/Sent/`), and the hand checks and the run commands in `docs/dev-setup.md` ("Phase 7 check" and "Running `add_videos_test.dart`").
+
+**Try it yourself:** on a computer, check the helpers that the flows use. From `app/`:
+
+```bash
+../tool/flutter test test/patrol_support
+```
+
+It ends with `All tests passed!`. To see the flows themselves you need the S24, cool (thermal status 0 or 1, see `docs/dev-setup.md`) and connected:
+
+```bash
+tool/patrol test -d <your device> -t patrol_test/add_videos_test.dart
+```
+
+Then change `expect(_count(sentRow), 0, ...)` to `1` in the Sent flow and run it again: it fails at that line. Put it back.
+
+**Decisions:** D-117 (all of this section), with D-100 (Patrol on the S24), D-109 (the heat and the shade), D-113 (the Sent folder) and D-116 (a picked clip that cannot be read is flagged, not removed) as background.

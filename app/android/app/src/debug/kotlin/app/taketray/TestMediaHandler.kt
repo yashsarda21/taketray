@@ -16,12 +16,15 @@ import kotlinx.coroutines.withContext
  * put videos into the phone's media library and take them out again (D-77).
  * Debug builds only (this file is in `src/debug`).
  *
- * - `insertVideo({bytes, displayName})` gives `{volumeName, mediaStoreId}`.
+ * - `insertVideo({bytes, displayName, inWhatsAppSent})` gives
+ *   `{volumeName, mediaStoreId}`; `inWhatsAppSent` (optional, false) puts the
+ *   video in the test folder's `WhatsApp/Sent/` sub-folder instead.
  * - `deleteVideo({mediaStoreId})` gives true (deleted) or false (no such row).
  *   A row that is not one of this app's test videos is refused with the error
  *   code `refused`, and nothing is deleted.
  * - `deleteLeftovers()` gives `{deleted, refused}`: it deletes what an earlier,
- *   crashed run left in the test folder (only rows this app owns).
+ *   crashed run left in the test folder and its `WhatsApp/Sent/` sub-folder
+ *   (only rows this app owns).
  *
  * The I/O runs on [io]; the reply is sent from [scope] (the main thread in the
  * app). Errors reach Dart as `native-error` with the method and the exception's
@@ -44,7 +47,8 @@ class TestMediaHandler(
                         val bytes = call.argument<Any>("bytes") as? ByteArray
                         val name = call.argument<Any>("displayName") as? String
                         if (bytes == null || name == null) return@launch badArguments(method, result)
-                        val made = withContext(io) { media.insertVideo(bytes, name) }
+                        val inSent = call.argument<Any>("inWhatsAppSent") as? Boolean ?: false
+                        val made = withContext(io) { media.insertVideo(bytes, name, inSent) }
                         result.success(mapOf("volumeName" to made.volumeName, "mediaStoreId" to made.mediaStoreId))
                     }
                     "deleteVideo" -> {
