@@ -7,6 +7,8 @@ import app.taketray.background.BackgroundFlutterApi
 import app.taketray.background.BackgroundHostApi
 import app.taketray.background.BackgroundHostApiImpl
 import app.taketray.background.LaunchActionRelay
+import app.taketray.editors.EditorsHostApi
+import app.taketray.editors.EditorsHostApiImpl
 import app.taketray.media.MediaHostApi
 import app.taketray.media.MediaHostApiImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -18,6 +20,9 @@ class MainActivity : FlutterActivity() {
 
     /** The background bridge of the current engine (D-103); null before configure and after clean-up. */
     private var background: BackgroundHostApiImpl? = null
+
+    /** The editors bridge of the current engine (D-121); null before configure and after clean-up. */
+    private var editors: EditorsHostApiImpl? = null
 
     /**
      * True when Android re-created this activity from saved state (after the
@@ -47,6 +52,11 @@ class MainActivity : FlutterActivity() {
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)
 
+        // The editors bridge (D-121): shares, the store listing and the copy folders behind their guard.
+        val ed = EditorsHostApiImpl(this)
+        editors = ed
+        EditorsHostApi.setUp(messenger, ed)
+
         DebugHooks.register(flutterEngine, applicationContext)
     }
 
@@ -54,6 +64,9 @@ class MainActivity : FlutterActivity() {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         MediaHostApi.setUp(messenger, null)
         BackgroundHostApi.setUp(messenger, null)
+        EditorsHostApi.setUp(messenger, null)
+        editors?.onHostGone()
+        editors = null
         media?.onHostGone()
         media = null
         background?.let {
@@ -89,7 +102,11 @@ class MainActivity : FlutterActivity() {
         background?.onPermissionResult(requestCode)
     }
 
-    /** The photo picker's answer (D-112): the media bridge takes it, or drops it when no call waits (the process died). */
+    /**
+     * The photo picker's answer (D-112) and the copies' delete consent (D-121):
+     * each bridge takes only its own request code, or drops it when no call
+     * waits (the process died).
+     */
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(
         requestCode: Int,
@@ -98,6 +115,7 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
         media?.onActivityResult(requestCode, resultCode, data)
+        editors?.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {
@@ -106,6 +124,7 @@ class MainActivity : FlutterActivity() {
         // these bridges belong to is destroyed with the activity.
         media?.onHostGone()
         background?.onHostGone()
+        editors?.onHostGone()
         super.onDestroy()
     }
 }
