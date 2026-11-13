@@ -1,7 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/shade_actions.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/edit_session.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
 
@@ -19,6 +26,8 @@ late MediaHarness h;
 late FakeBackgroundBridge native;
 late ShadeActions actions;
 late BackgroundSync sync;
+late EditSessionsRepository edits;
+late ReelsRepository reels;
 
 MediaVideo _video(int id, int generation) =>
     fakeVideo(id: id, generation: generation, sizeBytes: 1000000 + id);
@@ -30,6 +39,7 @@ BackgroundSync _newSync() {
     h.settings,
     h.clips,
     actions,
+    edits,
   );
   addTearDown(made.dispose);
   return made;
@@ -46,6 +56,8 @@ void main() {
     h = MediaHarness();
     native = h.background;
     actions = ShadeActions(h.scanner);
+    edits = EditSessionsRepository(h.db, h.clock);
+    reels = ReelsRepository(h.db, h.clock);
     sync = _newSync();
     h.bridge.put([_video(1, 10)]);
   });
@@ -550,4 +562,263 @@ void main() {
       expect((await h.phoneState.loadShooting()).stillAnswered, isTrue);
     });
   });
+  group('copies reminders (Phase 8, D-124)', () {
+    EditCopy copy(
+      int reelId,
+      int clipId, {
+      required DateTime at,
+      int bytes = 1000,
+    }) => EditCopy(
+      reelId: reelId,
+      clipId: clipId,
+      copyMediaStoreId: 900 + clipId,
+      fileName: 'copy$clipId.mp4',
+      sizeBytes: bytes,
+      copiedAt: at,
+    );
+
+    Future<int> reelWithSession(
+      String name,
+      EditorApp editor, {
+      String? folder,
+    }) async {
+      final reel = await reels.create(name);
+      await edits.startSession(reel.id, editor, folder ?? name);
+      return reel.id;
+    }
+
+    List<CopiesReminder> reminders() => native.state!.copiesReminders;
+
+    test('one per session with copies: the reel, its name now, the total size '
+        'and the newest copy', () async {
+      final wedding = await reelWithSession('Wedding', EditorApp.vn);
+      final trip = await reelWithSession('Trip', EditorApp.vn);
+      await edits.recordCopies([
+        copy(wedding, 1, at: DateTime.utc(2026, 6, 1, 8), bytes: 1500),
+        copy(wedding, 2, at: DateTime.utc(2026, 6, 1, 9, 30), bytes: 2500),
+        copy(trip, 3, at: DateTime.utc(2026, 5, 30, 7), bytes: 700),
+      ]);
+
+      sync.start();
+      await settle();
+
+      expect(reminders(), [
+        CopiesReminder(
+          reelId: wedding,
+          reelName: 'Wedding',
+          copyBytes: 4000,
+          lastCopiedAt: DateTime.utc(2026, 6, 1, 9, 30),
+        ),
+        CopiesReminder(
+          reelId: trip,
+          reelName: 'Trip',
+          copyBytes: 700,
+          lastCopiedAt: DateTime.utc(2026, 5, 30, 7),
+        ),
+      ]);
+    });
+
+    test('a session without copies has none, whatever its editor', () async {
+      await reelWithSession('Capcut reel', EditorApp.capcut);
+      await reelWithSession('Edits reel', EditorApp.edits);
+      await reelWithSession('Vn reel', EditorApp.vn);
+
+      sync.start();
+      await settle();
+
+      expect(reminders(), isEmpty);
+    });
+
+    test('CapCut and Edits sessions with copies have one too', () async {
+      final capcut = await reelWithSession('Capcut reel', EditorApp.capcut);
+      final instagram = await reelWithSession('Edits reel', EditorApp.edits);
+      await edits.recordCopies([
+        copy(capcut, 1, at: DateTime.utc(2026, 6, 1, 8)),
+        copy(instagram, 2, at: DateTime.utc(2026, 6, 1, 9)),
+      ]);
+
+      sync.start();
+      await settle();
+
+      expect(reminders().map((r) => r.reelId), [capcut, instagram]);
+    });
+
+    test(
+      'a reel with no session has none, and Shooting mode is not needed',
+      () async {
+        await reels.create('Plain');
+        final reel = await reelWithSession('Edited', EditorApp.vn);
+        await edits.recordCopies([
+          copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+        ]);
+
+        sync.start();
+        await settle();
+
+        expect(native.state!.shootingOn, isFalse);
+        expect(reminders().map((r) => r.reelId), [reel]);
+      },
+    );
+
+    test(
+      'written again when copies are added, with the new time and size',
+      () async {
+        final reel = await reelWithSession('Wedding', EditorApp.vn);
+        await edits.recordCopies([
+          copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+        ]);
+        sync.start();
+        await settle();
+        expect(reminders().single.copyBytes, 1000);
+
+        await edits.recordCopies([
+          copy(reel, 2, at: DateTime.utc(2026, 6, 3, 10), bytes: 5000),
+        ]);
+        await settle();
+
+        expect(reminders().single.copyBytes, 6000);
+        expect(reminders().single.lastCopiedAt, DateTime.utc(2026, 6, 3, 10));
+        expect(_writes(), 2);
+      },
+    );
+
+    test(
+      'written again when copies are removed, and when the session ends',
+      () async {
+        final reel = await reelWithSession('Wedding', EditorApp.vn);
+        await edits.recordCopies([
+          copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+          copy(reel, 2, at: DateTime.utc(2026, 6, 1, 9), bytes: 3000),
+        ]);
+        sync.start();
+        await settle();
+
+        await edits.removeCopies(reel, [902]);
+        await settle();
+        expect(reminders().single.copyBytes, 1000);
+        expect(reminders().single.lastCopiedAt, DateTime.utc(2026, 6, 1, 8));
+
+        await edits.removeCopies(reel, [901]);
+        await settle();
+        expect(reminders(), isEmpty, reason: 'no copies left');
+
+        await edits.recordCopies([
+          copy(reel, 3, at: DateTime.utc(2026, 6, 4, 8)),
+        ]);
+        await settle();
+        expect(reminders(), hasLength(1));
+
+        await edits.endSession(reel);
+        await settle();
+        expect(reminders(), isEmpty, reason: 'the session ended');
+      },
+    );
+
+    test(
+      'written again when the reel is renamed, and when it is deleted',
+      () async {
+        final reel = await reelWithSession('Wedding', EditorApp.vn);
+        await edits.recordCopies([
+          copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+        ]);
+        sync.start();
+        await settle();
+        expect(reminders().single.reelName, 'Wedding');
+
+        await reels.rename(reel, 'Goa wedding');
+        await settle();
+        expect(reminders().single.reelName, 'Goa wedding');
+
+        await reels.delete(reel);
+        await settle();
+        expect(reminders(), isEmpty);
+      },
+    );
+
+    test('nothing that does not change a reminder writes again', () async {
+      final reel = await reelWithSession('Wedding', EditorApp.vn);
+      await edits.recordCopies([
+        copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+      ]);
+      sync.start();
+      await settle();
+      final writes = _writes();
+
+      // A send to the editor and a copy recorded twice change no reminder.
+      await edits.recordSent(reel, [1]);
+      await edits.recordCopies([
+        copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+      ]);
+      await settle();
+
+      expect(_writes(), writes);
+    });
+
+    test('the same state again is the same message: sorted by reel', () async {
+      final a = await reelWithSession('A', EditorApp.vn);
+      final b = await reelWithSession('B', EditorApp.vn);
+      await edits.recordCopies([
+        copy(b, 1, at: DateTime.utc(2026, 6, 1, 8)),
+        copy(a, 2, at: DateTime.utc(2026, 6, 2, 8)),
+      ]);
+      sync.start();
+      await settle();
+      expect(reminders().map((r) => r.reelId), [a, b]);
+    });
+
+    test('flush writes them without waiting for the streams', () async {
+      final reel = await reelWithSession('Wedding', EditorApp.vn);
+      await edits.recordCopies([
+        copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+      ]);
+
+      await sync.flush();
+
+      expect(reminders().single.reelId, reel);
+    });
+
+    test('a failed read is logged by type, writes nothing, and the next change '
+        'tries again; no reel name is logged', () async {
+      final reel = await reelWithSession('Zq Secret Reel', EditorApp.vn);
+      await edits.recordCopies([
+        copy(reel, 1, at: DateTime.utc(2026, 6, 1, 8)),
+      ]);
+      final records = captureLogs();
+      sync.dispose();
+      final failing = BackgroundSync(
+        native,
+        h.phoneState,
+        h.settings,
+        h.clips,
+        actions,
+        _FailingEdits(h.db, h.clock),
+      );
+      addTearDown(failing.dispose);
+
+      await failing.flush();
+
+      expect(native.writes, isEmpty);
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), isNot(contains('Zq')));
+
+      // The healthy one writes the same session, name and all.
+      await _newSync().flush();
+      expect(reminders().single.reelName, 'Zq Secret Reel');
+      expect(logText(records), isNot(contains('Zq')));
+    });
+  });
+}
+
+class _FailingEdits extends EditSessionsRepository {
+  // The base class's fields are private, so super parameters cannot be named.
+  // ignore: use_super_parameters
+  _FailingEdits(AppDatabase db, Clock clock) : super(db, clock);
+
+  @override
+  Stream<List<EditSessionSummary>> watchSummaries() =>
+      Stream.error(StateError('summaries unreadable'));
+
+  @override
+  Future<List<EditSessionSummary>> summaries() =>
+      Future.error(StateError('summaries unreadable'));
 }

@@ -9,8 +9,8 @@ import android.util.Log
 import java.time.ZoneId
 
 /**
- * The two reminder alarms (D-105): the evening reminder and the 14-day
- * "Still shooting?". Both are `setAndAllowWhileIdle(RTC_WAKEUP, …)`:
+ * The reminder alarms (D-105): the evening reminder and the 14-day
+ * "Still shooting?", and (Phase 8, D-124) the copies reminder. All are `setAndAllowWhileIdle(RTC_WAKEUP, …)`:
  * inexact (Android may deliver them a little late, never early), allowed in
  * Doze, and in need of no exact-alarm permission (D-101). Each is one
  * explicit broadcast to [ReminderReceiver]; arming again replaces it.
@@ -123,6 +123,32 @@ class ReminderScheduler(
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, stillAlarm(context, since))
     }
 
+    /**
+     * The copies reminder (Phase 8, D-124): one alarm, for the earliest reminder
+     * of [BackgroundState.usableCopiesReminders] that is not shown yet
+     * ([BackgroundStateStore.copiesShown] differs from its batch time), at
+     * [ReminderTimes.copiesDueAt] (at [nowMs] when that has passed). The alarm
+     * carries no reel: the receiver shows every reminder that is due. No
+     * reminder to wait for: no alarm. Reels that left the mirror lose their
+     * shown mark. Independent of Shooting mode and of the other two reminders.
+     */
+    fun armCopies(
+        state: BackgroundState,
+        nowMs: Long,
+    ) {
+        val reminders = state.usableCopiesReminders()
+        store.pruneCopiesShown(reminders.map { it.reelId }.toSet())
+        val next =
+            reminders
+                .filter { store.copiesShown(it.reelId) != it.lastCopiedAtMs }
+                .minOfOrNull { ReminderTimes.copiesDueAt(it.lastCopiedAtMs) }
+        if (next == null) {
+            cancel(armedCopiesAlarm(context))
+            return
+        }
+        alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, maxOf(next, nowMs), copiesAlarm(context))
+    }
+
     /** Removes the Still shooting? alarm; the notification stays. */
     fun cancelStill() = cancel(armedStillAlarm(context))
 
@@ -140,13 +166,15 @@ class ReminderScheduler(
     companion object {
         const val ACTION_EVENING = "app.taketray.REMINDER_EVENING"
         const val ACTION_STILL = "app.taketray.REMINDER_STILL"
+        const val ACTION_COPIES = "app.taketray.REMINDER_COPIES"
 
         /** The session a Still shooting? alarm or shade button belongs to (UTC ms). */
         const val EXTRA_SINCE_MS = "app.taketray.extra.SINCE_MS"
 
-        /** Alarm request codes (the notifications' taps use the 2xx and 3xx above them). */
+        /** Alarm request codes (the notifications' taps use the 1xx, 2xx and 3xx above them; the copies taps 1_000_000 and up). */
         const val REQUEST_EVENING_ALARM = 200
         const val REQUEST_STILL_ALARM = 300
+        const val REQUEST_COPIES_ALARM = 400
 
         /** The broadcast the evening alarm delivers (the debug hook sends the same one). */
         internal fun eveningIntent(context: Context): Intent = Intent(context, ReminderReceiver::class.java).setAction(ACTION_EVENING)
@@ -160,6 +188,9 @@ class ReminderScheduler(
             if (sinceMs != null) intent.putExtra(EXTRA_SINCE_MS, sinceMs)
             return intent
         }
+
+        /** The broadcast the copies alarm delivers. */
+        internal fun copiesIntent(context: Context): Intent = Intent(context, ReminderReceiver::class.java).setAction(ACTION_COPIES)
 
         private const val ARM = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
@@ -176,6 +207,12 @@ class ReminderScheduler(
             context: Context,
             sinceMs: Long,
         ): PendingIntent = PendingIntent.getBroadcast(context, REQUEST_STILL_ALARM, stillIntent(context, sinceMs), ARM)
+
+        private fun copiesAlarm(context: Context): PendingIntent =
+            PendingIntent.getBroadcast(context, REQUEST_COPIES_ALARM, copiesIntent(context), ARM)
+
+        private fun armedCopiesAlarm(context: Context): PendingIntent? =
+            PendingIntent.getBroadcast(context, REQUEST_COPIES_ALARM, copiesIntent(context), LOOK_UP)
 
         /** Without the session: a PendingIntent is matched without its extras. */
         private fun armedStillAlarm(context: Context): PendingIntent? =

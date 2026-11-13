@@ -71,6 +71,11 @@ object DebugBackgroundHooks {
  *   real `ShadeActionReceiver` runs. `no-notification` when id 3 is not
  *   posted, `no-action` when it has no such action (Keep on is never pressed
  *   instead). Only this app's own notifications are ever looked at.
+ * - `showCopiesReminderNow(reelId)`: posts the copies reminder of that reel from
+ *   the stored mirror through the real [Notifier] (Phase 8, D-124), without
+ *   waiting the three days and without marking it shown, so the real one still
+ *   comes. `no-reminder` when the reel is not in the mirror, `bad-argument`
+ *   without a whole-number reel id, `not-posted` when notifications are off.
  * - `thermalStatus`: `PowerManager.getCurrentThermalStatus()` now, one int
  *   (0 none, 1 light, 2 moderate, 3 severe, 4 critical, 5 emergency, 6
  *   shutdown). The system holds the new-clips job while the phone is hot
@@ -136,6 +141,23 @@ class DebugBackgroundHandler(
                                 intent.send()
                                 result.success(null)
                             }
+                        }
+                    }
+                    "showCopiesReminderNow" -> {
+                        // Dart sends a small id as an Int and a large one as a Long.
+                        val reelId = (call.arguments as? Number)?.takeIf { it is Int || it is Long }?.toLong()
+                        val reminder =
+                            reelId?.let { id -> Receivers.store(context).state().usableCopiesReminders().firstOrNull { it.reelId == id } }
+                        if (reelId == null) {
+                            result.error("bad-argument", "$method needs the reel id", null)
+                        } else if (reminder == null) {
+                            Log.w(TAG, "$method: no reminder")
+                            result.error("no-reminder", "no copies reminder in the mirror for that reel", null)
+                        } else if (!Notifier(context).showCopies(reminder)) {
+                            Log.w(TAG, "$method: not posted")
+                            result.error("not-posted", "notifications are off", null)
+                        } else {
+                            result.success(null)
                         }
                     }
                     "thermalStatus" -> result.success(thermalStatus())

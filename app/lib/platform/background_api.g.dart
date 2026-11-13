@@ -114,7 +114,8 @@ int _deepHash(Object? value) {
 enum ShadeActionKindMsg { turnOff, keepOn }
 
 /// The screen a notification tap opens: an allow-list, never a route.
-enum LaunchActionMsg { toTag, reels }
+/// [doneEditing] opens a reel's page, asking Done editing there.
+enum LaunchActionMsg { toTag, reels, doneEditing }
 
 class BackgroundApiConfig {
   BackgroundApiConfig();
@@ -254,11 +255,76 @@ class VolumeGenerationMsg {
   }
 }
 
+/// One editing session that has copies (Phase 8, D-124): what the copies
+/// reminder needs. [reelName] is the reel's name now, the one word of user
+/// text a notification holds (never logged, D-10). [copyBytes] is the copies'
+/// total size; [lastCopiedAtMs] is when the newest was made (UTC ms), the
+/// reminder's key: a new batch has a new one and is reminded again.
+class CopiesReminderMsg {
+  CopiesReminderMsg({
+    required this.reelId,
+    required this.reelName,
+    required this.copyBytes,
+    required this.lastCopiedAtMs,
+  });
+
+  int reelId;
+
+  String reelName;
+
+  int copyBytes;
+
+  int lastCopiedAtMs;
+
+  List<Object?> _toList() {
+    return <Object?>[reelId, reelName, copyBytes, lastCopiedAtMs];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static CopiesReminderMsg decode(Object result) {
+    result as List<Object?>;
+    return CopiesReminderMsg(
+      reelId: result[0]! as int,
+      reelName: result[1]! as String,
+      copyBytes: result[2]! as int,
+      lastCopiedAtMs: result[3]! as int,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! CopiesReminderMsg || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(reelId, other.reelId) &&
+        _deepEquals(reelName, other.reelName) &&
+        _deepEquals(copyBytes, other.copyBytes) &&
+        _deepEquals(lastCopiedAtMs, other.lastCopiedAtMs);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'CopiesReminderMsg(reelId: $reelId, reelName: $reelName, copyBytes: $copyBytes, lastCopiedAtMs: $lastCopiedAtMs)';
+  }
+}
+
 /// The mirror of what the background code needs. [sinceMs] is when Shooting
 /// mode was switched on (UTC ms; null while it is off). [waitingShotMs] are
 /// the UTC instants (`dateTakenUtc`, ms) of the clips waiting in To tag, in
 /// ascending order. [eveningMinutes] is the evening reminder's local time, in
-/// minutes after midnight.
+/// minutes after midnight. [copiesReminders] has one entry per editing
+/// session with copies.
 class BackgroundStateMsg {
   BackgroundStateMsg({
     required this.shootingOn,
@@ -270,6 +336,7 @@ class BackgroundStateMsg {
     required this.eveningMinutes,
     required this.stillReminderEnabled,
     required this.stillAnswered,
+    required this.copiesReminders,
   });
 
   bool shootingOn;
@@ -290,6 +357,8 @@ class BackgroundStateMsg {
 
   bool stillAnswered;
 
+  List<CopiesReminderMsg> copiesReminders;
+
   List<Object?> _toList() {
     return <Object?>[
       shootingOn,
@@ -301,6 +370,7 @@ class BackgroundStateMsg {
       eveningMinutes,
       stillReminderEnabled,
       stillAnswered,
+      copiesReminders,
     ];
   }
 
@@ -320,6 +390,7 @@ class BackgroundStateMsg {
       eveningMinutes: result[6]! as int,
       stillReminderEnabled: result[7]! as bool,
       stillAnswered: result[8]! as bool,
+      copiesReminders: (result[9]! as List<Object?>).cast<CopiesReminderMsg>(),
     );
   }
 
@@ -340,7 +411,8 @@ class BackgroundStateMsg {
         _deepEquals(eveningEnabled, other.eveningEnabled) &&
         _deepEquals(eveningMinutes, other.eveningMinutes) &&
         _deepEquals(stillReminderEnabled, other.stillReminderEnabled) &&
-        _deepEquals(stillAnswered, other.stillAnswered);
+        _deepEquals(stillAnswered, other.stillAnswered) &&
+        _deepEquals(copiesReminders, other.copiesReminders);
   }
 
   @override
@@ -349,7 +421,7 @@ class BackgroundStateMsg {
 
   @override
   String toString() {
-    return 'BackgroundStateMsg(shootingOn: $shootingOn, sinceMs: $sinceMs, baselines: $baselines, watchedFolders: $watchedFolders, waitingShotMs: $waitingShotMs, eveningEnabled: $eveningEnabled, eveningMinutes: $eveningMinutes, stillReminderEnabled: $stillReminderEnabled, stillAnswered: $stillAnswered)';
+    return 'BackgroundStateMsg(shootingOn: $shootingOn, sinceMs: $sinceMs, baselines: $baselines, watchedFolders: $watchedFolders, waitingShotMs: $waitingShotMs, eveningEnabled: $eveningEnabled, eveningMinutes: $eveningMinutes, stillReminderEnabled: $stillReminderEnabled, stillAnswered: $stillAnswered, copiesReminders: $copiesReminders)';
   }
 }
 
@@ -473,6 +545,55 @@ class NotificationAccessMsg {
   }
 }
 
+/// A notification tap: the allow-listed [action] and, for `doneEditing` only,
+/// the reel it is for. The reel id is the only payload there is (D-124); Dart
+/// checks the reel still exists.
+class LaunchMsg {
+  LaunchMsg({required this.action, this.reelId});
+
+  LaunchActionMsg action;
+
+  int? reelId;
+
+  List<Object?> _toList() {
+    return <Object?>[action, reelId];
+  }
+
+  Object encode() {
+    return _toList();
+  }
+
+  static LaunchMsg decode(Object result) {
+    result as List<Object?>;
+    return LaunchMsg(
+      action: result[0]! as LaunchActionMsg,
+      reelId: result[1] as int?,
+    );
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  bool operator ==(Object other) {
+    if (other is! LaunchMsg || other.runtimeType != runtimeType) {
+      return false;
+    }
+    if (identical(this, other)) {
+      return true;
+    }
+    return _deepEquals(action, other.action) &&
+        _deepEquals(reelId, other.reelId);
+  }
+
+  @override
+  // ignore: avoid_equals_and_hash_code_on_mutable_classes
+  int get hashCode => _deepHash(<Object?>[runtimeType, ..._toList()]);
+
+  @override
+  String toString() {
+    return 'LaunchMsg(action: $action, reelId: $reelId)';
+  }
+}
+
 class _PigeonCodec extends StandardMessageCodec {
   const _PigeonCodec();
   @override
@@ -495,14 +616,20 @@ class _PigeonCodec extends StandardMessageCodec {
     } else if (value is VolumeGenerationMsg) {
       buffer.putUint8(133);
       writeValue(buffer, value.encode());
-    } else if (value is BackgroundStateMsg) {
+    } else if (value is CopiesReminderMsg) {
       buffer.putUint8(134);
       writeValue(buffer, value.encode());
-    } else if (value is ShadeActionMsg) {
+    } else if (value is BackgroundStateMsg) {
       buffer.putUint8(135);
       writeValue(buffer, value.encode());
-    } else if (value is NotificationAccessMsg) {
+    } else if (value is ShadeActionMsg) {
       buffer.putUint8(136);
+      writeValue(buffer, value.encode());
+    } else if (value is NotificationAccessMsg) {
+      buffer.putUint8(137);
+      writeValue(buffer, value.encode());
+    } else if (value is LaunchMsg) {
+      buffer.putUint8(138);
       writeValue(buffer, value.encode());
     } else {
       super.writeValue(buffer, value);
@@ -525,11 +652,15 @@ class _PigeonCodec extends StandardMessageCodec {
       case 133:
         return VolumeGenerationMsg.decode(readValue(buffer)!);
       case 134:
-        return BackgroundStateMsg.decode(readValue(buffer)!);
+        return CopiesReminderMsg.decode(readValue(buffer)!);
       case 135:
-        return ShadeActionMsg.decode(readValue(buffer)!);
+        return BackgroundStateMsg.decode(readValue(buffer)!);
       case 136:
+        return ShadeActionMsg.decode(readValue(buffer)!);
+      case 137:
         return NotificationAccessMsg.decode(readValue(buffer)!);
+      case 138:
+        return LaunchMsg.decode(readValue(buffer)!);
       default:
         return super.readValueOfType(type, buffer);
     }
@@ -741,7 +872,7 @@ class BackgroundHostApi {
   /// The launch action the app was started with, once; null after that.
   /// The first call also tells Kotlin that Dart is listening, so later
   /// actions come through [BackgroundFlutterApi.onLaunchAction].
-  Future<LaunchActionMsg?> takeLaunchAction() async {
+  Future<LaunchMsg?> takeLaunchAction() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.taketray.BackgroundHostApi.takeLaunchAction$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
@@ -757,7 +888,7 @@ class BackgroundHostApi {
       pigeonVar_channelName,
       isNullValid: true,
     );
-    return pigeonVar_replyValue as LaunchActionMsg?;
+    return pigeonVar_replyValue as LaunchMsg?;
   }
 }
 
@@ -765,7 +896,7 @@ abstract class BackgroundFlutterApi {
   static const MessageCodec<Object?> pigeonChannelCodec = _PigeonCodec();
 
   /// A notification was tapped while the app was running.
-  void onLaunchAction(LaunchActionMsg action);
+  void onLaunchAction(LaunchMsg launch);
 
   static void setUp(
     BackgroundFlutterApi? api, {
@@ -786,9 +917,9 @@ abstract class BackgroundFlutterApi {
       } else {
         pigeonVar_channel.setMessageHandler((Object? message) async {
           final List<Object?> args = message! as List<Object?>;
-          final LaunchActionMsg arg_action = args[0]! as LaunchActionMsg;
+          final LaunchMsg arg_launch = args[0]! as LaunchMsg;
           try {
-            api.onLaunchAction(arg_action);
+            api.onLaunchAction(arg_launch);
             return wrapResponse(empty: true);
           } on PlatformException catch (e) {
             return wrapResponse(error: e);

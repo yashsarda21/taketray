@@ -666,4 +666,52 @@ class DebugBackgroundHandlerTest {
 
         assertEquals(1, shadeBroadcasts().size)
     }
+    // ------------------------------------------------- showCopiesReminderNow (Phase 8, D-124)
+
+    private fun callWith(
+        method: String,
+        arguments: Any?,
+    ): Reply {
+        val reply = Reply()
+        handler.onMethodCall(MethodCall(method, arguments), reply)
+        shadowOf(Looper.getMainLooper()).idle()
+        return reply
+    }
+
+    private fun mirrorCopies(vararg ids: Long) =
+        store.write(BackgroundState.OFF.copy(copiesReminders = ids.map { BackgroundState.CopiesReminder(it, "Reel $it", 1_234_567_890, 1_780_000_000_000) }))
+
+    @Test
+    fun `showCopiesReminderNow posts the stored reel's reminder now and marks nothing shown`() {
+        mirrorCopies(7, 9)
+        // Dart sends a small id as an Int, a large one as a Long.
+        for (id in listOf<Any>(7, 7L)) {
+            val reply = callWith("showCopiesReminderNow", id)
+            assertEquals(1, reply.replies)
+            assertNull(reply.errorCode)
+            assertEquals("Reel 7 copies are using ${android.text.format.Formatter.formatShortFileSize(app, 1_234_567_890)}", title(Notifier.COPIES_ID_BASE + 7))
+            assertNull("only the one asked for", notification(Notifier.COPIES_ID_BASE + 9))
+            manager.cancelAll()
+        }
+        assertNull("the real reminder is still to come", store.copiesShown(7))
+    }
+
+    @Test
+    fun `showCopiesReminderNow for a reel not in the mirror, or without a reel id, is an error and posts nothing`() {
+        mirrorCopies(7)
+        assertEquals("no-reminder", callWith("showCopiesReminderNow", 8).errorCode)
+        assertEquals("no-reminder", callWith("showCopiesReminderNow", 0).errorCode)
+        for (bad in listOf<Any?>(null, "7", mapOf("reelId" to 7), 7.5)) {
+            assertEquals("$bad", "bad-argument", callWith("showCopiesReminderNow", bad).errorCode)
+        }
+        assertEquals(0, shadowOf(manager).size())
+    }
+
+    @Test
+    fun `showCopiesReminderNow with notifications off is an error`() {
+        mirrorCopies(7)
+        shadowOf(manager).setNotificationsEnabled(false)
+        assertEquals("not-posted", callWith("showCopiesReminderNow", 7).errorCode)
+        assertEquals(0, shadowOf(manager).size())
+    }
 }

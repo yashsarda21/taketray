@@ -24,6 +24,8 @@ part 'background_bridge.g.dart';
 ///   midnight (0 to 1439).
 /// - [stillAnswered] is true once "Still shooting?" was answered in this
 ///   Shooting mode session.
+/// - [copiesReminders] has one entry per editing session with copies
+///   (Phase 8, D-124), whatever Shooting mode says.
 @freezed
 abstract class BackgroundState with _$BackgroundState {
   const factory BackgroundState({
@@ -36,7 +38,24 @@ abstract class BackgroundState with _$BackgroundState {
     required int eveningMinutes,
     required bool stillReminderEnabled,
     required bool stillAnswered,
+    @Default(<CopiesReminder>[]) List<CopiesReminder> copiesReminders,
   }) = _BackgroundState;
+}
+
+/// An editing session with copies on the phone (Phase 8, D-124): what the
+/// copies reminder needs, three days after [lastCopiedAt].
+///
+/// [reelName] is the reel's name now, the one piece of user text a
+/// notification holds; never log it (D-10). [copyBytes] is the copies' total
+/// size. A new copy batch has a new [lastCopiedAt] and is reminded again.
+@freezed
+abstract class CopiesReminder with _$CopiesReminder {
+  const factory CopiesReminder({
+    required int reelId,
+    required String reelName,
+    required int copyBytes,
+    required DateTime lastCopiedAt,
+  }) = _CopiesReminder;
 }
 
 /// The two "Still shooting?" buttons in the notification shade.
@@ -74,7 +93,16 @@ abstract class NotificationAccess with _$NotificationAccess {
 }
 
 /// The screen a notification tap opens. An allow-list: never a route.
-enum LaunchAction { toTag, reels }
+/// [doneEditing] opens a reel's page (Phase 8, D-124).
+enum LaunchAction { toTag, reels, doneEditing }
+
+/// A notification tap: its [action] and, for [LaunchAction.doneEditing] only,
+/// the reel it is for (null when Android could not name a usable one).
+/// Android sends no other payload.
+@freezed
+abstract class Launch with _$Launch {
+  const factory Launch(LaunchAction action, {int? reelId}) = _Launch;
+}
 
 /// What the app asks Android's background side, in domain types (D-103).
 ///
@@ -116,7 +144,7 @@ abstract interface class BackgroundBridge {
   /// The screens notification taps ask for: first the one the app was
   /// started with (if any), then one per tap while the app runs. Meant for
   /// one listener (the router); the start action is taken once.
-  Stream<LaunchAction> get launchActions;
+  Stream<Launch> get launchActions;
 }
 
 /// The [BackgroundBridge] that talks to Kotlin through the Pigeon-generated
@@ -139,13 +167,13 @@ class PigeonBackgroundBridge implements BackgroundBridge {
   final BackgroundHostApi _api;
   final BinaryMessenger? _messenger;
 
-  late final StreamController<LaunchAction> _launches =
-      StreamController<LaunchAction>.broadcast(onListen: _start);
+  late final StreamController<Launch> _launches =
+      StreamController<Launch>.broadcast(onListen: _start);
   bool _started = false;
 
   /// Taps that arrive while the start action is still being taken: they
   /// follow it. Null once it has arrived.
-  List<LaunchAction>? _early;
+  List<Launch>? _early;
 
   @override
   Future<void> writeState(BackgroundState state) => _api.writeState(
@@ -168,6 +196,18 @@ class PigeonBackgroundBridge implements BackgroundBridge {
       eveningMinutes: state.eveningMinutes,
       stillReminderEnabled: state.stillReminderEnabled,
       stillAnswered: state.stillAnswered,
+      copiesReminders: [
+        // Sorted by reel, so the same state is the same message.
+        for (final reminder in [
+          ...state.copiesReminders,
+        ]..sort((a, b) => a.reelId.compareTo(b.reelId)))
+          CopiesReminderMsg(
+            reelId: reminder.reelId,
+            reelName: reminder.reelName,
+            copyBytes: reminder.copyBytes,
+            lastCopiedAtMs: reminder.lastCopiedAt.millisecondsSinceEpoch,
+          ),
+      ],
     ),
   );
 
@@ -213,7 +253,7 @@ class PigeonBackgroundBridge implements BackgroundBridge {
   Future<bool> openBatterySettings() => _api.openBatterySettings();
 
   @override
-  Stream<LaunchAction> get launchActions => _launches.stream;
+  Stream<Launch> get launchActions => _launches.stream;
 
   /// On the first listen: set up the Flutter API, then take the start
   /// action. Kotlin sends taps through the Flutter API only after that take,
@@ -239,7 +279,7 @@ class PigeonBackgroundBridge implements BackgroundBridge {
         try {
           final start = await _api.takeLaunchAction();
           if (start != null && !_launches.isClosed) {
-            _launches.add(_launchAction(start));
+            _launches.add(_launch(start));
           }
           return;
         } on Object catch (e, stack) {
@@ -260,12 +300,12 @@ class PigeonBackgroundBridge implements BackgroundBridge {
 
   static const _takeAttempts = 3;
 
-  void _onTap(LaunchAction action) {
+  void _onTap(Launch launch) {
     final early = _early;
     if (early != null) {
-      early.add(action);
+      early.add(launch);
     } else {
-      _launches.add(action);
+      _launches.add(launch);
     }
   }
 
@@ -282,10 +322,10 @@ class PigeonBackgroundBridge implements BackgroundBridge {
 class _TapListener implements BackgroundFlutterApi {
   _TapListener(this._onTap);
 
-  final void Function(LaunchAction) _onTap;
+  final void Function(Launch) _onTap;
 
   @override
-  void onLaunchAction(LaunchActionMsg action) => _onTap(_launchAction(action));
+  void onLaunchAction(LaunchMsg launch) => _onTap(_launch(launch));
 }
 
 DateTime _utc(int ms) => DateTime.fromMillisecondsSinceEpoch(ms, isUtc: true);
@@ -296,9 +336,15 @@ NotificationAccess _access(NotificationAccessMsg msg) => NotificationAccess(
   sdkInt: msg.sdkInt,
 );
 
-LaunchAction _launchAction(LaunchActionMsg msg) => switch (msg) {
-  LaunchActionMsg.toTag => LaunchAction.toTag,
-  LaunchActionMsg.reels => LaunchAction.reels,
+/// Only Done editing carries a reel: Android sends no payload with the
+/// others, and whatever arrives with them is dropped.
+Launch _launch(LaunchMsg msg) => switch (msg.action) {
+  LaunchActionMsg.toTag => const Launch(LaunchAction.toTag),
+  LaunchActionMsg.reels => const Launch(LaunchAction.reels),
+  LaunchActionMsg.doneEditing => Launch(
+    LaunchAction.doneEditing,
+    reelId: msg.reelId,
+  ),
 };
 
 @Riverpod(keepAlive: true)

@@ -9,6 +9,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.Icon
 import android.provider.MediaStore
+import android.text.format.Formatter
 import app.taketray.R
 
 /**
@@ -22,6 +23,9 @@ import app.taketray.R
  * showing notification is silent; a post after a dismiss alerts again), and nothing
  * at all while notifications or its channel are off. Never a file name or a
  * folder in a notification, never a count in the log (D-10).
+ *
+ * The copies reminder (Phase 8, D-124) is on the Reminders channel too, one
+ * notification per reel.
  *
  * Open so a test can make a post throw (the evening reminder re-arms first).
  */
@@ -179,6 +183,64 @@ open class Notifier(
     /** Whether the evening reminder is in the shade now. */
     fun isEveningShowing(): Boolean = manager.activeNotifications.any { it.id == EVENING }
 
+    /**
+     * The copies reminder (Phase 8, D-124) for one reel: "Wedding copies are
+     * using 1.2 GB", "Done editing? Tap to clean up." and a **Done editing**
+     * button; the body and the button open that reel's page. One notification
+     * per reel, id [COPIES_ID_BASE] + reel id, so reels never replace each
+     * other or Phase 6's ids 1 to 3. On the lock screen only "TakeTray" and a
+     * general line show: the reel's name and size are private. Returns false,
+     * posting nothing, when notifications are not allowed. Throws
+     * [IllegalArgumentException] for a reel id that is not a valid one
+     * ([BackgroundState.MAX_REEL_ID]).
+     */
+    open fun showCopies(reminder: BackgroundState.CopiesReminder): Boolean {
+        val reelId = reminder.reelId
+        require(reelId in 1..BackgroundState.MAX_REEL_ID) { "not a usable reel id" }
+        ensureChannels()
+        if (!canPost(CHANNEL_REMINDERS)) return false
+        val doneEditing = LaunchActions.intent(context, LaunchActionMsg.DONE_EDITING, reelId)
+        val public =
+            Notification
+                .Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(R.drawable.ic_stat_taketray)
+                .setContentTitle(context.getString(R.string.copies_public_title))
+                .setContentText(context.getString(R.string.copies_public_text))
+                .build()
+        val notification =
+            Notification
+                .Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(R.drawable.ic_stat_taketray)
+                .setContentTitle(context.getString(R.string.copies_title, reminder.reelName, Formatter.formatShortFileSize(context, reminder.copyBytes)))
+                .setContentText(context.getString(R.string.copies_text))
+                .setCategory(Notification.CATEGORY_REMINDER)
+                .setAutoCancel(true)
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setPublicVersion(public)
+                .setContentIntent(activity(copiesRequestCode(reelId), doneEditing))
+                .addAction(action(R.string.action_done_editing, activity(copiesRequestCode(reelId) + 1, doneEditing)))
+                .build()
+        manager.notify(copiesId(reelId), notification)
+        return true
+    }
+
+    /** Removes reel [reelId]'s copies reminder; a reel id that is not a valid one removes nothing. */
+    fun cancelCopies(reelId: Long) {
+        if (reelId in 1..BackgroundState.MAX_REEL_ID) manager.cancel(copiesId(reelId))
+    }
+
+    /**
+     * Removes every copies reminder in the shade except those of the reels in
+     * [keep]: the session of a reel that is not in the mirror any more has
+     * ended. Phase 6's notifications are never touched.
+     */
+    fun cancelCopiesExcept(keep: Set<Long>) {
+        for (active in manager.activeNotifications) {
+            val reelId = active.id - COPIES_ID_BASE.toLong()
+            if (reelId in 1..BackgroundState.MAX_REEL_ID && reelId !in keep) manager.cancel(active.id)
+        }
+    }
+
     /** A shade button: an explicit broadcast to [ShadeActionReceiver], which is not exported. */
     private fun shade(
         requestCode: Int,
@@ -208,6 +270,16 @@ open class Notifier(
         const val NEW_CLIPS = 1
         const val EVENING = 2
         const val STILL_SHOOTING = 3
+
+        /** A copies reminder's id is this plus its reel id (D-124); ids 1 to 3 are the Phase 6 ones. */
+        const val COPIES_ID_BASE = 1000
+
+        /** The body tap is this plus twice the reel id, the action tap one more. */
+        const val COPIES_REQUEST_BASE = 1_000_000
+
+        private fun copiesId(reelId: Long): Int = (COPIES_ID_BASE + reelId).toInt()
+
+        private fun copiesRequestCode(reelId: Long): Int = (COPIES_REQUEST_BASE + 2 * reelId).toInt()
 
         const val CHANNEL_NEW_CLIPS = "new_clips_alert"
 

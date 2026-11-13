@@ -860,6 +860,24 @@ void main() {
       ]);
     });
 
+    test('summaries() is the same list, read once', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      expect(await repo.summaries(), isEmpty);
+      await repo.startSession(goa.id, EditorApp.vn, 'Goa');
+      clock.advance(_minute);
+      await repo.startSession(paris.id, EditorApp.capcut, 'Paris');
+      await repo.recordCopies([
+        _copy(goa.id, 1, sizeBytes: 1500, copiedAt: _t0.add(_minute * 5)),
+      ]);
+
+      final once = await repo.summaries();
+
+      expect(once, await repo.watchSummaries().first);
+      expect(once.map((s) => s.reelId), [paris.id, goa.id]);
+      expect(once.last.copyBytes, 1500);
+    });
+
     test('a copy over 2 GB sums without overflow', () async {
       final goa = await reels.create('Goa');
       await repo.startSession(goa.id, EditorApp.vn, 'Goa');

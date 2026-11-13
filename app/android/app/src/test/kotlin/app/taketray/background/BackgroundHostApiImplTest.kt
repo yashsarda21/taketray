@@ -62,6 +62,7 @@ class BackgroundHostApiImplTest {
             eveningMinutes = 1_260,
             stillReminderEnabled = true,
             stillAnswered = false,
+            copiesReminders = emptyList(),
         )
 
     @Before
@@ -95,6 +96,35 @@ class BackgroundHostApiImplTest {
             assertEquals(2, armed.size)
             assertFalse(armed.last().first.shootingOn)
             assertEquals(armed.last().first, armed.last().second)
+        }
+
+    @Test
+    fun `writeState stores the copies reminders and arms with them`() =
+        timed {
+            val reminders = listOf(CopiesReminderMsg(7, "Wedding", 1_234_567_890, 1_780_000_000_000), CopiesReminderMsg(9, "Trip", 0, 1_780_100_000_000))
+            impl.writeState(stateMsg.copy(copiesReminders = reminders))
+            val expected = store.state()
+            assertEquals(
+                listOf(
+                    BackgroundState.CopiesReminder(7, "Wedding", 1_234_567_890, 1_780_000_000_000),
+                    BackgroundState.CopiesReminder(9, "Trip", 0, 1_780_100_000_000),
+                ),
+                expected.copiesReminders,
+            )
+            assertEquals(listOf(expected to expected), armed)
+
+            // The next write replaces them; with none they are gone.
+            impl.writeState(stateMsg)
+            assertEquals(emptyList<BackgroundState.CopiesReminder>(), store.state().copiesReminders)
+        }
+
+    @Test
+    fun `a Turn off waiting for Dart keeps the copies reminders in the mirror it stores`() =
+        timed {
+            store.putShadeAction(ShadeActionMsg(ShadeActionKindMsg.TURN_OFF, stateMsg.sinceMs!!, 1_780_000_500_000, emptyList()))
+            impl.writeState(stateMsg.copy(copiesReminders = listOf(CopiesReminderMsg(7, "Wedding", 5, 1_780_000_000_000))))
+            assertFalse(store.state().shootingOn)
+            assertEquals(1, store.state().copiesReminders.size)
         }
 
     // ---- Final review M-1: an "on" write cannot undo the shade's Turn off ----
@@ -401,7 +431,14 @@ class BackgroundHostApiImplTest {
     @Test
     fun `takeLaunchAction hands over the kept action once`() {
         impl.launches.onIntent(LaunchActions.intent(activity, LaunchActionMsg.TO_TAG))
-        assertEquals(LaunchActionMsg.TO_TAG, impl.takeLaunchAction())
+        assertEquals(LaunchMsg(LaunchActionMsg.TO_TAG), impl.takeLaunchAction())
+        assertNull(impl.takeLaunchAction())
+    }
+
+    @Test
+    fun `takeLaunchAction hands over Done editing with its reel`() {
+        impl.launches.onIntent(LaunchActions.intent(activity, LaunchActionMsg.DONE_EDITING, 12))
+        assertEquals(LaunchMsg(LaunchActionMsg.DONE_EDITING, 12), impl.takeLaunchAction())
         assertNull(impl.takeLaunchAction())
     }
 

@@ -164,7 +164,7 @@ class ReminderReceiverTest {
             assertTrue(pending.flags and PendingIntent.FLAG_UPDATE_CURRENT != 0)
             val intent = Intent(pending.savedIntent)
             assertEquals(ComponentName(app, MainActivity::class.java), intent.component)
-            assertEquals(LaunchActionMsg.TO_TAG, LaunchActions.read(intent))
+            assertEquals(LaunchMsg(LaunchActionMsg.TO_TAG), LaunchActions.read(intent))
         }
         assertEquals(setOf(Notifier.REQUEST_EVENING_BODY, Notifier.REQUEST_EVENING_TAG_NOW), setOf(body.requestCode, tagNow.requestCode))
         // Re-armed for tomorrow.
@@ -436,7 +436,7 @@ class ReminderReceiverTest {
         val body = shadowOf(n.contentIntent)
         assertTrue(body.isActivity)
         assertTrue(body.isImmutable)
-        assertEquals(LaunchActionMsg.REELS, LaunchActions.read(Intent(body.savedIntent)))
+        assertEquals(LaunchMsg(LaunchActionMsg.REELS), LaunchActions.read(Intent(body.savedIntent)))
         // The buttons are broadcasts to the shade receiver that name the session.
         val turnOff = shadowOf(n.action("Turn off").actionIntent)
         val keepOn = shadowOf(n.action("Keep on").actionIntent)

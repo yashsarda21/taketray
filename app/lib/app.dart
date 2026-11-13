@@ -7,6 +7,7 @@ import 'package:logging/logging.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/debug_evening.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/features/notifications/view_models/launch_actions.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
@@ -114,7 +115,7 @@ class LaunchActionsListener extends ConsumerStatefulWidget {
 }
 
 class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
-  StreamSubscription<LaunchAction>? _subscription;
+  StreamSubscription<Launch>? _subscription;
 
   @override
   void initState() {
@@ -131,11 +132,23 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     super.dispose();
   }
 
-  void _open(LaunchAction action) {
-    scheduleMicrotask(() {
-      if (!mounted) return;
-      ref.read(appRouterProvider).go(routeFor(action));
-    });
+  /// Taps are opened one after the other, in the order they came.
+  late final LaunchQueue _queue = LaunchQueue(_openNow);
+
+  void _open(Launch launch) => _queue.add(launch);
+
+  Future<void> _openNow(Launch launch) async {
+    // After the current frame: the start action can arrive while the first
+    // frame is being built.
+    await Future<void>.microtask(() {});
+    if (!mounted) return;
+    final reels = ref.read(reelsRepositoryProvider);
+    final route = await routeFor(
+      launch,
+      (id) async => await reels.getById(id) != null,
+    );
+    if (!mounted) return;
+    ref.read(appRouterProvider).go(route);
   }
 
   void _failed(Object error) {
