@@ -118,6 +118,14 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   }
 
   Future<void> _run() async {
+    // Building the editing service gives the repositories their copy
+    // clean-up (R8, D-123); it must be in place before the scan, whose
+    // re-attach can merge a duplicate out of a reel.
+    await guarded(
+      _log,
+      'Wiring the copy clean-up',
+      () async => ref.read(editSessionServiceProvider),
+    );
     await guarded(
       _log,
       'The zone sync',

@@ -634,7 +634,7 @@ class EditSessionService {
     final answer = await _copy.cancel(jobId);
     if (answer != null) {
       await _apply(answer);
-      await _copy.clear(jobId);
+      await _clearEngine(jobId);
     } else if (mine) {
       await _cancelRecovered(plan);
     }
@@ -875,7 +875,7 @@ class EditSessionService {
     }
     if (mine) await _sweepLeft(plan);
     if (current != null && current.jobId == jobId) {
-      await _copy.clear(jobId);
+      await _clearEngine(jobId);
     }
     if (mine) {
       if (plan.startedSession) await _endIfEmpty(plan.reelId);
@@ -952,6 +952,16 @@ class EditSessionService {
 
   /// Settles the copy job of reel [reelId] that is over, for [doneEditing]
   /// (see there); throws [StateError] for one that runs.
+  ///
+  /// With the engine holding the job, its result is applied and cleared. With
+  /// a saved plan of this reel and no engine job (after a restart, before
+  /// [recoverAtStart] ran or after it failed), the recovery step runs first:
+  /// the half-written rows go and the finished files the plan names are
+  /// recorded, so the caller deletes them and counts their bytes. A recovery
+  /// that fails throws and leaves the plan, so the files are never forgotten.
+  /// An engine that still holds the job after `clear` (it is still deleting
+  /// its copies) also throws, leaving the plan: Done editing can be tried
+  /// again, and no `CopyBusy` is left behind.
   Future<void> _settleJobOf(int reelId) async {
     final current = await _copy.current();
     if (current != null &&
@@ -963,11 +973,25 @@ class EditSessionService {
     if (plan == null || plan.reelId != reelId) return;
     if (current != null && current.jobId == plan.jobId) {
       await _apply(current);
-      await _copy.clear(plan.jobId);
+      await _clearEngine(plan.jobId);
+    } else if (current == null) {
+      await _recover(plan);
     }
     await _phone.removeCopyJobPlan(plan.jobId);
     _emitCleared(plan.jobId);
     _log.info('Settled copy job ${plan.jobId} for Done editing');
+  }
+
+  /// Clears the engine's result for [jobId]. The engine ignores that for a
+  /// job still deleting its copies; then this throws [StateError] (the
+  /// caller keeps the plan), instead of leaving the engine holding a job
+  /// nobody will clear (every later start would be `CopyBusy`).
+  Future<void> _clearEngine(String jobId) async {
+    await _copy.clear(jobId);
+    final left = await _copy.current();
+    if (left != null && left.jobId == jobId) {
+      throw StateError('Copy job $jobId is not cleared yet');
+    }
   }
 
   /// Deletes [copies] of reel [reelId] through the guard and removes the

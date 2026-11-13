@@ -11,6 +11,8 @@ import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/copy_bridge.dart';
@@ -77,6 +79,22 @@ class _OrderedBackground extends FakeBackgroundBridge {
   Future<NotificationAccess> notificationAccess() {
     order.add('notificationAccess');
     return super.notificationAccess();
+  }
+}
+
+/// A media bridge that runs [onScan] when the scan reads new videos.
+class _ScanProbe extends RecordingBridge {
+  void Function()? onScan;
+
+  @override
+  Future<List<MediaVideo>> videosAddedAfter(
+    String volumeName,
+    int afterGeneration,
+    List<String> folders,
+    int limit,
+  ) {
+    onScan?.call();
+    return super.videosAddedAfter(volumeName, afterGeneration, folders, limit);
   }
 }
 
@@ -235,6 +253,36 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
+  });
+
+  group('the copy clean-up hook (D-123, fix round 2)', () {
+    testWidgets('is wired into the repositories before the first scan, so a '
+        'merge in that scan or a tag-out before the editing service was read '
+        'cleans up copies', (tester) async {
+      allowSecondDatabase();
+      final probe = _ScanProbe();
+      h = VmHarness(bridge: probe);
+      h.bridge.put([fakeVideo(id: 1, generation: 5)]);
+      await h.media.turnOnNow();
+      h.bridge.put([fakeVideo(id: 2, generation: 6)]);
+      final wiredAtScan = <bool>[];
+
+      probe.onScan = () {
+        final container = ProviderScope.containerOf(
+          tester.element(find.text('the app')),
+        );
+        wiredAtScan.add(
+          container.read(clipsRepositoryProvider).beforeLeave != null &&
+              container.read(reelsRepositoryProvider).beforeLeave != null,
+        );
+      };
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(wiredAtScan, isNotEmpty);
+      expect(wiredAtScan.every((w) => w), isTrue);
     });
   });
 

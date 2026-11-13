@@ -119,6 +119,22 @@ Future<void> recordCopy(int reelId, int clipId, int copyId, String name) =>
 Future<String> startVn(int reelId, List<int> clipIds) async => await service
     .startCopy(await service.planCopy(reelId, EditorApp.vn, clipIds));
 
+/// A copy bridge whose `clear` is ignored [ignored] times, as the engine does
+/// for a job that is still deleting its copies.
+class _StubbornClear extends FakeCopyBridge {
+  int ignored = 0;
+
+  @override
+  Future<void> clear(String jobId) async {
+    if (ignored > 0) {
+      ignored--;
+      calls.add('clear:ignored');
+      return;
+    }
+    return await super.clear(jobId);
+  }
+}
+
 /// An editors bridge that reads the edit state when the share happens.
 class _ShareSpy extends FakeEditorsBridge {
   _ShareSpy(this.reelId);
@@ -2333,6 +2349,208 @@ void main() {
       expect(await h.media.phoneState.copyJobPlan(), isNull);
       expect(editors.existing, isEmpty);
       expect(await sessions.editState(goa), isNull);
+    });
+  });
+
+  group('Done editing before the recovery ran (fix round 2, I5)', () {
+    /// A reel with a VN job of three clips that Android stopped: the folder
+    /// holds the finished copy of clip 1, a half-written one of clip 2 and a
+    /// finished file that is no plan item's.
+    Future<(int, String)> stoppedMidCopy() async {
+      final goa = await reel('Goa');
+      final ids = await clipsIn(goa, [1, 2, 3]);
+      final jobId = await startVn(goa, ids);
+      copy.folders['Goa'] = [
+        FolderRow(
+          mediaStoreId: 601,
+          fileName: nameOf(1),
+          sizeBytes: 1001,
+          pending: false,
+        ),
+        FolderRow(
+          mediaStoreId: 602,
+          fileName: nameOf(2),
+          sizeBytes: 50,
+          pending: true,
+        ),
+        const FolderRow(
+          mediaStoreId: 699,
+          fileName: 'other.mp4',
+          sizeBytes: 77,
+          pending: false,
+        ),
+      ];
+      editors
+        ..existing = {601, 699}
+        ..files = [
+          const CopyFolderFile(
+            mediaStoreId: 699,
+            folderName: 'Goa',
+            fileName: 'other.mp4',
+            sizeBytes: 77,
+            ownedByTakeTray: true,
+          ),
+        ];
+      restart();
+      return (goa, jobId);
+    }
+
+    test('the finished copy of an item is recorded, then deleted and '
+        'counted; the half-written row is swept; a file that is no item '
+        'stays and is an orphan; the plan and the session go', () async {
+      final (goa, jobId) = await stoppedMidCopy();
+
+      final result = await service.doneEditing(goa);
+
+      expect(result.freedBytes, 1001);
+      expect(result.leftBehind, 0);
+      expect(editors.deleteAsked.single, [
+        CopyFileRef(mediaStoreId: 601, folderName: 'Goa', fileName: nameOf(1)),
+      ]);
+      expect(editors.existing, {699});
+      expect(copy.folders['Goa']!.where((r) => r.pending), isEmpty);
+      expect(await sessions.editState(goa), isNull);
+      expect(await h.media.phoneState.copyJobPlan(), isNull);
+      expect(await service.jobContext(jobId), isNull);
+      final overview = await service.storage();
+      expect(overview.orphans.single.files.single.mediaStoreId, 699);
+    });
+
+    test(
+      'a recovery that fails leaves the plan, the session and the files '
+      'alone; Done editing throws, and works once the phone answers',
+      () async {
+        final (goa, _) = await stoppedMidCopy();
+        copy.failNext('ownRowsIn');
+
+        await expectLater(
+          service.doneEditing(goa),
+          throwsA(isA<PlatformException>()),
+        );
+        expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+        expect(await sessions.sessionOf(goa), isNotNull);
+        expect(editors.existing, {601, 699});
+
+        final result = await service.doneEditing(goa);
+        expect(result.freedBytes, 1001);
+        expect(editors.existing, {699});
+      },
+    );
+
+    test('when the engine still holds the job there is no recovery: no '
+        'deletePendingIn, the job is applied', () async {
+      final goa = await reel('Goa');
+      final [a] = await clipsIn(goa, [1]);
+      await startVn(goa, [a]);
+      editors.existing = {601};
+      progress([copied(a, 601, nameOf(1))], state: CopyState.finished);
+
+      final result = await service.doneEditing(goa);
+
+      expect(result.freedBytes, 10);
+      expect(copy.calls, isNot(contains('deletePendingIn')));
+    });
+
+    test("a plan of another reel is not recovered by this reel's Done "
+        'editing', () async {
+      final goa = await reel('Goa');
+      final paris = await reel('Paris');
+      final goaIds = await clipsIn(goa, [1]);
+      await service.sendOriginals(goa, EditorApp.capcut, goaIds);
+      final parisIds = await clipsIn(paris, [2]);
+      await startVn(paris, parisIds);
+      restart();
+
+      await service.doneEditing(goa);
+
+      expect(copy.calls, isNot(contains('deletePendingIn')));
+      expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+    });
+  });
+
+  group('a job the engine will not clear yet (fix round 2, M12)', () {
+    late _StubbornClear stubborn;
+
+    setUp(() {
+      stubborn = _StubbornClear();
+      copy = stubborn;
+      service = make();
+    });
+
+    test('Done editing keeps the plan and throws; the retry settles it and '
+        'copying works again', () async {
+      final goa = await reel('Goa');
+      final [a, b] = await clipsIn(goa, [1, 2]);
+      final jobId = await startVn(goa, [a]);
+      progress(const [], state: CopyState.finished);
+      stubborn.ignored = 1;
+
+      await expectLater(service.doneEditing(goa), throwsStateError);
+      expect((await h.media.phoneState.copyJobPlan())!.jobId, jobId);
+      expect(copy.job, isNotNull);
+      expect(await sessions.sessionOf(goa), isNotNull);
+
+      await service.doneEditing(goa);
+      expect(copy.job, isNull);
+      expect(await h.media.phoneState.copyJobPlan(), isNull);
+
+      final next = await service.planCopy(goa, EditorApp.vn, [b]);
+      expect(next.startsSession, isTrue);
+      await service.startCopy(next);
+    });
+
+    test(
+      'finishJob keeps the plan and throws; a second try finishes',
+      () async {
+        final goa = await reel('Goa');
+        final [a] = await clipsIn(goa, [1]);
+        final jobId = await startVn(goa, [a]);
+        progress(const [], state: CopyState.finished);
+        stubborn.ignored = 1;
+
+        await expectLater(service.finishJob(jobId), throwsStateError);
+        expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+
+        await service.finishJob(jobId);
+        expect(copy.job, isNull);
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      },
+    );
+
+    test(
+      'cancelCopy keeps the plan and throws; a second try cancels',
+      () async {
+        final goa = await reel('Goa');
+        final [a] = await clipsIn(goa, [1]);
+        final jobId = await startVn(goa, [a]);
+        stubborn.ignored = 1;
+
+        await expectLater(service.cancelCopy(jobId), throwsStateError);
+        expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+
+        await service.cancelCopy(jobId);
+        expect(copy.job, isNull);
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      },
+    );
+
+    test('the job is announced as cleared only when it really was', () async {
+      final ids = <String>[];
+      final sub = service.clearedJobs.listen(ids.add);
+      addTearDown(sub.cancel);
+      final goa = await reel('Goa');
+      final [a] = await clipsIn(goa, [1]);
+      final jobId = await startVn(goa, [a]);
+      progress(const [], state: CopyState.finished);
+      stubborn.ignored = 1;
+
+      await expectLater(service.finishJob(jobId), throwsStateError);
+      await pumpEventQueue();
+      expect(ids, isEmpty);
+
+      await service.finishJob(jobId);
+      await pumpEventQueue();
+      expect(ids, [jobId]);
     });
   });
 
