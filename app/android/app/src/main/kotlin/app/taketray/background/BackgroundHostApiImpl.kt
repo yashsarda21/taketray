@@ -180,7 +180,7 @@ class BackgroundHostApiImpl(
 
     // ---- Launch actions ----
 
-    override fun takeLaunchAction(): LaunchActionMsg? = guarded("takeLaunchAction") { launches.take() }
+    override fun takeLaunchAction(): LaunchMsg? = guarded("takeLaunchAction") { launches.take() }
 
     companion object {
         /** The notification permission's request code: 16 bits, unlike the media one (0x7A71) or any plugin's. */

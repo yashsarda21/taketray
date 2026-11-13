@@ -113,9 +113,16 @@ class EditSessionsRepository {
   /// first (ties: highest reel id first), for the storage screen and the
   /// copies reminder. One SQL statement per emission; again after every
   /// change to sessions, copies or reels.
-  Stream<List<EditSessionSummary>> watchSummaries() => _db
-      .customSelect(
-        '''
+  Stream<List<EditSessionSummary>> watchSummaries() =>
+      _summariesQuery().watch().map(_toSummaries);
+
+  /// The same list as [watchSummaries], once (no stream to cancel): what the
+  /// background copy reads for the copies reminder (D-124).
+  Future<List<EditSessionSummary>> summaries() async =>
+      _toSummaries(await _summariesQuery().get());
+
+  Selectable<QueryRow> _summariesQuery() => _db.customSelect(
+    '''
         SELECT s.*, r.name AS reel_name,
                COUNT(c.clip_id) AS copy_count,
                COALESCE(SUM(c.size_bytes), 0) AS copy_bytes,
@@ -126,15 +133,12 @@ class EditSessionsRepository {
          GROUP BY s.reel_id
          ORDER BY s.created_at DESC, s.reel_id DESC
         ''',
-        readsFrom: {_db.editSessions, _db.editCopies, _db.reels},
-      )
-      .watch()
-      .map(
-        (rows) => [
-          for (final row in rows)
-            _toSummary(_db.editSessions.map(row.data), row),
-        ],
-      );
+    readsFrom: {_db.editSessions, _db.editCopies, _db.reels},
+  );
+
+  List<EditSessionSummary> _toSummaries(List<QueryRow> rows) => [
+    for (final row in rows) _toSummary(_db.editSessions.map(row.data), row),
+  ];
 
   /// Records that [clipIds] were sent to reel [reelId]'s editor, now, and
   /// returns the ids this call **added**.

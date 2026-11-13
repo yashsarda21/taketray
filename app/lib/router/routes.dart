@@ -31,6 +31,13 @@ abstract final class Routes {
   /// The location of reel [id]'s page, under the Reels tab.
   static String reel(int id) => '$reels/$id';
 
+  /// The name of the "ask Done editing" flag in a reel's location.
+  static const reelDoneParameter = 'done';
+
+  /// Reel [id]'s page, opened by the copies reminder (Phase 8, D-124). The
+  /// page asks Done editing once when the reel still has an editing session.
+  static String reelDoneEditing(int id) => '${reel(id)}?done=1';
+
   /// The name of the clip id in a clip's location.
   static const clipIdParameter = 'clipId';
 

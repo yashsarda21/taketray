@@ -22,6 +22,7 @@ class _StubApi extends BackgroundHostApi {
   String maker = 'samsung';
   bool batteryOpens = true;
   LaunchActionMsg? startAction;
+  int? startReelId;
 
   /// Completes `takeLaunchAction`; null answers at once.
   Completer<void>? takeGate;
@@ -87,7 +88,7 @@ class _StubApi extends BackgroundHostApi {
   }
 
   @override
-  Future<LaunchActionMsg?> takeLaunchAction() async {
+  Future<LaunchMsg?> takeLaunchAction() async {
     _record('takeLaunchAction');
     if (takeFailures > 0) {
       takeFailures--;
@@ -95,7 +96,8 @@ class _StubApi extends BackgroundHostApi {
     }
     final gate = takeGate;
     if (gate != null) await gate.future;
-    return startAction;
+    final start = startAction;
+    return start == null ? null : LaunchMsg(action: start, reelId: startReelId);
   }
 }
 
@@ -122,11 +124,13 @@ void main() {
   tearDown(() => bridge.dispose());
 
   /// Kotlin calling `BackgroundFlutterApi.onLaunchAction(action)`.
-  Future<void> nativeSends(LaunchActionMsg action) async {
+  Future<void> nativeSends(LaunchActionMsg action, {int? reelId}) async {
     final reply = Completer<ByteData?>();
     await messenger.handlePlatformMessage(
       flutterChannel,
-      BackgroundFlutterApi.pigeonChannelCodec.encodeMessage(<Object?>[action]),
+      BackgroundFlutterApi.pigeonChannelCodec.encodeMessage(<Object?>[
+        LaunchMsg(action: action, reelId: reelId),
+      ]),
       reply.complete,
     );
     await reply.future;
@@ -192,6 +196,67 @@ void main() {
     expect(off.waitingShotMs, isEmpty);
     expect(off.eveningMinutes, 0);
     expect(off.stillReminderEnabled, isTrue);
+  });
+
+  test('copies reminders map to the message, sorted, in UTC ms', () async {
+    BackgroundState with_(List<CopiesReminder> reminders) => BackgroundState(
+      shootingOn: false,
+      since: null,
+      baselines: const {},
+      watchedFolders: const [],
+      waitingShots: const [],
+      eveningEnabled: false,
+      eveningMinutes: 0,
+      stillReminderEnabled: true,
+      stillAnswered: false,
+      copiesReminders: reminders,
+    );
+
+    await bridge.writeState(with_(const []));
+    expect((api.args.last! as BackgroundStateMsg).copiesReminders, isEmpty);
+
+    // Out of order and in a local zone: the message is ascending by reel id and
+    // carries UTC milliseconds, so the same state is the same message.
+    final local = DateTime(2026, 11, 5, 9, 30, 0, 123);
+    await bridge.writeState(
+      with_([
+        CopiesReminder(
+          reelId: 9,
+          reelName: 'Trip \u{1F3AC}',
+          copyBytes: 0,
+          lastCopiedAt: _utc(2000),
+        ),
+        CopiesReminder(
+          reelId: 7,
+          reelName: 'Wedding',
+          copyBytes: 1234567890123,
+          lastCopiedAt: local,
+        ),
+      ]),
+    );
+    final reminders = (api.args.last! as BackgroundStateMsg).copiesReminders;
+    expect(reminders.map((r) => r.reelId), [7, 9]);
+    expect(reminders.map((r) => r.reelName), ['Wedding', 'Trip \u{1F3AC}']);
+    expect(reminders.map((r) => r.copyBytes), [1234567890123, 0]);
+    expect(reminders.map((r) => r.lastCopiedAtMs), [
+      local.millisecondsSinceEpoch,
+      2000,
+    ]);
+  });
+
+  test('a state without copies reminders defaults to none', () {
+    const state = BackgroundState(
+      shootingOn: false,
+      since: null,
+      baselines: {},
+      watchedFolders: [],
+      waitingShots: [],
+      eveningEnabled: false,
+      eveningMinutes: 0,
+      stillReminderEnabled: true,
+      stillAnswered: false,
+    );
+    expect(state.copiesReminders, isEmpty);
   });
 
   test('every answer maps to the domain', () async {
@@ -379,7 +444,7 @@ void main() {
     test('launch actions stream yields the start action first', () async {
       api.startAction = LaunchActionMsg.reels;
       final gate = api.takeGate = Completer<void>();
-      final seen = <LaunchAction>[];
+      final seen = <Launch>[];
       final sub = bridge.launchActions.listen(seen.add);
       addTearDown(sub.cancel);
       await pumpEventQueue();
@@ -391,15 +456,18 @@ void main() {
 
       gate.complete();
       await pumpEventQueue();
-      expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+      expect(seen, [
+        const Launch(LaunchAction.reels),
+        const Launch(LaunchAction.toTag),
+      ]);
 
       // Later taps come through the Flutter API, in order.
       await nativeSends(LaunchActionMsg.reels);
       await pumpEventQueue();
       expect(seen, [
-        LaunchAction.reels,
-        LaunchAction.toTag,
-        LaunchAction.reels,
+        const Launch(LaunchAction.reels),
+        const Launch(LaunchAction.toTag),
+        const Launch(LaunchAction.reels),
       ]);
       // The start action is taken once, however often the stream is
       // listened to.
@@ -409,14 +477,68 @@ void main() {
       expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(1));
     });
 
+    test(
+      'a Done editing tap carries its reel, and a missing one is null',
+      () async {
+        final seen = <Launch>[];
+        final sub = bridge.launchActions.listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+
+        await nativeSends(LaunchActionMsg.doneEditing, reelId: 42);
+        await nativeSends(LaunchActionMsg.doneEditing);
+        await nativeSends(LaunchActionMsg.toTag);
+        await pumpEventQueue();
+
+        expect(seen, [
+          const Launch(LaunchAction.doneEditing, reelId: 42),
+          const Launch(LaunchAction.doneEditing),
+          const Launch(LaunchAction.toTag),
+        ]);
+        expect(seen[1].reelId, isNull);
+        expect(seen[2].reelId, isNull);
+      },
+    );
+
+    test('a Done editing start action carries its reel too', () async {
+      api
+        ..startAction = LaunchActionMsg.doneEditing
+        ..startReelId = 7;
+      final seen = <Launch>[];
+      final sub = bridge.launchActions.listen(seen.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      expect(seen, [const Launch(LaunchAction.doneEditing, reelId: 7)]);
+    });
+
+    test(
+      'a reel id Kotlin sends on a To tag or Reels tap is not passed on',
+      () async {
+        final seen = <Launch>[];
+        final sub = bridge.launchActions.listen(seen.add);
+        addTearDown(sub.cancel);
+        await pumpEventQueue();
+
+        await nativeSends(LaunchActionMsg.toTag, reelId: 5);
+        await nativeSends(LaunchActionMsg.reels, reelId: 5);
+        await pumpEventQueue();
+
+        expect(seen, [
+          const Launch(LaunchAction.toTag),
+          const Launch(LaunchAction.reels),
+        ]);
+      },
+    );
+
     test('no start action: only the taps', () async {
-      final seen = <LaunchAction>[];
+      final seen = <Launch>[];
       final sub = bridge.launchActions.listen(seen.add);
       addTearDown(sub.cancel);
       await pumpEventQueue();
       await nativeSends(LaunchActionMsg.toTag);
       await pumpEventQueue();
-      expect(seen, [LaunchAction.toTag]);
+      expect(seen, [const Launch(LaunchAction.toTag)]);
     });
 
     group('a take that fails', () {
@@ -437,7 +559,7 @@ void main() {
           messenger.handlePlatformMessage(
             flutterChannel,
             BackgroundFlutterApi.pigeonChannelCodec.encodeMessage(<Object?>[
-              action,
+              LaunchMsg(action: action),
             ]),
             (_) => replied = true,
           ),
@@ -452,7 +574,7 @@ void main() {
             ..takeFailures = 2
             ..startAction = LaunchActionMsg.reels;
           final waiting = retrying();
-          final seen = <LaunchAction>[];
+          final seen = <Launch>[];
           final errors = <Object>[];
           final sub = waiting.launchActions.listen(
             seen.add,
@@ -460,11 +582,14 @@ void main() {
           );
           async.elapse(const Duration(milliseconds: 100));
           expect(api.calls.where((c) => c == 'takeLaunchAction'), hasLength(3));
-          expect(seen, [LaunchAction.reels]);
+          expect(seen, [const Launch(LaunchAction.reels)]);
           expect(errors, isEmpty);
           // Later taps come through as usual.
           tapIn(async, LaunchActionMsg.toTag);
-          expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+          expect(seen, [
+            const Launch(LaunchAction.reels),
+            const Launch(LaunchAction.toTag),
+          ]);
           unawaited(sub.cancel());
           waiting.dispose();
           async.flushMicrotasks();
@@ -475,7 +600,7 @@ void main() {
         fakeAsync((async) {
           api.takeFailures = 1;
           final waiting = retrying();
-          final seen = <LaunchAction>[];
+          final seen = <Launch>[];
           final errors = <Object>[];
           final sub = waiting.launchActions.listen(
             seen.add,
@@ -496,7 +621,7 @@ void main() {
         fakeAsync((async) {
           api.takeFailures = 10;
           final waiting = retrying();
-          final seen = <LaunchAction>[];
+          final seen = <Launch>[];
           final errors = <Object>[];
           final sub = waiting.launchActions.listen(
             seen.add,
@@ -507,7 +632,7 @@ void main() {
           expect(errors, hasLength(1));
           expect(errors.single, isA<PlatformException>());
           tapIn(async, LaunchActionMsg.toTag);
-          expect(seen, [LaunchAction.toTag]);
+          expect(seen, [const Launch(LaunchAction.toTag)]);
           unawaited(sub.cancel());
           waiting.dispose();
           async.flushMicrotasks();
@@ -522,12 +647,15 @@ void main() {
               ..takeFailures = 1
               ..startAction = LaunchActionMsg.reels;
             final waiting = retrying();
-            final seen = <LaunchAction>[];
+            final seen = <Launch>[];
             final sub = waiting.launchActions.listen(seen.add);
             async.flushMicrotasks();
             tapIn(async, LaunchActionMsg.toTag);
             async.elapse(const Duration(milliseconds: 100));
-            expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+            expect(seen, [
+              const Launch(LaunchAction.reels),
+              const Launch(LaunchAction.toTag),
+            ]);
             unawaited(sub.cancel());
             waiting.dispose();
             async.flushMicrotasks();
@@ -554,7 +682,7 @@ void main() {
     });
 
     test('nothing is asked before someone listens', () async {
-      expect(bridge.launchActions, isA<Stream<LaunchAction>>());
+      expect(bridge.launchActions, isA<Stream<Launch>>());
       await pumpEventQueue();
       expect(api.calls, isEmpty);
     });
@@ -649,12 +777,15 @@ void main() {
 
     test('the fake emits launch actions, the start action first', () async {
       fake.startAction = LaunchAction.reels;
-      final seen = <LaunchAction>[];
+      final seen = <Launch>[];
       final sub = fake.launchActions.listen(seen.add);
       addTearDown(sub.cancel);
       fake.emit(LaunchAction.toTag);
       await pumpEventQueue();
-      expect(seen, [LaunchAction.reels, LaunchAction.toTag]);
+      expect(seen, [
+        const Launch(LaunchAction.reels),
+        const Launch(LaunchAction.toTag),
+      ]);
     });
 
     test('the fake answers the rest from its fields', () async {

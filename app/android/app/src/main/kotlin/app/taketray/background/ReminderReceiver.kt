@@ -18,13 +18,15 @@ class ReminderReceiver : BroadcastReceiver() {
         intent: Intent,
     ) {
         val action = intent.action
-        if (action != ReminderScheduler.ACTION_EVENING && action != ReminderScheduler.ACTION_STILL) return
+        if (action != ReminderScheduler.ACTION_EVENING && action != ReminderScheduler.ACTION_STILL && action != ReminderScheduler.ACTION_COPIES) return
         val since = if (intent.hasExtra(ReminderScheduler.EXTRA_SINCE_MS)) intent.getLongExtra(ReminderScheduler.EXTRA_SINCE_MS, 0) else null
         val app = context.applicationContext
         inBackground("reminder") {
             val reminders = Reminders.forPhone(app)
             if (action == ReminderScheduler.ACTION_EVENING) {
                 reminders.evening()
+            } else if (action == ReminderScheduler.ACTION_COPIES) {
+                reminders.copies()
             } else if (since != null) {
                 reminders.still(since)
             }
@@ -163,6 +165,38 @@ class Reminders(
         if (store.stillPostedSince() == sinceMs) return
         store.setStillPostedSince(sinceMs)
         notifier.showStillShooting(sinceMs)
+    }
+
+    /**
+     * The copies alarm (Phase 8, D-124): shows the reminder of every reel whose
+     * time has come ([ReminderTimes.copiesDueAt] up to now) and that is not
+     * shown for this copy batch yet, and arms the next. The alarm names no
+     * reel: it is read from the mirror, so a reel that has left it (Done
+     * editing) posts nothing, and an early or repeated delivery shows nothing
+     * twice. Each reminder is marked shown before it is posted, so a failed
+     * post, or notifications switched off, is not asked again for that batch
+     * (as Still shooting? is); one reel's failure is logged by class only and
+     * never stops the others, and the next alarm is armed whatever happens.
+     */
+    fun copies() {
+        val state = store.state()
+        try {
+            val due =
+                state
+                    .usableCopiesReminders()
+                    .filter { ReminderTimes.copiesDueAt(it.lastCopiedAtMs) <= nowMs && store.copiesShown(it.reelId) != it.lastCopiedAtMs }
+                    .sortedWith(compareBy({ ReminderTimes.copiesDueAt(it.lastCopiedAtMs) }, { it.reelId }))
+            for (reminder in due) {
+                store.setCopiesShown(reminder.reelId, reminder.lastCopiedAtMs)
+                try {
+                    notifier.showCopies(reminder)
+                } catch (e: RuntimeException) {
+                    Log.w(LOG_TAG, "copies reminder not posted: ${e.javaClass.simpleName}")
+                }
+            }
+        } finally {
+            scheduler.armCopies(state, nowMs)
+        }
     }
 
     companion object {

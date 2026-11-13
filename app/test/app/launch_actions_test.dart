@@ -1,9 +1,17 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/notifications/view_models/launch_actions.dart';
+import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -24,6 +32,14 @@ Future<VmHarness> _pumpApp(
   return harness;
 }
 
+/// The app on [harness]'s database, bridges and clock.
+Future<void> _pumpWith(WidgetTester tester, VmHarness harness) async {
+  await tester.pumpWidget(
+    ProviderScope(overrides: harness.appOverrides, child: const TakeTrayApp()),
+  );
+  await tester.pumpAndSettle();
+}
+
 int _tab(WidgetTester tester) =>
     tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex;
 
@@ -36,14 +52,109 @@ Future<void> _tapTab(WidgetTester tester, String label) async {
 
 void main() {
   group('the screen a tap asks for', () {
-    test('toTag is To tag, reels is Reels', () {
-      expect(routeFor(LaunchAction.toTag), Routes.toTag);
-      expect(routeFor(LaunchAction.reels), Routes.reels);
+    // The reel check must not run for the actions that have no reel.
+    Future<bool> never(int id) => throw StateError('no reel check expected');
+
+    test('toTag is To tag, reels is Reels', () async {
+      expect(
+        await routeFor(const Launch(LaunchAction.toTag), never),
+        Routes.toTag,
+      );
+      expect(
+        await routeFor(const Launch(LaunchAction.reels), never),
+        Routes.reels,
+      );
     });
 
-    test('every action has a route', () {
+    test('a reel id on To tag or Reels is ignored', () async {
+      expect(
+        await routeFor(const Launch(LaunchAction.toTag, reelId: 7), never),
+        Routes.toTag,
+      );
+      expect(
+        await routeFor(const Launch(LaunchAction.reels, reelId: 7), never),
+        Routes.reels,
+      );
+    });
+
+    test(
+      'Done editing for a reel that exists opens its page, asking Done editing',
+      () async {
+        final asked = <int>[];
+        final route = await routeFor(
+          const Launch(LaunchAction.doneEditing, reelId: 7),
+          (id) async {
+            asked.add(id);
+            return true;
+          },
+        );
+        expect(route, Routes.reelDoneEditing(7));
+        expect(route, '/reels/7?done=1');
+        expect(asked, [7], reason: 'one check, for that reel only');
+      },
+    );
+
+    test('Done editing for a reel that is gone opens Reels', () async {
+      expect(
+        await routeFor(
+          const Launch(LaunchAction.doneEditing, reelId: 7),
+          (id) async => false,
+        ),
+        Routes.reels,
+      );
+    });
+
+    test(
+      'Done editing with no usable reel id opens Reels without asking',
+      () async {
+        // A check that would say yes (and records it was asked): an id that
+        // cannot be a reel's must never reach it.
+        final asked = <int>[];
+        for (final id in <int?>[null, 0, -1, -997]) {
+          expect(
+            await routeFor(Launch(LaunchAction.doneEditing, reelId: id), (
+              asked_,
+            ) async {
+              asked.add(asked_);
+              return true;
+            }),
+            Routes.reels,
+            reason: '$id',
+          );
+        }
+        expect(asked, isEmpty);
+      },
+    );
+
+    test('Done editing when the reel check fails opens Reels, logs the type '
+        'only', () async {
+      final records = captureLogs();
+      final route = await routeFor(
+        const Launch(LaunchAction.doneEditing, reelId: 7),
+        (id) async => throw StateError('Zq secret reel name'),
+      );
+      expect(route, Routes.reels);
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), isNot(contains('Zq')));
+
+      // Any error type, not only one.
+      records.clear();
+      final other = await routeFor(
+        const Launch(LaunchAction.doneEditing, reelId: 7),
+        (id) async => throw ArgumentError('Zq secret reel name'),
+      );
+      expect(other, Routes.reels);
+      expect(logText(records), contains('ArgumentError'));
+      expect(logText(records), isNot(contains('Zq')));
+    });
+
+    test('every action has a route', () async {
       for (final action in LaunchAction.values) {
-        expect(routeFor(action), startsWith('/'), reason: action.name);
+        expect(
+          await routeFor(Launch(action, reelId: 3), (id) async => true),
+          startsWith('/'),
+          reason: action.name,
+        );
       }
     });
   });
@@ -149,4 +260,200 @@ void main() {
     expect(logText(records), contains('StateError'));
     expect(logText(records), isNot(contains('secret')));
   });
+  group('Done editing', () {
+    Uri location(WidgetTester tester) =>
+        ProviderScope.containerOf(tester.element(find.byType(TakeTrayApp)))
+            .read(appRouterProvider)
+            .routerDelegate
+            .currentConfiguration
+            .uri;
+
+    testApp('opens the reel page for a reel that exists, from another tab', (
+      tester,
+    ) async {
+      final harness = VmHarness();
+      final reel = await ReelsRepository(
+        harness.media.db,
+        harness.media.clock,
+      ).create('Goa');
+      await _pumpWith(tester, harness);
+      await _tapTab(tester, 'Settings');
+
+      harness.background.emit(LaunchAction.doneEditing, reelId: reel.id);
+      await tester.pumpAndSettle();
+
+      expect(location(tester).toString(), Routes.reelDoneEditing(reel.id));
+      expect(_tab(tester), 0);
+      expect(
+        tester.widget<ReelDetailScreen>(find.byType(ReelDetailScreen)).reelId,
+        reel.id,
+      );
+    });
+
+    testApp('opens Reels for a reel that is gone, an unknown id or none', (
+      tester,
+    ) async {
+      final harness = await _pumpApp(tester);
+      await _tapTab(tester, 'Settings');
+
+      for (final id in <int?>[999, null, 0, -4]) {
+        await _tapTab(tester, 'Settings');
+        harness.background.emit(LaunchAction.doneEditing, reelId: id);
+        await tester.pumpAndSettle();
+        expect(location(tester).path, Routes.reels, reason: '$id');
+        expect(_tab(tester), 0, reason: '$id');
+        expect(find.byType(ReelDetailScreen), findsNothing, reason: '$id');
+      }
+    });
+
+    testApp('a start action with a reel opens it, once', (tester) async {
+      final harness = VmHarness();
+      final reel = await ReelsRepository(
+        harness.media.db,
+        harness.media.clock,
+      ).create('Goa');
+      harness.background
+        ..startAction = LaunchAction.doneEditing
+        ..startReelId = reel.id;
+      await _pumpWith(tester, harness);
+
+      expect(location(tester).toString(), Routes.reelDoneEditing(reel.id));
+      expect(harness.background.launchListens, 1);
+    });
+
+    testApp('taps in a row end at the last one even when the first needs a '
+        'reel check', (tester) async {
+      final harness = VmHarness();
+      final reel = await ReelsRepository(
+        harness.media.db,
+        harness.media.clock,
+      ).create('Goa');
+      await _pumpWith(tester, harness);
+
+      harness.background
+        ..emit(LaunchAction.doneEditing, reelId: reel.id)
+        ..emit(LaunchAction.toTag);
+      await tester.pumpAndSettle();
+      expect(_tab(tester), 1, reason: 'To tag was tapped last');
+
+      harness.background
+        ..emit(LaunchAction.toTag)
+        ..emit(LaunchAction.doneEditing, reelId: reel.id);
+      await tester.pumpAndSettle();
+      expect(location(tester).toString(), Routes.reelDoneEditing(reel.id));
+
+      harness.background
+        ..emit(LaunchAction.doneEditing, reelId: reel.id)
+        ..emit(LaunchAction.reels);
+      await tester.pumpAndSettle();
+      expect(location(tester).path, Routes.reels);
+      expect(find.byType(ReelDetailScreen), findsNothing);
+    });
+
+    testApp('a slow lookup is not overtaken by a later tap', (tester) async {
+      final harness = VmHarness();
+      final repo = _SlowReels(harness.media.db, harness.media.clock);
+      final reel = await repo.create('Goa');
+      repo.gate = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...harness.appOverrides,
+            reelsRepositoryProvider.overrideWithValue(repo),
+          ],
+          child: const TakeTrayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      harness.background
+        ..emit(LaunchAction.doneEditing, reelId: reel.id)
+        ..emit(LaunchAction.toTag);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        _tab(tester),
+        0,
+        reason: 'the earlier tap is still being looked up',
+      );
+
+      repo.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(_tab(tester), 1, reason: 'To tag was tapped last, so it wins');
+      expect(find.byType(ReelDetailScreen), findsNothing);
+    });
+
+    testApp('a lookup that finishes after the app is gone does nothing', (
+      tester,
+    ) async {
+      final harness = VmHarness();
+      final repo = _SlowReels(harness.media.db, harness.media.clock);
+      final reel = await repo.create('Goa');
+      repo.gate = Completer<void>();
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...harness.appOverrides,
+            reelsRepositoryProvider.overrideWithValue(repo),
+          ],
+          child: const TakeTrayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      harness.background.emit(LaunchAction.doneEditing, reelId: reel.id);
+      await tester.pump(const Duration(milliseconds: 50));
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.gate!.complete();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testApp('two reminders, two taps: each opens its own reel', (tester) async {
+      final harness = VmHarness();
+      final repo = ReelsRepository(harness.media.db, harness.media.clock);
+      final one = await repo.create('One');
+      final two = await repo.create('Two');
+      await _pumpWith(tester, harness);
+
+      harness.background.emit(LaunchAction.doneEditing, reelId: one.id);
+      await tester.pumpAndSettle();
+      expect(location(tester).path, Routes.reel(one.id));
+
+      harness.background.emit(LaunchAction.doneEditing, reelId: two.id);
+      await tester.pumpAndSettle();
+      expect(location(tester).path, Routes.reel(two.id));
+    });
+
+    testApp('a reel deleted just before the tap opens Reels', (tester) async {
+      final harness = VmHarness();
+      final repo = ReelsRepository(harness.media.db, harness.media.clock);
+      final reel = await repo.create('Goa');
+      await _pumpWith(tester, harness);
+      await tester.runAsync(() => repo.delete(reel.id));
+
+      harness.background.emit(LaunchAction.doneEditing, reelId: reel.id);
+      await tester.pumpAndSettle();
+
+      expect(location(tester).path, Routes.reels);
+    });
+  });
+}
+
+/// A reels repository whose `getById` waits for [gate] (when set), as a slow
+/// phone would.
+class _SlowReels extends ReelsRepository {
+  // The base class's fields are private, so super parameters cannot be named.
+  // ignore: use_super_parameters
+  _SlowReels(AppDatabase db, Clock clock) : super(db, clock);
+
+  Completer<void>? gate;
+
+  @override
+  Future<Reel?> getById(int id) async {
+    final wait = gate;
+    if (wait != null) await wait.future;
+    return await super.getById(id);
+  }
 }

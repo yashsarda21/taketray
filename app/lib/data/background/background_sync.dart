@@ -4,6 +4,7 @@ import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/background/shade_actions.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/media.dart';
@@ -47,13 +48,21 @@ final Logger _log = Logger('backgroundSync');
 ///   and nothing is marked written, so the next change (or [flush]) tries
 ///   again. When the action cannot be read, nothing is written.
 class BackgroundSync {
-  new(this._bridge, this._phone, this._settings, this._clips, this._shade);
+  new(
+    this._bridge,
+    this._phone,
+    this._settings,
+    this._clips,
+    this._shade,
+    this._edits,
+  );
 
   final BackgroundBridge _bridge;
   final PhoneStateRepository _phone;
   final SettingsRepository _settings;
   final ClipsRepository _clips;
   final ShadeActions _shade;
+  final EditSessionsRepository _edits;
 
   final List<StreamSubscription<Object?>> _subscriptions = [];
   bool _started = false;
@@ -79,6 +88,7 @@ class BackgroundSync {
         (_) => _request(),
         onError: _streamError,
       ),
+      _edits.watchSummaries().listen((_) => _request(), onError: _streamError),
     ]);
   }
 
@@ -161,6 +171,23 @@ class BackgroundSync {
     }
   }
 
+  /// One per editing session with copies, whatever Shooting mode says, by
+  /// reel (Phase 8, D-124). A session without copies, in any editor, has
+  /// none.
+  Future<List<CopiesReminder>> _copiesReminders() async {
+    final summaries = await _edits.summaries();
+    return [
+      for (final session in summaries)
+        if (session.copyCount > 0 && session.lastCopiedAt != null)
+          CopiesReminder(
+            reelId: session.reelId,
+            reelName: session.reelName,
+            copyBytes: session.copyBytes,
+            lastCopiedAt: session.lastCopiedAt!,
+          ),
+    ]..sort((a, b) => a.reelId.compareTo(b.reelId));
+  }
+
   Future<BackgroundState> _read(ShootingState shooting) async {
     final settings = await _settings.load();
     final shots = await _clips.pendingShotTimes();
@@ -175,6 +202,7 @@ class BackgroundSync {
       // Settings has no switch for it until Phase 10.
       stillReminderEnabled: true,
       stillAnswered: shooting.on && shooting.stillAnswered,
+      copiesReminders: await _copiesReminders(),
     );
   }
 }
@@ -189,6 +217,7 @@ BackgroundSync backgroundSync(Ref ref) {
     ref.watch(settingsRepositoryProvider),
     ref.watch(clipsRepositoryProvider),
     ref.watch(shadeActionsProvider),
+    ref.watch(editSessionsRepositoryProvider),
   );
   ref.onDispose(sync.dispose);
   return sync;

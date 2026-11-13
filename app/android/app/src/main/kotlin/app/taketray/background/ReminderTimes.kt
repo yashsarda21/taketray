@@ -19,6 +19,9 @@ object ReminderTimes {
     /** The local hour the 14-day reminder waits for: never in the night. */
     const val STILL_HOUR = 10
 
+    /** The copies reminder comes this many days after the last copies were made (D-124). */
+    const val COPIES_AFTER_DAYS = 3
+
     /** The last minute of a day: the evening time is clamped to 0..[LAST_MINUTE]. */
     const val LAST_MINUTE = 24 * 60 - 1
 
@@ -124,6 +127,17 @@ object ReminderTimes {
         val sameDay = instantAt(date.atTime(ten), zone)
         val at = if (sameDay.isBefore(due)) instantAt(date.plusDays(1).atTime(ten), zone) else sameDay
         return at.toEpochMilli()
+    }
+
+    /**
+     * When the copies reminder is due for copies last made at
+     * [lastCopiedAtMs]: [COPIES_AFTER_DAYS] days of 24 hours later, as elapsed
+     * time (Dart counts days the same way), not moved to an hour of the
+     * day. Saturates at `Long.MAX_VALUE` rather than overflowing.
+     */
+    fun copiesDueAt(lastCopiedAtMs: Long): Long {
+        val after = Duration.ofDays(COPIES_AFTER_DAYS.toLong()).toMillis()
+        return if (lastCopiedAtMs > Long.MAX_VALUE - after) Long.MAX_VALUE else lastCopiedAtMs + after
     }
 
     /** The first instant of [nowMs]'s local day in [zone]. */

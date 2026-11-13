@@ -165,6 +165,54 @@ class BackgroundStateStore(
             Unit
         }
 
+    /**
+     * The copy batch ([BackgroundState.CopiesReminder.lastCopiedAtMs]) whose
+     * copies reminder the receiver has handled for reel [reelId], or null:
+     * shown once per `(reelId, lastCopiedAtMs)`, so a new batch has a new
+     * time and is reminded again, and a reboot or a re-arm never repeats one.
+     */
+    fun copiesShown(reelId: Long): Long? = synchronized(LOCK) { copiesShownMarks()[reelId] }
+
+    fun setCopiesShown(
+        reelId: Long,
+        lastCopiedAtMs: Long,
+    ) = synchronized(LOCK) {
+        writeCopiesShown(copiesShownMarks() + (reelId to lastCopiedAtMs))
+    }
+
+    /**
+     * Forgets the marks of every reel not in [keep] (a session that ended and
+     * a reel that was deleted): the marks do not pile up, and a later session
+     * of the same reel is reminded afresh. Written only when something goes.
+     */
+    fun pruneCopiesShown(keep: Set<Long>) =
+        synchronized(LOCK) {
+            val marks = copiesShownMarks()
+            val kept = marks.filterKeys { it in keep }
+            if (kept.size != marks.size) writeCopiesShown(kept)
+        }
+
+    /** reel id to batch time; empty when missing or unreadable (the next write replaces it). */
+    private fun copiesShownMarks(): Map<Long, Long> {
+        val text = string(KEY_COPIES_SHOWN) ?: return emptyMap()
+        return try {
+            val o = JSONObject(text)
+            buildMap { for (key in o.keys()) put(key.toLong(), o.getLong(key)) }
+        } catch (e: JSONException) {
+            Log.w(LOG_TAG, "copies marks unreadable; treated as none")
+            emptyMap()
+        } catch (e: NumberFormatException) {
+            Log.w(LOG_TAG, "copies marks unreadable; treated as none")
+            emptyMap()
+        }
+    }
+
+    private fun writeCopiesShown(marks: Map<Long, Long>) {
+        val o = JSONObject()
+        for ((reel, at) in marks) o.put(reel.toString(), at)
+        prefs.edit().putString(KEY_COPIES_SHOWN, o.toString()).commit()
+    }
+
     /** The Long under [key]; null when missing or of another type (corrupt). */
     private fun long(key: String): Long? =
         try {
@@ -192,6 +240,7 @@ class BackgroundStateStore(
         const val KEY_EVENING_HANDLED_DAY = "evening_handled_day"
         const val KEY_EVENING_ARMED_FOR = "evening_armed_for"
         const val KEY_EVENING_DEFERRED_FOR = "evening_deferred_for"
+        const val KEY_COPIES_SHOWN = "copies_shown"
 
         /** One lock for every store instance (as ZoneChangeStore has). */
         private val LOCK = Any()

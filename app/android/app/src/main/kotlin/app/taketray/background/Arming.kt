@@ -97,9 +97,9 @@ internal fun scheduleQuietJob(
 }
 
 /**
- * Arming's alarms part (D-105): the evening reminder and Still shooting?
- * ([ReminderScheduler]), in the zone of the moment. The evening is armed
- * even when Still shooting? fails, and the other way round.
+ * Arming's alarms part (D-105): the evening reminder, Still shooting? and
+ * (Phase 8, D-124) the copies reminder ([ReminderScheduler]), in the zone of
+ * the moment. Each is armed even when another fails.
  *
  * It also takes the evening reminder out of the shade when its claim, "You
  * shot 3 clips today", is no longer true ([dropStaleEvening]).
@@ -124,10 +124,32 @@ class ReminderArming(
         val scheduler = ReminderScheduler(context, zone())
         val now = nowMs()
         try {
-            scheduler.armEvening(state, now)
-            dropStaleEvening(context, state, now)
+            try {
+                scheduler.armEvening(state, now)
+                dropStaleEvening(context, state, now)
+            } finally {
+                scheduler.armStill(state, now, armOverdue = armOverdueStill)
+            }
         } finally {
-            scheduler.armStill(state, now, armOverdue = armOverdueStill)
+            armCopies(context, scheduler, state, now)
+        }
+    }
+
+    /**
+     * The copies reminder (Phase 8, D-124): its alarm, and the removal of the
+     * reminders of reels that left the mirror (their session ended). Every
+     * part, also with Shooting mode off.
+     */
+    private fun armCopies(
+        context: Context,
+        scheduler: ReminderScheduler,
+        state: BackgroundState,
+        now: Long,
+    ) {
+        try {
+            scheduler.armCopies(state, now)
+        } finally {
+            Notifier(context).cancelCopiesExcept(state.usableCopiesReminders().map { it.reelId }.toSet())
         }
     }
 

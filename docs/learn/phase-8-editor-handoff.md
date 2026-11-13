@@ -144,7 +144,36 @@ To be written in Task 6 (decision D-123).
 
 ## 7. The copies reminder and the Done editing tap
 
-To be written in Task 7 (decision D-124).
+**What we built:** a third reminder, beside "You shot 3 clips today" and "Still shooting?". Three days after the last copies of an edit were made, TakeTray posts one notification per reel: "Wedding copies are using 1.2 GB", "Done editing? Tap to clean up." Tapping it (or its **Done editing** button) opens that reel's page, where the app asks to clean up (the dialog itself comes in section 11).
+
+**Why TakeTray needs it:** VN copies are real files in `Movies/TakeTray/`, and nothing else tells the user they are still taking space. The reminder is the nudge, and it works while the app is closed, like the other two: no Flutter engine runs, the database is never read, only a small copy of the facts Dart keeps written for it (the "mirror", D-103).
+
+**Key ideas:**
+
+- **One new fact in the mirror.** Dart writes one `CopiesReminder` per editing session that has copies: the reel's id and current name, the copies' total size and when the newest was made. A session with no copies (CapCut and Edits only share, until a clip is added later) has none. Phones that stored the mirror before this phase load it with an empty list:
+
+  ```kotlin
+  copiesReminders =
+      if (!o.has("copiesReminders")) emptyList() else { ... }
+  ```
+
+- **Three days is elapsed time.** `copiesDueAt(last) = last + 3 x 24 hours`, nothing fancier: not "10 in the morning", not "three calendar days". It does not move when the phone changes time zone or the clocks go back.
+- **Once per batch, not once per day.** The receiver writes down `(reelId, lastCopiedAtMs)` *before* it posts. A reboot, a second delivery or a rewrite of the mirror finds the mark and stays quiet; a new copy batch has a new time, so it is reminded again. Marking before posting means a failed post, or notifications switched off, is not retried for that batch: the same rule Still shooting? has.
+- **One alarm, many reels.** The alarm carries no reel. It is set for the earliest reminder that is not shown yet; when it fires, the receiver shows every reminder that is due and then arms the next one. A reel whose session ended in the meantime is not in the mirror any more, so nothing is posted for it, and the next write of the mirror removes its notification too.
+- **Ids that cannot collide.** Phase 6 uses notification ids 1 to 3 and request codes up to 303. The copies reminder of reel `r` is notification `1000 + r`, its taps use request codes `1_000_000 + 2r` and `+ 1`, and its one alarm uses 400. A reel id outside 1 to 1_073_241_823 is ignored (it could land on Phase 6's ids, or overflow a request code), and the largest valid one ends exactly at `Int.MAX_VALUE`:
+
+  ```kotlin
+  private fun copiesRequestCode(reelId: Long): Int = (COPIES_REQUEST_BASE + 2 * reelId).toInt()
+  ```
+
+- **The tap is an allow-list with one payload.** Android sends `doneEditing` and a reel id, never a route (deep linking is off). Kotlin keeps the id only for `doneEditing` and only when it is a usable one; Dart then checks the reel still exists and opens `/reels/<id>?done=1`, or Reels when it does not. Taps are opened in the order they came, because looking up a reel takes a moment and a later tap must not be overtaken.
+- **Private on the lock screen.** The reel's name is the one piece of user text in any TakeTray notification. The lock screen shows only "TakeTray" and "Copies for an edit are still on your phone".
+
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/background/` (`BackgroundState.kt`, `BackgroundStateStore.kt`, `ReminderTimes.kt`, `ReminderScheduler.kt`, `ReminderReceiver.kt`, `Arming.kt`, `Notifier.kt`, `LaunchActions.kt`), `app/pigeons/background_api.dart`, `app/lib/data/background/background_sync.dart`, `app/lib/platform/background_bridge.dart`, `app/lib/features/notifications/view_models/launch_actions.dart`, `app/lib/app.dart` and `app/lib/router/routes.dart`. The on-phone hook is `showCopiesReminderNow` in `src/debug`. The tests are `CopiesReminderTest.kt` (the alarm, the receiver, the notification, arming and a reboot) and the matching existing Kotlin and Dart test files.
+
+**Try it yourself:** `tool/test_android --tests 'app.taketray.background.CopiesReminderTest'`. Then, in `ReminderTimes.kt`, change `COPIES_AFTER_DAYS` to 2 and run it again: the alarm tests fail. Put it back, and change the receiver's `store.copiesShown(it.reelId) != it.lastCopiedAtMs` to `== null`: the test for "a new copy batch is reminded again" fails. And in `launch_actions_test.dart` the "taps in a row" test fails if you remove the queue in `app.dart`.
+
+**Decisions:** D-124, with D-101 (notifications), D-103 (the mirror), D-105 (the reminders) and D-118 (R6) as background.
 
 ## 8. Design-system pieces for editors
 

@@ -212,10 +212,14 @@ enum class ShadeActionKindMsg(val raw: Int) {
   }
 }
 
-/** The screen a notification tap opens: an allow-list, never a route. */
+/**
+ * The screen a notification tap opens: an allow-list, never a route.
+ * [doneEditing] opens a reel's page, asking Done editing there.
+ */
 enum class LaunchActionMsg(val raw: Int) {
   TO_TAG(0),
-  REELS(1);
+  REELS(1),
+  DONE_EDITING(2);
 
   companion object {
     fun ofRaw(raw: Int): LaunchActionMsg? {
@@ -350,11 +354,69 @@ data class VolumeGenerationMsg (
 }
 
 /**
+ * One editing session that has copies (Phase 8, D-124): what the copies
+ * reminder needs. [reelName] is the reel's name now, the one word of user
+ * text a notification holds (never logged, D-10). [copyBytes] is the copies'
+ * total size; [lastCopiedAtMs] is when the newest was made (UTC ms), the
+ * reminder's key: a new batch has a new one and is reminded again.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class CopiesReminderMsg (
+  val reelId: Long,
+  val reelName: String,
+  val copyBytes: Long,
+  val lastCopiedAtMs: Long
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): CopiesReminderMsg {
+      val reelId = pigeonVar_list[0] as Long
+      val reelName = pigeonVar_list[1] as String
+      val copyBytes = pigeonVar_list[2] as Long
+      val lastCopiedAtMs = pigeonVar_list[3] as Long
+      return CopiesReminderMsg(reelId, reelName, copyBytes, lastCopiedAtMs)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      reelId,
+      reelName,
+      copyBytes,
+      lastCopiedAtMs,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as CopiesReminderMsg
+    return BackgroundApiPigeonUtils.deepEquals(this.reelId, other.reelId) && BackgroundApiPigeonUtils.deepEquals(this.reelName, other.reelName) && BackgroundApiPigeonUtils.deepEquals(this.copyBytes, other.copyBytes) && BackgroundApiPigeonUtils.deepEquals(this.lastCopiedAtMs, other.lastCopiedAtMs)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.reelId)
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.reelName)
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.copyBytes)
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.lastCopiedAtMs)
+    return result
+  }
+  override fun toString(): String {
+    return "CopiesReminderMsg(reelId=$reelId, reelName=$reelName, copyBytes=$copyBytes, lastCopiedAtMs=$lastCopiedAtMs)"
+  }
+}
+
+/**
  * The mirror of what the background code needs. [sinceMs] is when Shooting
  * mode was switched on (UTC ms; null while it is off). [waitingShotMs] are
  * the UTC instants (`dateTakenUtc`, ms) of the clips waiting in To tag, in
  * ascending order. [eveningMinutes] is the evening reminder's local time, in
- * minutes after midnight.
+ * minutes after midnight. [copiesReminders] has one entry per editing
+ * session with copies.
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -367,7 +429,8 @@ data class BackgroundStateMsg (
   val eveningEnabled: Boolean,
   val eveningMinutes: Long,
   val stillReminderEnabled: Boolean,
-  val stillAnswered: Boolean
+  val stillAnswered: Boolean,
+  val copiesReminders: List<CopiesReminderMsg>
 )
  {
   companion object {
@@ -381,7 +444,8 @@ data class BackgroundStateMsg (
       val eveningMinutes = pigeonVar_list[6] as Long
       val stillReminderEnabled = pigeonVar_list[7] as Boolean
       val stillAnswered = pigeonVar_list[8] as Boolean
-      return BackgroundStateMsg(shootingOn, sinceMs, baselines, watchedFolders, waitingShotMs, eveningEnabled, eveningMinutes, stillReminderEnabled, stillAnswered)
+      val copiesReminders = pigeonVar_list[9] as List<CopiesReminderMsg>
+      return BackgroundStateMsg(shootingOn, sinceMs, baselines, watchedFolders, waitingShotMs, eveningEnabled, eveningMinutes, stillReminderEnabled, stillAnswered, copiesReminders)
     }
   }
   fun toList(): List<Any?> {
@@ -395,6 +459,7 @@ data class BackgroundStateMsg (
       eveningMinutes,
       stillReminderEnabled,
       stillAnswered,
+      copiesReminders,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -405,7 +470,7 @@ data class BackgroundStateMsg (
       return true
     }
     val other = other as BackgroundStateMsg
-    return BackgroundApiPigeonUtils.deepEquals(this.shootingOn, other.shootingOn) && BackgroundApiPigeonUtils.deepEquals(this.sinceMs, other.sinceMs) && BackgroundApiPigeonUtils.deepEquals(this.baselines, other.baselines) && BackgroundApiPigeonUtils.deepEquals(this.watchedFolders, other.watchedFolders) && BackgroundApiPigeonUtils.deepEquals(this.waitingShotMs, other.waitingShotMs) && BackgroundApiPigeonUtils.deepEquals(this.eveningEnabled, other.eveningEnabled) && BackgroundApiPigeonUtils.deepEquals(this.eveningMinutes, other.eveningMinutes) && BackgroundApiPigeonUtils.deepEquals(this.stillReminderEnabled, other.stillReminderEnabled) && BackgroundApiPigeonUtils.deepEquals(this.stillAnswered, other.stillAnswered)
+    return BackgroundApiPigeonUtils.deepEquals(this.shootingOn, other.shootingOn) && BackgroundApiPigeonUtils.deepEquals(this.sinceMs, other.sinceMs) && BackgroundApiPigeonUtils.deepEquals(this.baselines, other.baselines) && BackgroundApiPigeonUtils.deepEquals(this.watchedFolders, other.watchedFolders) && BackgroundApiPigeonUtils.deepEquals(this.waitingShotMs, other.waitingShotMs) && BackgroundApiPigeonUtils.deepEquals(this.eveningEnabled, other.eveningEnabled) && BackgroundApiPigeonUtils.deepEquals(this.eveningMinutes, other.eveningMinutes) && BackgroundApiPigeonUtils.deepEquals(this.stillReminderEnabled, other.stillReminderEnabled) && BackgroundApiPigeonUtils.deepEquals(this.stillAnswered, other.stillAnswered) && BackgroundApiPigeonUtils.deepEquals(this.copiesReminders, other.copiesReminders)
   }
 
   override fun hashCode(): Int {
@@ -419,10 +484,11 @@ data class BackgroundStateMsg (
     result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.eveningMinutes)
     result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.stillReminderEnabled)
     result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.stillAnswered)
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.copiesReminders)
     return result
   }
   override fun toString(): String {
-    return "BackgroundStateMsg(shootingOn=$shootingOn, sinceMs=$sinceMs, baselines=$baselines, watchedFolders=$watchedFolders, waitingShotMs=$waitingShotMs, eveningEnabled=$eveningEnabled, eveningMinutes=$eveningMinutes, stillReminderEnabled=$stillReminderEnabled, stillAnswered=$stillAnswered)"
+    return "BackgroundStateMsg(shootingOn=$shootingOn, sinceMs=$sinceMs, baselines=$baselines, watchedFolders=$watchedFolders, waitingShotMs=$waitingShotMs, eveningEnabled=$eveningEnabled, eveningMinutes=$eveningMinutes, stillReminderEnabled=$stillReminderEnabled, stillAnswered=$stillAnswered, copiesReminders=$copiesReminders)"
   }
 }
 
@@ -532,6 +598,53 @@ data class NotificationAccessMsg (
     return "NotificationAccessMsg(granted=$granted, canAsk=$canAsk, sdkInt=$sdkInt)"
   }
 }
+
+/**
+ * A notification tap: the allow-listed [action] and, for `doneEditing` only,
+ * the reel it is for. The reel id is the only payload there is (D-124); Dart
+ * checks the reel still exists.
+ *
+ * Generated class from Pigeon that represents data sent in messages.
+ */
+data class LaunchMsg (
+  val action: LaunchActionMsg,
+  val reelId: Long? = null
+)
+ {
+  companion object {
+    fun fromList(pigeonVar_list: List<Any?>): LaunchMsg {
+      val action = pigeonVar_list[0] as LaunchActionMsg
+      val reelId = pigeonVar_list[1] as Long?
+      return LaunchMsg(action, reelId)
+    }
+  }
+  fun toList(): List<Any?> {
+    return listOf(
+      action,
+      reelId,
+    )
+  }
+  override fun equals(other: Any?): Boolean {
+    if (other == null || other.javaClass != javaClass) {
+      return false
+    }
+    if (this === other) {
+      return true
+    }
+    val other = other as LaunchMsg
+    return BackgroundApiPigeonUtils.deepEquals(this.action, other.action) && BackgroundApiPigeonUtils.deepEquals(this.reelId, other.reelId)
+  }
+
+  override fun hashCode(): Int {
+    var result = javaClass.hashCode()
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.action)
+    result = 31 * result + BackgroundApiPigeonUtils.deepHash(this.reelId)
+    return result
+  }
+  override fun toString(): String {
+    return "LaunchMsg(action=$action, reelId=$reelId)"
+  }
+}
 private open class BackgroundApiPigeonCodec : StandardMessageCodec() {
   override fun readValueOfType(type: Byte, buffer: ByteBuffer): Any? {
     return when (type) {
@@ -562,17 +675,27 @@ private open class BackgroundApiPigeonCodec : StandardMessageCodec() {
       }
       134.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          BackgroundStateMsg.fromList(it)
+          CopiesReminderMsg.fromList(it)
         }
       }
       135.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
-          ShadeActionMsg.fromList(it)
+          BackgroundStateMsg.fromList(it)
         }
       }
       136.toByte() -> {
         return (readValue(buffer) as? List<Any?>)?.let {
+          ShadeActionMsg.fromList(it)
+        }
+      }
+      137.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
           NotificationAccessMsg.fromList(it)
+        }
+      }
+      138.toByte() -> {
+        return (readValue(buffer) as? List<Any?>)?.let {
+          LaunchMsg.fromList(it)
         }
       }
       else -> super.readValueOfType(type, buffer)
@@ -600,16 +723,24 @@ private open class BackgroundApiPigeonCodec : StandardMessageCodec() {
         stream.write(133)
         writeValue(stream, value.toList())
       }
-      is BackgroundStateMsg -> {
+      is CopiesReminderMsg -> {
         stream.write(134)
         writeValue(stream, value.toList())
       }
-      is ShadeActionMsg -> {
+      is BackgroundStateMsg -> {
         stream.write(135)
         writeValue(stream, value.toList())
       }
-      is NotificationAccessMsg -> {
+      is ShadeActionMsg -> {
         stream.write(136)
+        writeValue(stream, value.toList())
+      }
+      is NotificationAccessMsg -> {
+        stream.write(137)
+        writeValue(stream, value.toList())
+      }
+      is LaunchMsg -> {
+        stream.write(138)
         writeValue(stream, value.toList())
       }
       else -> super.writeValue(stream, value)
@@ -658,7 +789,7 @@ interface BackgroundHostApi {
    * The first call also tells Kotlin that Dart is listening, so later
    * actions come through [BackgroundFlutterApi.onLaunchAction].
    */
-  fun takeLaunchAction(): LaunchActionMsg?
+  fun takeLaunchAction(): LaunchMsg?
 
   companion object {
     /** The codec used by BackgroundHostApi. */
@@ -843,13 +974,13 @@ class BackgroundFlutterApi(private val binaryMessenger: BinaryMessenger, private
     }
   }
   /** A notification was tapped while the app was running. */
-  suspend fun onLaunchAction(actionArg: LaunchActionMsg)
+  suspend fun onLaunchAction(launchArg: LaunchMsg)
 {
     val separatedMessageChannelSuffix = if (messageChannelSuffix.isNotEmpty()) ".$messageChannelSuffix" else ""
     return suspendCancellableCoroutine { continuation ->
       val channelName = "dev.flutter.pigeon.taketray.BackgroundFlutterApi.onLaunchAction$separatedMessageChannelSuffix"
       val channel = BasicMessageChannel<Any?>(binaryMessenger, channelName, codec)
-      channel.send(listOf(actionArg)) {
+      channel.send(listOf(launchArg)) {
         if (it is List<*>) {
           if (it.size > 1) {
             continuation.resumeWithException(FlutterError(it[0] as String, it[1] as String, it[2] as String?))

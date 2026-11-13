@@ -153,6 +153,32 @@ void main() {
     expect(find.byType(ReelsScreen), findsOneWidget);
   });
 
+  test('the Done editing location is the reel page with the done flag', () {
+    expect(Routes.reelDoneParameter, 'done');
+    expect(Routes.reelDoneEditing(7), '/reels/7?done=1');
+    expect(Routes.reelDoneEditing(7), '${Routes.reel(7)}?done=1');
+    final uri = Uri.parse(Routes.reelDoneEditing(12345));
+    expect(uri.path, Routes.reel(12345));
+    expect(uri.queryParameters, {Routes.reelDoneParameter: '1'});
+  });
+
+  testApp('the Done editing location shows that reel page', (tester) async {
+    final h = VmHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final (_, router) = await _pumpApp(tester, harness: h);
+
+    router.go(Routes.reelDoneEditing(reel.id));
+    await _settle(tester);
+
+    expect(
+      tester.widget<ReelDetailScreen>(find.byType(ReelDetailScreen)).reelId,
+      reel.id,
+    );
+    expect(router.routerDelegate.currentConfiguration.uri.queryParameters, {
+      Routes.reelDoneParameter: '1',
+    });
+  });
+
   testApp('unknown id route goes to Reels', (tester) async {
     final (_, router) = await _pumpApp(tester);
 
