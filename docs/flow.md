@@ -1104,6 +1104,34 @@ Pure functions; the editor tasks (3 to 13) call them. Nothing here reads a file,
 
 **In tests:** `test/domain/rules/{edit_folder_name,copy_file_names,space_check,byte_size,edit_split}_test.dart`, `test/domain/models/{editor_app,clip_ref}_test.dart`.
 
+### Copying clips (`lib/platform/copy_bridge.dart`, `pigeons/copy_api.dart`, `android/.../editors/`, Phase 8 Task 5, D-122)
+
+Copies a reel's clips into `Movies/TakeTray/<folder>/` in the app's own process, with no foreground service. Dart (Task 6) chooses the clips, names and folder and records each copy; Kotlin copies and reports. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/`.
+
+**Making the contract:** `pigeons/copy_api.dart` → `lib/platform/copy_api.g.dart` and `editors/CopyApi.g.kt` (package `app.taketray.editors`, error class `CopyApiError`); `cd app && ../tool/dart run pigeon --input pigeons/copy_api.dart` (`tool/check_generated` covers it). Host API `CopyHostApi` (Dart calls Kotlin) and Flutter API `CopyFlutterApi.onCopyChanged` (Kotlin calls Dart).
+
+**Set-up:** `MainActivity.configureFlutterEngine` makes `CopyHostApiImpl(this, CopyEngine.shared(applicationContext), send = CopyFlutterApi(messenger)::onCopyChanged)` and `CopyHostApi.setUp`; the impl attaches its listener to the engine. `cleanUpFlutterEngine` and `onDestroy` call `onHostGone()`: its listener is detached (only if still the attached one), the window is dropped, and the job goes on in the process-wide `CopyEngine`. Dart's `copyBridgeProvider` (kept alive) builds `PigeonCopyBridge`; the first listen to `changes` sets up the Flutter API, and `dispose` removes it.
+
+**Starting a job:**
+
+1. Dart: `CopyBridge.start(CopyRequest)` → `CopyRequestMsg` (each `ClipRef` as `CopySourceMsg`). A `busy` error becomes `CopyBusy`; any other `PlatformException` passes unchanged. **[bridge]**
+2. `CopyHostApiImpl.start` → `CopyEngine.start`: under the engine's lock, `busy` if a job is set (running or a waiting result) or `deletePendingIn` is sweeping; `bad-request` (`requireSegment`) for a blank job id, a folder or file name with `/`, NUL, `.` or `..`, or a negative size. Then a `CopyJob` is made, one worker coroutine is launched on `Dispatchers.IO` (after any earlier worker has ended), and a first `running` event is posted.
+3. `CopyJob.run` → `copyItems`, per item from `next`: `CopyStore.availableBytes()` (StatFs of the primary volume) `< sizeBytes + 50 MB` → `spaceFull`; `insertPending` (pending row in the folder on `external_primary`); `openSource` (`openFileDescriptor(uri, "r")` on the clip's own volume or its picker address; length from `statSize`); `openTarget` (`"w"` on the row); 1 MiB chunks, the cancel flag checked before each, the debug throttle slept after each, a progress event when 250 ms have passed since the last event; the target closed; bytes written compared with the length; `publish` (`IS_PENDING 0`, then `_ID` and `DISPLAY_NAME` read back). A copied or failed item moves `next` on and sends an event.
+4. Failures: the original's (open, read, length) → row deleted, clip in `failedClipIds`, go on; no space (`isNoSpace`: "ENOSPC" or "No space left on device" in the message of the exception or a cause) → row deleted, `spaceFull`; any other copy failure → row deleted, `interrupted`; insert `IllegalArgumentException` → that item failed; any unexpected exception → `interrupted`. Under the lock, `run` then sets the end state, unless a cancel is waiting (step "Stop").
+5. Every event goes through `post` to the main thread, where the attached listener (if any) sends `CopyJobMsg` to Dart with `CopyFlutterApi.onCopyChanged` (a failed send is logged by class name and dropped). Dart maps it to `CopyJob` (`copiedAt` UTC) on `changes`.
+
+**Stop** (`cancel(jobId)`): unknown id → null. A running job gets the flag; the loop stops at its next chunk check (or after the file it is publishing), deletes its pending row, and then `deleteCopies` deletes every copy of this job with `deleteOwn(id, folder, name)` (copies deleted stay in `copied`, the rest move to `undeleted`); state `cancelled`. A job that is `finished`, `spaceFull` or `interrupted` gets a new worker that runs `deleteCopies`. A `cancelled` job is answered as it is. The call returns once the deletes are done.
+
+**Resume and clear:** `resume` only from `spaceFull` or `interrupted` (and no cancel waiting): `running` again, a worker continues from `next`. `clear` forgets a result that is not running and not still deleting; another id does nothing.
+
+**After a restart:** `current()` is null. `ownRowsIn(folder)` queries `relative_path = ? COLLATE NOCASE` with pending rows included, then keeps only rows that pass `CopyFolderPath.isInFolder` and `isOwn` (exactly `Movies/TakeTray/<folder>/`, owned by TakeTray). `deletePendingIn(folder)` (`busy` while a worker runs; `start` is `busy` while it sweeps) deletes each own pending row with the selection `is_pending = 1`, so a row published meanwhile stays.
+
+**The screen:** `keepScreenOn(on)` → `KeepScreenOn.set`: `addFlags`/`clearFlags(FLAG_KEEP_SCREEN_ON)` on the activity's window, on the main thread (posted there from another thread); nothing without an activity.
+
+**Debug hooks:** `DebugHooks.register(engine, activity)` → `DebugCopyHooks.register`: channel `app.taketray/test_copy` with `setCopyThrottleMs(int)` (sets `CopyEngine.shared(...).throttleMs`; a negative or non-whole number is `bad-argument`) and `keepScreenOnFlag()` (the activity window's flag now).
+
+**In tests:** Robolectric (`tool/test_android`): `editors/{CopyJobTest,CopyEngineTest,CopyStoreTest,CopyHostApiImplTest,KeepScreenOnTest}.kt` over `FakeCopyStore` and `FakeCopyProvider`, `DebugCopyHooksTest.kt`, `ManifestTest.kt`; Dart: `test/platform/copy_bridge_test.dart`, `test/platform/fake_copy_bridge_test.dart`; `test/support/fake_copy_bridge.dart` keeps the engine's rules for later tasks.
+
 ### Error logging
 
 Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.

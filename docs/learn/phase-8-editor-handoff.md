@@ -85,7 +85,47 @@ To be written in Task 4 (decision D-121).
 
 ## 5. Copying in the app
 
-To be written in Task 5 (decision D-122).
+**What we built:** the Android code that copies a reel's clips into `Movies/TakeTray/<Reel>/` for VN, while TakeTray stays open:
+
+- **`CopyEngine`**: one object for the whole app process that owns at most one copy job.
+- **`CopyJob`**: the loop that copies one clip after another.
+- **`CopyStore`**: everything the loop asks of Android's media library (make a file, open the original, publish, delete), behind one interface so the loop can be tested without a phone.
+- **`CopyHostApiImpl`** and **`copy_bridge.dart`**: the bridge between Dart and Kotlin (a Pigeon contract, `pigeons/copy_api.dart`), and **`KeepScreenOn`**, which keeps the screen on while the copy screen shows.
+
+**Why TakeTray needs it:** VN cannot take several shared clips at once, so it gets copies in a folder. Copying gigabytes is the one place this phase writes and deletes files in shared storage, so a mistake here could leave half a video in the gallery or delete something the user still needs.
+
+**Key ideas:**
+
+- **Invisible until complete.** Each copy starts as a *pending* row (`IS_PENDING 1`): other apps cannot see it. Only when every byte is written, and the count matches the original, does TakeTray publish it. A half file is never visible, and if anything goes wrong the pending row is deleted:
+
+  ```kotlin
+  val expected = if (source.length >= 0) source.length else item.sizeBytes.takeIf { it > 0 }
+  if (expected != null && written != expected) {
+      Log.w(COPY_LOG_TAG, "copy item failed: length differs")
+      return Outcome.FAILED
+  }
+  val published = store.publish(rowId)
+  ```
+
+  The length check comes **before** `publish`; a test fails if the two lines swap.
+
+- **The job outlives the screen.** The job lives in `CopyEngine.shared(context)`, not in the activity. When the phone rotates or the user leaves the app, the activity is destroyed and re-made, but the process (and the copy) goes on; the new screen asks `current()` and gets the job. If Android kills the whole process, the job is gone. There is no journal file: TakeTray's own finished files in the folder are the record, and the pending ones are cleaned up on the next start (`ownRowsIn`, `deletePendingIn`, used by the next task).
+
+- **Stop means "delete what was copied".** Pressing Stop sets a flag; the loop checks it before every 1 MB chunk. Then, on the same background worker (so it never deletes a file it is still writing), it deletes the pending file and every copy *this job* made. A copy that cannot be deleted is reported in `undeleted`, never silently forgotten.
+
+- **Only ever our own file.** Every delete first looks the row up and checks three things: it is in exactly `Movies/TakeTray/<Reel>/` (not `TakeTray Test`, not a sub-folder), it was made by TakeTray, and it has the name we recorded. Anything else is left alone.
+
+- **Two safety margins.** Before the job, Dart keeps 500 MB free (section 2). During the job, Kotlin refuses a file unless the file plus 50 MB fits, and treats "no space left on device" while writing as "space full": the earlier copies stay and **Try again** (`resume`) continues from the clip that did not fit, never from the start.
+
+- **Progress without flooding.** The screen gets an update at most every 250 ms while a file copies, and always when a file finishes. A 200-clip job does not send thousands of messages.
+
+- **The screen stays on without a permission.** `FLAG_KEEP_SCREEN_ON` on the activity's window keeps the phone awake while the window shows; it needs no permission and no notification (unlike a foreground service, which the owner chose not to use).
+
+**Where it lives:** `app/android/app/src/main/kotlin/app/taketray/editors/` (`CopyEngine.kt`, `CopyJob.kt`, `CopyStore.kt`, `CopyHostApiImpl.kt`, `CopyFolderPath.kt`), `app/pigeons/copy_api.dart`, `app/lib/platform/copy_bridge.dart`, the debug hooks in `app/android/app/src/debug/kotlin/app/taketray/DebugCopyHooks.kt`, and the tests in `app/android/app/src/test/kotlin/app/taketray/editors/` and `app/test/platform/copy_bridge_test.dart`.
+
+**Try it yourself:** `tool/test_android --tests 'app.taketray.editors.CopyJobTest'`. Then, in `CopyJob.kt`, change `item.sizeBytes + NATIVE_FLOOR_BYTES` to `item.sizeBytes` and run it again: the space-floor test fails. Put it back.
+
+**Decisions:** D-122, with D-118 (no foreground service, R4 one job at a time) and D-119 (names and the 500 MB reserve) as background.
 
 ## 6. EditSessionService
 

@@ -7,6 +7,10 @@ import app.taketray.background.BackgroundFlutterApi
 import app.taketray.background.BackgroundHostApi
 import app.taketray.background.BackgroundHostApiImpl
 import app.taketray.background.LaunchActionRelay
+import app.taketray.editors.CopyEngine
+import app.taketray.editors.CopyFlutterApi
+import app.taketray.editors.CopyHostApi
+import app.taketray.editors.CopyHostApiImpl
 import app.taketray.media.MediaHostApi
 import app.taketray.media.MediaHostApiImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -18,6 +22,9 @@ class MainActivity : FlutterActivity() {
 
     /** The background bridge of the current engine (D-103); null before configure and after clean-up. */
     private var background: BackgroundHostApiImpl? = null
+
+    /** The copy bridge of the current engine (D-122); the job itself lives in the process-wide [CopyEngine]. */
+    private var copy: CopyHostApiImpl? = null
 
     /**
      * True when Android re-created this activity from saved state (after the
@@ -47,7 +54,14 @@ class MainActivity : FlutterActivity() {
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)
 
-        DebugHooks.register(flutterEngine, applicationContext)
+        // Copying (D-122): the job belongs to the process; this activity gives the bridge its window for the screen-on flag.
+        val copyFlutterApi = CopyFlutterApi(messenger)
+        val copyApi = CopyHostApiImpl(this, CopyEngine.shared(applicationContext), send = copyFlutterApi::onCopyChanged)
+        copy = copyApi
+        CopyHostApi.setUp(messenger, copyApi)
+
+        // The activity itself: the debug copy hooks read its window (the others use the application context).
+        DebugHooks.register(flutterEngine, this)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -61,6 +75,9 @@ class MainActivity : FlutterActivity() {
             it.launches.close()
         }
         background = null
+        CopyHostApi.setUp(messenger, null)
+        copy?.onHostGone()
+        copy = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -106,6 +123,7 @@ class MainActivity : FlutterActivity() {
         // these bridges belong to is destroyed with the activity.
         media?.onHostGone()
         background?.onHostGone()
+        copy?.onHostGone()
         super.onDestroy()
     }
 }
