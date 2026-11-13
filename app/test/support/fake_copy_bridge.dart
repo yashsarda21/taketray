@@ -8,13 +8,19 @@ import 'package:taketray/platform/copy_bridge.dart';
 /// [emit].
 ///
 /// - `start` records the request in [starts] and makes [job] a running job
-///   with nothing done; [CopyBusy] while [job] is set (running or a waiting
-///   result), as on the phone.
+///   with nothing done, sent on [changes] (Kotlin sends the first snapshot at
+///   once); [CopyBusy] while [job] is set (running or a waiting result), as on
+///   the phone.
 /// - [emit] sets [job] and sends it on [changes] (Kotlin's event).
 /// - `cancel` of [job]'s id makes it `cancelled` (with [cancelUndeleted]
-///   moved out of `copied` into `undeleted`) and returns it; another id
-///   returns null. `resume` makes a `spaceFull` or `interrupted` job running;
-///   `clear` forgets a job that is not running. Other ids change nothing.
+///   moved out of `copied` into `undeleted`), sends it on [changes] (Kotlin
+///   sends the cancelled snapshot when the deletes are done, and the answer
+///   is the same snapshot, so a controller sees it twice) and returns it;
+///   another id returns null; an already cancelled job is returned with no
+///   event. `resume` makes a `spaceFull` or `interrupted` job running and
+///   sends it on [changes]; anything else changes and sends nothing.
+///   `clear` forgets a job that is not running and sends nothing. Other ids
+///   change nothing.
 /// - [folders] holds each folder's rows for `ownRowsIn`; `deletePendingIn`
 ///   removes the pending ones and returns how many ([CopyBusy] while a job
 ///   runs).
@@ -72,18 +78,20 @@ class FakeCopyBridge implements CopyBridge {
   Future<void> start(CopyRequest request) => _call('start', () {
     if (job != null) throw const CopyBusy();
     starts.add(request);
-    job = CopyJob(
-      jobId: request.jobId,
-      reelId: request.reelId,
-      folderName: request.folderName,
-      state: CopyState.running,
-      total: request.items.length,
-      done: 0,
-      bytesDone: 0,
-      bytesTotal: request.items.fold(0, (sum, i) => sum + i.sizeBytes),
-      copied: const [],
-      failedClipIds: const [],
-      undeleted: const [],
+    emit(
+      CopyJob(
+        jobId: request.jobId,
+        reelId: request.reelId,
+        folderName: request.folderName,
+        state: CopyState.running,
+        total: request.items.length,
+        done: 0,
+        bytesDone: 0,
+        bytesTotal: request.items.fold(0, (sum, i) => sum + i.sizeBytes),
+        copied: const [],
+        failedClipIds: const [],
+        undeleted: const [],
+      ),
     );
   });
 
@@ -105,7 +113,7 @@ class FakeCopyBridge implements CopyBridge {
           .toList(),
       undeleted: [...now.undeleted, ...kept],
     );
-    job = cancelled;
+    emit(cancelled);
     return cancelled;
   });
 
@@ -115,7 +123,7 @@ class FakeCopyBridge implements CopyBridge {
     if (now == null || now.jobId != jobId) return;
     if (now.state == CopyState.spaceFull ||
         now.state == CopyState.interrupted) {
-      job = now.copyWith(state: CopyState.running);
+      emit(now.copyWith(state: CopyState.running));
     }
   });
 

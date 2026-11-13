@@ -53,6 +53,13 @@ class FakeCopyStore(
     /** When set, writing a target throws it once this many bytes are in the row. */
     var writeErrorAt: Pair<Long, IOException>? = null
 
+    /**
+     * When set, closing a target throws it once (then clears it), after the
+     * bytes are in the row: a full disk or write error that shows only at
+     * `close()`, as on a FUSE-backed file.
+     */
+    @Volatile var closeError: IOException? = null
+
     var insertError: Exception? = null
     var publishError: Exception? = null
     var targetError: Exception? = null
@@ -159,6 +166,15 @@ class FakeCopyStore(
                     row.bytes.write(b, off, len)
                 }
             }
+
+            override fun close() {
+                synchronized(this@FakeCopyStore) {
+                    closeError?.let {
+                        closeError = null
+                        throw it
+                    }
+                }
+            }
         }
     }
 
@@ -171,8 +187,27 @@ class FakeCopyStore(
         return Published(row.id, row.name)
     }
 
-    @Synchronized
+    /** When set, deleteOwn waits for it (to race a cancel's deletes with other calls); bounded. */
+    @Volatile var deleteGate: java.util.concurrent.CountDownLatch? = null
+
+    /** Counted down when a deleteOwn has reached the gate. */
+    val deleteEntered = java.util.concurrent.CountDownLatch(1)
+
     override fun deleteOwn(
+        rowId: Long,
+        folder: String,
+        fileName: String?,
+    ): Boolean {
+        deleteGate?.let {
+            deleteEntered.countDown()
+            // Bounded: a test that fails before opening the gate must not hang the run.
+            check(it.await(5, java.util.concurrent.TimeUnit.SECONDS)) { "delete gate never opened" }
+        }
+        return deleteOwnNow(rowId, folder, fileName)
+    }
+
+    @Synchronized
+    private fun deleteOwnNow(
         rowId: Long,
         folder: String,
         fileName: String?,

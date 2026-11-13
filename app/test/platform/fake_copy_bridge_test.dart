@@ -76,6 +76,66 @@ void main() {
     },
   );
 
+  test('start, resume and cancel send the events the phone sends', () async {
+    final fake = FakeCopyBridge();
+    final seen = <CopyJob>[];
+    fake.changes.listen(seen.add);
+
+    // Kotlin sends the first snapshot at once.
+    await fake.start(request);
+    await pumpEventQueue();
+    expect(seen.map((j) => j.state), [CopyState.running]);
+    expect(seen.single.jobId, 'job-1');
+
+    // Nothing to resume, nothing sent: running, another id, no job state.
+    await fake.resume('job-1');
+    await fake.resume('other');
+    await pumpEventQueue();
+    expect(seen, hasLength(1));
+
+    fake.emit(fake.job!.copyWith(state: CopyState.interrupted, copied: [file]));
+    await pumpEventQueue();
+    expect(seen.map((j) => j.state), [
+      CopyState.running,
+      CopyState.interrupted,
+    ]);
+
+    // A resume sends the running snapshot.
+    await fake.resume('other');
+    await pumpEventQueue();
+    expect(seen, hasLength(2));
+    await fake.resume('job-1');
+    await pumpEventQueue();
+    expect(seen, hasLength(3));
+    expect(seen.last.state, CopyState.running);
+    expect(seen.last.copied, [file]);
+    expect(fake.job, seen.last);
+
+    // An unknown id sends nothing.
+    expect(await fake.cancel('other'), isNull);
+    await pumpEventQueue();
+    expect(seen, hasLength(3));
+
+    // A cancel sends the cancelled snapshot, the one it answers with.
+    fake.cancelUndeleted = {1};
+    final cancelled = (await fake.cancel('job-1'))!;
+    await pumpEventQueue();
+    expect(seen, hasLength(4));
+    expect(seen.last, cancelled);
+    expect(seen.last.state, CopyState.cancelled);
+    expect(seen.last.undeleted, [file]);
+    expect(fake.job, cancelled);
+
+    // Cancelling a cancelled job answers it again and sends nothing; nor does
+    // resume, nor clear.
+    expect(await fake.cancel('job-1'), cancelled);
+    await fake.resume('job-1');
+    await fake.clear('job-1');
+    await pumpEventQueue();
+    expect(seen, hasLength(4));
+    expect(fake.job, isNull);
+  });
+
   test('folders, the screen flag, failures and gates', () async {
     final fake = FakeCopyBridge()
       ..folders['Goa'] = const [

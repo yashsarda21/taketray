@@ -1,9 +1,11 @@
 package app.taketray.editors
 
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -31,10 +33,34 @@ class CopyEngineTest {
 
     private fun latch() = CountDownLatch(1).also { latches += it }
 
+    /** Extra thread pools a test made (one worker per thread is the thing under test); shut down after it. */
+    private val pools = mutableListOf<java.util.concurrent.ExecutorService>()
+
     @After
     fun tearDown() {
         latches.forEach { it.countDown() }
+        store.deleteGate?.countDown()
+        store.deletePendingGate?.countDown()
         h.close()
+        pools.forEach { it.shutdownNow() }
+    }
+
+    /** A job that copied item 1 and stopped SPACE_FULL, its worker idle; later space checks pass again. */
+    private fun spaceFullJob() {
+        var calls = 0
+        store.available = { if (++calls == 2) 0L else Long.MAX_VALUE / 2 }
+        val stop = h.runJob(h.request(h.item(1), h.item(2), h.item(3)))
+        assertEquals(CopyState.SPACE_FULL, stop.state)
+        assertEquals(listOf(1L), stop.copied.map { it.clipId })
+    }
+
+    /** Starts a cancel of the SPACE_FULL job whose delete waits at the gate; returns the gate. */
+    private fun cancelWithGatedDelete(): CountDownLatch {
+        val gate = latch()
+        store.deleteGate = gate
+        engine.beginCancel("job-1")!!
+        assertTrue(store.deleteEntered.await(5, TimeUnit.SECONDS))
+        return gate
     }
 
     /** An item whose first read waits for [release], so the job is surely running. */
@@ -303,5 +329,107 @@ class CopyEngineTest {
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>()
         assertSame(CopyEngine.shared(app), CopyEngine.shared(app))
         assertEquals(0L, CopyEngine.shared(app).throttleMs)
+    }
+
+    @Test
+    fun `two workers never overlap, the next waits for the one before it`() {
+        // Real threads: a single-thread dispatcher would hide an overlap.
+        val pool = Executors.newFixedThreadPool(4).also { pools += it }
+        val events = java.util.Collections.synchronizedList(mutableListOf<CopySnapshot>())
+        val inEnd = latch()
+        val hold = latch()
+        val multi = CopyEngine(store, io = pool.asCoroutineDispatcher(), post = { it.run() }, clock = { 0L }, wallClock = { WALL_MS }, chunkBytes = 1024)
+        multi.attach { snapshot ->
+            events += snapshot
+            // The first worker is still alive, sending its end event, when it is held here.
+            if (snapshot.state == CopyState.FINISHED && inEnd.count == 1L) {
+                inEnd.countDown()
+                hold.await(5, TimeUnit.SECONDS)
+            }
+        }
+        multi.start(h.request(h.item(1)))
+        assertTrue(inEnd.await(5, TimeUnit.SECONDS))
+        assertEquals(CopyState.FINISHED, multi.current()!!.state)
+
+        // The result is there but the first worker has not ended: Stop starts the delete worker.
+        val cancel = multi.beginCancel("job-1")!!
+        // Give a wrongly overlapping second worker time to run (bounded, 300 ms).
+        val limit = System.nanoTime() + 300_000_000L
+        while (System.nanoTime() < limit && store.log().none { it.startsWith("delete ") }) Thread.sleep(10)
+        assertTrue("the delete waits for the first worker", store.log().none { it.startsWith("delete ") })
+        hold.countDown()
+        h.timed {
+            val end = cancel()
+            assertEquals(CopyState.CANCELLED, end.state)
+        }
+        assertTrue(store.rows.isEmpty())
+    }
+
+    @Test
+    fun `resume while a cancel is deleting is refused and the job never runs again`() {
+        spaceFullJob()
+        val before = store.log()
+        val gate = cancelWithGatedDelete()
+        val seen = h.snapshots().size
+
+        engine.resume("job-1")
+
+        // Still the stopped state: never running, nothing inserted, no event.
+        assertEquals(CopyState.SPACE_FULL, engine.current()!!.state)
+        assertEquals(seen, h.snapshots().size)
+        gate.countDown()
+        h.timed { engine.awaitIdle() }
+        assertEquals(CopyState.CANCELLED, engine.current()!!.state)
+        assertTrue(h.snapshots().drop(seen).none { it.state == CopyState.RUNNING })
+        assertEquals(before.filter { it.startsWith("insert") }, store.log().filter { it.startsWith("insert") })
+        assertTrue(store.rows.isEmpty())
+    }
+
+    @Test
+    fun `clear while a cancel is deleting leaves the job and start stays busy`() {
+        spaceFullJob()
+        val gate = cancelWithGatedDelete()
+
+        engine.clear("job-1")
+
+        assertEquals("job-1", engine.current()!!.jobId)
+        busy { engine.start(h.request(h.item(9), jobId = "job-2")) }
+        gate.countDown()
+        h.timed { engine.awaitIdle() }
+        assertEquals(CopyState.CANCELLED, engine.current()!!.state)
+        busy { engine.start(h.request(h.item(9), jobId = "job-2")) }
+        // Once the cancel is over, clear frees the engine.
+        engine.clear("job-1")
+        assertNull(engine.current())
+        assertEquals(CopyState.FINISHED, h.runJob(h.request(h.item(9), jobId = "job-2")).state)
+    }
+
+    @Test
+    fun `resume is busy while the folder sweep runs and works once it is over`() {
+        spaceFullJob()
+        val inserts = store.log().filter { it.startsWith("insert") }
+        val seen = h.snapshots().size
+        val gate = latch()
+        store.deletePendingGate = gate
+        h.timed {
+            val sweep = async(Dispatchers.Default) { engine.deletePendingIn(FOLDER) }
+            assertTrue(store.deletePendingEntered.await(5, TimeUnit.SECONDS))
+            try {
+                busy { engine.resume("job-1") }
+                // Refused: the job is as it was, nothing started, no event.
+                assertEquals(CopyState.SPACE_FULL, engine.current()!!.state)
+                assertEquals(inserts, store.log().filter { it.startsWith("insert") })
+                assertEquals(seen, h.snapshots().size)
+            } finally {
+                gate.countDown()
+            }
+            sweep.await()
+        }
+        h.timed {
+            engine.resume("job-1")
+            engine.awaitIdle()
+        }
+        assertEquals(CopyState.FINISHED, engine.current()!!.state)
+        assertEquals(listOf(1L, 2L, 3L), engine.current()!!.copied.map { it.clipId })
     }
 }

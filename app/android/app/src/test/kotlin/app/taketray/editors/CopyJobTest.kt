@@ -222,6 +222,72 @@ class CopyJobTest {
     }
 
     @Test
+    fun `a close that fails for space after a full write never publishes and the job is space full`() {
+        // Every byte was handed to the stream; the disk-full error shows only at close.
+        val two = h.item(2, size = 8192, onRead = { if (it == 0L) store.closeError = FakeCopyStore.noSpace() })
+        val full = h.runJob(h.request(h.item(1), two, h.item(3)))
+        assertEquals(CopyState.SPACE_FULL, full.state)
+        assertEquals(listOf(1L), full.copied.map { it.clipId })
+        assertTrue(full.failedClipIds.isEmpty())
+        assertEquals(1, full.done)
+        // The half file's bytes are not counted.
+        assertEquals(4096L, full.bytesDone)
+        assertEquals("only the first copy was ever published", listOf(full.copied.single().copyMediaStoreId), rowIdsPublished())
+        assertEquals(setOf(full.copied.single().copyMediaStoreId), store.rows.keys)
+        assertTrue("item 3 never started", store.log().none { it == "insert 3.mp4" })
+        assertTrue(store.rowsNow().none { it.pending })
+    }
+
+    @Test
+    fun `a close that fails for another reason never publishes and interrupts, and resume copies it again`() {
+        var armed = false
+        val two =
+            h.item(2, size = 8192, onRead = {
+                // Only the first try fails at close; resume reads the item again.
+                if (it == 0L && !armed) {
+                    armed = true
+                    store.closeError = IOException("EIO")
+                }
+            })
+        val stop = h.runJob(h.request(h.item(1), two, h.item(3)))
+        assertEquals(CopyState.INTERRUPTED, stop.state)
+        assertEquals(listOf(1L), stop.copied.map { it.clipId })
+        assertTrue(stop.failedClipIds.isEmpty())
+        assertEquals(1, stop.done)
+        assertEquals(listOf(stop.copied.single().copyMediaStoreId), rowIdsPublished())
+        assertEquals(setOf(stop.copied.single().copyMediaStoreId), store.rows.keys)
+
+        // The close error was spent: resume copies item 2 whole, then item 3.
+        h.timed {
+            h.engine.resume("job-1")
+            h.engine.awaitIdle()
+        }
+        val end = h.engine.current()!!
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(1L, 2L, 3L), end.copied.map { it.clipId })
+        assertTrue(store.rows.values.all { !it.pending })
+        assertEquals(8192, store.rows[end.copied[1].copyMediaStoreId]!!.bytes.size())
+    }
+
+    @Test
+    fun `a close that fails during a cancel publishes nothing and the job is cancelled with every row gone`() {
+        val two =
+            h.item(2, size = 8192, onRead = { pos ->
+                if (pos >= 2048) {
+                    store.closeError = IOException("EIO")
+                    h.engine.beginCancel("job-1")
+                }
+            })
+        val end = h.runJob(h.request(h.item(1), two, h.item(3)))
+        assertEquals(CopyState.CANCELLED, end.state)
+        assertEquals(listOf(1L), end.copied.map { it.clipId })
+        assertTrue(end.undeleted.isEmpty())
+        assertEquals("item 2 was never published", 1, rowIdsPublished().size)
+        assertTrue("the pending row and the copy are both deleted", store.rows.isEmpty())
+        assertEquals(CopyState.CANCELLED, h.snapshots().last().state)
+    }
+
+    @Test
     fun `an insert that fails interrupts, one MediaStore refuses for its name fails that item only`() {
         store.insertError = IllegalStateException("volume gone")
         val stop = h.runJob(h.request(h.item(1), h.item(2)))

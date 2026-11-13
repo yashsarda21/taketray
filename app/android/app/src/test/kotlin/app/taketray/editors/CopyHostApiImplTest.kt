@@ -228,6 +228,17 @@ class CopyHostApiImplTest {
     }
 
     @Test
+    fun `a bridge that is gone leaves no listener on the engine`() {
+        assertFalse(engine.hasListener)
+        val api = impl()
+        assertTrue(engine.hasListener)
+        api.onHostGone()
+        assertFalse("the dead bridge must not stay referenced by the process-wide engine", engine.hasListener)
+        api.onHostGone()
+        assertFalse(engine.hasListener)
+    }
+
+    @Test
     fun `an old bridge going away does not detach the new one`() {
         val first = impl()
         val sent2: MutableList<Pair<CopyJobMsg, Boolean>> = Collections.synchronizedList(mutableListOf())

@@ -111,6 +111,7 @@ abstract interface class CopyBridge {
   Future<CopyJob?> cancel(String jobId);
 
   /// After `spaceFull` or `interrupted`: copies the remaining items.
+  /// [CopyBusy] while the folder sweep ([deletePendingIn]) runs.
   Future<void> resume(String jobId);
 
   /// Forgets the result; another id, or a running job, is left alone.
@@ -189,7 +190,7 @@ class PigeonCopyBridge implements CopyBridge {
   }
 
   @override
-  Future<void> resume(String jobId) => _api.resume(jobId);
+  Future<void> resume(String jobId) => _busyAware(() => _api.resume(jobId));
 
   @override
   Future<void> clear(String jobId) => _api.clear(jobId);

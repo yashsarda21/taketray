@@ -65,6 +65,9 @@ class CopyEngine(
         synchronized(lock) { if (this.listener === listener) this.listener = null }
     }
 
+    /** Whether a bridge listens (tests): a gone bridge must not stay referenced by this process-wide engine. */
+    internal val hasListener: Boolean get() = listener != null
+
     /** The listener is read when the event is delivered: one that left gets nothing more. */
     private fun emit(snapshot: CopySnapshot) {
         post { listener?.invoke(snapshot) }
@@ -141,13 +144,18 @@ class CopyEngine(
     /** Stops [jobId] and deletes its copies; answers once they are deleted. Null for an unknown id. */
     suspend fun cancel(jobId: String): CopySnapshot? = beginCancel(jobId)?.invoke()
 
-    /** After SPACE_FULL or INTERRUPTED: the remaining items of [jobId]. Anything else does nothing. */
+    /**
+     * After SPACE_FULL or INTERRUPTED: the remaining items of [jobId]. Anything
+     * else does nothing. Throws [CopyBusyException] while the folder sweep
+     * runs (it must not delete the row the resumed job would write).
+     */
     fun resume(jobId: String) {
         val snapshot =
             synchronized(lock) {
                 val target = job?.takeIf { it.request.jobId == jobId } ?: return
                 if (target.cancelRequested) return
                 if (target.state != CopyState.SPACE_FULL && target.state != CopyState.INTERRUPTED) return
+                if (sweeps > 0) throw CopyBusyException()
                 target.markRunning()
                 launchWorker { target.run() }
                 target.snapshot()

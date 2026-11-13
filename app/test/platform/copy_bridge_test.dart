@@ -198,6 +198,8 @@ void main() {
         throwsA(isA<CopyBusy>()),
       );
       await expectLater(bridge.deletePendingIn('F'), throwsA(isA<CopyBusy>()));
+      // A resume while the folder sweep runs is busy too.
+      await expectLater(bridge.resume('j'), throwsA(isA<CopyBusy>()));
 
       final other = PlatformException(code: 'bad-request', message: 'x');
       api.error = other;
