@@ -81,7 +81,75 @@ To be written in Task 3 (decision D-120).
 
 ## 4. The editors bridge and the copy folder guard
 
-To be written in Task 4 (decision D-121).
+**What we built:** the Android side that talks to the editors and to TakeTray's copy folders, and the Dart wrapper the screens use (`EditorsBridge`).
+
+- **Which editors are installed** (`EditorApps`), with each app's icon drawn to a small PNG for the editor sheet.
+- **The shares** (`ShareIntents`): one Android "send" of the chosen clips to CapCut or Edits, the same through Android's share sheet (**Other app...**), an editor's own launcher, and its Play Store page.
+- **The copy folders** (`CopyFolder`): which folders exist under `Movies/TakeTray/`, which recorded copies are still there, deleting copies, and every file in the folders for the storage screen.
+- **The guard**: the one check every delete TakeTray makes goes through.
+- **Android's consent dialog** (`DeleteRequests`) for copies TakeTray may not delete itself.
+- **A debug-only intent recorder**, so the phone tests can check what would be sent without opening another app.
+
+**Why TakeTray needs it:** TakeTray promises never to touch your original videos (D-04), but VN gets *copies*, and copies have to be cleaned up. A delete with the wrong number would remove someone's real video. So deleting is the most dangerous thing this phase does, and it is done in one place, behind one check.
+
+**Key ideas:**
+
+- **Three facts must all match before anything is deleted.** A copy is recorded as "MediaStore id, folder, file name". Before deleting, the guard reads the row with that id and checks its folder, its name and who made it:
+
+  ```kotlin
+  ): Boolean = inPlace(rowPath, rowName, ref) && CopyFolderPath.isOwn(rowOwner, ourPackage)
+  ```
+
+  ```kotlin
+  plainSegment(ref.folderName) &&
+      CopyFolderPath.isInFolder(rowPath, ref.folderName) &&
+      rowName != null &&
+      rowName == ref.fileName
+  ```
+
+  Android records which app created each file (`OWNER_PACKAGE_NAME`), and only TakeTray can have created a file under its own name. If Android rebuilt its media list and gave the number to another video, the name or the owner will not match, and the row is **refused**: reported, never touched.
+
+- **"In the folder" means exactly that folder.** `CopyFolderPath` is one tiny shared rule (the copy engine in section 5 uses the same file):
+
+  ```kotlin
+  fun relativePath(folder: String): String = "$ROOT$folder/"
+  ```
+
+  ```kotlin
+  rowRelativePath != null && rowRelativePath.equals(relativePath(folder), ignoreCase = true)
+  ```
+
+  Comparing the whole path (and not "starts with") is what keeps `Movies/TakeTray/Goa/sub/`, `Movies/TakeTray/Goa2/` and the tests' own `Movies/TakeTray Test/` out. A test that turns it into a "starts with" check proves the tests notice.
+
+- **Check, then delete only if it is still the same.** Between reading a row and deleting it, the row could change. So the delete itself repeats the three facts as its condition, and deletes nothing if they no longer hold:
+
+  ```kotlin
+  "${MediaColumns.RELATIVE_PATH} = ? AND ${MediaColumns.DISPLAY_NAME} = ? AND ${MediaColumns.OWNER_PACKAGE_NAME} = ?",
+  ```
+
+- **A failed read is never "gone".** If Android's media list does not answer, the bridge reports an error instead of an empty list. Otherwise TakeTray would think every copy had vanished and forget them.
+
+- **Files TakeTray no longer knows ask you first.** After a reinstall, TakeTray's old copies belong to "nobody" as far as Android is concerned. TakeTray never deletes those itself; it asks Android to show its own "Allow TakeTray to delete these?" dialog, and only for files that are in a copy folder with their exact name.
+
+- **Order is the whole point of a share.** CapCut and Edits build one project from the clips in the order they arrive, so the list goes to Android in shooting order, and the same order goes into the second list Android uses for access (`ClipData`):
+
+  ```kotlin
+  Intent(Intent.ACTION_SEND_MULTIPLE).putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(uris))
+  ```
+
+  The share also says which app it is for (`setPackage`), and grants that app permission to *read* those clips, never to change them.
+
+- **Android 11 hides other apps.** An app can only see another app if its manifest names it in `<queries>`. Without the three `<package>` lines, CapCut would always look "not installed". A Dart test checks that every editor in `EditorApp` is in the manifest.
+
+- **Slow work off the main thread, screens on it.** Reading the package list, the media list or the free space can take a moment, so it runs on a background thread (`Dispatchers.IO`); opening another app stays on the main thread, where Android expects it.
+
+- **Testing without a phone.** The Kotlin tests run on the laptop (Robolectric) against a small real SQLite table set up the strict way Android's media provider sets one up, so a query Android would reject fails on the laptop too. On the phone, the Patrol tests turn on the debug recorder and read back what *would* have been sent ("2 clips, `external_primary:30`, `external_primary:4`, read granted"), so a test never opens CapCut.
+
+**Where it lives:** `app/pigeons/editors_api.dart` (the contract), `app/lib/platform/editors_bridge.dart` (Dart), `app/android/app/src/main/kotlin/app/taketray/editors/` (Kotlin: `CopyFolder.kt`, `CopyFolderPath.kt`, `ShareIntents.kt`, `EditorApps.kt`, `DeleteRequests.kt`, `EditorsHostApiImpl.kt`, `ActivityStarter.kt`), `app/android/app/src/debug/kotlin/app/taketray/DebugEditorHooks.kt` (debug only), the `<queries>` in `app/android/app/src/main/AndroidManifest.xml`. Tests: `app/android/app/src/test/kotlin/app/taketray/editors/` and `app/test/platform/editors_bridge_test.dart`.
+
+**Try it yourself:** `tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.editors.CopyFolderTest'`. Then, in `CopyFolder.kt`, delete `&& CopyFolderPath.isOwn(rowOwner, ourPackage)` and run it again: the test with another app's file fails, because that file would now be deleted. Put it back.
+
+**Decisions:** D-121, with D-04 (originals are never touched), D-57 (a picked clip is read only through its grant) and D-77 (the same owner-and-folder rule for the test videos) as background.
 
 ## 5. Copying in the app
 

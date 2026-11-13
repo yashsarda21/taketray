@@ -174,11 +174,15 @@ done < <(awk '$1 == "permission" { print $2 }' <<<"$facts" | sort -u)
 # The test media channel (src/debug: TestMedia, its channel name test_media) and
 # the background test hooks (src/debug: DebugBackgroundHooks, its channel name
 # test_background, Phase 6 Task 9) and the quiet rule's debug log line
-# (NewClipsJob.debugLog, marker "quiet-rule", D-110) are debug-only. The strings are looked for in every classes*.dex of the APK, and
+# (NewClipsJob.debugLog, marker "quiet-rule", D-110) are debug-only, and so
+# are Phase 8's editor hooks (src/debug: DebugEditorHooks, channel
+# test_editors, the intent recorder, D-121) and copy hooks (src/debug:
+# DebugCopyHooks, channel test_copy, Task 5; listed here by Task 4 so Task 5
+# never edits this script). The strings are looked for in every classes*.dex of the APK, and
 # in R8's mapping file when there is one (the dex only holds the renamed class,
 # the mapping holds the real name). The scan itself is proved by finding a
 # class that must be there.
-FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background quiet-rule)
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background quiet-rule DebugEditorHooks test_editors DebugCopyHooks test_copy)
 MUST_FIND_IN_DEX="app/taketray/MainActivity"
 dex_dir="$(mktemp -d)"
 trap 'rm -rf "$dex_dir"' EXIT

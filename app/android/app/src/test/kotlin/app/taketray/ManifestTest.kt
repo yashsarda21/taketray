@@ -10,12 +10,16 @@ import app.taketray.background.ReminderReceiver
 import app.taketray.background.ReminderScheduler
 import app.taketray.background.ShadeActionReceiver
 import app.taketray.media.TimeZoneChangedReceiver
+import java.io.File
+import java.util.Properties
+import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.w3c.dom.Element
 
 /**
  * The manifest's background parts (D-105), as Android reads the merged
@@ -66,5 +70,41 @@ class ManifestTest {
         // The two permissions Phase 6 adds (D-101).
         assertTrue("android.permission.RECEIVE_BOOT_COMPLETED" in requested)
         assertTrue("android.permission.POST_NOTIFICATIONS" in requested)
+    }
+
+    /**
+     * The merged manifest as AGP hands it to Robolectric (`test_config.properties`),
+     * read as XML: Android has no API that lists an app's own `<queries>`.
+     */
+    private fun queriedPackages(): List<String> {
+        val props = Properties()
+        javaClass.classLoader!!.getResourceAsStream("com/android/tools/test_config.properties")!!.use { props.load(it) }
+        val manifest = File(props.getProperty("android_merged_manifest"))
+        assertTrue("merged manifest at $manifest", manifest.isFile)
+        val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+        val doc = factory.newDocumentBuilder().parse(manifest)
+        val queries = doc.getElementsByTagName("queries")
+        return buildList {
+            for (q in 0 until queries.length) {
+                val packages = (queries.item(q) as Element).getElementsByTagName("package")
+                for (i in 0 until packages.length) {
+                    add((packages.item(i) as Element).getAttributeNS("http://schemas.android.com/apk/res/android", "name"))
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the three editors are queried by package, and nothing else is`() {
+        // The package names live in Dart (EditorApp.packageName, D-119); a Dart
+        // test checks exactly these three against the source manifest. The
+        // unit-test manifest also merges androidx.test's own queries (test
+        // builds only), so only those may stand beside the three.
+        val editors = listOf("com.frontrow.vlog", "com.instagram.basel", "com.lemon.lvoverseas")
+        val queried = queriedPackages()
+        assertEquals(editors, queried.filter { it in editors }.sorted())
+        val testTooling = listOf("androidx.test.", "com.google.android.apps.common.testing.")
+        val others = queried.filter { it !in editors }
+        assertTrue("unexpected package queries: $others", others.all { p -> testTooling.any { p.startsWith(it) } })
     }
 }
