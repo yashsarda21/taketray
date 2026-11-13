@@ -428,6 +428,28 @@ class CopiesReminderTest {
     }
 
     @Test
+    fun `the receiver posts and marks only the usable reminders, the newest batch of each reel`() {
+        val older = batch
+        val newer = batch + 86_400_000L
+        // The mirror as a bug or a hand edit could leave it: two batches for one reel, and ids and times that are no reel's.
+        val unusable = listOf(copies(0), copies(-1), copies(-997), copies(BackgroundState.MAX_REEL_ID + 1), copies(5, at = 0), copies(6, at = -1))
+        store.write(mirror(copies(7, at = older), copies(7, at = newer), copies(9, at = older), *unusable.toTypedArray()))
+        now = newer + 4 * 86_400_000L
+        deliver()
+
+        assertEquals("only the valid reels post", listOf(7L, 9L), shownReels())
+        assertEquals("the newest batch is the one marked", newer, store.copiesShown(7))
+        assertEquals(older, store.copiesShown(9))
+        for (id in listOf(0L, -1L, -997L, BackgroundState.MAX_REEL_ID + 1, 5L, 6L)) {
+            assertNull("no mark for $id", store.copiesShown(id))
+        }
+        assertEquals("one notification per valid reel, none on Phase 6's ids", 2, shadowOf(manager).size())
+        assertNull(notification(app, Notifier.STILL_SHOOTING))
+        assertNull(notification(app, Notifier.EVENING))
+        assertNull(copiesAlarm())
+    }
+
+    @Test
     fun `a reel dropped from the mirror before its alarm fires posts nothing`() {
         store.write(mirror(copies(7), copies(9)))
         scheduler.armCopies(store.state(), now)

@@ -39,3 +39,26 @@ Future<String> routeFor(Launch launch, ReelExists reelExists) async {
       return Routes.reels;
   }
 }
+
+/// Opens taps one after the other, in the order they came (D-124): finding out
+/// whether a reel exists takes a moment, and a later tap must not be
+/// overtaken by an earlier one.
+class LaunchQueue {
+  /// The function given handles one tap.
+  LaunchQueue(this._open);
+
+  final Future<void> Function(Launch launch) _open;
+  Future<void> _tail = Future<void>.value();
+
+  /// Queues [launch] behind the taps already waiting. A tap that fails is
+  /// logged by type only (D-10) and never blocks the ones after it.
+  void add(Launch launch) {
+    _tail = _tail.then((_) async {
+      try {
+        await _open(launch);
+      } on Object catch (e) {
+        _log.warning('Opening a tap failed: ${e.runtimeType}');
+      }
+    });
+  }
+}

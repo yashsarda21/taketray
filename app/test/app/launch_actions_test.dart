@@ -260,6 +260,67 @@ void main() {
     expect(logText(records), contains('StateError'));
     expect(logText(records), isNot(contains('secret')));
   });
+  group('the tap queue', () {
+    test('runs taps one after the other, in the order they came', () async {
+      final log = <String>[];
+      final first = Completer<void>();
+      LaunchQueue((launch) async {
+          log.add('start ${launch.action.name}');
+          if (launch.action == LaunchAction.doneEditing) await first.future;
+          log.add('end ${launch.action.name}');
+        })
+        ..add(const Launch(LaunchAction.doneEditing, reelId: 1))
+        ..add(const Launch(LaunchAction.toTag));
+      await pumpEventQueue();
+      expect(log, ['start doneEditing'], reason: 'the second waits');
+
+      first.complete();
+      await pumpEventQueue();
+      expect(log, [
+        'start doneEditing',
+        'end doneEditing',
+        'start toTag',
+        'end toTag',
+      ]);
+    });
+
+    test('a tap that throws never blocks the next, and only its type is '
+        'logged', () async {
+      final records = captureLogs();
+      final done = <LaunchAction>[];
+      LaunchQueue((launch) async {
+          if (launch.reelId == 1) throw StateError('Zq secret reel name');
+          if (launch.reelId == 2) {
+            throw ArgumentError('Zq secret reel name');
+          }
+          done.add(launch.action);
+        })
+        ..add(const Launch(LaunchAction.doneEditing, reelId: 1))
+        ..add(const Launch(LaunchAction.doneEditing, reelId: 2))
+        ..add(const Launch(LaunchAction.toTag))
+        ..add(const Launch(LaunchAction.reels));
+      await pumpEventQueue();
+
+      expect(done, [LaunchAction.toTag, LaunchAction.reels]);
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), contains('ArgumentError'));
+      expect(logText(records), isNot(contains('Zq')));
+    });
+
+    test('a synchronous throw is handled too', () async {
+      final done = <LaunchAction>[];
+      LaunchQueue((launch) {
+          if (launch.reelId == 1) throw StateError('x');
+          done.add(launch.action);
+          return Future<void>.value();
+        })
+        ..add(const Launch(LaunchAction.doneEditing, reelId: 1))
+        ..add(const Launch(LaunchAction.toTag));
+      await pumpEventQueue();
+      expect(done, [LaunchAction.toTag]);
+    });
+  });
+
   group('Done editing', () {
     Uri location(WidgetTester tester) =>
         ProviderScope.containerOf(tester.element(find.byType(TakeTrayApp)))

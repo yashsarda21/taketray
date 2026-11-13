@@ -132,25 +132,23 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     super.dispose();
   }
 
-  /// Taps are opened one after the other, in the order they came: finding
-  /// out whether a reel still exists takes a moment, and a later tap must not
-  /// be overtaken by an earlier one.
-  Future<void> _queue = Future<void>.value();
+  /// Taps are opened one after the other, in the order they came.
+  late final LaunchQueue _queue = LaunchQueue(_openNow);
 
-  void _open(Launch launch) {
-    _queue = _queue.then((_) async {
-      // After the current frame: the start action can arrive while the first
-      // frame is being built.
-      await Future<void>.microtask(() {});
-      if (!mounted) return;
-      final reels = ref.read(reelsRepositoryProvider);
-      final route = await routeFor(
-        launch,
-        (id) async => await reels.getById(id) != null,
-      );
-      if (!mounted) return;
-      ref.read(appRouterProvider).go(route);
-    });
+  void _open(Launch launch) => _queue.add(launch);
+
+  Future<void> _openNow(Launch launch) async {
+    // After the current frame: the start action can arrive while the first
+    // frame is being built.
+    await Future<void>.microtask(() {});
+    if (!mounted) return;
+    final reels = ref.read(reelsRepositoryProvider);
+    final route = await routeFor(
+      launch,
+      (id) async => await reels.getById(id) != null,
+    );
+    if (!mounted) return;
+    ref.read(appRouterProvider).go(route);
   }
 
   void _failed(Object error) {
