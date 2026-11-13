@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
@@ -104,21 +105,32 @@ Future<(Reel, List<int>)> reelWithClips(
   return (reel, ids);
 }
 
-/// Plans and starts a VN copy of [clipIds] of [reel] (the whole reel when
-/// null) through `h.container`'s service.
+/// Plans and starts a copy for [editor] (VN by default; CapCut and Edits get
+/// a session first) of [clipIds] of [reel] (the whole reel when null)
+/// through `h.container`'s service.
 Future<VnJob> startVnJob(
   WidgetTester tester,
   VmHarness h,
   Reel reel,
   List<int> reelClipIds, {
   List<int>? clipIds,
+  EditorApp editor = EditorApp.vn,
 }) async {
   h.editors.allow({'freeBytes', 'copyFolderNames', 'filesInCopyFolders'});
   h.copy.allowAll();
   final service = h.container.read(editSessionServiceProvider);
   final asked = clipIds ?? reelClipIds;
+  if (editor.takesShares) {
+    // CapCut and Edits start with a share: their session exists already.
+    await real(
+      tester,
+      () => h.container
+          .read(editSessionsRepositoryProvider)
+          .startSession(reel.id, editor, 'Goa'),
+    );
+  }
   return await real(tester, () async {
-    final plan = await service.planCopy(reel.id, EditorApp.vn, asked);
+    final plan = await service.planCopy(reel.id, editor, asked);
     final jobId = await service.startCopy(plan);
     return VnJob(reel, plan.clipIds, jobId, h.copy.starts.last);
   });

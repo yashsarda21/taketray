@@ -233,6 +233,66 @@ void main() {
     });
   });
 
+  group("the job's editor", () {
+    testApp('a CapCut job: the title and the added snack name CapCut', (
+      tester,
+    ) async {
+      final (reel, ids) = await reelWithClips(tester, h);
+      final job = await startVnJob(
+        tester,
+        h,
+        reel,
+        ids,
+        editor: EditorApp.capcut,
+      );
+      await open(tester, job.jobId);
+
+      expect(find.text('Copying clips for CapCut'), findsOneWidget);
+      expect(find.text('Copying clips for VN'), findsNothing);
+
+      await emit(
+        tester,
+        job.report(state: CopyState.finished, copied: [0, 1, 2, 3]),
+      );
+
+      // The session already existed, so this is an add: the reel's page.
+      expect(find.text(reelRouteMarker(reel.id)), findsOneWidget);
+      expect(find.text('4 clips added to the CapCut folder'), findsOneWidget);
+    });
+
+    testApp('a VN job still says VN', (tester) async {
+      final job = await firstJob(tester);
+      await open(tester, job.jobId);
+
+      expect(find.text('Copying clips for VN'), findsOneWidget);
+    });
+  });
+
+  group('a late event while Stop runs', () {
+    testApp('a running event during the cancel does not turn the screen on '
+        'again', (tester) async {
+      final job = await firstJob(tester);
+      await open(tester, job.jobId);
+      expect(h.copy.screenOnCalls, [true]);
+      final held = h.copy.gate('cancel');
+
+      await tapButton(tester, 'Cancel');
+      await tester.tap(find.text('Stop'));
+      await settleApp(tester);
+      expect(h.copy.screenOnCalls, [true, false]);
+
+      // The engine reports more progress while the cancel is in flight.
+      h.copy.emit(job.report(copied: [0, 1]));
+      await settleApp(tester);
+      expect(h.copy.screenOnCalls, [true, false]);
+
+      held.complete();
+      await settleApp(tester);
+      expect(find.text(reelRouteMarker(job.reel.id)), findsOneWidget);
+      expect(h.copy.screenOnCalls, [true, false]);
+    });
+  });
+
   group('the screen is let go on every way out', () {
     testApp('finished cleanly', (tester) async {
       final job = await firstJob(tester);

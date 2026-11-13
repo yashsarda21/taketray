@@ -200,9 +200,11 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
 
   Future<void> _readContext() async {
     try {
-      _context = await ref
+      final context = await ref
           .read(editSessionServiceProvider)
           .jobContext(widget.jobId);
+      // The title names the job's editor as soon as it is known.
+      if (context != null && mounted) setState(() => _context = context);
     } on Object catch (error) {
       _log.warning('Reading the job context failed: ${error.runtimeType}');
     }
@@ -353,7 +355,10 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
         }
       } else {
         _goOut(
-          snack: _l10n.copyAddedSnack(copied, editorName(_l10n, EditorApp.vn)),
+          snack: _l10n.copyAddedSnack(
+            copied,
+            editorName(_l10n, context?.editor ?? EditorApp.vn),
+          ),
         );
       }
     } on Object catch (error) {
@@ -468,7 +473,10 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
     return TtStatusLayout(
       icon: Symbols.folder_copy_rounded,
       tone: TtStatusTone.primary,
-      title: l10n.copyProgressTitle(editorName(l10n, EditorApp.vn)),
+      // VN until the plan's editor has been read (the first frame).
+      title: l10n.copyProgressTitle(
+        editorName(l10n, _context?.editor ?? EditorApp.vn),
+      ),
       body: _withError(
         l10n,
         Column(

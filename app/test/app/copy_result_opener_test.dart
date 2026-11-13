@@ -224,6 +224,42 @@ void main() {
     );
   });
 
+  testApp('a job that runs when the app returns to the front (its events '
+      'were dropped while away): the engine is read and its screen opens, '
+      'with the screen kept on', (tester) async {
+    final (reel, _) = await reelWithClips(tester, h);
+    await startApp(tester);
+    expect(find.byType(CopyProgressScreen), findsNothing);
+    final jobId = '${reel.id}-1793361600000';
+    // The engine has the job; no event reached Dart.
+    h.copy.job = CopyJob(
+      jobId: jobId,
+      reelId: reel.id,
+      folderName: 'Goa',
+      state: CopyState.running,
+      total: 4,
+      done: 1,
+      bytesDone: 100,
+      bytesTotal: 400,
+      copied: const [],
+      failedClipIds: const [],
+      undeleted: const [],
+    );
+
+    await resumeApp(tester);
+
+    expect(find.byType(CopyProgressScreen), findsOneWidget);
+    expect(find.text('1 of 4 clips'), findsOneWidget);
+    expect(h.copy.screenOnCalls.first, isTrue);
+
+    // Back to the front again: still one screen.
+    await resumeApp(tester);
+    expect(
+      find.byType(CopyProgressScreen, skipOffstage: false),
+      findsOneWidget,
+    );
+  });
+
   testApp('after Try again the new result is shown again (same job id)', (
     tester,
   ) async {
