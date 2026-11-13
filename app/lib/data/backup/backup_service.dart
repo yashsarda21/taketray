@@ -75,9 +75,10 @@ class BackupService {
   /// The whole database as a backup file, `exportedAt` now.
   ///
   /// Rows are sorted by id (links by clip, then reel; the zone timeline by
-  /// time), so the same data always gives the same text. Left out: VN
-  /// sessions and their copies, and every setting outside
-  /// `SettingsRepository.exportedKeys` (this phone's own state). The settings
+  /// time), so the same data always gives the same text. Left out: editing
+  /// sessions with their copies and sent clips (D-120), and every setting
+  /// outside `SettingsRepository.exportedKeys` (this phone's own state). The
+  /// settings
   /// are written as `SettingsRepository.load` reads them, so a missing or
   /// corrupt one is written as its default.
   Future<String> exportJson() async {
@@ -116,15 +117,17 @@ class BackupService {
   ///
   /// The whole file is checked first (`decodeBackup`); a file that fails
   /// throws [BackupException] and the database is not touched. Then, in one
-  /// transaction, every row of every table is deleted (VN sessions and
-  /// phone-state settings too) and the backup's rows are inserted with their
-  /// ids. If anything fails in there, the transaction rolls back and the old
-  /// data stays; a constraint the checks missed is still reported as
-  /// [BackupProblem.invalidData], never as a raw database error.
+  /// transaction, every row of every table is deleted (editing sessions with
+  /// their copy and sent rows, and phone-state settings, too) and the
+  /// backup's rows are inserted with their ids. If anything fails in there,
+  /// the transaction rolls back and the old data stays; a constraint the
+  /// checks missed is still reported as [BackupProblem.invalidData], never as
+  /// a raw database error.
   ///
   /// Imported ids may be ids the database used before the import, for other
   /// rows: that is safe only because this same transaction deletes every row
-  /// that could still hold an old clip id (`vn_copies`, D-54). SQLite's
+  /// that could still hold an old clip id (`vn_copies` and `sent_clips`,
+  /// D-54, D-120). SQLite's
   /// `AUTOINCREMENT` counters only ever go up (inserting a higher id moves
   /// the counter to it, deleting rows never lowers it), so rows added after
   /// the import get ids above every imported one.
@@ -175,8 +178,12 @@ class BackupService {
   Future<void> _replaceAll(BackupData data) async {
     await _db.transaction(() async {
       // Children before parents, so no foreign key is ever left dangling.
-      await _db.delete(_db.vnCopies).go();
-      await _db.delete(_db.vnSessions).go();
+      // All ten tables: the editing rows (sessions, copies, sent clips) are
+      // never exported (D-59, D-120), and the copy and sent rows hold clip
+      // ids that must not outlive the import (D-54).
+      await _db.delete(_db.sentClips).go();
+      await _db.delete(_db.editCopies).go();
+      await _db.delete(_db.editSessions).go();
       await _db.delete(_db.clipReels).go();
       await _db.delete(_db.inbox).go();
       await _db.delete(_db.reelReferences).go();

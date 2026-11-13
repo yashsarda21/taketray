@@ -2326,12 +2326,12 @@ class ReelReferencesCompanion extends UpdateCompanion<ReelReferenceRow> {
   }
 }
 
-class $VnSessionsTable extends VnSessions
-    with TableInfo<$VnSessionsTable, VnSessionRow> {
+class $EditSessionsTable extends EditSessions
+    with TableInfo<$EditSessionsTable, EditSessionRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $VnSessionsTable(this.attachedDatabase, [this._alias]);
+  $EditSessionsTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _reelIdMeta = const VerificationMeta('reelId');
   @override
   late final GeneratedColumn<int> reelId = GeneratedColumn<int>(
@@ -2344,6 +2344,16 @@ class $VnSessionsTable extends VnSessions
       'REFERENCES reels (id) ON DELETE CASCADE',
     ),
   );
+  @override
+  late final GeneratedColumnWithTypeConverter<EditorApp, String> editor =
+      GeneratedColumn<String>(
+        'editor',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+        defaultValue: const Constant('vn'),
+      ).withConverter<EditorApp>($EditSessionsTable.$convertereditor);
   static const VerificationMeta _folderNameMeta = const VerificationMeta(
     'folderName',
   );
@@ -2363,9 +2373,9 @@ class $VnSessionsTable extends VnSessions
         false,
         type: DriftSqlType.int,
         requiredDuringInsert: true,
-      ).withConverter<DateTime>($VnSessionsTable.$convertercreatedAt);
+      ).withConverter<DateTime>($EditSessionsTable.$convertercreatedAt);
   @override
-  List<GeneratedColumn> get $columns => [reelId, folderName, createdAt];
+  List<GeneratedColumn> get $columns => [reelId, editor, folderName, createdAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2373,7 +2383,7 @@ class $VnSessionsTable extends VnSessions
   static const String $name = 'vn_sessions';
   @override
   VerificationContext validateIntegrity(
-    Insertable<VnSessionRow> instance, {
+    Insertable<EditSessionRow> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -2398,18 +2408,24 @@ class $VnSessionsTable extends VnSessions
   @override
   Set<GeneratedColumn> get $primaryKey => {reelId};
   @override
-  VnSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  EditSessionRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VnSessionRow(
+    return EditSessionRow(
       reelId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}reel_id'],
       )!,
+      editor: $EditSessionsTable.$convertereditor.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}editor'],
+        )!,
+      ),
       folderName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}folder_name'],
       )!,
-      createdAt: $VnSessionsTable.$convertercreatedAt.fromSql(
+      createdAt: $EditSessionsTable.$convertercreatedAt.fromSql(
         attachedDatabase.typeMapping.read(
           DriftSqlType.int,
           data['${effectivePrefix}created_at'],
@@ -2419,20 +2435,26 @@ class $VnSessionsTable extends VnSessions
   }
 
   @override
-  $VnSessionsTable createAlias(String alias) {
-    return $VnSessionsTable(attachedDatabase, alias);
+  $EditSessionsTable createAlias(String alias) {
+    return $EditSessionsTable(attachedDatabase, alias);
   }
 
+  static JsonTypeConverter2<EditorApp, String, String> $convertereditor =
+      const EnumNameConverter<EditorApp>(EditorApp.values);
   static TypeConverter<DateTime, int> $convertercreatedAt =
       const UtcMillisConverter();
 }
 
-class VnSessionRow extends DataClass implements Insertable<VnSessionRow> {
+class EditSessionRow extends DataClass implements Insertable<EditSessionRow> {
   final int reelId;
+
+  /// Added in v2; every v1 session was a VN one.
+  final EditorApp editor;
   final String folderName;
   final DateTime createdAt;
-  const VnSessionRow({
+  const EditSessionRow({
     required this.reelId,
+    required this.editor,
     required this.folderName,
     required this.createdAt,
   });
@@ -2440,30 +2462,39 @@ class VnSessionRow extends DataClass implements Insertable<VnSessionRow> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['reel_id'] = Variable<int>(reelId);
+    {
+      map['editor'] = Variable<String>(
+        $EditSessionsTable.$convertereditor.toSql(editor),
+      );
+    }
     map['folder_name'] = Variable<String>(folderName);
     {
       map['created_at'] = Variable<int>(
-        $VnSessionsTable.$convertercreatedAt.toSql(createdAt),
+        $EditSessionsTable.$convertercreatedAt.toSql(createdAt),
       );
     }
     return map;
   }
 
-  VnSessionsCompanion toCompanion(bool nullToAbsent) {
-    return VnSessionsCompanion(
+  EditSessionsCompanion toCompanion(bool nullToAbsent) {
+    return EditSessionsCompanion(
       reelId: Value(reelId),
+      editor: Value(editor),
       folderName: Value(folderName),
       createdAt: Value(createdAt),
     );
   }
 
-  factory VnSessionRow.fromJson(
+  factory EditSessionRow.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VnSessionRow(
+    return EditSessionRow(
       reelId: serializer.fromJson<int>(json['reelId']),
+      editor: $EditSessionsTable.$convertereditor.fromJson(
+        serializer.fromJson<String>(json['editor']),
+      ),
       folderName: serializer.fromJson<String>(json['folderName']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
     );
@@ -2473,23 +2504,29 @@ class VnSessionRow extends DataClass implements Insertable<VnSessionRow> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'reelId': serializer.toJson<int>(reelId),
+      'editor': serializer.toJson<String>(
+        $EditSessionsTable.$convertereditor.toJson(editor),
+      ),
       'folderName': serializer.toJson<String>(folderName),
       'createdAt': serializer.toJson<DateTime>(createdAt),
     };
   }
 
-  VnSessionRow copyWith({
+  EditSessionRow copyWith({
     int? reelId,
+    EditorApp? editor,
     String? folderName,
     DateTime? createdAt,
-  }) => VnSessionRow(
+  }) => EditSessionRow(
     reelId: reelId ?? this.reelId,
+    editor: editor ?? this.editor,
     folderName: folderName ?? this.folderName,
     createdAt: createdAt ?? this.createdAt,
   );
-  VnSessionRow copyWithCompanion(VnSessionsCompanion data) {
-    return VnSessionRow(
+  EditSessionRow copyWithCompanion(EditSessionsCompanion data) {
+    return EditSessionRow(
       reelId: data.reelId.present ? data.reelId.value : this.reelId,
+      editor: data.editor.present ? data.editor.value : this.editor,
       folderName: data.folderName.present
           ? data.folderName.value
           : this.folderName,
@@ -2499,8 +2536,9 @@ class VnSessionRow extends DataClass implements Insertable<VnSessionRow> {
 
   @override
   String toString() {
-    return (StringBuffer('VnSessionRow(')
+    return (StringBuffer('EditSessionRow(')
           ..write('reelId: $reelId, ')
+          ..write('editor: $editor, ')
           ..write('folderName: $folderName, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -2508,50 +2546,58 @@ class VnSessionRow extends DataClass implements Insertable<VnSessionRow> {
   }
 
   @override
-  int get hashCode => Object.hash(reelId, folderName, createdAt);
+  int get hashCode => Object.hash(reelId, editor, folderName, createdAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is VnSessionRow &&
+      (other is EditSessionRow &&
           other.reelId == this.reelId &&
+          other.editor == this.editor &&
           other.folderName == this.folderName &&
           other.createdAt == this.createdAt);
 }
 
-class VnSessionsCompanion extends UpdateCompanion<VnSessionRow> {
+class EditSessionsCompanion extends UpdateCompanion<EditSessionRow> {
   final Value<int> reelId;
+  final Value<EditorApp> editor;
   final Value<String> folderName;
   final Value<DateTime> createdAt;
-  const VnSessionsCompanion({
+  const EditSessionsCompanion({
     this.reelId = const Value.absent(),
+    this.editor = const Value.absent(),
     this.folderName = const Value.absent(),
     this.createdAt = const Value.absent(),
   });
-  VnSessionsCompanion.insert({
+  EditSessionsCompanion.insert({
     this.reelId = const Value.absent(),
+    this.editor = const Value.absent(),
     required String folderName,
     required DateTime createdAt,
   }) : folderName = Value(folderName),
        createdAt = Value(createdAt);
-  static Insertable<VnSessionRow> custom({
+  static Insertable<EditSessionRow> custom({
     Expression<int>? reelId,
+    Expression<String>? editor,
     Expression<String>? folderName,
     Expression<int>? createdAt,
   }) {
     return RawValuesInsertable({
       if (reelId != null) 'reel_id': reelId,
+      if (editor != null) 'editor': editor,
       if (folderName != null) 'folder_name': folderName,
       if (createdAt != null) 'created_at': createdAt,
     });
   }
 
-  VnSessionsCompanion copyWith({
+  EditSessionsCompanion copyWith({
     Value<int>? reelId,
+    Value<EditorApp>? editor,
     Value<String>? folderName,
     Value<DateTime>? createdAt,
   }) {
-    return VnSessionsCompanion(
+    return EditSessionsCompanion(
       reelId: reelId ?? this.reelId,
+      editor: editor ?? this.editor,
       folderName: folderName ?? this.folderName,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -2563,12 +2609,17 @@ class VnSessionsCompanion extends UpdateCompanion<VnSessionRow> {
     if (reelId.present) {
       map['reel_id'] = Variable<int>(reelId.value);
     }
+    if (editor.present) {
+      map['editor'] = Variable<String>(
+        $EditSessionsTable.$convertereditor.toSql(editor.value),
+      );
+    }
     if (folderName.present) {
       map['folder_name'] = Variable<String>(folderName.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<int>(
-        $VnSessionsTable.$convertercreatedAt.toSql(createdAt.value),
+        $EditSessionsTable.$convertercreatedAt.toSql(createdAt.value),
       );
     }
     return map;
@@ -2576,8 +2627,9 @@ class VnSessionsCompanion extends UpdateCompanion<VnSessionRow> {
 
   @override
   String toString() {
-    return (StringBuffer('VnSessionsCompanion(')
+    return (StringBuffer('EditSessionsCompanion(')
           ..write('reelId: $reelId, ')
+          ..write('editor: $editor, ')
           ..write('folderName: $folderName, ')
           ..write('createdAt: $createdAt')
           ..write(')'))
@@ -2585,12 +2637,12 @@ class VnSessionsCompanion extends UpdateCompanion<VnSessionRow> {
   }
 }
 
-class $VnCopiesTable extends VnCopies
-    with TableInfo<$VnCopiesTable, VnCopyRow> {
+class $EditCopiesTable extends EditCopies
+    with TableInfo<$EditCopiesTable, EditCopyRow> {
   @override
   final GeneratedDatabase attachedDatabase;
   final String? _alias;
-  $VnCopiesTable(this.attachedDatabase, [this._alias]);
+  $EditCopiesTable(this.attachedDatabase, [this._alias]);
   static const VerificationMeta _reelIdMeta = const VerificationMeta('reelId');
   @override
   late final GeneratedColumn<int> reelId = GeneratedColumn<int>(
@@ -2646,12 +2698,23 @@ class $VnCopiesTable extends VnCopies
     requiredDuringInsert: true,
   );
   @override
+  late final GeneratedColumnWithTypeConverter<DateTime, int> copiedAt =
+      GeneratedColumn<int>(
+        'copied_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: false,
+        defaultValue: const Constant(0),
+      ).withConverter<DateTime>($EditCopiesTable.$convertercopiedAt);
+  @override
   List<GeneratedColumn> get $columns => [
     reelId,
     clipId,
     copyMediaStoreId,
     fileName,
     sizeBytes,
+    copiedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2660,7 +2723,7 @@ class $VnCopiesTable extends VnCopies
   static const String $name = 'vn_copies';
   @override
   VerificationContext validateIntegrity(
-    Insertable<VnCopyRow> instance, {
+    Insertable<EditCopyRow> instance, {
     bool isInserting = false,
   }) {
     final context = VerificationContext();
@@ -2714,9 +2777,9 @@ class $VnCopiesTable extends VnCopies
   @override
   Set<GeneratedColumn> get $primaryKey => {reelId, clipId};
   @override
-  VnCopyRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+  EditCopyRow map(Map<String, dynamic> data, {String? tablePrefix}) {
     final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
-    return VnCopyRow(
+    return EditCopyRow(
       reelId: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}reel_id'],
@@ -2737,27 +2800,41 @@ class $VnCopiesTable extends VnCopies
         DriftSqlType.int,
         data['${effectivePrefix}size_bytes'],
       )!,
+      copiedAt: $EditCopiesTable.$convertercopiedAt.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}copied_at'],
+        )!,
+      ),
     );
   }
 
   @override
-  $VnCopiesTable createAlias(String alias) {
-    return $VnCopiesTable(attachedDatabase, alias);
+  $EditCopiesTable createAlias(String alias) {
+    return $EditCopiesTable(attachedDatabase, alias);
   }
+
+  static TypeConverter<DateTime, int> $convertercopiedAt =
+      const UtcMillisConverter();
 }
 
-class VnCopyRow extends DataClass implements Insertable<VnCopyRow> {
+class EditCopyRow extends DataClass implements Insertable<EditCopyRow> {
   final int reelId;
   final int clipId;
   final int copyMediaStoreId;
   final String fileName;
   final int sizeBytes;
-  const VnCopyRow({
+
+  /// Added in v2. The migration set it to the session's `created_at`; the
+  /// default (0) is only for an insert that leaves it out.
+  final DateTime copiedAt;
+  const EditCopyRow({
     required this.reelId,
     required this.clipId,
     required this.copyMediaStoreId,
     required this.fileName,
     required this.sizeBytes,
+    required this.copiedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2767,30 +2844,37 @@ class VnCopyRow extends DataClass implements Insertable<VnCopyRow> {
     map['copy_media_store_id'] = Variable<int>(copyMediaStoreId);
     map['file_name'] = Variable<String>(fileName);
     map['size_bytes'] = Variable<int>(sizeBytes);
+    {
+      map['copied_at'] = Variable<int>(
+        $EditCopiesTable.$convertercopiedAt.toSql(copiedAt),
+      );
+    }
     return map;
   }
 
-  VnCopiesCompanion toCompanion(bool nullToAbsent) {
-    return VnCopiesCompanion(
+  EditCopiesCompanion toCompanion(bool nullToAbsent) {
+    return EditCopiesCompanion(
       reelId: Value(reelId),
       clipId: Value(clipId),
       copyMediaStoreId: Value(copyMediaStoreId),
       fileName: Value(fileName),
       sizeBytes: Value(sizeBytes),
+      copiedAt: Value(copiedAt),
     );
   }
 
-  factory VnCopyRow.fromJson(
+  factory EditCopyRow.fromJson(
     Map<String, dynamic> json, {
     ValueSerializer? serializer,
   }) {
     serializer ??= driftRuntimeOptions.defaultSerializer;
-    return VnCopyRow(
+    return EditCopyRow(
       reelId: serializer.fromJson<int>(json['reelId']),
       clipId: serializer.fromJson<int>(json['clipId']),
       copyMediaStoreId: serializer.fromJson<int>(json['copyMediaStoreId']),
       fileName: serializer.fromJson<String>(json['fileName']),
       sizeBytes: serializer.fromJson<int>(json['sizeBytes']),
+      copiedAt: serializer.fromJson<DateTime>(json['copiedAt']),
     );
   }
   @override
@@ -2802,24 +2886,27 @@ class VnCopyRow extends DataClass implements Insertable<VnCopyRow> {
       'copyMediaStoreId': serializer.toJson<int>(copyMediaStoreId),
       'fileName': serializer.toJson<String>(fileName),
       'sizeBytes': serializer.toJson<int>(sizeBytes),
+      'copiedAt': serializer.toJson<DateTime>(copiedAt),
     };
   }
 
-  VnCopyRow copyWith({
+  EditCopyRow copyWith({
     int? reelId,
     int? clipId,
     int? copyMediaStoreId,
     String? fileName,
     int? sizeBytes,
-  }) => VnCopyRow(
+    DateTime? copiedAt,
+  }) => EditCopyRow(
     reelId: reelId ?? this.reelId,
     clipId: clipId ?? this.clipId,
     copyMediaStoreId: copyMediaStoreId ?? this.copyMediaStoreId,
     fileName: fileName ?? this.fileName,
     sizeBytes: sizeBytes ?? this.sizeBytes,
+    copiedAt: copiedAt ?? this.copiedAt,
   );
-  VnCopyRow copyWithCompanion(VnCopiesCompanion data) {
-    return VnCopyRow(
+  EditCopyRow copyWithCompanion(EditCopiesCompanion data) {
+    return EditCopyRow(
       reelId: data.reelId.present ? data.reelId.value : this.reelId,
       clipId: data.clipId.present ? data.clipId.value : this.clipId,
       copyMediaStoreId: data.copyMediaStoreId.present
@@ -2827,68 +2914,81 @@ class VnCopyRow extends DataClass implements Insertable<VnCopyRow> {
           : this.copyMediaStoreId,
       fileName: data.fileName.present ? data.fileName.value : this.fileName,
       sizeBytes: data.sizeBytes.present ? data.sizeBytes.value : this.sizeBytes,
+      copiedAt: data.copiedAt.present ? data.copiedAt.value : this.copiedAt,
     );
   }
 
   @override
   String toString() {
-    return (StringBuffer('VnCopyRow(')
+    return (StringBuffer('EditCopyRow(')
           ..write('reelId: $reelId, ')
           ..write('clipId: $clipId, ')
           ..write('copyMediaStoreId: $copyMediaStoreId, ')
           ..write('fileName: $fileName, ')
-          ..write('sizeBytes: $sizeBytes')
+          ..write('sizeBytes: $sizeBytes, ')
+          ..write('copiedAt: $copiedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(reelId, clipId, copyMediaStoreId, fileName, sizeBytes);
+  int get hashCode => Object.hash(
+    reelId,
+    clipId,
+    copyMediaStoreId,
+    fileName,
+    sizeBytes,
+    copiedAt,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      (other is VnCopyRow &&
+      (other is EditCopyRow &&
           other.reelId == this.reelId &&
           other.clipId == this.clipId &&
           other.copyMediaStoreId == this.copyMediaStoreId &&
           other.fileName == this.fileName &&
-          other.sizeBytes == this.sizeBytes);
+          other.sizeBytes == this.sizeBytes &&
+          other.copiedAt == this.copiedAt);
 }
 
-class VnCopiesCompanion extends UpdateCompanion<VnCopyRow> {
+class EditCopiesCompanion extends UpdateCompanion<EditCopyRow> {
   final Value<int> reelId;
   final Value<int> clipId;
   final Value<int> copyMediaStoreId;
   final Value<String> fileName;
   final Value<int> sizeBytes;
+  final Value<DateTime> copiedAt;
   final Value<int> rowid;
-  const VnCopiesCompanion({
+  const EditCopiesCompanion({
     this.reelId = const Value.absent(),
     this.clipId = const Value.absent(),
     this.copyMediaStoreId = const Value.absent(),
     this.fileName = const Value.absent(),
     this.sizeBytes = const Value.absent(),
+    this.copiedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
-  VnCopiesCompanion.insert({
+  EditCopiesCompanion.insert({
     required int reelId,
     required int clipId,
     required int copyMediaStoreId,
     required String fileName,
     required int sizeBytes,
+    this.copiedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : reelId = Value(reelId),
        clipId = Value(clipId),
        copyMediaStoreId = Value(copyMediaStoreId),
        fileName = Value(fileName),
        sizeBytes = Value(sizeBytes);
-  static Insertable<VnCopyRow> custom({
+  static Insertable<EditCopyRow> custom({
     Expression<int>? reelId,
     Expression<int>? clipId,
     Expression<int>? copyMediaStoreId,
     Expression<String>? fileName,
     Expression<int>? sizeBytes,
+    Expression<int>? copiedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2897,24 +2997,27 @@ class VnCopiesCompanion extends UpdateCompanion<VnCopyRow> {
       if (copyMediaStoreId != null) 'copy_media_store_id': copyMediaStoreId,
       if (fileName != null) 'file_name': fileName,
       if (sizeBytes != null) 'size_bytes': sizeBytes,
+      if (copiedAt != null) 'copied_at': copiedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
 
-  VnCopiesCompanion copyWith({
+  EditCopiesCompanion copyWith({
     Value<int>? reelId,
     Value<int>? clipId,
     Value<int>? copyMediaStoreId,
     Value<String>? fileName,
     Value<int>? sizeBytes,
+    Value<DateTime>? copiedAt,
     Value<int>? rowid,
   }) {
-    return VnCopiesCompanion(
+    return EditCopiesCompanion(
       reelId: reelId ?? this.reelId,
       clipId: clipId ?? this.clipId,
       copyMediaStoreId: copyMediaStoreId ?? this.copyMediaStoreId,
       fileName: fileName ?? this.fileName,
       sizeBytes: sizeBytes ?? this.sizeBytes,
+      copiedAt: copiedAt ?? this.copiedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2937,6 +3040,11 @@ class VnCopiesCompanion extends UpdateCompanion<VnCopyRow> {
     if (sizeBytes.present) {
       map['size_bytes'] = Variable<int>(sizeBytes.value);
     }
+    if (copiedAt.present) {
+      map['copied_at'] = Variable<int>(
+        $EditCopiesTable.$convertercopiedAt.toSql(copiedAt.value),
+      );
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2945,12 +3053,279 @@ class VnCopiesCompanion extends UpdateCompanion<VnCopyRow> {
 
   @override
   String toString() {
-    return (StringBuffer('VnCopiesCompanion(')
+    return (StringBuffer('EditCopiesCompanion(')
           ..write('reelId: $reelId, ')
           ..write('clipId: $clipId, ')
           ..write('copyMediaStoreId: $copyMediaStoreId, ')
           ..write('fileName: $fileName, ')
           ..write('sizeBytes: $sizeBytes, ')
+          ..write('copiedAt: $copiedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SentClipsTable extends SentClips
+    with TableInfo<$SentClipsTable, SentClipRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SentClipsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _reelIdMeta = const VerificationMeta('reelId');
+  @override
+  late final GeneratedColumn<int> reelId = GeneratedColumn<int>(
+    'reel_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES vn_sessions (reel_id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _clipIdMeta = const VerificationMeta('clipId');
+  @override
+  late final GeneratedColumn<int> clipId = GeneratedColumn<int>(
+    'clip_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<DateTime, int> sentAt =
+      GeneratedColumn<int>(
+        'sent_at',
+        aliasedName,
+        false,
+        type: DriftSqlType.int,
+        requiredDuringInsert: true,
+      ).withConverter<DateTime>($SentClipsTable.$convertersentAt);
+  @override
+  List<GeneratedColumn> get $columns => [reelId, clipId, sentAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sent_clips';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SentClipRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('reel_id')) {
+      context.handle(
+        _reelIdMeta,
+        reelId.isAcceptableOrUnknown(data['reel_id']!, _reelIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_reelIdMeta);
+    }
+    if (data.containsKey('clip_id')) {
+      context.handle(
+        _clipIdMeta,
+        clipId.isAcceptableOrUnknown(data['clip_id']!, _clipIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_clipIdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {reelId, clipId};
+  @override
+  SentClipRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SentClipRow(
+      reelId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}reel_id'],
+      )!,
+      clipId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}clip_id'],
+      )!,
+      sentAt: $SentClipsTable.$convertersentAt.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.int,
+          data['${effectivePrefix}sent_at'],
+        )!,
+      ),
+    );
+  }
+
+  @override
+  $SentClipsTable createAlias(String alias) {
+    return $SentClipsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<DateTime, int> $convertersentAt =
+      const UtcMillisConverter();
+}
+
+class SentClipRow extends DataClass implements Insertable<SentClipRow> {
+  final int reelId;
+  final int clipId;
+  final DateTime sentAt;
+  const SentClipRow({
+    required this.reelId,
+    required this.clipId,
+    required this.sentAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['reel_id'] = Variable<int>(reelId);
+    map['clip_id'] = Variable<int>(clipId);
+    {
+      map['sent_at'] = Variable<int>(
+        $SentClipsTable.$convertersentAt.toSql(sentAt),
+      );
+    }
+    return map;
+  }
+
+  SentClipsCompanion toCompanion(bool nullToAbsent) {
+    return SentClipsCompanion(
+      reelId: Value(reelId),
+      clipId: Value(clipId),
+      sentAt: Value(sentAt),
+    );
+  }
+
+  factory SentClipRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SentClipRow(
+      reelId: serializer.fromJson<int>(json['reelId']),
+      clipId: serializer.fromJson<int>(json['clipId']),
+      sentAt: serializer.fromJson<DateTime>(json['sentAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'reelId': serializer.toJson<int>(reelId),
+      'clipId': serializer.toJson<int>(clipId),
+      'sentAt': serializer.toJson<DateTime>(sentAt),
+    };
+  }
+
+  SentClipRow copyWith({int? reelId, int? clipId, DateTime? sentAt}) =>
+      SentClipRow(
+        reelId: reelId ?? this.reelId,
+        clipId: clipId ?? this.clipId,
+        sentAt: sentAt ?? this.sentAt,
+      );
+  SentClipRow copyWithCompanion(SentClipsCompanion data) {
+    return SentClipRow(
+      reelId: data.reelId.present ? data.reelId.value : this.reelId,
+      clipId: data.clipId.present ? data.clipId.value : this.clipId,
+      sentAt: data.sentAt.present ? data.sentAt.value : this.sentAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SentClipRow(')
+          ..write('reelId: $reelId, ')
+          ..write('clipId: $clipId, ')
+          ..write('sentAt: $sentAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(reelId, clipId, sentAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SentClipRow &&
+          other.reelId == this.reelId &&
+          other.clipId == this.clipId &&
+          other.sentAt == this.sentAt);
+}
+
+class SentClipsCompanion extends UpdateCompanion<SentClipRow> {
+  final Value<int> reelId;
+  final Value<int> clipId;
+  final Value<DateTime> sentAt;
+  final Value<int> rowid;
+  const SentClipsCompanion({
+    this.reelId = const Value.absent(),
+    this.clipId = const Value.absent(),
+    this.sentAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SentClipsCompanion.insert({
+    required int reelId,
+    required int clipId,
+    required DateTime sentAt,
+    this.rowid = const Value.absent(),
+  }) : reelId = Value(reelId),
+       clipId = Value(clipId),
+       sentAt = Value(sentAt);
+  static Insertable<SentClipRow> custom({
+    Expression<int>? reelId,
+    Expression<int>? clipId,
+    Expression<int>? sentAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (reelId != null) 'reel_id': reelId,
+      if (clipId != null) 'clip_id': clipId,
+      if (sentAt != null) 'sent_at': sentAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SentClipsCompanion copyWith({
+    Value<int>? reelId,
+    Value<int>? clipId,
+    Value<DateTime>? sentAt,
+    Value<int>? rowid,
+  }) {
+    return SentClipsCompanion(
+      reelId: reelId ?? this.reelId,
+      clipId: clipId ?? this.clipId,
+      sentAt: sentAt ?? this.sentAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (reelId.present) {
+      map['reel_id'] = Variable<int>(reelId.value);
+    }
+    if (clipId.present) {
+      map['clip_id'] = Variable<int>(clipId.value);
+    }
+    if (sentAt.present) {
+      map['sent_at'] = Variable<int>(
+        $SentClipsTable.$convertersentAt.toSql(sentAt.value),
+      );
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SentClipsCompanion(')
+          ..write('reelId: $reelId, ')
+          ..write('clipId: $clipId, ')
+          ..write('sentAt: $sentAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3366,8 +3741,9 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ClipReelsTable clipReels = $ClipReelsTable(this);
   late final $InboxTable inbox = $InboxTable(this);
   late final $ReelReferencesTable reelReferences = $ReelReferencesTable(this);
-  late final $VnSessionsTable vnSessions = $VnSessionsTable(this);
-  late final $VnCopiesTable vnCopies = $VnCopiesTable(this);
+  late final $EditSessionsTable editSessions = $EditSessionsTable(this);
+  late final $EditCopiesTable editCopies = $EditCopiesTable(this);
+  late final $SentClipsTable sentClips = $SentClipsTable(this);
   late final $SettingsTable settings = $SettingsTable(this);
   late final $ZoneTimelineTable zoneTimeline = $ZoneTimelineTable(this);
   late final Index clipsDateTakenUtc = Index(
@@ -3382,6 +3758,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     'vn_copies_clip_id',
     'CREATE INDEX vn_copies_clip_id ON vn_copies (clip_id)',
   );
+  late final Index sentClipsClipId = Index(
+    'sent_clips_clip_id',
+    'CREATE INDEX sent_clips_clip_id ON sent_clips (clip_id)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3392,13 +3772,15 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     clipReels,
     inbox,
     reelReferences,
-    vnSessions,
-    vnCopies,
+    editSessions,
+    editCopies,
+    sentClips,
     settings,
     zoneTimeline,
     clipsDateTakenUtc,
     clipReelsReelId,
     vnCopiesClipId,
+    sentClipsClipId,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -3443,6 +3825,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('vn_copies', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'vn_sessions',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('sent_clips', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -3504,19 +3893,19 @@ final class $$ReelsTableReferences
     );
   }
 
-  static MultiTypedResultKey<$VnSessionsTable, List<VnSessionRow>>
-  _vnSessionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
-    db.vnSessions,
+  static MultiTypedResultKey<$EditSessionsTable, List<EditSessionRow>>
+  _editSessionsRefsTable(_$AppDatabase db) => MultiTypedResultKey.fromTable(
+    db.editSessions,
     aliasName: 'reels__id__vn_sessions__reel_id',
   );
 
-  $$VnSessionsTableProcessedTableManager get vnSessionsRefs {
-    final manager = $$VnSessionsTableTableManager(
+  $$EditSessionsTableProcessedTableManager get editSessionsRefs {
+    final manager = $$EditSessionsTableTableManager(
       $_db,
-      $_db.vnSessions,
+      $_db.editSessions,
     ).filter((f) => f.reelId.id.sqlEquals($_itemColumn<int>('id')!));
 
-    final cache = $_typedResult.readTableOrNull(_vnSessionsRefsTable($_db));
+    final cache = $_typedResult.readTableOrNull(_editSessionsRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -3614,22 +4003,22 @@ class $$ReelsTableFilterComposer extends Composer<_$AppDatabase, $ReelsTable> {
     return f(composer);
   }
 
-  Expression<bool> vnSessionsRefs(
-    Expression<bool> Function($$VnSessionsTableFilterComposer f) f,
+  Expression<bool> editSessionsRefs(
+    Expression<bool> Function($$EditSessionsTableFilterComposer f) f,
   ) {
-    final $$VnSessionsTableFilterComposer composer = $composerBuilder(
+    final $$EditSessionsTableFilterComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vnSessions,
+      referencedTable: $db.editSessions,
       getReferencedColumn: (t) => t.reelId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$VnSessionsTableFilterComposer(
+          }) => $$EditSessionsTableFilterComposer(
             $db: $db,
-            $table: $db.vnSessions,
+            $table: $db.editSessions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3759,22 +4148,22 @@ class $$ReelsTableAnnotationComposer
     return f(composer);
   }
 
-  Expression<T> vnSessionsRefs<T extends Object>(
-    Expression<T> Function($$VnSessionsTableAnnotationComposer a) f,
+  Expression<T> editSessionsRefs<T extends Object>(
+    Expression<T> Function($$EditSessionsTableAnnotationComposer a) f,
   ) {
-    final $$VnSessionsTableAnnotationComposer composer = $composerBuilder(
+    final $$EditSessionsTableAnnotationComposer composer = $composerBuilder(
       composer: this,
       getCurrentColumn: (t) => t.id,
-      referencedTable: $db.vnSessions,
+      referencedTable: $db.editSessions,
       getReferencedColumn: (t) => t.reelId,
       builder:
           (
             joinBuilder, {
             $addJoinBuilderToRootComposer,
             $removeJoinBuilderFromRootComposer,
-          }) => $$VnSessionsTableAnnotationComposer(
+          }) => $$EditSessionsTableAnnotationComposer(
             $db: $db,
-            $table: $db.vnSessions,
+            $table: $db.editSessions,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -3801,7 +4190,7 @@ class $$ReelsTableTableManager
           PrefetchHooks Function({
             bool clipReelsRefs,
             bool reelReferencesRefs,
-            bool vnSessionsRefs,
+            bool editSessionsRefs,
           })
         > {
   $$ReelsTableTableManager(_$AppDatabase db, $ReelsTable table)
@@ -3859,14 +4248,14 @@ class $$ReelsTableTableManager
               ({
                 clipReelsRefs = false,
                 reelReferencesRefs = false,
-                vnSessionsRefs = false,
+                editSessionsRefs = false,
               }) {
                 return PrefetchHooks(
                   db: db,
                   explicitlyWatchedTables: [
                     if (clipReelsRefs) db.clipReels,
                     if (reelReferencesRefs) db.reelReferences,
-                    if (vnSessionsRefs) db.vnSessions,
+                    if (editSessionsRefs) db.editSessions,
                   ],
                   addJoins: null,
                   getPrefetchedDataCallback: (items) async {
@@ -3911,22 +4300,22 @@ class $$ReelsTableTableManager
                           referencedColumn: 'reel_id',
                           typedResults: items,
                         ),
-                      if (vnSessionsRefs)
+                      if (editSessionsRefs)
                         await $_getPrefetchedDataByColumns<
                           ReelRow,
                           $ReelsTable,
-                          VnSessionRow,
-                          $VnSessionsTable
+                          EditSessionRow,
+                          $EditSessionsTable
                         >(
                           currentTable: table,
                           referencedTable: $$ReelsTableReferences
-                              ._vnSessionsRefsTable(db),
+                              ._editSessionsRefsTable(db),
                           managerFromTypedResult: (p0) =>
                               $$ReelsTableReferences(
                                 db,
                                 table,
                                 p0,
-                              ).vnSessionsRefs,
+                              ).editSessionsRefs,
                           currentColumn: 'id',
                           referencedColumn: 'reel_id',
                           typedResults: items,
@@ -3954,7 +4343,7 @@ typedef $$ReelsTableProcessedTableManager =
       PrefetchHooks Function({
         bool clipReelsRefs,
         bool reelReferencesRefs,
-        bool vnSessionsRefs,
+        bool editSessionsRefs,
       })
     >;
 typedef $$ClipsTableCreateCompanionBuilder = ClipsCompanion Function({
@@ -5551,20 +5940,24 @@ typedef $$ReelReferencesTableProcessedTableManager =
       ReelReferenceRow,
       PrefetchHooks Function({bool reelId})
     >;
-typedef $$VnSessionsTableCreateCompanionBuilder = VnSessionsCompanion Function({
-  Value<int> reelId,
-  required String folderName,
-  required DateTime createdAt,
-});
-typedef $$VnSessionsTableUpdateCompanionBuilder = VnSessionsCompanion Function({
-  Value<int> reelId,
-  Value<String> folderName,
-  Value<DateTime> createdAt,
-});
+typedef $$EditSessionsTableCreateCompanionBuilder =
+    EditSessionsCompanion Function({
+      Value<int> reelId,
+      Value<EditorApp> editor,
+      required String folderName,
+      required DateTime createdAt,
+    });
+typedef $$EditSessionsTableUpdateCompanionBuilder =
+    EditSessionsCompanion Function({
+      Value<int> reelId,
+      Value<EditorApp> editor,
+      Value<String> folderName,
+      Value<DateTime> createdAt,
+    });
 
-final class $$VnSessionsTableReferences
-    extends BaseReferences<_$AppDatabase, $VnSessionsTable, VnSessionRow> {
-  $$VnSessionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
+final class $$EditSessionsTableReferences
+    extends BaseReferences<_$AppDatabase, $EditSessionsTable, EditSessionRow> {
+  $$EditSessionsTableReferences(super.$_db, super.$_table, super.$_typedResult);
 
   static $ReelsTable _reelIdTable(_$AppDatabase db) =>
       db.reels.createAlias('vn_sessions__reel_id__reels__id');
@@ -5584,15 +5977,21 @@ final class $$VnSessionsTableReferences
   }
 }
 
-class $$VnSessionsTableFilterComposer
-    extends Composer<_$AppDatabase, $VnSessionsTable> {
-  $$VnSessionsTableFilterComposer({
+class $$EditSessionsTableFilterComposer
+    extends Composer<_$AppDatabase, $EditSessionsTable> {
+  $$EditSessionsTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnWithTypeConverterFilters<EditorApp, EditorApp, String> get editor =>
+      $composableBuilder(
+        column: $table.editor,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
   ColumnFilters<String> get folderName => $composableBuilder(
     column: $table.folderName,
     builder: (column) => ColumnFilters(column),
@@ -5628,15 +6027,20 @@ class $$VnSessionsTableFilterComposer
   }
 }
 
-class $$VnSessionsTableOrderingComposer
-    extends Composer<_$AppDatabase, $VnSessionsTable> {
-  $$VnSessionsTableOrderingComposer({
+class $$EditSessionsTableOrderingComposer
+    extends Composer<_$AppDatabase, $EditSessionsTable> {
+  $$EditSessionsTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  ColumnOrderings<String> get editor => $composableBuilder(
+    column: $table.editor,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get folderName => $composableBuilder(
     column: $table.folderName,
     builder: (column) => ColumnOrderings(column),
@@ -5671,15 +6075,18 @@ class $$VnSessionsTableOrderingComposer
   }
 }
 
-class $$VnSessionsTableAnnotationComposer
-    extends Composer<_$AppDatabase, $VnSessionsTable> {
-  $$VnSessionsTableAnnotationComposer({
+class $$EditSessionsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EditSessionsTable> {
+  $$EditSessionsTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
     super.$addJoinBuilderToRootComposer,
     super.$removeJoinBuilderFromRootComposer,
   });
+  GeneratedColumnWithTypeConverter<EditorApp, String> get editor =>
+      $composableBuilder(column: $table.editor, builder: (column) => column);
+
   GeneratedColumn<String> get folderName => $composableBuilder(
     column: $table.folderName,
     builder: (column) => column,
@@ -5712,57 +6119,61 @@ class $$VnSessionsTableAnnotationComposer
   }
 }
 
-class $$VnSessionsTableTableManager
+class $$EditSessionsTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $VnSessionsTable,
-          VnSessionRow,
-          $$VnSessionsTableFilterComposer,
-          $$VnSessionsTableOrderingComposer,
-          $$VnSessionsTableAnnotationComposer,
-          $$VnSessionsTableCreateCompanionBuilder,
-          $$VnSessionsTableUpdateCompanionBuilder,
-          (VnSessionRow, $$VnSessionsTableReferences),
-          VnSessionRow,
+          $EditSessionsTable,
+          EditSessionRow,
+          $$EditSessionsTableFilterComposer,
+          $$EditSessionsTableOrderingComposer,
+          $$EditSessionsTableAnnotationComposer,
+          $$EditSessionsTableCreateCompanionBuilder,
+          $$EditSessionsTableUpdateCompanionBuilder,
+          (EditSessionRow, $$EditSessionsTableReferences),
+          EditSessionRow,
           PrefetchHooks Function({bool reelId})
         > {
-  $$VnSessionsTableTableManager(_$AppDatabase db, $VnSessionsTable table)
+  $$EditSessionsTableTableManager(_$AppDatabase db, $EditSessionsTable table)
     : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$VnSessionsTableFilterComposer($db: db, $table: table),
+              $$EditSessionsTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$VnSessionsTableOrderingComposer($db: db, $table: table),
+              $$EditSessionsTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$VnSessionsTableAnnotationComposer($db: db, $table: table),
+              $$EditSessionsTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<int> reelId = const Value.absent(),
+                Value<EditorApp> editor = const Value.absent(),
                 Value<String> folderName = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
-              }) => VnSessionsCompanion(
+              }) => EditSessionsCompanion(
                 reelId: reelId,
+                editor: editor,
                 folderName: folderName,
                 createdAt: createdAt,
               ),
           createCompanionCallback:
               ({
                 Value<int> reelId = const Value.absent(),
+                Value<EditorApp> editor = const Value.absent(),
                 required String folderName,
                 required DateTime createdAt,
-              }) => VnSessionsCompanion.insert(
+              }) => EditSessionsCompanion.insert(
                 reelId: reelId,
+                editor: editor,
                 folderName: folderName,
                 createdAt: createdAt,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$VnSessionsTable, VnSessionRow>(table),
-                  $$VnSessionsTableReferences(db, table, e),
+                  e.readTable<$EditSessionsTable, EditSessionRow>(table),
+                  $$EditSessionsTableReferences(db, table, e),
                 ),
               )
               .toList(),
@@ -5790,9 +6201,9 @@ class $$VnSessionsTableTableManager
                       state = state.withJoin(
                         currentTable: table,
                         currentColumn: table.reelId,
-                        referencedTable: $$VnSessionsTableReferences
+                        referencedTable: $$EditSessionsTableReferences
                             ._reelIdTable(db),
-                        referencedColumn: $$VnSessionsTableReferences
+                        referencedColumn: $$EditSessionsTableReferences
                             ._reelIdTable(db)
                             .id,
                       ) as T;
@@ -5809,40 +6220,42 @@ class $$VnSessionsTableTableManager
       );
 }
 
-typedef $$VnSessionsTableProcessedTableManager =
+typedef $$EditSessionsTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $VnSessionsTable,
-      VnSessionRow,
-      $$VnSessionsTableFilterComposer,
-      $$VnSessionsTableOrderingComposer,
-      $$VnSessionsTableAnnotationComposer,
-      $$VnSessionsTableCreateCompanionBuilder,
-      $$VnSessionsTableUpdateCompanionBuilder,
-      (VnSessionRow, $$VnSessionsTableReferences),
-      VnSessionRow,
+      $EditSessionsTable,
+      EditSessionRow,
+      $$EditSessionsTableFilterComposer,
+      $$EditSessionsTableOrderingComposer,
+      $$EditSessionsTableAnnotationComposer,
+      $$EditSessionsTableCreateCompanionBuilder,
+      $$EditSessionsTableUpdateCompanionBuilder,
+      (EditSessionRow, $$EditSessionsTableReferences),
+      EditSessionRow,
       PrefetchHooks Function({bool reelId})
     >;
-typedef $$VnCopiesTableCreateCompanionBuilder = VnCopiesCompanion Function({
+typedef $$EditCopiesTableCreateCompanionBuilder = EditCopiesCompanion Function({
   required int reelId,
   required int clipId,
   required int copyMediaStoreId,
   required String fileName,
   required int sizeBytes,
+  Value<DateTime> copiedAt,
   Value<int> rowid,
 });
-typedef $$VnCopiesTableUpdateCompanionBuilder = VnCopiesCompanion Function({
+typedef $$EditCopiesTableUpdateCompanionBuilder = EditCopiesCompanion Function({
   Value<int> reelId,
   Value<int> clipId,
   Value<int> copyMediaStoreId,
   Value<String> fileName,
   Value<int> sizeBytes,
+  Value<DateTime> copiedAt,
   Value<int> rowid,
 });
 
-class $$VnCopiesTableFilterComposer
-    extends Composer<_$AppDatabase, $VnCopiesTable> {
-  $$VnCopiesTableFilterComposer({
+class $$EditCopiesTableFilterComposer
+    extends Composer<_$AppDatabase, $EditCopiesTable> {
+  $$EditCopiesTableFilterComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -5868,11 +6281,17 @@ class $$VnCopiesTableFilterComposer
     column: $table.sizeBytes,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnWithTypeConverterFilters<DateTime, DateTime, int> get copiedAt =>
+      $composableBuilder(
+        column: $table.copiedAt,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
 }
 
-class $$VnCopiesTableOrderingComposer
-    extends Composer<_$AppDatabase, $VnCopiesTable> {
-  $$VnCopiesTableOrderingComposer({
+class $$EditCopiesTableOrderingComposer
+    extends Composer<_$AppDatabase, $EditCopiesTable> {
+  $$EditCopiesTableOrderingComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -5898,11 +6317,16 @@ class $$VnCopiesTableOrderingComposer
     column: $table.sizeBytes,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get copiedAt => $composableBuilder(
+    column: $table.copiedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
-class $$VnCopiesTableAnnotationComposer
-    extends Composer<_$AppDatabase, $VnCopiesTable> {
-  $$VnCopiesTableAnnotationComposer({
+class $$EditCopiesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $EditCopiesTable> {
+  $$EditCopiesTableAnnotationComposer({
     required super.$db,
     required super.$table,
     super.joinBuilder,
@@ -5922,34 +6346,40 @@ class $$VnCopiesTableAnnotationComposer
 
   GeneratedColumn<int> get sizeBytes =>
       $composableBuilder(column: $table.sizeBytes, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DateTime, int> get copiedAt =>
+      $composableBuilder(column: $table.copiedAt, builder: (column) => column);
 }
 
-class $$VnCopiesTableTableManager
+class $$EditCopiesTableTableManager
     extends
         RootTableManager<
           _$AppDatabase,
-          $VnCopiesTable,
-          VnCopyRow,
-          $$VnCopiesTableFilterComposer,
-          $$VnCopiesTableOrderingComposer,
-          $$VnCopiesTableAnnotationComposer,
-          $$VnCopiesTableCreateCompanionBuilder,
-          $$VnCopiesTableUpdateCompanionBuilder,
-          (VnCopyRow, BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>),
-          VnCopyRow,
+          $EditCopiesTable,
+          EditCopyRow,
+          $$EditCopiesTableFilterComposer,
+          $$EditCopiesTableOrderingComposer,
+          $$EditCopiesTableAnnotationComposer,
+          $$EditCopiesTableCreateCompanionBuilder,
+          $$EditCopiesTableUpdateCompanionBuilder,
+          (
+            EditCopyRow,
+            BaseReferences<_$AppDatabase, $EditCopiesTable, EditCopyRow>,
+          ),
+          EditCopyRow,
           PrefetchHooks Function()
         > {
-  $$VnCopiesTableTableManager(_$AppDatabase db, $VnCopiesTable table)
+  $$EditCopiesTableTableManager(_$AppDatabase db, $EditCopiesTable table)
     : super(
         TableManagerState(
           db: db,
           table: table,
           createFilteringComposer: () =>
-              $$VnCopiesTableFilterComposer($db: db, $table: table),
+              $$EditCopiesTableFilterComposer($db: db, $table: table),
           createOrderingComposer: () =>
-              $$VnCopiesTableOrderingComposer($db: db, $table: table),
+              $$EditCopiesTableOrderingComposer($db: db, $table: table),
           createComputedFieldComposer: () =>
-              $$VnCopiesTableAnnotationComposer($db: db, $table: table),
+              $$EditCopiesTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback:
               ({
                 Value<int> reelId = const Value.absent(),
@@ -5957,13 +6387,15 @@ class $$VnCopiesTableTableManager
                 Value<int> copyMediaStoreId = const Value.absent(),
                 Value<String> fileName = const Value.absent(),
                 Value<int> sizeBytes = const Value.absent(),
+                Value<DateTime> copiedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => VnCopiesCompanion(
+              }) => EditCopiesCompanion(
                 reelId: reelId,
                 clipId: clipId,
                 copyMediaStoreId: copyMediaStoreId,
                 fileName: fileName,
                 sizeBytes: sizeBytes,
+                copiedAt: copiedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -5973,20 +6405,22 @@ class $$VnCopiesTableTableManager
                 required int copyMediaStoreId,
                 required String fileName,
                 required int sizeBytes,
+                Value<DateTime> copiedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
-              }) => VnCopiesCompanion.insert(
+              }) => EditCopiesCompanion.insert(
                 reelId: reelId,
                 clipId: clipId,
                 copyMediaStoreId: copyMediaStoreId,
                 fileName: fileName,
                 sizeBytes: sizeBytes,
+                copiedAt: copiedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
               .map(
                 (e) => (
-                  e.readTable<$VnCopiesTable, VnCopyRow>(table),
-                  BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>(
+                  e.readTable<$EditCopiesTable, EditCopyRow>(table),
+                  BaseReferences<_$AppDatabase, $EditCopiesTable, EditCopyRow>(
                     db,
                     table,
                     e,
@@ -5999,18 +6433,178 @@ class $$VnCopiesTableTableManager
       );
 }
 
-typedef $$VnCopiesTableProcessedTableManager =
+typedef $$EditCopiesTableProcessedTableManager =
     ProcessedTableManager<
       _$AppDatabase,
-      $VnCopiesTable,
-      VnCopyRow,
-      $$VnCopiesTableFilterComposer,
-      $$VnCopiesTableOrderingComposer,
-      $$VnCopiesTableAnnotationComposer,
-      $$VnCopiesTableCreateCompanionBuilder,
-      $$VnCopiesTableUpdateCompanionBuilder,
-      (VnCopyRow, BaseReferences<_$AppDatabase, $VnCopiesTable, VnCopyRow>),
-      VnCopyRow,
+      $EditCopiesTable,
+      EditCopyRow,
+      $$EditCopiesTableFilterComposer,
+      $$EditCopiesTableOrderingComposer,
+      $$EditCopiesTableAnnotationComposer,
+      $$EditCopiesTableCreateCompanionBuilder,
+      $$EditCopiesTableUpdateCompanionBuilder,
+      (
+        EditCopyRow,
+        BaseReferences<_$AppDatabase, $EditCopiesTable, EditCopyRow>,
+      ),
+      EditCopyRow,
+      PrefetchHooks Function()
+    >;
+typedef $$SentClipsTableCreateCompanionBuilder = SentClipsCompanion Function({
+  required int reelId,
+  required int clipId,
+  required DateTime sentAt,
+  Value<int> rowid,
+});
+typedef $$SentClipsTableUpdateCompanionBuilder = SentClipsCompanion Function({
+  Value<int> reelId,
+  Value<int> clipId,
+  Value<DateTime> sentAt,
+  Value<int> rowid,
+});
+
+class $$SentClipsTableFilterComposer
+    extends Composer<_$AppDatabase, $SentClipsTable> {
+  $$SentClipsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<DateTime, DateTime, int> get sentAt =>
+      $composableBuilder(
+        column: $table.sentAt,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+}
+
+class $$SentClipsTableOrderingComposer
+    extends Composer<_$AppDatabase, $SentClipsTable> {
+  $$SentClipsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get clipId => $composableBuilder(
+    column: $table.clipId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get sentAt => $composableBuilder(
+    column: $table.sentAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SentClipsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SentClipsTable> {
+  $$SentClipsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get clipId =>
+      $composableBuilder(column: $table.clipId, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<DateTime, int> get sentAt =>
+      $composableBuilder(column: $table.sentAt, builder: (column) => column);
+}
+
+class $$SentClipsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SentClipsTable,
+          SentClipRow,
+          $$SentClipsTableFilterComposer,
+          $$SentClipsTableOrderingComposer,
+          $$SentClipsTableAnnotationComposer,
+          $$SentClipsTableCreateCompanionBuilder,
+          $$SentClipsTableUpdateCompanionBuilder,
+          (
+            SentClipRow,
+            BaseReferences<_$AppDatabase, $SentClipsTable, SentClipRow>,
+          ),
+          SentClipRow,
+          PrefetchHooks Function()
+        > {
+  $$SentClipsTableTableManager(_$AppDatabase db, $SentClipsTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SentClipsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SentClipsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SentClipsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<int> reelId = const Value.absent(),
+                Value<int> clipId = const Value.absent(),
+                Value<DateTime> sentAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SentClipsCompanion(
+                reelId: reelId,
+                clipId: clipId,
+                sentAt: sentAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required int reelId,
+                required int clipId,
+                required DateTime sentAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SentClipsCompanion.insert(
+                reelId: reelId,
+                clipId: clipId,
+                sentAt: sentAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SentClipsTable, SentClipRow>(table),
+                  BaseReferences<_$AppDatabase, $SentClipsTable, SentClipRow>(
+                    db,
+                    table,
+                    e,
+                  ),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SentClipsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SentClipsTable,
+      SentClipRow,
+      $$SentClipsTableFilterComposer,
+      $$SentClipsTableOrderingComposer,
+      $$SentClipsTableAnnotationComposer,
+      $$SentClipsTableCreateCompanionBuilder,
+      $$SentClipsTableUpdateCompanionBuilder,
+      (
+        SentClipRow,
+        BaseReferences<_$AppDatabase, $SentClipsTable, SentClipRow>,
+      ),
+      SentClipRow,
       PrefetchHooks Function()
     >;
 typedef $$SettingsTableCreateCompanionBuilder = SettingsCompanion Function({
@@ -6300,10 +6894,12 @@ class $AppDatabaseManager {
       $$InboxTableTableManager(_db, _db.inbox);
   $$ReelReferencesTableTableManager get reelReferences =>
       $$ReelReferencesTableTableManager(_db, _db.reelReferences);
-  $$VnSessionsTableTableManager get vnSessions =>
-      $$VnSessionsTableTableManager(_db, _db.vnSessions);
-  $$VnCopiesTableTableManager get vnCopies =>
-      $$VnCopiesTableTableManager(_db, _db.vnCopies);
+  $$EditSessionsTableTableManager get editSessions =>
+      $$EditSessionsTableTableManager(_db, _db.editSessions);
+  $$EditCopiesTableTableManager get editCopies =>
+      $$EditCopiesTableTableManager(_db, _db.editCopies);
+  $$SentClipsTableTableManager get sentClips =>
+      $$SentClipsTableTableManager(_db, _db.sentClips);
   $$SettingsTableTableManager get settings =>
       $$SettingsTableTableManager(_db, _db.settings);
   $$ZoneTimelineTableTableManager get zoneTimeline =>

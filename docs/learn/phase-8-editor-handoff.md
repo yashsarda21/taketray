@@ -77,7 +77,58 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 ## 3. Schema v2 and the editing sessions repository
 
-To be written in Task 3 (decision D-120).
+**What we built:** the app's first database migration, and the repository that remembers a reel's editing session.
+
+- **Schema v2.** A session now records **which editor** it is for (`editor`: `capcut`, `edits` or `vn`), each copy records **when it was made** (`copied_at`), and a new table `sent_clips` records **which clips were sent** to the editor, and when.
+- **`EditSessionsRepository`** (it was `VnRepository`): start a session, record sent clips and copies, remove copies, end the session, and three live streams: one reel's state, every reel's editor (for the cards) and a summary per session (for the storage screen and the copies reminder).
+
+**Why TakeTray needs it:** phones already have version 1 databases full of reels and clips. The new app version must turn every one of them into version 2 **without losing or bending a single row**, and a phone can be switched off, or the app killed, in the middle of anything.
+
+**Key ideas:**
+
+- **Rename in code, not on the phone.** In Dart the tables are now `EditSessions` and `EditCopies`, but in SQL they stay `vn_sessions` and `vn_copies`. Renaming a table on a user's phone means rebuilding it; that is risk for no gain, so one line keeps the old name:
+
+  ```dart
+  @override
+  String get tableName => 'vn_sessions';
+  ```
+
+- **Old rows get honest values.** Every version 1 session was a VN one, so `editor` defaults to `'vn'`. Version 1 never wrote down when a copy was made, so each copy takes its own session's start, the closest time we know:
+
+  ```sql
+  UPDATE vn_copies SET copied_at = COALESCE(
+    (SELECT created_at FROM vn_sessions s
+      WHERE s.reel_id = vn_copies.reel_id),
+    0)
+  ```
+
+  `COALESCE(..., 0)` is a seat belt: a copy row with no session should never exist, but if one did, the upgrade would otherwise fail on it, and the app would fail to open every time after.
+
+- **All or nothing.** Drift does not wrap a migration in a transaction by itself. Without one, a failure after the first `ADD COLUMN` would leave that column behind while the file still says "version 1"; the next start would try to add it again, fail with "duplicate column", and the app could never open its data. So the steps run in one transaction:
+
+  ```dart
+  await transaction(
+    () => m.runMigrationSteps(
+      from: from,
+      to: to,
+      steps: migrationSteps(from1To2: _from1To2),
+    ),
+  );
+  ```
+
+  Drift writes the new version number inside that same transaction, so "the steps ran" and "the file says version 2" always go together.
+
+- **Never open a newer file.** If someone installs an older TakeTray over a newer one, the database is from the future. Opening it would stamp the wrong version on it, so the app refuses and leaves the file alone (`from > to` throws).
+
+- **Recording twice is safe.** After a restart, TakeTray reads its copies back from the folder and records them again. `recordCopies` skips a copy it already has (same reel, clip and copy id), and `recordSent` keeps the first time a clip was sent. But a *different* copy for a clip that already has one is refused, with nothing saved: two rows would hide one of the files.
+
+- **Backups stay the same.** Editing sessions describe files on *this* phone, so they are never exported. An import wipes all ten tables itself, `sent_clips` included, because those rows hold clip ids that would point at the wrong clips after the import.
+
+**Where it lives:** `app/lib/data/database/` (`tables.dart`, `app_database.dart`, and the generated `app_database.steps.dart`), `app/lib/data/repositories/edit_sessions_repository.dart` and `app/lib/domain/models/` (`edit_session.dart`, `edit_copy.dart`, `sent_clip.dart`). The schema dumps are in `app/drift_schemas/taketray/`; the migration tests are in `app/test/drift/taketray/`.
+
+**Try it yourself:** `cd app && ../tool/flutter test test/drift`. Then, in `app_database.dart`, change the UPDATE to set `copied_at` to just the `(SELECT created_at ...)` part, without the `COALESCE`, and run it again: the test with a copy row that has no session fails, because the whole upgrade now fails on it. Put it back. Or change `await transaction(` to `await (` in `onUpgrade` and watch the "fails half way" test fail.
+
+**Decisions:** D-120, with D-54 (schema v1) and D-59 (the backup) as background.
 
 ## 4. The editors bridge and the copy folder guard
 
