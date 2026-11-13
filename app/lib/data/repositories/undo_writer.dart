@@ -131,6 +131,7 @@ class UndoWriter {
     }
     final ids = await _restoreClips(record.sweptClips, record.removedLinks);
     final links = await _restoreLinks(record.removedLinks, ids);
+    await _repointSent(record.reelId, ids);
     await _restoreTouch(record.touch);
     _log.info(
       'Undid a remove from reel ${record.reelId}: $links links, '
@@ -333,6 +334,50 @@ class UndoWriter {
       'Undid the delete of reel ${reel.id}: $links links, '
       '${ids.length} swept clips, ${record.references.length} references',
     );
+  }
+
+  /// Moves reel [reelId]'s sent rows (clips sent to its editor) from each
+  /// swept clip's old id to the id it has now, so a clip sent to CapCut or
+  /// Edits that came back under another id is still "In your edit" (R8). [ids]
+  /// is what [_restoreClips] returned. A clip that came back under its own
+  /// id, did not come back, or was never sent changes nothing; when the new
+  /// id is already sent too, one row stays, with the earlier time.
+  Future<void> _repointSent(int reelId, Map<int, int?> ids) async {
+    var moved = 0;
+    for (final MapEntry(key: oldId, value: newId) in ids.entries) {
+      if (newId == null || newId == oldId) continue;
+      final old =
+          await (_db.select(
+                _db.sentClips,
+              )..where((s) => s.reelId.equals(reelId) & s.clipId.equals(oldId)))
+              .getSingleOrNull();
+      if (old == null) continue;
+      final current =
+          await (_db.select(
+                _db.sentClips,
+              )..where((s) => s.reelId.equals(reelId) & s.clipId.equals(newId)))
+              .getSingleOrNull();
+      await (_db.delete(
+        _db.sentClips,
+      )..where((s) => s.reelId.equals(reelId) & s.clipId.equals(oldId))).go();
+      if (current == null) {
+        await _db
+            .into(_db.sentClips)
+            .insert(
+              SentClipsCompanion.insert(
+                reelId: reelId,
+                clipId: newId,
+                sentAt: old.sentAt,
+              ),
+            );
+      } else if (old.sentAt.isBefore(current.sentAt)) {
+        await (_db.update(_db.sentClips)
+              ..where((s) => s.reelId.equals(reelId) & s.clipId.equals(newId)))
+            .write(SentClipsCompanion(sentAt: Value(old.sentAt)));
+      }
+      moved++;
+    }
+    if (moved > 0) _log.info('Undo: $moved sent clips of reel $reelId moved');
   }
 
   /// Puts back the swept clips that [links] need, and returns, for each, the

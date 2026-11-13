@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -209,6 +210,43 @@ void main() {
     });
   });
 
+  group('startSession, called twice at once (a double tap)', () {
+    test('two calls for one reel give one session and one StateError, not '
+        'a database error', () async {
+      final reel = await reels.create('Goa');
+
+      final results = await Future.wait([
+        repo
+            .startSession(reel.id, EditorApp.capcut, 'Goa')
+            .then<Object>((s) => s, onError: (Object e) => e),
+        repo
+            .startSession(reel.id, EditorApp.edits, 'Goa')
+            .then<Object>((s) => s, onError: (Object e) => e),
+      ]);
+
+      expect(results.whereType<EditSession>(), hasLength(1));
+      expect(results.whereType<StateError>(), hasLength(1));
+      expect(await db.select(db.editSessions).get(), hasLength(1));
+      // The one that won is the one that is stored, editor and all.
+      expect(
+        await repo.sessionOf(reel.id),
+        results.whereType<EditSession>().single,
+      );
+    });
+
+    test('two reels with one name at once get two different folders', () async {
+      final first = await reels.create('Goa');
+      final second = await sameNameReel('Goa');
+
+      final sessions = await Future.wait([
+        repo.startSession(first.id, EditorApp.vn, 'Goa'),
+        repo.startSession(second.id, EditorApp.vn, 'Goa'),
+      ]);
+
+      expect({for (final s in sessions) s.folderName}, {'Goa', 'Goa (2)'});
+    });
+  });
+
   group('sessionOf', () {
     test('is null for a reel with no session', () async {
       final reel = await reels.create('Goa');
@@ -284,6 +322,150 @@ void main() {
       await repo.recordSent(reel.id, const []);
 
       expect(await sentRows(), isEmpty);
+    });
+
+    test('returns only the ids this call added, never one already sent, '
+        'whichever call sent it', () async {
+      final reel = await reels.create('Goa');
+      final other = await reels.create('Paris');
+      await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+      await repo.startSession(other.id, EditorApp.edits, 'Paris');
+      await repo.recordSent(other.id, [1]);
+
+      expect(await repo.recordSent(reel.id, [1, 2, 2]), {1, 2});
+      expect(await repo.recordSent(reel.id, [1, 2]), isEmpty);
+      expect(await repo.recordSent(reel.id, [2, 3, 4]), {3, 4});
+      expect(await repo.recordSent(reel.id, const []), isEmpty);
+    });
+
+    test('logs how many it really added', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+      final messages = <String>[];
+      final sub = Logger.root.onRecord.listen((r) {
+        if (r.loggerName == 'editSessions') messages.add(r.message);
+      });
+      addTearDown(sub.cancel);
+
+      await repo.recordSent(reel.id, [1, 2]);
+      await repo.recordSent(reel.id, [1, 2]);
+      await repo.recordSent(reel.id, [1, 3]);
+
+      expect(messages, [
+        'Recorded 2 new of 2 sent clips for reel ${reel.id}',
+        'Recorded 0 new of 2 sent clips for reel ${reel.id}',
+        'Recorded 1 new of 2 sent clips for reel ${reel.id}',
+      ]);
+    });
+
+    test('two calls at once never both claim a clip, and leave one row '
+        'each', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+
+      final added = await Future.wait([
+        repo.recordSent(reel.id, [1, 2, 3]),
+        repo.recordSent(reel.id, [2, 3, 4]),
+      ]);
+
+      expect(added[0].intersection(added[1]), isEmpty);
+      expect({...added[0], ...added[1]}, {1, 2, 3, 4});
+      expect(await sentRows(), [
+        for (final id in [1, 2, 3, 4]) (reel.id, id, _t0),
+      ]);
+    });
+
+    test('racing the end of the session gives a StateError or a clean '
+        'record, never a database error', () async {
+      for (final endFirst in [true, false]) {
+        final reel = await reels.create('Goa $endFirst');
+        await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+        final end = repo.endSession(reel.id);
+        final send = repo.recordSent(reel.id, [1]);
+
+        Object? outcome;
+        try {
+          if (endFirst) await end;
+          outcome = await send;
+          await end;
+        } on Object catch (e) {
+          outcome = e;
+          await end;
+        }
+
+        expect(outcome, anyOf(isA<Set<int>>(), isA<StateError>()));
+        // Either way nothing outlives the session.
+        expect(await repo.sessionOf(reel.id), isNull);
+        expect((await sentRows()).where((r) => r.$1 == reel.id), isEmpty);
+      }
+    });
+  });
+
+  group('removeSent', () {
+    test('removes only the given ids of that reel, so a failed share rolls '
+        'back what it added and nothing else', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      await repo.startSession(goa.id, EditorApp.capcut, 'Goa');
+      await repo.startSession(paris.id, EditorApp.edits, 'Paris');
+      await repo.recordSent(goa.id, [1, 2, 3]);
+      await repo.recordSent(paris.id, [2, 3]);
+      clock.advance(_minute);
+
+      final added = await repo.recordSent(goa.id, [3, 4, 5]);
+      await repo.removeSent(goa.id, added);
+
+      expect(await sentRows(), [
+        (goa.id, 1, _t0),
+        (goa.id, 2, _t0),
+        (goa.id, 3, _t0),
+        (paris.id, 2, _t0),
+        (paris.id, 3, _t0),
+      ]);
+    });
+
+    test('unknown ids, an empty list, an unknown reel and a reel with no '
+        'session do nothing and do not throw', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      await repo.startSession(goa.id, EditorApp.capcut, 'Goa');
+      await repo.recordSent(goa.id, [1]);
+
+      await repo.removeSent(goa.id, [9]);
+      await repo.removeSent(goa.id, const []);
+      await repo.removeSent(999, [1]);
+      await repo.removeSent(paris.id, [1]);
+
+      expect(await sentRows(), [(goa.id, 1, _t0)]);
+    });
+
+    test('a clip removed can be sent again with a fresh time', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+      await repo.recordSent(reel.id, [1]);
+      await repo.removeSent(reel.id, [1]);
+      clock.advance(_minute);
+
+      expect(await repo.recordSent(reel.id, [1]), {1});
+
+      expect(await sentRows(), [(reel.id, 1, _t0.add(_minute))]);
+    });
+
+    test('leaves the session and its copies alone, and the edit state '
+        'follows', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
+      await repo.recordCopies([_copy(reel.id, 1)]);
+      await repo.recordSent(reel.id, [1, 2]);
+      final states = collect(repo.watchEditState(reel.id));
+      await pumpEventQueue();
+
+      await repo.removeSent(reel.id, [2]);
+      await pumpEventQueue();
+
+      expect(states.last!.sentIds, {1});
+      expect(states.last!.copies, [_copy(reel.id, 1)]);
+      expect(await repo.sessionOf(reel.id), isNotNull);
     });
   });
 
@@ -364,6 +546,108 @@ void main() {
       );
 
       expect(await db.select(db.editCopies).get(), isEmpty);
+    });
+
+    test('another clip with a copy id the reel already holds throws '
+        'StateError and stores none of the batch', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+      final first = _copy(reel.id, 1, copyId: 500);
+      await repo.recordCopies([first]);
+
+      await expectLater(
+        repo.recordCopies([_copy(reel.id, 3), _copy(reel.id, 2, copyId: 500)]),
+        throwsStateError,
+      );
+
+      expect(await repo.copiesOf(reel.id), [first]);
+    });
+
+    test('one copy id for two clips in one batch throws StateError and '
+        'stores nothing', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+
+      await expectLater(
+        repo.recordCopies([
+          _copy(reel.id, 1, copyId: 500),
+          _copy(reel.id, 2, copyId: 500),
+        ]),
+        throwsStateError,
+      );
+
+      expect(await db.select(db.editCopies).get(), isEmpty);
+    });
+
+    test('the StateError names ids only, never a file name (D-10)', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+      await repo.recordCopies([
+        _copy(reel.id, 1, copyId: 500, fileName: 'Secret one.mp4'),
+      ]);
+
+      await expectLater(
+        repo.recordCopies([
+          _copy(reel.id, 2, copyId: 500, fileName: 'Secret two.mp4'),
+        ]),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            allOf(contains('500'), isNot(contains('Secret'))),
+          ),
+        ),
+      );
+    });
+
+    test('the same copy id in two reels is allowed, and a re-record of the '
+        'same clip and copy id still just skips', () async {
+      final goa = await reels.create('Goa');
+      final paris = await reels.create('Paris');
+      await repo.startSession(goa.id, EditorApp.vn, 'Goa');
+      await repo.startSession(paris.id, EditorApp.vn, 'Paris');
+      final first = _copy(goa.id, 1, copyId: 500);
+
+      await repo.recordCopies([first, _copy(paris.id, 2, copyId: 500)]);
+      await repo.recordCopies([first, _copy(goa.id, 3, copyId: 501)]);
+
+      expect(await repo.copiesOf(goa.id), [
+        first,
+        _copy(goa.id, 3, copyId: 501),
+      ]);
+      expect((await repo.copiesOf(paris.id)).single.copyMediaStoreId, 500);
+    });
+
+    test(
+      'a copy id is free for another clip once its row was removed',
+      () async {
+        final reel = await reels.create('Goa');
+        await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+        await repo.recordCopies([_copy(reel.id, 1, copyId: 500)]);
+        await repo.removeCopies(reel.id, [500]);
+
+        await repo.recordCopies([_copy(reel.id, 2, copyId: 500)]);
+
+        expect((await repo.copiesOf(reel.id)).single.clipId, 2);
+      },
+    );
+
+    test('copiesOf puts copies with one file name in clip order, whatever '
+        'order they were stored in', () async {
+      final reel = await reels.create('Goa');
+      await repo.startSession(reel.id, EditorApp.vn, 'Goa');
+      const name = '2026-10-26_08-00-00.mp4';
+
+      await repo.recordCopies([
+        _copy(reel.id, 5, fileName: name),
+        _copy(reel.id, 2, fileName: name),
+        _copy(reel.id, 9, fileName: name),
+      ]);
+
+      expect(
+        [for (final c in await repo.copiesOf(reel.id)) c.clipId],
+        [2, 5, 9],
+      );
     });
 
     test('without a session throws StateError and stores none of the '

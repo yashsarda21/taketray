@@ -136,21 +136,30 @@ class EditSessionsRepository {
         ],
       );
 
-  /// Records that [clipIds] were sent to reel [reelId]'s editor, now.
+  /// Records that [clipIds] were sent to reel [reelId]'s editor, now, and
+  /// returns the ids this call **added**.
   ///
-  /// A clip already recorded keeps its first time. Ids need not be clips
-  /// that still exist (D-54). Throws [StateError], saving nothing, when the
-  /// reel has no session (also for an empty list).
-  Future<void> recordSent(int reelId, Iterable<int> clipIds) async {
+  /// A clip already recorded keeps its first time and is not in the result,
+  /// so a caller whose share then fails can hand the result to [removeSent]
+  /// and take back exactly what it added. Ids need not be clips that still
+  /// exist (D-54). Throws [StateError], saving nothing, when the reel has no
+  /// session (also for an empty list).
+  Future<Set<int>> recordSent(int reelId, Iterable<int> clipIds) async {
     final ids = clipIds.toSet();
-    var added = 0;
-    await _db.transaction(() async {
+    final added = await _db.transaction(() async {
       if (await _sessionRow(reelId) == null) {
         throw StateError('Reel $reelId has no editing session');
       }
+      final already = {
+        for (final row in await (_db.select(
+          _db.sentClips,
+        )..where((s) => s.reelId.equals(reelId) & s.clipId.isIn(ids))).get())
+          row.clipId,
+      };
+      final missing = ids.difference(already);
       final now = _clock.storedNow();
-      for (final clipId in ids) {
-        final rowId = await _db
+      for (final clipId in missing) {
+        await _db
             .into(_db.sentClips)
             .insert(
               SentClipsCompanion.insert(
@@ -158,14 +167,28 @@ class EditSessionsRepository {
                 clipId: clipId,
                 sentAt: now,
               ),
-              mode: InsertMode.insertOrIgnore,
             );
-        if (rowId != 0) added++;
       }
+      return missing;
     });
     _log.info(
-      'Recorded $added new of ${ids.length} sent clips for reel $reelId',
+      'Recorded ${added.length} new of ${ids.length} sent clips for '
+      'reel $reelId',
     );
+    return added;
+  }
+
+  /// Forgets that [clipIds] were sent to reel [reelId]'s editor: takes back
+  /// what a failed share added (the ids [recordSent] returned), and nothing
+  /// else. Unknown ids, an empty list, an unknown reel, a reel with no
+  /// session and other reels' rows do nothing.
+  Future<void> removeSent(int reelId, Iterable<int> clipIds) async {
+    final ids = clipIds.toSet();
+    if (ids.isEmpty) return;
+    final removed = await (_db.delete(
+      _db.sentClips,
+    )..where((s) => s.reelId.equals(reelId) & s.clipId.isIn(ids))).go();
+    _log.info('Removed $removed of ${ids.length} sent clips of reel $reelId');
   }
 
   /// Records [copies], all or none, in one transaction.
@@ -174,9 +197,10 @@ class EditSessionsRepository {
   /// `copyMediaStoreId`) is skipped, so recording a copy twice (a restart
   /// reading the folder back) is safe and keeps the first row. Throws
   /// [StateError], saving none of [copies], when a copy's reel has no
-  /// session, or its reel and clip already have a copy with another id (two
-  /// rows would hide one of the files). A copy's clip need not still exist
-  /// (D-54).
+  /// session, its reel and clip already have a copy with another id, or its
+  /// reel already has that copy id under another clip, in the stored rows or
+  /// earlier in [copies] (two rows for one file: removing one would orphan
+  /// the other). A copy's clip need not still exist (D-54).
   Future<void> recordCopies(List<EditCopy> copies) async {
     if (copies.isEmpty) return;
     var added = 0;
@@ -199,6 +223,19 @@ class EditSessionsRepository {
           throw StateError(
             'Reel ${copy.reelId} already has another copy of clip '
             '${copy.clipId}',
+          );
+        }
+        final sameFile =
+            await (_db.select(_db.editCopies)..where(
+                  (c) =>
+                      c.reelId.equals(copy.reelId) &
+                      c.copyMediaStoreId.equals(copy.copyMediaStoreId),
+                ))
+                .get();
+        if (sameFile.isNotEmpty) {
+          throw StateError(
+            'Reel ${copy.reelId} already has copy ${copy.copyMediaStoreId} '
+            'for clip ${sameFile.first.clipId}, not clip ${copy.clipId}',
           );
         }
         await _db

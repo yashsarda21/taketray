@@ -254,6 +254,136 @@ void main() {
       },
     );
 
+    group('undo remove keeps a clip sent to the editor as sent (R8)', () {
+      late EditSessionsRepository sessions;
+      setUp(() => sessions = EditSessionsRepository(db, clock));
+
+      Future<List<(int, int, DateTime)>> sentRows() async => [
+        for (final r
+            in await (db.select(db.sentClips)..orderBy([
+                  (r) => OrderingTerm.asc(r.reelId),
+                  (r) => OrderingTerm.asc(r.clipId),
+                ]))
+                .get())
+          (r.reelId, r.clipId, r.sentAt),
+      ];
+
+      test('a clip that comes back under another id keeps its sent row, '
+          'with its first sentAt', () async {
+        final goa = await reels.create('Goa');
+        final [old, kept] = await clips.addNewClipsToReel(goa.id, [
+          shot(10),
+          shot(11),
+        ]);
+        await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+        await sessions.recordSent(goa.id, [old, kept]);
+        clock.advance(_minute);
+        final record = await clips.removeClipsFromReel(goa.id, [old]);
+        // Add earlier videos finds the same video again, under a new id.
+        final again = (await clips.saveDetected([shot(10)])).single;
+        expect(again, isNot(old));
+
+        await clips.undo(record);
+
+        expect(await linksOf(goa.id), contains((again, goa.id, _t0)));
+        expect(await sentRows(), [(goa.id, kept, _t0), (goa.id, again, _t0)]);
+        expect((await sessions.watchEditState(goa.id).first)!.sentIds, {
+          kept,
+          again,
+        });
+      });
+
+      test('the sent row follows only the clip of this reel: another reel '
+          'that sent the old id keeps its own', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final old = (await clips.addNewClipsToReel(goa.id, [shot(10)])).single;
+        await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+        await sessions.startSession(paris.id, EditorApp.edits, 'Paris');
+        await sessions.recordSent(goa.id, [old]);
+        await sessions.recordSent(paris.id, [old]);
+        final record = await clips.removeClipsFromReel(goa.id, [old]);
+        final again = (await clips.saveDetected([shot(10)])).single;
+
+        await clips.undo(record);
+
+        expect((await sentRows()).map((r) => (r.$1, r.$2)), [
+          (goa.id, again),
+          (paris.id, old),
+        ]);
+      });
+
+      test('when the new id was already sent too, one row stays and the '
+          'dead id is gone', () async {
+        final goa = await reels.create('Goa');
+        final old = (await clips.addNewClipsToReel(goa.id, [shot(10)])).single;
+        await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+        await sessions.recordSent(goa.id, [old]);
+        final record = await clips.removeClipsFromReel(goa.id, [old]);
+        final again = (await clips.saveDetected([shot(10)])).single;
+        clock.advance(_minute);
+        await sessions.recordSent(goa.id, [again]);
+
+        await clips.undo(record);
+
+        // The earlier of the two times is the first time it was sent.
+        expect(await sentRows(), [(goa.id, again, _t0)]);
+      });
+
+      test('a clip back under its own id, a clip never sent, and a clip '
+          'that did not come back leave the sent rows as they were', () async {
+        final goa = await reels.create('Goa');
+        final [sent, unsent, pickedId] = await clips.addNewClipsToReel(goa.id, [
+          shot(10),
+          shot(11),
+          picked('content://media/picker/0/7'),
+        ]);
+        await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+        await sessions.recordSent(goa.id, [sent, pickedId]);
+        final record = await clips.removeClipsFromReel(goa.id, [
+          sent,
+          unsent,
+          pickedId,
+        ]);
+        // The picked clip's URI now belongs to another video: it cannot
+        // come back.
+        await clips.addNewClipsToReel((await reels.create('Paris')).id, [
+          NewClip.picker(
+            pickerUri: 'content://media/picker/0/7',
+            fingerprint: ClipFingerprint(
+              sizeBytes: 5,
+              durationMs: 5,
+              dateTakenUtc: _t0,
+              displayName: 'friend.mp4',
+            ),
+            width: 1,
+            height: 1,
+            mimeType: 'video/mp4',
+          ),
+        ]);
+
+        await clips.undo(record);
+
+        expect((await sentRows()).map((r) => r.$2), [sent, pickedId]);
+        expect(await reelIdsOf(sent), {goa.id});
+        expect(await reelIdsOf(unsent), {goa.id});
+      });
+
+      test('a reel whose session ended meanwhile gets no sent row', () async {
+        final goa = await reels.create('Goa');
+        final old = (await clips.addNewClipsToReel(goa.id, [shot(10)])).single;
+        await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+        await sessions.recordSent(goa.id, [old]);
+        final record = await clips.removeClipsFromReel(goa.id, [old]);
+        await sessions.endSession(goa.id);
+        await clips.saveDetected([shot(10)]);
+
+        await clips.undo(record);
+
+        expect(await sentRows(), isEmpty);
+      });
+    });
+
     test('undo remove twice changes nothing', () async {
       final goa = await reels.create('Goa');
       final ids = await clips.addNewClipsToReel(goa.id, [shot(10), shot(11)]);
