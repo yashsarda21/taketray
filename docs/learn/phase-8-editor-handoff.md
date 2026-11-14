@@ -69,6 +69,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **Strings stored in the database are a promise.** `EditorApp.vn.name` is `"vn"`, and a test pins all three spellings, so renaming an enum value cannot silently orphan saved sessions.
 
+- **A leading dot goes, a trailing one with a mark stays.** A folder whose name starts with a dot is hidden on Android, so `safeFolderName` drops a leading dot together with any combining marks after it. At the end, a dot with a mark is kept (the name no longer ends in a dot, which is what the file system minds). The Arabic letter mark, the line and paragraph separators and the byte order mark are removed too.
+
 **Where it lives:** `app/lib/domain/rules/` (`edit_folder_name.dart`, `copy_file_names.dart`, `space_check.dart`, `byte_size.dart`, `edit_split.dart`) and `app/lib/domain/models/` (`editor_app.dart`, `clip_ref.dart`), with tests in the matching `app/test/domain/` folders.
 
 **Try it yourself:** `cd app && ../tool/flutter test test/domain/rules/copy_file_names_test.dart`. Then change `var n = 2` to `3` in `copy_file_names.dart` and run it again: the clash tests fail. Put it back.
@@ -123,6 +125,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 - **Recording twice is safe.** After a restart, TakeTray reads its copies back from the folder and records them again. `recordCopies` skips a copy it already has (same reel, clip and copy id), and `recordSent` keeps the first time a clip was sent. But a *different* copy for a clip that already has one is refused, with nothing saved: two rows would hide one of the files.
 
 - **Backups stay the same.** Editing sessions describe files on *this* phone, so they are never exported. An import wipes all ten tables itself, `sent_clips` included, because those rows hold clip ids that would point at the wrong clips after the import.
+
+- **A write that changes nothing wakes nobody.** `watchEditors` (which reel is in which editor, for the cards on Home) only emits when that map changes, so saving a session's folder name does not redraw every card. Copies and sessions are turned into models by one shared pair of functions, so a new column is added in one place.
 
 **Where it lives:** `app/lib/data/database/` (`tables.dart`, `app_database.dart`, and the generated `app_database.steps.dart`), `app/lib/data/repositories/edit_sessions_repository.dart` and `app/lib/domain/models/` (`edit_session.dart`, `edit_copy.dart`, `sent_clip.dart`). The schema dumps are in `app/drift_schemas/taketray/`; the migration tests are in `app/test/drift/taketray/`.
 
@@ -196,6 +200,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **Testing without a phone.** The Kotlin tests run on the laptop (Robolectric) against a small real SQLite table set up the strict way Android's media provider sets one up, so a query Android would reject fails on the laptop too. On the phone, the Patrol tests turn on the debug recorder and read back what *would* have been sent ("2 clips, `external_primary:30`, `external_primary:4`, read granted"), so a test never opens CapCut.
 
+- **One answer per file.** If the same copy is named twice in one delete call, `deleteCopies` looks at it once, so a file is never both "deleted" and "gone".
+
 **Where it lives:** `app/pigeons/editors_api.dart` (the contract), `app/lib/platform/editors_bridge.dart` (Dart), `app/android/app/src/main/kotlin/app/taketray/editors/` (Kotlin: `CopyFolder.kt`, `CopyFolderPath.kt`, `ShareIntents.kt`, `EditorApps.kt`, `DeleteRequests.kt`, `EditorsHostApiImpl.kt`, `ActivityStarter.kt`), `app/android/app/src/debug/kotlin/app/taketray/DebugEditorHooks.kt` (debug only), the `<queries>` in `app/android/app/src/main/AndroidManifest.xml`. Tests: `app/android/app/src/test/kotlin/app/taketray/editors/` and `app/test/platform/editors_bridge_test.dart`.
 
 **Try it yourself:** `tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.editors.CopyFolderTest'`. Then, in `CopyFolder.kt`, delete `&& CopyFolderPath.isOwn(rowOwner, ourPackage)` and run it again: the test with another app's file fails, because that file would now be deleted. Put it back.
@@ -239,6 +245,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 - **Progress without flooding.** The screen gets an update at most every 250 ms while a file copies, and always when a file finishes. A 200-clip job does not send thousands of messages.
 
 - **The screen stays on without a permission.** `FLAG_KEEP_SCREEN_ON` on the activity's window keeps the phone awake while the window shows; it needs no permission and no notification (unlike a foreground service, which the owner chose not to use).
+
+- **Two refusals in a row mean it is not the names.** If MediaStore refuses one file's name, that clip fails and the copy goes on; if it refuses two in a row, TakeTray stops (resumable) because the cause is somewhere else. A hung read of an original can still hold the Stop button; that is parked for later, not fixed.
 
 **Where it lives:** `app/android/app/src/main/kotlin/app/taketray/editors/` (`CopyEngine.kt`, `CopyJob.kt`, `CopyStore.kt`, `CopyHostApiImpl.kt`, `CopyFolderPath.kt`), `app/pigeons/copy_api.dart`, `app/lib/platform/copy_bridge.dart`, the debug hooks in `app/android/app/src/debug/kotlin/app/taketray/DebugCopyHooks.kt`, and the tests in `app/android/app/src/test/kotlin/app/taketray/editors/` and `app/test/platform/copy_bridge_test.dart`.
 
@@ -285,6 +293,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **Nothing stuck.** A session with no copies and no sent clips (a first copy that never finished, a share that was interrupted) is ended at the next start.
 
+- **Retry, and one call at a time.** A recovery that failed (the phone's folder could not be read) is tried again at the next app resume, until it works; the app no longer waits for it before saving the new clip baselines. Two taps on the same send or copy are one call, but a different editor or different clips for the same reel are their own call. Which copy job is "older" is decided by the order the app saw them in, not by the time written in the job's name, so a phone clock set back cannot hide a new job.
+
 **Where it lives:** `app/lib/data/editors/edit_session_service.dart`, `app/lib/features/editors/view_models/copy_job_controller.dart`, `app/lib/domain/models/copy_job_plan.dart`, the `copyJobPlan` key in `app/lib/data/repositories/phone_state_repository.dart`, and the hooks in `app/lib/features/reels/view_models/` and `app/lib/app/media_lifecycle.dart`. Tests: `app/test/data/editors/edit_session_service_test.dart` and `app/test/features/editors/copy_job_controller_test.dart`.
 
 **Try it yourself:** `cd app && ../tool/flutter test test/data/editors/edit_session_service_test.dart`. Then, in `_recover`, change `if (rows[i.fileName] case final row?)` so that it looks the row up by size instead (for example build `rows` keyed by `r.sizeBytes` and look up `i.sizeBytes`) and run it again: "matches by file name, never by size" fails, because a file would be recorded for the wrong clip. Put it back.
@@ -317,6 +327,8 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **The tap is an allow-list with one payload.** Android sends `doneEditing` and a reel id, never a route (deep linking is off). Kotlin keeps the id only for `doneEditing` and only when it is a usable one; Dart then checks the reel still exists and opens `/reels/<id>?done=1`, or Reels when it does not. Taps are opened in the order they came, because looking up a reel takes a moment and a later tap must not be overtaken.
 - **Private on the lock screen.** The reel's name is the one piece of user text in any TakeTray notification. The lock screen shows only "TakeTray" and "Copies for an edit are still on your phone".
+
+- **A new batch removes the old reminder's text.** If more copies arrive after a reminder was shown, its notification (which still says the old size) is taken away, and the new batch gets its own reminder 3 days after its last copy. Taps are opened one after another through a small queue, and a tap that fails is logged by type and does not block the next.
 
 **Where it lives:** `app/android/app/src/main/kotlin/app/taketray/background/` (`BackgroundState.kt`, `BackgroundStateStore.kt`, `ReminderTimes.kt`, `ReminderScheduler.kt`, `ReminderReceiver.kt`, `Arming.kt`, `Notifier.kt`, `LaunchActions.kt`), `app/pigeons/background_api.dart`, `app/lib/data/background/background_sync.dart`, `app/lib/platform/background_bridge.dart`, `app/lib/features/notifications/view_models/launch_actions.dart`, `app/lib/app.dart` and `app/lib/router/routes.dart`. The on-phone hook is `showCopiesReminderNow` in `src/debug`. The tests are `CopiesReminderTest.kt` (the alarm, the receiver, the notification, arming and a reboot) and the matching existing Kotlin and Dart test files.
 
@@ -411,6 +423,8 @@ It ends with `All tests passed!`. Now open `lib/src/components/storage_bar.dart`
 - **No editor is a wall.** An editor the phone lacks is greyed out with "Not installed". If asking the phone fails, all three look installed and the share decides, because a sheet that shows nothing is worse than one that answers "not installed" after a tap. That answer opens a dialog with **Open Play Store** and **Choose another**; the sheet stays, asks the phone again, and the row turns grey.
 - **The button hides while you are editing.** A reel can be in one editing session at a time (R1), so **Edit video** is gone from the button and the menu until Done editing. The button also waits until the database has said "no session", so it never flashes and vanishes.
 
+- **Small things that were tightened.** The "Sent" snack uses the open-in-new icon; a send that fails because every picked clip is gone says so (retrying cannot help); coming back from the Play Store refreshes the greyed-out editors; a share menu that fails to open says "Something went wrong" instead of "missing"; clip ids in a location must be plain digits; and at large text the picker's title wraps instead of reading "Pick cli…".
+
 **Where it lives:** `app/lib/features/editors/views/` (`edit_select_screen.dart`, `editor_sheet.dart`, `editor_missing_dialog.dart`, `mark_status_dialog.dart`, `open_share.dart`, `editor_text.dart`), `app/lib/features/editors/view_models/` (`edit_select_controller.dart`, `editor_choices.dart`), `app/lib/router/` (`routes.dart`, `app_router.dart`), and the reel page and viewer in `app/lib/features/reels/views/`. Tests: `app/test/features/editors/` (`edit_select_screen_test.dart`, `editor_sheet_test.dart`, `mark_status_dialog_test.dart`, `edit_select_controller_test.dart`, and the macOS-only `editors_golden_test.dart`), `app/test/router/app_router_test.dart`, and the new groups in `reel_detail_screen_test.dart`, `reel_selection_screen_test.dart` and `clip_viewer_screen_test.dart`.
 
 **Try it yourself:** run the double-tap test, then break its guard:
@@ -456,6 +470,8 @@ It ends with `All tests passed!`. Now open `lib/features/editors/views/editor_sh
 - **A job that is gone is a normal ending.** After a finish, a cancel or Done editing, the controller's job is `null`. A screen that sees `null` after it has seen the job goes back to the reel without a word; a screen that has not seen the job yet reads the engine once before it gives up, because the first event can arrive after the start call returns.
 - **Results nobody saw.** If Android closed TakeTray mid-copy, the next start builds an `interrupted` job from the folder. `CopyResultOpener` (in the app's `builder`) asks `takeUnseenResult()` and opens the copying screen for it, once. It does the same when the app comes back to the front, and for a copy that still runs with no screen left.
 - **Words that other editors reuse.** The titles and the result lines take `{editor}` (VN passes "VN"), so Task 12 does not rewrite them. Bold words inside a translated sentence use two tiny helpers: `boldMark('New project')` wraps a part in a marker character and `boldSpans(text)` turns the marked parts into bold spans.
+
+- **The screen does not guess.** The copy count and the failure line are live regions, so TalkBack says them when they change; the progress title is empty until the job's plan is read (so a CapCut job never says VN for a frame); the ready screen shows no half sentence about a blank folder; and a failed re-plan while a copy is starting does not flash "Couldn't start copying".
 
 **Where it lives:** `app/lib/features/editors/views/` (`copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`, `stop_copy_dialog.dart`, `copy_result_opener.dart`, `editor_text.dart`), `app/lib/features/editors/view_models/` (`copy_space_controller.dart`, `copy_ready_controller.dart`, `copy_stage.dart`, `copy_screens.dart`), `app/lib/router/` (`routes.dart`, `app_router.dart`), `app/lib/app.dart` and `app/lib/l10n/app_en.arb`.
 
@@ -515,6 +531,8 @@ They end with `All tests passed!`. Now open `lib/features/editors/views/copy_pro
 - **A dialog that stays.** The delete dialog now keeps itself open while the delete runs: a `PopScope` in its content turns each button, Back and a tap outside into a decision. When the copies cannot be deleted, the reel is not deleted and the dialog says so under its text, ready for a second try.
 - **`?done=1` asks once per page.** The copies reminder opens `/reels/<id>?done=1`. The page decides the first time it knows whether there is a session, and never again, so going to the viewer and back does not ask twice.
 
+- **Check first, then ask.** The Done editing question first checks that the copies are still there, so "This frees 600 MB" is true. A delete dialog taken away from outside still gets its result (Undo snack and Reels). The running-job banner leaves its title empty for the moment before the plan says which editor.
+
 **Where it lives:** `app/lib/features/reels/view_models/reel_edit_state.dart` (the split, `runningCopyJobOf`, the editors for Home), `app/lib/features/reels/views/` (`reel_edit_banner.dart`, `reel_edit_sections.dart`, `reel_detail_screen.dart`, `reels_screen.dart`, `delete_reel_dialog.dart`, `undo_snacks.dart`, `reel_picker_sheet.dart`), `app/lib/features/editors/views/done_editing_dialog.dart`, the add mode in `app/lib/features/editors/{view_models/edit_select_controller,views/edit_select_screen}.dart`, `app/lib/router/app_router.dart` and `app/lib/l10n/app_en.arb`.
 
 **Try it yourself:** run the split's tests, then break the union:
@@ -549,6 +567,8 @@ They end with `All tests passed!`. Now open `lib/features/reels/view_models/reel
 
 - **A long title wraps, without losing a button.** "Add clips to your CapCut project" does not fit a one-line app bar next to **Select all**. The title wraps (`wrapTitle`), which needs the bar to be the first child of the body instead of `Scaffold.appBar`, and at large text **Select all** moves under it. A first try that only set `wrapTitle` lost the button at 2x, and no test noticed until a test looked for it.
 
+- **One layout from the first frame.** In add mode the picker's bar is always in the body, so it never jumps when the session (and so the editor's name) is read.
+
 **Where it lives:** `app/lib/features/editors/views/` (`edit_select_screen.dart`, `copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`), `app/lib/features/editors/view_models/edit_select_controller.dart` (`addFolder`), `app/lib/features/reels/views/` (`reel_edit_banner.dart`, `reel_edit_sections.dart`, `reel_detail_screen.dart`), `app/lib/features/reels/view_models/reel_edit_state.dart` (`copyJobEditor`) and `app/lib/l10n/app_en.arb`.
 
 **Try it yourself:** run the folder tests, then break the lock:
@@ -581,6 +601,8 @@ They end with `All tests passed!`. Now open `lib/features/editors/view_models/ed
 - **Covers are joined by reel id.** The reel summaries already know each reel's cover clip. The controller looks it up by the row's reel id and builds the same thumbnail Home uses, so the cache holds one file per clip. A reel with no cover, or a stream that fails, shows the movie icon and not an error.
 - **Declined means nothing.** `deleteOrphans` returns an `OrphanDeleteResult`: whether the user allowed it, and the bytes freed, kept apart so an allowed delete of files that report size 0 still counts as allowed. The screen keeps the folder and says nothing: a "No" is an answer, not a failure. Only a bridge exception says "Something went wrong". A second tap while the dialog is open is ignored, per folder, so Android is asked once.
 - **Never a live copy's files.** While a copy runs, its finished files are not in the database yet, so they look like files with no reel. `storage()` leaves out the folder of a running job and of a saved plan, and a test keeps it that way, so **Delete** is never offered for a copy that is being made.
+
+- **Delete never looks dead.** While a reel's copy job runs, its Delete does nothing but say "Copying is still running. Try again when it finishes." (the controller's ruling for the owner). A failed re-read showing an empty list until Try again is intended.
 
 **Where it lives:** `app/lib/features/editors/view_models/copies_storage_controller.dart`, `app/lib/features/editors/views/copies_storage_screen.dart`, `app/lib/features/settings/views/settings_screen.dart`, `app/lib/router/` (`Routes.copiesStorage`), `app/lib/l10n/app_en.arb`, and `EditSessionService.storage()` / `deleteOrphans` from section 6.
 
