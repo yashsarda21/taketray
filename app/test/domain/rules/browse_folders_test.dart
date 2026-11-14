@@ -58,7 +58,7 @@ void main() {
           folder('Movies/TakeTrayX/Goa/', count: 6),
           folder('Movies/Take Tray/', count: 5),
           folder('DCIM/TakeTray/Goa/', count: 4),
-          folder('Movies/Other/TakeTray/Goa/', count: 3),
+          folder('Movies/Other/TakeTray/Goa/'),
           folder('TakeTray/Goa/', count: 2),
         ]),
         [
@@ -78,7 +78,7 @@ void main() {
       expect(
         pathsOf([
           folder('Movies/TakeTray/Goa/', count: 5, volume: card),
-          folder('Movies/TakeTray/Goa/', count: 3),
+          folder('Movies/TakeTray/Goa/'),
         ]),
         ['Movies/TakeTray/Goa/'],
       );
@@ -86,7 +86,7 @@ void main() {
         [
           for (final f in browseFolders([
             folder('Movies/TakeTray/Goa/', count: 5, volume: card),
-            folder('Movies/TakeTray/Goa/', count: 3),
+            folder('Movies/TakeTray/Goa/'),
           ]))
             f.volumeName,
         ],

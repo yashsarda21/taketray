@@ -3010,7 +3010,7 @@ void main() {
 
     group('the words for a stop (M-3)', () {
       test('a job built by the recovery after a restart says TakeTray was '
-          'closed; the engine\'s own jobs never do', () async {
+          "closed; the engine's own jobs never do", () async {
         final (_, jobId) = await stoppedMidCopy();
 
         final job = (await service.recoverAtStart())!;
