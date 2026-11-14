@@ -14,6 +14,87 @@ List<String> pathsOf(List<VideoFolder> all) => [
 ];
 
 void main() {
+  group("TakeTray's own copy folders are hidden (I-2)", () {
+    test('every folder under Movies/TakeTray/ on the phone is hidden, the '
+        'root too', () {
+      expect(
+        pathsOf([
+          folder('Movies/TakeTray/Goa/', count: 12),
+          folder('Movies/TakeTray/Goa Trip/', count: 4),
+          folder('Movies/TakeTray/', count: 2),
+          folder('Movies/TakeTray', count: 2),
+          folder('Movies/TakeTray/Goa/Deeper/', count: 2),
+          folder('DCIM/Camera/', count: 1),
+        ]),
+        ['DCIM/Camera/'],
+      );
+    });
+
+    test('case is ignored, ASCII only', () {
+      expect(
+        pathsOf([
+          folder('movies/taketray/Goa/'),
+          folder('MOVIES/TAKETRAY/Goa/'),
+          folder('Movies/TakeTRAY/GOA/'),
+        ]),
+        isEmpty,
+      );
+      // A Kelvin sign (U+212A) is not a k, and a dotless i is not an i.
+      expect(
+        pathsOf([
+          folder('Movies/Ta\u212Aetray/Goa/'),
+          folder('Mov\u0131es/TakeTray/Goa/'),
+        ]),
+        ['Movies/Ta\u212Aetray/Goa/', 'Mov\u0131es/TakeTray/Goa/'],
+      );
+    });
+
+    test('lookalikes stay: TakeTray Test, TakeTrayX, another place', () {
+      expect(
+        pathsOf([
+          folder('Movies/TakeTray Test/', count: 9),
+          folder('Movies/TakeTray Test/Goa/', count: 8),
+          folder('Movies/TakeTrayX/', count: 7),
+          folder('Movies/TakeTrayX/Goa/', count: 6),
+          folder('Movies/Take Tray/', count: 5),
+          folder('DCIM/TakeTray/Goa/', count: 4),
+          folder('Movies/Other/TakeTray/Goa/', count: 3),
+          folder('TakeTray/Goa/', count: 2),
+        ]),
+        [
+          'Movies/TakeTray Test/',
+          'Movies/TakeTray Test/Goa/',
+          'Movies/TakeTrayX/',
+          'Movies/TakeTrayX/Goa/',
+          'Movies/Take Tray/',
+          'DCIM/TakeTray/Goa/',
+          'Movies/Other/TakeTray/Goa/',
+          'TakeTray/Goa/',
+        ],
+      );
+    });
+
+    test("another storage's Movies/TakeTray/ is not ours and stays", () {
+      expect(
+        pathsOf([
+          folder('Movies/TakeTray/Goa/', count: 5, volume: card),
+          folder('Movies/TakeTray/Goa/', count: 3),
+        ]),
+        ['Movies/TakeTray/Goa/'],
+      );
+      expect(
+        [
+          for (final f in browseFolders([
+            folder('Movies/TakeTray/Goa/', count: 5, volume: card),
+            folder('Movies/TakeTray/Goa/', count: 3),
+          ]))
+            f.volumeName,
+        ],
+        [card],
+      );
+    });
+  });
+
   group("WhatsApp's Sent folders are hidden (D-111 ruling 3)", () {
     test('a Sent folder under a WhatsApp segment is hidden', () {
       expect(

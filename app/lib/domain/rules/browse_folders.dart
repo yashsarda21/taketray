@@ -97,6 +97,10 @@ class BrowseFolder {
 ///   folder (D-111 ruling 3): its last path segment is `Sent` and a segment
 ///   before it starts with `WhatsApp`, ignoring case. `DCIM/Sent/`,
 ///   `Movies/Sent stuff/` and `WhatsApp Video/` stay.
+/// - TakeTray's own copy folders are left out too (D-130, I-2): on the phone
+///   (never on another storage), a path whose first segments are
+///   `Movies/TakeTray`, ignoring A to Z case only (the copy guard's rule).
+///   `Movies/TakeTray Test/`, `Movies/TakeTrayX/` and `DCIM/TakeTray/` stay.
 /// - [BrowseFolder.name] is the last path segment; a volume's root (`''`, or
 ///   only slashes) is [BrowseFolder.mainFolder], which the view shows as
 ///   "Main folder" (no translation in a rule).
@@ -114,7 +118,10 @@ class BrowseFolder {
 List<BrowseFolder> browseFolders(List<VideoFolder> all) {
   final shown = [
     for (final f in all)
-      if (f.videoCount > 0 && !_isWhatsAppSent(_segments(f.relativePath))) f,
+      if (f.videoCount > 0 &&
+          !_isWhatsAppSent(_segments(f.relativePath)) &&
+          !_isTakeTrayCopy(f))
+        f,
   ];
   final byName = <String, List<VideoFolder>>{};
   for (final f in shown) {
@@ -171,6 +178,18 @@ bool _isWhatsAppSent(List<String> segments) =>
     segments
         .take(segments.length - 1)
         .any((s) => _lower(s).startsWith('whatsapp'));
+
+/// A folder in TakeTray's own `Movies/TakeTray/` on the phone (the copies
+/// there are temporary: a clip added from them would go when Done editing
+/// deletes them). The media library's folder match is by whole segment, so a
+/// lookalike name never matches.
+bool _isTakeTrayCopy(VideoFolder f) {
+  if (f.volumeName != primaryVolumeName) return false;
+  final segments = _segments(f.relativePath);
+  return segments.length >= 2 &&
+      _lower(segments[0]) == 'movies' &&
+      _lower(segments[1]) == 'taketray';
+}
 
 bool _isCamera(BrowseFolder f) =>
     _lower(_segments(f.relativePath).join('/')) == 'dcim/camera';
