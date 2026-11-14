@@ -295,6 +295,10 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 
 - **Retry, and one call at a time.** A recovery that failed (the phone's folder could not be read) is tried again at the next app resume, until it works; the app no longer waits for it before saving the new clip baselines. Two taps on the same send or copy are one call, but a different editor or different clips for the same reel are their own call. Which copy job is "older" is decided by the order the app saw them in, not by the time written in the job's name, so a phone clock set back cannot hide a new job.
 
+- **Stop and Delete reel recover first.** After Android closes TakeTray, the copy folder can hold a finished copy that Dart never heard about and a half-written file. Done editing already read the folder first (so it found and deleted them); Stop and Delete reel now do the same (`_recover(plan)` before `_cancelRecovered`), so a reel deleted right after a restart leaves no stray copies behind. If that read fails, nothing is removed and the user can try again.
+- **A job that had copied everything is finished.** If every clip has its copy when TakeTray comes back, the recovered job is `finished`, not "Copying stopped". The copy screen then finishes it as usual instead of asking for a Try again that only finishes it.
+- **A copy that is no longer TakeTray's is let go.** If the user moves a copy to another album in Gallery, the guard refuses to delete it (it is not our file any more). Remove, move and Delete reel now let that go, as Done editing does: the row goes, the file stays on the storage screen, the action works. A delete that really fails still stops the action and says "Couldn't delete the copies. Try again."
+
 **Where it lives:** `app/lib/data/editors/edit_session_service.dart`, `app/lib/features/editors/view_models/copy_job_controller.dart`, `app/lib/domain/models/copy_job_plan.dart`, the `copyJobPlan` key in `app/lib/data/repositories/phone_state_repository.dart`, and the hooks in `app/lib/features/reels/view_models/` and `app/lib/app/media_lifecycle.dart`. Tests: `app/test/data/editors/edit_session_service_test.dart` and `app/test/features/editors/copy_job_controller_test.dart`.
 
 **Try it yourself:** `cd app && ../tool/flutter test test/data/editors/edit_session_service_test.dart`. Then, in `_recover`, change `if (rows[i.fileName] case final row?)` so that it looks the row up by size instead (for example build `rows` keyed by `r.sizeBytes` and look up `i.sizeBytes`) and run it again: "matches by file name, never by size" fails, because a file would be recorded for the wrong clip. Put it back.
@@ -473,6 +477,9 @@ It ends with `All tests passed!`. Now open `lib/features/editors/views/editor_sh
 
 - **The screen does not guess.** The copy count and the failure line are live regions, so TalkBack says them when they change; the progress title is empty until the job's plan is read (so a CapCut job never says VN for a frame); the ready screen shows no half sentence about a blank folder; and a failed re-plan while a copy is starting does not flash "Couldn't start copying".
 
+- **A busy start opens the job in the way.** If another copy job holds the engine, **Copy** now opens that job's screen (its progress, or the stop it ended in, with Try again and Delete copies and stop) instead of "Couldn't start copying". This matters when a notification tap replaced the result screen: the job's plan was still saved, so every later copy would have failed with no way back.
+- **"Copying stopped" tells the truth.** "TakeTray was closed before copying finished" is shown only after a restart. If the phone could not save a file while TakeTray was open, the screen says "The phone couldn't save the copies."
+
 **Where it lives:** `app/lib/features/editors/views/` (`copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`, `stop_copy_dialog.dart`, `copy_result_opener.dart`, `editor_text.dart`), `app/lib/features/editors/view_models/` (`copy_space_controller.dart`, `copy_ready_controller.dart`, `copy_stage.dart`, `copy_screens.dart`), `app/lib/router/` (`routes.dart`, `app_router.dart`), `app/lib/app.dart` and `app/lib/l10n/app_en.arb`.
 
 **Try it yourself:** run the screen-on tests, then break the rule that matters most:
@@ -568,6 +575,8 @@ They end with `All tests passed!`. Now open `lib/features/reels/view_models/reel
 - **A long title wraps, without losing a button.** "Add clips to your CapCut project" does not fit a one-line app bar next to **Select all**. The title wraps (`wrapTitle`), which needs the bar to be the first child of the body instead of `Scaffold.appBar`, and at large text **Select all** moves under it. A first try that only set `wrapTitle` lost the button at 2x, and no test noticed until a test looked for it.
 
 - **One layout from the first frame.** In add mode the picker's bar is always in the body, so it never jumps when the session (and so the editor's name) is read.
+
+- **The copies never show up as clips to add.** The Add videos folder list hides `Movies/TakeTray/` (TakeTray's own copy folders) on the phone, because a clip added from there would go missing when Done editing deletes the copy. The photo picker cannot be filtered, so it can still show them.
 
 **Where it lives:** `app/lib/features/editors/views/` (`edit_select_screen.dart`, `copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`), `app/lib/features/editors/view_models/edit_select_controller.dart` (`addFolder`), `app/lib/features/reels/views/` (`reel_edit_banner.dart`, `reel_edit_sections.dart`, `reel_detail_screen.dart`), `app/lib/features/reels/view_models/reel_edit_state.dart` (`copyJobEditor`) and `app/lib/l10n/app_en.arb`.
 
