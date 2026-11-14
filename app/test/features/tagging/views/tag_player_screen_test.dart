@@ -1,10 +1,14 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
+import 'package:taketray/app.dart';
 import 'package:taketray/data/database/app_database.dart' show ClipsCompanion;
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -12,8 +16,11 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/reels/views/reel_detail_screen.dart';
+import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/tagging/view_models/tag_session_controller.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
+import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
@@ -1678,6 +1685,85 @@ void main() {
         expect(find.bySemanticsLabel(label), findsWidgets, reason: label);
       }
       semantics.dispose();
+    });
+  });
+
+  // p8 red screen (D-132): in the app the player is a route over the tab
+  // shell. A `go` that takes it away (See your reels, a notification's launch
+  // action) pops that route while the root navigator rebuilds, and the
+  // player's PopScope ends the session then: inside a build. Changing the
+  // session's state there is Riverpod's "Tried to modify a provider while the
+  // widget tree was building" (the red screen on the S24). The stub router of
+  // the other tests replaces the player instead of popping it, so only the
+  // whole app shows it.
+  group('taken away by a go, over the tab shell (D-132)', () {
+    /// Runs the frames of the app with real time between them for the
+    /// database; the skeletons loop, so it never settles.
+    Future<void> frames(WidgetTester tester) async {
+      for (var i = 0; i < 30; i++) {
+        await tester.runAsync(settle);
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    }
+
+    /// The whole app, with the player pushed over the shell as To tag does.
+    Future<GoRouter> openOverTheShell(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            ...h.appOverrides,
+            holdTimerProvider.overrideWithValue(holds.call),
+            clipsRepositoryProvider.overrideWithValue(clips),
+          ],
+          child: const TakeTrayApp(),
+        ),
+      );
+      await frames(tester);
+      final router = GoRouter.of(tester.element(find.byType(Scaffold).first));
+      unawaited(router.push(Routes.tagPlayer));
+      await frames(tester);
+      expect(find.byType(TagPlayerScreen), findsOneWidget);
+      return router;
+    }
+
+    testApp('See your reels from All done! goes to Reels', (tester) async {
+      await waiting(tester, 1);
+      await openOverTheShell(tester);
+      await tester.tap(button('Skip'));
+      await frames(tester);
+      expect(find.text('See your reels'), findsOneWidget);
+
+      await tester.tap(find.text('See your reels'));
+      await frames(tester);
+
+      expect(find.byType(TagPlayerScreen), findsNothing);
+      expect(find.byType(ReelsScreen), findsOneWidget);
+    });
+
+    testApp('a go to a reel during a hold (a notification) opens the reel '
+        'and the hold ends without a tag', (tester) async {
+      final ids = await waiting(tester, 2);
+      final goa = await newReel(tester, 'Goa');
+      final router = await openOverTheShell(tester);
+      await tester.tap(chip('Goa'));
+      await frames(tester);
+      expect(chipState(tester, 'Goa'), TtReelChipState.done);
+      expect(holds.made.single.cancelled, isFalse);
+
+      router.go(Routes.reel(goa.id));
+      await frames(tester);
+
+      expect(find.byType(TagPlayerScreen), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      // The hold ended with the player: its timer firing late tags nothing.
+      expect(holds.made.single.cancelled, isTrue);
+      holds.fireAll();
+      await frames(tester);
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(await pendingIds(tester), ids.toSet());
     });
   });
 }

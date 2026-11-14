@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/scheduler.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
@@ -412,11 +413,26 @@ class TagSessionController extends _$TagSessionController {
   /// outlives the player). Called as the close starts, because the route's
   /// exit transition outlasts the hold and the session is disposed only
   /// after it. Calling it again does nothing more.
+  ///
+  /// It can be called inside a build: a `go` that takes the player away
+  /// (See your reels, a notification) pops its route while the navigator
+  /// rebuilds, and the route's PopScope leaves then. A provider must never
+  /// change during a build (D-132; in a debug build Riverpod throws "Tried to
+  /// modify a provider while the widget tree was building"), so the check's
+  /// state then goes right after the frame. Everything else here is not
+  /// provider state and happens at once, so a player opened again in the
+  /// same frame ([enter]) still finds the session open.
   void leave() {
     _left = true;
     if (_holdResult != null) _log.info('Closed during a hold; tap dropped');
     _cancelHold();
-    _update((now) => now.copyWith(confirmingReelId: null));
+    void dropCheck() => _update((now) => now.copyWith(confirmingReelId: null));
+    final scheduler = SchedulerBinding.instance;
+    if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+      scheduler.addPostFrameCallback((_) => dropCheck());
+    } else {
+      dropCheck();
+    }
   }
 
   /// A player screen shows this session (again): actions are taken again
