@@ -91,6 +91,11 @@ class CopySpaceController extends _$CopySpaceController {
     return CopySpaceState(plan);
   }
 
+  /// The job that is in the way after a start answered `CopyBusy`: the one
+  /// whose plan is saved (running, stopped, or recovered), or null (I-1).
+  Future<String?> heldJobId() =>
+      ref.read(editSessionServiceProvider).heldJobId();
+
   /// Starts copying [plan] and returns the job id. `CopyBusy` while another
   /// job runs; anything else the service throws is passed on.
   Future<String> start(CopyPlan plan) =>

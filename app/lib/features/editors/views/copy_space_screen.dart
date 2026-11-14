@@ -9,6 +9,7 @@ import 'package:taketray/domain/rules/space_check.dart';
 import 'package:taketray/features/editors/view_models/copy_space_controller.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
+import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -104,10 +105,28 @@ class _CopySpaceScreenState extends ConsumerState<CopySpaceScreen> {
     } on Object catch (error) {
       _log.warning('Starting the copy failed: ${error.runtimeType}');
       if (!mounted) return;
+      if (error is CopyBusy && await _openHeldJob(router)) return;
+      if (!mounted) return;
       setState(() {
         _starting = false;
         _failed = true;
       });
+    }
+  }
+
+  /// Another job holds the copy engine: its own screen (progress, or the
+  /// stop it ended in, with Try again and Delete copies and stop) is the way
+  /// on, because a stopped job whose screen was replaced has no other (I-1).
+  /// False when no job's plan is saved: the generic failure then shows.
+  Future<bool> _openHeldJob(GoRouter router) async {
+    try {
+      final held = await ref.read(_provider.notifier).heldJobId();
+      if (held == null || !mounted) return false;
+      unawaited(router.pushReplacement(Routes.copyProgressOf(held)));
+      return true;
+    } on Object catch (error) {
+      _log.warning('Reading the held copy job failed: ${error.runtimeType}');
+      return false;
     }
   }
 

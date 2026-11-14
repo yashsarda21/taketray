@@ -561,6 +561,11 @@ class EditSessionService {
     () => _serial(() => _start(plan)),
   );
 
+  /// The id of the copy job whose plan is saved, or null when none is: the
+  /// job that makes every other start [CopyBusy] (I-1). The copy screens use
+  /// it to open that job's own screen when a start finds it in the way.
+  Future<String?> heldJobId() async => (await _phone.copyJobPlan())?.jobId;
+
   Future<String> _start(CopyPlan plan) async {
     final reelId = plan.reelId;
     if (await _phone.copyJobPlan() != null) throw const CopyBusy();

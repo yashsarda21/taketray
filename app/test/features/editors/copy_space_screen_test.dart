@@ -522,6 +522,64 @@ void main() {
       expect(find.text('Copying clips for VN'), findsOneWidget);
     });
 
+    testApp('a stopped job whose screen was replaced: Copy on another reel '
+        'opens the held job, where Try again works (I-1)', (tester) async {
+      final (goa, goaIds) = await clips(tester, 3, 100 * _mb);
+      final job = await startVnJob(tester, h, goa, goaIds);
+      final app = await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: h.appOverrides,
+        copyScreens: true,
+        settle: false,
+      );
+      followJob(app);
+      await settleApp(tester);
+      unawaited(routerOf(tester).push(Routes.copyProgressOf(job.jobId)));
+      await settleApp(tester);
+      h.copy.emit(job.report(state: CopyState.spaceFull, copied: [0]));
+      await settleApp(tester);
+      expect(find.widgetWithText(TtButton, 'Try again'), findsOneWidget);
+      // A notification tap replaces the whole stack, the result screen too.
+      routerOf(tester).go(Routes.toTag);
+      await settleApp(tester);
+      expect(find.widgetWithText(TtButton, 'Try again'), findsNothing);
+
+      final (bali, baliIds) = await clips(tester, 2, 100 * _mb, name: 'Bali');
+      unawaited(
+        routerOf(tester)
+            .push(Routes.copySpaceOf(bali.id, EditorApp.vn, baliIds)),
+      );
+      await settleApp(tester);
+      await tapButton(tester, 'Copy 2 clips');
+
+      expect(find.text("Couldn't start copying. Try again."), findsNothing);
+      // The held job's own screen, not the generic failure.
+      expect(find.widgetWithText(TtButton, 'Try again'), findsOneWidget);
+      expect(
+        find.widgetWithText(TtButton, 'Delete copies and stop'),
+        findsOneWidget,
+      );
+      await tapButton(tester, 'Try again');
+      expect(h.copy.calls.where((c) => c == 'resume'), hasLength(1));
+    });
+
+    testApp('a copy that is still running for another reel: Copy opens its '
+        'progress, not the generic failure (I-1)', (tester) async {
+      final (goa, goaIds) = await clips(tester, 3, 100 * _mb);
+      final job = await startVnJob(tester, h, goa, goaIds);
+      final (bali, baliIds) = await clips(tester, 2, 100 * _mb, name: 'Bali');
+      await open(tester, bali, baliIds);
+
+      await tapButton(tester, 'Copy 2 clips');
+
+      expect(find.text("Couldn't start copying. Try again."), findsNothing);
+      expect(find.text('Copying clips for VN'), findsOneWidget);
+      expect(find.text('0 of 3 clips'), findsOneWidget);
+      expect(job.jobId, startsWith('${goa.id}-'));
+      expect(h.copy.starts, hasLength(1));
+    });
+
     testApp('any other start failure says the same and stays', (tester) async {
       final (goa, ids) = await clips(tester, 3, 100 * _mb);
       await open(tester, goa, ids);
