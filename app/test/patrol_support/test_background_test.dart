@@ -56,6 +56,25 @@ void main() {
       ]);
     });
 
+    test(
+      'showCopiesReminderNow sends the reel id under its own name',
+      () async {
+        final background = TestBackground(channel);
+        Object? sent;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              calls.add(call.method);
+              sent = call.arguments;
+              return null;
+            });
+
+        await background.showCopiesReminderNow(42);
+
+        expect(calls, ['showCopiesReminderNow']);
+        expect(sent, 42);
+      },
+    );
+
     test('ids come back as a list of ints, an empty list as empty', () async {
       final background = TestBackground(channel);
       reply = (m) => m == 'pendingJobs' ? <int>[0x7A72] : <int>[];

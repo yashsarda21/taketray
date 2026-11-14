@@ -73,6 +73,14 @@ class TestBackground {
   Future<void> pressStillTurnOff() =>
       _channel.invokeMethod<void>('pressStillTurnOff');
 
+  /// Posts the copies reminder of reel [reelId] from the stored mirror,
+  /// through the real notifier (D-124), without waiting the three days and
+  /// without marking it shown. `PlatformException`: `no-reminder` when the
+  /// reel is not in the mirror (yet), `bad-argument` without a whole-number
+  /// reel id, `not-posted` when notifications are off.
+  Future<void> showCopiesReminderNow(int reelId) =>
+      _channel.invokeMethod<void>('showCopiesReminderNow', reelId);
+
   /// The phone's thermal status now (`PowerManager.getCurrentThermalStatus`,
   /// 0 to 6). A reply that is no number is a `StateError`, never 0.
   Future<int> thermalStatus() async {
