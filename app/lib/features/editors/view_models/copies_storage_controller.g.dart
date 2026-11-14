@@ -171,7 +171,7 @@ final class CopiesStorageControllerProvider
 }
 
 String _$copiesStorageControllerHash() =>
-    r'b4eee03c740f2070bbb2262dbf5b69555b47b75b';
+    r'f84d810e06e665191a9471e4177c9dd6f7f244fb';
 
 /// The VN copies screen's data (D-130): `EditSessionService.storage()` (every
 /// session and the files no session records), the sessions that hold copies

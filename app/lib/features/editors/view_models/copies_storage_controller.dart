@@ -176,22 +176,22 @@ class CopiesStorageController extends _$CopiesStorageController {
   /// Reads everything again.
   void refresh() => ref.invalidateSelf();
 
-  /// Asks Android to delete [folder]'s files (its consent dialog, R7). The
-  /// bytes freed; 0 when the user declined, and the folder stays. Allowed:
+  /// Asks Android to delete [folder]'s files (its consent dialog, R7).
+  /// Declined: the folder stays. Allowed (whatever the bytes freed, even 0):
   /// the folder leaves the screen at once. A failure is logged by type and
   /// thrown.
-  Future<int> deleteOrphans(OrphanFolder folder) async {
-    final int freed;
+  Future<OrphanDeleteResult> deleteOrphans(OrphanFolder folder) async {
+    final OrphanDeleteResult result;
     try {
-      freed = await ref.read(editSessionServiceProvider).deleteOrphans(folder);
+      result = await ref.read(editSessionServiceProvider).deleteOrphans(folder);
     } on Object catch (error) {
       _log.warning('Deleting the files failed: ${error.runtimeType}');
       rethrow;
     }
     final current = state.value;
-    if (freed > 0 && current != null && ref.mounted) {
+    if (result.allowed && current != null && ref.mounted) {
       state = AsyncData(current.withoutOrphan(folder));
     }
-    return freed;
+    return result;
   }
 }

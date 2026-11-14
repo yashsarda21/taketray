@@ -1255,7 +1255,7 @@ Copies a reel's clips into `Movies/TakeTray/<folder>/` in the app's own process,
 
 **Before a reel is deleted** (`beforeReelDelete(reel)`, queued): the engine's job for this reel, or the saved plan's → `_cancel`; then every copy → `deleteCopies` (any left → `CopiesNotDeleted`, nothing ended); `endSession`. Caller: `ReelActions.confirmDelete`, before `ReelsRepository.delete`.
 
-**Storage** (`storage()`, queued): `summaries()`; `filesInCopyFolders()` (a throw → no orphans, logged); files whose id is no session's copy, minus the folders of the saved plan and the engine's job, grouped by folder → `OrphanFolder(folder, count, bytes, refs)`, folders sorted ignoring case. **`deleteOrphans(folder)`**: `requestDelete(files)` → the folder's bytes, or 0 when declined.
+**Storage** (`storage()`, queued): `summaries()`; `filesInCopyFolders()` (a throw → no orphans, logged); files whose id is no session's copy, minus the folders of the saved plan and the engine's job, grouped by folder → `OrphanFolder(folder, count, bytes, refs)`, folders sorted ignoring case. **`deleteOrphans(folder)`**: `requestDelete(files)` → `OrphanDeleteResult(allowed, freedBytes)`: the folder's bytes when allowed, `declined` (0 bytes) when not; the two are separate, so an allowed delete of 0 bytes is still allowed.
 
 **The plan row:** `PhoneStateRepository.copyJobPlanKey = 'copyJobPlan'`, JSON `{jobId, reelId, editor, folderName, startedSession, items: [{clipId, fileName, sizeBytes}]}`; an unreadable value is none (key name logged); `saveCopyJobPlan` refuses another job's plan (`StateError`); `removeCopyJobPlan(jobId)` is compare-and-delete. Not exported; an import deletes it.
 
@@ -1322,7 +1322,7 @@ Copies a reel's clips into `Movies/TakeTray/<folder>/` in the app's own process,
 2. `orphans`: `overview.orphans` as they are (grouped by folder, sorted by name, the folder of a running job or a saved plan left out by `storage()`, D-123).
 3. `totalBytes` is the sum of the rows' `copyBytes`; `isEmpty` is no row and no folder.
 
-`refresh()` is `invalidateSelf()` (the screen calls it on **Try again** and on every resume, `AppLifecycleListener.onResume`). `deleteOrphans(folder)` calls `EditSessionService.deleteOrphans(folder)` (Android's consent dialog; the bytes freed, 0 when declined); a throw is logged by type and thrown on; a result above 0 puts `state` back without that folder at once (the next read agrees, the files being gone); 0 changes nothing.
+`refresh()` is `invalidateSelf()` (the screen calls it on **Try again** and on every resume, `AppLifecycleListener.onResume`). `deleteOrphans(folder)` calls `EditSessionService.deleteOrphans(folder)` (Android's consent dialog; an `OrphanDeleteResult`); a throw is logged by type and thrown on; an allowed result (whatever the bytes, 0 included) puts `state` back without that folder at once (the next read agrees, the files being gone); declined changes nothing.
 
 **The screen** (`views/copies_storage_screen.dart`): the bar is the first child of the body, `wrapTitle: true`, "VN copies", a back button. A `ListView`:
 
@@ -1333,7 +1333,7 @@ Copies a reel's clips into `Movies/TakeTray/<folder>/` in the app's own process,
 
 **Delete on a reel's row:** `showDoneEditingDialog(context, ref, reelId, suggestPublished: false)` (see "Done editing" above): the same question, the same snack "Copies deleted · {size} freed" (or the left-behind line) and the same failure "Couldn't delete the copies. Try again." (the row stays); no "Mark {name} as Published?". The row leaves, and the total and Settings' summary fall, because the session ended and the controller reads again.
 
-**Delete on a folder:** `_deleteFolder`: a folder whose question is open (`_asking`, by name) ignores another tap; `ReelSnacks.of(context)` and the words are read first; `CopiesStorageController.deleteOrphans` → freed above 0: "Copies deleted · {size} freed" and the folder is gone; 0 (declined): nothing; a throw: "Something went wrong. Try again." (no check mark), the folder stays.
+**Delete on a folder:** `_deleteFolder`: a folder whose question is open (`_asking`, by name) ignores another tap; `ReelSnacks.of(context)` and the words are read first; `CopiesStorageController.deleteOrphans` → allowed (any size, 0 MB included): "Copies deleted · {size} freed" and the folder is gone; declined: nothing; a throw: "Something went wrong. Try again." (no check mark), the folder stays.
 
 **Logs** (`copiesStorage`): "Reading the reels failed: {Type}", "Deleting the files failed: {Type}"; never a reel or folder name (D-10).
 

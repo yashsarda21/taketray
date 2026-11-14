@@ -1428,14 +1428,37 @@ void main() {
     test(
       "asks Android with that folder's files; allowed frees its bytes",
       () async {
-        expect(await service.deleteOrphans(folder), 40);
+        final result = await service.deleteOrphans(folder);
+        expect(result.allowed, isTrue);
+        expect(result.freedBytes, 40);
         expect(editors.deleteRequested.single, folder.files);
       },
     );
 
-    test('declined: 0', () async {
+    test('declined: not allowed, nothing freed', () async {
       editors.requestDeleteResult = false;
-      expect(await service.deleteOrphans(folder), 0);
+      final result = await service.deleteOrphans(folder);
+      expect(result.allowed, isFalse);
+      expect(result.freedBytes, 0);
+    });
+
+    test('allowed for files that report no size: allowed, 0 bytes (not '
+        'declined)', () async {
+      final empty = OrphanFolder(
+        folderName: 'Unscanned',
+        fileCount: 1,
+        bytes: 0,
+        files: const [
+          CopyFileRef(
+            mediaStoreId: 710,
+            folderName: 'Unscanned',
+            fileName: 'z',
+          ),
+        ],
+      );
+      final result = await service.deleteOrphans(empty);
+      expect(result.allowed, isTrue);
+      expect(result.freedBytes, 0);
     });
   });
 

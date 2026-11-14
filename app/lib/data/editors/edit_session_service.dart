@@ -196,6 +196,32 @@ class OrphanFolder {
   String toString() => 'OrphanFolder($fileCount files, $bytes bytes)';
 }
 
+/// What Android answered to the consent dialog for an orphan folder's files:
+/// whether the user [allowed] it, and the bytes freed (0 when declined). The
+/// two are separate: allowed files may report a size of 0 (a file Android has
+/// not finished scanning), and that is still allowed.
+@immutable
+class OrphanDeleteResult {
+  const OrphanDeleteResult.allowed(this.freedBytes) : allowed = true;
+
+  const OrphanDeleteResult.declined() : allowed = false, freedBytes = 0;
+
+  final bool allowed;
+  final int freedBytes;
+
+  @override
+  bool operator ==(Object other) =>
+      other is OrphanDeleteResult &&
+      other.allowed == allowed &&
+      other.freedBytes == freedBytes;
+
+  @override
+  int get hashCode => Object.hash(allowed, freedBytes);
+
+  @override
+  String toString() => 'OrphanDeleteResult(allowed: $allowed, $freedBytes)';
+}
+
 /// What the storage screen shows: every session and the orphan folders.
 @immutable
 class StorageOverview {
@@ -1168,16 +1194,20 @@ class EditSessionService {
     return StorageOverview(sessions: summaries, orphans: orphans);
   });
 
-  /// Asks Android to delete [folder]'s files (its consent dialog, R7);
-  /// returns the bytes freed, 0 when the user declined.
-  Future<int> deleteOrphans(OrphanFolder folder) async {
+  /// Asks Android to delete [folder]'s files (its consent dialog, R7). The
+  /// answer says whether the user allowed it and, apart from that, the bytes
+  /// freed, so an allowed delete of files that report no size is still
+  /// allowed (D-130).
+  Future<OrphanDeleteResult> deleteOrphans(OrphanFolder folder) async {
     final allowed = await _editors.requestDelete(folder.files);
     _log.info(
       allowed
           ? 'Deleted ${folder.fileCount} orphan copies'
           : 'Deleting ${folder.fileCount} orphan copies was declined',
     );
-    return allowed ? folder.bytes : 0;
+    return allowed
+        ? OrphanDeleteResult.allowed(folder.bytes)
+        : const OrphanDeleteResult.declined();
   }
 
   /// Once per app start, after the scan (D-123).

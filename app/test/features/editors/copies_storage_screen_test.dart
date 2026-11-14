@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
@@ -11,9 +12,11 @@ import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/editors/views/copies_storage_screen.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/platform/editors_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -25,6 +28,7 @@ import '../../support/test_app.dart';
 import '../../support/view_model_fakes.dart';
 import '../../support/vm_harness.dart';
 import '../reels/edit_session_support.dart' hide settleApp;
+import 'copy_support.dart' show followJob, startVnJob;
 
 const int _mb = 1000 * 1000;
 
@@ -48,7 +52,7 @@ class _Service extends SpyEditSessionService {
   }
 
   @override
-  Future<int> deleteOrphans(OrphanFolder folder) async {
+  Future<OrphanDeleteResult> deleteOrphans(OrphanFolder folder) async {
     calls.add('orphans ${folder.fileCount}');
     await holdOrphans?.future;
     return await super.deleteOrphans(folder);
@@ -203,6 +207,7 @@ void main() {
     double textScale = 1,
     Brightness brightness = Brightness.light,
     Size size = const Size(360, 800),
+    List<Override> overrides = const [],
   }) async {
     await pumpScreen(
       tester,
@@ -210,6 +215,7 @@ void main() {
       size: size,
       overrides: [
         ...h.appOverrides,
+        ...overrides,
         editSessionServiceProvider.overrideWithValue(service),
         mediaAccessControllerProvider.overrideWith(() => FakeAccess(access)),
       ],
@@ -572,6 +578,33 @@ void main() {
     });
   });
 
+  group('a reel whose copy job runs', () {
+    testApp('Delete opens no question and the row stays', (tester) async {
+      final (goa, goaClips) = await reelOf(tester, 'Goa', count: 4);
+      await session(
+        tester,
+        goa.id,
+        EditorApp.vn,
+        'Goa',
+        goaClips.sublist(0, 2),
+      );
+      // A second copy for the same reel is running.
+      await startVnJob(tester, h, goa, goaClips, clipIds: goaClips.sublist(2));
+      followJob(h.container);
+      await open(tester);
+      expect(find.text('Goa'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Delete'));
+      await settleApp(tester);
+
+      expect(find.byType(TtDialog<bool>), findsNothing);
+      expect(find.text('Have you exported your video?'), findsNothing);
+      expect(find.text('Goa'), findsOneWidget);
+      expect(service.calls, isNot(contains('done ${goa.id}')));
+      expect(h.editors.deleteAsked, isEmpty);
+    });
+  });
+
   group('files no reel records', () {
     CopyFolderFile file(int id, String folder, int size) => CopyFolderFile(
       mediaStoreId: id,
@@ -659,6 +692,28 @@ void main() {
       await tapAndRun(tester, find.widgetWithText(TtButton, 'Delete'));
       expect(plain('Copies deleted · 250 MB freed'), findsOneWidget);
       expect(find.text('Beach'), findsNothing);
+    });
+
+    testApp('allowed for files that report no size: the row leaves and the '
+        'snack says 0 MB freed (it is not read as declined)', (tester) async {
+      h.editors.files = [file(801, 'Beach', 0), file(802, 'Other', 250 * _mb)];
+      await open(tester);
+
+      await tapAndRun(
+        tester,
+        find.descendant(
+          of: find.ancestor(
+            of: find.text('Beach'),
+            matching: find.byType(TtListRow),
+          ),
+          matching: find.widgetWithText(TtButton, 'Delete'),
+        ),
+      );
+
+      expect(h.editors.deleteRequested, hasLength(1));
+      expect(plain('Copies deleted · 0 MB freed'), findsOneWidget);
+      expect(find.text('Beach'), findsNothing);
+      expect(find.text('Other'), findsOneWidget);
     });
 
     testApp('a bridge failure keeps the row and says something went wrong', (
@@ -985,6 +1040,95 @@ void main() {
         'Delete the copies of Goa',
         'Delete the files in Old trip',
       ]);
+    });
+  });
+
+  group('edges the goldens do not cover (these run on CI)', () {
+    for (final brightness in Brightness.values) {
+      testApp("every Delete is drawn in the theme's error colour, "
+          'in ${brightness.name}', (tester) async {
+        final (goa, goaClips) = await reelOf(tester, 'Goa');
+        await session(tester, goa.id, EditorApp.vn, 'Goa', goaClips);
+        h.editors.files = [
+          const CopyFolderFile(
+            mediaStoreId: 801,
+            folderName: 'Beach',
+            fileName: 'file_801.mp4',
+            sizeBytes: 250 * _mb,
+            ownedByTakeTray: false,
+          ),
+        ];
+        await open(tester, brightness: brightness);
+
+        final scheme = Theme.of(
+          tester.element(find.byType(CopiesStorageScreen)),
+        ).colorScheme;
+        expect(scheme.error, isNot(scheme.primary));
+        final buttons = find.widgetWithText(TtButton, 'Delete');
+        expect(buttons, findsNWidgets(2));
+        for (final button in buttons.evaluate()) {
+          final text = find.descendant(
+            of: find.byWidget(button.widget),
+            matching: find.byType(TextButton),
+          );
+          final style = tester.widget<TextButton>(text).style!;
+          expect(style.foregroundColor!.resolve(const {}), scheme.error);
+        }
+      });
+    }
+
+    testApp('a failing reels stream still shows the rows, with the movie '
+        'icon, and no error screen', (tester) async {
+      final (goa, goaClips) = await reelOf(tester, 'Goa');
+      await session(tester, goa.id, EditorApp.vn, 'Goa', goaClips);
+      final logs = <String>[];
+      final sub = Logger.root.onRecord.listen((r) => logs.add(r.message));
+      addTearDown(sub.cancel);
+      await open(
+        tester,
+        overrides: [
+          reelSummariesProvider.overrideWith(
+            (ref) => Stream<List<ReelSummary>>.error(StateError('no reels')),
+          ),
+        ],
+      );
+
+      expect(find.text('Goa'), findsOneWidget);
+      expect(find.widgetWithText(TtButton, 'Delete'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey('copies-cover-${goa.id}')),
+          matching: find.byIcon(Symbols.movie_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Try again'), findsNothing);
+      expect(
+        logs.where((m) => m.contains('StateError')),
+        isNotEmpty,
+        reason: 'the failure is logged by type',
+      );
+      expect(logs.join('\n'), isNot(contains('Goa')));
+    });
+
+    testApp('two sessions that started at the same time are ordered by reel '
+        'id, the higher first', (tester) async {
+      final same = DateTime(2026, 10, 5, 12);
+      service.fixed = StorageOverview(
+        sessions: [
+          // Ascending in, so only the tie-break can put them in this order.
+          for (final (id, name) in [(1, 'First'), (2, 'Second'), (3, 'Third')])
+            summary(id, name, EditorApp.vn, since: same, copies: 1),
+        ],
+        orphans: const [],
+      );
+      await open(tester);
+
+      final names = [
+        for (final t in tester.widgetList<Text>(find.byType(Text)))
+          if (const {'First', 'Second', 'Third'}.contains(t.data)) t.data,
+      ];
+      expect(names, ['Third', 'Second', 'First']);
     });
   });
 }

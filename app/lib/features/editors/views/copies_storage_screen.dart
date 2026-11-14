@@ -91,12 +91,14 @@ class _CopiesStorageScreenState extends ConsumerState<CopiesStorageScreen> {
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
     try {
-      final freed = await ref
+      final result = await ref
           .read(copiesStorageControllerProvider.notifier)
           .deleteOrphans(folder);
-      // Declined: nothing is said.
-      if (freed > 0) {
-        snacks.show(l10n.doneEditingFreedSnack(byteSizeText(l10n, freed)));
+      // Declined: nothing is said. Allowed says so, even for 0 bytes.
+      if (result.allowed) {
+        snacks.show(
+          l10n.doneEditingFreedSnack(byteSizeText(l10n, result.freedBytes)),
+        );
       }
     } on Object {
       // Logged by type in the controller.
