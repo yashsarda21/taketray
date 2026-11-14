@@ -637,11 +637,19 @@ Future<void> _reminderTap(PatrolIntegrationTester $, _Env env) async {
 
   // The only notification TakeTray has: the app's own list says so.
   final ids = await env.bg.activeNotifications();
-  expect(
-    listEquals(ids, [_copiesIdBase + reel.id]),
-    isTrue,
-    reason: "the reminder is TakeTray's only notification",
-  );
+  if (!ids.contains(_copiesIdBase + reel.id)) {
+    throw TestFailure(
+      "The reminder is not among TakeTray's notifications "
+      '(${ids.length} found)',
+    );
+  }
+  if (ids.length != 1) {
+    // Only the count: another notification's text is never read or printed.
+    throw TestFailure(
+      'TakeTray has ${ids.length} notifications, not only the reminder: '
+      'clear them (or run on a cleared app) and run the flow again',
+    );
+  }
 
   var shadeOpen = false;
   try {
@@ -686,12 +694,17 @@ Future<void> _reminderTap(PatrolIntegrationTester $, _Env env) async {
 
 final Finder _app = find.byType(TakeTrayApp);
 
-/// A stuck step ends the flow (and so runs its clean-up) instead of hanging.
-const Timeout _testTimeout = Timeout(Duration(minutes: 6));
+/// A last resort against a hang. A Patrol timeout ends the test from outside,
+/// so the clean-up inside the flow body does **not** run when it fires. It is
+/// set above the longest a flow can take with every wait and the clean-up
+/// (nine steps of 60 s each) running to their own bounds, so it cannot fire
+/// before they do; a failing wait ends the body and the clean-up runs then.
+const Timeout _testTimeout = Timeout(Duration(minutes: 10));
 
 /// A pause after each copied chunk for the flow that cancels: a test video is
-/// one chunk, so a 3-clip copy takes 12 s.
-const int _slowCopyMs = 4000;
+/// one chunk, so a 3-clip copy takes 24 s. That leaves time to tap Cancel and
+/// Stop before it ends; Stop waits at most one pause for the copy to end.
+const int _slowCopyMs = 8000;
 
 /// The copies reminder's notification id is this plus the reel's id
 /// (`Notifier.COPIES_ID_BASE`).
@@ -1189,10 +1202,22 @@ Future<void> _allowNotifications(PatrolIntegrationTester $, _Env env) async {
     );
   }
   final asked = bridge.requestNotificationAccess();
+  // If the question is never answered, its error must not go unobserved.
+  final done = asked.then<void>((_) {}, onError: (Object _) {});
   final answered = await allowNotificationsInDialog($);
-  final access = await asked.timeout(const Duration(seconds: 30));
+  if (!answered) {
+    // Android showed no dialog: fine when the permission is allowed already
+    // (set up by the installer, say), a failure otherwise.
+    if ((await bridge.notificationAccess()).granted) return;
+    throw TestFailure(
+      'Notifications are not allowed for TakeTray Dev and Android showed no '
+      "permission dialog: allow them in the phone's settings and run the "
+      'flow again',
+    );
+  }
+  await done.timeout(const Duration(seconds: 30));
   expect(
-    answered && access.granted,
+    (await bridge.notificationAccess()).granted,
     isTrue,
     reason: 'notifications were allowed',
   );
