@@ -209,7 +209,7 @@ void main() {
 
       expect(find.byType(TtIllustratedSteps), findsNothing);
       expect(find.textContaining('  '), findsNothing);
-      expect(find.textContaining(RegExp(r'open the +folder')), findsNothing);
+      expect(find.textContaining(RegExp('open the +folder')), findsNothing);
       expect(find.textContaining('Open '), findsNothing);
       expect(buttonOf('Done'), findsOneWidget);
 

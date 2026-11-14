@@ -796,7 +796,7 @@ void main() {
         expect(find.textContaining('missing from your phone'), findsNothing);
       });
 
-      testApp('one clip missing and the share fails: Couldn\'t open (a clip '
+      testApp("one clip missing and the share fails: Couldn't open (a clip "
           'is still there, T9-m7)', (tester) async {
         h.editors.sendResult = SendResult.failed;
         final (goa, ids) = await twoClips(tester);

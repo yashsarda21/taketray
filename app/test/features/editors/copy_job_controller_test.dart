@@ -511,7 +511,7 @@ void main() {
     );
     read();
     // The engine's job is the one the controller saw first, then a newer one.
-    h.copy.emit(job('$goa-1000', copied: const []));
+    h.copy.emit(job('$goa-1000'));
     await settle();
     h.copy.emit(job('$goa-2000'));
     await settle();

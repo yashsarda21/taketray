@@ -214,9 +214,9 @@ void main() {
       handle.dispose();
     });
 
-    testApp('the title waits for the job\'s plan: empty at first, never VN '
+    testApp("the title waits for the job's plan: empty at first, never VN "
         'for a CapCut job (T10 first frame)', (tester) async {
-      final (reel, ids) = await reelWithClips(tester, h, count: 4);
+      final (reel, ids) = await reelWithClips(tester, h);
       final job = await startVnJob(
         tester,
         h,

@@ -520,7 +520,7 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
               excludeSemantics: true,
               label: count,
               value: l10n.copyPercent(
-                (total == 0 ? 0 : (done / total * 100).round()),
+                total == 0 ? 0 : (done / total * 100).round(),
               ),
               child: TtProgressBar(
                 value: total == 0 ? 0 : done / total,

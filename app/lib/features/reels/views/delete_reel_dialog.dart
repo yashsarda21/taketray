@@ -162,8 +162,9 @@ class _DeleteBodyState extends State<_DeleteBody> {
       _copiesFailed = false;
     });
     final done = Completer<void>();
-    run.inFlight = done.future;
-    run.copiesFailed = false;
+    run
+      ..inFlight = done.future
+      ..copiesFailed = false;
     try {
       run.record = await run.actions.confirmDelete(run.reelId);
     } on CopiesNotDeleted {

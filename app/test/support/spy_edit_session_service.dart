@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/clip_time.dart';
-import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 
 import 'vm_harness.dart';

@@ -466,8 +466,9 @@ void main() {
 
     testApp('the dialog taken away from outside while a delete that fails '
         'runs: the failure snack still shows (T11-m6)', (tester) async {
-      reels.hold = Completer<void>();
-      reels.deleteFails = true;
+      reels
+        ..hold = Completer<void>()
+        ..deleteFails = true;
       await pumpHost(tester);
       await openDialog(tester);
       await tester.tap(find.text('Delete reel'));
