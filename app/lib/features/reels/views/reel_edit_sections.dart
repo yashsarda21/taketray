@@ -152,7 +152,7 @@ List<Widget> reelEditSlivers(
                   icon: Symbols.folder_copy_rounded,
                   kind: TtButtonKind.tonal,
                   size: TtButtonSize.small,
-                  onPressed: edit.newLiveIds.isEmpty ? null : onCopyNew,
+                  onPressed: edit.newLiveCount == 0 ? null : onCopyNew,
                 )
               : null,
         ),

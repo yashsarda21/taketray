@@ -662,9 +662,16 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       reelDetailControllerProvider(widget.reelId).notifier,
     );
     try {
-      final record = await controller.removeMissing(clipId);
-      if (!record.isEmpty) {
-        snacks.showUndo(l10n.missingClipRemovedSnack, record);
+      final removal = await controller.removeMissing(clipId);
+      if (!removal.record.isEmpty) {
+        snacks.showUndo(
+          removal.copiesDeleted > 0
+              ? l10n.missingClipRemovedWithCopiesSnack(
+                  l10n.copiesDeletedSuffix(removal.copiesDeleted),
+                )
+              : l10n.missingClipRemovedSnack,
+          removal.record,
+        );
       }
     } on CopiesNotDeleted {
       // Its copy could not be deleted, so it stays (R8).

@@ -94,7 +94,7 @@ void main() {
         [ids[0], ids[1]],
         [ids[3]],
       ]);
-      expect(state.newLiveIds, [ids[2], ids[4]]);
+      expect(state.newLiveCount, 2);
     });
 
     test('a sent clip with no copy is in the edit (the union, not only '
@@ -156,7 +156,7 @@ void main() {
 
       expect(state.newCount, 0);
       expect(state.newDays, isEmpty);
-      expect(state.newLiveIds, isEmpty);
+      expect(state.newLiveCount, 0);
       expect(state.inEditCount, 5);
     });
 
@@ -175,7 +175,7 @@ void main() {
         [ids[3], ids[4]],
       ]);
       expect(state.newCount, 4);
-      expect(state.newLiveIds, [ids[1], ids[3], ids[4]]);
+      expect(state.newLiveCount, 3);
     });
 
     test('a clip tagged in meanwhile is new at once', () async {
@@ -196,7 +196,10 @@ void main() {
       await settle();
 
       final state = (await c.read(reelEditStateProvider(goa).future))!;
-      expect(state.newLiveIds, [late]);
+      expect(state.newLiveCount, 1);
+      expect(idsByDay(state.newDays), [
+        [late],
+      ]);
       expect(seen.last, 1);
     });
 
@@ -220,7 +223,7 @@ void main() {
       expect(idsByDay(state.inEditDays), [
         [ids[1]],
       ]);
-      expect(state.newLiveIds, [ids[0], ids[2], ids[3], ids[4]]);
+      expect(state.newLiveCount, 4);
       expect(state.copyCount, 1);
     });
 

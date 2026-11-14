@@ -3188,6 +3188,15 @@
       }
     }
   },
+  "missingClipRemovedWithCopiesSnack": "Missing clip removed. {copies}",
+  "@missingClipRemovedWithCopiesSnack": {
+    "description": "The missing-clip remove snack followed by the copies sentence ({copies}), when its copy in the editing folder was deleted.",
+    "placeholders": {
+      "copies": {
+        "type": "String"
+      }
+    }
+  },
   "movedToCopiesSnack": "Moved to {reel}. {copies}",
   "@movedToCopiesSnack": {
     "description": "The move snack followed by the copies sentence ({copies}).",

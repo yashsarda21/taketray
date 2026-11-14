@@ -154,6 +154,12 @@ void main() {
       'in the folder was deleted.',
     );
     expect(
+      l10n.missingClipRemovedWithCopiesSnack(
+        'Its copy in the folder was deleted.',
+      ),
+      'Missing clip removed. Its copy in the folder was deleted.',
+    );
+    expect(
       l10n.movedToCopiesSnack(
         'Goa',
         'Their copies in the folder were deleted.',

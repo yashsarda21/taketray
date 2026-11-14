@@ -7,7 +7,6 @@ import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/edit_split.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
-import 'package:taketray/domain/rules/shooting_order.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 
@@ -38,10 +37,9 @@ class ReelEditState {
     required List<ShootingDay<ReelClip>> inEditDays,
     required this.newCount,
     required this.inEditCount,
-    required List<int> newLiveIds,
+    required this.newLiveCount,
   }) : newDays = List.unmodifiable(newDays),
-       inEditDays = List.unmodifiable(inEditDays),
-       newLiveIds = List.unmodifiable(newLiveIds);
+       inEditDays = List.unmodifiable(inEditDays);
 
   final EditSession session;
 
@@ -66,9 +64,9 @@ class ReelEditState {
   final int newCount;
   final int inEditCount;
 
-  /// The ids of the new clips that are on the phone, in shooting order: what
-  /// there is to copy.
-  final List<int> newLiveIds;
+  /// How many of the new clips are on the phone (not missing): what there is
+  /// to copy. The copy itself picks and orders its clips (Task 10).
+  final int newLiveCount;
 }
 
 /// Reel [reelId]'s page while it is being edited; null while it has no
@@ -105,13 +103,7 @@ Future<ReelEditState?> reelEditState(Ref ref, int reelId) async {
     inEditDays: _daysOf(days, split.inEdit),
     newCount: split.newClips.length,
     inEditCount: split.inEdit.length,
-    newLiveIds: [
-      for (final clip in inShootingOrder([
-        for (final c in split.newClips)
-          if (!c.clip.missing) c.clip,
-      ]))
-        clip.id,
-    ],
+    newLiveCount: split.newClips.where((c) => !c.clip.missing).length,
   );
 }
 

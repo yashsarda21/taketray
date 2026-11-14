@@ -7,6 +7,7 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
@@ -18,6 +19,7 @@ import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart' show startEditing;
 
 String _uri(int mediaStoreId) =>
     'content://media/external_primary/video/media/$mediaStoreId';
@@ -847,6 +849,143 @@ void main() {
       expect(find.text('Something went wrong. Try again.'), findsOneWidget);
       expect(title(tester), '1 of 1 · Goa');
       expect(await clipIdsOf(tester, goa.id), ids.toSet());
+    });
+  });
+
+  group('remove while the reel is being edited (R8, p8-task11-fix)', () {
+    const plain = 'Removed from Goa. The video is still in your gallery.';
+
+    testApp('the clip with a copy: the snack says the copy was deleted, the '
+        'copy is gone, and Undo brings only the clip back', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      final copies = await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+      expect(find.text(plain), findsNothing);
+      expect(await clipIdsOf(tester, goa.id), {ids[1]});
+      expect(h.editors.calls, contains('deleteCopies'));
+      expect(h.editors.existing, isNot(contains(copies.single)));
+
+      await tester.tap(find.text('Undo'));
+      await settleApp(tester);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+      expect(h.editors.existing, isNot(contains(copies.single)));
+    });
+
+    testApp('a clip with no copy in a session: the plain snack', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[1]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+      expect(find.textContaining('copy in the folder'), findsNothing);
+      expect(h.editors.calls, isNot(contains('deleteCopies')));
+    });
+
+    testApp('a clip sent to CapCut (no copy): the plain snack', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
+      );
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+    });
+
+    testApp('no session: the plain snack and the editors bridge is not '
+        'touched', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+      expect(h.editors.calls, isEmpty);
+    });
+
+    testApp('a copy that cannot be deleted: "Couldn\'t delete the copies", '
+        'nothing removed, and a retry works', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.textContaining('Removed from Goa'), findsNothing);
+      expect(title(tester), '1 of 2 · Goa');
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+      expect(await clipIdsOf(tester, goa.id), {ids[1]});
+    });
+
+    testApp('"Remove from reel" under "can\'t be played" says it too', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      platform.failUris.add(_uri(1));
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove from reel'));
+      await settleApp(tester);
+
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
     });
   });
 

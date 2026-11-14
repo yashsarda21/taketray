@@ -387,6 +387,56 @@ void main() {
       );
     });
 
+    Finder missingRemove(int clipId) => find.descendant(
+      of: find.byWidgetPredicate(
+        (w) => w is TtMissingClipTile && w.key == ValueKey(clipId),
+      ),
+      matching: find.text('Remove'),
+    );
+
+    testApp('a missing clip with a copy: Remove says the copy was deleted '
+        '(p8-task11-fix)', (tester) async {
+      final (goa, ids) = await goaReel(tester, missing: {0});
+      final copies = await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0], ids[1]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await openReelPage(tester, h, goa.id, size: _tall);
+
+      await tester.tap(missingRemove(ids[0]));
+      await settleApp(tester);
+
+      expect(
+        find.text('Missing clip removed. Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+      expect(find.text('Missing clip removed'), findsNothing);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet()..remove(ids[0]));
+      expect(h.editors.existing, {copies[1]});
+
+      await tester.tap(find.text('Undo'));
+      await settleApp(tester);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+    });
+
+    testApp('a missing clip with no copy, in a session or not: the plain '
+        'snack (p8-task11-fix)', (tester) async {
+      final (goa, ids) = await goaReel(tester, missing: {0});
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[1]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await openReelPage(tester, h, goa.id, size: _tall);
+
+      await tester.tap(missingRemove(ids[0]));
+      await settleApp(tester);
+
+      expect(find.text('Missing clip removed'), findsOneWidget);
+      expect(find.textContaining('copy in the folder'), findsNothing);
+    });
+
     testApp('a remove whose copy cannot be deleted removes nothing and says '
         'so', (tester) async {
       final (goa, ids) = await goaReel(tester);

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/zone_city.dart';
 import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
@@ -465,6 +466,9 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
   /// **Remove** (and **Remove from reel** under "can't be played"): takes the
   /// clip out of this reel and says so, with **Undo**. The video stays in the
   /// gallery. The viewer goes on to the clip that takes its place.
+  ///
+  /// During an editing session the clip's copy is deleted first (R8) and the
+  /// snack says so; when it cannot be deleted nothing is removed.
   Future<void> _remove(int clipId) async {
     if (_removing) return;
     final l10n = AppLocalizations.of(context);
@@ -477,11 +481,20 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
         clipIds: {clipId},
       );
       if (!done.isEmpty) {
+        final removed = l10n.viewerRemovedSnack(done.reelNames.single);
         snacks.showUndoAll(
-          l10n.viewerRemovedSnack(done.reelNames.single),
+          done.copiesDeleted > 0
+              ? l10n.removedWithCopies(
+                  removed,
+                  l10n.copiesDeletedSuffix(done.copiesDeleted),
+                )
+              : removed,
           done.records,
         );
       }
+    } on CopiesNotDeleted {
+      // Nothing was removed (R8); the clip stays to try again.
+      snacks.show(l10n.copiesNotDeleted, done: false);
     } on Object {
       // The actions logged the type.
       snacks.show(l10n.reelActionFailed, done: false);
