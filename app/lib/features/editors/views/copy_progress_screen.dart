@@ -45,8 +45,9 @@ enum _Exit { finish, stop }
 ///   that adds clips to a folder says "Copying stopped. The new copies were
 ///   deleted." and keeps the old ones.
 /// - **Phone storage is full** (`spaceFull`) and **Copying stopped**
-///   (`interrupted`: TakeTray was closed mid-copy, also what a restart's
-///   recovery found): **Try again** resumes with the clips left;
+///   (`interrupted`: the phone could not save a file while TakeTray was open,
+///   or, from a restart's recovery, TakeTray was closed mid-copy; each has its
+///   own line): **Try again** resumes with the clips left;
 ///   **Delete copies and stop** cancels.
 /// - **Finished clean:** the job is finished (`finishJob`) and the first copy
 ///   of a VN reel goes to "Ready for VN"; a VN add goes to the reel's page
@@ -584,7 +585,13 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
     title: l10n.copyInterruptedTitle,
     body: _withError(
       l10n,
-      Text(l10n.copyInterruptedBody(job.copied.length, job.total)),
+      Text(
+        // Only a job found after a restart says TakeTray was closed; one the
+        // engine stopped while the app was open says the phone could not save.
+        job.wasClosed
+            ? l10n.copyInterruptedBody(job.copied.length, job.total)
+            : l10n.copyStorageErrorBody(job.copied.length, job.total),
+      ),
     ),
     actions: _resumeActions(l10n),
   );

@@ -57,6 +57,11 @@ abstract class CopiedFile with _$CopiedFile {
 /// [failedClipIds] are clips whose original could not be read (gone, its
 /// grant lost, or shorter than it said). After a cancel, [copied] lists the
 /// copies that were deleted and [undeleted] the ones that could not be.
+///
+/// [wasClosed] is true only for the `interrupted` job `EditSessionService`
+/// builds after a restart (Android closed TakeTray in the middle of
+/// copying); an `interrupted` job the engine reports itself stopped while
+/// the app was open (the phone could not save a file). Kotlin never sets it.
 @freezed
 abstract class CopyJob with _$CopyJob {
   const factory CopyJob({
@@ -71,6 +76,7 @@ abstract class CopyJob with _$CopyJob {
     required List<CopiedFile> copied,
     required List<int> failedClipIds,
     required List<CopiedFile> undeleted,
+    @Default(false) bool wasClosed,
   }) = _CopyJob;
 }
 

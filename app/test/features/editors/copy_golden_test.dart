@@ -211,10 +211,10 @@ void main() {
     testApp('copying stopped (interrupted) ($suffix)', (tester) async {
       final (reel, ids) = await goa(tester);
       final job = await startVnJob(tester, h, reel, ids);
-      h.copy.job = job.report(
-        state: CopyState.interrupted,
-        copied: [0, 1, 2, 3],
-      );
+      // The job a restart's recovery builds: TakeTray was closed (M-3).
+      h.copy.job = job
+          .report(state: CopyState.interrupted, copied: [0, 1, 2, 3])
+          .copyWith(wasClosed: true);
       await start(tester, scale: scale, brightness: brightness);
       await push(tester, Routes.copyProgressOf(job.jobId));
       await golden(tester, 'copy_interrupted_$suffix');

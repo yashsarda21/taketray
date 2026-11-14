@@ -1299,7 +1299,8 @@ void main() {
       await sessions.startSession(goa, EditorApp.vn, 'Goa');
       await recordCopy(goa, a, 501, nameOf(1));
       await recordCopy(goa, b, 502, nameOf(2));
-      editors.deleteReport = const DeleteReport(refused: {501, 502});
+      // A real failure (a refused copy no longer blocks, M-5).
+      editors.deleteReport = const DeleteReport(failed: {501, 502});
 
       await expectLater(
         service.beforeClipsLeaveReel(goa, {a, b}),
@@ -2802,6 +2803,345 @@ void main() {
       await service.doneEditing(paris);
       await pumpEventQueue();
       expect(ids, [first, second, third]);
+    });
+  });
+
+  group('final review fixes (Phase 8)', () {
+    /// A reel with a VN job of three clips that Android stopped: the folder
+    /// holds the finished copy of clip 1, a half-written one of clip 2 and a
+    /// finished file that is no plan item's. Nothing has recovered yet.
+    Future<(int, String)> stoppedMidCopy() async {
+      final goa = await reel('Goa');
+      final ids = await clipsIn(goa, [1, 2, 3]);
+      final jobId = await startVn(goa, ids);
+      copy.folders['Goa'] = [
+        FolderRow(
+          mediaStoreId: 601,
+          fileName: nameOf(1),
+          sizeBytes: 1001,
+          pending: false,
+        ),
+        FolderRow(
+          mediaStoreId: 602,
+          fileName: nameOf(2),
+          sizeBytes: 50,
+          pending: true,
+        ),
+        const FolderRow(
+          mediaStoreId: 699,
+          fileName: 'other.mp4',
+          sizeBytes: 77,
+          pending: false,
+        ),
+      ];
+      editors
+        ..existing = {601, 699}
+        ..files = [
+          const CopyFolderFile(
+            mediaStoreId: 699,
+            folderName: 'Goa',
+            fileName: 'other.mp4',
+            sizeBytes: 77,
+            ownedByTakeTray: true,
+          ),
+        ];
+      restart();
+      return (goa, jobId);
+    }
+
+    group('Delete reel and Stop before the recovery ran (M-2)', () {
+      test('Delete reel: the finished copy is recorded and deleted, the '
+          'half-written row is swept, a file that is no item stays an '
+          'orphan, the plan and the session go', () async {
+        final (goa, jobId) = await stoppedMidCopy();
+
+        await service.beforeReelDelete(goa);
+
+        expect(editors.existing, {699});
+        expect(copy.folders['Goa']!.where((r) => r.pending), isEmpty);
+        expect(await sessions.editState(goa), isNull);
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+        expect(await service.jobContext(jobId), isNull);
+        final overview = await service.storage();
+        expect(overview.orphans.single.files.single.mediaStoreId, 699);
+      });
+
+      test(
+        'Stop: the same, and the job ends cancelled with its copy',
+        () async {
+          final (goa, jobId) = await stoppedMidCopy();
+
+          await service.cancelCopy(jobId);
+
+          expect(editors.existing, {699});
+          expect(copy.folders['Goa']!.where((r) => r.pending), isEmpty);
+          expect(await sessions.editState(goa), isNull);
+          expect(await h.media.phoneState.copyJobPlan(), isNull);
+          expect(service.lastLocalJob!.state, CopyState.cancelled);
+          expect(service.lastLocalJob!.copied.single.copyMediaStoreId, 601);
+        },
+      );
+
+      test('a recovery that fails leaves everything alone; Delete reel and '
+          'Stop throw, and work once the phone answers', () async {
+        final (goa, jobId) = await stoppedMidCopy();
+        copy.failNext('ownRowsIn');
+
+        await expectLater(
+          service.beforeReelDelete(goa),
+          throwsA(isA<PlatformException>()),
+        );
+        expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+        expect(await sessions.sessionOf(goa), isNotNull);
+        expect(editors.existing, {601, 699});
+
+        copy.failNext('ownRowsIn');
+        await expectLater(
+          service.cancelCopy(jobId),
+          throwsA(isA<PlatformException>()),
+        );
+        expect(await h.media.phoneState.copyJobPlan(), isNotNull);
+        expect(editors.existing, {601, 699});
+
+        await service.cancelCopy(jobId);
+        expect(editors.existing, {699});
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      });
+
+      test('a plan whose session is gone: Stop still deletes the finished '
+          'copies, sweeps the half-written row and removes the plan', () async {
+        final (goa, jobId) = await stoppedMidCopy();
+        await sessions.endSession(goa);
+
+        await service.cancelCopy(jobId);
+
+        expect(editors.existing, {699});
+        expect(copy.folders['Goa']!.where((r) => r.pending), isEmpty);
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      });
+
+      test('with the engine holding the job there is no recovery: the '
+          'folder is not swept', () async {
+        final goa = await reel('Goa');
+        final [a] = await clipsIn(goa, [1]);
+        final jobId = await startVn(goa, [a]);
+        progress([copied(a, 601, nameOf(1))]);
+        editors.existing = {601};
+
+        await service.cancelCopy(jobId);
+
+        expect(copy.calls, isNot(contains('deletePendingIn')));
+        expect(copy.calls, isNot(contains('ownRowsIn')));
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      });
+    });
+
+    group('a recovered job that copied everything (M-4)', () {
+      Future<(int, String)> allCopied() async {
+        final goa = await reel('Goa');
+        final ids = await clipsIn(goa, [1, 2, 3]);
+        final jobId = await startVn(goa, ids);
+        copy.folders['Goa'] = [
+          for (var i = 1; i <= 3; i++)
+            FolderRow(
+              mediaStoreId: 600 + i,
+              fileName: nameOf(i),
+              sizeBytes: 1000 + i,
+              pending: false,
+            ),
+        ];
+        editors.existing = {601, 602, 603};
+        restart();
+        return (goa, jobId);
+      }
+
+      test('is finished, not "Copying stopped"; finishing it keeps the '
+          'copies and the session and removes the plan', () async {
+        final (goa, jobId) = await allCopied();
+
+        final job = (await service.recoverAtStart())!;
+
+        expect(job.state, CopyState.finished);
+        expect(job.done, 3);
+        expect(job.total, 3);
+        expect(job.copied, hasLength(3));
+        expect(job.failedClipIds, isEmpty);
+        expect(service.lastLocalJob, job);
+
+        await service.finishJob(jobId);
+        expect(await copyIdsOf(goa), {601, 602, 603});
+        expect(await sessions.sessionOf(goa), isNotNull);
+        expect(await h.media.phoneState.copyJobPlan(), isNull);
+      });
+
+      test('one clip short is still "Copying stopped" (interrupted)', () async {
+        final (_, _) = await allCopied();
+        copy.folders['Goa'] = [
+          for (var i = 1; i <= 2; i++)
+            FolderRow(
+              mediaStoreId: 600 + i,
+              fileName: nameOf(i),
+              sizeBytes: 1000 + i,
+              pending: false,
+            ),
+        ];
+
+        final job = (await service.recoverAtStart())!;
+
+        expect(job.state, CopyState.interrupted);
+        expect(job.done, 2);
+      });
+
+      test(
+        'a job with no items recorded is interrupted, not finished',
+        () async {
+          final goa = await reel('Goa');
+          final ids = await clipsIn(goa, [1, 2]);
+          await startVn(goa, ids);
+          restart();
+
+          final job = (await service.recoverAtStart())!;
+
+          expect(job.state, CopyState.interrupted);
+          expect(job.done, 0);
+        },
+      );
+    });
+
+    group('the words for a stop (M-3)', () {
+      test('a job built by the recovery after a restart says TakeTray was '
+          'closed; the engine\'s own jobs never do', () async {
+        final (_, jobId) = await stoppedMidCopy();
+
+        final job = (await service.recoverAtStart())!;
+        expect(job.state, CopyState.interrupted);
+        expect(job.wasClosed, isTrue);
+
+        // Try again: a new engine job, the same id, that stops again while
+        // the app is open.
+        await service.resumeCopy(jobId);
+        copy.emit(copy.job!.copyWith(state: CopyState.interrupted));
+        expect(copy.job!.wasClosed, isFalse);
+      });
+
+      test('a cancelled recovered job is not "closed"', () async {
+        final (_, jobId) = await stoppedMidCopy();
+        await service.recoverAtStart();
+
+        await service.cancelCopy(jobId);
+
+        expect(service.lastLocalJob!.state, CopyState.cancelled);
+        expect(service.lastLocalJob!.wasClosed, isFalse);
+      });
+    });
+
+    group('a refused copy does not block a remove, a move or Delete reel '
+        '(M-5)', () {
+      Future<(int, List<int>)> twoCopies() async {
+        final goa = await reel('Goa');
+        final ids = await clipsIn(goa, [1, 2, 3]);
+        await sessions.startSession(goa, EditorApp.vn, 'Goa');
+        await recordCopy(goa, ids[0], 501, nameOf(1));
+        await recordCopy(goa, ids[1], 502, nameOf(2));
+        await recordCopy(goa, ids[2], 503, nameOf(3));
+        editors.existing = {501, 502, 503};
+        return (goa, ids);
+      }
+
+      test('remove or move: the refused copy is let go (its row goes, the '
+          'file stays), the others are deleted and counted', () async {
+        final (goa, ids) = await twoCopies();
+        editors.deleteReport = const DeleteReport(
+          deleted: {501},
+          gone: {503},
+          refused: {502},
+        );
+
+        final count = await service.beforeClipsLeaveReel(goa, ids.toSet());
+
+        expect(count, 2);
+        expect(await copiesOf(goa), isEmpty);
+        expect(await sessions.sessionOf(goa), isNotNull);
+      });
+
+      test('remove or move: only refused copies is no failure', () async {
+        final (goa, ids) = await twoCopies();
+        editors.deleteReport = const DeleteReport(refused: {501});
+
+        expect(await service.beforeClipsLeaveReel(goa, {ids[0]}), 0);
+        expect(await copyIdsOf(goa), {502, 503});
+      });
+
+      test('remove or move: a real failure still blocks, the failed row '
+          'stays and the deleted one goes', () async {
+        final (goa, ids) = await twoCopies();
+        editors.deleteReport = const DeleteReport(
+          deleted: {501},
+          refused: {502},
+          failed: {503},
+        );
+
+        await expectLater(
+          service.beforeClipsLeaveReel(goa, ids.toSet()),
+          throwsA(isA<CopiesNotDeleted>()),
+        );
+        expect(await copyIdsOf(goa), {502, 503});
+      });
+
+      test('remove or move: a bridge that throws still blocks', () async {
+        final (goa, ids) = await twoCopies();
+        editors.failNext('deleteCopies');
+
+        await expectLater(
+          service.beforeClipsLeaveReel(goa, ids.toSet()),
+          throwsA(isA<CopiesNotDeleted>()),
+        );
+        expect(await copyIdsOf(goa), {501, 502, 503});
+      });
+
+      test('Delete reel: a refused copy is let go, the session ends and '
+          'the file shows up on the storage screen', () async {
+        final (goa, _) = await twoCopies();
+        editors
+          ..deleteReport = const DeleteReport(
+            deleted: {501, 503},
+            refused: {502},
+          )
+          ..files = [
+            CopyFolderFile(
+              mediaStoreId: 502,
+              folderName: 'Goa',
+              fileName: nameOf(2),
+              sizeBytes: 100,
+              ownedByTakeTray: true,
+            ),
+          ];
+
+        await service.beforeReelDelete(goa);
+
+        expect(await sessions.editState(goa), isNull);
+        final overview = await service.storage();
+        expect(overview.orphans.single.files.single.mediaStoreId, 502);
+      });
+
+      test(
+        'Delete reel: a real failure still blocks and ends nothing',
+        () async {
+          final (goa, _) = await twoCopies();
+          editors.deleteReport = const DeleteReport(
+            deleted: {501},
+            refused: {502},
+            failed: {503},
+          );
+
+          await expectLater(
+            service.beforeReelDelete(goa),
+            throwsA(isA<CopiesNotDeleted>()),
+          );
+          expect(await sessions.sessionOf(goa), isNotNull);
+          expect(await copyIdsOf(goa), {502, 503});
+        },
+      );
     });
   });
 

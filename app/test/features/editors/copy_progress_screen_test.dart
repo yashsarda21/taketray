@@ -969,13 +969,15 @@ void main() {
       );
 
       expect(find.text('Copying stopped'), findsOneWidget);
+      // The engine stopped it while the app was open (the phone could not
+      // save a file): it never says TakeTray was closed (M-3).
       expect(
         find.text(
-          'TakeTray was closed before copying finished. 3 of 4 clips were '
-          'copied.',
+          "The phone couldn't save the copies. 3 of 4 clips were copied.",
         ),
         findsOneWidget,
       );
+      expect(find.textContaining('TakeTray was closed'), findsNothing);
       expect(buttonOf('Try again'), findsOneWidget);
       expect(buttonOf('Delete copies and stop'), findsOneWidget);
       await tapButton(tester, 'Try again');
@@ -1022,6 +1024,7 @@ void main() {
         ),
         findsOneWidget,
       );
+      expect(find.textContaining("couldn't save"), findsNothing);
 
       await tapButton(tester, 'Try again');
 
@@ -1419,7 +1422,7 @@ void main() {
     });
 
     testApp('after a restart: a recovered job that had everything copied '
-        'finishes through Try again to the ready screen', (tester) async {
+        'finishes straight to the ready screen (M-4)', (tester) async {
       final job = await firstJob(tester, count: 2);
       h.copy.job = null;
       h.copy.folders[job.folder] = [
@@ -1444,16 +1447,17 @@ void main() {
       await settleApp(tester);
       unawaited(routerOf(tester).push(Routes.copyProgressOf(job.jobId)));
       await settleApp(tester);
-      expect(find.text('Copying stopped'), findsOneWidget);
+      await settleApp(tester);
 
-      await tapButton(tester, 'Try again');
-
+      expect(find.text('Copying stopped'), findsNothing);
       expect(find.text('Ready for VN'), findsOneWidget);
       expect(h.copy.starts, hasLength(1), reason: 'no engine job was needed');
     });
 
     testApp('after a restart: the recovered job of an add job finishes to '
-        "the reel's page with the snack", (tester) async {
+        "the reel's page with the snack, with no Try again (M-4)", (
+      tester,
+    ) async {
       final job = await addJob(tester, count: 3);
       h.copy.job = null;
       h.copy.folders[job.folder] = [
@@ -1478,9 +1482,9 @@ void main() {
       await settleApp(tester);
       unawaited(routerOf(tester).push(Routes.copyProgressOf(job.jobId)));
       await settleApp(tester);
+      await settleApp(tester);
 
-      await tapButton(tester, 'Try again');
-
+      expect(find.text('Copying stopped'), findsNothing);
       expect(find.text(reelRouteMarker(job.reel.id)), findsOneWidget);
       expect(find.text('2 clips added to the VN folder'), findsOneWidget);
     });

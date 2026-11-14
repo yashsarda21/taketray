@@ -843,7 +843,7 @@ as DateTime,
 /// @nodoc
 mixin _$CopyJob {
 
- String get jobId; int get reelId; String get folderName; CopyState get state; int get total; int get done; int get bytesDone; int get bytesTotal; List<CopiedFile> get copied; List<int> get failedClipIds; List<CopiedFile> get undeleted;
+ String get jobId; int get reelId; String get folderName; CopyState get state; int get total; int get done; int get bytesDone; int get bytesTotal; List<CopiedFile> get copied; List<int> get failedClipIds; List<CopiedFile> get undeleted; bool get wasClosed;
 /// Create a copy of CopyJob
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -855,20 +855,20 @@ $CopyJobCopyWith<CopyJob> get copyWith => _$CopyJobCopyWithImpl<CopyJob>(this as
 @override
 bool operator ==(Object other) {
   final _this = this as CopyJob;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is CopyJob&&(identical(other.jobId, _this.jobId) || other.jobId == _this.jobId)&&(identical(other.reelId, _this.reelId) || other.reelId == _this.reelId)&&(identical(other.folderName, _this.folderName) || other.folderName == _this.folderName)&&(identical(other.state, _this.state) || other.state == _this.state)&&(identical(other.total, _this.total) || other.total == _this.total)&&(identical(other.done, _this.done) || other.done == _this.done)&&(identical(other.bytesDone, _this.bytesDone) || other.bytesDone == _this.bytesDone)&&(identical(other.bytesTotal, _this.bytesTotal) || other.bytesTotal == _this.bytesTotal)&&const DeepCollectionEquality().equals(other.copied, _this.copied)&&const DeepCollectionEquality().equals(other.failedClipIds, _this.failedClipIds)&&const DeepCollectionEquality().equals(other.undeleted, _this.undeleted));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is CopyJob&&(identical(other.jobId, _this.jobId) || other.jobId == _this.jobId)&&(identical(other.reelId, _this.reelId) || other.reelId == _this.reelId)&&(identical(other.folderName, _this.folderName) || other.folderName == _this.folderName)&&(identical(other.state, _this.state) || other.state == _this.state)&&(identical(other.total, _this.total) || other.total == _this.total)&&(identical(other.done, _this.done) || other.done == _this.done)&&(identical(other.bytesDone, _this.bytesDone) || other.bytesDone == _this.bytesDone)&&(identical(other.bytesTotal, _this.bytesTotal) || other.bytesTotal == _this.bytesTotal)&&const DeepCollectionEquality().equals(other.copied, _this.copied)&&const DeepCollectionEquality().equals(other.failedClipIds, _this.failedClipIds)&&const DeepCollectionEquality().equals(other.undeleted, _this.undeleted)&&(identical(other.wasClosed, _this.wasClosed) || other.wasClosed == _this.wasClosed));
 }
 
 
 @override
 int get hashCode {
   final _this = this as CopyJob;
-  return Object.hash(runtimeType,_this.jobId,_this.reelId,_this.folderName,_this.state,_this.total,_this.done,_this.bytesDone,_this.bytesTotal,const DeepCollectionEquality().hash(_this.copied),const DeepCollectionEquality().hash(_this.failedClipIds),const DeepCollectionEquality().hash(_this.undeleted));
+  return Object.hash(runtimeType,_this.jobId,_this.reelId,_this.folderName,_this.state,_this.total,_this.done,_this.bytesDone,_this.bytesTotal,const DeepCollectionEquality().hash(_this.copied),const DeepCollectionEquality().hash(_this.failedClipIds),const DeepCollectionEquality().hash(_this.undeleted),_this.wasClosed);
 }
 
 @override
 String toString() {
   final _this = this as CopyJob;
-  return 'CopyJob(jobId: ${_this.jobId}, reelId: ${_this.reelId}, folderName: ${_this.folderName}, state: ${_this.state}, total: ${_this.total}, done: ${_this.done}, bytesDone: ${_this.bytesDone}, bytesTotal: ${_this.bytesTotal}, copied: ${_this.copied}, failedClipIds: ${_this.failedClipIds}, undeleted: ${_this.undeleted})';
+  return 'CopyJob(jobId: ${_this.jobId}, reelId: ${_this.reelId}, folderName: ${_this.folderName}, state: ${_this.state}, total: ${_this.total}, done: ${_this.done}, bytesDone: ${_this.bytesDone}, bytesTotal: ${_this.bytesTotal}, copied: ${_this.copied}, failedClipIds: ${_this.failedClipIds}, undeleted: ${_this.undeleted}, wasClosed: ${_this.wasClosed})';
 }
 
 
@@ -879,7 +879,7 @@ abstract mixin class $CopyJobCopyWith<$Res>  {
   factory $CopyJobCopyWith(CopyJob value, $Res Function(CopyJob) _then) = _$CopyJobCopyWithImpl;
 @useResult
 $Res call({
- String jobId, int reelId, String folderName, CopyState state, int total, int done, int bytesDone, int bytesTotal, List<CopiedFile> copied, List<int> failedClipIds, List<CopiedFile> undeleted
+ String jobId, int reelId, String folderName, CopyState state, int total, int done, int bytesDone, int bytesTotal, List<CopiedFile> copied, List<int> failedClipIds, List<CopiedFile> undeleted, bool wasClosed
 });
 
 
@@ -896,7 +896,7 @@ class _$CopyJobCopyWithImpl<$Res>
 
 /// Create a copy of CopyJob
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? jobId = null,Object? reelId = null,Object? folderName = null,Object? state = null,Object? total = null,Object? done = null,Object? bytesDone = null,Object? bytesTotal = null,Object? copied = null,Object? failedClipIds = null,Object? undeleted = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? jobId = null,Object? reelId = null,Object? folderName = null,Object? state = null,Object? total = null,Object? done = null,Object? bytesDone = null,Object? bytesTotal = null,Object? copied = null,Object? failedClipIds = null,Object? undeleted = null,Object? wasClosed = null,}) {
   return _then(CopyJob(
 jobId: null == jobId ? _self.jobId : jobId // ignore: cast_nullable_to_non_nullable
 as String,reelId: null == reelId ? _self.reelId : reelId // ignore: cast_nullable_to_non_nullable
@@ -909,7 +909,8 @@ as int,bytesTotal: null == bytesTotal ? _self.bytesTotal : bytesTotal // ignore:
 as int,copied: null == copied ? _self.copied : copied // ignore: cast_nullable_to_non_nullable
 as List<CopiedFile>,failedClipIds: null == failedClipIds ? _self.failedClipIds : failedClipIds // ignore: cast_nullable_to_non_nullable
 as List<int>,undeleted: null == undeleted ? _self.undeleted : undeleted // ignore: cast_nullable_to_non_nullable
-as List<CopiedFile>,
+as List<CopiedFile>,wasClosed: null == wasClosed ? _self.wasClosed : wasClosed // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -994,10 +995,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted,  bool wasClosed)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _CopyJob() when $default != null:
-return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted);case _:
+return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted,_that.wasClosed);case _:
   return orElse();
 
 }
@@ -1015,10 +1016,10 @@ return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.tota
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted,  bool wasClosed)  $default,) {final _that = this;
 switch (_that) {
 case _CopyJob():
-return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted);case _:
+return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted,_that.wasClosed);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1035,10 +1036,10 @@ return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.tota
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String jobId,  int reelId,  String folderName,  CopyState state,  int total,  int done,  int bytesDone,  int bytesTotal,  List<CopiedFile> copied,  List<int> failedClipIds,  List<CopiedFile> undeleted,  bool wasClosed)?  $default,) {final _that = this;
 switch (_that) {
 case _CopyJob() when $default != null:
-return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted);case _:
+return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.total,_that.done,_that.bytesDone,_that.bytesTotal,_that.copied,_that.failedClipIds,_that.undeleted,_that.wasClosed);case _:
   return null;
 
 }
@@ -1050,7 +1051,7 @@ return $default(_that.jobId,_that.reelId,_that.folderName,_that.state,_that.tota
 
 
 class _CopyJob implements CopyJob {
-  const _CopyJob({required this.jobId, required this.reelId, required this.folderName, required this.state, required this.total, required this.done, required this.bytesDone, required this.bytesTotal, required  List<CopiedFile> copied, required  List<int> failedClipIds, required  List<CopiedFile> undeleted}): _copied = copied,_failedClipIds = failedClipIds,_undeleted = undeleted;
+  const _CopyJob({required this.jobId, required this.reelId, required this.folderName, required this.state, required this.total, required this.done, required this.bytesDone, required this.bytesTotal, required  List<CopiedFile> copied, required  List<int> failedClipIds, required  List<CopiedFile> undeleted, this.wasClosed = false}): _copied = copied,_failedClipIds = failedClipIds,_undeleted = undeleted;
   
 
 @override final  String jobId;
@@ -1082,6 +1083,7 @@ class _CopyJob implements CopyJob {
   return EqualUnmodifiableListView(_undeleted);
 }
 
+@override@JsonKey() final  bool wasClosed;
 
 /// Create a copy of CopyJob
 /// with the given fields replaced by the non-null parameter values.
@@ -1093,18 +1095,18 @@ _$CopyJobCopyWith<_CopyJob> get copyWith => __$CopyJobCopyWithImpl<_CopyJob>(thi
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CopyJob&&(identical(other.jobId, jobId) || other.jobId == jobId)&&(identical(other.reelId, reelId) || other.reelId == reelId)&&(identical(other.folderName, folderName) || other.folderName == folderName)&&(identical(other.state, state) || other.state == state)&&(identical(other.total, total) || other.total == total)&&(identical(other.done, done) || other.done == done)&&(identical(other.bytesDone, bytesDone) || other.bytesDone == bytesDone)&&(identical(other.bytesTotal, bytesTotal) || other.bytesTotal == bytesTotal)&&const DeepCollectionEquality().equals(other.copied, _copied)&&const DeepCollectionEquality().equals(other.failedClipIds, _failedClipIds)&&const DeepCollectionEquality().equals(other.undeleted, _undeleted));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _CopyJob&&(identical(other.jobId, jobId) || other.jobId == jobId)&&(identical(other.reelId, reelId) || other.reelId == reelId)&&(identical(other.folderName, folderName) || other.folderName == folderName)&&(identical(other.state, state) || other.state == state)&&(identical(other.total, total) || other.total == total)&&(identical(other.done, done) || other.done == done)&&(identical(other.bytesDone, bytesDone) || other.bytesDone == bytesDone)&&(identical(other.bytesTotal, bytesTotal) || other.bytesTotal == bytesTotal)&&const DeepCollectionEquality().equals(other.copied, _copied)&&const DeepCollectionEquality().equals(other.failedClipIds, _failedClipIds)&&const DeepCollectionEquality().equals(other.undeleted, _undeleted)&&(identical(other.wasClosed, wasClosed) || other.wasClosed == wasClosed));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,jobId,reelId,folderName,state,total,done,bytesDone,bytesTotal,const DeepCollectionEquality().hash(_copied),const DeepCollectionEquality().hash(_failedClipIds),const DeepCollectionEquality().hash(_undeleted));
+    return Object.hash(runtimeType,jobId,reelId,folderName,state,total,done,bytesDone,bytesTotal,const DeepCollectionEquality().hash(_copied),const DeepCollectionEquality().hash(_failedClipIds),const DeepCollectionEquality().hash(_undeleted),wasClosed);
 }
 
 @override
 String toString() {
-    return 'CopyJob(jobId: $jobId, reelId: $reelId, folderName: $folderName, state: $state, total: $total, done: $done, bytesDone: $bytesDone, bytesTotal: $bytesTotal, copied: $copied, failedClipIds: $failedClipIds, undeleted: $undeleted)';
+    return 'CopyJob(jobId: $jobId, reelId: $reelId, folderName: $folderName, state: $state, total: $total, done: $done, bytesDone: $bytesDone, bytesTotal: $bytesTotal, copied: $copied, failedClipIds: $failedClipIds, undeleted: $undeleted, wasClosed: $wasClosed)';
 }
 
 
@@ -1115,7 +1117,7 @@ abstract mixin class _$CopyJobCopyWith<$Res> implements $CopyJobCopyWith<$Res> {
   factory _$CopyJobCopyWith(_CopyJob value, $Res Function(_CopyJob) _then) = __$CopyJobCopyWithImpl;
 @override @useResult
 $Res call({
- String jobId, int reelId, String folderName, CopyState state, int total, int done, int bytesDone, int bytesTotal, List<CopiedFile> copied, List<int> failedClipIds, List<CopiedFile> undeleted
+ String jobId, int reelId, String folderName, CopyState state, int total, int done, int bytesDone, int bytesTotal, List<CopiedFile> copied, List<int> failedClipIds, List<CopiedFile> undeleted, bool wasClosed
 });
 
 
@@ -1132,7 +1134,7 @@ class __$CopyJobCopyWithImpl<$Res>
 
 /// Create a copy of CopyJob
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? jobId = null,Object? reelId = null,Object? folderName = null,Object? state = null,Object? total = null,Object? done = null,Object? bytesDone = null,Object? bytesTotal = null,Object? copied = null,Object? failedClipIds = null,Object? undeleted = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? jobId = null,Object? reelId = null,Object? folderName = null,Object? state = null,Object? total = null,Object? done = null,Object? bytesDone = null,Object? bytesTotal = null,Object? copied = null,Object? failedClipIds = null,Object? undeleted = null,Object? wasClosed = null,}) {
   return _then(_CopyJob(
 jobId: null == jobId ? _self.jobId : jobId // ignore: cast_nullable_to_non_nullable
 as String,reelId: null == reelId ? _self.reelId : reelId // ignore: cast_nullable_to_non_nullable
@@ -1145,7 +1147,8 @@ as int,bytesTotal: null == bytesTotal ? _self.bytesTotal : bytesTotal // ignore:
 as int,copied: null == copied ? _self._copied : copied // ignore: cast_nullable_to_non_nullable
 as List<CopiedFile>,failedClipIds: null == failedClipIds ? _self._failedClipIds : failedClipIds // ignore: cast_nullable_to_non_nullable
 as List<int>,undeleted: null == undeleted ? _self._undeleted : undeleted // ignore: cast_nullable_to_non_nullable
-as List<CopiedFile>,
+as List<CopiedFile>,wasClosed: null == wasClosed ? _self.wasClosed : wasClosed // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

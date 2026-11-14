@@ -84,7 +84,7 @@ final class CopySpaceControllerProvider
 }
 
 String _$copySpaceControllerHash() =>
-    r'9d931b9cad0a35e0afe3084fd90592e243ae40fa';
+    r'e44985303b5706062948f13e2d51e8a17bc57b2a';
 
 /// The VN space check (D-127): what copying [CopySpaceArgs.clipIds] would take
 /// (`EditSessionService.planCopy`) and the start of the copy.

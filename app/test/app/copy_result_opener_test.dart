@@ -97,6 +97,28 @@ void main() {
     expect(h.copy.folders[job.folder]!.where((r) => r.pending), isEmpty);
   });
 
+  testApp('after a restart where every clip had been copied: the job '
+      'finishes into the ready screen, not "Copying stopped" (M-4)', (
+    tester,
+  ) async {
+    final job = await startedJob(tester);
+    h.copy.job = null;
+    h.copy.folders[job.folder] = [
+      for (var i = 0; i < 4; i++)
+        FolderRow(
+          mediaStoreId: 700 + i,
+          fileName: job.request.items[i].fileName,
+          sizeBytes: 100 * _mb,
+          pending: false,
+        ),
+    ];
+
+    await startApp(tester);
+
+    expect(find.text('Copying stopped'), findsNothing);
+    expect(find.text('Ready for VN'), findsOneWidget);
+  });
+
   testApp('a clean result waiting at the start finishes into the ready '
       'screen', (tester) async {
     final job = await startedJob(tester);

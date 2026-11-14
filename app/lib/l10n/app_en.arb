@@ -2653,11 +2653,23 @@
   },
   "copyInterruptedTitle": "Copying stopped",
   "@copyInterruptedTitle": {
-    "description": "Headline when TakeTray was closed (by the phone, or by the user) in the middle of copying."
+    "description": "Headline when copying stopped in the middle: TakeTray was closed, or the phone could not save a file."
   },
   "copyInterruptedBody": "TakeTray was closed before copying finished. {done} of {total} clips were copied.",
   "@copyInterruptedBody": {
-    "description": "Line under the Copying stopped headline.",
+    "description": "Line under the Copying stopped headline when TakeTray was closed in the middle of copying (found after a restart).",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyStorageErrorBody": "The phone couldn't save the copies. {done} of {total} clips were copied.",
+  "@copyStorageErrorBody": {
+    "description": "Line under the Copying stopped headline when the copy stopped while TakeTray was open (the phone could not save a file).",
     "placeholders": {
       "done": {
         "type": "int"

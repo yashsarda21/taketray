@@ -99,6 +99,10 @@ void main() {
       'TakeTray was closed before copying finished. '
       '7 of 12 clips were copied.',
     );
+    expect(
+      l10n.copyStorageErrorBody(7, 12),
+      "The phone couldn't save the copies. 7 of 12 clips were copied.",
+    );
     expect(l10n.copyFailedTitle(1), "1 clip couldn't be copied");
     expect(l10n.copyFailedTitle(3), "3 clips couldn't be copied");
     expect(

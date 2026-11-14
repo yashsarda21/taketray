@@ -687,6 +687,11 @@ class EditSessionService {
       await _apply(answer);
       await _clearEngine(jobId);
     } else if (mine) {
+      // After a restart the recovery may not have run yet (or failed): run
+      // it first, as Done editing does, so the finished files the plan names
+      // are recorded and deleted and the half-written rows are swept, never
+      // left as orphans (M-2). A recovery that fails throws and keeps the plan.
+      await _recover(plan);
       await _cancelRecovered(plan);
     }
     if (mine) {
@@ -1137,6 +1142,7 @@ class EditSessionService {
           reelId,
           state.session.folderName,
           copies,
+          dropRefused: true,
         );
         if (count > 0) {
           _log.info('Reel $reelId: deleted $count copies of leaving clips');
@@ -1157,7 +1163,12 @@ class EditSessionService {
     }
     final state = await _sessions.editState(reelId);
     if (state == null) return;
-    await _deleteCopies(reelId, state.session.folderName, state.copies);
+    await _deleteCopies(
+      reelId,
+      state.session.folderName,
+      state.copies,
+      dropRefused: true,
+    );
     await _sessions.endSession(reelId);
     _log.info('Reel $reelId: session ended before its delete');
   });
@@ -1318,7 +1329,12 @@ class EditSessionService {
       return null;
     }
     await _keep(plan.reelId, plan.folderName, found);
-    final job = await _recordedJob(plan, CopyState.interrupted);
+    final recorded = await _recordedJob(plan, CopyState.interrupted);
+    // Every item has its copy: the job did finish, only the finish never
+    // reached Dart (M-4). It is shown as finished, so the normal finish runs.
+    final job = recorded.total > 0 && recorded.done >= recorded.total
+        ? recorded.copyWith(state: CopyState.finished)
+        : recorded.copyWith(wasClosed: true);
     _log.info(
       'Recovered copy job ${plan.jobId}: $swept pending rows removed, '
       '${found.length} finished rows found, ${job.done} of ${job.total} '
