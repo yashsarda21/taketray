@@ -11,6 +11,11 @@ abstract final class Routes {
   /// returns to Settings.
   static const notificationsHelp = '/settings/notifications-help';
 
+  /// The VN copies storage screen (Phase 8, D-130), a child of Settings, full
+  /// screen above the tab shell like the help screen. Back returns to
+  /// Settings.
+  static const copiesStorage = '/settings/vn-copies';
+
   /// The Skipped clips (D-98, D-99), inside the To tag tab
   /// so the nav pill stays; Back returns to To tag.
   static const skipped = '/to-tag/skipped';

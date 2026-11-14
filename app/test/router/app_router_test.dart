@@ -13,6 +13,7 @@ import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/copies_storage_screen.dart';
 import 'package:taketray/features/editors/views/copy_progress_screen.dart';
 import 'package:taketray/features/editors/views/copy_ready_screen.dart';
 import 'package:taketray/features/editors/views/copy_space_screen.dart';
@@ -649,6 +650,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(NotificationsHelpScreen), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  testApp('the VN copies screen is a full-screen page above Settings', (
+    tester,
+  ) async {
+    expect(Routes.copiesStorage, '/settings/vn-copies');
+    final harness = VmHarness();
+    harness.editors.allow({'filesInCopyFolders'});
+    final (_, router) = await _pumpApp(tester, harness: harness);
+    router.go(Routes.settings);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Storage used by VN copies'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CopiesStorageScreen), findsOneWidget);
+    expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+
+    await tester.tap(find.byType(TtIconButton));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CopiesStorageScreen), findsNothing);
+    expect(find.byType(SettingsScreen), findsOneWidget);
+    expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
+  });
+
+  testApp('the system Back key leaves the VN copies screen for Settings', (
+    tester,
+  ) async {
+    final harness = VmHarness();
+    harness.editors.allow({'filesInCopyFolders'});
+    final (_, router) = await _pumpApp(tester, harness: harness);
+    router.go(Routes.copiesStorage);
+    await tester.pumpAndSettle();
+    expect(find.byType(CopiesStorageScreen), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CopiesStorageScreen), findsNothing);
     expect(find.byType(SettingsScreen), findsOneWidget);
   });
 

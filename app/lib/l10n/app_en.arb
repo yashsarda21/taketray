@@ -3352,5 +3352,137 @@
         "type": "String"
       }
     }
+  },
+  "settingsGroupClips": "Clips",
+  "@settingsGroupClips": {
+    "description": "Heading of the Clips group in Settings (until Phase 10 builds the rest around it)."
+  },
+  "settingsCopiesTitle": "Storage used by VN copies",
+  "@settingsCopiesTitle": {
+    "description": "Title of the Settings row that opens the VN copies screen."
+  },
+  "settingsCopiesSummary": "{size} in {count, plural, one{1 reel} other{{count} reels}}",
+  "@settingsCopiesSummary": {
+    "description": "Second line of the VN copies row in Settings: how much the copies take and in how many reels, such as \"1.8 GB in 3 reels\".",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsCopiesNone": "None",
+  "@settingsCopiesNone": {
+    "description": "Second line of the VN copies row in Settings when no reel has copies."
+  },
+  "copiesStorageTitle": "VN copies",
+  "@copiesStorageTitle": {
+    "description": "Title of the screen that lists the copies TakeTray made for editing."
+  },
+  "copiesStorageUsed": "used by VN copies in {count, plural, one{1 reel} other{{count} reels}}",
+  "@copiesStorageUsed": {
+    "description": "Line under the total size on the VN copies screen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copiesStorageRow": "{count, plural, one{1 copy} other{{count} copies}} · {size} · since {date}",
+  "@copiesStorageRow": {
+    "description": "Second line of a reel's row on the VN copies screen (VN): copies, their size and the day the editing session started.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageRowEditor": "{count, plural, one{1 copy} other{{count} copies}} for {editor} · {size} · since {date}",
+  "@copiesStorageRowEditor": {
+    "description": "Second line of a reel's row on the VN copies screen for CapCut or Instagram Edits: copies, the editor, their size and the day the session started.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageDelete": "Delete",
+  "@copiesStorageDelete": {
+    "description": "Button on a row of the VN copies screen that deletes those copies or files."
+  },
+  "copiesStorageDeleteSemantics": "Delete the copies of {name}",
+  "@copiesStorageDeleteSemantics": {
+    "description": "What a screen reader says for the Delete button of a reel's row.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageNote": "Copies are only for VN. Deleting them never touches your original clips.",
+  "@copiesStorageNote": {
+    "description": "Reassurance box under the reels on the VN copies screen."
+  },
+  "copiesStorageEmptyTitle": "No VN copies",
+  "@copiesStorageEmptyTitle": {
+    "description": "Title of the VN copies screen when there are no copies."
+  },
+  "copiesStorageEmptyBody": "When you edit a reel in VN, its temporary copies show up here.",
+  "@copiesStorageEmptyBody": {
+    "description": "Line under the title of the empty VN copies screen."
+  },
+  "copiesStorageOrphansLabel": "Not linked to a reel",
+  "@copiesStorageOrphansLabel": {
+    "description": "Heading of the group of files in the copy folders that no reel records."
+  },
+  "copiesStorageOrphansNote": "Left from an earlier install or a backup import. Android asks before deleting them.",
+  "@copiesStorageOrphansNote": {
+    "description": "Line under the \"Not linked to a reel\" heading."
+  },
+  "copiesStorageOrphanRow": "{count, plural, one{1 file} other{{count} files}} · {size}",
+  "@copiesStorageOrphanRow": {
+    "description": "Second line of a folder row in the \"Not linked to a reel\" group: its files and their size.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageOrphanDeleteSemantics": "Delete the files in {folder}",
+  "@copiesStorageOrphanDeleteSemantics": {
+    "description": "What a screen reader says for the Delete button of a folder in the \"Not linked to a reel\" group.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageNeedsAccess": "With full video access, TakeTray can also find copies left from an earlier install.",
+  "@copiesStorageNeedsAccess": {
+    "description": "Callout on the VN copies screen when TakeTray does not have full video access."
+  },
+  "copiesStorageLoadFailed": "Couldn't read the VN copies",
+  "@copiesStorageLoadFailed": {
+    "description": "Title shown when the VN copies screen could not read the copies."
   }
 }

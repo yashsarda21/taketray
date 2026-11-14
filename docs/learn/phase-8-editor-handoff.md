@@ -563,7 +563,36 @@ They end with `All tests passed!`. Now open `lib/features/editors/view_models/ed
 
 ## 13. The VN copies storage screen
 
-To be written in Task 13 (decision D-130).
+**What we built:** a screen that shows what the editing copies take on the phone, and lets the user take the space back. Settings has a new **Clips** group with one row, "Storage used by VN copies", that says "1.8 GB in 3 reels" (or "None") and opens the screen. The screen shows the total, then one row per reel that has copies: its cover, its name and "3 copies · 900 MB · since Oct 5" ("3 copies for CapCut · …" for the other editors), with a red **Delete**. Under the rows, a green note says deleting copies never touches the original clips. If some files in the copy folders belong to no reel (left from an earlier install, a backup import, or files that were changed outside TakeTray), a group "Not linked to a reel" lists them by folder, each with its own **Delete**. Without full video access a callout says TakeTray cannot find the files left from an earlier install.
+
+**Why TakeTray needs it:** copies are big (a 4K clip is hundreds of MB) and live in shared storage, where the user can see them in the gallery. The reminder (section 7) and Done editing (section 11) are the normal ways to delete them, but a user who forgot, or who reinstalled the app, needs one place that shows what is left and what it costs. After a reinstall TakeTray has no record of the old copies at all, and Android does not let one install delete another install's files without asking the user. That is why the files with no reel use Android's own consent dialog.
+
+**Key ideas:**
+
+- **Delete is Done editing.** A reel's **Delete** opens exactly the question the reel page asks ("Have you exported your video?") by calling the same function with one switch turned off:
+
+  ```dart
+  showDoneEditingDialog(context, ref, reelId, suggestPublished: false);
+  ```
+
+  The switch is the "Mark Goa as Published?" offer that follows on the reel's page. It makes sense there, where the user has just finished a reel, and not here. Nothing else is copied: the words, the guard and the failure message are the dialog's, so they can never drift apart.
+- **The list follows the database.** The controller watches the summaries stream and reads `storage()` again whenever it changes. Nobody tells the screen "that row is gone": Done editing ends the session, the stream fires, the screen reads again. The Settings row watches the same stream, so its summary is right the moment the user comes back.
+- **A row only when it holds something.** A CapCut session that only sent the originals has no copies, so it takes no space and has no row. The controller keeps the order itself (newest first) instead of trusting the query, so the order is a rule of the screen and is tested without a database.
+- **Covers are joined by reel id.** The reel summaries already know each reel's cover clip. The controller looks it up by the row's reel id and builds the same thumbnail Home uses, so the cache holds one file per clip. A reel with no cover, or a stream that fails, shows the movie icon and not an error.
+- **Declined means nothing.** `deleteOrphans` returns the bytes freed, and 0 when the user said no to Android's dialog. The screen keeps the folder and says nothing: a "No" is an answer, not a failure. Only a bridge exception says "Something went wrong". A second tap while the dialog is open is ignored, per folder, so Android is asked once.
+- **Never a live copy's files.** While a copy runs, its finished files are not in the database yet, so they look like files with no reel. `storage()` leaves out the folder of a running job and of a saved plan, and a test keeps it that way, so **Delete** is never offered for a copy that is being made.
+
+**Where it lives:** `app/lib/features/editors/view_models/copies_storage_controller.dart`, `app/lib/features/editors/views/copies_storage_screen.dart`, `app/lib/features/settings/views/settings_screen.dart`, `app/lib/router/` (`Routes.copiesStorage`), `app/lib/l10n/app_en.arb`, and `EditSessionService.storage()` / `deleteOrphans` from section 6.
+
+**Try it yourself:** run the screen's tests, then let a "No" delete the row:
+
+```bash
+cd app && ../tool/flutter test test/features/editors/copies_storage_screen_test.dart
+```
+
+They end with `All tests passed!`. Now open `lib/features/editors/view_models/copies_storage_controller.dart` and change `if (freed > 0 && current != null && ref.mounted) {` to `if (current != null && ref.mounted) {`. Run it again: "declined: no snack and the row stays" fails, because a folder the user did not allow Android to delete would vanish from the screen while its files are still there. Put it back. For the other rule, open `lib/features/editors/views/copies_storage_screen.dart` and replace the body of `_deleteReel` with `ref.read(editSessionServiceProvider).doneEditing(reelId)`: "opens the Done editing question…" fails, because the copies would be deleted with no question at all.
+
+**Decisions:** D-130 (all of this section), with D-118 (R7), D-123 (the service), D-128 (Done editing) and D-129 (CapCut and Edits copies) as background.
 
 ## 14. On the S24
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
@@ -90,6 +91,11 @@ Future<void> _settings(
     overrides: <Override>[
       notificationAccessControllerProvider.overrideWith(
         () => FakeNotificationAccess(access),
+      ),
+      copiesSummaryProvider.overrideWith(
+        (ref) => Stream.value(
+          const CopiesSummary(bytes: 1800 * 1000 * 1000, reels: 3),
+        ),
       ),
     ],
     textScale: scale,

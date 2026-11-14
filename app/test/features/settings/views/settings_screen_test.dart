@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/editor_app.dart';
+import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -8,7 +13,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
 import '../../../support/pump_screen.dart';
+import '../../../support/reel_videos.dart';
+import '../../../support/test_app.dart';
 import '../../../support/view_model_fakes.dart';
+import '../../../support/vm_harness.dart';
+import '../../reels/edit_session_support.dart' hide settleApp;
 
 const _allowed = NotificationAccess(granted: true, canAsk: false, sdkInt: 34);
 const _askable = NotificationAccess(granted: false, canAsk: true, sdkInt: 34);
@@ -21,6 +30,7 @@ Future<FakeNotificationAccess> pump(
   bool loading = false,
   Brightness brightness = Brightness.light,
   double textScale = 1,
+  CopiesSummary? copies = const CopiesSummary(bytes: 0, reels: 0),
 }) async {
   final fake = FakeNotificationAccess(
     access,
@@ -32,11 +42,26 @@ Future<FakeNotificationAccess> pump(
     const SettingsScreen(),
     overrides: <Override>[
       notificationAccessControllerProvider.overrideWith(() => fake),
+      // Not read yet when null.
+      copiesSummaryProvider.overrideWith(
+        (ref) => copies == null
+            ? const Stream<CopiesSummary>.empty()
+            : Stream.value(copies),
+      ),
     ],
     brightness: brightness,
     textScale: textScale,
   );
   return fake;
+}
+
+/// Lets the database answer a few times, then redraws.
+Future<void> settleApp(WidgetTester tester) async {
+  for (var i = 0; i < 3; i++) {
+    await tester.runAsync(settle);
+    await tester.pump();
+  }
+  await tester.pumpAndSettle();
 }
 
 Finder groupLabel(String text) => find.byWidgetPredicate(
@@ -67,7 +92,13 @@ void main() {
         rowTitled('Notifications not arriving?'),
       );
       expect(row.onTap, isNotNull);
-      expect(find.byIcon(Symbols.chevron_right_rounded), findsOneWidget);
+      expect(
+        find.descendant(
+          of: rowTitled('Notifications not arriving?'),
+          matching: find.byIcon(Symbols.chevron_right_rounded),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the help row opens the help screen', (tester) async {
@@ -200,6 +231,156 @@ void main() {
       expect(find.bySemanticsLabel('Allow notifications'), findsOneWidget);
       expect(find.bySemanticsLabel(RegExp('Notifications')), findsWidgets);
       handle.dispose();
+    });
+  });
+
+  group('the VN copies row (Phase 8, D-130)', () {
+    testWidgets('an interim Clips group above Help holds one row with a '
+        'chevron', (tester) async {
+      await pump(tester, _allowed);
+
+      expect(groupLabel('Clips'), findsOneWidget);
+      expect(find.text('Storage used by VN copies'), findsOneWidget);
+      final row = tester.widget<TtListRow>(
+        rowTitled('Storage used by VN copies'),
+      );
+      expect(row.onTap, isNotNull);
+      expect(
+        find.descendant(
+          of: rowTitled('Storage used by VN copies'),
+          matching: find.byIcon(Symbols.chevron_right_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getTopLeft(groupLabel('Clips')).dy,
+        lessThan(tester.getTopLeft(groupLabel('Help')).dy),
+      );
+      expect(
+        tester.getTopLeft(groupLabel('Help')).dy,
+        lessThan(tester.getTopLeft(groupLabel('Permissions')).dy),
+      );
+    });
+
+    for (final (summary, text) in [
+      (const CopiesSummary(bytes: 0, reels: 0), 'None'),
+      (
+        const CopiesSummary(bytes: 900 * 1000 * 1000, reels: 1),
+        '900 MB in 1 reel',
+      ),
+      (
+        const CopiesSummary(bytes: 1800 * 1000 * 1000, reels: 3),
+        '1.8 GB in 3 reels',
+      ),
+    ]) {
+      testWidgets('the summary is "$text"', (tester) async {
+        await pump(tester, _allowed, copies: summary);
+
+        expect(
+          tester
+              .widget<TtListRow>(rowTitled('Storage used by VN copies'))
+              .subtitle
+              ?.replaceAll('\u00a0', ' '),
+          text,
+        );
+      });
+    }
+
+    testWidgets('before the first read the row has no summary yet', (
+      tester,
+    ) async {
+      await pump(tester, _allowed, copies: null);
+
+      expect(
+        tester
+            .widget<TtListRow>(rowTitled('Storage used by VN copies'))
+            .subtitle,
+        isNull,
+      );
+    });
+
+    testWidgets('the row opens the VN copies screen', (tester) async {
+      await pump(tester, _allowed);
+
+      await tester.tap(find.text('Storage used by VN copies'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(copiesStorageRouteMarker), findsOneWidget);
+    });
+
+    testApp('with the real database the summary counts the reels that hold '
+        'copies, and follows changes', (tester) async {
+      final h = reelHarness();
+      final goa = await real(
+        tester,
+        () => h.container.read(reelsRepositoryProvider).create('Goa'),
+      );
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]),
+      );
+      // A session that only sent originals holds nothing.
+      final other = await real(
+        tester,
+        () => h.container.read(reelsRepositoryProvider).create('Cut'),
+      );
+      await real(
+        tester,
+        () => h.container
+            .read(editSessionsRepositoryProvider)
+            .startSession(other.id, EditorApp.capcut, 'Cut'),
+      );
+      await pumpScreen(
+        tester,
+        const SettingsScreen(),
+        overrides: [
+          ...h.appOverrides,
+          notificationAccessControllerProvider.overrideWith(
+            () => FakeNotificationAccess(_allowed),
+          ),
+        ],
+        settle: false,
+      );
+      await settleApp(tester);
+      expect(
+        tester
+            .widget<TtListRow>(rowTitled('Storage used by VN copies'))
+            .subtitle,
+        'None',
+      );
+
+      // Two writes, the screen reading in between: a write that starts
+      // while its read runs waits for the test's pump (the database answers
+      // the fake clock's zone only then).
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      final started = await real(
+        tester,
+        () => sessions.startSession(goa.id, EditorApp.vn, 'Goa'),
+      );
+      await settleApp(tester);
+      await real(
+        tester,
+        () => sessions.recordCopies([
+          for (final (i, id) in ids.indexed)
+            EditCopy(
+              reelId: goa.id,
+              clipId: id,
+              copyMediaStoreId: 500 + i,
+              fileName: 'copy_$i.mp4',
+              sizeBytes: 300 * 1000 * 1000,
+              copiedAt: started.createdAt,
+            ),
+        ]),
+      );
+      await settleApp(tester);
+
+      expect(
+        tester
+            .widget<TtListRow>(rowTitled('Storage used by VN copies'))
+            .subtitle
+            ?.replaceAll('\u00a0', ' '),
+        '600 MB in 1 reel',
+      );
     });
   });
 

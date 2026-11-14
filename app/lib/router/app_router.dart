@@ -6,6 +6,7 @@ import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
+import 'package:taketray/features/editors/views/copies_storage_screen.dart';
 import 'package:taketray/features/editors/views/copy_progress_screen.dart';
 import 'package:taketray/features/editors/views/copy_ready_screen.dart';
 import 'package:taketray/features/editors/views/copy_space_screen.dart';
@@ -168,6 +169,13 @@ GoRouter appRouter(Ref ref) {
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) =>
                         const NotificationsHelpScreen(),
+                  ),
+                  GoRoute(
+                    path: 'vn-copies',
+                    // Full screen above the shell, like the help screen
+                    // (D-130); Back returns to Settings.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const CopiesStorageScreen(),
                   ),
                 ],
               ),
