@@ -259,8 +259,11 @@ Future<void> _notInstalled(PatrolIntegrationTester $, _Env env) async {
   );
   expect(_count(find.text(_l10n.editorGreyedNote)), 1, reason: 'the note');
 
-  // A tap on the greyed row sends nothing and opens nothing.
-  await $(capcut).tap();
+  // A tap on the greyed row sends nothing and opens nothing. The off row has
+  // no tap handler, so Patrol's own tap (which waits for a hit-testable
+  // widget) cannot press it: tap its place through the tester.
+  await $.tester.tap(capcut, warnIfMissed: false);
+  await $.tester.pump();
   await pumpFor($, const Duration(seconds: 2));
   expect(
     (await env.editors.takeRecordedIntents()).length,
