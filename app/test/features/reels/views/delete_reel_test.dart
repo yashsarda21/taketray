@@ -373,6 +373,51 @@ void main() {
       expect(find.text(reelsRouteMarker), findsOneWidget);
     });
 
+    testApp('copies that cannot be deleted, then the dialog taken away from '
+        'outside: the reel stays and the copies line is told as a snack '
+        '(T11-m6)', (tester) async {
+      await editing(tester, EditorApp.vn, copies: 1);
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      await pumpHost(tester);
+      await openDialog(tester);
+      await confirm(tester);
+      expect(find.byType(TtDialog<bool>), findsOneWidget);
+
+      final inside = tester.element(find.byType(TtDialog<bool>));
+      Navigator.of(
+        inside,
+        rootNavigator: true,
+      ).removeRoute(ModalRoute.of(inside)!);
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
+      expect(find.text(reelsRouteMarker), findsNothing);
+      expect(await allReels(tester), hasLength(1));
+    });
+
+    testApp('copies that cannot be deleted, then Cancel: no snack (the user '
+        'chose) (T11-m6)', (tester) async {
+      await editing(tester, EditorApp.vn, copies: 1);
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      await pumpHost(tester);
+      await openDialog(tester);
+      await confirm(tester);
+
+      await tester.tap(find.text('Cancel'));
+      await settleApp(tester);
+
+      expect(find.byType(TtDialog<bool>), findsNothing);
+      expect(find.byType(SnackBar), findsNothing);
+      expect(await allReels(tester), hasLength(1));
+    });
+
     testApp('while the delete runs, Cancel and Back wait', (tester) async {
       reels.hold = Completer<void>();
       await pumpHost(tester);
@@ -390,6 +435,56 @@ void main() {
       await settleApp(tester);
       expect(find.byType(TtDialog<bool>), findsNothing);
       expect(find.text('Goa deleted'), findsOneWidget);
+    });
+
+    testApp('the dialog taken away from outside while the delete runs: the '
+        'reel is deleted, so the snack and Reels still come (T11-m6)', (
+      tester,
+    ) async {
+      reels.hold = Completer<void>();
+      await pumpHost(tester);
+      await openDialog(tester);
+      await tester.tap(find.text('Delete reel'));
+      await tester.pump();
+
+      final inside = tester.element(find.byType(TtDialog<bool>));
+      Navigator.of(
+        inside,
+        rootNavigator: true,
+      ).removeRoute(ModalRoute.of(inside)!);
+      await tester.pump();
+      expect(find.byType(TtDialog<bool>), findsNothing);
+
+      reels.hold!.complete();
+      await settleApp(tester);
+
+      expect(await allReels(tester), isEmpty);
+      expect(find.text('Goa deleted'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+    });
+
+    testApp('the dialog taken away from outside while a delete that fails '
+        'runs: the failure snack still shows (T11-m6)', (tester) async {
+      reels.hold = Completer<void>();
+      reels.deleteFails = true;
+      await pumpHost(tester);
+      await openDialog(tester);
+      await tester.tap(find.text('Delete reel'));
+      await tester.pump();
+
+      final inside = tester.element(find.byType(TtDialog<bool>));
+      Navigator.of(
+        inside,
+        rootNavigator: true,
+      ).removeRoute(ModalRoute.of(inside)!);
+      await tester.pump();
+      reels.hold!.complete();
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(find.text('Goa deleted'), findsNothing);
+      expect(find.text(reelsRouteMarker), findsNothing);
     });
 
     testApp('the dialog with the VN line at 2x, dark, is accessible', (

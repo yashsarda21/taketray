@@ -75,8 +75,12 @@ Future<void> showDeleteReelDialog(BuildContext context, Reel reel) async {
       TtDialogAction(true, l10n.deleteReelConfirm, destructive: true),
     ],
   );
+  // A dialog taken away from outside (its route removed) completes before a
+  // delete that was running: wait for that delete, then act on its result
+  // (T11-m6).
+  await run.inFlight;
   final record = run.record;
-  if (confirmed == true && record != null) {
+  if (record != null) {
     // A reel that was already gone has nothing to undo, so nothing to say.
     if (!record.isEmpty) {
       snacks.showUndo(l10n.reelDeletedSnack(reel.name), record);
@@ -84,6 +88,8 @@ Future<void> showDeleteReelDialog(BuildContext context, Reel reel) async {
     router.go(Routes.reels);
   } else if (run.failed) {
     snacks.show(l10n.reelActionFailed, done: false);
+  } else if (confirmed == null && run.copiesFailed) {
+    snacks.show(l10n.copiesNotDeleted, done: false);
   }
 }
 
@@ -112,6 +118,13 @@ class _DeleteRun {
   final ReelActions actions;
   DeleteReelUndo? record;
   bool failed = false;
+
+  /// The last try failed because the copies could not be deleted.
+  bool copiesFailed = false;
+
+  /// The delete that is running, or null when none ran yet (it completes
+  /// whether or not the dialog is still there).
+  Future<void>? inFlight;
 }
 
 /// The dialog's text, and the hand on its buttons: a `PopScope` turns each
@@ -148,10 +161,14 @@ class _DeleteBodyState extends State<_DeleteBody> {
       _busy = true;
       _copiesFailed = false;
     });
+    final done = Completer<void>();
+    run.inFlight = done.future;
+    run.copiesFailed = false;
     try {
       run.record = await run.actions.confirmDelete(run.reelId);
     } on CopiesNotDeleted {
       // Nothing was deleted (R8): the dialog stays to try again.
+      run.copiesFailed = true;
       if (mounted) {
         setState(() {
           _busy = false;
@@ -162,6 +179,8 @@ class _DeleteBodyState extends State<_DeleteBody> {
     } on Object catch (error) {
       _log.warning('Deleting reel ${run.reelId} failed: ${error.runtimeType}');
       run.failed = true;
+    } finally {
+      done.complete();
     }
     if (mounted) Navigator.of(context).pop(run.record != null);
   }

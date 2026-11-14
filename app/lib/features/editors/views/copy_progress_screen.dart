@@ -112,6 +112,9 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
   /// the plan is still saved.
   ({EditorApp editor, bool startedSession})? _context;
 
+  /// The plan has been asked for (whatever it answered).
+  bool _contextRead = false;
+
   /// The reel was deleted: the way out is Reels.
   bool _reelGone = false;
 
@@ -209,6 +212,9 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
       if (context != null && mounted) setState(() => _context = context);
     } on Object catch (error) {
       _log.warning('Reading the job context failed: ${error.runtimeType}');
+    } finally {
+      // Read, or given up on: the title may use its VN fallback from now on.
+      if (mounted) setState(() => _contextRead = true);
     }
   }
 
@@ -369,11 +375,10 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
           );
         }
       } else {
+        // Only a VN add reaches here (a first copy and every CapCut or
+        // Edits copy went to the steps above): the folder is VN's.
         _goOut(
-          snack: _l10n.copyAddedSnack(
-            copied,
-            editorName(_l10n, context?.editor ?? EditorApp.vn),
-          ),
+          snack: _l10n.copyAddedSnack(copied, editorName(_l10n, EditorApp.vn)),
         );
       }
     } on Object catch (error) {
@@ -466,11 +471,15 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
       spacing: tt.spacing.s,
       children: [
         ?body,
-        Text(
-          l10n.reelActionFailed,
-          textAlign: TextAlign.center,
-          style: tt.text.material.bodyMedium!.copyWith(
-            color: context.scheme.error,
+        // A live region: the failure replaced a snack, which was one.
+        Semantics(
+          liveRegion: true,
+          child: Text(
+            l10n.reelActionFailed,
+            textAlign: TextAlign.center,
+            style: tt.text.material.bodyMedium!.copyWith(
+              color: context.scheme.error,
+            ),
           ),
         ),
       ],
@@ -488,10 +497,13 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
     return TtStatusLayout(
       icon: Symbols.folder_copy_rounded,
       tone: TtStatusTone.primary,
-      // VN until the plan's editor has been read (the first frame).
-      title: l10n.copyProgressTitle(
-        editorName(l10n, _context?.editor ?? EditorApp.vn),
-      ),
+      // Empty until the plan's editor has been read (the first frame), so
+      // a CapCut job never says VN; VN only when the plan cannot be read.
+      title: !_contextRead
+          ? ''
+          : l10n.copyProgressTitle(
+              editorName(l10n, _context?.editor ?? EditorApp.vn),
+            ),
       body: _withError(
         l10n,
         Column(
@@ -499,11 +511,23 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           spacing: tt.spacing.s,
           children: [
-            TtProgressBar(
-              value: total == 0 ? 0 : done / total,
+            // A live region, so a screen reader says the count as it moves
+            // (the prototype's `aria-live="polite"`); the bar's own node is
+            // folded into it, with its percent.
+            Semantics(
+              container: true,
+              liveRegion: true,
+              excludeSemantics: true,
               label: count,
-              semanticLabel: count,
-              percentText: l10n.copyPercent,
+              value: l10n.copyPercent(
+                (total == 0 ? 0 : (done / total * 100).round()),
+              ),
+              child: TtProgressBar(
+                value: total == 0 ? 0 : done / total,
+                label: count,
+                semanticLabel: count,
+                percentText: l10n.copyPercent,
+              ),
             ),
             Text(
               l10n.copyProgressBytes(

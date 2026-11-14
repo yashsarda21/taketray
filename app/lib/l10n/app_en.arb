@@ -3284,6 +3284,10 @@
   "@copiesNotDeleted": {
     "description": "Said when copies in an editing folder could not be deleted, so nothing that needed them gone was done."
   },
+  "copyStillRunning": "Copying is still running. Try again when it finishes.",
+  "@copyStillRunning": {
+    "description": "Snack when Delete on the VN copies screen is tapped for a reel whose copy job is still running; nothing is deleted and the row stays."
+  },
   "deleteReelVnCopies": "{count, plural, one{The 1 VN copy ({size}) will also be deleted, and the VN project can't be edited after that.} other{The {count} VN copies ({size}) will also be deleted, and the VN project can't be edited after that.}}",
   "@deleteReelVnCopies": {
     "description": "Line of the Delete reel question when the reel has VN copies.",

@@ -36,6 +36,19 @@ class _CountingService extends SpyEditSessionService {
   }
 }
 
+/// The real service whose next plans fail once [failPlans] is set.
+class _ReplanService extends SpyEditSessionService {
+  _ReplanService(super.h);
+
+  bool failPlans = false;
+
+  @override
+  Future<CopyPlan> planCopy(int reelId, EditorApp editor, List<int> clipIds) {
+    if (failPlans) throw StateError('the phone could not say');
+    return super.planCopy(reelId, editor, clipIds);
+  }
+}
+
 void main() {
   late VmHarness h;
 
@@ -380,6 +393,73 @@ void main() {
 
       expect(service.starts, 1);
       expect(h.copy.starts, hasLength(1));
+    });
+
+    testApp('a re-plan that fails while the copy is starting shows no error '
+        'flash and no empty screen (T10-M5)', (tester) async {
+      final (goa, ids) = await clips(tester, 3, 100 * _mb);
+      final service = _ReplanService(h);
+      await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: [
+          ...h.appOverrides,
+          editSessionServiceProvider.overrideWithValue(service),
+        ],
+        copyScreens: true,
+        settle: false,
+      );
+      unawaited(
+        routerOf(tester).push(Routes.copySpaceOf(goa.id, EditorApp.vn, ids)),
+      );
+      await settleApp(tester);
+      final held = h.copy.gate('start');
+
+      await tester.tap(find.text('Copy 3 clips'));
+      await tester.pump();
+      // The reel changes while the start waits: the plan is made again, and
+      // that fails.
+      service.failPlans = true;
+      await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).rename(goa.id, 'Goa 2'),
+      );
+      await settleApp(tester);
+
+      expect(find.text("Couldn't start copying. Try again."), findsNothing);
+      expect(find.text('Copy clips for VN'), findsOneWidget);
+      expect(button(tester, 'Copy 3 clips').onPressed, isNull);
+
+      held.complete();
+      await settleApp(tester);
+      expect(find.byType(CopyProgressScreen), findsOneWidget);
+    });
+
+    testApp('a re-plan that fails when no copy is starting still says '
+        "Couldn't start copying (T10-M5)", (tester) async {
+      final (goa, ids) = await clips(tester, 3, 100 * _mb);
+      final service = _ReplanService(h);
+      await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: [
+          ...h.appOverrides,
+          editSessionServiceProvider.overrideWithValue(service),
+        ],
+        copyScreens: true,
+        settle: false,
+      );
+      unawaited(
+        routerOf(tester).push(Routes.copySpaceOf(goa.id, EditorApp.vn, ids)),
+      );
+      await settleApp(tester);
+
+      service.failPlans = true;
+      await tester.runAsync(
+        () => h.container.read(reelsRepositoryProvider).rename(goa.id, 'Goa 2'),
+      );
+      await settleApp(tester);
+
+      expect(find.text("Couldn't start copying. Try again."), findsOneWidget);
     });
 
     testApp('while it starts, the buttons and the system back do nothing', (

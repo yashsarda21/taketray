@@ -138,12 +138,16 @@ abstract final class Routes {
     },
   ).toString();
 
+  static final RegExp _plainDigits = RegExp(r'^[0-9]+$');
+
   /// The clip ids in [text] (`3,5,9`): the positive whole numbers, in the
   /// order given, each once. Anything else in it is left out; none gives an
   /// empty list.
   static List<int> clipIdsIn(String? text) {
     final ids = <int>[];
     for (final part in (text ?? '').split(',')) {
+      // Plain digits only: `int.tryParse` also takes `0x10` and `+5`.
+      if (!_plainDigits.hasMatch(part)) continue;
       final id = int.tryParse(part);
       if (id != null && id > 0 && !ids.contains(id)) ids.add(id);
     }

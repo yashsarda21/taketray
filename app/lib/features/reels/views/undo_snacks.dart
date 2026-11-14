@@ -37,17 +37,19 @@ class ReelSnacks {
   final AppLocalizations _l10n;
   final bool _persistActions;
 
-  /// A plain snack saying [message], with a check mark when [done].
-  /// Null when the app is gone and there is nowhere to show it.
+  /// A plain snack saying [message], with a check mark when [done], or with
+  /// [icon] instead when one is given (and [done]). Null when the app is
+  /// gone and there is nowhere to show it.
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? show(
     String message, {
     bool done = true,
+    IconData? icon,
   }) {
     if (!_messenger.mounted) return null;
     return showTtSnackOn(
       _messenger,
       message: message,
-      icon: done ? Symbols.check_circle_rounded : null,
+      icon: done ? (icon ?? Symbols.check_circle_rounded) : null,
     );
   }
 

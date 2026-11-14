@@ -22,7 +22,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   actions: Done editing is not offered while the job runs
 ///   (`doneEditing` would refuse it). The editor is [jobEditor], the job's
 ///   own (its saved plan), then the session's, and VN only when neither is
-///   known.
+///   known and the plan could not be read; while the plan is being read and
+///   there is no session, the title is empty (never VN for a frame).
 ///
 /// Nothing (an empty box) when there is neither a session nor a job. The
 /// folder is the session's (a renamed reel keeps it); [today] decides
@@ -33,6 +34,7 @@ class ReelEditBanner extends StatelessWidget {
     required this.edit,
     required this.job,
     required this.jobEditor,
+    required this.jobEditorPending,
     required this.today,
     required this.onDoneEditing,
     required this.onAddMore,
@@ -48,6 +50,10 @@ class ReelEditBanner extends StatelessWidget {
 
   /// The editor of [job]'s saved plan, once it is read; null before.
   final EditorApp? jobEditor;
+
+  /// The plan is still being read: with no session either, the title is
+  /// empty for that moment rather than guess an editor.
+  final bool jobEditorPending;
 
   /// The phone's local day now.
   final DateTime today;
@@ -65,9 +71,14 @@ class ReelEditBanner extends StatelessWidget {
       return TtBanner(
         kind: TtBannerKind.vn,
         icon: Symbols.folder_copy_rounded,
-        title: l10n.copyProgressTitle(
-          editorShortName(l10n, jobEditor ?? edit?.editor ?? EditorApp.vn),
-        ),
+        title: jobEditor == null && edit == null && jobEditorPending
+            ? ''
+            : l10n.copyProgressTitle(
+                editorShortName(
+                  l10n,
+                  jobEditor ?? edit?.editor ?? EditorApp.vn,
+                ),
+              ),
         body: l10n.copyProgressCount(job.done, job.total),
         action: TtButton(
           label: l10n.reelCopyShow,
