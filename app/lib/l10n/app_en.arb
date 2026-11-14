@@ -3048,6 +3048,150 @@
       }
     }
   },
+  "reelAddToProject": "Add to your {editor} project",
+  "@reelAddToProject": {
+    "description": "Button of the \"New since you started editing\" part for CapCut and Edits: opens the picker that copies the new clips into the reel's folder, to add from that album.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddProjectTitle": "Add clips to your {editor} project",
+  "@editAddProjectTitle": {
+    "description": "Title of the picker that copies more clips into the folder of a CapCut or Edits project.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editInTheFolderMark": "In the folder",
+  "@editInTheFolderMark": {
+    "description": "Mark on a clip tile of the CapCut and Edits add picker: the clip's copy is in the folder already."
+  },
+  "clipTileSemanticsInTheFolder": "{label}, already in the folder",
+  "@clipTileSemanticsInTheFolder": {
+    "description": "What a screen reader says for a clip tile of the CapCut and Edits add picker whose copy is in the folder already: the tile's usual words, then this.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddFolderBarCount": "{count, plural, one{1 clip to copy} other{{count} clips to copy}}",
+  "@editAddFolderBarCount": {
+    "description": "Bottom bar of the CapCut and Edits add picker: how many ticked clips will be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAddFolderBarDetail": "{size} · into Movies/TakeTray/{folder}",
+  "@editAddFolderBarDetail": {
+    "description": "Second line of the CapCut and Edits add picker's bottom bar: the size of the clips to copy and the folder they go into.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarInTheFolder": "{count} already in the folder",
+  "@editAddBarInTheFolder": {
+    "description": "Second line of the CapCut and Edits add picker's bottom bar when no new clip is ticked.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAlreadyInTheFolderSnack": "Already in the folder. Copies are deleted when you tap Done editing.",
+  "@editAlreadyInTheFolderSnack": {
+    "description": "Snack when a clip that is already in the folder is tapped in the CapCut and Edits add picker."
+  },
+  "projectCopyWhyBody": "{editor} adds clips to a project from an album. TakeTray copies the clips you picked to {folder}. Your original clips stay where they are.",
+  "@projectCopyWhyBody": {
+    "description": "Body of the Why copies? note for CapCut and Edits. The folder is the path under Movies, such as Movies/TakeTray/Goa, shown in bold.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectCopyTemporaryBody": "After you export from {editor}, tap Done editing and TakeTray deletes them.",
+  "@projectCopyTemporaryBody": {
+    "description": "Body of the Copies are temporary note for CapCut and Edits.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectReadyTitle": "Ready to add in {editor}",
+  "@projectReadyTitle": {
+    "description": "Headline of the screen that says the copies for a CapCut or Edits project are made.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectReadyIntro": "In your {editor} project, tap {plus} and open the {folder} album.",
+  "@projectReadyIntro": {
+    "description": "Line under the Ready to add headline. The plus sign and the folder are shown in bold.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "plus": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep1Title": "Open your project in {editor}",
+  "@projectStep1Title": {
+    "description": "Title of step 1 of the CapCut and Edits instructions.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep1Body": "The one you started from TakeTray.",
+  "@projectStep1Body": {
+    "description": "Help line of step 1 of the CapCut and Edits instructions."
+  },
+  "projectStep2Title": "Open the {folder} album",
+  "@projectStep2Title": {
+    "description": "Title of step 2 of the CapCut and Edits instructions.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep2Body": "It's in Movies › TakeTray.",
+  "@projectStep2Body": {
+    "description": "Help line of step 2 of the CapCut and Edits instructions."
+  },
+  "projectStep3Title": "Pick the new clips",
+  "@projectStep3Title": {
+    "description": "Title of step 3 of the CapCut and Edits instructions."
+  },
+  "projectStep3Body": "They're in shooting order.",
+  "@projectStep3Body": {
+    "description": "Help line of step 3 of the CapCut and Edits instructions."
+  },
   "doneEditingExportedTitle": "Have you exported your video?",
   "@doneEditingExportedTitle": {
     "description": "Title of the Done editing question when copies will be deleted."

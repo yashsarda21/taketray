@@ -25,19 +25,26 @@ const double _tileSize = 64;
 
 /// "Ready for VN" (`screens.js`: `routes['vn-ready']`, D-127), full screen
 /// above the tab shell (`Routes.copyReady`), shown after the first VN copy
-/// of a reel.
+/// of a reel, and (D-129) after every copy for a CapCut or Edits project.
 ///
-/// A close button; a check and "Ready for VN"; "In VN, tap **New project** and
-/// open the **{folder}** folder."; three steps (`TtIllustratedSteps`): tap
-/// New project, open the folder, select all the clips (the first six clips
-/// that have a copy, numbered, in shooting order); **Open VN** and **Done**.
+/// **VN:** a close button; a check and "Ready for VN"; "In VN, tap **New
+/// project** and open the **{folder}** folder."; three steps
+/// (`TtIllustratedSteps`): tap New project, open the folder, select all the
+/// clips (the first six clips that have a copy, numbered, in shooting order);
+/// **Open VN** and **Done**.
 ///
-/// The folder is the session's, so a reel renamed meanwhile still shows the
-/// folder that holds the copies. **Open VN** opens the app; when the phone
-/// has no such app, the "VN isn't installed" dialog. **Done**, the close
-/// button and the system back go to the reel's page; nothing is deleted
-/// (that is Done editing). A reel that is gone sends the app to Reels; a
-/// session that is gone (Done editing ran elsewhere) to the reel's page.
+/// **CapCut and Edits:** "Ready to add in {editor}"; "In your {editor}
+/// project, tap **+** and open the **{folder}** album."; the steps "Open your
+/// project in {editor}", "Open the {folder} album" (the same folder-list
+/// picture) and "Pick the new clips"; **Open {editor}** and **Done**.
+///
+/// The editor and the folder are the session's, so a reel renamed meanwhile
+/// still shows the folder that holds the copies. **Open {editor}** opens the
+/// app; when the phone has no such app, the "{editor} isn't installed"
+/// dialog. **Done**, the close button and the system back go to the reel's
+/// page; nothing is deleted (that is Done editing). A reel that is gone sends
+/// the app to Reels; a session that is gone (Done editing ran elsewhere) to
+/// the reel's page. Until the session is read the page shows no words.
 class CopyReadyScreen extends ConsumerStatefulWidget {
   const new({required this.reelId, super.key});
 
@@ -61,16 +68,16 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
 
   void _done() => _leave(Routes.reel(widget.reelId));
 
-  Future<void> _openEditor() async {
+  Future<void> _openEditor(EditorApp editor) async {
     if (_opening) return;
     _opening = true;
     final l10n = AppLocalizations.of(context);
     final snacks = ReelSnacks.of(context);
     final bridge = ref.read(editorsBridgeProvider);
     try {
-      final opened = await bridge.openApp(EditorApp.vn.packageName);
+      final opened = await bridge.openApp(editor.packageName);
       if (!opened && mounted) {
-        await showEditorMissingDialog(context, EditorApp.vn);
+        await showEditorMissingDialog(context, editor);
       }
     } on Object catch (error) {
       _log.warning('Opening the editor failed: ${error.runtimeType}');
@@ -91,7 +98,9 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
     if (ready != null && !ready.reelGone && session == null) {
       _leave(Routes.reel(widget.reelId));
     }
-    final editor = editorName(l10n, EditorApp.vn);
+    final app = session?.editor;
+    final vn = app == EditorApp.vn;
+    final editor = app == null ? '' : editorName(l10n, app);
     final folder = session?.folderName ?? '';
     final cache = ref.watch(thumbnailCacheProvider).value;
 
@@ -143,7 +152,11 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
                           child: Semantics(
                             header: true,
                             child: Text(
-                              l10n.copyReadyTitle(editor),
+                              app == null
+                                  ? ''
+                                  : vn
+                                  ? l10n.copyReadyTitle(editor)
+                                  : l10n.projectReadyTitle(editor),
                               style: tt.text.material.headlineSmall!.copyWith(
                                 color: scheme.onSurface,
                               ),
@@ -154,51 +167,67 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
                     ),
                     Text.rich(
                       boldSpans(
-                        l10n.vnReadyIntro(
-                          boldMark(l10n.vnReadyNewProject),
-                          boldMark(folder),
-                        ),
+                        app == null
+                            ? ''
+                            : vn
+                            ? l10n.vnReadyIntro(
+                                boldMark(l10n.vnReadyNewProject),
+                                boldMark(folder),
+                              )
+                            : l10n.projectReadyIntro(
+                                editor,
+                                boldMark('+'),
+                                boldMark(folder),
+                              ),
                       ),
                       style: tt.text.material.bodyLarge!.copyWith(
                         color: scheme.onSurface,
                       ),
                     ),
-                    TtIllustratedSteps(
-                      steps: [
-                        TtIllustratedStep.newProject(
-                          number: l10n.copyStepNumber(1),
-                          title: l10n.vnStep1Title,
-                          body: l10n.vnStep1Body,
-                        ),
-                        TtIllustratedStep.folders(
-                          number: l10n.copyStepNumber(2),
-                          title: l10n.vnStep2Title(folder),
-                          body: l10n.vnStep2Body,
-                          folders: [
-                            l10n.vnFolderCamera,
-                            l10n.vnFolderDownload,
-                            folder,
-                            l10n.vnFolderWhatsApp,
-                          ],
-                          highlighted: 2,
-                        ),
-                        TtIllustratedStep.tiles(
-                          number: l10n.copyStepNumber(3),
-                          title: l10n.vnStep3Title,
-                          body: l10n.vnStep3Body,
-                          thumbnails: [
-                            for (final clip in (ready?.clips ?? const []).take(
-                              TtMetrics.stepTilesMax,
-                            ))
-                              clipThumbnail(
-                                clip: clip,
-                                logicalSize: _tileSize,
-                                cache: cache,
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
+                    if (app != null)
+                      TtIllustratedSteps(
+                        steps: [
+                          TtIllustratedStep.newProject(
+                            number: l10n.copyStepNumber(1),
+                            title: vn
+                                ? l10n.vnStep1Title
+                                : l10n.projectStep1Title(editor),
+                            body: vn ? l10n.vnStep1Body : l10n.projectStep1Body,
+                          ),
+                          TtIllustratedStep.folders(
+                            number: l10n.copyStepNumber(2),
+                            title: vn
+                                ? l10n.vnStep2Title(folder)
+                                : l10n.projectStep2Title(folder),
+                            body: vn ? l10n.vnStep2Body : l10n.projectStep2Body,
+                            folders: [
+                              l10n.vnFolderCamera,
+                              l10n.vnFolderDownload,
+                              folder,
+                              l10n.vnFolderWhatsApp,
+                            ],
+                            highlighted: 2,
+                          ),
+                          TtIllustratedStep.tiles(
+                            number: l10n.copyStepNumber(3),
+                            title: vn
+                                ? l10n.vnStep3Title
+                                : l10n.projectStep3Title,
+                            body: vn ? l10n.vnStep3Body : l10n.projectStep3Body,
+                            thumbnails: [
+                              for (final clip
+                                  in (ready?.clips ?? const []).take(
+                                    TtMetrics.stepTilesMax,
+                                  ))
+                                clipThumbnail(
+                                  clip: clip,
+                                  logicalSize: _tileSize,
+                                  cache: cache,
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
                     SizedBox(height: tt.spacing.xs),
                   ],
                 ),
@@ -218,13 +247,14 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   spacing: tt.spacing.xs,
                   children: [
-                    TtButton(
-                      label: l10n.copyOpenEditor(editor),
-                      icon: Symbols.open_in_new_rounded,
-                      size: TtButtonSize.large,
-                      expand: true,
-                      onPressed: () => unawaited(_openEditor()),
-                    ),
+                    if (app != null)
+                      TtButton(
+                        label: l10n.copyOpenEditor(editor),
+                        icon: Symbols.open_in_new_rounded,
+                        size: TtButtonSize.large,
+                        expand: true,
+                        onPressed: () => unawaited(_openEditor(app)),
+                      ),
                     TtButton(
                       label: l10n.copyDone,
                       kind: TtButtonKind.text,

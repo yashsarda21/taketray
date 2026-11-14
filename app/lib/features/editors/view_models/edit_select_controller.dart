@@ -59,6 +59,7 @@ class EditSelectState {
     required this.liveCount,
     this.addMode = false,
     this.addEditor,
+    this.addFolder,
     this.inFolder = const {},
     this.toCopyInOrder = const [],
     this.toCopyBytes = 0,
@@ -95,6 +96,10 @@ class EditSelectState {
   /// outside add mode.
   final EditorApp? addEditor;
 
+  /// In add mode, the session's folder under `Movies/TakeTray` (a renamed
+  /// reel keeps it); null without a session and outside add mode.
+  final String? addFolder;
+
   /// In add mode, the live clips whose copy is in the folder already: ticked
   /// and locked, nothing to copy (`AddPick.inFolder`). Empty otherwise.
   final Set<int> inFolder;
@@ -120,7 +125,8 @@ class EditSelectState {
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+///   any editor's session): every
 ///   live clip again, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -142,6 +148,7 @@ class EditSelectController extends _$EditSelectController {
 
   /// In add mode: the session's editor and the clips in its folder (locked).
   EditorApp? _editor;
+  String? _folder;
   Set<int> _inFolder = const {};
 
   @override
@@ -172,6 +179,7 @@ class EditSelectController extends _$EditSelectController {
             liveCopyIds: {for (final c in edit.copies) c.clipId},
           );
     _editor = edit?.session.editor;
+    _folder = edit?.session.folderName;
     _inFolder = {
       for (final MapEntry(:key, :value) in picks.entries)
         if (value == AddPick.inFolder) key,
@@ -209,6 +217,7 @@ class EditSelectController extends _$EditSelectController {
       liveCount: _live.length,
       addMode: args.addMode,
       addEditor: args.addMode ? _editor : null,
+      addFolder: args.addMode ? _folder : null,
       inFolder: Set.unmodifiable(_inFolder),
       toCopyInOrder: [for (final c in toCopy) c.id],
       toCopyBytes: toCopy.fold(0, (s, c) => s + c.fingerprint.sizeBytes),

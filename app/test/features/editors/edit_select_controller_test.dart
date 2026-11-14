@@ -350,6 +350,124 @@ void main() {
     });
   });
 
+  group('add mode for CapCut and Edits (D-129)', () {
+    Future<(int, List<int>)> fiveClips() async {
+      final goa = (await c.read(reelsRepositoryProvider).create('Goa')).id;
+      final ids = await putInReel(h, goa, [
+        for (var i = 1; i <= 5; i++)
+          sizedVideo(i, shot: DateTime.utc(2026, 10, 28, 8 + i), size: i * 100),
+      ]);
+      return (goa, ids);
+    }
+
+    EditSelectArgs add(int reel) =>
+        EditSelectArgs(reel, const [], addMode: true);
+
+    for (final editor in [EditorApp.capcut, EditorApp.edits]) {
+      group(editor.name, () {
+        test('the session is the editor: a clip sent but not copied is '
+            'selectable and starts unticked, a fresh one starts ticked, a '
+            'copied one is locked; only ticked ones without a copy are to '
+            'copy', () async {
+          final (goa, ids) = await fiveClips();
+          // 1 sent and copied, 2 sent only, 3 copied only, 4 missing and
+          // sent, 5 fresh.
+          await startEditing(
+            h,
+            goa,
+            editor,
+            copied: [ids[0], ids[2]],
+            sent: [ids[0], ids[1], ids[3]],
+          );
+          await flagForTest(h, {ids[3]}, missing: true);
+
+          final state = (await load(add(goa)))!;
+
+          expect(state.addMode, isTrue);
+          expect(state.addEditor, editor);
+          expect(state.liveCount, 4);
+          expect(state.inFolder, {ids[0], ids[2]});
+          expect(state.selected, {ids[0], ids[2], ids[4]});
+          expect(state.toCopyInOrder, [ids[4]]);
+
+          final notifier = c.read(
+            editSelectControllerProvider(add(goa)).notifier,
+          )..toggle(ids[1]);
+          final ticked = c.read(editSelectControllerProvider(add(goa))).value!;
+          expect(ticked.selected, {ids[0], ids[1], ids[2], ids[4]});
+          expect(ticked.toCopyInOrder, [ids[1], ids[4]]);
+          expect(ticked.toCopyBytes, 700);
+          // And it can be un-ticked again: it was never locked.
+          notifier.toggle(ids[1]);
+          expect(
+            c.read(editSelectControllerProvider(add(goa))).value!.toCopyInOrder,
+            [ids[4]],
+          );
+        });
+
+        test("the folder is the session's, not the reel's name", () async {
+          final (goa, _) = await fiveClips();
+          await startEditing(h, goa, editor);
+          await c.read(reelsRepositoryProvider).rename(goa, 'Goa 2026');
+
+          final state = (await load(add(goa)))!;
+
+          expect(state.addFolder, 'Goa');
+        });
+
+        test('a copy gone outside TakeTray (forgotten) frees its clip, '
+            'unticked and selectable', () async {
+          final (goa, ids) = await fiveClips();
+          final copies = await startEditing(
+            h,
+            goa,
+            editor,
+            copied: [ids[0]],
+            sent: [ids[0]],
+          );
+          final args = add(goa);
+          await load(args);
+          expect(c.read(editSelectControllerProvider(args)).value!.inFolder, {
+            ids[0],
+          });
+
+          await c
+              .read(editSessionsRepositoryProvider)
+              .removeCopies(goa, copies);
+          await settle();
+          final state = c.read(editSelectControllerProvider(args)).value!;
+
+          expect(state.inFolder, isEmpty);
+          // It was sent, so it does not start ticked; it can be ticked.
+          expect(state.selected, isNot(contains(ids[0])));
+          c.read(editSelectControllerProvider(args).notifier).toggle(ids[0]);
+          expect(
+            c.read(editSelectControllerProvider(args)).value!.toCopyInOrder,
+            contains(ids[0]),
+          );
+        });
+      });
+    }
+
+    test('no session: no folder either', () async {
+      final (goa, _) = await fiveClips();
+
+      final state = (await load(add(goa)))!;
+
+      expect(state.addFolder, isNull);
+      expect(state.addEditor, isNull);
+    });
+
+    test('the plain mode has no folder', () async {
+      final (goa, ids) = await fiveClips();
+      await startEditing(h, goa, EditorApp.vn, copied: [ids[0]]);
+
+      final state = (await load(EditSelectArgs(goa, const [])))!;
+
+      expect(state.addFolder, isNull);
+    });
+  });
+
   group('editorChoices', () {
     test('is what the service says, in editor order', () async {
       h.editors

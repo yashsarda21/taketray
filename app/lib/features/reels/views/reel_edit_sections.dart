@@ -126,9 +126,10 @@ List<Widget> reelDaySlivers(
 /// folder", or "· sent to {editor} on {date}") when the editor has any. Each
 /// part has its own day headers, with the reel's own Day numbers.
 ///
-/// The new part's button is **Copy to VN folder** for VN ([onCopyNew], off
-/// when it is null or when every new clip is missing); CapCut and Edits get
-/// no button until Task 12.
+/// The new part's button is **Copy to VN folder** for VN, **Add to your
+/// CapCut project** or **Add to your Edits project** for the others
+/// ([onCopyNew], off when it is null or when every new clip is missing); each
+/// opens the picker in add mode.
 List<Widget> reelEditSlivers(
   BuildContext context,
   ReelEditState edit, {
@@ -146,15 +147,15 @@ List<Widget> reelEditSlivers(
           key: const ValueKey<String>('reel-new-section'),
           title: l10n.reelNewSinceTitle,
           subtitle: l10n.reelNewSinceSubtitle(edit.newCount),
-          action: vn
-              ? TtButton(
-                  label: l10n.reelCopyToFolder(editor),
-                  icon: Symbols.folder_copy_rounded,
-                  kind: TtButtonKind.tonal,
-                  size: TtButtonSize.small,
-                  onPressed: edit.newLiveCount == 0 ? null : onCopyNew,
-                )
-              : null,
+          action: TtButton(
+            label: vn
+                ? l10n.reelCopyToFolder(editor)
+                : l10n.reelAddToProject(editor),
+            icon: Symbols.folder_copy_rounded,
+            kind: TtButtonKind.tonal,
+            size: TtButtonSize.small,
+            onPressed: edit.newLiveCount == 0 ? null : onCopyNew,
+          ),
         ),
       ),
       ...reelDaySlivers(context, edit.newDays, tiles: tiles, today: today),

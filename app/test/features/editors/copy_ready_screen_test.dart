@@ -35,6 +35,7 @@ void main() {
     String name = 'Goa',
     String folder = 'Goa',
     bool copies = true,
+    EditorApp editor = EditorApp.vn,
   }) async {
     final (reel, ids) = await reelWithClips(
       tester,
@@ -44,7 +45,8 @@ void main() {
     );
     await real(tester, () async {
       final sessions = h.container.read(editSessionsRepositoryProvider);
-      await sessions.startSession(reel.id, EditorApp.vn, folder);
+      await sessions.startSession(reel.id, editor, folder);
+      if (editor.takesShares) await sessions.recordSent(reel.id, ids);
       if (copies) {
         await sessions.recordCopies([
           for (final (i, id) in ids.indexed)
@@ -219,6 +221,157 @@ void main() {
       tester,
     ) async {
       final (reel, _) = await readyReel(tester);
+      for (final (scale, brightness) in [
+        (1.0, Brightness.light),
+        (2.0, Brightness.light),
+        (1.0, Brightness.dark),
+      ]) {
+        await open(tester, reel.id, textScale: scale, brightness: brightness);
+        await expectTtAccessible(tester);
+        expect(tester.takeException(), isNull);
+      }
+    });
+  });
+
+  group('for CapCut and Edits (D-129)', () {
+    for (final (editor, name) in [
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Instagram Edits'),
+    ]) {
+      testApp('$name: the title, the line with the + and the album in bold, '
+          "the three steps with the session's folder", (tester) async {
+        final (reel, _) = await readyReel(tester, editor: editor);
+        await real(
+          tester,
+          () => h.container
+              .read(reelsRepositoryProvider)
+              .rename(reel.id, 'Goa trip 2'),
+        );
+        await open(tester, reel.id);
+
+        expect(find.text('Ready to add in $name'), findsOneWidget);
+        expect(
+          findPlain('In your $name project, tap + and open the Goa album.'),
+          findsOneWidget,
+        );
+        final intro = tester.widget<Text>(
+          find.byWidgetPredicate(
+            (w) =>
+                w is Text &&
+                (w.textSpan?.toPlainText() ?? '').startsWith('In your'),
+          ),
+        );
+        final bold = <String>[];
+        intro.textSpan!.visitChildren((span) {
+          if (span is TextSpan &&
+              (span.text ?? '').isNotEmpty &&
+              (span.style?.fontWeight?.value ?? 400) > 500) {
+            bold.add(span.text!);
+          }
+          return true;
+        });
+        expect(bold, ['+', 'Goa']);
+
+        final steps = tester.widget<TtIllustratedSteps>(
+          find.byType(TtIllustratedSteps),
+        );
+        expect(
+          [for (final s in steps.steps) s.number],
+          ['Step 1', 'Step 2', 'Step 3'],
+        );
+        expect(
+          [for (final s in steps.steps) s.title],
+          [
+            'Open your project in $name',
+            'Open the Goa album',
+            'Pick the new clips',
+          ],
+        );
+        expect(
+          [for (final s in steps.steps) s.body],
+          [
+            'The one you started from TakeTray.',
+            "It's in Movies › TakeTray.",
+            "They're in shooting order.",
+          ],
+        );
+        expect(steps.steps[1].folders, [
+          'Camera',
+          'Download',
+          'Goa',
+          'WhatsApp Video',
+        ]);
+        expect(steps.steps[1].highlighted, 2);
+        expect(find.textContaining('VN'), findsNothing);
+        expect(find.textContaining('Goa trip 2'), findsNothing);
+        expect(find.text('Open $name'), findsOneWidget);
+        expect(find.text('Done'), findsOneWidget);
+      });
+    }
+
+    testApp('Open CapCut opens CapCut, not VN', (tester) async {
+      final (reel, _) = await readyReel(tester, editor: EditorApp.capcut);
+      await open(tester, reel.id);
+
+      await tester.tap(buttonOf('Open CapCut'));
+      await settleApp(tester);
+
+      expect(h.editors.openedApps, [EditorApp.capcut.packageName]);
+      expect(find.text('Ready to add in CapCut'), findsOneWidget);
+    });
+
+    testApp('Edits missing: the "Instagram Edits isn\'t installed" dialog', (
+      tester,
+    ) async {
+      final (reel, _) = await readyReel(tester, editor: EditorApp.edits);
+      h.editors.openAppResult = false;
+      await open(tester, reel.id);
+
+      await tester.tap(buttonOf('Open Instagram Edits'));
+      await settleApp(tester);
+
+      expect(find.text("Instagram Edits isn't installed"), findsOneWidget);
+      await tester.tap(find.text('Choose another'));
+      await settleApp(tester);
+      expect(find.text('Ready to add in Instagram Edits'), findsOneWidget);
+    });
+
+    testApp('the pictures are the clips that have a copy, in shooting order, '
+        'up to six', (tester) async {
+      final (reel, _) = await readyReel(
+        tester,
+        count: 8,
+        editor: EditorApp.capcut,
+      );
+      await open(tester, reel.id);
+
+      final steps = tester.widget<TtIllustratedSteps>(
+        find.byType(TtIllustratedSteps),
+      );
+      expect(steps.steps[2].thumbnails, hasLength(6));
+    });
+
+    testApp("Done goes to the reel's page and deletes nothing", (tester) async {
+      final (reel, _) = await readyReel(tester, editor: EditorApp.capcut);
+      await open(tester, reel.id);
+
+      await tester.tap(buttonOf('Done'));
+      await settleApp(tester);
+
+      expect(find.text(reelRouteMarker(reel.id)), findsOneWidget);
+      final state = await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).editState(reel.id),
+      );
+      expect(state!.copies, hasLength(4));
+      expect(state.sentIds, hasLength(4));
+    });
+
+    testApp('accessible and no overflow at text 1x, 2x and in dark', (
+      tester,
+    ) async {
+      final (reel, _) = await readyReel(tester, editor: EditorApp.edits);
       for (final (scale, brightness) in [
         (1.0, Brightness.light),
         (2.0, Brightness.light),

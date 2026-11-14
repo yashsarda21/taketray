@@ -78,6 +78,35 @@ void main() {
     return await startVnJob(tester, h, reel, ids);
   }
 
+  /// An add job for a CapCut or Edits session (the share started it): the
+  /// first clip was sent and has a recorded copy already, so the job copies
+  /// the other three.
+  Future<VnJob> editorAddJob(WidgetTester tester, EditorApp editor) async {
+    final (reel, ids) = await reelWithClips(tester, h);
+    await real(tester, () async {
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      await sessions.startSession(reel.id, editor, 'Goa');
+      await sessions.recordSent(reel.id, [ids.first]);
+      await sessions.recordCopies([
+        EditCopy(
+          reelId: reel.id,
+          clipId: ids.first,
+          copyMediaStoreId: 500,
+          fileName: 'old.mp4',
+          sizeBytes: 100 * _mb,
+          copiedAt: DateTime.utc(2026, 10, 29),
+        ),
+      ]);
+    });
+    h.editors.existing = {500};
+    final service = h.container.read(editSessionServiceProvider);
+    return await real(tester, () async {
+      final plan = await service.planCopy(reel.id, editor, ids);
+      final jobId = await service.startCopy(plan);
+      return VnJob(reel, plan.clipIds, jobId, h.copy.starts.last);
+    });
+  }
+
   /// Opens the progress of [job] over a "home" page.
   Future<void> open(
     WidgetTester tester,
@@ -234,7 +263,8 @@ void main() {
   });
 
   group("the job's editor", () {
-    testApp('a CapCut job: the title and the added snack name CapCut', (
+    testApp('a CapCut job: the title names CapCut; its first clean finish '
+        'opens the ready screen for CapCut, not the VN add snack', (
       tester,
     ) async {
       final (reel, ids) = await reelWithClips(tester, h);
@@ -255,9 +285,79 @@ void main() {
         job.report(state: CopyState.finished, copied: [0, 1, 2, 3]),
       );
 
-      // The session already existed, so this is an add: the reel's page.
-      expect(find.text(reelRouteMarker(reel.id)), findsOneWidget);
-      expect(find.text('4 clips added to the CapCut folder'), findsOneWidget);
+      // The session already existed (the share started it), but the clips
+      // are added from the album, so the steps come next (D-129).
+      expect(find.text('Ready to add in CapCut'), findsOneWidget);
+      expect(find.text('4 clips added to the CapCut folder'), findsNothing);
+      expect(find.text(reelRouteMarker(reel.id)), findsNothing);
+    });
+
+    testApp('an Edits job: "Instagram Edits" in the title and the ready '
+        'screen', (tester) async {
+      final job = await editorAddJob(tester, EditorApp.edits);
+      await open(tester, job.jobId);
+
+      expect(find.text('Copying clips for Instagram Edits'), findsOneWidget);
+
+      await emit(
+        tester,
+        job.report(state: CopyState.finished, copied: [0, 1, 2]),
+      );
+
+      expect(find.text('Ready to add in Instagram Edits'), findsOneWidget);
+    });
+
+    testApp('a CapCut add job that finished with a clip that failed: '
+        'Continue goes to the ready screen too', (tester) async {
+      final job = await editorAddJob(tester, EditorApp.capcut);
+      await open(tester, job.jobId);
+
+      await emit(
+        tester,
+        job.report(state: CopyState.finished, copied: [0, 1], failed: [2]),
+      );
+      await tapButton(tester, 'Continue with 2 clips');
+
+      expect(find.text('Ready to add in CapCut'), findsOneWidget);
+      final state = await real(tester, () => sessions().editState(job.reel.id));
+      // The earlier copy and the two new ones.
+      expect(state!.copies, hasLength(3));
+    });
+
+    testApp('Stop on a CapCut add job: the new copies are deleted, the '
+        'session, the sent row and the earlier copy stay', (tester) async {
+      final job = await editorAddJob(tester, EditorApp.capcut);
+      await open(tester, job.jobId);
+      await emit(tester, job.report(copied: [0]));
+
+      await stopViaDialog(tester);
+
+      expect(find.text(reelRouteMarker(job.reel.id)), findsOneWidget);
+      expect(
+        find.text('Copying stopped. The new copies were deleted.'),
+        findsOneWidget,
+      );
+      final state = await real(tester, () => sessions().editState(job.reel.id));
+      expect(state!.session.editor, EditorApp.capcut);
+      expect([for (final c in state.copies) c.copyMediaStoreId], [500]);
+      expect(state.sentIds, hasLength(1));
+    });
+
+    testApp('every clip of a CapCut add job failed: Back keeps the session '
+        'it did not start', (tester) async {
+      final job = await editorAddJob(tester, EditorApp.capcut);
+      await open(tester, job.jobId);
+      await emit(
+        tester,
+        job.report(state: CopyState.finished, failed: [0, 1, 2]),
+      );
+
+      await tapButton(tester, 'Back');
+
+      final state = await real(tester, () => sessions().editState(job.reel.id));
+      expect(state, isNotNull);
+      expect(state!.sentIds, hasLength(1));
+      expect([for (final c in state.copies) c.copyMediaStoreId], [500]);
     });
 
     testApp('a VN job still says VN', (tester) async {

@@ -158,6 +158,8 @@ class _CopySpaceScreenState extends ConsumerState<CopySpaceScreen> {
         state: state,
         starting: _starting,
         failed: _failed,
+        editor: widget.editor,
+        editorName: editor,
         onCopy: () => unawaited(_start(state)),
         onBack: _back,
         onCancel: _cancel,
@@ -206,6 +208,8 @@ class _Message extends StatelessWidget {
 class _Check extends StatelessWidget {
   const new({
     required this.state,
+    required this.editor,
+    required this.editorName,
     required this.starting,
     required this.failed,
     required this.onCopy,
@@ -214,6 +218,10 @@ class _Check extends StatelessWidget {
   });
 
   final CopySpaceState state;
+
+  /// The editor the clips are for, and its name as the notes say it.
+  final EditorApp editor;
+  final String editorName;
   final bool starting;
   final bool failed;
   final VoidCallback onCopy;
@@ -231,6 +239,8 @@ class _Check extends StatelessWidget {
     final enough = state.enough;
     final free = size(plan.freeBytes);
     final need = size(plan.needBytes);
+    final vn = editor == EditorApp.vn;
+    final folder = 'Movies/TakeTray/${plan.folderName}';
 
     final bar = enough
         ? TtStorageBar.enough(
@@ -280,13 +290,17 @@ class _Check extends StatelessWidget {
           icon: Symbols.folder_copy_rounded,
           title: l10n.copyWhyTitle,
           richBody: boldSpans(
-            l10n.vnCopyWhyBody(boldMark('Movies/TakeTray/${plan.folderName}')),
+            vn
+                ? l10n.vnCopyWhyBody(boldMark(folder))
+                : l10n.projectCopyWhyBody(editorName, boldMark(folder)),
           ),
         ),
         TtCallout(
           icon: Symbols.delete_sweep_rounded,
           title: l10n.copyTemporaryTitle,
-          body: l10n.vnCopyTemporaryBody,
+          body: vn
+              ? l10n.vnCopyTemporaryBody
+              : l10n.projectCopyTemporaryBody(editorName),
         ),
       ] else
         TtCallout(

@@ -49,8 +49,10 @@ enum _Exit { finish, stop }
 ///   recovery found): **Try again** resumes with the clips left;
 ///   **Delete copies and stop** cancels.
 /// - **Finished clean:** the job is finished (`finishJob`) and the first copy
-///   goes to "Ready for VN"; an add goes to the reel's page with "{n} clips
-///   added to the VN folder".
+///   of a VN reel goes to "Ready for VN"; a VN add goes to the reel's page
+///   with "{n} clips added to the VN folder"; every copy for CapCut or Edits
+///   goes to "Ready to add in {editor}" (D-129: the clips are added from the
+///   folder's album).
 /// - **Finished with clips that could not be copied:** "{n} clips couldn't be
 ///   copied" with **Continue with {m} clips** (finishes as above) and
 ///   **Cancel** (stops, deleting the copies). If **none** could be copied: "The
@@ -328,8 +330,8 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
     }
   }
 
-  /// Finishes the job and goes on: the ready screen for the first copy, the
-  /// reel's page for an add.
+  /// Finishes the job and goes on: the ready screen for the first copy of a VN
+  /// reel and for every CapCut or Edits copy, the reel's page for a VN add.
   Future<void> _finish(CopyJob job) async {
     if (_working || _left) return;
     final service = ref.read(editSessionServiceProvider);
@@ -344,7 +346,11 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
       final copied = job.copied.length;
       await service.finishJob(widget.jobId);
       if (!mounted) return;
-      if (context?.startedSession ?? false) {
+      // The first copy of a VN reel, and every copy for CapCut or Edits (the
+      // clips are added from the folder's album, D-129), get the steps; a
+      // VN add goes back to the page with a snack.
+      if ((context?.startedSession ?? false) ||
+          (context?.editor.takesShares ?? false)) {
         _left = true;
         final id = _reelId;
         if (id == null || _reelGone) {

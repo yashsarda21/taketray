@@ -638,6 +638,65 @@ void main() {
       expect(names[clash], '2026-10-28_14-33-00_2.mp4');
     });
 
+    for (final editor in [EditorApp.capcut, EditorApp.edits]) {
+      test(
+        "a ${editor.name} session's second batch goes into the session's "
+        'folder (kept after a rename) with new names only: _2 against the '
+        'earlier copies and the folder, the earlier copy untouched',
+        () async {
+          final goa = await reel('Goa');
+          final [a, b] = await clipsIn(goa, [1, 2]);
+          // Shot at the same minute as the first clip: the same copy name.
+          final [twin] = await clipsIn(
+            goa,
+            [4],
+            shot: {4: DateTime.utc(2026, 10, 28, 9, 1)},
+          );
+          await service.sendOriginals(goa, editor, [a]);
+          await recordCopy(goa, a, 501, nameOf(1));
+          editors
+            ..existing = {501}
+            ..files = [
+              // The second clip's name is taken by a file of another app.
+              CopyFolderFile(
+                mediaStoreId: 900,
+                folderName: 'goa',
+                fileName: nameOf(2),
+                sizeBytes: 1,
+                ownedByTakeTray: false,
+              ),
+            ];
+          await reels.rename(goa, 'Goa 2026');
+
+          final plan = await service.planCopy(goa, editor, [a, b, twin]);
+          final jobId = await service.startCopy(plan);
+
+          expect(plan.startsSession, isFalse);
+          expect(plan.folderName, 'Goa');
+          final request = copy.starts.single;
+          expect(request.jobId, jobId);
+          expect(request.folderName, 'Goa');
+          // Shooting order: the twin (09:01) before the second clip (09:02).
+          expect([for (final i in request.items) i.clipId], [twin, b]);
+          expect(
+            [for (final i in request.items) i.fileName],
+            ['2026-10-28_09-01-00_2.mp4', '2026-10-28_09-02-00_2.mp4'],
+          );
+          // The earlier copy keeps its name and row; the session is the same.
+          final copies = await copiesOf(goa);
+          expect([for (final c in copies) c.copyMediaStoreId], [501]);
+          expect(copies.single.fileName, nameOf(1));
+          final session = (await sessions.sessionOf(goa))!;
+          expect(session.editor, editor);
+          expect(session.folderName, 'Goa');
+          final saved = (await h.media.phoneState.copyJobPlan())!;
+          expect(saved.editor, editor);
+          expect(saved.startedSession, isFalse);
+          expect(saved.folderName, 'Goa');
+        },
+      );
+    }
+
     test('CopyBusy from start ends the session it just started, removes the '
         'plan and rethrows', () async {
       final goa = await reel('Goa');

@@ -18,7 +18,8 @@ part of 'edit_select_controller.dart';
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+///   any editor's session): every
 ///   live clip again, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -42,7 +43,8 @@ final editSelectControllerProvider = EditSelectControllerFamily._();
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+///   any editor's session): every
 ///   live clip again, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -64,7 +66,8 @@ final class EditSelectControllerProvider
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
-  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+  ///   any editor's session): every
   ///   live clip again, by `addPicks` against the reel's session. A fresh clip
   ///   (neither sent nor copied) starts ticked, a sent one without a copy
   ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -111,7 +114,7 @@ final class EditSelectControllerProvider
 }
 
 String _$editSelectControllerHash() =>
-    r'83b9af8a2b805f1b712c032c35052110a72a36f4';
+    r'1fe3471f00b23d0d905409200d1310c5e076f5b6';
 
 /// The clips ticked on the picking screen of one reel (D-126).
 ///
@@ -123,7 +126,8 @@ String _$editSelectControllerHash() =>
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+///   any editor's session): every
 ///   live clip again, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -162,7 +166,8 @@ final class EditSelectControllerFamily extends $Family
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
-  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+  ///   any editor's session): every
   ///   live clip again, by `addPicks` against the reel's session. A fresh clip
   ///   (neither sent nor copied) starts ticked, a sent one without a copy
   ///   starts unticked and can be ticked, a clip whose copy is in the folder is
@@ -190,7 +195,8 @@ final class EditSelectControllerFamily extends $Family
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128): every
+/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
+///   any editor's session): every
 ///   live clip again, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is

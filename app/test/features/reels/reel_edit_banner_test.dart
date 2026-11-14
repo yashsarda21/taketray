@@ -179,7 +179,15 @@ void main() {
       expect(ttBanner(tester).title, 'Editing in CapCut');
       expect(plain(ttBanner(tester).body!), 'Sent on Oct 30');
       expect(buttonIn('Done editing'), findsOneWidget);
-      expect(find.text('Add more clips'), findsNothing);
+      expect(buttonIn('Add more clips'), findsOneWidget);
+      expect(
+        tester.widget<TtButton>(buttonIn('Done editing')).kind,
+        TtButtonKind.filled,
+      );
+      expect(
+        tester.widget<TtButton>(buttonIn('Add more clips')).kind,
+        TtButtonKind.text,
+      );
       expect(fab(), findsNothing);
     });
 
@@ -202,7 +210,47 @@ void main() {
         plain(ttBanner(tester).body!),
         'Sent on Oct 30 · 1 copy in Movies/TakeTray/Goa',
       );
-      expect(find.text('Add more clips'), findsNothing);
+      expect(buttonIn('Done editing'), findsOneWidget);
+      expect(buttonIn('Add more clips'), findsOneWidget);
+    });
+
+    for (final editor in [EditorApp.capcut, EditorApp.edits]) {
+      testApp('${editor.name}: Add more clips opens the picking screen in '
+          'add mode, once', (tester) async {
+        final (goa, ids) = await goaReel(tester);
+        await real(
+          tester,
+          () => startEditing(h, goa.id, editor, sent: [ids[0]]),
+        );
+        await openReelPage(tester, h, goa.id);
+
+        await tester.tap(buttonIn('Add more clips'));
+        await tester.tap(buttonIn('Add more clips'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(editSelectRouteMarker('${goa.id}', null, '1')),
+          findsOneWidget,
+        );
+        tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+        await tester.pumpAndSettle();
+        expect(banner(), findsOneWidget);
+      });
+    }
+
+    testApp('Done editing still opens its dialog, once', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
+      );
+      await openReelPage(tester, h, goa.id);
+
+      await tester.tap(buttonIn('Done editing'));
+      await tester.tap(buttonIn('Done editing'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.byType(TtDialog<bool>), findsOneWidget);
     });
 
     testApp('Edits is "Edits" on the banner', (tester) async {
@@ -238,6 +286,50 @@ void main() {
       await tester.tap(buttonIn('Show'));
       await tester.pumpAndSettle();
       expect(find.text(copyProgressRouteMarker(job.jobId)), findsOneWidget);
+    });
+
+    for (final (editor, name) in [
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Edits'),
+    ]) {
+      testApp('a ${editor.name} add job: "Copying clips for $name"', (
+        tester,
+      ) async {
+        final (goa, ids) = await goaReel(tester);
+        await startVnJob(tester, h, goa, ids, editor: editor);
+        await openReelPage(tester, h, goa.id);
+
+        expect(ttBanner(tester).title, 'Copying clips for $name');
+        expect(ttBanner(tester).body, '0 of 4 clips');
+        expect(find.text('Done editing'), findsNothing);
+        expect(find.text('Add more clips'), findsNothing);
+      });
+    }
+
+    testApp("the job's own editor is named even when the page has no session "
+        'for it (the session ended, or is not known yet), never a guess of '
+        'VN', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(tester, h, goa, ids, editor: EditorApp.capcut);
+      await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).endSession(goa.id),
+      );
+      await openReelPage(tester, h, goa.id);
+
+      expect(ttBanner(tester).title, 'Copying clips for CapCut');
+      expect(find.textContaining('VN'), findsNothing);
+    });
+
+    testApp('the first VN job (no session read yet) still says VN', (
+      tester,
+    ) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(tester, h, goa, ids);
+      await openReelPage(tester, h, goa.id);
+
+      expect(ttBanner(tester).title, 'Copying clips for VN');
     });
 
     testApp('once it is over, Done editing is back', (tester) async {

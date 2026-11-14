@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/edit_session.dart';
@@ -24,6 +25,14 @@ Stream<EditState?> reelEditSession(Ref ref, int reelId) =>
 @riverpod
 Stream<Map<int, EditorApp>> reelEditors(Ref ref) =>
     ref.watch(editSessionsRepositoryProvider).watchEditors();
+
+/// The editor of copy job [jobId], from its saved plan (the same source the
+/// copy progress screen reads); null once the plan is gone. The running-job
+/// banner names it, so a job never shows another editor's name while the
+/// reel's session is not read yet or has ended (D-129).
+@riverpod
+Future<EditorApp?> copyJobEditor(Ref ref, String jobId) async =>
+    (await ref.read(editSessionServiceProvider).jobContext(jobId))?.editor;
 
 /// A reel's page while it is being edited (D-128): its session and its clips
 /// in two parts, by what the editor already has (`splitForEditing`, D-119).

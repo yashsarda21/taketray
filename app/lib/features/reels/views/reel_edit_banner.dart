@@ -14,12 +14,15 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   Movies/TakeTray/{folder}", with **Done editing** and **Add more clips**.
 /// - **CapCut or Edits:** "Editing in CapCut" (with " · {size}" when the
 ///   folder holds copies) over "Sent on {date}" (with " · {n} copies in
-///   Movies/TakeTray/{folder}"), with **Done editing** only (adding more is
-///   Task 12's, after the owner's gate).
+///   Movies/TakeTray/{folder}"), with **Done editing** and **Add more clips**
+///   (D-129: the new clips are copied into the folder and added from its
+///   album).
 /// - **While a copy job of the reel runs** ([job]): "Copying clips for
 ///   {editor}" over "{done} of {total} clips", and **Show** in place of the
 ///   actions: Done editing is not offered while the job runs
-///   (`doneEditing` would refuse it).
+///   (`doneEditing` would refuse it). The editor is [jobEditor], the job's
+///   own (its saved plan), then the session's, and VN only when neither is
+///   known.
 ///
 /// Nothing (an empty box) when there is neither a session nor a job. The
 /// folder is the session's (a renamed reel keeps it); [today] decides
@@ -29,6 +32,7 @@ class ReelEditBanner extends StatelessWidget {
   const ReelEditBanner({
     required this.edit,
     required this.job,
+    required this.jobEditor,
     required this.today,
     required this.onDoneEditing,
     required this.onAddMore,
@@ -41,6 +45,9 @@ class ReelEditBanner extends StatelessWidget {
 
   /// The reel's copy job while it runs, or null.
   final CopyJob? job;
+
+  /// The editor of [job]'s saved plan, once it is read; null before.
+  final EditorApp? jobEditor;
 
   /// The phone's local day now.
   final DateTime today;
@@ -59,7 +66,7 @@ class ReelEditBanner extends StatelessWidget {
         kind: TtBannerKind.vn,
         icon: Symbols.folder_copy_rounded,
         title: l10n.copyProgressTitle(
-          editorShortName(l10n, edit?.editor ?? EditorApp.vn),
+          editorShortName(l10n, jobEditor ?? edit?.editor ?? EditorApp.vn),
         ),
         body: l10n.copyProgressCount(job.done, job.total),
         action: TtButton(
@@ -87,6 +94,12 @@ class ReelEditBanner extends StatelessWidget {
       size: TtButtonSize.small,
       onPressed: onDoneEditing,
     );
+    final addMore = TtButton(
+      label: l10n.reelAddMoreClips,
+      kind: TtButtonKind.text,
+      size: TtButtonSize.small,
+      onPressed: onAddMore,
+    );
     return TtBanner(
       kind: TtBannerKind.vn,
       icon: Symbols.folder_copy_rounded,
@@ -98,21 +111,11 @@ class ReelEditBanner extends StatelessWidget {
           : copies > 0
           ? l10n.reelEditingSentOnCopies(sentOn, copies, folder)
           : l10n.reelEditingSentOn(sentOn),
-      action: vn
-          ? Wrap(
-              spacing: context.tt.spacing.xs,
-              runSpacing: context.tt.spacing.xxs,
-              children: [
-                done,
-                TtButton(
-                  label: l10n.reelAddMoreClips,
-                  kind: TtButtonKind.text,
-                  size: TtButtonSize.small,
-                  onPressed: onAddMore,
-                ),
-              ],
-            )
-          : done,
+      action: Wrap(
+        spacing: context.tt.spacing.xs,
+        runSpacing: context.tt.spacing.xxs,
+        children: [done, addMore],
+      ),
     );
   }
 }

@@ -245,6 +245,44 @@ void main() {
       await golden(tester, 'copy_all_failed_$suffix');
     }, skip: !_goldens);
 
+    testApp('the space check for CapCut ($suffix)', (tester) async {
+      final (reel, ids) = await goa(tester);
+      await real(tester, () async {
+        final sessions = h.container.read(editSessionsRepositoryProvider);
+        await sessions.startSession(reel.id, EditorApp.capcut, 'Goa food trip');
+        await sessions.recordSent(reel.id, ids.sublist(0, 5));
+      });
+      await start(tester, scale: scale, brightness: brightness);
+      await push(
+        tester,
+        Routes.copySpaceOf(reel.id, EditorApp.capcut, ids.sublist(5)),
+      );
+      await golden(tester, 'copy_space_capcut_enough_$suffix');
+    }, skip: !_goldens);
+
+    testApp('ready to add in CapCut ($suffix)', (tester) async {
+      final (reel, ids) = await goa(tester);
+      await real(tester, () async {
+        final sessions = h.container.read(editSessionsRepositoryProvider);
+        await sessions.startSession(reel.id, EditorApp.capcut, 'Goa food trip');
+        await sessions.recordSent(reel.id, ids.sublist(0, 5));
+        await sessions.recordCopies([
+          for (final (i, id) in ids.sublist(5).indexed)
+            EditCopy(
+              reelId: reel.id,
+              clipId: id,
+              copyMediaStoreId: 700 + i,
+              fileName: 'c$i.mp4',
+              sizeBytes: 150 * _mb,
+              copiedAt: DateTime.utc(2026, 10, 30),
+            ),
+        ]);
+      });
+      await start(tester, scale: scale, brightness: brightness);
+      await push(tester, Routes.copyReadyOf(reel.id));
+      await golden(tester, 'copy_ready_capcut_$suffix');
+    }, skip: !_goldens);
+
     testApp('ready for VN ($suffix)', (tester) async {
       final (reel, ids) = await goa(tester);
       await real(tester, () async {
@@ -267,4 +305,27 @@ void main() {
       await golden(tester, 'copy_ready_$suffix');
     }, skip: !_goldens);
   }
+
+  testApp('ready to add in Instagram Edits (2x)', (tester) async {
+    final (reel, ids) = await goa(tester);
+    await real(tester, () async {
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      await sessions.startSession(reel.id, EditorApp.edits, 'Goa food trip');
+      await sessions.recordSent(reel.id, ids.sublist(0, 5));
+      await sessions.recordCopies([
+        for (final (i, id) in ids.sublist(5).indexed)
+          EditCopy(
+            reelId: reel.id,
+            clipId: id,
+            copyMediaStoreId: 700 + i,
+            fileName: 'c$i.mp4',
+            sizeBytes: 150 * _mb,
+            copiedAt: DateTime.utc(2026, 10, 30),
+          ),
+      ]);
+    });
+    await start(tester, scale: 2, brightness: Brightness.light);
+    await push(tester, Routes.copyReadyOf(reel.id));
+    await golden(tester, 'copy_ready_edits_2x');
+  }, skip: !_goldens);
 }

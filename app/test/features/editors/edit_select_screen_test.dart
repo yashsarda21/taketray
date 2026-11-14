@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
@@ -497,20 +498,6 @@ void main() {
       expect(find.text(reelRouteMarker('${goa.id}')), findsOneWidget);
     });
 
-    testApp('a CapCut session goes back to its page too (Task 12 adds it)', (
-      tester,
-    ) async {
-      final (goa, ids) = await threeClips(tester);
-      await real(
-        tester,
-        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
-      );
-
-      await open(tester, goa.id, add: true);
-
-      expect(find.text(reelRouteMarker('${goa.id}')), findsOneWidget);
-    });
-
     testApp('the plain mode shows no folder marks', (tester) async {
       final (goa, _) = await editing(tester);
 
@@ -531,6 +518,256 @@ void main() {
         tester,
       ) async {
         final (goa, _) = await editing(tester);
+        await open(
+          tester,
+          goa.id,
+          add: true,
+          textScale: scale,
+          brightness: brightness,
+        );
+
+        expect(tester.takeException(), isNull);
+        await expectTtAccessible(tester);
+      });
+    }
+  });
+
+  group('add mode (CapCut and Edits, D-129)', () {
+    /// "Goa" with [threeClips] in a [editor] session: the first clip copied
+    /// (and sent), the second sent only, the third fresh.
+    Future<(Reel, List<int>)> editing(
+      WidgetTester tester,
+      EditorApp editor,
+    ) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          editor,
+          copied: [ids[0]],
+          sent: [ids[0], ids[1]],
+        ),
+      );
+      return (goa, ids);
+    }
+
+    for (final (editor, name) in [
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Edits'),
+    ]) {
+      testApp('$name: stays on the picker; title, the folder clip ticked and '
+          'marked, the sent one selectable, the fresh one ticked', (
+        tester,
+      ) async {
+        final (goa, _) = await editing(tester, editor);
+
+        await open(tester, goa.id, add: true);
+
+        expect(find.byType(EditSelectScreen), findsOneWidget);
+        expect(find.text(reelRouteMarker('${goa.id}')), findsNothing);
+        final appBar = tester.widget<TtAppBar>(find.byType(TtAppBar));
+        expect(appBar.title, 'Add clips to your $name project');
+        expect(appBar.subtitle, 'Goa');
+        expect(ticks(tester), [true, false, true]);
+        expect(
+          [for (final t in tiles(tester)) t.vnLabel],
+          ['In the folder', null, null],
+        );
+        expect(
+          tiles(tester).first.semanticLabel,
+          endsWith(', already in the folder'),
+        );
+        expect(bar(tester).title, '1 clip to copy');
+        expect(
+          bar(tester).subtitle.replaceAll('\u00a0', ' '),
+          '300 MB · into Movies/TakeTray/Goa',
+        );
+        expect(continueButton(tester).label, 'Copy');
+      });
+    }
+
+    testApp("the bar names the session's folder after a rename", (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester, EditorApp.capcut);
+      await real(tester, () => reels.rename(goa.id, 'Goa 2026'));
+
+      await open(tester, goa.id, add: true);
+
+      expect(
+        bar(tester).subtitle.replaceAll('\u00a0', ' '),
+        '300 MB · into Movies/TakeTray/Goa',
+      );
+    });
+
+    testApp('a tap on the folder clip keeps it ticked and says why, in the '
+        'folder words', (tester) async {
+      final (goa, _) = await editing(tester, EditorApp.capcut);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      expect(ticks(tester), [true, false, true]);
+      expect(
+        find.text(
+          'Already in the folder. Copies are deleted when you tap Done '
+          'editing.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.textContaining('VN'), findsNothing);
+    });
+
+    testApp('a clip sent but not copied can be ticked and is then copied: '
+        'Copy opens the space check for CapCut with it, in shooting order', (
+      tester,
+    ) async {
+      final (goa, ids) = await editing(tester, EditorApp.capcut);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(bar(tester).title, '2 clips to copy');
+
+      await tester.tap(find.text('Copy'));
+      await tester.tap(find.text('Copy'), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(
+        find.text(
+          copySpaceRouteMarker('${goa.id}', 'capcut', '${ids[1]},${ids[2]}'),
+        ),
+        findsOneWidget,
+      );
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(EditSelectScreen), findsOneWidget);
+    });
+
+    testApp('Edits: Copy opens the space check for Edits', (tester) async {
+      final (goa, ids) = await editing(tester, EditorApp.edits);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.text('Copy'));
+      await settleApp(tester);
+
+      expect(
+        find.text(copySpaceRouteMarker('${goa.id}', 'edits', '${ids[2]}')),
+        findsOneWidget,
+      );
+    });
+
+    testApp('nothing new picked: "Pick clips to add", how many are in the '
+        'folder, and Copy is off', (tester) async {
+      final (goa, _) = await editing(tester, EditorApp.edits);
+      await open(tester, goa.id, add: true);
+
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+
+      expect(ticks(tester), [true, false, false]);
+      expect(bar(tester).title, 'Pick clips to add');
+      expect(bar(tester).subtitle, '1 already in the folder');
+      expect(continueButton(tester).onPressed, isNull);
+    });
+
+    testApp('a copy deleted outside TakeTray: its clip is selectable again, '
+        'unticked, and no longer marked', (tester) async {
+      final (goa, ids) = await threeClips(tester);
+      final copies = await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          EditorApp.capcut,
+          copied: [ids[0]],
+          sent: [ids[0], ids[1]],
+        ),
+      );
+      await open(tester, goa.id, add: true);
+      expect(ticks(tester), [true, false, true]);
+
+      await real(
+        tester,
+        () => h.container
+            .read(editSessionsRepositoryProvider)
+            .removeCopies(goa.id, copies),
+      );
+      await settleApp(tester);
+
+      expect(ticks(tester), [false, false, true]);
+      expect([for (final t in tiles(tester)) t.vnLabel], [null, null, null]);
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, false, true]);
+      expect(bar(tester).title, '2 clips to copy');
+    });
+
+    testApp('VN still says VN: folder words with the editor name', (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester, EditorApp.vn);
+
+      await open(tester, goa.id, add: true);
+
+      expect(
+        tester.widget<TtAppBar>(find.byType(TtAppBar)).title,
+        'Add clips to VN folder',
+      );
+      expect(tiles(tester).first.vnLabel, 'In VN folder');
+      expect(bar(tester).title, '1 new clip to copy');
+    });
+
+    testApp('Select all and Clear leave the folder clip ticked: in the bar '
+        'at 1x, under the title at 2x, where it still works', (tester) async {
+      final (goa, _) = await editing(tester, EditorApp.capcut);
+      await open(tester, goa.id, add: true);
+      expect(selectAllButton(), findsOneWidget);
+
+      await tester.tap(selectAllButton());
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
+      await tester.tap(selectAllButton());
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, false, false]);
+
+      await open(tester, goa.id, add: true, textScale: 2);
+      // Not in the bar any more: under it, at its end, and not lost.
+      expect(selectAllButton(), findsNothing);
+      final below = find.widgetWithText(TtButton, 'Select all');
+      expect(below, findsOneWidget);
+      expect(
+        tester.getTopLeft(below).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.byType(TtAppBar)).dy),
+      );
+      // Before: only the fresh clip is to copy; Select all adds the sent one.
+      expect(bar(tester).title, '1 clip to copy');
+      await tester.tap(below);
+      await tester.pumpAndSettle();
+      expect(bar(tester).title, '2 clips to copy');
+      expect(find.widgetWithText(TtButton, 'Clear'), findsOneWidget);
+    });
+
+    testApp('VN keeps its Select all in the bar at 2x', (tester) async {
+      final (goa, _) = await editing(tester, EditorApp.vn);
+      await open(tester, goa.id, add: true, textScale: 2);
+
+      expect(selectAllButton(), findsOneWidget);
+    });
+
+    for (final (scale, brightness) in [
+      (2.0, Brightness.light),
+      (1.0, Brightness.dark),
+    ]) {
+      testApp('at ${scale}x, ${brightness.name}: nothing cut, accessible', (
+        tester,
+      ) async {
+        final (goa, _) = await editing(tester, EditorApp.edits);
         await open(
           tester,
           goa.id,

@@ -270,8 +270,8 @@ void main() {
   });
 
   group('CapCut and Edits', () {
-    testApp('"New since…" has its title and subtitle and no button; "In your '
-        'edit" says when they were sent', (tester) async {
+    testApp('"New since…" has the section button; "In your edit" says when '
+        'they were sent', (tester) async {
       final (goa, ids) = await goaReel(tester);
       await real(
         tester,
@@ -288,13 +288,109 @@ void main() {
         ('New since you started editing', '2 clips · not in your edit yet'),
         ('In your edit', '3 clips · sent to CapCut on Oct 30'),
       ]);
+      final button = tester.widget<TtButton>(
+        sectionButton('Add to your CapCut project'),
+      );
+      expect(button.kind, TtButtonKind.tonal);
+      expect(button.size, TtButtonSize.small);
+      expect(button.onPressed, isNotNull);
       expect(sectionButton('Copy to VN folder'), findsNothing);
+      // Only the "New since…" part has a button.
+      expect(
+        find.descendant(
+          of: find.byType(ReelEditSectionHeader),
+          matching: find.byType(TtButton),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    for (final (editor, name) in [
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Edits'),
+    ]) {
+      testApp('$name: Add to your $name project opens the picking screen in '
+          'add mode, once', (tester) async {
+        final (goa, ids) = await goaReel(tester);
+        await real(
+          tester,
+          () => startEditing(h, goa.id, editor, sent: [ids[0]]),
+        );
+        await openReelPage(tester, h, goa.id, size: _tall);
+
+        await tester.tap(sectionButton('Add to your $name project'));
+        await tester.tap(
+          sectionButton('Add to your $name project'),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.text(editSelectRouteMarker('${goa.id}', null, '1')),
+          findsOneWidget,
+        );
+        tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+        await tester.pumpAndSettle();
+        expect(sectionButton('Add to your $name project'), findsOneWidget);
+      });
+    }
+
+    testApp('no new clips: no button', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: ids),
+      );
+      await openReelPage(tester, h, goa.id, size: _tall);
+
+      expect(find.byType(ReelEditSectionHeader), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(ReelEditSectionHeader),
           matching: find.byType(TtButton),
         ),
         findsNothing,
+      );
+    });
+
+    testApp('the button is off when every new clip is missing', (tester) async {
+      final (goa, ids) = await goaReel(tester, missing: {3, 4});
+      await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          EditorApp.edits,
+          sent: [ids[0], ids[1], ids[2]],
+        ),
+      );
+      await openReelPage(tester, h, goa.id, size: _tall);
+
+      expect(
+        tester
+            .widget<TtButton>(sectionButton('Add to your Edits project'))
+            .onPressed,
+        isNull,
+      );
+    });
+
+    testApp('off while a copy job of the reel runs', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(
+        tester,
+        h,
+        goa,
+        ids,
+        clipIds: [ids[0]],
+        editor: EditorApp.capcut,
+      );
+      await openReelPage(tester, h, goa.id, size: _tall);
+
+      expect(
+        tester
+            .widget<TtButton>(sectionButton('Add to your CapCut project'))
+            .onPressed,
+        isNull,
       );
     });
 
@@ -600,6 +696,34 @@ void main() {
   });
 
   group('the look', () {
+    testApp('at 2x the CapCut section button wraps under the title, '
+        'nothing cut, accessible', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
+      );
+      await openReelPage(tester, h, goa.id, textScale: 2, size: _tall);
+
+      expect(tester.takeException(), isNull);
+      final subtitle = find.text('4 clips · not in your edit yet');
+      expect(subtitle, findsOneWidget);
+      expect(
+        tester.getTopLeft(sectionButton('Add to your CapCut project')).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(subtitle).dy),
+      );
+      for (final text in [
+        find.text('New since you started editing'),
+        subtitle,
+      ]) {
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(of: text, matching: find.byType(RichText)),
+        );
+        expect(paragraph.didExceedMaxLines, isFalse);
+      }
+      await expectTtAccessible(tester);
+    });
+
     for (final (scale, brightness) in [
       (2.0, Brightness.light),
       (1.0, Brightness.dark),

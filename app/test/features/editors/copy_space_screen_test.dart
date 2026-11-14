@@ -18,6 +18,7 @@ import '../../support/reel_videos.dart';
 import '../../support/spy_edit_session_service.dart';
 import '../../support/test_app.dart';
 import '../../support/vm_harness.dart';
+import '../reels/edit_session_support.dart' show startEditing;
 import 'copy_support.dart';
 
 const int _mb = 1000000;
@@ -530,6 +531,170 @@ void main() {
       expect(find.text(reelsRouteMarker), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('for CapCut and Edits (D-129)', () {
+    ReelsRepository reelsOf(VmHarness h) =>
+        h.container.read(reelsRepositoryProvider);
+
+    /// A reel of [count] clips of 100 MB in a [editor] session: the first
+    /// clip sent, so the session exists as after the first share.
+    Future<(Reel, List<int>)> sessionReel(
+      WidgetTester tester,
+      EditorApp editor, {
+      int count = 3,
+    }) async {
+      final (goa, ids) = await clips(tester, count, 100 * _mb);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, editor, sent: [ids.first]),
+      );
+      return (goa, ids);
+    }
+
+    for (final (editor, name) in [
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Instagram Edits'),
+    ]) {
+      testApp('$name: the title and both notes name the editor and the '
+          "session's folder, never VN", (tester) async {
+        final (goa, ids) = await sessionReel(tester, editor);
+        await real(tester, () => reelsOf(h).rename(goa.id, 'Goa 2'));
+
+        await open(tester, goa, ids, editor: editor);
+
+        expect(find.text('Copy clips for $name'), findsOneWidget);
+        expect(find.text('Why copies?'), findsOneWidget);
+        expect(
+          findPlain(
+            '$name adds clips to a project from an album. TakeTray copies the '
+            'clips you picked to Movies/TakeTray/Goa. Your original clips '
+            'stay where they are.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.text('Copies are temporary'), findsOneWidget);
+        expect(
+          find.text(
+            'After you export from $name, tap Done editing and TakeTray '
+            'deletes them.',
+          ),
+          findsOneWidget,
+        );
+        expect(find.textContaining('VN'), findsNothing);
+        expect(button(tester, 'Copy 3 clips').onPressed, isNotNull);
+      });
+    }
+
+    testApp('the folder in "Why copies?" is in bold', (tester) async {
+      final (goa, ids) = await sessionReel(tester, EditorApp.capcut);
+      await open(tester, goa, ids, editor: EditorApp.capcut);
+
+      final why = tester.widget<Text>(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Text &&
+              (w.textSpan?.toPlainText() ?? '').startsWith('CapCut adds'),
+        ),
+      );
+      final bold = <String>[];
+      why.textSpan!.visitChildren((span) {
+        if (span is TextSpan &&
+            (span.text ?? '').isNotEmpty &&
+            (span.style?.fontWeight?.value ?? 400) > 500) {
+          bold.add(span.text!);
+        }
+        return true;
+      });
+      expect(bold, ['Movies/TakeTray/Goa']);
+    });
+
+    testApp("Copy starts one job in the session's folder, with the session "
+        'kept, and shows the progress for the editor', (tester) async {
+      final (goa, ids) = await sessionReel(tester, EditorApp.capcut);
+      await real(tester, () => reelsOf(h).rename(goa.id, 'Goa 2'));
+      await open(tester, goa, ids, editor: EditorApp.capcut);
+
+      await tapButton(tester, 'Copy 3 clips');
+
+      expect(h.copy.starts, hasLength(1));
+      expect(h.copy.starts.single.folderName, 'Goa');
+      expect(h.copy.starts.single.items, hasLength(3));
+      expect(find.text('Copying clips for CapCut'), findsOneWidget);
+      final session = await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).sessionOf(goa.id),
+      );
+      expect(session!.editor, EditorApp.capcut);
+      expect(session.folderName, 'Goa');
+    });
+
+    testApp('not enough space: the short state, nothing started, the '
+        'session untouched', (tester) async {
+      final (goa, ids) = await sessionReel(tester, EditorApp.edits, count: 4);
+      h.editors.bytesFree = 700 * _mb;
+      await open(tester, goa, ids, editor: EditorApp.edits);
+
+      expect(find.text('Not enough space'), findsOneWidget);
+      expect(find.text('Select fewer clips'), findsOneWidget);
+      expect(find.text('Cancel'), findsOneWidget);
+      expect(find.textContaining('Copy 4'), findsNothing);
+      expect(h.copy.starts, isEmpty);
+      final state = await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).editState(goa.id),
+      );
+      expect(state!.sentIds, {ids.first});
+    });
+
+    testApp('a start that fails says "Couldn\'t start copying. Try again." '
+        'and keeps the session and its sent rows', (tester) async {
+      final (goa, ids) = await sessionReel(tester, EditorApp.edits);
+      await open(tester, goa, ids, editor: EditorApp.edits);
+      h.copy.failNext('start');
+
+      await tapButton(tester, 'Copy 3 clips');
+
+      expect(find.text("Couldn't start copying. Try again."), findsOneWidget);
+      expect(find.text('Copy clips for Instagram Edits'), findsOneWidget);
+      final state = await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).editState(goa.id),
+      );
+      expect(state!.session.editor, EditorApp.edits);
+      expect(state.sentIds, {ids.first});
+      expect(state.copies, isEmpty);
+    });
+
+    testApp('CapCut with no session (it starts with a share): the same '
+        'calm message', (tester) async {
+      final (goa, ids) = await clips(tester, 2, 100 * _mb);
+
+      await open(tester, goa, ids, editor: EditorApp.capcut);
+
+      expect(find.text("Couldn't start copying. Try again."), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    for (final scale in [1.0, 2.0]) {
+      testApp('CapCut enough and short are accessible at text $scale x', (
+        tester,
+      ) async {
+        final (goa, ids) = await sessionReel(tester, EditorApp.capcut);
+        await open(
+          tester,
+          goa,
+          ids,
+          editor: EditorApp.capcut,
+          textScale: scale,
+        );
+        expect(tester.takeException(), isNull);
+        await expectTtAccessible(tester);
+      });
+    }
   });
 
   group('looks', () {

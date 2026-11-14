@@ -199,6 +199,57 @@ void main() {
     }, skip: !_goldens);
   }
 
+  for (final (scale, brightness, suffix) in [
+    (1.0, Brightness.light, '1x'),
+    (2.0, Brightness.light, '2x'),
+    (1.0, Brightness.dark, 'dark_1x'),
+  ]) {
+    testApp('the add picker, CapCut ($suffix)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          EditorApp.capcut,
+          copied: ids.sublist(0, 2),
+          sent: ids.sublist(0, 4),
+          folder: 'Goa food trip',
+        ),
+      );
+      await pumpScreen(
+        tester,
+        EditSelectScreen(reelId: goa.id, addMode: true),
+        overrides: h.appOverrides,
+        textScale: scale,
+        brightness: brightness,
+        settle: false,
+      );
+      await settleApp(tester);
+      await showPictures(tester);
+
+      await shot(tester, 'reel_editing_capcut_add_picker_$suffix');
+    }, skip: !_goldens);
+  }
+
+  testApp('the page, Edits with new clips and copies (2x)', (tester) async {
+    final (goa, ids) = await goaReel(tester);
+    await real(
+      tester,
+      () => startEditing(
+        h,
+        goa.id,
+        EditorApp.edits,
+        copied: ids.sublist(0, 2),
+        sent: ids.sublist(0, 4),
+        folder: 'Goa food trip',
+      ),
+    );
+    await openPage(tester, goa, scale: 2);
+
+    await shot(tester, 'reel_editing_edits_new_2x');
+  }, skip: !_goldens);
+
   testApp('VN, no new clips (1x)', (tester) async {
     final (goa, ids) = await goaReel(tester);
     await real(

@@ -47,18 +47,25 @@ const int _columns = 3;
 /// - A reel that is gone (an id that names none, or one deleted while the
 ///   screen is open) sends the app to Reels.
 ///
-/// **Add mode** ([addMode], `&add=1`, D-128), from the VN editing banner's
-/// **Add more clips** and the reel page's **Copy to VN folder**: "Add clips to
-/// VN folder" over every live clip; the fresh ones start ticked, a clip whose
-/// copy is in the folder is ticked, locked and marked "In VN folder" (a tap
-/// says "Already in the VN folder. Copies are deleted when you tap Done
-/// editing."), a clip sent before can be ticked. The bottom bar counts only
-/// the clips to copy ("{n} new clips to copy" / "{size} · copies are added,
-/// never renamed", or "Pick clips to add" / "{n} already in the VN folder")
-/// and **Copy** opens the space check (`Routes.copySpaceOf`) with them, in
-/// shooting order, once however fast the taps. A reel with no VN session
-/// (Done editing ran meanwhile; CapCut and Edits wait for Task 12) goes back
-/// to its page.
+/// **Add mode** ([addMode], `&add=1`, D-128, D-129), from the editing banner's
+/// **Add more clips** and the reel page's **Copy to VN folder** / **Add to
+/// your CapCut project** / **Add to your Edits project**: over every live
+/// clip; the fresh ones start ticked, a clip whose copy is in the folder is
+/// ticked and locked, a clip sent before without a copy can be ticked. The
+/// bottom bar counts only the clips to copy and **Copy** opens the space check
+/// (`Routes.copySpaceOf`) with them, in shooting order, once however fast the
+/// taps. The words follow the session's editor:
+/// - **VN:** "Add clips to VN folder", the mark "In VN folder", "{n} new clips
+///   to copy" / "{size} · copies are added, never renamed", "Pick clips to
+///   add" / "{n} already in the VN folder", and the snack "Already in the VN
+///   folder. …".
+/// - **CapCut and Edits** (the user adds the copies from the folder's album):
+///   "Add clips to your CapCut project" (or "… Edits project"), the mark "In
+///   the folder", "{n} clips to copy" / "{size} · into Movies/TakeTray/{folder}",
+///   "Pick clips to add" / "{n} already in the folder", and "Already in the
+///   folder. Copies are deleted when you tap Done editing.".
+///
+/// A reel with no session (Done editing ran meanwhile) goes back to its page.
 class EditSelectScreen extends ConsumerStatefulWidget {
   const new({
     required this.reelId,
@@ -156,11 +163,12 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final select = ref.watch(_provider);
     final state = select.value;
     if (select.hasValue && state == null) _leave();
-    // Add mode needs the reel's VN session (CapCut and Edits: Task 12).
-    if (state != null && state.addMode && state.addEditor != EditorApp.vn) {
+    // Add mode needs the reel's editing session, of any editor.
+    if (state != null && state.addMode && state.addEditor == null) {
       _leaveToReel();
     }
     final adding = state?.addMode ?? widget.addMode;
+    final addEditor = state?.addEditor;
     final notifier = ref.read(_provider.notifier);
     final cache = ref.watch(thumbnailCacheProvider).value;
     final today =
@@ -169,67 +177,103 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
 
-    return Scaffold(
-      appBar: TtAppBar(
-        title: adding
-            ? l10n.editAddTitle(l10n.editorNameVn)
-            : l10n.editSelectTitle,
-        subtitle: state?.reel.name,
-        leading: TtIconButton(
-          icon: Symbols.close_rounded,
-          semanticLabel: l10n.selectionClose,
-          style: TtIconButtonStyle.circle,
-          onPressed: _close,
+    // "Add clips to your CapCut project" is longer than the bar: for CapCut
+    // and Edits the title wraps and grows the bar rather than lose the
+    // editor's name. The `Scaffold.appBar` slot has a fixed height, so then
+    // the bar is the first child of the body (as on the notifications help
+    // screen).
+    final wrapTitle = addEditor != null && addEditor != EditorApp.vn;
+    // At large text the long title and **Select all** do not fit side by
+    // side (the title would break inside words), so the button goes under the
+    // bar, at its end.
+    final selectAllBelow =
+        wrapTitle && MediaQuery.textScalerOf(context).scale(16) / 16 >= 1.5;
+    final selectAll = TtButton(
+      label: state?.allPicked ?? false
+          ? l10n.editSelectClear
+          : l10n.selectionSelectAll,
+      kind: TtButtonKind.text,
+      onPressed: state == null || state.liveCount <= state.inFolder.length
+          ? null
+          : state.allPicked
+          ? notifier.clear
+          : notifier.selectAll,
+    );
+    final bar = TtAppBar(
+      // The words of add mode follow the session's editor, so they wait
+      // until it is known.
+      title: !adding
+          ? l10n.editSelectTitle
+          : addEditor == null
+          ? ''
+          : addEditor == EditorApp.vn
+          ? l10n.editAddTitle(l10n.editorNameVn)
+          : l10n.editAddProjectTitle(editorShortName(l10n, addEditor)),
+      subtitle: state?.reel.name,
+      wrapTitle: wrapTitle,
+      leading: TtIconButton(
+        icon: Symbols.close_rounded,
+        semanticLabel: l10n.selectionClose,
+        style: TtIconButtonStyle.circle,
+        onPressed: _close,
+      ),
+      actions: [if (!selectAllBelow) selectAll],
+    );
+    final scroll = CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(
+          child: TtInfoBar(
+            icon: Symbols.sort_rounded,
+            text: l10n.editSelectInfo,
+          ),
         ),
-        actions: [
-          TtButton(
-            label: state?.allPicked ?? false
-                ? l10n.editSelectClear
-                : l10n.selectionSelectAll,
-            kind: TtButtonKind.text,
-            onPressed: state == null || state.liveCount <= state.inFolder.length
-                ? null
-                : state.allPicked
-                ? notifier.clear
-                : notifier.selectAll,
-          ),
-        ],
-      ),
-      body: CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: TtInfoBar(
-              icon: Symbols.sort_rounded,
-              text: l10n.editSelectInfo,
+        if (state != null)
+          for (final day in state.days) ...[
+            SliverToBoxAdapter(
+              child: TtDayHeader(
+                title: l10n.reelDayTitle(
+                  day.number,
+                  ttDayWeekdayText(context, day.date, today: today),
+                ),
+                trailing: l10n.reelDayClips(day.clips.length),
+              ),
             ),
-          ),
-          if (state != null)
-            for (final day in state.days) ...[
-              SliverToBoxAdapter(
-                child: TtDayHeader(
-                  title: l10n.reelDayTitle(
-                    day.number,
-                    ttDayWeekdayText(context, day.date, today: today),
+            SliverPadding(
+              padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
+              sliver: _dayGrid(
+                context,
+                day,
+                state: state,
+                cache: cache,
+                locale: locale,
+                use24Hour: use24Hour,
+              ),
+            ),
+          ],
+        // proto: `.end-space` (24 px) above the bottom bar.
+        SliverToBoxAdapter(child: SizedBox(height: tt.spacing.xl)),
+      ],
+    );
+
+    return Scaffold(
+      appBar: wrapTitle ? null : bar,
+      body: wrapTitle
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                bar,
+                if (selectAllBelow)
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Padding(
+                      padding: EdgeInsetsDirectional.only(end: tt.spacing.xxs),
+                      child: selectAll,
+                    ),
                   ),
-                  trailing: l10n.reelDayClips(day.clips.length),
-                ),
-              ),
-              SliverPadding(
-                padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
-                sliver: _dayGrid(
-                  context,
-                  day,
-                  state: state,
-                  cache: cache,
-                  locale: locale,
-                  use24Hour: use24Hour,
-                ),
-              ),
-            ],
-          // proto: `.end-space` (24 px) above the bottom bar.
-          SliverToBoxAdapter(child: SizedBox(height: tt.spacing.xl)),
-        ],
-      ),
+                Expanded(child: scroll),
+              ],
+            )
+          : scroll,
       bottomNavigationBar: _bottomBar(context, state),
     );
   }
@@ -281,9 +325,11 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
             final label = l10n.clipTileSemantics(time, length);
             // Add mode: its copy is in the folder; ticked, locked, marked.
             final locked = state.inFolder.contains(clip.id);
+            final vn = state.addEditor == EditorApp.vn;
             final editor = l10n.editorNameVn;
-            void onTap() =>
-                locked ? _alreadyInFolder(context) : notifier.toggle(clip.id);
+            void onTap() => locked
+                ? _alreadyInFolder(context, state.addEditor)
+                : notifier.toggle(clip.id);
             return TtClipTile(
               key: ValueKey<int>(clip.id),
               thumbnail: clipThumbnail(
@@ -294,10 +340,16 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
               timeText: time,
               durationText: length,
               horizontal: clip.width > clip.height,
-              semanticLabel: locked
+              semanticLabel: !locked
+                  ? label
+                  : vn
                   ? l10n.clipTileSemanticsInFolder(label, editor)
-                  : label,
-              vnLabel: locked ? l10n.editInFolderMark(editor) : null,
+                  : l10n.clipTileSemanticsInTheFolder(label),
+              vnLabel: !locked
+                  ? null
+                  : vn
+                  ? l10n.editInFolderMark(editor)
+                  : l10n.editInTheFolderMark,
               // Always picking: every tile shows its check circle.
               selected: state.selected.contains(clip.id),
               onTap: onTap,
@@ -309,24 +361,41 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
   }
 
-  /// "Already in the VN folder. …", for a tap on a locked tile.
-  void _alreadyInFolder(BuildContext context) {
+  /// "Already in the VN folder. …" (or "Already in the folder. …" for CapCut
+  /// and Edits), for a tap on a locked tile.
+  void _alreadyInFolder(BuildContext context, EditorApp? editor) {
     final l10n = AppLocalizations.of(context);
-    ReelSnacks.of(context)
-        .show(l10n.editAlreadyInFolderSnack(l10n.editorNameVn), done: false);
+    ReelSnacks.of(context).show(
+      editor == EditorApp.vn
+          ? l10n.editAlreadyInFolderSnack(l10n.editorNameVn)
+          : l10n.editAlreadyInTheFolderSnack,
+      done: false,
+    );
   }
 
   /// Add mode's bar: only the clips to copy count.
   Widget _addBar(BuildContext context, EditSelectState? state) {
     final l10n = AppLocalizations.of(context);
     final count = state?.toCopyInOrder.length ?? 0;
+    final inFolder = state?.inFolder.length ?? 0;
+    // Until the session is known the bar has VN's words, like the old one.
+    final vn = (state?.addEditor ?? EditorApp.vn) == EditorApp.vn;
     final editor = l10n.editorNameVn;
+    final size = count == 0 ? '' : byteSizeText(l10n, state!.toCopyBytes);
     return TtBottomBar(
       key: const ValueKey<String>('edit-select-bottom-bar'),
-      title: count == 0 ? l10n.editAddBarNone : l10n.editAddBarCount(count),
+      title: count == 0
+          ? l10n.editAddBarNone
+          : vn
+          ? l10n.editAddBarCount(count)
+          : l10n.editAddFolderBarCount(count),
       subtitle: count == 0
-          ? l10n.editAddBarInFolder(state?.inFolder.length ?? 0, editor)
-          : l10n.editAddBarDetail(byteSizeText(l10n, state!.toCopyBytes)),
+          ? vn
+                ? l10n.editAddBarInFolder(inFolder, editor)
+                : l10n.editAddBarInTheFolder(inFolder)
+          : vn
+          ? l10n.editAddBarDetail(size)
+          : l10n.editAddFolderBarDetail(size, state?.addFolder ?? ''),
       action: TtButton(
         key: const ValueKey<String>('edit-select-continue'),
         label: l10n.editAddCopy,

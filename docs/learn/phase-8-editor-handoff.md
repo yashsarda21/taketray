@@ -529,7 +529,37 @@ They end with `All tests passed!`. Now open `lib/features/reels/view_models/reel
 
 ## 12. CapCut/Edits add-later through the folder
 
-To be written in Task 12 (decision D-129), after the owner's two hand checks (the gate before Task 12).
+**What we built:** the same "add more clips later" for a reel being edited in CapCut or Instagram Edits. The first send to these editors is a share of the originals (nothing copied). When more clips arrive afterwards, the reel page's "New since you started editing" part has a button, **Add to your CapCut project** (or **Add to your Edits project**), and the banner has **Add more clips**. Both open the clip picker in add mode: "Add clips to your CapCut project", where a clip whose copy is already in the folder is ticked, locked and marked "In the folder", a fresh clip starts ticked, and a clip that was sent but has no copy can be ticked (the user may have deleted it from the project). The bottom bar says "3 clips to copy" over "450 MB · into Movies/TakeTray/Goa". **Copy** goes through the same space check, copying screen and ready screen as VN, with CapCut's words: "{editor} adds clips to a project from an album", "Copying clips for CapCut", and "Ready to add in CapCut" with three steps: open your project, open the **Goa** album, pick the new clips.
+
+**Why TakeTray needs it:** the owner tried it by hand (the gate before this task). CapCut's and Edits' "add media to a project" pickers do show a `Movies/<folder>` album, in shooting order, so copying the new clips into the reel's folder is enough. But sharing to either app always opens a **new** project and never offers "add to an existing project", so a direct share of the new clips would not land in the user's project. The folder is the only way to add to a project that already exists.
+
+**Key ideas:**
+
+- **The service already did it.** `sendOriginals` starts the session, so a CapCut reel has a session with sent rows, and `planCopy`/`startCopy` already took an `EditorApp`. A second batch goes into the session's folder (a rename of the reel does not move it) and its names are chosen against the names the session's copies and the folder already have, so a clash becomes `_2` and an earlier copy is never renamed. This task is mostly screens learning to say the editor's name.
+- **Words by editor, one rule.** The picker, the space check and the ready screen each pick VN's sentence or the project sentence from one boolean (`vn`). New strings take `{editor}` or `{folder}`; the old VN ones stay as they were, so no VN screen changed.
+- **A job names its own editor.** The running-job banner used to guess VN when the page had no session yet. Now it asks the job's saved plan (`copyJobEditorProvider`, the same source the copying screen reads), then the session, and VN only as a last resort.
+- **Ready after every CapCut or Edits copy.** A VN add goes back to the reel's page with a snack, because VN's folder list is still open in the user's head. A CapCut or Edits copy always goes to "Ready to add in {editor}", because the next thing the user must do is go to the editor and add from the album.
+- **Sent is not copied.** The lock is for clips with a live copy only. A clip that was sent but has no copy in the folder is selectable, because the user may have removed it from the project and wants it back:
+
+  ```dart
+  : sentIds.contains(id)
+      ? AddPick.sentNotCopied
+      : AddPick.fresh,
+  ```
+
+- **A long title wraps, without losing a button.** "Add clips to your CapCut project" does not fit a one-line app bar next to **Select all**. The title wraps (`wrapTitle`), which needs the bar to be the first child of the body instead of `Scaffold.appBar`, and at large text **Select all** moves under it. A first try that only set `wrapTitle` lost the button at 2x, and no test noticed until a test looked for it.
+
+**Where it lives:** `app/lib/features/editors/views/` (`edit_select_screen.dart`, `copy_space_screen.dart`, `copy_progress_screen.dart`, `copy_ready_screen.dart`), `app/lib/features/editors/view_models/edit_select_controller.dart` (`addFolder`), `app/lib/features/reels/views/` (`reel_edit_banner.dart`, `reel_edit_sections.dart`, `reel_detail_screen.dart`), `app/lib/features/reels/view_models/reel_edit_state.dart` (`copyJobEditor`) and `app/lib/l10n/app_en.arb`.
+
+**Try it yourself:** run the folder tests, then break the lock:
+
+```bash
+cd app && ../tool/flutter test test/features/editors/edit_select_controller_test.dart --plain-name "CapCut and Edits"
+```
+
+They end with `All tests passed!`. Now open `lib/features/editors/view_models/edit_select_controller.dart` and change `if (value == AddPick.inFolder) key,` to `if (value == AddPick.inFolder || value == AddPick.sentNotCopied) key,`. Run it again: "the session is the editor: a clip sent but not copied is selectable…" fails, because a clip the user may want back can no longer be ticked. Put it back. For the folder, open `lib/data/editors/edit_session_service.dart`, change `final folder = session!.folderName;` to `final folder = safeFolderName(await _reelName(reelId));` and run `test/data/editors/edit_session_service_test.dart --plain-name "second batch"`: both tests fail, because a renamed reel would start a second folder.
+
+**Decisions:** D-129 (all of this section), with D-118 (decision 4, R1, R6, R8), D-123 (the service), D-127 (the copy screens) and D-128 (the page and the add picker) as background.
 
 ## 13. The VN copies storage screen
 

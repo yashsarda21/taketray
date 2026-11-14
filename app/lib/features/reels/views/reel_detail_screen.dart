@@ -110,10 +110,12 @@ enum _SelectionAction { edit, selectAll, share }
 /// editing banner (`ReelEditBanner`) sits under the header, and the clips
 /// come in two parts (`reelEditSlivers`): "New since you started editing"
 /// and "In your edit", each with its own day headers. **Done editing** asks
-/// `showDoneEditingDialog`; **Add more clips** and **Copy to VN folder** open
-/// the picking screen in add mode (`Routes.editSelectOf(add: true)`). While
-/// a copy job of the reel runs the banner shows its progress and **Show**,
-/// which opens the copying screen, and Done editing is not offered. Opening
+/// `showDoneEditingDialog`; **Add more clips**, **Copy to VN folder** and
+/// **Add to your CapCut project** / **Add to your Edits project** (D-129)
+/// open the picking screen in add mode (`Routes.editSelectOf(add: true)`).
+/// While a copy job of the reel runs the banner shows its progress and
+/// **Show**, which opens the copying screen, and Done editing is not offered.
+/// Opening
 /// the page also checks the copies (`ReelDetailController`). With
 /// [askDoneEditing] (`?done=1`, the copies reminder, D-124) the page asks
 /// Done editing once, as soon as it knows the reel has a session; a reel with
@@ -274,6 +276,9 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       ref.watch(copyJobControllerProvider),
       widget.reelId,
     );
+    final jobEditor = job == null
+        ? null
+        : ref.watch(copyJobEditorProvider(job.jobId)).value;
     _askDoneOnce(editAsync, job);
     // Edit video: a live clip, nothing being chosen, and no editing session
     // (R1). Until the session is known the button and the menu entry wait.
@@ -373,6 +378,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                         key: const ValueKey<String>('reel-edit-banner'),
                         edit: edit,
                         job: job,
+                        jobEditor: jobEditor,
                         today: today,
                         onDoneEditing: () => unawaited(
                           showDoneEditingDialog(context, ref, widget.reelId),

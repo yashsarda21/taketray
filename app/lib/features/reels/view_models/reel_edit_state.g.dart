@@ -150,6 +150,104 @@ final class ReelEditorsProvider
 
 String _$reelEditorsHash() => r'98e0e7667ec114e942fc6c0e8703c0bcab7ea262';
 
+/// The editor of copy job [jobId], from its saved plan (the same source the
+/// copy progress screen reads); null once the plan is gone. The running-job
+/// banner names it, so a job never shows another editor's name while the
+/// reel's session is not read yet or has ended (D-129).
+
+@ProviderFor(copyJobEditor)
+final copyJobEditorProvider = CopyJobEditorFamily._();
+
+/// The editor of copy job [jobId], from its saved plan (the same source the
+/// copy progress screen reads); null once the plan is gone. The running-job
+/// banner names it, so a job never shows another editor's name while the
+/// reel's session is not read yet or has ended (D-129).
+
+final class CopyJobEditorProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<EditorApp?>,
+          EditorApp?,
+          FutureOr<EditorApp?>
+        >
+    with $FutureModifier<EditorApp?>, $FutureProvider<EditorApp?> {
+  /// The editor of copy job [jobId], from its saved plan (the same source the
+  /// copy progress screen reads); null once the plan is gone. The running-job
+  /// banner names it, so a job never shows another editor's name while the
+  /// reel's session is not read yet or has ended (D-129).
+  CopyJobEditorProvider._({
+    required CopyJobEditorFamily super.from,
+    required String super.argument,
+  }) : super(
+         retry: null,
+         name: r'copyJobEditorProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$copyJobEditorHash();
+
+  @override
+  String toString() {
+    return r'copyJobEditorProvider'
+        ''
+        '($argument)';
+  }
+
+  @$internal
+  @override
+  $FutureProviderElement<EditorApp?> $createElement($ProviderPointer pointer) =>
+      $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<EditorApp?> create(Ref ref) {
+    final argument = this.argument as String;
+    return copyJobEditor(ref, argument);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is CopyJobEditorProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$copyJobEditorHash() => r'8b1b8390a1547f1f7a6131857c49db9903ac61d1';
+
+/// The editor of copy job [jobId], from its saved plan (the same source the
+/// copy progress screen reads); null once the plan is gone. The running-job
+/// banner names it, so a job never shows another editor's name while the
+/// reel's session is not read yet or has ended (D-129).
+
+final class CopyJobEditorFamily extends $Family
+    with $FunctionalFamilyOverride<FutureOr<EditorApp?>, String> {
+  CopyJobEditorFamily._()
+    : super(
+        retry: null,
+        name: r'copyJobEditorProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// The editor of copy job [jobId], from its saved plan (the same source the
+  /// copy progress screen reads); null once the plan is gone. The running-job
+  /// banner names it, so a job never shows another editor's name while the
+  /// reel's session is not read yet or has ended (D-129).
+
+  CopyJobEditorProvider call(String jobId) =>
+      CopyJobEditorProvider._(argument: jobId, from: this);
+
+  @override
+  String toString() => r'copyJobEditorProvider';
+}
+
 /// Reel [reelId]'s page while it is being edited; null while it has no
 /// session (D-128).
 ///
