@@ -63,7 +63,9 @@ final Expando<Set<int>> _asking = Expando('doneEditing');
 /// copies. Try again." ("Something went wrong. Try again." when there were
 /// no copies to delete); the session stays, so the banner does, and a retry
 /// works (D-123). Nothing is asked for a reel with no session, a reel that is
-/// gone, or a reel whose copy job runs (Done editing would refuse it). One
+/// gone, or a reel whose copy job runs (Done editing would refuse it; with
+/// [sayWhenCopying] a snack says "Copying is still running. Try again when it
+/// finishes." for that last case, the VN copies screen's Delete). One
 /// question per reel at a time, and one Done editing however often its
 /// button is tapped.
 Future<void> showDoneEditingDialog(
@@ -71,13 +73,14 @@ Future<void> showDoneEditingDialog(
   WidgetRef ref,
   int reelId, {
   bool suggestPublished = true,
+  bool sayWhenCopying = false,
 }) async {
   final container = ProviderScope.containerOf(context, listen: false);
   final asking = _asking[container] ??= <int>{};
   if (!asking.add(reelId)) return;
   final NavigatorState? navigator;
   try {
-    navigator = await _askAndRun(context, container, reelId);
+    navigator = await _askAndRun(context, container, reelId, sayWhenCopying);
   } finally {
     asking.remove(reelId);
   }
@@ -105,11 +108,20 @@ Future<NavigatorState?> _askAndRun(
   BuildContext context,
   ProviderContainer container,
   int reelId,
+  bool sayWhenCopying,
 ) async {
   // Looked up now: the page that asked may be gone when the delete ends.
   final l10n = AppLocalizations.of(context);
   final snacks = ReelSnacks.of(context);
   final navigator = Navigator.of(context, rootNavigator: true);
+  // The copies are checked first (on the service's queue, behind the page's
+  // own check), so the size asked about is of the copies still on the phone.
+  // A failing check is logged and the recorded size is used (T11-m3).
+  try {
+    await container.read(editSessionServiceProvider).verifyCopies(reelId);
+  } on Object catch (error) {
+    _log.warning('Checking the copies failed: ${error.runtimeType}');
+  }
   final EditState? edit;
   final Reel? reel;
   try {
@@ -122,7 +134,13 @@ Future<NavigatorState?> _askAndRun(
     return null;
   }
   if (edit == null || reel == null || !context.mounted) return null;
-  if (await _copying(container, reelId) || !context.mounted) return null;
+  if (await _copying(container, reelId)) {
+    // A button that was tapped should not seem dead: the copies screen asks
+    // for a snack, the reel's page has a banner that already says it.
+    if (sayWhenCopying) snacks.show(l10n.copyStillRunning, done: false);
+    return null;
+  }
+  if (!context.mounted) return null;
 
   final editor = edit.session.editor;
   final copies = edit.copies.length;

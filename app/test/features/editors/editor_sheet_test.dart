@@ -221,6 +221,38 @@ void main() {
       expect(find.textContaining('greyed out'), findsNothing);
     });
 
+    testApp('coming back to the app (after the Play Store) asks the phone '
+        'again: a row that was greyed out works once it is installed '
+        '(T9-m4)', (tester) async {
+      h.editors.installed = {_capcut: false, _edits: true, _vn: true};
+      final (goa, ids) = await twoClips(tester);
+      await openSheet(tester, goa, ids);
+      expect(tester.widget<TtListRow>(row('CapCut')).off, isTrue);
+      final asks = h.editors.calls.where((c) => c == 'apps').length;
+
+      // The user installs CapCut and comes back.
+      h.editors.installed = {_capcut: true, _edits: true, _vn: true};
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await settleApp(tester);
+      expect(
+        h.editors.calls.where((c) => c == 'apps').length,
+        asks,
+        reason: 'going away asks nothing',
+      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await settleApp(tester);
+
+      expect(h.editors.calls.where((c) => c == 'apps').length, asks + 1);
+      final capcut = tester.widget<TtListRow>(row('CapCut'));
+      expect(capcut.off, isFalse);
+      expect(capcut.onTap, isNotNull);
+      expect(find.text('Not installed'), findsNothing);
+    });
+
     testApp('an installed editor shows its icon; one without shows a '
         'letters tile', (tester) async {
       h.editors.icons = {
@@ -259,6 +291,52 @@ void main() {
 
       expect(find.text('Edit 2 clips in…'), findsOneWidget);
       await expectTtAccessible(tester, includeDisabledText: true);
+    });
+  });
+
+  group('Continue (T9-m5)', () {
+    testApp('two taps before the phone has answered open one sheet', (
+      tester,
+    ) async {
+      h.editors.hold('apps');
+      final (goa, ids) = await twoClips(tester);
+      await pumpScreen(
+        tester,
+        EditSelectScreen(reelId: goa.id, clipIds: ids),
+        overrides: h.appOverrides,
+        settle: false,
+      );
+      await settleApp(tester);
+
+      final button = find.widgetWithText(TtButton, 'Continue');
+      final onPressed = tester.widget<TtButton>(button).onPressed!;
+      // Two taps, back to back: the second arrives while the first is still
+      // opening the sheet.
+      onPressed();
+      onPressed();
+      await tester.pump();
+      h.editors.release('apps');
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget);
+      // Closing it leaves the picking screen alone, with no second sheet.
+      await tester.tapAt(const Offset(180, 20));
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.byType(EditSelectScreen), findsOneWidget);
+    });
+
+    testApp('after the sheet closes, Continue opens it again', (tester) async {
+      final (goa, ids) = await twoClips(tester);
+      await openSheet(tester, goa, ids);
+      await tester.tapAt(const Offset(180, 20));
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsNothing);
+
+      await tester.tap(find.text('Continue'));
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget);
     });
   });
 
@@ -302,6 +380,35 @@ void main() {
         await flushOffer(tester);
       });
     }
+
+    testApp('the Sent snack has the open-in-new icon, as the prototype, '
+        'not the check mark (T9-m1)', (tester) async {
+      final (goa, ids) = await twoClips(tester);
+      await openSheet(tester, goa, ids);
+
+      await tapRow(tester, 'CapCut');
+
+      final snack = find.ancestor(
+        of: find.text('Sent 2 clips to CapCut'),
+        matching: find.byType(TtSnack),
+      );
+      expect(snack, findsOneWidget);
+      expect(
+        find.descendant(
+          of: snack,
+          matching: find.byIcon(Symbols.open_in_new_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: snack,
+          matching: find.byIcon(Symbols.check_circle_rounded),
+        ),
+        findsNothing,
+      );
+      await flushOffer(tester);
+    });
 
     testApp('one clip: "Sent 1 clip to CapCut"', (tester) async {
       final (goa, ids) = await twoClips(tester);
@@ -667,9 +774,38 @@ void main() {
         await tapRow(tester, 'CapCut');
 
         // Nothing was written or shared (the service drops missing clips).
+        // Retrying cannot work, so the line says what is wrong (T9-m7).
         expect(h.editors.sent, isEmpty);
-        expect(find.text("Couldn't open CapCut. Try again."), findsOneWidget);
+        expect(
+          find.text('These clips are missing from your phone.'),
+          findsOneWidget,
+        );
+        expect(find.textContaining("Couldn't open"), findsNothing);
         expect(await real(tester, () => sessions().sessionOf(goa.id)), isNull);
+      });
+
+      testApp('a share that fails while the clips are still there says '
+          "Couldn't open, not missing (T9-m7)", (tester) async {
+        h.editors.sendResult = SendResult.failed;
+        final (goa, ids) = await twoClips(tester);
+        await openSheet(tester, goa, ids);
+
+        await tapRow(tester, 'CapCut');
+
+        expect(find.text("Couldn't open CapCut. Try again."), findsOneWidget);
+        expect(find.textContaining('missing from your phone'), findsNothing);
+      });
+
+      testApp("one clip missing and the share fails: Couldn't open (a clip "
+          'is still there, T9-m7)', (tester) async {
+        h.editors.sendResult = SendResult.failed;
+        final (goa, ids) = await twoClips(tester);
+        await openSheet(tester, goa, ids);
+        await real(tester, () => flagForTest(h, {ids[0]}, missing: true));
+
+        await tapRow(tester, 'CapCut');
+
+        expect(find.text("Couldn't open CapCut. Try again."), findsOneWidget);
       });
 
       testApp('a clip that went missing is left out of the share', (

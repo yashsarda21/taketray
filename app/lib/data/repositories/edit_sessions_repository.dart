@@ -1,10 +1,13 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/database/converters.dart';
+import 'package:taketray/data/repositories/undo_writer.dart'
+    show editCopyFromRow, editSessionFromRow;
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
@@ -75,7 +78,7 @@ class EditSessionsRepository {
               createdAt: _clock.storedNow(),
             ),
           );
-      return _toSession(row);
+      return editSessionFromRow(row);
     });
     _log.info('Started the ${editor.name} session of reel $reelId');
     return session;
@@ -84,7 +87,7 @@ class EditSessionsRepository {
   /// The editing session of reel [reelId], or null when it has none.
   Future<EditSession?> sessionOf(int reelId) async {
     final row = await _sessionRow(reelId);
-    return row == null ? null : _toSession(row);
+    return row == null ? null : editSessionFromRow(row);
   }
 
   /// Reel [reelId]'s session with its copies and sent clips, read once (one
@@ -107,11 +110,13 @@ class EditSessionsRepository {
       .distinct();
 
   /// The editor of every reel that has a session (reel id to editor), for
-  /// the reel cards, again after every change.
+  /// the reel cards, again after every change to that map (a change to a
+  /// session row that leaves the map as it was emits nothing).
   Stream<Map<int, EditorApp>> watchEditors() => _db
       .select(_db.editSessions)
       .watch()
-      .map((rows) => {for (final row in rows) row.reelId: row.editor});
+      .map((rows) => {for (final row in rows) row.reelId: row.editor})
+      .distinct(mapEquals);
 
   /// Every editing session with its reel's current name and its recorded
   /// copies (how many, their bytes, the newest copy time), newest session
@@ -290,17 +295,7 @@ class EditSessionsRepository {
                 (c) => OrderingTerm.asc(c.clipId),
               ]))
             .get();
-    return [
-      for (final row in rows)
-        EditCopy(
-          reelId: row.reelId,
-          clipId: row.clipId,
-          copyMediaStoreId: row.copyMediaStoreId,
-          fileName: row.fileName,
-          sizeBytes: row.sizeBytes,
-          copiedAt: row.copiedAt,
-        ),
-    ];
+    return [for (final row in rows) editCopyFromRow(row)];
   }
 
   /// Ends reel [reelId]'s session ("Done editing"): deletes the session and,
@@ -323,7 +318,7 @@ class EditSessionsRepository {
       _db.sentClips,
     )..where((s) => s.reelId.equals(reelId))).get();
     return EditState(
-      session: _toSession(row),
+      session: editSessionFromRow(row),
       copies: await copiesOf(reelId),
       sentIds: {for (final s in sent) s.clipId},
     );
@@ -348,13 +343,6 @@ class EditSessionsRepository {
   Future<EditSessionRow?> _sessionRow(int reelId) => (_db.select(
     _db.editSessions,
   )..where((s) => s.reelId.equals(reelId))).getSingleOrNull();
-
-  EditSession _toSession(EditSessionRow row) => EditSession(
-    reelId: row.reelId,
-    editor: row.editor,
-    folderName: row.folderName,
-    createdAt: row.createdAt,
-  );
 }
 
 @Riverpod(keepAlive: true)

@@ -746,6 +746,11 @@ void main() {
       expect(Routes.clipIdsIn(''), isEmpty);
       expect(Routes.clipIdsIn(null), isEmpty);
       expect(Routes.clipIdsIn('x'), isEmpty);
+      // Only plain digits: no hex, sign, spaces or separators (T9-m8).
+      expect(Routes.clipIdsIn('0x10,+5,5 ,3'), [3]);
+      expect(Routes.clipIdsIn('1_0,0010,٣'), [10]);
+      expect(Routes.clipIdsIn(' 7,8'), [8]);
+      expect(Routes.clipIdsIn('99999999999999999999,4'), [4]);
     });
 
     testApp('the picking screen is full screen, above the nav pill, with '

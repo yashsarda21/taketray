@@ -232,7 +232,8 @@ open class Notifier(
     /**
      * Removes every copies reminder in the shade except those of the reels in
      * [keep]: the session of a reel that is not in the mirror any more has
-     * ended. Phase 6's notifications are never touched.
+     * ended, or its copies changed since the reminder was shown. Phase 6's
+     * notifications are never touched.
      */
     fun cancelCopiesExcept(keep: Set<Long>) {
         for (active in manager.activeNotifications) {

@@ -1233,7 +1233,9 @@ void main() {
       );
     });
 
-    testApp('nothing opened: the same snack', (tester) async {
+    testApp('nothing opened: the failure snack, not "missing" (T9-m3)', (
+      tester,
+    ) async {
       h.editors.chooserResult = false;
       final goa = await real(tester, () => reels.create('Goa'));
       final ids = await reelWith(tester, goa.id, [1]);
@@ -1242,10 +1244,7 @@ void main() {
       await tester.tap(find.text('Share'));
       await settleApp(tester);
 
-      expect(
-        find.text('These clips are missing from your phone.'),
-        findsOneWidget,
-      );
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
     });
 
     testApp('a share that throws says something went wrong, and can be '

@@ -20,6 +20,12 @@ void main() {
       ),
     );
 
+    // Delete while a copy job of the reel runs (T13-M1b, controller ruling).
+    expect(
+      l10n.copyStillRunning,
+      'Copying is still running. Try again when it finishes.',
+    );
+
     // Settings.
     expect(l10n.settingsGroupClips, 'Clips');
     expect(l10n.settingsCopiesTitle, 'Storage used by VN copies');

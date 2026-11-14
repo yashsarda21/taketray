@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/clip_time.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 
 import 'vm_harness.dart';
@@ -14,7 +17,9 @@ import 'vm_harness.dart';
 ///   clip ids at that moment in [reelClipsAtLeave]; [failLeave] makes it
 ///   throw that error instead.
 /// - `beforeReelDelete` notes `reelDelete <reel>`; [failReelDelete] throws.
-/// - `recoverAtStart` notes `recover`; [failRecover] throws.
+/// - `recoverAtStart` notes `recover`; [failRecover] throws; [failedRuns]
+///   makes `recoveryFailed` true for that many runs.
+/// - `jobContext` waits for [holdJobContext] and throws [failJobContext].
 /// - `applyJob` notes each job in [applied] (and then applies it), or
 ///   throws [failApply].
 /// - `doneEditing` notes `done <reel>`; [failDone] throws that error
@@ -43,6 +48,22 @@ class SpyEditSessionService extends EditSessionService {
   Object? failLeave;
   Object? failReelDelete;
   Object? failRecover;
+
+  /// How many of the next `recoverAtStart` runs report [recoveryFailed], as
+  /// the real service does when its recovery logged a failure and swallowed
+  /// it.
+  int failedRuns = 0;
+
+  /// While set, `recoverAtStart` waits for it (a bridge call that never
+  /// returns) before doing anything.
+  Completer<void>? holdRecover;
+
+  /// While set, `jobContext` waits for it (the plan not read yet).
+  Completer<void>? holdJobContext;
+
+  /// Makes `jobContext` throw this.
+  Object? failJobContext;
+  bool _lastRunFailed = false;
   Object? failApply;
   Object? failDone;
   DoneEditingResult? doneResult;
@@ -68,10 +89,27 @@ class SpyEditSessionService extends EditSessionService {
   Future<CopyJob?> recoverAtStart() async {
     calls.add('recover');
     mediaCallsAtRecover.add(List.of(h.bridge.calls));
+    await holdRecover?.future;
     final fail = failRecover;
     if (fail != null) Error.throwWithStackTrace(fail, StackTrace.current);
-    return await super.recoverAtStart();
+    final job = await super.recoverAtStart();
+    _lastRunFailed = failedRuns > 0;
+    if (_lastRunFailed) failedRuns--;
+    return job;
   }
+
+  @override
+  Future<({EditorApp editor, bool startedSession})?> jobContext(
+    String jobId,
+  ) async {
+    await holdJobContext?.future;
+    final fail = failJobContext;
+    if (fail != null) Error.throwWithStackTrace(fail, StackTrace.current);
+    return await super.jobContext(jobId);
+  }
+
+  @override
+  bool get recoveryFailed => _lastRunFailed || super.recoveryFailed;
 
   @override
   Future<DoneEditingResult> doneEditing(int reelId) async {

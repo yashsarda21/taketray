@@ -14,9 +14,9 @@ final Logger _log = Logger('openShare');
 /// The chooser's title is "Share video" or "Share {n} videos" (n is how many
 /// were asked for). The service shares the clips that are still on the phone,
 /// in shooting order, and makes no editing session (R5). When none is left
-/// (or nothing opened) the snack says "These clips are missing from your
-/// phone."; a failure says "Something went wrong. Try again.". Nothing
-/// happens for an empty list.
+/// the snack says "These clips are missing from your phone."; a failure,
+/// including a share menu that did not open, says "Something went wrong. Try
+/// again.". Nothing happens for an empty list.
 ///
 /// Everything is looked up before the first `await`, so the caller may be
 /// gone when it ends.

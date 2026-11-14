@@ -114,7 +114,10 @@ Future<void> showEditorSheet(
       } else {
         router.go(Routes.reel(reelId));
       }
-      snacks.show(l10n.editorSentSnack(count, editorName(l10n, editor)));
+      snacks.show(
+        l10n.editorSentSnack(count, editorName(l10n, editor)),
+        icon: Symbols.open_in_new_rounded,
+      );
       unawaited(_offerReady(navigator, container, reelId));
   }
 }
@@ -156,12 +159,38 @@ class _EditorSheet extends ConsumerStatefulWidget {
   ConsumerState<_EditorSheet> createState() => _EditorSheetState();
 }
 
-class _EditorSheetState extends ConsumerState<_EditorSheet> {
+class _EditorSheetState extends ConsumerState<_EditorSheet>
+    with WidgetsBindingObserver {
   /// A send is running (or the sheet is closing): the rows do nothing.
   bool _busy = false;
 
   /// The editor whose send just failed, for the line in the sheet.
   EditorApp? _failed;
+
+  /// The failed send had no clip left to send: the line says so, because
+  /// trying again cannot work.
+  bool _failedForMissing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  /// Back from the Play Store (or anywhere): the phone is asked again, so a
+  /// row that was greyed out works once its editor is installed.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && mounted) {
+      ref.invalidate(editorChoicesProvider);
+    }
+  }
 
   /// One row of the sheet: [editor] is null for Other app….
   Future<void> _choose(EditorApp? editor) async {
@@ -170,6 +199,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet> {
     setState(() {
       _busy = true;
       _failed = null;
+      _failedForMissing = false;
     });
     switch (editor) {
       case null:
@@ -202,11 +232,21 @@ class _EditorSheetState extends ConsumerState<_EditorSheet> {
         ref.invalidate(editorChoicesProvider);
         setState(() => _busy = false);
       case SendResult.failed:
+        // `failed` with nothing sent is also "no clip of these is left".
+        final left = outcome.sentCount == 0 && !_anyClipLeft();
         setState(() {
           _busy = false;
           _failed = editor;
+          _failedForMissing = left;
         });
     }
+  }
+
+  /// Whether any of the asked clips is still on the phone and in the reel.
+  bool _anyClipLeft() {
+    final asked = widget.clipIds.toSet();
+    final clips = ref.read(reelClipsProvider(widget.reelId)).value ?? const [];
+    return clips.any((c) => asked.contains(c.clip.id) && !c.clip.missing);
   }
 
   @override
@@ -275,7 +315,9 @@ class _EditorSheetState extends ConsumerState<_EditorSheet> {
         footer: failed == null
             ? null
             : SheetFailure(
-                message: l10n.editorOpenFailed(editorName(l10n, failed)),
+                message: _failedForMissing
+                    ? l10n.shareClipsMissing
+                    : l10n.editorOpenFailed(editorName(l10n, failed)),
               ),
         child: ListView(
           shrinkWrap: true,

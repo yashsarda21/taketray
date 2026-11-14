@@ -18,8 +18,9 @@ part of 'copy_job_controller.dart';
 /// drops its events while no Dart side listens, D-122). For each engine
 /// event with a new finished file (or undeleted file, or a new end state) it
 /// calls `EditSessionService.applyJob`, which records the copies; progress
-/// alone records nothing. An event of an older job than the one held (job ids
-/// are `<reelId>-<UTC ms>`) is ignored.
+/// alone records nothing. An event of a job the controller saw before the one
+/// held is ignored (the order they were followed in, not the time in the id:
+/// a phone clock set back must not make a new job look old).
 ///
 /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
 /// cancelled, or settled by Done editing) is dropped: the controller holds
@@ -43,8 +44,9 @@ final copyJobControllerProvider = CopyJobControllerProvider._();
 /// drops its events while no Dart side listens, D-122). For each engine
 /// event with a new finished file (or undeleted file, or a new end state) it
 /// calls `EditSessionService.applyJob`, which records the copies; progress
-/// alone records nothing. An event of an older job than the one held (job ids
-/// are `<reelId>-<UTC ms>`) is ignored.
+/// alone records nothing. An event of a job the controller saw before the one
+/// held is ignored (the order they were followed in, not the time in the id:
+/// a phone clock set back must not make a new job look old).
 ///
 /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
 /// cancelled, or settled by Done editing) is dropped: the controller holds
@@ -66,8 +68,9 @@ final class CopyJobControllerProvider
   /// drops its events while no Dart side listens, D-122). For each engine
   /// event with a new finished file (or undeleted file, or a new end state) it
   /// calls `EditSessionService.applyJob`, which records the copies; progress
-  /// alone records nothing. An event of an older job than the one held (job ids
-  /// are `<reelId>-<UTC ms>`) is ignored.
+  /// alone records nothing. An event of a job the controller saw before the one
+  /// held is ignored (the order they were followed in, not the time in the id:
+  /// a phone clock set back must not make a new job look old).
   ///
   /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
   /// cancelled, or settled by Done editing) is dropped: the controller holds
@@ -104,7 +107,7 @@ final class CopyJobControllerProvider
   }
 }
 
-String _$copyJobControllerHash() => r'f9fc7ee78d8aafd14fd8d765275d20efc17126db';
+String _$copyJobControllerHash() => r'7bb0cd5dfc6fd2d32828e83391c0ed2fe164baab';
 
 /// The copy job the copy screens follow (D-123): the engine's job, or the
 /// one `EditSessionService` built itself (the interrupted job a restart
@@ -116,8 +119,9 @@ String _$copyJobControllerHash() => r'f9fc7ee78d8aafd14fd8d765275d20efc17126db';
 /// drops its events while no Dart side listens, D-122). For each engine
 /// event with a new finished file (or undeleted file, or a new end state) it
 /// calls `EditSessionService.applyJob`, which records the copies; progress
-/// alone records nothing. An event of an older job than the one held (job ids
-/// are `<reelId>-<UTC ms>`) is ignored.
+/// alone records nothing. An event of a job the controller saw before the one
+/// held is ignored (the order they were followed in, not the time in the id:
+/// a phone clock set back must not make a new job look old).
 ///
 /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
 /// cancelled, or settled by Done editing) is dropped: the controller holds

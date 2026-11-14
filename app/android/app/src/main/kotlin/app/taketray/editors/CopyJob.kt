@@ -102,7 +102,8 @@ internal fun isNoSpace(e: Throwable): Boolean {
  * be made, opened, written or published) → the row is deleted and the job
  * stops `INTERRUPTED`. Both can be resumed from the item that stopped them.
  * MediaStore refusing an item's name (IllegalArgumentException at insert)
- * fails that item only.
+ * fails that item only; a second refusal in a row stops the job `INTERRUPTED`
+ * instead (it is not the names), and that item is tried again on resume.
  */
 internal class CopyJob(
     val request: CopyRequest,
@@ -126,6 +127,9 @@ internal class CopyJob(
     private var currentBytes = 0L
     private val copied = mutableListOf<CopiedFile>()
     private val failed = mutableListOf<Long>()
+
+    /** Worker only: items refused at insert just before this one; zero at each run (a resume starts again). */
+    private var refusedInRow = 0
     private val undeleted = mutableListOf<CopiedFile>()
 
     /** Set by Stop; the loop reads it before every chunk. */
@@ -165,6 +169,7 @@ internal class CopyJob(
     /** Worker: copies from the next item until the end, a stop or a cancel; a cancel ends in [deleteCopies]. */
     fun run() {
         lastEventAt = clock()
+        refusedInRow = 0
         val end =
             try {
                 copyItems()
@@ -229,7 +234,7 @@ internal class CopyJob(
         emit(snapshot())
     }
 
-    private enum class Outcome { COPIED, FAILED, NO_SPACE, INTERRUPTED, CANCELLED }
+    private enum class Outcome { COPIED, FAILED, REFUSED, NO_SPACE, INTERRUPTED, CANCELLED }
 
     /** The loop: the state the job ends in ([CopyState.CANCELLED] for a cancel). */
     private fun copyItems(): CopyState {
@@ -251,6 +256,8 @@ internal class CopyJob(
                 Outcome.NO_SPACE -> return CopyState.SPACE_FULL
                 Outcome.INTERRUPTED -> return CopyState.INTERRUPTED
                 Outcome.CANCELLED -> return CopyState.CANCELLED
+                // copyOne settles a refusal as FAILED or INTERRUPTED.
+                Outcome.REFUSED -> throw IllegalStateException("an unsettled refusal")
             }
         }
     }
@@ -261,15 +268,34 @@ internal class CopyJob(
     /** A failure writing the copy. */
     private class TargetFailure(cause: Throwable) : IOException(cause)
 
+    /**
+     * One item. MediaStore refusing the item's name (IllegalArgumentException
+     * at insert) fails that item only. The names are plain, so a second
+     * refusal in a row means it is not the names (an unknown collection, a
+     * volume that is not there): the job stops [Outcome.INTERRUPTED], resumable,
+     * and that item is tried again.
+     */
     private fun copyOne(item: CopyItem): Outcome {
+        val outcome = copyItem(item)
+        if (outcome != Outcome.REFUSED) {
+            refusedInRow = 0
+            return outcome
+        }
+        if (refusedInRow >= 1) {
+            return Outcome.INTERRUPTED
+        }
+        refusedInRow++
+        synchronized(lock) { failed += item.clipId }
+        return Outcome.FAILED
+    }
+
+    private fun copyItem(item: CopyItem): Outcome {
         val rowId =
             try {
                 store.insertPending(folder, item.fileName)
             } catch (e: IllegalArgumentException) {
-                // MediaStore refused this item's name: this item only.
-                Log.w(COPY_LOG_TAG, "copy item failed at insert: ${e.javaClass.simpleName}")
-                synchronized(lock) { failed += item.clipId }
-                return Outcome.FAILED
+                Log.w(COPY_LOG_TAG, "copy item refused at insert: ${e.javaClass.simpleName}")
+                return Outcome.REFUSED
             } catch (e: Exception) {
                 Log.w(COPY_LOG_TAG, "copy row not made: ${e.javaClass.simpleName}")
                 return if (isNoSpace(e)) Outcome.NO_SPACE else Outcome.INTERRUPTED

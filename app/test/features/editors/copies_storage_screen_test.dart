@@ -17,6 +17,7 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/editors/views/copies_storage_screen.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
+import 'package:taketray/platform/copy_bridge.dart' show CopyState;
 import 'package:taketray/platform/editors_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -602,6 +603,76 @@ void main() {
       expect(find.text('Goa'), findsOneWidget);
       expect(service.calls, isNot(contains('done ${goa.id}')));
       expect(h.editors.deleteAsked, isEmpty);
+      // It says why nothing happened (controller ruling, T13-M1b).
+      expect(
+        find.text('Copying is still running. Try again when it finishes.'),
+        findsOneWidget,
+      );
+    });
+
+    testApp('when the job is over, Delete asks again and no snack is left '
+        'behind', (tester) async {
+      final (goa, goaClips) = await reelOf(tester, 'Goa', count: 4);
+      await session(
+        tester,
+        goa.id,
+        EditorApp.vn,
+        'Goa',
+        goaClips.sublist(0, 2),
+      );
+      final job = await startVnJob(
+        tester,
+        h,
+        goa,
+        goaClips,
+        clipIds: goaClips.sublist(2),
+      );
+      followJob(h.container);
+      await open(tester);
+      await tester.tap(find.widgetWithText(TtButton, 'Delete'));
+      await settleApp(tester);
+      expect(
+        find.text('Copying is still running. Try again when it finishes.'),
+        findsOneWidget,
+      );
+
+      h.copy.emit(job.report(state: CopyState.finished, copied: [0, 1]));
+      await settleApp(tester);
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold).first))
+          .hideCurrentSnackBar();
+      await settleApp(tester);
+      await tester.tap(find.widgetWithText(TtButton, 'Delete'));
+      await settleApp(tester);
+
+      expect(
+        find.text('Copying is still running. Try again when it finishes.'),
+        findsNothing,
+      );
+    });
+
+    testApp('a reel with no job shows no such snack: its Delete asks', (
+      tester,
+    ) async {
+      final (goa, goaClips) = await reelOf(tester, 'Goa', count: 4);
+      await session(
+        tester,
+        goa.id,
+        EditorApp.vn,
+        'Goa',
+        goaClips.sublist(0, 2),
+      );
+      await open(tester);
+
+      await tester.tap(find.widgetWithText(TtButton, 'Delete'));
+      await settleApp(tester);
+
+      expect(find.byType(TtDialog<bool>), findsOneWidget);
+      expect(
+        find.text('Copying is still running. Try again when it finishes.'),
+        findsNothing,
+      );
+      await tester.tap(find.text('Not yet'));
+      await settleApp(tester);
     });
   });
 

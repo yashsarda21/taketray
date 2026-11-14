@@ -61,6 +61,9 @@ class FakeCopyStore(
     @Volatile var closeError: IOException? = null
 
     var insertError: Exception? = null
+
+    /** Insert failures for these file names only (the others insert as usual). */
+    val insertErrorFor = mutableMapOf<String, Exception>()
     var publishError: Exception? = null
     var targetError: Exception? = null
 
@@ -104,6 +107,7 @@ class FakeCopyStore(
     ): Long {
         events += "insert $fileName"
         insertError?.let { throw it }
+        insertErrorFor[fileName]?.let { throw it }
         // MediaStore's own rename on a clash: "x.mp4" becomes "x (1).mp4".
         var name = fileName
         var n = 1

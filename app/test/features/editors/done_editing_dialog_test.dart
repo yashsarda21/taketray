@@ -177,6 +177,60 @@ void main() {
       expect(delete.kind, TtButtonKind.danger);
     });
 
+    testApp('a copy deleted outside TakeTray is not counted in the size, '
+        'though the page never checked yet (T11-m3)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0], ids[1]]),
+      );
+      // Only the first copy is still on the phone.
+      final copies = (await editState(tester, goa.id))!.copies;
+      h.editors
+        ..allow({'existingCopies'})
+        ..existing = {copies.first.copyMediaStoreId};
+      await pumpHost(tester, goa.id);
+      await ask(tester);
+
+      expect(find.text('Have you exported your video?'), findsOneWidget);
+      expect(dialogText(tester), contains('This frees 300 MB.'));
+      expect(dialogText(tester), isNot(contains('600 MB')));
+    });
+
+    testApp('when the check itself fails the dialog still asks, with the '
+        'recorded size (T11-m3)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0], ids[1]]),
+      );
+      h.editors
+        ..allow({'existingCopies'})
+        ..failNext('existingCopies');
+      await pumpHost(tester, goa.id);
+      await ask(tester);
+
+      expect(find.text('Have you exported your video?'), findsOneWidget);
+      expect(dialogText(tester), contains('This frees 600 MB.'));
+    });
+
+    testApp('when every copy was deleted outside TakeTray the question is '
+        'the no-copies one (T11-m3)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors
+        ..allow({'existingCopies'})
+        ..existing = {};
+      await pumpHost(tester, goa.id);
+      await ask(tester);
+
+      expect(find.text('Have you exported your video?'), findsNothing);
+      expect(find.text('Done editing Goa?'), findsOneWidget);
+    });
+
     testApp('Not yet deletes nothing and says nothing', (tester) async {
       final (goa, ids) = await goaReel(tester);
       await real(
@@ -492,6 +546,43 @@ void main() {
 
       expect(find.byType(TtDialog<bool>), findsNothing);
       expect(spy.calls, isEmpty);
+      // The reel's page has its banner for it: no snack unless asked for.
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testApp('a reel whose copy job runs: sayWhenCopying says why nothing '
+        'opens (T13-M1b)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(tester, h, goa, ids);
+      await pumpScreen(
+        tester,
+        Consumer(
+          builder: (context, ref, _) => Scaffold(
+            body: TextButton(
+              onPressed: () => showDoneEditingDialog(
+                context,
+                ref,
+                goa.id,
+                sayWhenCopying: true,
+              ),
+              child: const Text('go'),
+            ),
+          ),
+        ),
+        overrides: [
+          ...h.appOverrides,
+          editSessionServiceProvider.overrideWithValue(spy),
+        ],
+        settle: false,
+      );
+      await settleApp(tester);
+      await ask(tester);
+
+      expect(find.byType(TtDialog<bool>), findsNothing);
+      expect(
+        find.text('Copying is still running. Try again when it finishes.'),
+        findsOneWidget,
+      );
     });
 
     testApp('asked twice at once: one dialog', (tester) async {

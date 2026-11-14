@@ -177,17 +177,22 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
 
-    // "Add clips to your CapCut project" is longer than the bar: for CapCut
-    // and Edits the title wraps and grows the bar rather than lose the
-    // editor's name. The `Scaffold.appBar` slot has a fixed height, so then
-    // the bar is the first child of the body (as on the notifications help
-    // screen).
-    final wrapTitle = addEditor != null && addEditor != EditorApp.vn;
+    // A long title wraps and grows the bar rather than be cut ("Add clips to
+    // your CapCut project", or any title at large text). The
+    // `Scaffold.appBar` slot has a fixed height, so then the bar is the first
+    // child of the body (as on the notifications help screen). In add mode
+    // the bar is always in the body, from the first frame: the editor, so the
+    // title, is known only once the session is read, and the bar must not
+    // jump from the slot to the body then (T12-m3).
+    final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 >= 1.5;
+    final wrapTitle =
+        (addEditor != null && addEditor != EditorApp.vn) ||
+        (!adding && largeText);
+    final barInBody = adding || wrapTitle;
     // At large text the long title and **Select all** do not fit side by
     // side (the title would break inside words), so the button goes under the
     // bar, at its end.
-    final selectAllBelow =
-        wrapTitle && MediaQuery.textScalerOf(context).scale(16) / 16 >= 1.5;
+    final selectAllBelow = wrapTitle && largeText;
     final selectAll = TtButton(
       label: state?.allPicked ?? false
           ? l10n.editSelectClear
@@ -256,8 +261,8 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
 
     return Scaffold(
-      appBar: wrapTitle ? null : bar,
-      body: wrapTitle
+      appBar: barInBody ? null : bar,
+      body: barInBody
           ? Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [

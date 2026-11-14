@@ -137,8 +137,10 @@ class ReminderArming(
 
     /**
      * The copies reminder (Phase 8, D-124): its alarm, and the removal of the
-     * reminders of reels that left the mirror (their session ended). Every
-     * part, also with Shooting mode off.
+     * reminders of reels that left the mirror (their session ended) and of
+     * reels with newer copies than the reminder shown (its size is old; the
+     * new batch is reminded at its own time). Every part, also with Shooting
+     * mode off.
      */
     private fun armCopies(
         context: Context,
@@ -149,7 +151,7 @@ class ReminderArming(
         try {
             scheduler.armCopies(state, now)
         } finally {
-            Notifier(context).cancelCopiesExcept(state.usableCopiesReminders().map { it.reelId }.toSet())
+            Notifier(context).cancelCopiesExcept(scheduler.copiesShownForCurrentBatch(state))
         }
     }
 

@@ -31,7 +31,9 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// - **Delete** on a reel runs the same "Have you exported your video?" as
 ///   Done editing (`showDoneEditingDialog`), with no Published question
 ///   after it. When it is done the row is gone; when it failed the row stays
-///   and "Couldn't delete the copies. Try again." says so.
+///   and "Couldn't delete the copies. Try again." says so. While a copy job
+///   of the reel runs nothing is asked and the row stays, and the snack
+///   "Copying is still running. Try again when it finishes." says why.
 /// - **Not linked to a reel:** the files in the copy folders that no session
 ///   records (an earlier install, a backup import, or files the guard
 ///   refused to delete), by folder: the folder's name, "{n} files · {size}"
@@ -83,8 +85,13 @@ class _CopiesStorageScreenState extends ConsumerState<CopiesStorageScreen> {
   void _back() =>
       context.canPop() ? context.pop() : context.go(Routes.settings);
 
-  Future<void> _deleteReel(int reelId) =>
-      showDoneEditingDialog(context, ref, reelId, suggestPublished: false);
+  Future<void> _deleteReel(int reelId) => showDoneEditingDialog(
+    context,
+    ref,
+    reelId,
+    suggestPublished: false,
+    sayWhenCopying: true,
+  );
 
   Future<void> _deleteFolder(OrphanFolder folder) async {
     if (!_asking.add(folder.folderName)) return;

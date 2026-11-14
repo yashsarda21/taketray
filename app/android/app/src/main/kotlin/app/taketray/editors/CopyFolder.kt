@@ -72,7 +72,9 @@ class CopyFolder(
         val gone = mutableListOf<Long>()
         val refused = mutableListOf<Long>()
         val failed = mutableListOf<Long>()
-        for (ref in refs) {
+        // One outcome per id: with two refs for one id the first one counts,
+        // so an id is never in two lists (a second delete would say "gone").
+        for (ref in refs.distinctBy { it.mediaStoreId }) {
             val id = ref.mediaStoreId
             val row = rows[id]
             when {

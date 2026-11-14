@@ -276,9 +276,12 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       ref.watch(copyJobControllerProvider),
       widget.reelId,
     );
-    final jobEditor = job == null
+    final jobEditorAsync = job == null
         ? null
-        : ref.watch(copyJobEditorProvider(job.jobId)).value;
+        : ref.watch(copyJobEditorProvider(job.jobId));
+    final jobEditor = jobEditorAsync?.value;
+    // The plan is still being read: the banner has no editor to name yet.
+    final jobEditorPending = jobEditorAsync?.isLoading ?? false;
     _askDoneOnce(editAsync, job);
     // Edit video: a live clip, nothing being chosen, and no editing session
     // (R1). Until the session is known the button and the menu entry wait.
@@ -379,6 +382,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                         edit: edit,
                         job: job,
                         jobEditor: jobEditor,
+                        jobEditorPending: jobEditorPending,
                         today: today,
                         onDoneEditing: () => unawaited(
                           showDoneEditingDialog(context, ref, widget.reelId),

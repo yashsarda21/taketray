@@ -193,6 +193,31 @@ void main() {
       expect(steps.steps[1].highlighted, 2);
     });
 
+    testApp('before the session is read nothing names a blank folder or '
+        'editor; Done works; then the words come (T10-M4)', (tester) async {
+      final (reel, _) = await readyReel(tester);
+      await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: h.appOverrides,
+        copyScreens: true,
+        settle: false,
+      );
+      unawaited(routerOf(tester).push(Routes.copyReadyOf(reel.id)));
+      // The first frame of the screen: the reel's session is not read yet.
+      await tester.pump();
+
+      expect(find.byType(TtIllustratedSteps), findsNothing);
+      expect(find.textContaining('  '), findsNothing);
+      expect(find.textContaining(RegExp('open the +folder')), findsNothing);
+      expect(find.textContaining('Open '), findsNothing);
+      expect(buttonOf('Done'), findsOneWidget);
+
+      await settleApp(tester);
+      expect(find.byType(TtIllustratedSteps), findsOneWidget);
+      expect(find.text('Open VN'), findsOneWidget);
+    });
+
     testApp("the session's folder, also after the reel was renamed", (
       tester,
     ) async {

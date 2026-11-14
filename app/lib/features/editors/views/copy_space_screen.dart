@@ -120,7 +120,10 @@ class _CopySpaceScreenState extends ConsumerState<CopySpaceScreen> {
     if (plan.hasValue && state == null) _leave();
 
     Widget body;
-    if (plan.hasError) {
+    // A re-plan that fails while the copy is starting (the reel changed under
+    // it) is not shown: the start answers, and the screen keeps the numbers it
+    // had (Riverpod holds the last data beside the error).
+    if (plan.hasError && !(_starting && state != null)) {
       body = _Message(
         title: l10n.copyStartFailed,
         actions: [

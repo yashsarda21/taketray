@@ -46,12 +46,14 @@ void main() {
     double textScale = 1,
     Brightness brightness = Brightness.light,
     List<Override> overrides = const [],
+    Size size = const Size(360, 800),
   }) async {
     await pumpScreen(
       tester,
       EditSelectScreen(reelId: id, clipIds: ticked, addMode: add),
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
+      size: size,
       brightness: brightness,
       settle: false,
     );
@@ -782,12 +784,120 @@ void main() {
     }
   });
 
+  group('the app bar (T9-m2, T12-m3)', () {
+    Scaffold scaffold(WidgetTester tester) => tester.widget<Scaffold>(
+      find
+          .descendant(
+            of: find.byType(EditSelectScreen),
+            matching: find.byType(Scaffold),
+          )
+          .first,
+    );
+
+    testApp('at 2x the picker title wraps and Select all goes under the bar, '
+        'where it still works; at 1x it is a plain bar with Select all in it', (
+      tester,
+    ) async {
+      final (goa, _) = await threeClips(tester);
+
+      await open(tester, goa.id);
+      expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).wrapTitle, isFalse);
+      expect(scaffold(tester).appBar, isNotNull);
+      expect(selectAllButton(), findsOneWidget);
+
+      await open(tester, goa.id, textScale: 2, size: const Size(360, 1100));
+      final bar = tester.widget<TtAppBar>(find.byType(TtAppBar));
+      expect(bar.title, 'Pick clips to edit');
+      expect(bar.wrapTitle, isTrue, reason: 'not cut to "Pick cli..."');
+      expect(selectAllButton(), findsNothing);
+      final below = find.widgetWithText(TtButton, 'Select all');
+      expect(below, findsOneWidget);
+      expect(
+        tester.getTopLeft(below).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(find.byType(TtAppBar)).dy),
+      );
+      await tester.tap(below);
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(find.widgetWithText(TtButton, 'Clear'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testApp('add mode keeps one layout from the first frame: the bar never '
+        'moves from the Scaffold slot into the body when the session is read', (
+      tester,
+    ) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(
+        tester,
+        () => startEditing(
+          h,
+          goa.id,
+          EditorApp.capcut,
+          copied: [ids[0]],
+          sent: [ids[0]],
+        ),
+      );
+
+      // The first frame: the session is not read yet.
+      await pumpScreen(
+        tester,
+        EditSelectScreen(reelId: goa.id, addMode: true),
+        overrides: h.appOverrides,
+        settle: false,
+      );
+      expect(
+        tester.widget<TtAppBar>(find.byType(TtAppBar)).title,
+        '',
+        reason: 'no editor named before it is known',
+      );
+      expect(scaffold(tester).appBar, isNull, reason: 'the first frame');
+
+      await settleApp(tester);
+      expect(
+        tester.widget<TtAppBar>(find.byType(TtAppBar)).title,
+        'Add clips to your CapCut project',
+      );
+      expect(scaffold(tester).appBar, isNull, reason: 'once it is read');
+    });
+
+    testApp('VN add mode too: the same body layout before and after the '
+        'session is read, Select all still in the bar at 2x', (tester) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+
+      await pumpScreen(
+        tester,
+        EditSelectScreen(reelId: goa.id, addMode: true),
+        overrides: h.appOverrides,
+        settle: false,
+        textScale: 2,
+      );
+      expect(scaffold(tester).appBar, isNull);
+      await settleApp(tester);
+      expect(scaffold(tester).appBar, isNull);
+      expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).wrapTitle, isFalse);
+      expect(selectAllButton(), findsOneWidget);
+    });
+  });
+
   group('the look', () {
     for (final scale in [1.0, 2.0]) {
       testApp('the screen at ${scale}x text does not overflow and is '
           'accessible', (tester) async {
         final (goa, ids) = await threeClips(tester);
-        await open(tester, goa.id, ticked: [ids[0]], textScale: scale);
+        // Taller at 2x: the wrapped title makes the bar taller, and the grid
+        // builds only the tiles in view.
+        await open(
+          tester,
+          goa.id,
+          ticked: [ids[0]],
+          textScale: scale,
+          size: Size(360, scale > 1 ? 1100 : 800),
+        );
 
         expect(tiles(tester), hasLength(3));
         expect(tester.takeException(), isNull);

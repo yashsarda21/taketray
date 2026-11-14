@@ -16,6 +16,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../../support/accessibility.dart';
 import '../../support/pump_screen.dart';
 import '../../support/reel_videos.dart';
+import '../../support/spy_edit_session_service.dart';
 import '../../support/test_app.dart';
 import '../../support/vm_harness.dart';
 import 'copy_support.dart';
@@ -181,6 +182,93 @@ void main() {
       expect(bar.semanticLabel, '2 of 4 clips');
       expect(bar.percentText!(50), '50%');
       expect(buttonOf('Cancel'), findsOneWidget);
+    });
+
+    testApp('the count is a live region and the failure line is too, so a '
+        'screen reader hears them move (T10-M1)', (tester) async {
+      final handle = tester.ensureSemantics();
+      final job = await firstJob(tester);
+      await open(tester, job.jobId);
+
+      bool live(Finder finder) => tester
+          .getSemantics(finder)
+          .getSemanticsData()
+          .flagsCollection
+          .isLiveRegion;
+      expect(live(find.bySemanticsLabel('0 of 4 clips')), isTrue);
+      await emit(tester, job.report(copied: [0], bytesDone: 150 * _mb));
+      expect(live(find.bySemanticsLabel('1 of 4 clips')), isTrue);
+      // The bar still tells its percent.
+      expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('1 of 4 clips'))
+            .getSemanticsData()
+            .value,
+        '25%',
+      );
+
+      h.copy.failNext('cancel');
+      await stopViaDialog(tester);
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+      expect(live(find.text('Something went wrong. Try again.')), isTrue);
+      handle.dispose();
+    });
+
+    testApp("the title waits for the job's plan: empty at first, never VN "
+        'for a CapCut job (T10 first frame)', (tester) async {
+      final (reel, ids) = await reelWithClips(tester, h);
+      final job = await startVnJob(
+        tester,
+        h,
+        reel,
+        ids,
+        editor: EditorApp.capcut,
+      );
+      final spy = SpyEditSessionService(h)..holdJobContext = Completer<void>();
+      app = await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: [
+          ...h.appOverrides,
+          editSessionServiceProvider.overrideWithValue(spy),
+        ],
+        copyScreens: true,
+        settle: false,
+      );
+      followJob(app);
+      await settleApp(tester);
+      unawaited(routerOf(tester).push(Routes.copyProgressOf(job.jobId)));
+      await settleApp(tester);
+
+      expect(find.byType(TtProgressBar), findsOneWidget);
+      expect(find.textContaining('Copying clips for'), findsNothing);
+      expect(find.textContaining('VN'), findsNothing);
+
+      spy.holdJobContext!.complete();
+      await settleApp(tester);
+      expect(find.text('Copying clips for CapCut'), findsOneWidget);
+    });
+
+    testApp('when the plan cannot be read the title still comes, as VN '
+        '(the old fallback)', (tester) async {
+      final job = await firstJob(tester);
+      final spy = SpyEditSessionService(h)..failJobContext = StateError('x');
+      app = await pumpScreen(
+        tester,
+        const Scaffold(body: Text('home')),
+        overrides: [
+          ...h.appOverrides,
+          editSessionServiceProvider.overrideWithValue(spy),
+        ],
+        copyScreens: true,
+        settle: false,
+      );
+      followJob(app);
+      await settleApp(tester);
+      unawaited(routerOf(tester).push(Routes.copyProgressOf(job.jobId)));
+      await settleApp(tester);
+
+      expect(find.text('Copying clips for VN'), findsOneWidget);
     });
 
     testApp('it follows the engine: more done, more bytes', (tester) async {

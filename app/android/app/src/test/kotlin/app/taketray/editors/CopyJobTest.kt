@@ -29,6 +29,13 @@ class CopyJobTest {
 
     private fun rowIdsPublished(): List<Long> = store.log().filter { it.startsWith("publish ") }.map { it.removePrefix("publish ").toLong() }
 
+    private fun resumeAndEnd(): CopySnapshot =
+        h.timed {
+            h.engine.resume("job-1")
+            h.engine.awaitIdle()
+            h.engine.current()!!
+        }
+
     private fun inserts(): List<String> = store.log().filter { it.startsWith("insert ") }.map { it.removePrefix("insert ") }
 
     @Test
@@ -298,13 +305,99 @@ class CopyJobTest {
 
         val h2 = Harness()
         try {
-            h2.store.insertError = IllegalArgumentException("bad name")
+            h2.store.insertErrorFor["1.mp4"] = IllegalArgumentException("bad name")
             val end = h2.runJob(h2.request(h2.item(1), h2.item(2)))
             assertEquals(CopyState.FINISHED, end.state)
-            assertEquals(listOf(1L, 2L), end.failedClipIds)
+            assertEquals(listOf(1L), end.failedClipIds)
+            assertEquals(listOf(2L), end.copied.map { it.clipId })
         } finally {
             h2.close()
         }
+    }
+
+    @Test
+    fun `a single item that MediaStore refuses fails alone and the job finishes (T5)`() {
+        store.insertError = IllegalArgumentException("bad name")
+        val end = h.runJob(h.request(h.item(1)))
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(1L), end.failedClipIds)
+    }
+
+    @Test
+    fun `two refusals in a row mean it is not the names, so the job stops interrupted and keeps the second item for a retry (T5)`() {
+        store.insertError = IllegalArgumentException("Unknown URL")
+        val stop = h.runJob(h.request(h.item(1), h.item(2), h.item(3)))
+
+        assertEquals(CopyState.INTERRUPTED, stop.state)
+        assertEquals("the first stays failed", listOf(1L), stop.failedClipIds)
+        assertEquals("the second was not tried to the end: 1 of 3 done", 1, stop.done)
+        assertEquals(listOf("1.mp4", "2.mp4"), inserts())
+        assertTrue(store.rows.isEmpty())
+
+        // The cause is gone: resume starts again at the second item.
+        store.insertError = null
+        val end = resumeAndEnd()
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(2L, 3L), end.copied.map { it.clipId })
+        assertEquals(listOf(1L), end.failedClipIds)
+    }
+
+    @Test
+    fun `a refusal, a good item and a refusal are two single failures, not two in a row (T5)`() {
+        store.insertErrorFor["1.mp4"] = IllegalArgumentException("bad name")
+        store.insertErrorFor["3.mp4"] = IllegalArgumentException("bad name")
+        val end = h.runJob(h.request(h.item(1), h.item(2), h.item(3)))
+
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(1L, 3L), end.failedClipIds)
+        assertEquals(listOf(2L), end.copied.map { it.clipId })
+    }
+
+    @Test
+    fun `a refusal then a failed original then a refusal is not two in a row either (T5)`() {
+        store.insertErrorFor["1.mp4"] = IllegalArgumentException("bad name")
+        store.insertErrorFor["3.mp4"] = IllegalArgumentException("bad name")
+        val end = h.runJob(h.request(h.item(1), h.item(2, openError = IOException("gone")), h.item(3)))
+
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(1L, 2L, 3L), end.failedClipIds)
+    }
+
+    @Test
+    fun `the count of refusals starts again on a resume (T5)`() {
+        store.insertErrorFor["2.mp4"] = IllegalArgumentException("bad name")
+        store.insertErrorFor["3.mp4"] = IllegalArgumentException("bad name")
+        store.publishError = null
+        val stop = h.runJob(h.request(h.item(1), h.item(2), h.item(3), h.item(4)))
+        // 2 refused, 3 refused: stops at 3 (interrupted), 2 failed.
+        assertEquals(CopyState.INTERRUPTED, stop.state)
+        assertEquals(listOf(2L), stop.failedClipIds)
+
+        // Resume: 3 is refused again, which is the first refusal of this run.
+        val end = resumeAndEnd()
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(2L, 3L), end.failedClipIds)
+        assertEquals(listOf(1L, 4L), end.copied.map { it.clipId })
+    }
+
+    @Test
+    fun `a refusal before a stop for space does not count toward the next run (T5)`() {
+        var calls = 0
+        var free = Long.MAX_VALUE / 2
+        // The second room check (before item 2) finds no space; later ones do.
+        store.available = { if (++calls == 2) 0L else free }
+        store.insertErrorFor["1.mp4"] = IllegalArgumentException("bad name")
+        store.insertErrorFor["2.mp4"] = IllegalArgumentException("bad name")
+        val stop = h.runJob(h.request(h.item(1), h.item(2), h.item(3)))
+        assertEquals(CopyState.SPACE_FULL, stop.state)
+        assertEquals(listOf(1L), stop.failedClipIds)
+
+        // Space is back: item 2 is refused too, which is the first refusal of
+        // THIS run, not the second in a row.
+        val end = resumeAndEnd()
+        assertEquals(CopyState.FINISHED, end.state)
+        assertEquals(listOf(1L, 2L), end.failedClipIds)
+        assertEquals(listOf(3L), end.copied.map { it.clipId })
     }
 
     @Test

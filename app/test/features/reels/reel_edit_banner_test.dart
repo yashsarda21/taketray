@@ -1,9 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/views/reel_edit_banner.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -11,6 +16,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../../support/accessibility.dart';
 import '../../support/pump_screen.dart';
 import '../../support/reel_videos.dart';
+import '../../support/spy_edit_session_service.dart';
 import '../../support/test_app.dart';
 import '../../support/vm_harness.dart';
 import '../editors/copy_support.dart' show startVnJob;
@@ -328,6 +334,89 @@ void main() {
       final (goa, ids) = await goaReel(tester);
       await startVnJob(tester, h, goa, ids);
       await openReelPage(tester, h, goa.id);
+
+      expect(ttBanner(tester).title, 'Copying clips for VN');
+    });
+
+    testApp("a CapCut job's banner has an empty title until the plan says "
+        'the editor, never VN for a frame (T12-m4)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(tester, h, goa, ids, editor: EditorApp.capcut);
+      // No session on the page to name the editor, as in its first frame.
+      await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).endSession(goa.id),
+      );
+      final spy = SpyEditSessionService(h)..holdJobContext = Completer<void>();
+      await openReelPage(
+        tester,
+        h,
+        goa.id,
+        overrides: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+
+      expect(banner(), findsOneWidget);
+      expect(ttBanner(tester).title, '');
+      expect(find.textContaining('VN'), findsNothing);
+
+      spy.holdJobContext!.complete();
+      await settleApp(tester);
+      expect(ttBanner(tester).title, 'Copying clips for CapCut');
+    });
+
+    testApp('a plan read again keeps the editor in the title: pending only '
+        'empties it when nothing names the editor (T12-m4)', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      final job = await startVnJob(
+        tester,
+        h,
+        goa,
+        ids,
+        editor: EditorApp.capcut,
+      );
+      await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).endSession(goa.id),
+      );
+      final spy = SpyEditSessionService(h);
+      await openReelPage(
+        tester,
+        h,
+        goa.id,
+        overrides: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+      expect(ttBanner(tester).title, 'Copying clips for CapCut');
+
+      // The plan is read again (held): the title keeps the editor it knew.
+      spy.holdJobContext = Completer<void>();
+      ProviderScope.containerOf(tester.element(banner()))
+          .invalidate(copyJobEditorProvider(job.jobId));
+      await tester.pump();
+      await tester.pump();
+
+      expect(ttBanner(tester).title, 'Copying clips for CapCut');
+      spy.holdJobContext!.complete();
+      await settleApp(tester);
+    });
+
+    testApp('when the plan cannot be read and the page has no session, the '
+        'banner falls back to VN and does not stay empty', (tester) async {
+      final (goa, ids) = await goaReel(tester);
+      await startVnJob(tester, h, goa, ids);
+      await real(
+        tester,
+        () =>
+            h.container.read(editSessionsRepositoryProvider).endSession(goa.id),
+      );
+      final spy = SpyEditSessionService(h)..failJobContext = StateError('x');
+      await openReelPage(
+        tester,
+        h,
+        goa.id,
+        overrides: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
 
       expect(ttBanner(tester).title, 'Copying clips for VN');
     });
