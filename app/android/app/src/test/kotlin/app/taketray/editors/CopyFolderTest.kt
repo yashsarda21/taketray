@@ -202,6 +202,34 @@ class CopyFolderTest {
     }
 
     @Test
+    fun `the same id twice is reported once, as deleted (T4-M2)`() {
+        own(1)
+        own(2)
+
+        val report = folder.deleteCopies(listOf(ref(1), ref(2), ref(1)))
+
+        assertEquals(listOf(1L, 2L), report.deleted)
+        assertEquals(emptyList<Long>(), report.gone + report.refused + report.failed)
+        assertEquals(1, CopyFolderProvider.deletes.count { it.uri == itemUri(1) })
+    }
+
+    @Test
+    fun `two refs for one id with different names give one outcome, the first ref wins (T4-M2)`() {
+        own(1)
+        // Wrong name first: refused, and the second ref does not delete it.
+        val refused = folder.deleteCopies(listOf(ref(1, name = "other.mp4"), ref(1)))
+        assertEquals(listOf(1L), refused.refused)
+        assertEquals(emptyList<Long>(), refused.deleted + refused.gone + refused.failed)
+        assertEquals(listOf(1L), CopyFolderProvider.ids())
+
+        // Right name first: deleted, and the wrong second ref adds no "refused".
+        val deleted = folder.deleteCopies(listOf(ref(1), ref(1, name = "other.mp4")))
+        assertEquals(listOf(1L), deleted.deleted)
+        assertEquals(emptyList<Long>(), deleted.gone + deleted.refused + deleted.failed)
+        assertEquals(emptyList<Long>(), CopyFolderProvider.ids())
+    }
+
+    @Test
     fun `a row whose id is reused by another app's video in another folder is not deleted`() {
         own(1)
         CopyFolderProvider.beforeDelete = { id ->

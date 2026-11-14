@@ -51,9 +51,10 @@ class AppDatabase extends _$AppDatabase {
       // All the steps run in one transaction. Drift's runMigrationSteps
       // writes `user_version` after each step on this same connection, so
       // inside it: a failure part way rolls the file back to exactly the old
-      // version, and a phone killed after the commit (before Drift's own
-      // version write once `beforeOpen` is done) does not run a step twice
-      // on the next open (D-120).
+      // version, and a phone killed after the commit does not run a step
+      // twice on the next open, because the version was written inside the
+      // transaction. The write Drift makes after `beforeOpen` is then a
+      // second, equal one (D-120).
       await transaction(
         () => m.runMigrationSteps(
           from: from,

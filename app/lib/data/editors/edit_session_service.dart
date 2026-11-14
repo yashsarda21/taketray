@@ -300,8 +300,8 @@ class EditSessionService {
   CopyJob? _lastLocal;
 
   Future<void> _tail = Future<void>.value();
-  final Map<int, Future<SendOutcome>> _sending = {};
-  final Map<int, Future<String>> _starting = {};
+  final Map<String, Future<SendOutcome>> _sending = {};
+  final Map<String, Future<String>> _starting = {};
 
   /// Copy ids this process deleted or found gone: an event of the running
   /// job that still lists one never records it again.
@@ -327,11 +327,18 @@ class EditSessionService {
     return run;
   }
 
+  /// The key of a call: the reel, the editor and the clips (in any order).
+  /// Only a call for the same thing is a double tap; another editor or other
+  /// clips for the reel is its own call, and the queue and the state it finds
+  /// decide its answer (T6-M5).
+  static String _flightKey(int reelId, EditorApp editor, Iterable<int> ids) =>
+      '$reelId/${editor.name}/${(ids.toSet().toList()..sort()).join(',')}';
+
   /// What [start] returns, shared by every call for [key] while it runs (a
   /// double tap).
   static Future<T> _singleFlight<T>(
-    Map<int, Future<T>> running,
-    int key,
+    Map<String, Future<T>> running,
+    String key,
     Future<T> Function() start,
   ) {
     final current = running[key];
@@ -383,14 +390,15 @@ class EditSessionService {
   /// not in the reel are left out and not counted; with none left nothing is
   /// written or shared and the outcome is `failed` with 0. VN, or a reel in
   /// another editor's session, throws [StateError]. A second call for the
-  /// reel while one runs gets the first call's answer.
+  /// same reel, editor and clips while one runs gets the first call's answer
+  /// (a double tap); any other call waits its turn and answers for itself.
   Future<SendOutcome> sendOriginals(
     int reelId,
     EditorApp editor,
     List<int> clipIds,
   ) => _singleFlight(
     _sending,
-    reelId,
+    _flightKey(reelId, editor, clipIds),
     () => _serial(() => _send(reelId, editor, clipIds)),
   );
 
@@ -459,16 +467,23 @@ class EditSessionService {
 
   /// Shares the live clips of [clipIds] through Android's chooser, in
   /// shooting order, with no session (R5). False when none is live (no
-  /// bridge call) or nothing opened.
+  /// bridge call). A chooser that did not open (no address to share, or the
+  /// phone could not start it) throws [StateError]: it is a failure, not
+  /// "no clip left" (T9-m3).
   Future<bool> share(List<int> clipIds, String chooserTitle) async {
     final clips = await _live(clipIds);
     if (clips.isEmpty) {
       _log.info('Nothing to share: no live clip');
       return false;
     }
-    return await _editors.shareWithChooser([
+    final opened = await _editors.shareWithChooser([
       for (final c in clips) ClipRef.of(c),
     ], chooserTitle);
+    if (!opened) {
+      _log.warning('The share menu did not open for ${clips.length} clips');
+      throw StateError('The share menu did not open');
+    }
+    return true;
   }
 
   /// What copying [clipIds] of reel [reelId] for [editor] would take.
@@ -537,9 +552,14 @@ class EditSessionService {
   /// saved (R4), writing nothing. A start that fails ([CopyBusy] from the
   /// engine or anything else) removes the plan and ends a session it just
   /// started, then rethrows. Nothing left to copy: [StateError], nothing
-  /// written. A second call for the reel while one runs gets the same id.
-  Future<String> startCopy(CopyPlan plan) =>
-      _singleFlight(_starting, plan.reelId, () => _serial(() => _start(plan)));
+  /// written. A second call for the same reel, editor and clips while one
+  /// runs gets the same id; another plan for the reel waits its turn (and is
+  /// [CopyBusy] once the first one's plan is saved).
+  Future<String> startCopy(CopyPlan plan) => _singleFlight(
+    _starting,
+    _flightKey(plan.reelId, plan.editor, plan.clipIds),
+    () => _serial(() => _start(plan)),
+  );
 
   Future<String> _start(CopyPlan plan) async {
     final reelId = plan.reelId;
@@ -1224,31 +1244,46 @@ class EditSessionService {
   ///   gone, the copies found are deleted and the plan is removed (null).
   /// - Then sessions with no copies, no sent rows and no plan end.
   ///
-  /// A failure is logged by type and changes nothing more: the plan stays
-  /// for the next start, and the answer is null.
+  /// A failure is logged by type and changes nothing more: the plan stays,
+  /// the answer is null and [recoveryFailed] is true until a later call
+  /// works (the app's next resume calls it again).
   Future<CopyJob?> recoverAtStart() => _serial(() async {
     try {
-      final current = await _copy.current();
-      final plan = await _phone.copyJobPlan();
-      if (current != null) {
-        await _apply(current);
-        await _endEmptySessions({current.reelId, ?plan?.reelId});
-        _log.info('Copy job ${current.jobId} is still in this process');
-        return null;
-      }
-      if (plan == null) {
-        await _endEmptySessions(const {});
-        return null;
-      }
-      final job = await _recover(plan);
-      await _endEmptySessions({if (job != null) plan.reelId});
-      if (job != null) _emit(job);
+      final job = await _recoverAtStart();
+      _recoveryFailed = false;
       return job;
     } on Object catch (e) {
+      _recoveryFailed = true;
       _log.warning('Recovering the copy job failed: ${e.runtimeType}');
       return null;
     }
   });
+
+  bool _recoveryFailed = false;
+
+  /// Whether the last [recoverAtStart] failed (it logs the failure and
+  /// answers null, so the answer alone cannot tell). False before the first
+  /// call. `MediaLifecycle` calls it again on a resume while this is true.
+  bool get recoveryFailed => _recoveryFailed;
+
+  Future<CopyJob?> _recoverAtStart() async {
+    final current = await _copy.current();
+    final plan = await _phone.copyJobPlan();
+    if (current != null) {
+      await _apply(current);
+      await _endEmptySessions({current.reelId, ?plan?.reelId});
+      _log.info('Copy job ${current.jobId} is still in this process');
+      return null;
+    }
+    if (plan == null) {
+      await _endEmptySessions(const {});
+      return null;
+    }
+    final job = await _recover(plan);
+    await _endEmptySessions({if (job != null) plan.reelId});
+    if (job != null) _emit(job);
+    return job;
+  }
 
   Future<CopyJob?> _recover(CopyJobPlan plan) async {
     final swept = await _copy.deletePendingIn(plan.folderName);

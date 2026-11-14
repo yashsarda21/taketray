@@ -149,6 +149,18 @@ class ReminderScheduler(
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, maxOf(next, nowMs), copiesAlarm(context))
     }
 
+    /**
+     * The reels of [state] whose reminder in the shade is for their current
+     * batch ([BackgroundStateStore.copiesShown] equals the batch time). A reel
+     * with newer copies than its shown reminder is not in it: that
+     * notification says the old size, so it goes until its own is due.
+     */
+    fun copiesShownForCurrentBatch(state: BackgroundState): Set<Long> =
+        state
+            .usableCopiesReminders()
+            .filter { store.copiesShown(it.reelId) == it.lastCopiedAtMs }
+            .mapTo(HashSet()) { it.reelId }
+
     /** Removes the Still shooting? alarm; the notification stays. */
     fun cancelStill() = cancel(armedStillAlarm(context))
 

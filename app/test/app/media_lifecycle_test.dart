@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -371,6 +372,76 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(records.map((r) => r.message).join('\n'), contains('StateError'));
+    });
+
+    testWidgets('a recovery that never returns holds neither the background '
+        'copy, the notification clear nor the next run (T6-M6)', (
+      tester,
+    ) async {
+      await h.media.turnOnNow();
+      spy.holdRecover = Completer<void>();
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(h.background.calls, contains('clearNewClipsNotification'));
+      expect(
+        h.background.calls.indexOf('writeState'),
+        isNonNegative,
+        reason: 'the flush ran',
+      );
+
+      // The run is over: a resume scans again while the recovery still hangs,
+      // and does not start a second recovery behind the first.
+      h.bridge.calls.clear();
+      await resume(tester);
+      await work(tester);
+      expect(h.bridge.calls, contains('videosAddedAfter'));
+      expect(spy.calls, ['recover']);
+
+      // When it finally answers, it counts as the start's recovery.
+      spy.holdRecover!.complete();
+      await work(tester);
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+    });
+
+    testWidgets('a recovery that threw is tried again on the next resume, '
+        'until it works, and then not again (T6-M2)', (tester) async {
+      spy.failRecover = StateError('boom');
+      await start(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover'], reason: 'retried, failed');
+
+      spy.failRecover = null;
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover', 'recover'], reason: 'worked');
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, hasLength(3), reason: 'a resume only reads the job');
+    });
+
+    testWidgets('a recovery the service reports as failed (it swallows the '
+        'error) is tried again on the next resume (T6-M2)', (tester) async {
+      spy.failedRuns = 1; // the first run reports a failure
+      await start(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, hasLength(2));
     });
   });
 

@@ -38,8 +38,9 @@ final Logger _log = Logger('mediaLifecycle');
 ///    scan applies it first, inside its own job (D-106);
 /// 5. the copy job (D-123): on the first run of this mount (the app's start)
 ///    `EditSessionService.recoverAtStart`, once, after building the
-///    `CopyJobController` so the job is followed from then on; on every later
-///    run (a resume) `CopyJobController.onResume`, which only reads the
+///    `CopyJobController` so the job is followed from then on (a recovery
+///    that failed is tried again at the next run, until it works); on every
+///    later run (a resume) `CopyJobController.onResume`, which only reads the
 ///    engine's job again, never a second recovery. It runs whatever the scan
 ///    did (Shooting mode off skips the scan, not this);
 /// 6. after a scan that read every volume (`ScanDone` with no failed volume;
@@ -77,6 +78,7 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   bool _running = false;
   bool _again = false;
   bool _recovered = false;
+  bool _copyStep = false;
 
   @override
   void initState() {
@@ -147,7 +149,9 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       () => ref.read(mediaScannerProvider).scan(),
     );
     if (!mounted) return;
-    await _copyJob();
+    // Not awaited: a bridge call that never returns must hold neither the
+    // flush and the clear below nor the next run (T6-M6).
+    unawaited(_copyJob());
     // A volume that failed may still hold clips the job counts.
     if (scanned is! ScanDone || scanned.failedVolumes.isNotEmpty || !mounted) {
       return;
@@ -165,21 +169,33 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
     );
   }
 
-  /// Step 5: recovery once per start, then only a read of the job.
+  /// Step 5: recovery once per start, then only a read of the job. One at a
+  /// time: a run that finds the last one still going leaves it alone.
   Future<void> _copyJob() async {
-    if (!_recovered) {
-      _recovered = true;
-      await guarded(_log, 'The copy recovery', () async {
-        ref.read(copyJobControllerProvider);
-        await ref.read(editSessionServiceProvider).recoverAtStart();
-      });
-      return;
+    if (_copyStep) return;
+    _copyStep = true;
+    try {
+      if (!_recovered) {
+        // A recovery that failed (it threw, or the service logged a failure
+        // and answered null) is tried again at the next run: until it works
+        // the saved plan blocks every start and Done editing (T6-M2).
+        final worked = await guarded(_log, 'The copy recovery', () async {
+          ref.read(copyJobControllerProvider);
+          final service = ref.read(editSessionServiceProvider);
+          await service.recoverAtStart();
+          return !service.recoveryFailed;
+        });
+        _recovered = worked ?? false;
+        return;
+      }
+      await guarded(
+        _log,
+        'Reading the copy job',
+        () => ref.read(copyJobControllerProvider.notifier).onResume(),
+      );
+    } finally {
+      _copyStep = false;
     }
-    await guarded(
-      _log,
-      'Reading the copy job',
-      () => ref.read(copyJobControllerProvider.notifier).onResume(),
-    );
   }
 
   Future<void> _prune() => guarded(_log, 'Pruning the thumbnails', () async {

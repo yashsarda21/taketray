@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -380,18 +381,23 @@ void main() {
       for (final endFirst in [true, false]) {
         final reel = await reels.create('Goa $endFirst');
         await repo.startSession(reel.id, EditorApp.capcut, 'Goa');
-        final end = repo.endSession(reel.id);
-        final send = repo.recordSent(reel.id, [1]);
-
-        Object? outcome;
-        try {
-          if (endFirst) await end;
-          outcome = await send;
-          await end;
-        } on Object catch (e) {
-          outcome = e;
-          await end;
+        // Both calls start before either finishes. The order they start in
+        // is the point: send first, end second is the order that breaks a
+        // send without its transaction (a foreign key error).
+        final Future<void> end;
+        final Future<Object?> send;
+        Future<Object?> outcomeOf(Future<Set<int>> f) =>
+            f.then<Object?>((v) => v, onError: (Object e) => e);
+        if (endFirst) {
+          end = repo.endSession(reel.id);
+          send = outcomeOf(repo.recordSent(reel.id, [1]));
+        } else {
+          send = outcomeOf(repo.recordSent(reel.id, [1]));
+          end = repo.endSession(reel.id);
         }
+
+        final outcome = await send;
+        await end;
 
         expect(outcome, anyOf(isA<Set<int>>(), isA<StateError>()));
         // Either way nothing outlives the session.
@@ -837,6 +843,25 @@ void main() {
         {goa.id: EditorApp.capcut, paris.id: EditorApp.vn},
         {paris.id: EditorApp.vn},
       ]);
+    });
+
+    test('does not emit again when a session row changes but no reel changes '
+        'its editor', () async {
+      final goa = await reels.create('Goa');
+      await repo.startSession(goa.id, EditorApp.capcut, 'Goa');
+      final maps = collect(repo.watchEditors());
+      await pumpEventQueue();
+      expect(maps, [
+        {goa.id: EditorApp.capcut},
+      ]);
+
+      // A write to the sessions table (here the folder name) that leaves the
+      // reel-to-editor map as it was.
+      await (db.update(db.editSessions)..where((s) => s.reelId.equals(goa.id)))
+          .write(const EditSessionsCompanion(folderName: Value('Goa (2)')));
+      await pumpEventQueue();
+
+      expect(maps, hasLength(1));
     });
   });
 

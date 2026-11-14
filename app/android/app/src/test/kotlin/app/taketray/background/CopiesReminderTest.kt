@@ -563,6 +563,37 @@ class CopiesReminderTest {
     }
 
     @Test
+    fun `a new copy batch takes the old reminder's text out of the shade until its own is due (T7-M5)`() {
+        store.write(mirror(copies(7), copies(9)))
+        now = batchDue
+        deliver()
+        assertEquals(listOf(7L, 9L), shownReels())
+
+        // The same mirror again, and a mirror that only changes another
+        // reel's size: the shown reminders stay.
+        ReminderArming({ now }, { LONDON }).apply(app, store.state())
+        assertEquals(listOf(7L, 9L), shownReels())
+
+        // Reel 7 got more copies: its notification still says the old size.
+        val next = batch + 2 * 86_400_000L
+        val state = mirror(copies(7, at = next, bytes = 500_000_000), copies(9))
+        store.write(state)
+        ReminderArming({ now }, { LONDON }).apply(app, state)
+        assertEquals("reel 7's stale text is gone, reel 9's stays", listOf(9L), shownReels())
+        assertEquals(iso(next + 3 * 86_400_000L), copiesAlarmAt())
+        assertEquals(batch, store.copiesShown(7))
+
+        // Applied again before it is due: nothing comes back early.
+        ReminderArming({ now }, { LONDON }).apply(app, state)
+        assertEquals(listOf(9L), shownReels())
+
+        now = next + 3 * 86_400_000L
+        deliver()
+        assertEquals(listOf(7L, 9L), shownReels())
+        assertEquals("Reel 7 copies are using ${size(500_000_000)}", copiesNotification(7)?.title())
+    }
+
+    @Test
     fun `arming arms the copies alarm for a mirror written by the app`() {
         val state = mirror(copies(7))
         store.write(state)

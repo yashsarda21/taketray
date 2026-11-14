@@ -139,7 +139,8 @@ void main() {
     expect(base.hashCode, sameAsBase.hashCode);
     for (final other in [otherMime, otherVolume, otherId, withUri]) {
       expect(base == other, isFalse);
-      expect(base.hashCode == other.hashCode, isFalse);
+      // A set tells them apart by == (a hash collision cannot fail this).
+      expect({base, other}, hasLength(2));
     }
   });
 }

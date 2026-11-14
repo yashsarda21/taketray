@@ -109,10 +109,14 @@ void main() {
     expect(read()!.state, CopyState.cancelled);
   });
 
-  test('ignores the events of an older job', () async {
+  test('ignores the late events of a job that came before the held one '
+      '(the order the controller saw them in)', () async {
     read();
+    h.copy.emit(job('1-1000'));
+    await settle();
     h.copy.emit(job('1-2000'));
     await settle();
+    expect(read()!.jobId, '1-2000');
 
     h.copy.emit(job('1-1000', copied: [file(1)], state: CopyState.finished));
     await settle();
@@ -123,6 +127,42 @@ void main() {
     h.copy.emit(job('2-3000'));
     await settle();
     expect(read()!.jobId, '2-3000');
+  });
+
+  test(
+    'a phone clock that went back does not make the new job look old: '
+    'its events are followed, and the earlier job stays old (T6-M4)',
+    () async {
+      read();
+      h.copy.emit(job('1-2000'));
+      await settle();
+
+      // The next job's id has an earlier time (the clock was set back).
+      h.copy.emit(job('1-1000', copied: [file(1)]));
+      await settle();
+      expect(read()!.jobId, '1-1000');
+      expect(service.applied, hasLength(1));
+
+      // The job before it, now late, is the old one.
+      h.copy.emit(job('1-2000', copied: [file(2)], state: CopyState.finished));
+      await settle();
+      expect(read()!.jobId, '1-1000');
+      expect(service.applied, hasLength(1));
+    },
+  );
+
+  test('ids that carry no time are ordered the same way (T6-M4)', () async {
+    read();
+    h.copy.emit(job('first'));
+    await settle();
+    h.copy.emit(job('second'));
+    await settle();
+    expect(read()!.jobId, 'second');
+
+    h.copy.emit(job('first', state: CopyState.finished));
+    await settle();
+
+    expect(read()!.jobId, 'second');
   });
 
   test('holds the interrupted job recoverAtStart built after a restart, '
@@ -452,7 +492,8 @@ void main() {
     });
   });
 
-  test('a local job older than the held job is ignored', () async {
+  test('a local job the controller saw before the held job is ignored; one '
+      'it never saw is the newest (T6-M4)', () async {
     final sessions = EditSessionsRepository(h.media.db, h.media.clock);
     final goa = (await h.container.read(reelsRepositoryProvider).create('Goa'))
         .id;
@@ -469,6 +510,9 @@ void main() {
       ),
     );
     read();
+    // The engine's job is the one the controller saw first, then a newer one.
+    h.copy.emit(job('$goa-1000', copied: const []));
+    await settle();
     h.copy.emit(job('$goa-2000'));
     await settle();
     h.copy.job = null;
@@ -476,7 +520,62 @@ void main() {
     final recovered = await service.recoverAtStart();
     await settle();
 
+    // The recovered job has the id the controller already saw before 2000.
     expect(recovered!.jobId, '$goa-1000');
+    expect(read()!.jobId, '$goa-2000');
+  });
+
+  /// A saved plan `<reel>-1000` of a reel in a VN session, for
+  /// `recoverAtStart` to turn into a local job.
+  Future<int> savedPlan() async {
+    final sessions = EditSessionsRepository(h.media.db, h.media.clock);
+    final goa = (await h.container.read(reelsRepositoryProvider).create('Goa'))
+        .id;
+    final [a] = await putInReel(h, goa, [reelVideo(1)]);
+    await sessions.startSession(goa, EditorApp.vn, 'Goa');
+    await h.media.phoneState.saveCopyJobPlan(
+      CopyJobPlan(
+        jobId: '$goa-1000',
+        reelId: goa,
+        editor: EditorApp.vn,
+        folderName: 'Goa',
+        startedSession: true,
+        items: [(clipId: a, fileName: 'a.mp4', sizeBytes: 1)],
+      ),
+    );
+    return goa;
+  }
+
+  test('a recovered job (a local one) counts as seen: its late engine events '
+      'are old once a newer job is held (T6-M4)', () async {
+    final goa = await savedPlan();
+    read();
+    await service.recoverAtStart();
+    await settle();
+    expect(read()!.jobId, '$goa-1000');
+
+    h.copy.emit(job('$goa-2000'));
+    await settle();
+    expect(read()!.jobId, '$goa-2000');
+    h.copy.emit(job('$goa-1000', state: CopyState.finished));
+    await settle();
+
+    expect(read()!.jobId, '$goa-2000');
+  });
+
+  test('a job the service already held when the controller was built counts '
+      'as seen too (T6-M4)', () async {
+    final goa = await savedPlan();
+    await service.recoverAtStart();
+    expect(service.lastLocalJob!.jobId, '$goa-1000');
+    expect(read()!.jobId, '$goa-1000');
+    await settle();
+
+    h.copy.emit(job('$goa-2000'));
+    await settle();
+    h.copy.emit(job('$goa-1000', state: CopyState.finished));
+    await settle();
+
     expect(read()!.jobId, '$goa-2000');
   });
 

@@ -26,9 +26,11 @@ const _forbidden = {'/', r'\', ':', '*', '?', '"', '<', '>', '|'};
 /// controls, or one grapheme longer than the cap) becomes `Reel`. Emoji and
 /// accents stay. The result is never longer than [reelName], except `Reel`.
 ///
-/// Trimming and cutting work on graphemes, so a dot that carries a combining
-/// mark is kept with its mark, and a cut never splits an emoji or a letter
-/// from its marks.
+/// Cutting works on graphemes, so a cut never splits an emoji or a letter
+/// from its marks. At the end, a dot that carries a combining mark is kept
+/// with its mark (the name no longer ends in a dot, which is what the file
+/// system objects to). At the start, a dot or space is dropped together with
+/// its marks, because a name that starts with a dot is a hidden folder.
 String safeFolderName(String reelName) {
   final cleaned = StringBuffer();
   for (final rune in reelName.runes) {
@@ -52,10 +54,16 @@ bool _isBidiOrSurrogate(int rune) =>
     rune == 0x200F ||
     (rune >= 0x202A && rune <= 0x202E) ||
     (rune >= 0x2066 && rune <= 0x2069) ||
+    rune == 0x061C ||
+    rune == 0x2028 ||
+    rune == 0x2029 ||
+    rune == 0xFEFF ||
     (rune >= 0xD800 && rune <= 0xDFFF);
 
-String _trim(Characters text) =>
-    text.skipWhile(_isSpaceOrDot).skipLastWhile(_isSpaceOrDot).toString();
+String _trim(Characters text) => text
+    .skipWhile(_startsWithSpaceOrDot)
+    .skipLastWhile(_isSpaceOrDot)
+    .toString();
 
 /// The longest start of [text] that is whole graphemes and at most
 /// [maxBytes] UTF-8 bytes.
@@ -71,3 +79,7 @@ String _capBytes(String text, int maxBytes) {
 }
 
 bool _isSpaceOrDot(String grapheme) => grapheme == ' ' || grapheme == '.';
+
+/// A space or dot with any combining marks after it (leading trim only).
+bool _startsWithSpaceOrDot(String grapheme) =>
+    grapheme.startsWith(' ') || grapheme.startsWith('.');

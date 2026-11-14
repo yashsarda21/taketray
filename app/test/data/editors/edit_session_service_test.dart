@@ -371,6 +371,94 @@ void main() {
     });
   });
 
+  group('single-flight keys (T6-M5)', () {
+    test('a call right after the first one finished is a new call, not its '
+        'stale answer', () async {
+      final goa = await reel('Goa');
+      final ids = await clipsIn(goa, [1, 2]);
+
+      await service.sendOriginals(goa, EditorApp.capcut, ids);
+      await service.sendOriginals(goa, EditorApp.capcut, ids);
+      expect(editors.sent, hasLength(2));
+
+      // The retry runs in the very callback that sees the first one done.
+      final retried = service
+          .sendOriginals(goa, EditorApp.capcut, ids)
+          .then((_) => service.sendOriginals(goa, EditorApp.capcut, ids));
+      await retried;
+      expect(editors.sent, hasLength(4));
+    });
+
+    test('the same clips in another order are the same call', () async {
+      final goa = await reel('Goa');
+      final [a, b] = await clipsIn(goa, [1, 2]);
+
+      final first = service.sendOriginals(goa, EditorApp.capcut, [a, b]);
+      final second = service.sendOriginals(goa, EditorApp.capcut, [b, a]);
+
+      expect(await first, const SendOutcome(SendResult.sent, 2));
+      expect(await second, const SendOutcome(SendResult.sent, 2));
+      expect(editors.sent, hasLength(1));
+    });
+
+    test('other clips for the same reel are their own send, not the first '
+        "call's answer", () async {
+      final goa = await reel('Goa');
+      final [a, b, c] = await clipsIn(goa, [1, 2, 3]);
+
+      final first = service.sendOriginals(goa, EditorApp.capcut, [a]);
+      final second = service.sendOriginals(goa, EditorApp.capcut, [b, c]);
+
+      expect(await first, const SendOutcome(SendResult.sent, 1));
+      expect(await second, const SendOutcome(SendResult.sent, 2));
+      expect(editors.sent, hasLength(2));
+      expect((await sessions.editState(goa))!.sentIds, {a, b, c});
+    });
+
+    test('another editor for the same reel is not answered with the first '
+        "editor's result", () async {
+      final goa = await reel('Goa');
+      final ids = await clipsIn(goa, [1, 2]);
+
+      final first = service.sendOriginals(goa, EditorApp.capcut, ids);
+      final second = service.sendOriginals(goa, EditorApp.edits, ids);
+
+      expect(await first, const SendOutcome(SendResult.sent, 2));
+      await expectLater(second, throwsA(isA<StateError>()));
+      expect(editors.sent, hasLength(1));
+      expect((await sessions.sessionOf(goa))!.editor, EditorApp.capcut);
+    });
+
+    test('a different plan for the same reel is not answered with the first '
+        "plan's job", () async {
+      final goa = await reel('Goa');
+      final [a, b] = await clipsIn(goa, [1, 2]);
+      final one = await service.planCopy(goa, EditorApp.vn, [a]);
+      final two = await service.planCopy(goa, EditorApp.vn, [a, b]);
+
+      final first = service.startCopy(one);
+      final second = service.startCopy(two);
+
+      await first;
+      await expectLater(second, throwsA(isA<CopyBusy>()));
+      expect(copy.starts, hasLength(1));
+    });
+
+    test('a call right after a start finished is a new start', () async {
+      final goa = await reel('Goa');
+      final ids = await clipsIn(goa, [1]);
+      final plan = await service.planCopy(goa, EditorApp.vn, ids);
+
+      // The plan is still saved: the retry, made in the very callback that
+      // sees the first start done, must reach the check and be refused, not
+      // get the first call's id back.
+      final retried = service
+          .startCopy(plan)
+          .then((_) => service.startCopy(plan));
+      await expectLater(retried, throwsA(isA<CopyBusy>()));
+    });
+  });
+
   group('share', () {
     test(
       'live clips only, in shooting order, with the title; no session',
@@ -392,12 +480,17 @@ void main() {
       },
     );
 
-    test("the chooser's false is passed on", () async {
+    test('a chooser that did not open is an error, not "no clip left" '
+        '(T9-m3)', () async {
       final goa = await reel('Goa');
       final ids = await clipsIn(goa, [1]);
       editors.chooserResult = false;
 
-      expect(await service.share(ids, 'Share video'), isFalse);
+      await expectLater(
+        service.share(ids, 'Share video'),
+        throwsA(isA<StateError>()),
+      );
+      expect(editors.calls, contains('shareWithChooser'));
     });
 
     test('all missing: false without a bridge call', () async {
@@ -1663,6 +1756,47 @@ void main() {
 
       restart();
       expect((await service.recoverAtStart())!.done, 1);
+    });
+
+    test(
+      'recoveryFailed is true after a failed recovery, and a retry '
+      'on the same service recovers on the same service recovers (T6-M2)',
+      () async {
+        final goa = await reel('Goa');
+        final [a] = await clipsIn(goa, [1]);
+        await startVn(goa, [a]);
+        copy.folders['Goa'] = [
+          FolderRow(
+            mediaStoreId: 601,
+            fileName: nameOf(1),
+            sizeBytes: 1001,
+            pending: false,
+          ),
+        ];
+        restart();
+        expect(service.recoveryFailed, isFalse, reason: 'not run yet');
+        copy.failNext('ownRowsIn');
+
+        expect(await service.recoverAtStart(), isNull);
+        expect(service.recoveryFailed, isTrue);
+        expect(await copiesOf(goa), isEmpty);
+
+        // The same service, no restart: the retry records the copy.
+        expect((await service.recoverAtStart())!.done, 1);
+        expect(service.recoveryFailed, isFalse);
+        expect(await copyIdsOf(goa), {601});
+      },
+    );
+
+    test('a failing read of the engine job also counts as a failed recovery '
+        '(T6-M2)', () async {
+      copy.failNext('current');
+
+      expect(await service.recoverAtStart(), isNull);
+
+      expect(service.recoveryFailed, isTrue);
+      expect(await service.recoverAtStart(), isNull);
+      expect(service.recoveryFailed, isFalse);
     });
 
     test('ends sessions with no copies, no sent rows and no plan; keeps the '

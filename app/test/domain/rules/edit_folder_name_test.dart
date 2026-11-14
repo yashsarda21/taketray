@@ -118,7 +118,27 @@ void main() {
     });
 
     test('neighbours of the bidi ranges are kept', () {
-      for (final c in [0x200D, 0x2029, 0x202F, 0x2065, 0x206A, 0x200B]) {
+      for (final c in [0x200D, 0x202F, 0x2065, 0x206A, 0x200B]) {
+        final name = 'a${String.fromCharCode(c)}b';
+        expect(safeFolderName(name), name, reason: c.toRadixString(16));
+      }
+    });
+
+    test('Arabic letter mark, line and paragraph separators and BOM go', () {
+      for (final c in [0x061C, 0x2028, 0x2029, 0xFEFF]) {
+        final ch = String.fromCharCode(c);
+        expect(safeFolderName('Go${ch}a'), 'Goa', reason: c.toRadixString(16));
+        expect(
+          safeFolderName('${ch}Goa$ch'),
+          'Goa',
+          reason: c.toRadixString(16),
+        );
+      }
+      expect(safeFolderName('\u061C\u2028\u2029\uFEFF'), 'Reel');
+    });
+
+    test('neighbours of those four are kept', () {
+      for (final c in [0x061B, 0x061D, 0x2027, 0x202F, 0xFEFE, 0xFF00]) {
         final name = 'a${String.fromCharCode(c)}b';
         expect(safeFolderName(name), name, reason: c.toRadixString(16));
       }
@@ -149,12 +169,26 @@ void main() {
       }
     });
 
-    test('trimming is by grapheme: a dot with a combining mark is kept', () {
-      expect(safeFolderName('Goa.́'), 'Goa.́');
-      expect(safeFolderName('.́Goa'), '.́Goa');
-      expect(safeFolderName('.́'), '.́');
-      expect(safeFolderName('Goa.́.'), 'Goa.́');
+    test('trailing trim is by grapheme: a dot with a mark is kept', () {
+      expect(safeFolderName('Goa.\u0301'), 'Goa.\u0301');
+      expect(safeFolderName('Goa.\u0301.'), 'Goa.\u0301');
     });
+
+    test(
+      'a leading dot is dropped with its combining marks (no hidden dir)',
+      () {
+        expect(safeFolderName('.\u0301Goa'), 'Goa');
+        expect(safeFolderName('.\u0301\u0302Goa'), 'Goa');
+        expect(safeFolderName('.\u0301'), 'Reel');
+        expect(safeFolderName('..\u0301.\u0301Goa'), 'Goa');
+        expect(safeFolderName(' .\u0301 Goa'), 'Goa');
+        expect(safeFolderName('.\u0301 .\u0301'), 'Reel');
+        // A dot inside the name keeps its mark.
+        expect(safeFolderName('Go.\u0301a'), 'Go.\u0301a');
+        // A leading letter with a mark is not a dot.
+        expect(safeFolderName('\u00E9.'), '\u00E9');
+      },
+    );
   });
 
   group('safeFolderName byte cap', () {

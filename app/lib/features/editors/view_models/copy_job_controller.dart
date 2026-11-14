@@ -20,8 +20,9 @@ final Logger _log = Logger('copyJob');
 /// drops its events while no Dart side listens, D-122). For each engine
 /// event with a new finished file (or undeleted file, or a new end state) it
 /// calls `EditSessionService.applyJob`, which records the copies; progress
-/// alone records nothing. An event of an older job than the one held (job ids
-/// are `<reelId>-<UTC ms>`) is ignored.
+/// alone records nothing. An event of a job the controller saw before the one
+/// held is ignored (the order they were followed in, not the time in the id:
+/// a phone clock set back must not make a new job look old).
 ///
 /// A job that ended for good (`EditSessionService.clearedJobs`: finished,
 /// cancelled, or settled by Done editing) is dropped: the controller holds
@@ -38,6 +39,9 @@ class CopyJobController extends _$CopyJobController {
 
   /// Ids of jobs that ended for good: their events are ignored.
   final Set<String> _dropped = {};
+
+  /// Job ids in the order they were first followed, oldest first.
+  final List<String> _seenOrder = [];
 
   /// What the last `applyJob` call was for: job id, copied count,
   /// undeleted count, and the end state (null while running).
@@ -56,7 +60,9 @@ class CopyJobController extends _$CopyJobController {
       unawaited(cleared.cancel());
     });
     unawaited(_readEngine());
-    return service.lastLocalJob;
+    final last = service.lastLocalJob;
+    if (last != null) _see(last.jobId);
+    return last;
   }
 
   /// Reads the engine's job again (the app came back to the front) and
@@ -91,6 +97,7 @@ class CopyJobController extends _$CopyJobController {
 
   void _onLocal(CopyJob job) {
     if (!ref.mounted || _dropped.contains(job.jobId) || _isOlder(job)) return;
+    _see(job.jobId);
     state = job;
   }
 
@@ -103,6 +110,7 @@ class CopyJobController extends _$CopyJobController {
   void _onEngine(CopyJob job) {
     if (!ref.mounted || _dropped.contains(job.jobId) || _isOlder(job)) return;
     if (job.state == CopyState.running) _seen.remove(job.jobId);
+    _see(job.jobId);
     state = job;
     final key = (
       job.jobId,
@@ -127,18 +135,21 @@ class CopyJobController extends _$CopyJobController {
     }
   }
 
-  /// Whether [job] is older than the job held: its id's time is earlier.
+  /// Whether [job] is older than the job held: it is another job, and the
+  /// controller saw it before the held one. The order is the one the jobs
+  /// were first seen in, not their ids' times, so a phone clock that was set
+  /// back never makes a new job look old (T6-M4). A job never seen is the
+  /// newest.
   bool _isOlder(CopyJob job) {
     final held = state;
     if (held == null || held.jobId == job.jobId) return false;
-    final heldAt = _startedAt(held.jobId);
-    final jobAt = _startedAt(job.jobId);
-    return heldAt != null && jobAt != null && jobAt < heldAt;
+    final heldAt = _seenOrder.indexOf(held.jobId);
+    final jobAt = _seenOrder.indexOf(job.jobId);
+    return heldAt >= 0 && jobAt >= 0 && jobAt < heldAt;
   }
 
-  /// The UTC ms of a job id `<reelId>-<UTC ms>`, or null.
-  static int? _startedAt(String jobId) {
-    final dash = jobId.lastIndexOf('-');
-    return dash < 0 ? null : int.tryParse(jobId.substring(dash + 1));
+  /// Notes that [jobId] was followed, newest last.
+  void _see(String jobId) {
+    if (!_seenOrder.contains(jobId)) _seenOrder.add(jobId);
   }
 }
