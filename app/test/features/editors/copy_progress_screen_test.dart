@@ -8,6 +8,7 @@ import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -305,6 +306,33 @@ void main() {
       );
 
       expect(find.text('Ready to add in Instagram Edits'), findsOneWidget);
+    });
+
+    testApp("a second batch's ready screen pictures this job's clips, not the "
+        "first batch's", (tester) async {
+      final job = await editorAddJob(tester, EditorApp.capcut);
+      await open(tester, job.jobId);
+
+      // Clips 1 and 2 copied, clip 3 failed: the earlier copy is clip 0's.
+      await emit(
+        tester,
+        job.report(state: CopyState.finished, copied: [0, 1], failed: [2]),
+      );
+      await tapButton(tester, 'Continue with 2 clips');
+
+      expect(find.text('Ready to add in CapCut'), findsOneWidget);
+      final steps = tester.widget<TtIllustratedSteps>(
+        find.byType(TtIllustratedSteps),
+      );
+      expect(
+        [
+          for (final t in steps.steps[2].thumbnails)
+            (t as ClipThumbnailImage).clip.id,
+        ],
+        // The job's items are the clips it copied (not the first batch's
+        // clip 0 that the session already holds, nor the failed one).
+        [job.clipIds[0], job.clipIds[1]],
+      );
     });
 
     testApp('a CapCut add job that finished with a clip that failed: '

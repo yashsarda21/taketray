@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/editors/view_models/copy_ready_controller.dart';
@@ -30,7 +31,7 @@ const double _tileSize = 64;
 /// **VN:** a close button; a check and "Ready for VN"; "In VN, tap **New
 /// project** and open the **{folder}** folder."; three steps
 /// (`TtIllustratedSteps`): tap New project, open the folder, select all the
-/// clips (the first six clips that have a copy, numbered, in shooting order);
+/// clips (the first six clips this job copied, numbered, in shooting order);
 /// **Open VN** and **Done**.
 ///
 /// **CapCut and Edits:** "Ready to add in {editor}"; "In your {editor}
@@ -46,9 +47,14 @@ const double _tileSize = 64;
 /// the app to Reels; a session that is gone (Done editing ran elsewhere) to
 /// the reel's page. Until the session is read the page shows no words.
 class CopyReadyScreen extends ConsumerStatefulWidget {
-  const new({required this.reelId, super.key});
+  const new({required this.reelId, this.clipIds, super.key});
 
   final int reelId;
+
+  /// The clips the copy job copied (its batch): the pictures of step 3 are
+  /// these, so a second batch shows the new clips and not the first batch's.
+  /// Null (no job known): the clips that have a copy.
+  final Set<int>? clipIds;
 
   @override
   ConsumerState<CopyReadyScreen> createState() => _CopyReadyScreenState();
@@ -216,9 +222,13 @@ class _CopyReadyScreenState extends ConsumerState<CopyReadyScreen> {
                             body: vn ? l10n.vnStep3Body : l10n.projectStep3Body,
                             thumbnails: [
                               for (final clip
-                                  in (ready?.clips ?? const []).take(
-                                    TtMetrics.stepTilesMax,
-                                  ))
+                                  in (ready?.clips ?? const <Clip>[])
+                                      .where(
+                                        (c) =>
+                                            widget.clipIds?.contains(c.id) ??
+                                            true,
+                                      )
+                                      .take(TtMetrics.stepTilesMax))
                                 clipThumbnail(
                                   clip: clip,
                                   logicalSize: _tileSize,

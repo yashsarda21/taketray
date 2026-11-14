@@ -686,6 +686,15 @@ void main() {
       final ready = Uri.parse(Routes.copyReadyOf(7));
       expect(ready.path, '/edit/ready');
       expect(ready.queryParameters, {Routes.editReelParameter: '7'});
+      // The job's clips, when known (an empty job still says so).
+      expect(
+        Uri.parse(Routes.copyReadyOf(7, clipIds: [8, 2])).queryParameters,
+        {Routes.editReelParameter: '7', Routes.editClipsParameter: '8,2'},
+      );
+      expect(Uri.parse(Routes.copyReadyOf(7, clipIds: [])).queryParameters, {
+        Routes.editReelParameter: '7',
+        Routes.editClipsParameter: '',
+      });
     });
 
     test('clipIdsIn keeps the positive whole numbers once, in order', () {
@@ -933,6 +942,28 @@ void main() {
       );
       expect(find.byType(TtNavPill).hitTestable(), findsNothing);
       expect(find.text('Ready for VN'), findsOneWidget);
+      // No clips in the location: the pictures are any clips with a copy.
+      expect(
+        tester.widget<CopyReadyScreen>(find.byType(CopyReadyScreen)).clipIds,
+        isNull,
+      );
+
+      // The job's clips: the valid ids, each once; none given is an empty
+      // set, not "any".
+      for (final (location, expected) in [
+        (Routes.copyReadyOf(goa.id, clipIds: [9, 3, 9, 5]), {9, 3, 5}),
+        ('/edit/ready?reel=${goa.id}&clips=3,x,,0,-4,8', {3, 8}),
+        ('/edit/ready?reel=${goa.id}&clips=', <int>{}),
+        ('/edit/ready?reel=${goa.id}&clips=x', <int>{}),
+      ]) {
+        unawaited(router.push(location));
+        await _settle(tester);
+        expect(
+          tester.widget<CopyReadyScreen>(find.byType(CopyReadyScreen)).clipIds,
+          expected,
+          reason: location,
+        );
+      }
     });
 
     for (final location in [

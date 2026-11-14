@@ -105,7 +105,7 @@ abstract final class Routes {
   static const editReelParameter = 'reel';
 
   /// The name of the clip ids (comma separated, in shooting order) in the
-  /// picking screen's and the space screen's locations.
+  /// picking screen's, the space screen's and the ready screen's locations.
   static const editClipsParameter = 'clips';
 
   /// The name of the add-mode flag (`1`) in the picking screen's location.
@@ -176,9 +176,15 @@ abstract final class Routes {
   /// The "ready for the editor" screen (Task 10).
   static const copyReady = '/edit/ready';
 
-  /// The ready screen of reel [reelId].
-  static String copyReadyOf(int reelId) => Uri(
+  /// The ready screen of reel [reelId]. [clipIds] are the clips the copy job
+  /// copied: the pictures of step 3 are those (an empty list: none). Null
+  /// leaves them out of the location, and the pictures are then any clips
+  /// that have a copy.
+  static String copyReadyOf(int reelId, {Iterable<int>? clipIds}) => Uri(
     path: copyReady,
-    queryParameters: {editReelParameter: '$reelId'},
+    queryParameters: {
+      editReelParameter: '$reelId',
+      if (clipIds != null) editClipsParameter: clipIds.join(','),
+    },
   ).toString();
 }

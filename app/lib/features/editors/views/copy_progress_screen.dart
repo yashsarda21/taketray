@@ -357,7 +357,16 @@ class _CopyProgressScreenState extends ConsumerState<CopyProgressScreen> {
           _left = false;
           _goOut();
         } else {
-          unawaited(_router.pushReplacement(Routes.copyReadyOf(id)));
+          // The pictures are this job's clips: a second batch shows the
+          // new clips, not the first batch's.
+          unawaited(
+            _router.pushReplacement(
+              Routes.copyReadyOf(
+                id,
+                clipIds: [for (final f in job.copied) f.clipId],
+              ),
+            ),
+          );
         }
       } else {
         _goOut(

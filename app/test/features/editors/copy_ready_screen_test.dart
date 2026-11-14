@@ -7,6 +7,7 @@ import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -67,6 +68,7 @@ void main() {
   Future<void> open(
     WidgetTester tester,
     int reelId, {
+    Iterable<int>? clipIds,
     double textScale = 1,
     Brightness brightness = Brightness.light,
   }) async {
@@ -79,11 +81,56 @@ void main() {
       brightness: brightness,
       settle: false,
     );
-    unawaited(routerOf(tester).push(Routes.copyReadyOf(reelId)));
+    unawaited(
+      routerOf(tester).push(Routes.copyReadyOf(reelId, clipIds: clipIds)),
+    );
     await settleApp(tester);
   }
 
   Finder buttonOf(String label) => find.widgetWithText(TtButton, label);
+
+  /// The ids of the clips pictured in step 3, in the order shown.
+  List<int> pictured(WidgetTester tester) {
+    final steps = tester.widget<TtIllustratedSteps>(
+      find.byType(TtIllustratedSteps),
+    );
+    return [
+      for (final t in steps.steps[2].thumbnails)
+        (t as ClipThumbnailImage).clip.id,
+    ];
+  }
+
+  /// A CapCut session on a reel of [count] clips whose first [first] clips
+  /// were copied in an earlier batch (copied on 29 Oct) and the next
+  /// [second] in this one (30 Oct). Returns the clip ids in shooting order.
+  Future<(Reel, List<int>)> twoBatches(
+    WidgetTester tester, {
+    required int count,
+    required int first,
+    required int second,
+  }) async {
+    final (reel, ids) = await readyReel(
+      tester,
+      count: count,
+      copies: false,
+      editor: EditorApp.capcut,
+    );
+    await real(tester, () async {
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      await sessions.recordCopies([
+        for (var i = 0; i < first + second; i++)
+          EditCopy(
+            reelId: reel.id,
+            clipId: ids[i],
+            copyMediaStoreId: 700 + i,
+            fileName: 'c$i.mp4',
+            sizeBytes: 100 * _mb,
+            copiedAt: DateTime.utc(2026, 10, i < first ? 29 : 30),
+          ),
+      ]);
+    });
+    return (reel, ids);
+  }
 
   group('the steps', () {
     testApp('Ready for VN, the line with the folder in bold, three steps '
@@ -349,6 +396,94 @@ void main() {
         find.byType(TtIllustratedSteps),
       );
       expect(steps.steps[2].thumbnails, hasLength(6));
+    });
+
+    testApp("a second batch: the pictures are this job's clips, up to six, "
+        "in shooting order, not the first batch's", (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 14,
+        first: 4,
+        second: 8,
+      );
+      final batch2 = ids.sublist(4, 12);
+      // The location's order is not the shooting order.
+      await open(tester, reel.id, clipIds: batch2.reversed);
+
+      expect(pictured(tester), ids.sublist(4, 10));
+      expect(find.byKey(const ValueKey('tt-step-tile-5')), findsOneWidget);
+      expect(find.byKey(const ValueKey('tt-step-tile-6')), findsNothing);
+    });
+
+    testApp('a second batch of two clips pictures those two, not the first '
+        "batch's as well", (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 8,
+        first: 5,
+        second: 2,
+      );
+      await open(tester, reel.id, clipIds: [ids[5], ids[6]]);
+
+      expect(pictured(tester), [ids[5], ids[6]]);
+      expect(find.byKey(const ValueKey('tt-step-tile-2')), findsNothing);
+    });
+
+    testApp("a job clip that went missing is not pictured; the first batch's "
+        'clips do not fill its place', (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 6,
+        first: 2,
+        second: 3,
+      );
+      await real(tester, () => flagForTest(h, {ids[3]}, missing: true));
+      await open(tester, reel.id, clipIds: ids.sublist(2, 5));
+
+      expect(pictured(tester), [ids[2], ids[4]]);
+    });
+
+    testApp('a job that copied no clip: no pictures, not the first '
+        "batch's", (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 4,
+        first: 3,
+        second: 0,
+      );
+      await open(tester, reel.id, clipIds: const []);
+
+      expect(pictured(tester), isEmpty);
+      expect(find.byKey(const ValueKey('tt-step-tile-0')), findsNothing);
+      expect(find.text('Pick the new clips'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expect(ids, hasLength(4));
+    });
+
+    testApp('job clips with no copy (e.g. deleted since) and clips of '
+        'another reel are not pictured', (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 4,
+        first: 1,
+        second: 1,
+      );
+      await open(tester, reel.id, clipIds: [ids[1], ids[3], 99999]);
+
+      expect(pictured(tester), [ids[1]]);
+    });
+
+    testApp('with no job known (no clips in the location) the pictures are '
+        'the clips that have a copy', (tester) async {
+      final (reel, ids) = await twoBatches(
+        tester,
+        count: 5,
+        first: 2,
+        second: 2,
+      );
+      await open(tester, reel.id);
+
+      expect(pictured(tester), ids.sublist(0, 4));
     });
 
     testApp("Done goes to the reel's page and deletes nothing", (tester) async {

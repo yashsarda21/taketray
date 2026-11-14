@@ -311,9 +311,17 @@ List<RouteBase> copyRoutes() => [
       _log.warning('Unknown location; showing Reels');
       return Routes.reels;
     },
-    builder: (context, state) => CopyReadyScreen(
-      reelId: _positive(state.uri.queryParameters[Routes.editReelParameter])!,
-    ),
+    builder: (context, state) {
+      final query = state.uri.queryParameters;
+      return CopyReadyScreen(
+        reelId: _positive(query[Routes.editReelParameter])!,
+        // Absent: the pictures are any clips with a copy; present (also
+        // empty): the clips the job copied.
+        clipIds: query.containsKey(Routes.editClipsParameter)
+            ? Routes.clipIdsIn(query[Routes.editClipsParameter]).toSet()
+            : null,
+      );
+    },
   ),
 ];
 
