@@ -419,3 +419,34 @@ It ends with `All tests passed!`. In `shooting_mode_section.dart` change `final 
 **Decisions:** D-142 (all of this section), with D-135 (the flags), D-141 (finishing arms nothing), D-107 and D-75 (the old asks) as background.
 
 ## 10. On the S24
+
+**Draft: the phone run completes this section. What follows is what the run will check; the results are added after it.**
+
+**What we built:** an on-device test for the whole first launch, and a list of hand checks for what a test cannot see. The test is `app/patrol_test/onboarding_test.dart`; the list is "Phase 10A check" in `docs/dev-setup.md`.
+
+- **Four flows.** *Fresh phone*: welcome, Get started, Allow access, Android's "Allow all", All set, Continue, Allow notifications, Android's "Allow", a typed name and an idea, "Create 2 reels", Reels with the tip, Got it. *Manual mode*: "Don't allow", Continue in Manual mode, Not now, Skip for now, Reels with the banner. *Closed midway*: Get started, Back, a restart, the welcome's final frame. *The tip and the switch*: turning Shooting mode on with its own switch hides the tip.
+- **Starts clean, ends clean.** Each flow deletes the first-launch rows from the app's own database before the app starts, so the flows can run in any order, and its tear-down deletes the reels it made and puts everything back, even when the flow failed.
+- **A restart that is not a restart.** A test cannot kill its own app. The flow throws the widget tree away and builds a new app on the same database; the new app reads the flags from the file, like a relaunched one. A real kill, and the splash, are hand checks.
+- **Phone safety.** Only TakeTray Dev. No videos and no `Movies/` use; Android's dialogs are answered by their button ids, never their text; no screenshots; no names printed.
+
+**Why TakeTray needs it:** the first launch happens once, on a phone that has nothing. Unit and widget tests cover each piece; only the phone shows that the real permission dialogs, the real database and the real router work together in that order.
+
+**Key ideas:**
+
+- **Reset through the same door as the app.** The flows clear the flags through the app's database (the same table the repository writes), not through a shortcut, so a flag that is stored wrongly shows up in the flow.
+- **Always run the tear-down.** The body's error is kept, the tear-down steps all run, and then the first error is thrown.
+- **A hand check is a numbered question.** Each one says what to do and what you should see, so the answer can be a number and a few words.
+
+**Where it lives:** `app/patrol_test/onboarding_test.dart`, `app/patrol_test/support/system_dialogs.dart` (the dialog buttons), `app/patrol_test/support/onboarded.dart` (what every other file uses), `docs/dev-setup.md` ("Phase 10A check").
+
+**Try it yourself:** check that the file builds without a phone. From the repo root:
+
+```bash
+tool/patrol build android --target patrol_test/onboarding_test.dart --debug
+```
+
+It ends with `Completed building apk` and the two APK paths. Then open `app/patrol_test/onboarding_test.dart` and change `_reelA` to a name that does not start with `_reelPrefix`: it still builds, but the tear-down no longer deletes that reel, which is why both names come from the same constant. (Change it back.)
+
+**Decisions:** D-143 (all of this section), with D-100 and D-131 (Patrol on the S24), D-136 (the onboarded harness) and D-137 to D-142 (what the flows check) as background.
+
+**Phone results:** pending. The run, what each flow showed and what was changed are added here after it.
