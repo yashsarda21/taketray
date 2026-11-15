@@ -38,8 +38,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 5 | Tagging (To tag and the tag player) | ✅ Done |
 | 6 | Background detection and notifications | ✅ Done |
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
-| 8 | Sending clips to editors (CapCut, Edits, VN) | Next |
-| 9 | Reference reels | Planned |
+| 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
+| 9 | Reference reels | Next |
 | 10 | Onboarding, settings, error log | Planned |
 | 11 | Release prep for the Play Store | Planned |
 
@@ -180,6 +180,22 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Quality gates**: the whole `tool/check` suite is now about 3,040 tests, and the release check still confirms no internet permission and no test-only code.
 - **Still to come**: friends' and other devices' folders are added by hand only; watching them automatically belongs to the Watched folders screen in Phase 10.
 - **Learning guide**: [docs/learn/phase-7-add-videos.md](docs/learn/phase-7-add-videos.md) explains the whole phase in plain English, with the real code.
+
+### Phase 8: Editor handoff
+- **Edit video**: a button on a reel's page. Tick the clips you want (or **Select all**), tap **Continue** and choose an editor. Clips always go in shooting order, and your originals are never changed.
+  - **CapCut and Instagram Edits** get the original clips in one share, so they open in one new project. A grey row says "Not installed" when the editor is missing.
+  - **VN** cannot take several shared clips, so TakeTray makes temporary copies in `Movies/TakeTray/<reel name>/`. VN's picker shows that folder.
+  - **Share** (in the clip viewer, and for clips ticked on a reel's page) sends clips to any other app through Android's own chooser.
+- **Copying for VN, with TakeTray open**: first a screen checks there is enough space and keeps a reserve free. While it copies, a screen shows the progress, keeps the phone awake and says "Keep TakeTray open until copying finishes". There is no background service and no notification. A full phone, a stopped copy and clips that failed each have their own screen with **Try again** (it copies only the rest). If Android closes TakeTray mid-copy, the finished copies are kept and the half-written file is removed. **Cancel**, then **Stop**, deletes what the job copied.
+- **The reel page while you edit**: a banner says "Editing in CapCut" (or Instagram Edits, or VN). Clips tagged since you started show under "New since you started editing", and the rest under "In your edit". Removing a clip from the reel deletes its copy too.
+- **Done editing**: asks "Have you exported your video?", deletes the copies (the originals stay in your gallery), shows how much space came back, and offers to mark the reel Published.
+- **Adding clips later**: for VN, **Copy to VN folder** adds only the new clips to the same folder. For CapCut and Edits, the new clips are copied into the reel's folder, and the editor's **+** shows that folder as an album named after the reel (a second batch works the same way).
+- **A reminder after 3 days**: "Wedding copies are using 1.2 GB" over "Done editing? Tap to clean up." One notification per reel; tapping it opens the Done editing question.
+- **Storage screen** (Settings, "Storage used by VN copies"): what the copies cost, one row per reel with **Delete** (it asks the same question as Done editing), and copies left from an earlier install under "Not linked to a reel". Those are deleted only after Android's own consent dialog. Add videos never offers TakeTray's own copy folders.
+- **Under the hood**: the database is now schema 2 (which editor a reel is in, when each copy was made, which clips were sent). The release check still confirms no internet permission, no foreground service and no wake lock.
+- **Phone tests** on the S24: sending 3 clips to CapCut in one share, an editor that is not installed, a real VN copy of 3 clips with the screen kept on, cancelling a copy, adding a clip later, removing a clip during a session, sharing from the viewer, and the reminder's tap. All 8 passed after one fix to the test (a greyed row cannot be tapped like a button), and a deliberately wrong expectation failed as it should. Every other on-phone test file passes (23 tests) and the release check says `RELEASE PERMISSIONS OK`. The real editors, Android's consent dialog and large copies can't be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 8 check, 12 steps, 2026-11-15): all behaved as written. The hand checks also found a red error screen, caused by TakeTray changing a screen's state while the screen was still being built; it is fixed and did not come back.
+- **Still to come**: copying in the background with a foreground service, and moving clips into a reel album instead of copying, are parked in [docs/later.md](docs/later.md) until users ask. The on/off switch for the reminder belongs to Settings in Phase 10.
+- **Learning guide**: [docs/learn/phase-8-editor-handoff.md](docs/learn/phase-8-editor-handoff.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 

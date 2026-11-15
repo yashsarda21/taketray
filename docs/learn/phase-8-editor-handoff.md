@@ -1,6 +1,6 @@
 # Learning guide: Phase 8, handing a reel to an editor
 
-This guide explains how TakeTray hands a reel's clips to a video editor: CapCut and Instagram Edits get the original clips in one direct share, VN gets temporary copies in a folder, and TakeTray remembers which clips are in the edit, cleans the copies up and reminds the user about them.
+This guide explains how TakeTray hands a reel's clips to a video editor. CapCut and Instagram Edits get the original clips in one direct share, in shooting order. VN cannot take several shared clips, so it gets temporary copies in a folder: TakeTray checks the space, copies them with the app open and the screen kept on (no background service), and ends on "Ready for VN". TakeTray remembers which clips are in the edit, so the reel's page can show "New since you started editing" and "In your edit" and add later clips (VN through its folder; CapCut and Edits through an album named after the reel's folder). **Done editing** deletes the copies and offers to mark the reel Published. A reminder 3 days after the last copies, and a storage screen that also finds copies from an earlier install, make sure the space comes back. The data lives in schema v2, and the last section is the proof on a real phone: eight on-phone tests and twelve hand checks, and a red screen the hand checks found.
 
 Every snippet is real code from this repository. You don't need to know Flutter or Android well to follow it; basic programming knowledge is enough.
 
@@ -627,4 +627,76 @@ They end with `All tests passed!`. Now open `lib/features/editors/view_models/co
 
 ## 14. On the S24
 
-To be written in Task 14 (decision D-131).
+**What we built:** the proof on a real phone, in two halves. The first is eight flows in `app/patrol_test/editors_test.dart`, run by Patrol on the S24 in the real app. The second is twelve checks the owner did by hand, written in `docs/dev-setup.md` under "Phase 8 check". Between them they cover what a computer's pretend Android cannot. The hand checks also found a bug, and that bug is part of this section too.
+
+**Why TakeTray needs it:** this phase leans on things only a phone can answer: whether CapCut, Instagram Edits and VN really open a share or an album the way we hope, whether Android lets the app write 2 GB of copies into shared storage and keeps the screen on while it does, whether the copies survive Android closing the app, and whether the consent dialog for another install's files works. A test also must not open the owner's real editors or read the owner's folders, so some of the proof has to be by hand, and it has to be written down as such.
+
+**Key ideas:**
+
+- **What Patrol does here.** Each flow starts from cleared data. It uses only `Movies/TakeTray Test/` for its videos and `Movies/TakeTray/TakeTray Test <timestamp>/` for its copies. An editor is never opened: a debug recorder keeps the intents TakeTray sends, so a flow can check what was sent and not what an editor did with it.
+  1. **CapCut send.** Three clips go in one share, in shooting order, with a read grant and no store address. The reel gets its banner, and Done editing ends the session.
+  2. **CapCut not installed.** The CapCut row says "Not installed", the other two do not, and tapping the grey row starts nothing.
+  3. **VN copy for real.** The space screen, "Copy 3 clips", three finished copies in the folder, the screen kept on while copying and not afterwards, and Done editing deletes the copies and says how much space came back.
+  4. **Cancel.** A slowed copy is stopped: no copies are kept and the screen-on flag is off again.
+  5. **Add later.** A fourth clip is copied into the same folder and the banner says 4 copies.
+  6. **Remove during a session.** Removing a clip from the reel deletes its copy too.
+  7. **Share.** The viewer's Share records one chooser around one send of the clip shown.
+  8. **The reminder.** The reminder is posted, TakeTray's own text is found in the shade and tapped, and the Done editing question opens.
+- **The fix that was only the test's.** The first run passed 7 of 8. In "CapCut not installed" every check passed up to the tap, then Patrol's tap timed out after 30 seconds. A greyed row has no tap handler, so it is not hit-testable, and Patrol waits for a widget it can press. The app was right. The test now taps through the tester with `warnIfMissed: false`:
+
+  ```dart
+  await $.tester.tap(capcut, warnIfMissed: false);
+  await $.tester.pump();
+  ```
+
+  It was the one fix needed (`8f3574c`), and the whole file was run again: 8 of 8. Patrol cannot run a single flow by name, so a fix always costs a whole-file run.
+- **A test that cannot fail proves nothing.** After the green run, one expectation was changed on purpose ("VN is not greyed out", from 0 to 1). The run failed that flow only, with `Expected: <1> Actual: <0>`, and the change was put back.
+- **The other Patrol files.** Each passed once: add videos 3, app shell 1, background 7, database 1, media access 2, media scan 3, reels 1 and tagging 5 (23 tests). `tool/check_release_permissions` printed `RELEASE PERMISSIONS OK`: no internet, no foreground service, no test-only code in the release app. After every run the debug app is installed again and its data cleared; the real app is never touched.
+- **What Patrol cannot do.** It cannot open a real editor, answer Android's consent dialog for files another install made, copy 2 GB, or kill the app mid-copy and look at the folder. So the owner did these by hand on 2026-11-15, and everything behaved as written:
+  - CapCut and Instagram Edits open with the clips in one project, in shooting order, including a clip added through the photo picker;
+  - VN's picker shows the album with its clips in order, and the album is gone after Done editing;
+  - a copy of about 2 GB: the screen stays on, then goes back to normal;
+  - leaving TakeTray during a copy, and swiping it away from Recents: the result or "Copying stopped", no half-written file, and **Try again** copies only the rest;
+  - add later in CapCut and Edits through the reel's folder album, and a second batch;
+  - copies left from an earlier install, deleted through Android's consent dialog;
+  - large text on the reel page and the add picker, the storage screen's covers, red Delete and callout, and the Settings summary after Done editing.
+
+  The reminder's tap was not done by hand: flow 8 proves it.
+- **The red screen (D-132).** While doing the checks, the owner's debug build showed Riverpod's red error screen: "Tried to modify a provider while the widget tree was building". The cause was one ordering mistake. The tag player is a screen on top of the tabs. When something takes the user away from it with a `go` (the "See your reels" button, or a notification's tap), Flutter closes the player while it is still building the next screen. Closing the player calls `TagSessionController.leave()`, and `leave()` changed a provider's state right then. Riverpod does not allow that: two widgets could end up showing different states. The tests never saw it, because their stand-in router replaces the player and never pops it. The fix is a rule: never change a provider from code the framework can run during a build; do it after the frame.
+
+  ```dart
+  void dropCheck() => _update((now) => now.copyWith(confirmingReelId: null));
+  final scheduler = SchedulerBinding.instance;
+  if (scheduler.schedulerPhase == SchedulerPhase.persistentCallbacks) {
+    scheduler.addPostFrameCallback((_) => dropCheck());
+  } else {
+    dropCheck();
+  }
+  ```
+
+  Outside a build nothing changes. The fixed build went onto the phone without clearing its data, the owner repeated the steps, and the red screen did not come back. The lesson: the hand checks found what 4,000 tests could not, because only the real app, with the real router, took that path.
+- **Still unproven.** Other phones and other versions of the editors (an editor can change how it reads a share or an album at any update), whether MediaStore ever renames a copy, and big copies on a slower phone. These are written in D-131.
+
+**Where it lives:** `app/patrol_test/editors_test.dart`, the helpers in `app/patrol_test/support/` (`editors_hooks.dart` for the intent recorder and the copy throttle, `test_background.dart` for the reminder), the hand checks and the run command in `docs/dev-setup.md` ("Phase 8 check" and "Running `editors_test.dart`"), and the red-screen fix in `app/lib/features/tagging/view_models/tag_session_controller.dart` (`leave`).
+
+**Try it yourself:** on a computer, check the helpers the flows use. From `app/`:
+
+```bash
+../tool/flutter test test/patrol_support
+```
+
+It ends with `All tests passed!`. To see the flows you need the S24, unlocked and connected:
+
+```bash
+tool/patrol test -d <your device> -t patrol_test/editors_test.dart
+```
+
+Then change the expectation "VN is not greyed out" in the "CapCut not installed" flow from 0 to 1 and run it again: that flow fails. Put it back, and install the normal debug build and clear TakeTray Dev's data afterwards. For the red screen, run the tag player's tests:
+
+```bash
+cd app && ../tool/flutter test test/features/tagging/views/tag_player_screen_test.dart
+```
+
+Then in `tag_session_controller.dart` make `leave()` change the state at once even inside a build. The group "taken away by a go, over the tab shell (D-132)" fails with Riverpod's exact error. Put it back.
+
+**Decisions:** D-131 (all of this section) and D-132 (the red screen), with D-100 (Patrol on the S24), D-117 (the same split for Phase 7), D-122 (copying) and D-124 (the reminder) as background.
