@@ -219,6 +219,50 @@ It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/res/values/s
 
 ## 5. The welcome's picture
 
+**What we built:** the first screen a new user sees, drawn as its last frame: three clips standing in a tray, each with a tab saying which reel it will go to, a count on the tray ("23 takes · 3 reels"), the app's name and one line of what it does, and **Get started**. It does not move yet; section 6 makes it play.
+
+- **The picture.** A soft coloured block 372 dp tall. A big pale disc sits in its top right corner. Three video frames lean against each other in the middle (left, centre, right), each with a small tab above it ("London Food", "Cinematic", "Day 1 Vlog"). A tray, shaped like a trapezoid, holds them at the bottom and carries the count.
+- **Below it.** Four dots (this is step 1 of 4), the round app icon with "TakeTray" beside it, the headline "One tray for every take", and two lines about filming as usual.
+- **At the bottom.** **Get started**, always in the same place: when the text is very large, the picture and the words scroll, but the button does not.
+
+**Why TakeTray needs it:** the owner chose this welcome (the "B · Tray" option) because it shows the app's name as a picture: the clips you shoot land in a tray and wait to be sorted. It is also where the intro of section 6 happens, so the picture is built from the start to be redrawn many times a second.
+
+**Key ideas:**
+
+- **The picture is a function of a frame.** Instead of animating inside the widget, `WelcomeTrayArt` takes one plain object, a `WelcomeArtFrame`, listing every number that can change: how far each take has dropped, how see-through the tray is, which number the count shows, where the glint of light is. Draw the object, get the picture. Section 6 only has to work out a new object for each moment of the intro. `WelcomeArtFrame.end` is the finished picture, and `end` is the default:
+
+  ```dart
+  const WelcomeArtFrame({
+    this.discScale = 1,
+    this.discOpacity = 1,
+    this.trayDy = 0,
+    ...
+    this.count = 23,
+    this.reelsOpacity = 1,
+    this.glint,
+  })
+  ```
+
+  The words, dots and button have their own object, `WelcomeBodyFrame`, because they move on a different schedule.
+- **A take drops in the screen's frame, not its own.** The takes lean, so moving a leaning card "down" must not slide it sideways. The widget nests the move *outside* the lean: `Transform.translate(Transform.rotate(card))`. Swap the two and a dropping take would drift along its own tilted edge. A test checks that a take moved 50 dp ends exactly 50 dp lower and not one pixel to the side.
+- **The count never makes the words jump.** The number counts 0, 1, 2 ... 23 in the intro, and its digits have different widths. The number is drawn right-aligned in a box as wide as "00" (with figures of equal width), and the word "takes" sits after the box, so the word stays put. The word's own box is as wide as the longest word, so "1 take" does not shift the label either.
+- **One picture for a screen reader.** The picture holds text (the tabs, the count), but a person using TalkBack should not hear it in pieces. `Semantics(image: true, label: ..., excludeSemantics: true)` makes it one image with one label. The headline, wordmark and text are the opposite: they must be read from the first frame even while invisible, so they sit in an `Opacity` with `alwaysIncludeSemantics: true`.
+- **The picture is a drawing.** At 200 % text the words below it grow, the picture does not (it has a fixed height and its labels keep their size). Otherwise "London Food" would burst out of a 24 dp tab.
+- **Pictures that ship with the app.** The three clip pictures (and a fourth for a later step) are four small PNG files in `app/assets/welcome/`. Until now the app had no assets of its own (D-40); D-138 changes that and records how the files were made, so they can be remade.
+- **A launcher icon you can place anywhere.** `TtBrandMark(size)` in the design-system package paints the tray icon from the same shapes as the real launcher icon (`ic_launcher_foreground.svg`), clipped to a circle, at any size.
+
+**Where it lives:** `app/lib/features/onboarding/views/welcome_tray_art.dart` (`WelcomeArtFrame`, `WelcomeTakeFrame`, `WelcomeTrayArt`), `welcome_screen.dart` (`WelcomeBodyFrame`, `WelcomeScreen`), `step_dots.dart`; `packages/taketray_ui/lib/src/components/brand_mark.dart`; the pictures in `app/assets/welcome/`. Tests: `app/test/features/onboarding/views/` (`welcome_tray_art_test.dart`, `welcome_screen_test.dart`, `step_dots_test.dart`, and the screenshots in `welcome_golden_test.dart`), `packages/taketray_ui/test/components/brand_mark_test.dart`.
+
+**Try it yourself:** make the middle take lean twice as much and watch a test notice. From `app/`:
+
+```bash
+../tool/flutter test test/features/onboarding/views/welcome_tray_art_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/welcome_tray_art.dart` and change `_takeDegrees` from `[-8, 1, 8]` to `[-8, 2, 8]`. Run it again: `the takes lean -8, 1 and 8 degrees and the middle one is on top of its neighbours` fails. Put `1` back. (The screenshots in `test/features/onboarding/views/goldens/macos/` are the picture itself; they are compared only on the owner's Mac.)
+
+**Decisions:** D-138 (all of this section), with D-133 (the design), D-136 (the screen's route) and D-40 (amended: the app now has assets) as background.
+
 ## 6. The welcome intro
 
 ## 7. Video access and notification steps

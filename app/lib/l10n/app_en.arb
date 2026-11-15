@@ -3509,6 +3509,51 @@
   "@welcomeGetStarted": {
     "description": "Main button of the welcome: opens the first onboarding step (video access)."
   },
+  "welcomeBody": "Film with your phone's camera as usual. New clips land in your tray, ready to sort into the reels you plan.",
+  "@welcomeBody": {
+    "description": "Text under the headline of the welcome."
+  },
+  "welcomeTakeLondonFood": "London Food",
+  "@welcomeTakeLondonFood": {
+    "description": "Label on the first sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakeCinematic": "Cinematic",
+  "@welcomeTakeCinematic": {
+    "description": "Label on the second sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakeDayOneVlog": "Day 1 Vlog",
+  "@welcomeTakeDayOneVlog": {
+    "description": "Label on the third sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakesCount": "{count, plural, =1{{count} take} other{{count} takes}}",
+  "@welcomeTakesCount": {
+    "description": "The first part of the label on the tray in the welcome's picture, a count that ticks up to 23 while the intro plays. The number is drawn right-aligned in a fixed width so the word does not move, so the number must stay in the text as written.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "welcomeReelsCount": " · 3 reels",
+  "@welcomeReelsCount": {
+    "description": "The second part of the label on the tray in the welcome's picture, after the takes count: a separator and the number of sample reels. Starts with a space and a middle dot."
+  },
+  "welcomeArtLabel": "Three takes standing in a tray, labelled London Food, Cinematic and Day 1 Vlog",
+  "@welcomeArtLabel": {
+    "description": "What a screen reader says for the welcome's picture (one image: the tabs and the count in it are not read out)."
+  },
+  "onboardingStepLabel": "Step {step} of {count}",
+  "@onboardingStepLabel": {
+    "description": "What a screen reader says for the row of dots that shows where the user is in onboarding.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "accessBeforeTitle": "Let TakeTray see your videos",
   "@accessBeforeTitle": {
     "description": "Title of onboarding's video access step, before access is asked."
