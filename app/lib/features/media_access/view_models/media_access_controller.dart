@@ -161,6 +161,16 @@ class MediaAccessController extends _$MediaAccessController {
     });
   }
 
+  /// Opens this app's page in the phone's settings, whatever the level and
+  /// whether Android would still show its dialog: for a button that says
+  /// "Open settings" (onboarding's denied step, D-140). The state is not
+  /// changed here; the refresh on resume shows what the user chose there.
+  /// Never throws: an error is logged by type.
+  Future<void> openSettings() async {
+    final bridge = ref.read(mediaBridgeProvider);
+    await guarded(_log, 'Opening the settings page', bridge.openAppSettings);
+  }
+
   /// Asks for access once if that is possible without leaving the app: the
   /// level is denied and Android would still show its dialog. Used when
   /// Shooting mode is turned on. Never throws.

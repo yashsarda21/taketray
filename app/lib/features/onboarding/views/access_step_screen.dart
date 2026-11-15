@@ -57,13 +57,25 @@ class _AccessStepScreenState extends ConsumerState<AccessStepScreen> {
   /// [MediaAccessController.allow] is running (Android's dialog may be up).
   bool _busy = false;
 
-  Future<void> _allow() async {
+  /// "Allow access" and "Allow all videos": [MediaAccessController.allow]
+  /// shows Android's dialog while it still can.
+  Future<void> _allow() => _run((controller) => controller.allow(), asks: true);
+
+  /// "Open settings": always the app's page in the phone's settings, never
+  /// the dialog. The resume refresh shows what the user chose there.
+  Future<void> _openSettings() =>
+      _run((controller) => controller.openSettings(), asks: false);
+
+  Future<void> _run(
+    Future<void> Function(MediaAccessController controller) action, {
+    required bool asks,
+  }) async {
     if (_busy) return;
     setState(() => _busy = true);
     var asked = false;
     try {
-      await ref.read(mediaAccessControllerProvider.notifier).allow();
-      asked = true;
+      await action(ref.read(mediaAccessControllerProvider.notifier));
+      asked = asks;
     } on Object {
       // The controller logs its own errors by type and does not throw; this
       // only keeps the buttons from staying off if something does.
@@ -89,16 +101,20 @@ class _AccessStepScreenState extends ConsumerState<AccessStepScreen> {
     final view = ref.watch(mediaAccessControllerProvider);
     // Watched so it is read before Continue needs it.
     ref.watch(notificationAccessControllerProvider);
-    final sdk = ref.watch(androidSdkProvider).value ?? allowAllSdk;
+    final sdkRead = ref.watch(androidSdkProvider);
     final access = view.value;
-    if (access == null && view.isLoading) {
-      // Not known yet: nothing is shown that could be wrong a moment later.
+    if ((access == null && view.isLoading) || sdkRead.isLoading) {
+      // Not known yet (the access or the Android version, which says which
+      // word the hint and the settings path use): nothing is shown that
+      // could be wrong a moment later.
       return const OnboardingStepLayout(
         step: 1,
         artKey: AccessStepScreen.artKey,
         art: SizedBox.shrink(),
       );
     }
+    // A version that could not be read gets the newer wording.
+    final sdk = sdkRead.value ?? allowAllSdk;
     // A first read that failed is "not allowed yet": Allow access reads the
     // phone again.
     final step = access == null
@@ -189,7 +205,7 @@ class _AccessStepScreenState extends ConsumerState<AccessStepScreen> {
         foot: [
           main(
             l10n.accessOpenSettings,
-            _allow,
+            _openSettings,
             icon: Symbols.open_in_new_rounded,
           ),
           manual(),

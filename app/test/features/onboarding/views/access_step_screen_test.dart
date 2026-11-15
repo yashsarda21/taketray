@@ -40,6 +40,7 @@ class _Access extends MediaAccessController {
   final MediaAccessView? start;
   final bool loading;
   int allowed = 0;
+  int settingsOpened = 0;
   Completer<void>? gate;
   MediaAccessView? afterAllow;
   Error? allowThrows;
@@ -60,6 +61,14 @@ class _Access extends MediaAccessController {
     if (error != null) throw error;
     final next = afterAllow;
     if (next != null) state = AsyncData(next);
+  }
+
+  @override
+  Future<void> openSettings() async {
+    settingsOpened++;
+    await gate?.future;
+    final error = allowThrows;
+    if (error != null) throw error;
   }
 
   void show(MediaAccessView view) => state = AsyncData(view);
@@ -264,6 +273,71 @@ void main() {
     });
   });
 
+  group('the Android version', () {
+    testWidgets('still being read: art and dots only, no hint or callout '
+        'with a guessed word', (tester) async {
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.denied)),
+        () => Completer<int>().future,
+      );
+      expect(find.text('Let TakeTray see your videos'), findsNothing);
+      expect(find.byType(TtButton), findsNothing);
+      expect(_plain('Allow'), findsNothing);
+      expect(find.byType(StepDots), findsOneWidget);
+    });
+
+    testWidgets('still being read on the denied look: nothing shows either', (
+      tester,
+    ) async {
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.denied, canAsk: false)),
+        () => Completer<int>().future,
+      );
+      expect(find.text("TakeTray can't see your videos"), findsNothing);
+      expect(find.byType(TtCallout), findsNothing);
+      expect(find.byType(TtButton), findsNothing);
+    });
+
+    testWidgets('arrives later: the step shows with the right word', (
+      tester,
+    ) async {
+      final sdk = Completer<int>();
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.denied)),
+        () => sdk.future,
+      );
+      sdk.complete(33);
+      await tester.pumpAndSettle();
+      expect(_plain('On the next screen, choose Allow.'), findsOneWidget);
+    });
+
+    testWidgets('failed to read: the newer wording, "Allow all"', (
+      tester,
+    ) async {
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.denied)),
+        () async => throw StateError('no version'),
+      );
+      expect(_plain('On the next screen, choose Allow all.'), findsOneWidget);
+      expect(_button('Allow access'), findsOneWidget);
+    });
+
+    testWidgets('every look waits for it, All set too (one rule)', (
+      tester,
+    ) async {
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.full)),
+        () => Completer<int>().future,
+      );
+      expect(find.text('All set'), findsNothing);
+    });
+  });
+
   group('some (limited)', () {
     testWidgets('title, body, warning callout and its two buttons', (
       tester,
@@ -335,14 +409,53 @@ void main() {
       expect(_plain('Photos and videos › Allow.'), findsOneWidget);
     });
 
-    testWidgets('Open settings calls allow() (it opens the app page)', (
+    testWidgets('Open settings opens the settings page, never allow()', (
       tester,
     ) async {
       final access = _Access(_v(MediaAccessLevel.denied, canAsk: false));
       await _pump(tester, access);
       await tester.tap(_button('Open settings'));
       await tester.pumpAndSettle();
+      expect(access.settingsOpened, 1);
+      expect(access.allowed, 0);
+    });
+
+    testWidgets('Open settings after a refusal that Android could ask again '
+        'still opens settings, not the dialog', (tester) async {
+      final access = _Access(_v(MediaAccessLevel.denied))
+        ..afterAllow = _v(MediaAccessLevel.denied);
+      await _pump(tester, access);
+      await tester.tap(_button('Allow access'));
+      await tester.pumpAndSettle();
       expect(access.allowed, 1);
+      await tester.tap(_button('Open settings'));
+      await tester.pumpAndSettle();
+      expect(access.allowed, 1);
+      expect(access.settingsOpened, 1);
+    });
+
+    testWidgets('two taps on Open settings open it once', (tester) async {
+      final access = _Access(_v(MediaAccessLevel.denied, canAsk: false))
+        ..gate = Completer<void>();
+      await _pump(tester, access);
+      final press = tester
+          .widget<TtButton>(_button('Open settings'))
+          .onPressed!;
+      press();
+      press();
+      expect(access.settingsOpened, 1);
+      await tester.pump();
+      expect(
+        tester.widget<TtButton>(_button('Continue in Manual mode')).onPressed,
+        isNull,
+      );
+      access.gate!.complete();
+      await tester.pumpAndSettle();
+      expect(access.settingsOpened, 1);
+      expect(
+        tester.widget<TtButton>(_button('Open settings')).onPressed,
+        isNotNull,
+      );
     });
 
     testWidgets('Allow access then refused (Android can ask again) shows the '
@@ -835,6 +948,42 @@ Future<void> _pumpLoading(WidgetTester tester) async {
           () => _Notif(_na(sdk: 34, granted: false)),
         ),
         androidSdkProvider.overrideWith((ref) async => 34),
+      ],
+      child: MaterialApp.router(
+        routerConfig: _router,
+        theme: TakeTrayTheme.light(),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+      ),
+    ),
+  );
+  await tester.pump();
+  await tester.pump();
+}
+
+/// The step with the Android version read through [sdk].
+Future<void> _pumpSdk(
+  WidgetTester tester,
+  _Access access,
+  Future<int> Function() sdk,
+) async {
+  tester.view.physicalSize = const Size(360, 800);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.reset);
+  _router = GoRouter(
+    routes: [
+      GoRoute(path: '/', builder: (context, state) => const AccessStepScreen()),
+    ],
+  );
+  addTearDown(_router.dispose);
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: [
+        mediaAccessControllerProvider.overrideWith(() => access),
+        notificationAccessControllerProvider.overrideWith(
+          () => _Notif(_na(sdk: 34, granted: false)),
+        ),
+        androidSdkProvider.overrideWith((ref) => sdk()),
       ],
       child: MaterialApp.router(
         routerConfig: _router,

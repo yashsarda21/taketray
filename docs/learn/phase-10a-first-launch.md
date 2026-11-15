@@ -313,7 +313,7 @@ It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/we
 **What we built:** the second and third steps of onboarding. The first asks for access to the phone's videos and shows what is true right now: "Let TakeTray see your videos" before asking, "TakeTray can see only some videos" if the user chose a few, "TakeTray can't see your videos" if they said no, and "All set" if everything works. The second shows what the "new clips" notification looks like and asks to allow it.
 
 - **The step never lies.** Go to Android's settings, allow all videos, come back: the step says "All set". Open the step with access already given from an earlier install: "All set", nothing asked. Take access away while the step is open: it changes back.
-- **A "no" is remembered for the step.** After you say no, the step stops offering "Allow access" and offers "Open settings" (and "Continue in Manual mode"), because Android may not show its question again.
+- **A "no" is remembered for the step.** After you say no, the step stops offering "Allow access" and offers "Open settings" (and "Continue in Manual mode"). "Open settings" always opens the app's page in Android's settings and never shows the question again (it has its own controller method, `openSettings()`, so its label tells the truth).
 - **One tap, one question.** The buttons turn off while Android's dialog is up, so a double tap does not ask twice.
 - **The notification step skips itself** on Android 11 and 12 (they have no question) and when the permission is already given. Whatever the answer to the question, the user goes on to the next step.
 
