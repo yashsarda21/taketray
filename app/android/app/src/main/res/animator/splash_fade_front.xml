@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
-    android:propertyName="fillAlpha"
-    android:startOffset="300"
-    android:duration="450"
-    android:valueFrom="0"
-    android:valueTo="1"
-    android:valueType="floatType"
-    android:interpolator="@interpolator/splash_emphasized_decelerate" />
+<!-- The front clip (and its play mark) fades in as it falls (D-137). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:ordering="together">
+    <!-- Holds the start value from the first frame: the vector's own values are
+         the settled icon, and the delayed fall below would leave it drawn
+         there until its start offset. -->
+    <objectAnimator
+        android:propertyName="fillAlpha"
+        android:startOffset="0"
+        android:duration="0"
+        android:valueFrom="0"
+        android:valueTo="0"
+        android:valueType="floatType" />
+    <objectAnimator
+        android:propertyName="fillAlpha"
+        android:startOffset="300"
+        android:duration="450"
+        android:valueFrom="0"
+        android:valueTo="1"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_emphasized_decelerate" />
+</set>

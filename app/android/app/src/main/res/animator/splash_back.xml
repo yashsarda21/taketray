@@ -1,9 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
-    android:propertyName="translateY"
-    android:startOffset="150"
-    android:duration="400"
-    android:valueFrom="-40"
-    android:valueTo="0"
-    android:valueType="floatType"
-    android:interpolator="@interpolator/splash_emphasized_decelerate" />
+<!-- The back clip falls 40 units into the tray, 400 ms after 150 ms (D-137). -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:ordering="together">
+    <!-- Holds the start value from the first frame: the vector's own values are
+         the settled icon, and the delayed fall below would leave it drawn
+         there until its start offset. -->
+    <objectAnimator
+        android:propertyName="translateY"
+        android:startOffset="0"
+        android:duration="0"
+        android:valueFrom="-40"
+        android:valueTo="-40"
+        android:valueType="floatType" />
+    <objectAnimator
+        android:propertyName="translateY"
+        android:startOffset="150"
+        android:duration="400"
+        android:valueFrom="-40"
+        android:valueTo="0"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_emphasized_decelerate" />
+</set>

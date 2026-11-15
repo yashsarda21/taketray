@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The tray (D-137): rises 14 units over 300 ms, then catches the clips at
-     700 ms with a 220 ms squash (wider 1.04, shorter 0.9, peak at 40 %). The
-     squash eases each leg with the standard curve, as the prototype's CSS
-     keyframes do. Units are the vector's viewport units. -->
+<!-- The tray (D-137): rises 14 units over 300 ms from the first frame, then
+     catches the clips at 700 ms with a 220 ms squash (wider 1.04, shorter
+     0.9, peak at 40 % of 220 ms = 88 ms). The squash is two plain two-value
+     animators per property, there and back, each with the standard curve (the
+     prototype eases each keyframe interval): the hardware path that runs an
+     animated vector may sample only the first and last keyframe of a
+     keyframe animator, both 1, and the tray would never squash. The rise and
+     the fade (splash_fade_tray) start at offset 0, so the first frame already
+     shows their start values. Units are the vector's viewport units. -->
 <set xmlns:android="http://schemas.android.com/apk/res/android"
     android:ordering="together">
     <objectAnimator
@@ -16,25 +21,33 @@
     <objectAnimator
         android:propertyName="scaleX"
         android:startOffset="700"
-        android:duration="220">
-        <propertyValuesHolder android:propertyName="scaleX">
-            <keyframe android:fraction="0" android:value="1" />
-            <keyframe android:fraction="0.4" android:value="1.04"
-                android:interpolator="@interpolator/splash_standard" />
-            <keyframe android:fraction="1" android:value="1"
-                android:interpolator="@interpolator/splash_standard" />
-        </propertyValuesHolder>
-    </objectAnimator>
+        android:duration="88"
+        android:valueFrom="1"
+        android:valueTo="1.04"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_standard" />
+    <objectAnimator
+        android:propertyName="scaleX"
+        android:startOffset="788"
+        android:duration="132"
+        android:valueFrom="1.04"
+        android:valueTo="1"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_standard" />
     <objectAnimator
         android:propertyName="scaleY"
         android:startOffset="700"
-        android:duration="220">
-        <propertyValuesHolder android:propertyName="scaleY">
-            <keyframe android:fraction="0" android:value="1" />
-            <keyframe android:fraction="0.4" android:value="0.9"
-                android:interpolator="@interpolator/splash_standard" />
-            <keyframe android:fraction="1" android:value="1"
-                android:interpolator="@interpolator/splash_standard" />
-        </propertyValuesHolder>
-    </objectAnimator>
+        android:duration="88"
+        android:valueFrom="1"
+        android:valueTo="0.9"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_standard" />
+    <objectAnimator
+        android:propertyName="scaleY"
+        android:startOffset="788"
+        android:duration="132"
+        android:valueFrom="0.9"
+        android:valueTo="1"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_standard" />
 </set>

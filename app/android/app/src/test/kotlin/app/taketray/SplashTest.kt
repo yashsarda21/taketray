@@ -315,7 +315,7 @@ class SplashTest {
                 it.raw.getValue("duration").toLong(),
                 it.float("valueFrom"),
                 it.float("valueTo"),
-                it.ids.getValue("interpolator"),
+                it.ids["interpolator"] ?: 0,
             )
         }
     }
@@ -323,28 +323,39 @@ class SplashTest {
     private val decelerate get() = requireId("interpolator", "splash_emphasized_decelerate")
     private val standard get() = requireId("interpolator", "splash_standard")
 
+    /** Sets [property] to [value] in the first frame: a zero-length animator at offset 0, no easing. */
+    private fun hold(property: String, value: Float) = Move(property, 0, 0, value, value, 0)
+
     @Test
-    fun `the back clip falls 40 units in 400 ms after 150 ms and fades in with it`() {
-        assertEquals(listOf(Move("translateY", 150, 400, -40f, 0f, decelerate)), moves("splash_back"))
-        assertEquals(listOf(Move("fillAlpha", 150, 400, 0f, 1f, decelerate)), moves("splash_fade_back"))
+    fun `the back clip is held above the tray, then falls 40 units in 400 ms after 150 ms`() {
+        assertEquals(
+            listOf(hold("translateY", -40f), Move("translateY", 150, 400, -40f, 0f, decelerate)),
+            moves("splash_back"),
+        )
+        assertEquals(
+            listOf(hold("fillAlpha", 0f), Move("fillAlpha", 150, 400, 0f, 1f, decelerate)),
+            moves("splash_fade_back"),
+        )
     }
 
     @Test
-    fun `the front clip falls 48 units in 450 ms after 300 ms and fades in with it`() {
-        assertEquals(listOf(Move("translateY", 300, 450, -48f, 0f, decelerate)), moves("splash_front"))
-        assertEquals(listOf(Move("fillAlpha", 300, 450, 0f, 1f, decelerate)), moves("splash_fade_front"))
+    fun `the front clip is held above the tray, then falls 48 units in 450 ms after 300 ms`() {
+        assertEquals(
+            listOf(hold("translateY", -48f), Move("translateY", 300, 450, -48f, 0f, decelerate)),
+            moves("splash_front"),
+        )
+        assertEquals(
+            listOf(hold("fillAlpha", 0f), Move("fillAlpha", 300, 450, 0f, 1f, decelerate)),
+            moves("splash_fade_front"),
+        )
     }
 
     @Test
-    fun `the tray rises 14 units in 300 ms from the start and fades in with it`() {
+    fun `the tray's rise and fade start at offset 0 so the first frame shows their start values`() {
+        // Nothing to hold: they begin at 0 ms themselves (the clips need a hold, they wait 150 and 300 ms).
         assertEquals(listOf(Move("fillAlpha", 0, 300, 0f, 1f, decelerate)), moves("splash_fade_tray"))
-        val tray = parse("animator", "splash_tray")
-        val rise = tray.all("objectAnimator").single { it.raw["propertyName"] == "translateY" }
-        assertEquals(14f, rise.float("valueFrom"))
-        assertEquals(0f, rise.float("valueTo"))
-        assertEquals(300L, rise.raw.getValue("duration").toLong())
-        assertEquals(0L, rise.raw["startOffset"]?.toLong() ?: 0L)
-        assertEquals(decelerate, rise.ids.getValue("interpolator"))
+        val rise = moves("splash_tray").single { it.property == "translateY" }
+        assertEquals(Move("translateY", 0, 300, 14f, 0f, decelerate), rise)
     }
 
     @Test
@@ -352,19 +363,43 @@ class SplashTest {
         val tray = parse("animator", "splash_tray")
         assertEquals("set", tray.tag)
         assertEquals("ordering is together (0), not sequentially (1)", "0", tray.raw["ordering"])
-        val catches = tray.all("objectAnimator").filter { it.raw["propertyName"] != "translateY" }
-        assertEquals(listOf("scaleX", "scaleY"), catches.map { it.raw.getValue("propertyName") }.sorted())
-        for (catch in catches) {
-            val name = catch.raw.getValue("propertyName")
-            assertEquals("$name start", 700L, catch.raw.getValue("startOffset").toLong())
-            assertEquals("$name duration", 220L, catch.raw.getValue("duration").toLong())
-            val frames = catch.all("propertyValuesHolder").single().all("keyframe")
-            assertEquals("$name fractions", listOf(0f, 0.4f, 1f), frames.map { it.float("fraction") })
-            val peak = if (name == "scaleX") 1.04f else 0.9f
-            assertEquals("$name values", listOf(1f, peak, 1f), frames.map { it.float("value") })
-            // Standard easing on each leg (the prototype eases each keyframe interval).
-            assertEquals("$name legs", listOf(standard, standard), frames.drop(1).map { it.ids.getValue("interpolator") })
+        // Two plain two-value animators per property (there, then back): the
+        // hardware path of an animated vector may sample only the first and last
+        // keyframe of a keyframe animator (both 1) and the tray would not squash.
+        assertTrue("no keyframes", tray.kids.none { it.tag == "objectAnimator" && it.kids.isNotEmpty() })
+        val squash = moves("splash_tray").filter { it.property != "translateY" }
+        assertEquals(
+            listOf(
+                Move("scaleX", 700, 88, 1f, 1.04f, standard),
+                Move("scaleX", 788, 132, 1.04f, 1f, standard),
+                Move("scaleY", 700, 88, 1f, 0.9f, standard),
+                Move("scaleY", 788, 132, 0.9f, 1f, standard),
+            ),
+            squash,
+        )
+        // The peak is 40 % of 220 ms, and the two legs end where the motion ends.
+        assertEquals(88L, Math.round(220 * 0.4))
+        assertEquals(920L, squash.maxOf { it.start + it.duration })
+    }
+
+    @Test
+    fun `no animator uses keyframes or a propertyValuesHolder`() {
+        for (name in listOf("splash_tray", "splash_back", "splash_front", "splash_fade_tray", "splash_fade_back", "splash_fade_front")) {
+            fun Node.hasKeyframes(): Boolean = tag == "keyframe" || tag == "propertyValuesHolder" || kids.any { it.hasKeyframes() }
+            assertFalse("$name uses keyframes", parse("animator", name).hasKeyframes())
         }
+    }
+
+    @Test
+    fun `the vector itself stays the settled icon, so Android 11 and Remove animations show it whole`() {
+        val root = vector
+        fun Node.settled() {
+            assertFalse("$tag ${raw["name"]} is translated", raw.containsKey("translateY") || raw.containsKey("translateX"))
+            assertFalse("$tag ${raw["name"]} is scaled", raw.containsKey("scaleX") || raw.containsKey("scaleY"))
+            assertFalse("$tag ${raw["name"]} is faded", raw.containsKey("fillAlpha") || raw.containsKey("alpha"))
+            kids.forEach { it.settled() }
+        }
+        root.settled()
     }
 
     @Test
@@ -394,6 +429,7 @@ class SplashTest {
         assertTrue(tray is AnimatorSet)
         val children = (tray as AnimatorSet).childAnimations.filterIsInstance<ObjectAnimator>()
         assertEquals(setOf("translateY", "scaleX", "scaleY"), children.map { it.propertyName }.toSet())
+        assertEquals(5, children.size)
     }
 
     // --------------------------------------------------------- the wordmark
@@ -418,13 +454,13 @@ class SplashTest {
     }
 
     @Test
-    fun `the wordmark is white on graphite and dark graphite on light graphite`() {
+    fun `the wordmark colour in the light is white`() {
         assertEquals(0xFFFFFFFF.toInt(), res.getColor(requireId("color", "splash_on_primary"), null))
     }
 
     @Test
     @Config(qualifiers = "night")
-    fun `the wordmark colour in the dark`() {
+    fun `the wordmark colour in the dark is dark graphite`() {
         assertEquals(0xFF243142.toInt(), res.getColor(requireId("color", "splash_on_primary"), null))
     }
 
@@ -444,19 +480,21 @@ class SplashTest {
         }
         shadowOf(Looper.getMainLooper()).idle()
         assertEquals("the fade lasts 200 ms", 200L, view.animate().duration)
+        assertEquals("the exit is short4", 200L, LaunchSplash.FADE_MS)
+        assertTrue("the exit is faster than the 920 ms entrance", LaunchSplash.FADE_MS < 920)
         assertEquals("removed once", 1, removed)
         assertEquals("removed after the fade, not before", 0f, alphaWhenRemoved, 0f)
         assertEquals(0f, view.alpha, 0f)
     }
 
-    @Test
-    fun `the exit is faster than the 900 ms entrance`() {
-        assertEquals(200L, LaunchSplash.FADE_MS)
-        assertTrue(LaunchSplash.FADE_MS < 900)
-    }
-
     // ------------------------------------------------------------ installing
 
+    // The two helpers below and the test after them read core-splashscreen's
+    // private fields (`impl`, `splashScreenWaitPredicate`, `preDrawListener`,
+    // `animationListener`) by reflection, as of 1.0.1. A version bump of
+    // androidx.core:core-splashscreen needs this re-checked: a renamed field
+    // fails the test with NoSuchFieldException, which means "look again", not
+    // "the splash is broken".
     private fun implOf(splash: SplashScreen): Any {
         val field = SplashScreen::class.java.getDeclaredField("impl")
         field.isAccessible = true

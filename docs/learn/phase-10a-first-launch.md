@@ -183,6 +183,8 @@ It ends with `All tests passed!`. Now open `app/lib/app.dart` and, in `_firstFra
 
   Each animator is a start delay, a duration, a from and a to. For the back clip: wait 150 ms, then move 400 ms from 40 units above to 0 (the icon is drawn on a 108-unit square), slowing down as it lands (the "emphasized decelerate" curve).
 
+- **Two guards for the real phone.** A delayed animator (the clips wait 150 and 300 ms) leaves its target drawn at the vector's own, settled values until it starts, so each clip also gets a zero-length animator at 0 ms that sets its start value (hidden, above the tray) from the first frame. The vector itself is left settled, because Android 11 and "Remove animations" show it as it is. And the tray's squash is written as plain "there" and "back" animators (88 ms and 132 ms) instead of one animator with three keyframes, because the hardware renderer may sample only a keyframe animator's first and last values, which are both 1.
+
 - **Rotation stays inside.** The clips are tilted (-12 and 7 degrees). If the moving group were also tilted, "down" would be a slanted line. So the tilt sits on an inner group and the outer group only moves straight down.
 
 - **Fading a vector means fading its paths.** A vector group has no opacity, so each path's `fillAlpha` goes 0 to 1 along with the move.
