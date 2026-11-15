@@ -265,6 +265,49 @@ It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/we
 
 ## 6. The welcome intro
 
+**What we built:** the 3.6 second animation a new user sees once, on the welcome of section 5. The disc and the tray come in, the three clips drop into the tray one after another (the tray dips a little as it catches each), each clip's reel tab pops on as it lands, the count ticks up to "23 takes", "· 3 reels" fades in, the app's name, headline and text rise into place, and a band of light glints across the tray.
+
+- **Get started works from the very first frame.** Nobody has to wait for the animation.
+- **A tap on the picture skips** to the end.
+- **It plays once.** Come back from the next step, or reopen the app before finishing onboarding, and the welcome shows its last frame.
+- **"Remove animations"** in Android's settings shows the last frame at once.
+
+**Why TakeTray needs it:** the welcome's picture tells the app's whole idea (clips land in a tray, then go to reels), and the animation tells it in order. It must never get in the way: it does not block the button, it can be skipped, it never repeats and it respects the system's motion setting.
+
+**Key ideas:**
+
+- **Time in, picture out.** Section 5 made the picture a function of a frame object. This section adds the other half: a function from time to a frame. `welcomeFrameAt(t)` takes the animation's progress `t` (0 at the start, 1 at the end) and returns every number of the picture at that moment. Each element of the design's table is an `Interval`, a slice of the 0 to 1 range with its own curve:
+
+  ```dart
+  Interval _span(num startMs, {Duration? length, int? lengthMs, Curve? curve}) {
+    final ms = lengthMs ?? length!.inMilliseconds;
+    return Interval(
+      startMs / _introMs,
+      (startMs + ms) / _introMs,
+      curve: curve ?? Curves.linear,
+    );
+  }
+  ```
+
+  Because it is a plain function, a test can ask for any millisecond without running an animation: "the count is 0 before 650 ms and 23 from 1900 ms", "the first clip is 6 dp below its place at 70 % of its drop".
+- **A drop with a bounce is three tweens in a row.** A `TweenSequence` splits one clip's 650 ms drop by weight: 70 % falling from 260 dp above (speeding up), 15 % bouncing back to 2 dp above, 15 % settling. The tray's dip is the same idea: down to 5 dp (and a little wider and flatter) at 40 %, back up after.
+- **One controller drives everything.** `WelcomeIntro` owns a single `AnimationController` of 3.6 s and rebuilds the welcome from `welcomeFrameAt(controller.value)` on each tick. A skip is just `controller.value = 1`: the same code draws the last frame whether the animation finished, was skipped or never ran.
+- **Mark it played when it starts, not when it ends.** The intro calls `markIntroPlayed()` as it starts, so an app killed half way through never plays it again. But that mark changes the very flag the welcome checks! So the welcome reads the flag once with `ref.read` when it is first built, and never watches it; otherwise its own mark would jump it to the end.
+- **Stop when nobody can see it.** When **Get started** pushes the next step, Flutter turns off tickers for the hidden welcome (`TickerMode`). The intro notices, stops, and when the user comes Back it jumps to the last frame instead of carrying on half way.
+- **Screen readers read the words from frame 0.** The headline and text are invisible for the first two seconds, but an `Opacity` with `alwaysIncludeSemantics: true` keeps them in what TalkBack reads. The picture is one image and does not announce that it can be tapped.
+
+**Where it lives:** `app/lib/features/onboarding/views/welcome_intro.dart` (`introDuration`, `welcomeFrameAt`, `welcomeBodyFrameAt`, `WelcomeIntro`); the tap on the picture in `welcome_screen.dart` (`onPictureTap`); the route in `app/lib/router/app_router.dart`. Tests: `app/test/features/onboarding/views/welcome_intro_test.dart`, and the screenshots at 0.4, 1.0, 1.5, 1.95, 2.5 and 3.1 s in `welcome_intro_golden_test.dart`.
+
+**Try it yourself:** make the count end on 22 and watch a test notice. From `app/`:
+
+```bash
+../tool/flutter test test/features/onboarding/views/welcome_intro_test.dart
+```
+
+It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/welcome_intro.dart` and change `IntTween(begin: 0, end: 23)` to `end: 22`. Run it again: `the count is 0 before 650 ms and 23 from 1900 ms` fails (and so does `at 1 it is the final frame`). Put `23` back.
+
+**Decisions:** D-139 (all of this section), with D-133 (the motion design), D-135 (the `introPlayed` flag) and D-138 (the frame objects) as background.
+
 ## 7. Video access and notification steps
 
 ## 8. Planning reels and finishing

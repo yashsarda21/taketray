@@ -245,6 +245,13 @@ class WelcomeTrayArt extends StatelessWidget {
   /// The values of this frame.
   final WelcomeArtFrame frame;
 
+  /// The three takes' pictures, London Food, Cinematic and Day 1 Vlog.
+  static const List<String> pictures = [
+    'assets/welcome/take_london_food.png',
+    'assets/welcome/take_cinematic.png',
+    'assets/welcome/take_day1_vlog.png',
+  ];
+
   /// The disc's scale (a [Transform]); its [Positioned] is the disc's place.
   static const Key discKey = ValueKey('welcome-art-disc');
 
@@ -302,11 +309,6 @@ class WelcomeTrayArt extends StatelessWidget {
       l10n.welcomeTakeLondonFood,
       l10n.welcomeTakeCinematic,
       l10n.welcomeTakeDayOneVlog,
-    ];
-    const pictures = [
-      'assets/welcome/take_london_food.png',
-      'assets/welcome/take_cinematic.png',
-      'assets/welcome/take_day1_vlog.png',
     ];
     return Semantics(
       image: true,
@@ -372,7 +374,7 @@ class WelcomeTrayArt extends StatelessWidget {
                                 angle: _takeDegrees[i] * math.pi / 180,
                                 child: _Take(
                                   index: i,
-                                  picture: pictures[i],
+                                  picture: WelcomeTrayArt.pictures[i],
                                   label: labels[i],
                                   frame: frame.takes[i],
                                 ),

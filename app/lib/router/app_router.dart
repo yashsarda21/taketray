@@ -15,7 +15,7 @@ import 'package:taketray/features/notifications/views/notifications_help_screen.
 import 'package:taketray/features/onboarding/views/access_step_screen.dart';
 import 'package:taketray/features/onboarding/views/notifications_step_screen.dart';
 import 'package:taketray/features/onboarding/views/reels_step_screen.dart';
-import 'package:taketray/features/onboarding/views/welcome_screen.dart';
+import 'package:taketray/features/onboarding/views/welcome_intro.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
@@ -216,7 +216,7 @@ GoRouter appRouter(Ref ref) {
 List<RouteBase> onboardingRoutes() => [
   GoRoute(
     path: Routes.welcome,
-    builder: (context, state) => const WelcomeScreen(),
+    builder: (context, state) => const WelcomeIntro(),
   ),
   GoRoute(
     path: Routes.onboardingAccess,

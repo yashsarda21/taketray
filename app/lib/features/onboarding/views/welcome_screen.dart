@@ -98,8 +98,9 @@ class WelcomeBodyFrame {
 /// so Back returns here.
 ///
 /// It draws the frames it is given: [WelcomeArtFrame.end] and
-/// [WelcomeBodyFrame.end], the final frame, by default. The intro (Task 6,
-/// D-133) passes the frame of each tick.
+/// [WelcomeBodyFrame.end], the final frame, by default. The intro
+/// (`WelcomeIntro`, D-133, D-139) passes the frame of each tick and skips on
+/// [onPictureTap].
 ///
 /// The picture and the body scroll above the foot, so at large text the
 /// button stays at the bottom. The wordmark, headline and text are read out
@@ -109,6 +110,7 @@ class WelcomeScreen extends StatelessWidget {
   const new({
     this.art = WelcomeArtFrame.end,
     this.body = WelcomeBodyFrame.end,
+    this.onPictureTap,
     super.key,
   });
 
@@ -117,6 +119,11 @@ class WelcomeScreen extends StatelessWidget {
 
   /// The body's and the screen's values.
   final WelcomeBodyFrame body;
+
+  /// Called on a tap on the picture: the intro skips to its final frame.
+  /// The tap is not offered to a screen reader (the picture is one image,
+  /// and the intro is visual only).
+  final VoidCallback? onPictureTap;
 
   /// The whole screen (the child of its [Opacity]).
   static const Key screenKey = ValueKey('welcome-screen');
@@ -166,7 +173,12 @@ class WelcomeScreen extends StatelessWidget {
                         height: MediaQuery.paddingOf(context).top,
                       ),
                     ),
-                    WelcomeTrayArt(frame: art),
+                    GestureDetector(
+                      onTap: onPictureTap,
+                      behavior: HitTestBehavior.opaque,
+                      excludeFromSemantics: true,
+                      child: WelcomeTrayArt(frame: art),
+                    ),
                     Padding(
                       padding: EdgeInsets.fromLTRB(
                         tt.spacing.xl,
