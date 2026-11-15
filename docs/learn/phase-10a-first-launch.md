@@ -427,7 +427,7 @@ It ends with `All tests passed!`. In `shooting_mode_section.dart` change `final 
 - **Four flows.** *Fresh phone*: welcome, Get started, Allow access, Android's "Allow all", All set, Continue, Allow notifications, Android's "Allow", a typed name and an idea, "Create 2 reels", Reels with the tip, Got it. *Manual mode*: "Don't allow", Continue in Manual mode, Not now, Skip for now, Reels with the banner. *Closed midway*: Get started, Back, a restart, the welcome's final frame. *The tip and the switch*: turning Shooting mode on with its own switch hides the tip.
 - **Starts clean, ends clean.** Each flow deletes the first-launch rows from the app's own database before the app starts, so the flows can run in any order, and its tear-down deletes the reels it made and puts everything back, even when the flow failed.
 - **A restart that is not a restart.** A test cannot kill its own app. The flow throws the widget tree away and builds a new app on the same database; the new app reads the flags from the file, like a relaunched one. A real kill, and the splash, are hand checks.
-- **Phone safety.** Only TakeTray Dev. No videos and no `Movies/` use; Android's dialogs are answered by their button ids, never their text; no screenshots; no names printed.
+- **Phone safety.** Only TakeTray Dev. No videos, and nothing created or listed in `Movies/` (only the test folder's name as a setting); Android's dialogs are answered by their button ids, never their text; no screenshots; no user data printed.
 
 **Why TakeTray needs it:** the first launch happens once, on a phone that has nothing. Unit and widget tests cover each piece; only the phone shows that the real permission dialogs, the real database and the real router work together in that order.
 

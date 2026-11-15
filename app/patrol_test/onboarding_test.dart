@@ -40,10 +40,11 @@ import 'support/waiting.dart';
 /// (`app.taketray.dev`). The flows read and write only its own database, and
 /// answer Android's permission dialogs by their resource ids (never their
 /// text). Nothing on the phone outside the app is read, listed, written or
-/// deleted, and `Movies/` is not used at all: there are no test videos. The
-/// app is told to watch only the (empty, never created) test folder name
-/// before it starts, so the one flow that gives it full access (and the one
-/// that turns Shooting mode on) cannot make it query another folder. Android's
+/// deleted. The test never creates or lists anything in `Movies/`: there are
+/// no test videos. It only names the test folder, as the setting
+/// `watchedFolders = ['Movies/TakeTray Test']` (a string in the app's own
+/// database), before the app starts, so the flows that give it full access
+/// (and turn Shooting mode on) cannot make it query another folder. Android's
 /// photo picker is not driven (its resource ids are unproven on One UI): the
 /// Manual mode flow answers the dialog with "Don't allow". No screenshots.
 ///
@@ -62,7 +63,15 @@ import 'support/waiting.dart';
 /// (docs/dev-setup.md, "Phase 10A check").
 ///
 /// The words are the app's own (`AppLocalizations`), never typed twice. No
-/// test waits for Android's scheduler, and none prints a reel name.
+/// test waits for Android's scheduler, and none prints any user data (only
+/// fixed step descriptions).
+///
+/// **"The welcome's final frame".** The whole screen's opacity is no proof: it
+/// reaches 1 after 200 ms of a playing intro. The wordmark, headline, text and
+/// step dots stay at 0 until 2.2 to 2.5 s into it, so [_welcomeIsFinal] reads
+/// the headline's, the text's and the dots' own opacity, and every check of it
+/// is made within about 2 s of the welcome appearing (a playing intro still
+/// reads false then; flow 1 proves that first).
 void main() {
   _flowTest(
     'Fresh phone: Allow all, notifications Allow, two reels, the tip, Got it',
@@ -89,20 +98,38 @@ void main() {
 /// Flow 1: the whole first launch on a phone that has been given nothing, with
 /// every ask answered "yes", ending on Reels with the tip.
 Future<void> _freshFullAccess(PatrolIntegrationTester $) async {
+  // 1. The welcome: the headline is there from the first frame; the intro is
+  // playing (so the final frame is not showing yet) until a tap on the
+  // picture skips it to its final frame. The intro is marked as played when
+  // it starts, not when it is skipped.
+  final reelsBefore = (await _reelNames($, fresh: true)).length;
+  final sinceStart = Stopwatch()..start();
   await _startApp($);
-
-  // 1. The welcome: the headline is there from the first frame; a tap on the
-  // picture skips the intro to its final frame, and the intro is then marked
-  // as played.
   final welcome = $(WelcomeScreen);
   await waitFor($, () => welcome.exists, what: 'the welcome');
   expect(welcome.$(_l10n.welcomeHeadline).exists, isTrue);
+  // The negative check: a fresh, un-skipped welcome is not final yet (its
+  // headline starts to show 2.35 s into the intro). If the phone was too slow
+  // to get here in time, the positive check below proves nothing, so say so.
+  if (sinceStart.elapsed < _finalFrameWindow) {
+    expect(
+      _welcomeIsFinal($),
+      isFalse,
+      reason: 'a playing intro has not reached its final frame yet',
+    );
+  } else {
+    debugPrint('skipped: the welcome took over 2 s to show');
+  }
   await $(WelcomeTrayArt).tap();
-  expect(_welcomeOpacity($), 1, reason: 'a tap on the picture skips the intro');
+  expect(
+    _welcomeIsFinal($),
+    isTrue,
+    reason: 'a tap on the picture skips the intro to its final frame',
+  );
   await _eventually(
     $,
     () => _phone($).introPlayed(),
-    what: 'the intro to be marked as played',
+    what: 'the intro to be marked as played (when it started)',
   );
   expect(
     await _phone($).onboardingDone(),
@@ -173,8 +200,18 @@ Future<void> _freshFullAccess(PatrolIntegrationTester $) async {
     what: 'the first new reel on Reels',
   );
   expect(home.$(TtReelCard).containing(_idea).exists, isTrue);
-  expect(await _reelNames($), containsAll([_reelA, _idea]));
-  expect(await _phone($).onboardingDone(), isTrue);
+  final names = await _reelNames($);
+  expect(names, containsAll([_reelA, _idea]));
+  expect(
+    names.length,
+    reelsBefore + 2,
+    reason: 'Create makes exactly the two reels, no extra and no duplicate',
+  );
+  await _eventually(
+    $,
+    () => _phone($).onboardingDone(),
+    what: 'onboarding to be stored as done',
+  );
   expect(
     $(ReelsStepScreen).exists,
     isFalse,
@@ -275,7 +312,11 @@ Future<void> _manualMode(PatrolIntegrationTester $) async {
     what: 'the Manual mode banner on Reels',
   );
   expect(home.$(_l10n.accessManualAction).exists, isTrue);
-  expect(await _phone($).onboardingDone(), isTrue);
+  await _eventually(
+    $,
+    () => _phone($).onboardingDone(),
+    what: 'onboarding to be stored as done',
+  );
   expect(
     (await _reelNames($)).length,
     reelsBefore,
@@ -297,7 +338,8 @@ Future<void> _closedMidway(PatrolIntegrationTester $) async {
   final welcome = $(WelcomeScreen);
   await waitFor($, () => welcome.exists, what: 'the welcome');
 
-  // 1. Get started at once (no skip first), then Android's Back.
+  // 1. Get started at once (no skip first: the intro is still playing and
+  // stops under the step), then Android's Back.
   await welcome.$(_l10n.welcomeGetStarted).tap();
   final access = $(AccessStepScreen);
   await waitFor(
@@ -305,6 +347,7 @@ Future<void> _closedMidway(PatrolIntegrationTester $) async {
     () => access.$(_l10n.accessBeforeTitle).exists,
     what: 'the video access step',
   );
+  await _waitForRouteToSettle($, AccessStepScreen);
   // Back on a pushed step pops it (Back on the welcome itself would finish
   // the activity and end the test run, so it is never pressed there).
   await $.platform.android.pressBack();
@@ -314,11 +357,17 @@ Future<void> _closedMidway(PatrolIntegrationTester $) async {
     what: 'the welcome again after Back',
   );
   expect(
-    _welcomeOpacity($),
-    1,
-    reason: 'coming back to the welcome shows its final frame',
+    _welcomeIsFinal($),
+    isTrue,
+    reason:
+        'coming back to the welcome shows its final frame (the intro '
+        'stopped under the step; it could not have reached it by itself)',
   );
-  expect(await _phone($).introPlayed(), isTrue);
+  await _eventually(
+    $,
+    () => _phone($).introPlayed(),
+    what: 'the intro to be marked as played',
+  );
   expect(await _phone($).onboardingDone(), isFalse);
 
   // 2. Away and back (the process lives on).
@@ -332,9 +381,10 @@ Future<void> _closedMidway(PatrolIntegrationTester $) async {
   await waitFor($, () => welcome.exists, what: 'the welcome after a restart');
   expect($(ReelsScreen).exists, isFalse);
   expect($(AccessStepScreen).exists, isFalse);
+  // At once: a replayed intro would read false for the first 2.35 s.
   expect(
-    _welcomeOpacity($),
-    1,
+    _welcomeIsFinal($),
+    isTrue,
     reason: 'a restart shows the welcome at its final frame, no intro',
   );
   expect(welcome.$(_l10n.welcomeHeadline).exists, isTrue);
@@ -368,7 +418,7 @@ Future<void> _tipAndSwitch(PatrolIntegrationTester $) async {
 
   // 1. Full access, from the To tag banner (as in background_test).
   final toTag = $(ToTagScreen);
-  await $(TtNavPill).$('To tag').tap();
+  await $(TtNavPill).$(_l10n.navToTag).tap();
   await waitFor(
     $,
     () => toTag.$(_l10n.accessManualTitle).exists,
@@ -381,7 +431,7 @@ Future<void> _tipAndSwitch(PatrolIntegrationTester $) async {
     () => !toTag.$(_l10n.accessManualTitle).exists,
     what: 'the Manual mode banner to go after Allow all',
   );
-  await $(TtNavPill).$('Reels').tap();
+  await $(TtNavPill).$(_l10n.navReels).tap();
   await waitFor(
     $,
     () => home.exists && home.$(_l10n.shootingTipTitle).exists,
@@ -397,7 +447,11 @@ Future<void> _tipAndSwitch(PatrolIntegrationTester $) async {
   );
   expect(stored(), isFalse);
   await home.$(TtSwitch).tap();
-  await allowNotificationsInDialog($);
+  expect(
+    await allowNotificationsInDialog($),
+    isTrue,
+    reason: 'the first turn-on asks for notifications once (Android 13+)',
+  );
   await waitFor(
     $,
     () => stored() ?? false,
@@ -629,15 +683,42 @@ Future<List<String>> _reelNames(
   return read(_container($).read(appDatabaseProvider));
 }
 
-/// The opacity of the whole welcome screen: 1 on its final frame.
-double _welcomeOpacity(PatrolIntegrationTester $) {
-  final opacity = find
-      .ancestor(
-        of: find.byKey(WelcomeScreen.screenKey),
-        matching: find.byType(Opacity),
-      )
-      .first;
-  return $.tester.widget<Opacity>(opacity).opacity;
+/// How long after the welcome appears a playing intro still reads "not final":
+/// the headline starts to show at 2.35 s and the text and dots at 2.5 s.
+const Duration _finalFrameWindow = Duration(seconds: 2);
+
+/// Whether the welcome shows its final frame: the headline, the text and the
+/// step dots (the last things the intro shows, from 2.35 and 2.5 s) are all at
+/// opacity 1. The whole screen's own opacity is not used: it is 1 after 200 ms
+/// of a playing intro. Each is read from its nearest [Opacity].
+bool _welcomeIsFinal(PatrolIntegrationTester $) => [
+  WelcomeScreen.headlineKey,
+  WelcomeScreen.textKey,
+  WelcomeScreen.dotsKey,
+].every((key) => _nearestOpacity($, key) == 1);
+
+double _nearestOpacity(PatrolIntegrationTester $, Key key) {
+  double? opacity;
+  $.tester.element(find.byKey(key)).visitAncestorElements((ancestor) {
+    final widget = ancestor.widget;
+    if (widget is Opacity) {
+      opacity = widget.opacity;
+      return false;
+    }
+    return true;
+  });
+  return opacity ?? (throw TestFailure('No Opacity above $key'));
+}
+
+/// Waits until the pushed route of the screen [type] has finished its
+/// transition, so a Back pressed next pops a settled route.
+Future<void> _waitForRouteToSettle(PatrolIntegrationTester $, Type type) async {
+  final route = ModalRoute.of($.tester.element(find.byType(type)))!;
+  await waitFor(
+    $,
+    () => route.animation == null || route.animation!.isCompleted,
+    what: 'the pushed step to finish sliding in',
+  );
 }
 
 /// Waits for the notifications step. It shows on Android 13 and later with the
