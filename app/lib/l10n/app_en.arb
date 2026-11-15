@@ -3562,6 +3562,128 @@
   "@notificationsStepTitle": {
     "description": "Title of onboarding's notifications step."
   },
+  "accessBeforeBody": "To find new clips you shoot, TakeTray needs access to all your videos.",
+  "@accessBeforeBody": {
+    "description": "Text under the title of onboarding's video access step, before access is asked."
+  },
+  "accessPrivacyTitle": "Your videos stay on your phone",
+  "@accessPrivacyTitle": {
+    "description": "Bold first line of the reassurance box on onboarding's video access step."
+  },
+  "accessPrivacyBody": "TakeTray only reads them. It never uploads, moves or deletes them.",
+  "@accessPrivacyBody": {
+    "description": "Text of the reassurance box on onboarding's video access step."
+  },
+  "accessAllow": "Allow access",
+  "@accessAllow": {
+    "description": "Main button of onboarding's video access step, before access is asked: shows Android's permission dialog."
+  },
+  "accessHint": "On the next screen, choose {label}.",
+  "@accessHint": {
+    "description": "Hint under the Allow access button. {label} is the choice in Android's permission dialog, Allow all or Allow; the screen shows it in bold.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "accessChoiceAllowAll": "Allow all",
+  "@accessChoiceAllowAll": {
+    "description": "The choice in Android's video permission dialog on Android 14 and later that gives TakeTray access to every video. Must match the words Android shows."
+  },
+  "accessChoiceAllow": "Allow",
+  "@accessChoiceAllow": {
+    "description": "The choice in Android's video permission dialog before Android 14 that gives TakeTray access to every video. Must match the word Android shows."
+  },
+  "accessSomeTitle": "TakeTray can see only some videos",
+  "@accessSomeTitle": {
+    "description": "Title of onboarding's video access step when the user allowed only selected videos."
+  },
+  "accessSomeBody": "You allowed access to selected videos, so TakeTray can't find new clips by itself. You can still add videos yourself. We call this Manual mode.",
+  "@accessSomeBody": {
+    "description": "Text of onboarding's video access step when only selected videos are allowed."
+  },
+  "accessSomeCalloutTitle": "Want new clips found for you?",
+  "@accessSomeCalloutTitle": {
+    "description": "Bold first line of the callout on onboarding's video access step when only selected videos are allowed."
+  },
+  "accessSomeCalloutBody": "Choose Allow all in the next step or in Android settings.",
+  "@accessSomeCalloutBody": {
+    "description": "Text of the callout when only selected videos are allowed. The words Allow all are shown in bold; they must match the arb text 'accessChoiceAllowAll'."
+  },
+  "accessSomeAllowAll": "Allow all videos",
+  "@accessSomeAllowAll": {
+    "description": "Main button of onboarding's video access step when only selected videos are allowed: asks to widen the access."
+  },
+  "accessContinueManual": "Continue in Manual mode",
+  "@accessContinueManual": {
+    "description": "Quiet button of onboarding's video access step that goes on without full video access."
+  },
+  "accessDeniedTitle": "TakeTray can't see your videos",
+  "@accessDeniedTitle": {
+    "description": "Title of onboarding's video access step when access was refused and the permission dialog cannot be shown again."
+  },
+  "accessDeniedBody": "Without video access, new clips aren't found automatically. You can still pick videos yourself in Manual mode.",
+  "@accessDeniedBody": {
+    "description": "Text of onboarding's video access step when access was refused."
+  },
+  "accessDeniedCalloutTitle": "To allow access later",
+  "@accessDeniedCalloutTitle": {
+    "description": "Bold first line of the callout on onboarding's video access step when access was refused."
+  },
+  "accessDeniedCalloutBody": "Settings › Apps › TakeTray › Permissions › Photos and videos › {label}.",
+  "@accessDeniedCalloutBody": {
+    "description": "Where to find the permission in Android's settings. {label} is the choice to pick there, Allow all or Allow.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "accessOpenSettings": "Open settings",
+  "@accessOpenSettings": {
+    "description": "Main button of onboarding's video access step when access was refused: opens TakeTray's page in Android's settings."
+  },
+  "accessAllSetTitle": "All set",
+  "@accessAllSetTitle": {
+    "description": "Title of onboarding's video access step when TakeTray can see every video."
+  },
+  "accessAllSetBody": "TakeTray can now find the new clips you shoot while Shooting mode is on.",
+  "@accessAllSetBody": {
+    "description": "Text of onboarding's video access step when TakeTray can see every video."
+  },
+  "onboardingContinue": "Continue",
+  "@onboardingContinue": {
+    "description": "Main button of onboarding's video access step when all is set: goes to the next step."
+  },
+  "notificationsStepBody": "One quiet notification when new clips are waiting, and a reminder at 9 pm if you haven't tagged them. No sound.",
+  "@notificationsStepBody": {
+    "description": "Text under the title of onboarding's notifications step."
+  },
+  "notificationsStepAllow": "Allow notifications",
+  "@notificationsStepAllow": {
+    "description": "Main button of onboarding's notifications step: shows Android's notification permission dialog, then goes on."
+  },
+  "notificationsStepNotNow": "Not now",
+  "@notificationsStepNotNow": {
+    "description": "Quiet button of onboarding's notifications step: goes on without asking."
+  },
+  "notificationCardApp": "TakeTray · now",
+  "@notificationCardApp": {
+    "description": "Header of the sample notification on onboarding's notifications step: the app name, a middle dot and 'now'."
+  },
+  "notificationCardTitle": "5 new clips to tag",
+  "@notificationCardTitle": {
+    "description": "Title of the sample notification on onboarding's notifications step."
+  },
+  "notificationCardBody": "Tap to tag them into your reels.",
+  "@notificationCardBody": {
+    "description": "Second line of the sample notification on onboarding's notifications step."
+  },
+  "notificationCardMore": "+1",
+  "@notificationCardMore": {
+    "description": "Last small tile of the sample notification's row of clip pictures: one more clip than the four shown."
+  },
   "reelsStepTitle": "What reels are you planning?",
   "@reelsStepTitle": {
     "description": "Title of onboarding's last step, where the user types the reels they plan."

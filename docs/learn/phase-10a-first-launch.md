@@ -310,6 +310,47 @@ It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/we
 
 ## 7. Video access and notification steps
 
+**What we built:** the second and third steps of onboarding. The first asks for access to the phone's videos and shows what is true right now: "Let TakeTray see your videos" before asking, "TakeTray can see only some videos" if the user chose a few, "TakeTray can't see your videos" if they said no, and "All set" if everything works. The second shows what the "new clips" notification looks like and asks to allow it.
+
+- **The step never lies.** Go to Android's settings, allow all videos, come back: the step says "All set". Open the step with access already given from an earlier install: "All set", nothing asked. Take access away while the step is open: it changes back.
+- **A "no" is remembered for the step.** After you say no, the step stops offering "Allow access" and offers "Open settings" (and "Continue in Manual mode"), because Android may not show its question again.
+- **One tap, one question.** The buttons turn off while Android's dialog is up, so a double tap does not ask twice.
+- **The notification step skips itself** on Android 11 and 12 (they have no question) and when the permission is already given. Whatever the answer to the question, the user goes on to the next step.
+
+**Why TakeTray needs it:** TakeTray cannot find new clips without access to videos, and a notification is how it tells you clips are waiting. Asking in two calm steps with their own words, instead of a surprise dialog when Shooting mode is first turned on, tells the user why before Android asks.
+
+**Key ideas:**
+
+- **The look is a function of the state.** The controller already knows the access level and whether Android would still show its dialog. One small function turns that into a look:
+
+  ```dart
+  AccessStep accessStepFor(MediaAccessView view, {required bool askedHere}) =>
+      switch (view.level) {
+        MediaAccessLevel.full => AccessStep.allSet,
+        MediaAccessLevel.limited => AccessStep.some,
+        MediaAccessLevel.denied =>
+          askedHere || !view.canAskAgain ? AccessStep.denied : AccessStep.before,
+      };
+  ```
+
+  The screen just watches the controller. When the app comes back from Android's settings the controller reads the level again, the state changes, and the step follows. No special code for "came back from settings".
+- **The only things the screen remembers** are "did I ask here" (so a "no" shows the denied look) and "is a question running" (so the buttons wait). Both are things the controller cannot know. Keeping them in the screen and not in the database means a user who changes their mind in Android's settings is not stuck on an old answer.
+- **Decide once.** The notification step looks at the first answer to "can this phone ask?" and either shows itself or replaces itself with the next step. If it looked every time the state changed, asking and getting "allowed" would make it skip a second time while the "go on" button was already moving on. `_skip ??= ...` keeps the first decision.
+- **A step layout shared by the steps.** `OnboardingStepLayout` gives each step the same picture area, scrolling body and bottom buttons, so at the biggest text the buttons stay where the thumb is and the words scroll. The notification card is a picture, so its text keeps one size and a screen reader skips it.
+- **Which word Android uses.** From Android 14 the question has "Allow all"; before, "Allow". The hint ("On the next screen, choose **Allow all**.") has to match, so it asks the media bridge for the Android version (`androidSdkProvider`), which the bridge already reports with the access level.
+
+**Where it lives:** `app/lib/features/onboarding/view_models/onboarding_steps.dart` (the rules), `app/lib/platform/android_sdk.dart`, `app/lib/features/onboarding/views/access_step_screen.dart`, `notifications_step_screen.dart` and `step_layout.dart`. Tests: `app/test/features/onboarding/view_models/onboarding_steps_test.dart`, `access_step_screen_test.dart`, `notifications_step_screen_test.dart` and the screenshots in `access_step_golden_test.dart` and `notifications_step_golden_test.dart`.
+
+**Try it yourself:** break the "Android will not ask again" rule and watch tests notice. From `app/`:
+
+```bash
+../tool/flutter test test/features/onboarding/view_models/onboarding_steps_test.dart
+```
+
+It ends with `All tests passed!`. Open `app/lib/features/onboarding/view_models/onboarding_steps.dart` and change `askedHere || !view.canAskAgain ? AccessStep.denied` to `askedHere ? AccessStep.denied`. Run it again: `accessStepFor denied, askedHere false, canAskAgain false is denied` fails (and so does the screen test that shows "Open settings"). Put it back.
+
+**Decisions:** D-140 (all of this section), with D-68 and D-75 (the access controller), D-107 (asking for notifications once) and D-136 (the routes) as background.
+
 ## 8. Planning reels and finishing
 
 ## 9. The Home tip and the old first-time asks

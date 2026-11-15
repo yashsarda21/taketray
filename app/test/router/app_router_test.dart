@@ -31,6 +31,7 @@ import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/popup_route_tracker.dart';
@@ -1183,8 +1184,19 @@ void main() {
 
   group('Onboarding (D-136)', () {
     /// The app on a phone that has never been through onboarding.
-    Future<(ProviderContainer, GoRouter)> pumpFresh(WidgetTester tester) =>
-        _pumpApp(tester, harness: VmHarness(onboarding: FixedOnboarding.fresh));
+    ///
+    /// The notifications step shows itself only where there is something to
+    /// ask (Android 13 and later, not allowed: D-140), so the phone here is
+    /// one where it is not allowed yet.
+    Future<(ProviderContainer, GoRouter)> pumpFresh(WidgetTester tester) {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      harness.background.access = const NotificationAccess(
+        granted: false,
+        canAsk: true,
+        sdkInt: 34,
+      );
+      return _pumpApp(tester, harness: harness);
+    }
 
     /// The location on top, a pushed step included.
     String location(GoRouter router) => router.state.uri.toString();

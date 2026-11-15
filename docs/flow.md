@@ -115,6 +115,22 @@ The 3.6 s first-launch animation of `design/handoff/launch-and-welcome-motion.md
 5. **Get started** is never disabled: at value 0 the screen's `Opacity` is 0 but still hit-tested, and the button works.
 6. **TalkBack:** the wordmark, headline, text and dots stay in the semantics tree from frame 0 (`Opacity(alwaysIncludeSemantics: true)`); the picture is one image and offers no tap.
 7. **Dispose:** the controller is disposed with the state, before the ticker mixin checks for an active ticker.
+### Onboarding steps (`lib/features/onboarding/views/`, `lib/features/onboarding/view_models/onboarding_steps.dart`, `lib/platform/android_sdk.dart`, Phase 10A Task 7, D-140)
+
+The video access step and the notifications step (steps 2 and 3 of 4). Both are pushed (`context.push`), so Back returns to the step before.
+
+1. **`OnboardingStepLayout`** (`step_layout.dart`): a 260 dp picture area on `surfaceContainer` (it reaches the top of the screen, under the status bar), then a scrolling body (`StepDots(index: step)`, the headline as a heading, the widgets of `body`; 24 dp from the sides, 12 dp apart), and the `foot` buttons under it, 16 dp from the bottom, so at 200 % text the buttons stay and the body scrolls. `StepText` is the body-large paragraph; `withBoldWord(text, word)` bolds the first `word`.
+2. **`AccessStepScreen`** (`/onboarding/access`, `ConsumerStatefulWidget`). `build` reads `mediaAccessControllerProvider` (`MediaLifecycle` refreshes it on resume), `notificationAccessControllerProvider` (kept warm for Continue) and `androidSdkProvider` (the media bridge's `accessReport().sdkInt`, read once; unknown counts as 34).
+   - First read running: the picture and the dots only. First read failed: the `before` look.
+   - Otherwise `accessStepFor(view, askedHere: _askedHere)` picks the look: `before` (denied, Android can ask, not asked here), `some` (limited), `denied` (denied and asked here, or `!canAskAgain`), `allSet` (full).
+   - Each look has the picture (`TtIllustration.permission` fitted into 220 x 184 dp, or the success check `AccessSuccessPainter`), the title, the text and a `TtCallout` (privacy; warning for `some`; settings path for `denied`; none for `allSet`), and the buttons: `before` "Allow access" + the hint "On the next screen, choose **Allow all**." (**Allow** below sdk 34); `some` "Allow all videos" + "Continue in Manual mode"; `denied` "Open settings" + "Continue in Manual mode"; `allSet` "Continue".
+   - "Allow access", "Allow all videos" and "Open settings" call `MediaAccessController.allow()` (it shows Android's dialog if it can, else opens the app's settings page). `_allow` returns at once while `_busy`, sets `_busy`, awaits `allow()`, then sets `_askedHere = true` and clears `_busy` (only if still mounted). While `_busy` every button is disabled.
+   - Continue and Manual mode push `nextAfterAccess(notification access)`: `Routes.onboardingNotifications` when sdk >= 33 and not granted, else `Routes.onboardingReels` (also when the answer is not known).
+3. **`NotificationsStepScreen`** (`/onboarding/notifications`, `ConsumerStatefulWidget`). The first answer of `notificationAccessControllerProvider` decides once (`_skip ??=`): `asksForNotifications` false (sdk < 33 or granted) replaces the step with `Routes.onboardingReels` (`pushReplacement` in a post-frame callback; nothing is drawn); true or a failed read shows the step; no answer yet draws nothing.
+   - The art is a `ExcludeSemantics` notification card (268 dp wide, `surfaceContainerHigh`, radius 24, text at one size): the round `sell` app icon, "TakeTray · now", "5 new clips to tag", "Tap to tag them into your reels.", four take pictures from `assets/welcome/` and a "+1" tile.
+   - "Allow notifications" awaits `askOnce()` (errors ignored), then, still mounted, pushes `Routes.onboardingReels` whatever the answer; "Not now" pushes it without asking. Both are disabled while the ask runs.
+4. **Logs (D-10):** nothing new; `allow()` and `askOnce()` log by type.
+
 ### Deleting a reel
 
 The reel screens (phase 4, Task 7) call this. See D-56 and D-84.
