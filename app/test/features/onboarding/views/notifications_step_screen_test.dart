@@ -47,7 +47,7 @@ class _Notif extends NotificationAccessController {
   }
 
   @override
-  Future<void> askOnce() async {
+  Future<void> askOnceOrAllow() async {
     asked++;
     await gate?.future;
     final error = askThrows;
@@ -423,6 +423,42 @@ void main() {
       expect(find.text(_title), findsNothing);
       expect(find.byType(TtButton), findsNothing);
       expect(_location(), Routes.onboardingNotifications);
+    });
+
+    testWidgets('a read that never answers: blank until the limit, then '
+        'the step itself (D-140)', (tester) async {
+      final notif = _Notif(null, loading: true);
+      await _pump(tester, notif);
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.text(_title), findsNothing);
+      expect(find.byType(TtButton), findsNothing);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(find.text(_title), findsOneWidget);
+      expect(_button('Allow notifications'), findsOneWidget);
+      expect(_button('Not now'), findsOneWidget);
+      expect(_location(), Routes.onboardingNotifications);
+
+      await tester.tap(_button('Allow notifications'));
+      await tester.pumpAndSettle();
+      expect(notif.asked, 1);
+      expect(_location(), Routes.onboardingReels);
+    });
+
+    testWidgets('after the limit Not now goes on, and a late answer of '
+        '"nothing to ask" does not move the step', (tester) async {
+      final notif = _Notif(null, loading: true);
+      await _pump(tester, notif);
+      await tester.pump(const Duration(seconds: 6));
+      notif.show(_na(sdk: 32, granted: false));
+      await tester.pumpAndSettle();
+      expect(find.text(_title), findsOneWidget);
+
+      await tester.tap(_button('Not now'));
+      await tester.pumpAndSettle();
+
+      expect(_location(), Routes.onboardingReels);
     });
 
     testWidgets('when the read failed it shows the step', (tester) async {

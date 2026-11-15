@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_steps.dart';
 import 'package:taketray/features/onboarding/views/access_step_screen.dart';
 import 'package:taketray/features/onboarding/views/step_dots.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -335,6 +336,88 @@ void main() {
         () => Completer<int>().future,
       );
       expect(find.text('All set'), findsNothing);
+    });
+  });
+
+  group('a read that never answers (D-140)', () {
+    const title = 'Let TakeTray see your videos';
+    const hint = 'On the next screen, choose Allow all.';
+
+    test('the wait is five seconds', () {
+      expect(stepReadLimit, const Duration(seconds: 5));
+    });
+
+    testWidgets('the access read never answers: blank until the limit, then '
+        'the first look with "Allow all"', (tester) async {
+      final access = _Access(null, loading: true);
+      await _pumpSdk(tester, access, () async => 34);
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.text(title), findsNothing);
+      expect(find.byType(TtButton), findsNothing);
+      expect(find.byType(StepDots), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(find.text(title), findsOneWidget);
+      expect(_button('Allow access'), findsOneWidget);
+      expect(_plain(hint), findsOneWidget);
+      expect(_button('Continue in Manual mode'), findsNothing);
+    });
+
+    testWidgets('the version read never answers (access known): blank until '
+        'the limit, then the look with the newer wording', (tester) async {
+      await _pumpSdk(
+        tester,
+        _Access(_v(MediaAccessLevel.denied)),
+        () => Completer<int>().future,
+      );
+      await tester.pump(const Duration(seconds: 4));
+      expect(find.byType(TtButton), findsNothing);
+
+      await tester.pump(const Duration(seconds: 2));
+
+      expect(_button('Allow access'), findsOneWidget);
+      expect(_plain(hint), findsOneWidget);
+    });
+
+    testWidgets('both never answer: the first look', (tester) async {
+      await _pumpSdk(
+        tester,
+        _Access(null, loading: true),
+        () => Completer<int>().future,
+      );
+
+      await tester.pump(stepReadLimit);
+      await tester.pump();
+
+      expect(find.text(title), findsOneWidget);
+      expect(_plain(hint), findsOneWidget);
+    });
+
+    testWidgets('an answer that comes after the limit replaces the look', (
+      tester,
+    ) async {
+      final access = _Access(null, loading: true);
+      await _pumpSdk(tester, access, () async => 34);
+      await tester.pump(const Duration(seconds: 6));
+      expect(find.text(title), findsOneWidget);
+
+      access.show(_v(MediaAccessLevel.full));
+      await tester.pump();
+
+      expect(find.text('All set'), findsOneWidget);
+      expect(find.text(title), findsNothing);
+    });
+
+    testWidgets('after the limit Allow access works', (tester) async {
+      final access = _Access(null, loading: true);
+      await _pumpSdk(tester, access, () async => 34);
+      await tester.pump(const Duration(seconds: 6));
+
+      await tester.tap(_button('Allow access'));
+      await tester.pump();
+
+      expect(access.allowed, 1);
     });
   });
 

@@ -1,7 +1,10 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/router/onboarding_redirect.dart';
 import 'package:taketray/router/routes.dart';
+
+import '../support/fixed_onboarding.dart';
 
 const _notDone = OnboardingFlags(
   done: false,
@@ -162,6 +165,87 @@ void main() {
         await gate.known().timeout(const Duration(milliseconds: 200)),
         notOnboarded,
       );
+    });
+  });
+
+  group('what the gate tells the router (D-136)', () {
+    test('only "done" and known/unknown notify; the value always follows', () {
+      var notified = 0;
+      final gate = OnboardingGate()..addListener(() => notified++);
+      addTearDown(gate.dispose);
+
+      gate.value = _notDone;
+      expect(notified, 1, reason: 'unknown to known');
+
+      gate.value = const OnboardingFlags(
+        done: false,
+        introPlayed: true,
+        homeTipSeen: false,
+      );
+      expect(notified, 1, reason: 'introPlayed alone');
+      expect(gate.value!.introPlayed, isTrue, reason: 'but the value follows');
+
+      gate.value = const OnboardingFlags(
+        done: false,
+        introPlayed: true,
+        homeTipSeen: true,
+      );
+      expect(notified, 1, reason: 'homeTipSeen alone');
+      expect(gate.value!.homeTipSeen, isTrue);
+
+      gate.value = _done;
+      expect(notified, 2, reason: 'done turns true');
+      expect(gate.value, _done);
+
+      gate.value = _done;
+      expect(notified, 2, reason: 'the same value');
+    });
+
+    test('done turning back false notifies too', () {
+      var notified = 0;
+      final gate = OnboardingGate()
+        ..value = _done
+        ..addListener(() => notified++);
+      addTearDown(gate.dispose);
+
+      gate.value = _notDone;
+
+      expect(notified, 1);
+    });
+
+    test('stopWaiting() notifies once; a known value is left alone', () {
+      var notified = 0;
+      final gate = OnboardingGate()..addListener(() => notified++);
+      addTearDown(gate.dispose);
+
+      gate.stopWaiting();
+      expect(notified, 1);
+      gate.stopWaiting();
+      expect(notified, 1);
+    });
+
+    test('through the provider: marking the intro or the Home tip does not '
+        'wake the router, finishing does', () async {
+      final container = ProviderContainer.test(
+        overrides: [
+          onboardingControllerProvider.overrideWith(FixedOnboarding.fresh),
+        ],
+      );
+      await container.read(onboardingControllerProvider.future);
+      final gate = container.read(onboardingGateProvider);
+      var notified = 0;
+      gate.addListener(() => notified++);
+      final onboarding = container.read(onboardingControllerProvider.notifier);
+
+      await onboarding.markIntroPlayed();
+      await onboarding.markHomeTipSeen();
+      expect(notified, 0);
+      expect(gate.value!.introPlayed, isTrue);
+      expect(gate.value!.homeTipSeen, isTrue);
+
+      await onboarding.finish();
+      expect(notified, 1);
+      expect(gate.value!.done, isTrue);
     });
   });
 }

@@ -35,6 +35,10 @@ const Size _viewBox = Size(168, 140);
 /// the buttons are off, so a double tap asks once. After the first ask a
 /// refusal is the denied look, not the first one again.
 ///
+/// A read that never answers is waited for [stepReadLimit]; then the step
+/// shows what it would for a read that failed: the first look, with the
+/// newer wording ("Allow all"). An answer that comes later replaces it.
+///
 /// Continue and Manual mode push the next step ([nextAfterAccess]), so Back
 /// returns here.
 class AccessStepScreen extends ConsumerStatefulWidget {
@@ -56,6 +60,25 @@ class _AccessStepScreenState extends ConsumerState<AccessStepScreen> {
 
   /// [MediaAccessController.allow] is running (Android's dialog may be up).
   bool _busy = false;
+
+  /// The reads took longer than [stepReadLimit]: what is still unknown gets
+  /// its "unknown" look (the first look, the newer wording).
+  bool _gaveUpWaiting = false;
+  Timer? _readLimit;
+
+  @override
+  void initState() {
+    super.initState();
+    _readLimit = Timer(stepReadLimit, () {
+      if (mounted) setState(() => _gaveUpWaiting = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _readLimit?.cancel();
+    super.dispose();
+  }
 
   /// "Allow access" and "Allow all videos": [MediaAccessController.allow]
   /// shows Android's dialog while it still can.
@@ -103,20 +126,22 @@ class _AccessStepScreenState extends ConsumerState<AccessStepScreen> {
     ref.watch(notificationAccessControllerProvider);
     final sdkRead = ref.watch(androidSdkProvider);
     final access = view.value;
-    if ((access == null && view.isLoading) || sdkRead.isLoading) {
+    if (!_gaveUpWaiting &&
+        ((access == null && view.isLoading) || sdkRead.isLoading)) {
       // Not known yet (the access or the Android version, which says which
       // word the hint and the settings path use): nothing is shown that
-      // could be wrong a moment later.
+      // could be wrong a moment later, for at most [stepReadLimit].
       return const OnboardingStepLayout(
         step: 1,
         artKey: AccessStepScreen.artKey,
         art: SizedBox.shrink(),
       );
     }
-    // A version that could not be read gets the newer wording.
+    // A version that could not be read, or not in time, gets the newer
+    // wording.
     final sdk = sdkRead.value ?? allowAllSdk;
-    // A first read that failed is "not allowed yet": Allow access reads the
-    // phone again.
+    // A first read that failed, or not in time, is "not allowed yet": Allow
+    // access reads the phone again.
     final step = access == null
         ? AccessStep.before
         : accessStepFor(access, askedHere: _askedHere);

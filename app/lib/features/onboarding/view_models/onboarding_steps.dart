@@ -3,6 +3,12 @@ import 'package:taketray/features/media_access/view_models/media_access_controll
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/router/routes.dart';
 
+/// How long a step waits for a bridge read (the video access, the Android
+/// version, the notification permission) before it shows its "unknown" look
+/// (D-140): a read that never answers must not leave a blank step.
+// style-check: allow a time limit, not a motion duration
+const Duration stepReadLimit = Duration(seconds: 5);
+
 /// Which of the four looks the video access step has (D-140, the prototype's
 /// `ob-video` states `before`, `limited`, `denied` and the last one).
 enum AccessStep {

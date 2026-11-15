@@ -88,6 +88,7 @@ It ends with `All tests passed!`. Now open `lib/features/onboarding/view_models/
 - **A redirect**: one small function that, on every navigation, asks "has this phone finished onboarding?" and sends the app to the welcome if not, or away from onboarding if it has.
 - **A held first frame**: the app shows nothing (Android's splash stays up) until it knows the answer, for 2 seconds at most.
 - **Dropped taps**: a notification tap that arrives during onboarding is ignored, not saved for later.
+- **A waiting copy result is kept for Reels.** A phone that updated from Phase 8 with a copy result nobody has seen would, without care, have that screen pushed over the welcome (the redirect turns it into a second welcome) and lose the result. While onboarding is not done, the copy opener looks at nothing and takes nothing; when onboarding finishes it looks once more, so the result opens on Reels.
 
 **Why TakeTray needs it:** a new user must start on the welcome, whatever opened the app: the launcher, a leftover notification, Android restoring an old screen. And someone who has finished must never see the welcome again. The answer lives in the database, which takes a moment to read, so the app also needs a plan for that moment: if it drew Reels and then jumped to the welcome, the user would see a flash of the wrong screen.
 
@@ -115,7 +116,7 @@ It ends with `All tests passed!`. Now open `lib/features/onboarding/view_models/
 
 - **Exact matches, not prefixes.** `isOnboarding` compares the path with the four locations exactly. A shortcut like `startsWith('/onboarding')` would also let `/onboardingx` through. A test lists such near misses, and swapping in the shortcut makes it fail.
 
-- **The router listens instead of being rebuilt.** The flags live in a small `OnboardingGate` (a `ValueNotifier`) that follows the controller from Task 2. The router gets it as its `refreshListenable`: when the flags change (the first read, or `finish()` on the last step), go_router runs the redirect again on the current page. Rebuilding the router instead would throw away the whole navigation stack.
+- **The router listens instead of being rebuilt.** The flags live in a small `OnboardingGate` (a `ChangeNotifier` holding the flags) that follows the controller from Task 2. The router gets it as its `refreshListenable`: when the flags become known or `done` changes (the first read, or `finish()` on the last step), go_router runs the redirect again on the current page. Marking the intro played or the Home tip seen updates the gate's value but does not wake the router. Rebuilding the router instead would throw away the whole navigation stack.
 
 - **Holding the first frame.** Flutter can be told not to draw yet. The app asks for that in `initState`, and lets go exactly once, as soon as the flags are known:
 
@@ -315,6 +316,8 @@ It ends with `All tests passed!`. Now open `app/lib/features/onboarding/views/we
 - **The step never lies.** Go to Android's settings, allow all videos, come back: the step says "All set". Open the step with access already given from an earlier install: "All set", nothing asked. Take access away while the step is open: it changes back.
 - **A "no" is remembered for the step.** After you say no, the step stops offering "Allow access" and offers "Open settings" (and "Continue in Manual mode"). "Open settings" always opens the app's page in Android's settings and never shows the question again (it has its own controller method, `openSettings()`, so its label tells the truth).
 - **One tap, one question.** The buttons turn off while Android's dialog is up, so a double tap does not ask twice.
+- **A step never stays blank.** If Android's answer about video access, the Android version or the notification permission never comes, the steps wait 5 seconds and then show their "unknown" look: the first look with "Allow all", or the notification step itself.
+- **"Allow notifications" always does something.** The first time it shows Android's question. If the phone was asked before (Shooting mode asks too) and said no, it asks again if Android still will, and otherwise opens the app's notification settings, instead of moving on in silence.
 - **The notification step skips itself** on Android 11 and 12 (they have no question) and when the permission is already given. Whatever the answer to the question, the user goes on to the next step.
 
 **Why TakeTray needs it:** TakeTray cannot find new clips without access to videos, and a notification is how it tells you clips are waiting. Asking in two calm steps with their own words, instead of a surprise dialog when Shooting mode is first turned on, tells the user why before Android asks.

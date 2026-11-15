@@ -40,8 +40,26 @@ const OnboardingFlags notOnboarded = OnboardingFlags(
 /// read takes too long, [stopWaiting] makes it "not onboarded", so the app
 /// shows the welcome rather than nothing; a value that comes later still
 /// replaces it.
-class OnboardingGate extends ValueNotifier<OnboardingFlags?> {
-  OnboardingGate() : super(null);
+///
+/// It tells its listeners only what the router and the app act on: that the
+/// flags became known, and that [OnboardingFlags.done] changed. A change of
+/// the other flags (the intro played, the Home tip seen) updates [value] and
+/// wakes nobody, so the router does not redirect again for it.
+class OnboardingGate extends ChangeNotifier
+    implements ValueListenable<OnboardingFlags?> {
+  OnboardingFlags? _value;
+
+  @override
+  OnboardingFlags? get value => _value;
+
+  set value(OnboardingFlags? next) {
+    final before = _value;
+    if (before == next) return;
+    _value = next;
+    if (before == null || next == null || before.done != next.done) {
+      notifyListeners();
+    }
+  }
 
   /// Called when the flags took too long: [notOnboarded] if nothing is known
   /// yet; a known value stays.

@@ -36,18 +36,20 @@ const List<String> _thumbPictures = [
 /// Onboarding's notifications step ([Routes.onboardingNotifications], D-136,
 /// D-140), pushed after the video access step: the prototype's `ob-notif`.
 ///
-/// It shows the notification the user will get, "Allow notifications" (asks
-/// once through `NotificationAccessController.askOnce`, then goes on to the
-/// reels step whatever the answer) and "Not now" (goes on). Both push, so
-/// Back returns here.
+/// It shows the notification the user will get, "Allow notifications" (the
+/// first time through `NotificationAccessController.askOnce`; on a phone
+/// that was asked before, through `allow()`, which asks if Android still
+/// will and otherwise opens the app's notification settings, so the button
+/// always does something; then it goes on to the reels step whatever the
+/// answer) and "Not now" (goes on). Both push, so Back returns here.
 ///
 /// Opened when there is nothing to ask (Android 11 and 12 have no dialog, or
 /// the permission is already given: a leftover route, a restored task) it
 /// never shows itself and replaces itself with the reels step. That is
 /// decided once, from the first answer; a permission that changes while the
 /// step is open does not move it. While the first answer is unknown nothing
-/// shows; if it cannot be read, the step shows (asking is a no-op where it
-/// is not needed).
+/// shows, for at most [stepReadLimit]; if it cannot be read, or not in time,
+/// the step shows (asking is a no-op where it is not needed).
 class NotificationsStepScreen extends ConsumerStatefulWidget {
   const new({super.key});
 
@@ -75,6 +77,24 @@ class _NotificationsStepScreenState
   /// "Allow notifications" is waiting for the answer.
   bool _busy = false;
 
+  Timer? _readLimit;
+
+  @override
+  void initState() {
+    super.initState();
+    // A read that never answers shows the step after [stepReadLimit], as a
+    // read that failed does (asking is a no-op where it is not needed).
+    _readLimit = Timer(stepReadLimit, () {
+      if (mounted) setState(() => _skip ??= false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _readLimit?.cancel();
+    super.dispose();
+  }
+
   void _replaceWithReels() {
     if (_replaced) return;
     _replaced = true;
@@ -87,7 +107,9 @@ class _NotificationsStepScreenState
     if (_busy) return;
     setState(() => _busy = true);
     try {
-      await ref.read(notificationAccessControllerProvider.notifier).askOnce();
+      await ref
+          .read(notificationAccessControllerProvider.notifier)
+          .askOnceOrAllow();
     } on Object {
       // The controller logs its own errors by type and does not throw; the
       // step goes on whatever happens.
