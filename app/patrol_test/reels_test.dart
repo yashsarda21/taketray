@@ -18,6 +18,7 @@ import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 import 'package:video_player/video_player.dart';
 
+import 'support/onboarded.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
 
@@ -50,7 +51,12 @@ void main() {
     config: _liveConfig,
     ($) async {
       final media = await TestMedia.start();
-      await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+      await $.pumpWidget(
+        ProviderScope(
+          overrides: onboardedOverrides,
+          child: const TakeTrayApp(),
+        ),
+      );
       final container = ProviderScope.containerOf($.tester.element(_app));
       final reels = container.read(reelsRepositoryProvider);
       final clips = container.read(clipsRepositoryProvider);

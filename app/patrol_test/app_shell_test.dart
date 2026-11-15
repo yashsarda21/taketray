@@ -7,9 +7,13 @@ import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/onboarded.dart';
+
 void main() {
   patrolTest('opens on Reels and switches tabs', ($) async {
-    await $.pumpWidgetAndSettle(const ProviderScope(child: TakeTrayApp()));
+    await $.pumpWidgetAndSettle(
+      ProviderScope(overrides: onboardedOverrides, child: const TakeTrayApp()),
+    );
 
     // The tab title also appears in the nav pill, so the screen
     // assertions look inside the placeholder screen only.

@@ -1,15 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/onboarding/views/access_step_screen.dart';
+import 'package:taketray/features/onboarding/views/welcome_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/router/app_router.dart';
+import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import 'support/fake_media_bridge.dart';
+import 'support/fixed_onboarding.dart';
 import 'support/test_app.dart';
 import 'support/view_model_fakes.dart';
 import 'support/vm_harness.dart';
@@ -30,6 +38,41 @@ Future<VmHarness> _pumpApp(WidgetTester tester) async {
   await tester.pumpAndSettle();
   return harness;
 }
+
+/// An onboarding controller whose first read waits for [read].
+class _SlowOnboarding extends OnboardingController {
+  _SlowOnboarding(this.read);
+
+  final Completer<OnboardingFlags> read;
+
+  @override
+  Future<OnboardingFlags> build() => read.future;
+}
+
+const _doneFlags = OnboardingFlags(
+  done: true,
+  introPlayed: true,
+  homeTipSeen: true,
+);
+
+const _freshFlags = OnboardingFlags(
+  done: false,
+  introPlayed: false,
+  homeTipSeen: false,
+);
+
+/// The app on [harness], one pump in: the first frame is built, not settled.
+Future<ProviderContainer> _start(WidgetTester tester, VmHarness harness) async {
+  final container = ProviderContainer(overrides: harness.appOverrides);
+  addTearDown(container.dispose);
+  await tester.pumpWidget(
+    UncontrolledProviderScope(container: container, child: const TakeTrayApp()),
+  );
+  return container;
+}
+
+int _tab(WidgetTester tester) =>
+    tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex;
 
 void main() {
   testApp('shows the TakeTray nav pill, not the Material bar', (tester) async {
@@ -300,5 +343,204 @@ void main() {
     final snack = tester.getRect(find.byType(TtSnack));
     final pill = tester.getRect(find.byType(TtNavPill));
     expect(snack.bottom, lessThanOrEqualTo(pill.top));
+  });
+
+  group('the first frame (D-136)', () {
+    testApp('is held while the flags are read, and sent once they are', (
+      tester,
+    ) async {
+      final read = Completer<OnboardingFlags>();
+      await _start(tester, VmHarness(onboarding: () => _SlowOnboarding(read)));
+      await tester.pump();
+      expect(tester.binding.sendFramesToEngine, isFalse);
+      await tester.pump(const Duration(seconds: 1));
+      expect(tester.binding.sendFramesToEngine, isFalse);
+
+      read.complete(_doneFlags);
+      await tester.pump();
+      expect(tester.binding.sendFramesToEngine, isTrue);
+      await tester.pumpAndSettle();
+      expect(find.byType(ReelsScreen), findsOneWidget);
+
+      // The 2 s limit was called off: passing it changes nothing (a second
+      // allowFirstFrame would fail an assertion).
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.byType(ReelsScreen), findsOneWidget);
+    });
+
+    testApp('flags known at once: the frame is not held', (tester) async {
+      await _start(tester, VmHarness());
+      await tester.pump();
+
+      expect(tester.binding.sendFramesToEngine, isTrue);
+    });
+
+    testApp('a read that never ends: frames are sent after 2 s, on the '
+        'welcome', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      await _start(tester, VmHarness(onboarding: () => _SlowOnboarding(read)));
+
+      await tester.pump(const Duration(milliseconds: 1999));
+      expect(tester.binding.sendFramesToEngine, isFalse);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(tester.binding.sendFramesToEngine, isTrue);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(ReelsScreen), findsNothing);
+    });
+
+    testApp('a read that ends after the 2 s limit still counts: done gives '
+        'Reels', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      await _start(tester, VmHarness(onboarding: () => _SlowOnboarding(read)));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+
+      read.complete(_doneFlags);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(tester.binding.sendFramesToEngine, isTrue);
+    });
+
+    testApp('the app taken down before the flags arrive lets frames go and '
+        'leaves no timer', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      final container = await _start(
+        tester,
+        VmHarness(onboarding: () => _SlowOnboarding(read)),
+      );
+      await tester.pump();
+      expect(tester.binding.sendFramesToEngine, isFalse);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+
+      expect(tester.binding.sendFramesToEngine, isTrue);
+      // What the app's providers left (the midnight tick) goes with the
+      // container; testWidgets then fails the test if the 2 s timer is still
+      // pending.
+      container.dispose();
+      await tester.pump(Duration.zero);
+    });
+  });
+
+  group('during onboarding (D-136)', () {
+    testApp('the first scan still runs while the welcome shows', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      await _start(tester, harness);
+      await tester.pumpAndSettle();
+      await tester.runAsync(settle);
+      await tester.pump();
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(
+        harness.bridge.calls,
+        containsAllInOrder([
+          'pendingZoneChanges',
+          'currentZoneId',
+          'accessReport',
+        ]),
+      );
+      expect(harness.background.writes, hasLength(1));
+    });
+
+    testApp('a tap on a notification leaves the welcome showing, and is not '
+        'opened after onboarding', (tester) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      harness.background.emit(LaunchAction.toTag);
+      await tester.pumpAndSettle();
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(ToTagScreen), findsNothing);
+
+      await container.read(onboardingControllerProvider.notifier).finish();
+      container.read(appRouterProvider).go(Routes.reels);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(ToTagScreen), findsNothing);
+      expect(_tab(tester), 0);
+    });
+
+    testApp('a tap during a later step leaves that step showing', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Get started'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AccessStepScreen), findsOneWidget);
+
+      harness.background
+        ..emit(LaunchAction.toTag)
+        ..emit(LaunchAction.reels);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AccessStepScreen), findsOneWidget);
+      expect(
+        container.read(appRouterProvider).state.uri.path,
+        Routes.onboardingAccess,
+      );
+    });
+
+    testApp('the start tap waits for the flags: not done drops it', (
+      tester,
+    ) async {
+      final read = Completer<OnboardingFlags>();
+      final harness = VmHarness(onboarding: () => _SlowOnboarding(read));
+      harness.background.startAction = LaunchAction.toTag;
+      final container = await _start(tester, harness);
+      await tester.pump();
+
+      read.complete(_freshFlags);
+      await tester.pumpAndSettle();
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+
+      await container.read(onboardingControllerProvider.notifier).finish();
+      container.read(appRouterProvider).go(Routes.reels);
+      await tester.pumpAndSettle();
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(_tab(tester), 0);
+    });
+
+    testApp('the start tap waits for the flags: done opens it', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      final harness = VmHarness(onboarding: () => _SlowOnboarding(read));
+      harness.background.startAction = LaunchAction.toTag;
+      await _start(tester, harness);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      read.complete(_doneFlags);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ToTagScreen), findsOneWidget);
+      expect(_tab(tester), 1);
+    });
+
+    testApp('a tap after onboarding finished opens as before', (tester) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      await container.read(onboardingControllerProvider.notifier).finish();
+      await tester.pumpAndSettle();
+      expect(find.byType(ReelsScreen), findsOneWidget);
+
+      harness.background.emit(LaunchAction.toTag);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ToTagScreen), findsOneWidget);
+      expect(_tab(tester), 1);
+    });
   });
 }

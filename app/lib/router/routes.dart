@@ -6,6 +6,34 @@ abstract final class Routes {
   static const toTag = '/to-tag';
   static const settings = '/settings';
 
+  /// The welcome, onboarding's first screen (Phase 10A, D-136): full screen,
+  /// on the root navigator, outside the tab shell. While onboarding is not
+  /// done every other location goes here (`onboardingRedirect`).
+  static const welcome = '/welcome';
+
+  /// Onboarding's video access step, pushed by the welcome's Get started.
+  static const onboardingAccess = '/onboarding/access';
+
+  /// Onboarding's notifications step, pushed after the access step.
+  static const onboardingNotifications = '/onboarding/notifications';
+
+  /// Onboarding's last step, the reels the user plans. Finishing it marks
+  /// onboarding done and goes to [reels].
+  static const onboardingReels = '/onboarding/reels';
+
+  static const Set<String> _onboarding = {
+    welcome,
+    onboardingAccess,
+    onboardingNotifications,
+    onboardingReels,
+  };
+
+  /// Whether [location] is one of the four onboarding locations, with or
+  /// without a query: exactly, so `/welcomex`, `/onboarding` and
+  /// `/onboarding/reels/5` are not.
+  static bool isOnboarding(String location) =>
+      _onboarding.contains(location.split('?').first);
+
   /// The help screen "Notifications not arriving?" (D-107), a child of
   /// Settings, full screen above the tab shell like the tag player. Back
   /// returns to Settings.

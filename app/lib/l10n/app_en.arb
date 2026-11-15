@@ -3500,5 +3500,29 @@
   "copiesStorageLoadFailed": "Couldn't read the VN copies",
   "@copiesStorageLoadFailed": {
     "description": "Title shown when the VN copies screen could not read the copies."
+  },
+  "welcomeHeadline": "One tray for every take",
+  "@welcomeHeadline": {
+    "description": "Headline of the welcome, the first screen of onboarding."
+  },
+  "welcomeGetStarted": "Get started",
+  "@welcomeGetStarted": {
+    "description": "Main button of the welcome: opens the first onboarding step (video access)."
+  },
+  "accessBeforeTitle": "Let TakeTray see your videos",
+  "@accessBeforeTitle": {
+    "description": "Title of onboarding's video access step, before access is asked."
+  },
+  "notificationsStepTitle": "Know when clips are waiting",
+  "@notificationsStepTitle": {
+    "description": "Title of onboarding's notifications step."
+  },
+  "reelsStepTitle": "What reels are you planning?",
+  "@reelsStepTitle": {
+    "description": "Title of onboarding's last step, where the user types the reels they plan."
+  },
+  "reelsStepSkip": "Skip for now",
+  "@reelsStepSkip": {
+    "description": "Button on onboarding's last step: finishes onboarding without creating reels and opens Reels."
   }
 }

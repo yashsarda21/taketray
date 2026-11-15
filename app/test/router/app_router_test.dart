@@ -19,6 +19,11 @@ import 'package:taketray/features/editors/views/copy_ready_screen.dart';
 import 'package:taketray/features/editors/views/copy_space_screen.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/onboarding/views/access_step_screen.dart';
+import 'package:taketray/features/onboarding/views/notifications_step_screen.dart';
+import 'package:taketray/features/onboarding/views/reels_step_screen.dart';
+import 'package:taketray/features/onboarding/views/welcome_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
@@ -34,6 +39,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../features/reels/edit_session_support.dart' show startEditing;
 import '../support/fake_video_player.dart';
+import '../support/fixed_onboarding.dart';
 import '../support/reel_videos.dart';
 import '../support/test_app.dart';
 import '../support/vm_harness.dart';
@@ -1171,6 +1177,199 @@ void main() {
           logged.map((r) => r.message).join(),
           isNot(contains('add-videos')),
         );
+      });
+    }
+  });
+
+  group('Onboarding (D-136)', () {
+    /// The app on a phone that has never been through onboarding.
+    Future<(ProviderContainer, GoRouter)> pumpFresh(WidgetTester tester) =>
+        _pumpApp(tester, harness: VmHarness(onboarding: FixedOnboarding.fresh));
+
+    /// The location on top, a pushed step included.
+    String location(GoRouter router) => router.state.uri.toString();
+
+    testApp('not done: the app opens on the welcome, above the tabs', (
+      tester,
+    ) async {
+      final (_, router) = await pumpFresh(tester);
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(ReelsScreen), findsNothing);
+      expect(find.byType(TtNavPill), findsNothing);
+      expect(location(router), Routes.welcome);
+    });
+
+    for (final target in [
+      Routes.reel(5),
+      Routes.reelDoneEditing(5),
+      Routes.reels,
+      Routes.toTag,
+      Routes.tagFrom(3),
+      Routes.settings,
+      Routes.copiesStorage,
+      Routes.addVideos,
+      Routes.editSelectOf(5),
+      '/nope',
+      '/welcomex',
+      '/onboarding',
+    ]) {
+      testApp('not done: going to $target still shows the welcome', (
+        tester,
+      ) async {
+        final (_, router) = await pumpFresh(tester);
+
+        router.go(target);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(WelcomeScreen), findsOneWidget);
+        expect(find.byType(ReelDetailScreen), findsNothing);
+        expect(find.byType(TagPlayerScreen), findsNothing);
+        expect(find.byType(TtNavPill), findsNothing);
+        expect(location(router), Routes.welcome);
+      });
+    }
+
+    testApp('not done: a step pushed over the onboarding stays', (
+      tester,
+    ) async {
+      final (_, router) = await pumpFresh(tester);
+
+      unawaited(router.push(Routes.onboardingNotifications));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NotificationsStepScreen), findsOneWidget);
+      expect(find.byType(TtNavPill), findsNothing);
+    });
+
+    testApp('Get started opens the access step; Back returns to the welcome', (
+      tester,
+    ) async {
+      final (_, router) = await pumpFresh(tester);
+
+      await tester.tap(find.text('Get started'));
+      await tester.pumpAndSettle();
+      expect(find.byType(AccessStepScreen), findsOneWidget);
+      expect(location(router), Routes.onboardingAccess);
+
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(handled, isTrue);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(AccessStepScreen), findsNothing);
+      expect(location(router), Routes.welcome);
+    });
+
+    testApp('Back goes to the step before, one step at a time', (tester) async {
+      final (_, router) = await pumpFresh(tester);
+      for (final step in [
+        Routes.onboardingAccess,
+        Routes.onboardingNotifications,
+        Routes.onboardingReels,
+      ]) {
+        unawaited(router.push(step));
+        await tester.pumpAndSettle();
+      }
+      expect(find.byType(ReelsStepScreen), findsOneWidget);
+
+      for (final screen in [
+        NotificationsStepScreen,
+        AccessStepScreen,
+        WelcomeScreen,
+      ]) {
+        await tester.binding.handlePopRoute();
+        await tester.pumpAndSettle();
+        expect(find.byType(screen), findsOneWidget);
+      }
+    });
+
+    testApp('Back on the welcome is not taken by the app (Android closes '
+        'it)', (tester) async {
+      await pumpFresh(tester);
+
+      final handled = await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(handled, isFalse);
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+    });
+
+    testApp('finish() on the reels step, then go to Reels, shows Reels with '
+        'its tabs', (tester) async {
+      final (container, router) = await pumpFresh(tester);
+      unawaited(router.push(Routes.onboardingAccess));
+      await tester.pumpAndSettle();
+      unawaited(router.push(Routes.onboardingReels));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReelsStepScreen), findsOneWidget);
+
+      await container.read(onboardingControllerProvider.notifier).finish();
+      router.go(Routes.reels);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(ReelsStepScreen), findsNothing);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(find.byType(TtNavPill), findsOneWidget);
+      // The onboarding pages are gone: Back is the app's own on Reels.
+      expect(await tester.binding.handlePopRoute(), isFalse);
+    });
+
+    testApp('finish() alone leaves the step for Reels: the router hears the '
+        'change, and is the same router', (tester) async {
+      final (container, router) = await pumpFresh(tester);
+      unawaited(router.push(Routes.onboardingReels));
+      await tester.pumpAndSettle();
+
+      await container.read(onboardingControllerProvider.notifier).finish();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(location(router), Routes.reels);
+      expect(identical(container.read(appRouterProvider), router), isTrue);
+    });
+
+    testApp('the stand-in reels step skips to Reels', (tester) async {
+      final (container, router) = await pumpFresh(tester);
+      unawaited(router.push(Routes.onboardingReels));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Skip for now'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(container.read(onboardingControllerProvider).value!.done, isTrue);
+    });
+
+    testApp('done: the app opens on Reels', (tester) async {
+      final (_, router) = await _pumpApp(tester);
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+      expect(location(router), Routes.reels);
+    });
+
+    for (final step in [
+      Routes.welcome,
+      Routes.onboardingAccess,
+      Routes.onboardingNotifications,
+      Routes.onboardingReels,
+      '${Routes.onboardingReels}?x=1',
+    ]) {
+      testApp('done: going to $step shows Reels', (tester) async {
+        final (_, router) = await _pumpApp(tester);
+        router.go(Routes.toTag);
+        await tester.pumpAndSettle();
+
+        router.go(step);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(ReelsScreen), findsOneWidget);
+        expect(find.byType(WelcomeScreen), findsNothing);
+        expect(find.byType(AccessStepScreen), findsNothing);
+        expect(find.byType(NotificationsStepScreen), findsNothing);
+        expect(find.byType(ReelsStepScreen), findsNothing);
+        expect(location(router), Routes.reels);
       });
     }
   });
