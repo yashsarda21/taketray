@@ -75,6 +75,51 @@ class ReelsRepository {
     return reelFromRow(row);
   }
 
+  /// Saves several new reels at once, `collecting`, in the order given (D-135:
+  /// onboarding's step 4).
+  ///
+  /// Every name is checked as [create] checks it, and against the other names
+  /// in [names] (ignoring case and edge spaces). Any problem throws
+  /// [InvalidInputException] with a [ReelNameProblem] and saves none: the
+  /// checks against the saved reels and all the inserts are one transaction.
+  /// An empty list returns an empty list and opens no transaction.
+  Future<List<Reel>> createAll(List<String> names) async {
+    if (names.isEmpty) return const [];
+    names.forEach(_checkName);
+    final rows = await _db.transaction(() async {
+      final taken = <String>{
+        for (final row in await (_db.selectOnly(
+          _db.reels,
+        )..addColumns([_db.reels.name])).get())
+          reelNameKey(row.read(_db.reels.name)!),
+      };
+      for (final name in names) {
+        if (!taken.add(reelNameKey(name))) {
+          throw const InvalidInputException(ReelNameProblem.duplicate);
+        }
+      }
+      final now = _clock.storedNow();
+      final saved = <ReelRow>[];
+      for (final name in names) {
+        saved.add(
+          await _db
+              .into(_db.reels)
+              .insertReturning(
+                ReelsCompanion.insert(
+                  name: normalizeName(name),
+                  status: ReelStatus.collecting,
+                  createdAt: now,
+                  updatedAt: now,
+                ),
+              ),
+        );
+      }
+      return saved;
+    });
+    _log.info('Created ${rows.length} reels');
+    return [for (final row in rows) reelFromRow(row)];
+  }
+
   /// Renames reel [id]. The name is checked as in [create]; the reel's own
   /// name, in any case, is fine, even when another reel has it too (a backup
   /// import or an Undo can bring two). Throws [StateError] when there is no

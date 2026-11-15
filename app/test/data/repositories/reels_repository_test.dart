@@ -267,6 +267,119 @@ void main() {
     });
   });
 
+  group('createAll (D-135)', () {
+    Matcher problem(ReelNameProblem p) => throwsA(
+      isA<InvalidInputException>().having((e) => e.problem, 'problem', p),
+    );
+
+    test('creates the reels collecting, in the given order', () async {
+      final reels = await repo.createAll(['Food', '  Goa ']);
+
+      expect(reels.map((r) => r.name), ['Food', 'Goa']);
+      expect(reels.every((r) => r.status == ReelStatus.collecting), isTrue);
+      expect(
+        reels.every((r) => r.createdAt == _t0 && r.updatedAt == _t0),
+        isTrue,
+      );
+      expect(reels[0].id, lessThan(reels[1].id));
+      expect(await repo.getById(reels[1].id), reels[1]);
+      expect((await db.select(db.reels).get()).map((r) => r.name), [
+        'Food',
+        'Goa',
+      ]);
+    });
+
+    test('names equal ignoring case and edge spaces are a duplicate and '
+        'save none', () async {
+      for (final second in [' food ', 'FOOD', '\u200Bfood\uFEFF']) {
+        await expectLater(
+          repo.createAll(['Food', second]),
+          problem(ReelNameProblem.duplicate),
+          reason: second,
+        );
+      }
+      await expectLater(
+        repo.createAll(['Café', 'Goa', 'CAFÉ']),
+        problem(ReelNameProblem.duplicate),
+      );
+      expect(await db.select(db.reels).get(), isEmpty);
+    });
+
+    test('a name an existing reel has is a duplicate and saves none', () async {
+      await repo.create('Goa');
+
+      await expectLater(
+        repo.createAll(['Food', 'goa']),
+        problem(ReelNameProblem.duplicate),
+      );
+
+      expect((await db.select(db.reels).get()).map((r) => r.name), ['Goa']);
+    });
+
+    test('an empty, blank or 41-character name saves none', () async {
+      await expectLater(
+        repo.createAll(['Food', '']),
+        problem(ReelNameProblem.empty),
+      );
+      await expectLater(
+        repo.createAll(['   ', 'Food']),
+        problem(ReelNameProblem.empty),
+      );
+      await expectLater(
+        repo.createAll(['Food', 'x' * 41]),
+        problem(ReelNameProblem.tooLong),
+      );
+      await expectLater(
+        repo.createAll(['Food', '🎬' * 41]),
+        problem(ReelNameProblem.tooLong),
+      );
+      expect(await db.select(db.reels).get(), isEmpty);
+    });
+
+    test('40 emoji and 40 characters pass', () async {
+      final reels = await repo.createAll(['🎬' * 40, 'x' * 40]);
+
+      expect(reels.map((r) => r.name), ['🎬' * 40, 'x' * 40]);
+    });
+
+    test('an empty list is empty, with no transaction', () async {
+      final log = StatementLog();
+      driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+      addTearDown(
+        () => driftRuntimeOptions.dontWarnAboutMultipleDatabases = false,
+      );
+      final logged = loggedTestDatabase(log);
+      addTearDown(logged.close);
+      final reels = ReelsRepository(logged, clock);
+      log.clear();
+
+      expect(await reels.createAll(const []), isEmpty);
+
+      expect(log.selects, isEmpty);
+      expect(log.writes, isEmpty);
+    });
+
+    test('all inserts are one transaction: a failing insert rolls back the '
+        'ones before it', () async {
+      await db.customStatement(
+        'CREATE TRIGGER fail_c BEFORE INSERT ON reels '
+        "WHEN NEW.name = 'C' "
+        "BEGIN SELECT RAISE(ABORT, 'insert failed'); END",
+      );
+
+      await expectLater(repo.createAll(['A', 'B', 'C']), throwsA(anything));
+
+      expect(await db.select(db.reels).get(), isEmpty);
+    });
+
+    test('a single name behaves as create', () async {
+      final reels = await repo.createAll(['Solo']);
+
+      expect(reels, hasLength(1));
+      expect(reels.single.name, 'Solo');
+    });
+  });
+
   group('edits', () {
     test('rename trims, saves and bumps updatedAt', () async {
       final reel = await repo.create('Goa');

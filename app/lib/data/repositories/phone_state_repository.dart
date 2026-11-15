@@ -21,10 +21,11 @@ final Logger _log = Logger('phoneState');
 /// permission, which rebuilt volumes have clips to match again, and whether
 /// Add videos' folder tip was dismissed.
 ///
-/// It lives in the `settings` table under seven keys, `shootingMode`,
+/// It lives in the `settings` table under ten keys, `shootingMode`,
 /// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked`,
-/// `mediaRematchWindows`, `folderTipSeen` and `copyJobPlan` (the running copy
-/// job's plan, D-123). None is in
+/// `mediaRematchWindows`, `folderTipSeen`, `copyJobPlan` (the running copy
+/// job's plan, D-123) and the three first-launch flags `onboardingDone`,
+/// `introPlayed` and `homeTipSeen` (D-135). None is in
 /// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
 /// import deletes them (D-71, D-72, D-108):
 /// after a restore Shooting mode is off, and no volume version or re-match
@@ -46,6 +47,9 @@ class PhoneStateRepository {
   static const notificationsAskedKey = 'notificationsAsked';
   static const rematchWindowsKey = 'mediaRematchWindows';
   static const folderTipSeenKey = 'folderTipSeen';
+  static const onboardingDoneKey = 'onboardingDone';
+  static const introPlayedKey = 'introPlayed';
+  static const homeTipSeenKey = 'homeTipSeen';
   static const copyJobPlanKey = 'copyJobPlan';
 
   /// The MediaStore version last seen for each volume, by volume name: the
@@ -315,6 +319,57 @@ class PhoneStateRepository {
         );
     _log.info('Marked the folder tip as seen');
   }
+
+  /// Whether first-launch onboarding was finished on this phone (D-135).
+  /// Unreadable counts as no, so the welcome shows again.
+  Future<bool> onboardingDone() => _flag(onboardingDoneKey);
+
+  /// Remembers that onboarding was finished.
+  Future<void> markOnboardingDone() async {
+    await _markFlag(onboardingDoneKey);
+    _log.info('Marked onboarding done');
+  }
+
+  /// Whether the welcome's intro animation has played on this phone (D-135),
+  /// so a later open shows its final frame. Unreadable counts as no.
+  Future<bool> introPlayed() => _flag(introPlayedKey);
+
+  /// Remembers that the intro played.
+  Future<void> markIntroPlayed() async {
+    await _markFlag(introPlayedKey);
+    _log.info('Marked the intro played');
+  }
+
+  /// Whether Home's first-launch tip was dismissed on this phone (D-135).
+  /// Unreadable counts as no.
+  Future<bool> homeTipSeen() => _flag(homeTipSeenKey);
+
+  /// Remembers that the Home tip was dismissed.
+  Future<void> markHomeTipSeen() async {
+    await _markFlag(homeTipSeenKey);
+    _log.info('Marked the Home tip seen');
+  }
+
+  /// A true/false flag stored as JSON; a missing row is false, an unreadable
+  /// one is false and its key (never its value) is logged.
+  Future<bool> _flag(String key) async {
+    final text = await _rawValue(key);
+    if (text == null) return false;
+    try {
+      final value = jsonDecode(text);
+      if (value is bool) return value;
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $key is corrupt, reading it as no');
+    return false;
+  }
+
+  Future<void> _markFlag(String key) => _db
+      .into(_db.settings)
+      .insertOnConflictUpdate(
+        SettingsCompanion.insert(key: key, value: jsonEncode(true)),
+      );
 
   /// The copy job's saved plan (D-123), or null when none is saved. An
   /// unreadable value is none (only the key's name is logged, never a
