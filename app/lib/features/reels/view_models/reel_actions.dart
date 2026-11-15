@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/undo_record.dart';
@@ -17,9 +18,10 @@ final Logger _log = Logger('reelActions');
 /// Kept alive, so a delete that was started on a screen that then goes away
 /// still finishes and can be undone.
 class ReelActions {
-  ReelActions(this._reels);
+  ReelActions(this._reels, this._editing);
 
   final ReelsRepository _reels;
+  final EditSessionService _editing;
 
   /// The deletes that are running, by reel id.
   final Map<int, Future<DeleteReelUndo>> _deleting = {};
@@ -40,6 +42,11 @@ class ReelActions {
 
   /// Deletes reel [id] and returns what Undo needs.
   ///
+  /// The reel's copy job is cancelled, its copies deleted and its editing
+  /// session ended first (R8, `EditSessionService.beforeReelDelete`), so Undo
+  /// brings the reel back with no session; when that fails nothing is
+  /// deleted.
+  ///
   /// Single-flight per reel: a second call while the first runs (a double tap
   /// on Delete reel) returns the first call's future, so the reel is deleted
   /// once and there is one record to undo. Throws when it could not, after
@@ -59,6 +66,7 @@ class ReelActions {
 
   Future<DeleteReelUndo> _delete(int id) async {
     try {
+      await _editing.beforeReelDelete(id);
       return await _reels.delete(id);
     } on Object catch (error) {
       _log.warning('Deleting reel $id failed: ${error.runtimeType}');
@@ -68,5 +76,7 @@ class ReelActions {
 }
 
 @Riverpod(keepAlive: true)
-ReelActions reelActions(Ref ref) =>
-    ReelActions(ref.watch(reelsRepositoryProvider));
+ReelActions reelActions(Ref ref) => ReelActions(
+  ref.watch(reelsRepositoryProvider),
+  ref.watch(editSessionServiceProvider),
+);

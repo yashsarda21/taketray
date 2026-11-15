@@ -18,8 +18,7 @@ import 'package:pigeon/pigeon.dart';
 @ConfigurePigeon(
   PigeonOptions(
     dartOut: 'lib/platform/background_api.g.dart',
-    kotlinOut:
-        'android/app/src/main/kotlin/app/taketray/background/BackgroundApi.g.kt',
+    kotlinOut: 'android/app/src/main/kotlin/app/taketray/background/BackgroundApi.g.kt',
     kotlinOptions: KotlinOptions(package: 'app.taketray.background'),
   ),
 )
@@ -47,11 +46,31 @@ class VolumeGenerationMsg {
   int generation;
 }
 
+/// One editing session that has copies (Phase 8, D-124): what the copies
+/// reminder needs. [reelName] is the reel's name now, the one word of user
+/// text a notification holds (never logged, D-10). [copyBytes] is the copies'
+/// total size; [lastCopiedAtMs] is when the newest was made (UTC ms), the
+/// reminder's key: a new batch has a new one and is reminded again.
+class CopiesReminderMsg {
+  CopiesReminderMsg({
+    required this.reelId,
+    required this.reelName,
+    required this.copyBytes,
+    required this.lastCopiedAtMs,
+  });
+
+  int reelId;
+  String reelName;
+  int copyBytes;
+  int lastCopiedAtMs;
+}
+
 /// The mirror of what the background code needs. [sinceMs] is when Shooting
 /// mode was switched on (UTC ms; null while it is off). [waitingShotMs] are
 /// the UTC instants (`dateTakenUtc`, ms) of the clips waiting in To tag, in
 /// ascending order. [eveningMinutes] is the evening reminder's local time, in
-/// minutes after midnight.
+/// minutes after midnight. [copiesReminders] has one entry per editing
+/// session with copies.
 class BackgroundStateMsg {
   BackgroundStateMsg({
     required this.shootingOn,
@@ -63,6 +82,7 @@ class BackgroundStateMsg {
     required this.eveningMinutes,
     required this.stillReminderEnabled,
     required this.stillAnswered,
+    required this.copiesReminders,
   });
 
   bool shootingOn;
@@ -74,6 +94,7 @@ class BackgroundStateMsg {
   int eveningMinutes;
   bool stillReminderEnabled;
   bool stillAnswered;
+  List<CopiesReminderMsg> copiesReminders;
 }
 
 enum ShadeActionKindMsg { turnOff, keepOn }
@@ -112,7 +133,18 @@ class NotificationAccessMsg {
 }
 
 /// The screen a notification tap opens: an allow-list, never a route.
-enum LaunchActionMsg { toTag, reels }
+/// [doneEditing] opens a reel's page, asking Done editing there.
+enum LaunchActionMsg { toTag, reels, doneEditing }
+
+/// A notification tap: the allow-listed [action] and, for `doneEditing` only,
+/// the reel it is for. The reel id is the only payload there is (D-124); Dart
+/// checks the reel still exists.
+class LaunchMsg {
+  LaunchMsg({required this.action, this.reelId});
+
+  LaunchActionMsg action;
+  int? reelId;
+}
 
 @HostApi()
 abstract class BackgroundHostApi {
@@ -153,11 +185,11 @@ abstract class BackgroundHostApi {
   /// The launch action the app was started with, once; null after that.
   /// The first call also tells Kotlin that Dart is listening, so later
   /// actions come through [BackgroundFlutterApi.onLaunchAction].
-  LaunchActionMsg? takeLaunchAction();
+  LaunchMsg? takeLaunchAction();
 }
 
 @FlutterApi()
 abstract class BackgroundFlutterApi {
   /// A notification was tapped while the app was running.
-  void onLaunchAction(LaunchActionMsg action);
+  void onLaunchAction(LaunchMsg launch);
 }

@@ -7,7 +7,9 @@ import 'package:logging/logging.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/debug_evening.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/features/editors/views/copy_result_opener.dart';
 import 'package:taketray/features/notifications/view_models/launch_actions.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -19,8 +21,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// (`themeMode` defaults to [ThemeMode.system]).
 ///
 /// [LaunchActionsListener] sits under the router and opens the screen a
-/// notification tap asks for (D-107). [MediaLifecycle] wraps the router: it
-/// applies shade actions and starts the zone sync, the access checks and the
+/// notification tap asks for (D-107). `CopyResultOpener` sits inside it and
+/// opens the copy screen for a copy result nobody has seen, or a copy that
+/// still runs, at the start and on resume (D-127). [MediaLifecycle] wraps
+/// the router: it applies shade actions and starts the zone sync, the access
+/// checks and the
 /// scan at app start and on resume (D-75, D-106). The app also starts
 /// `BackgroundSync` once, which writes the phone's copy of the background
 /// state now (re-arming the job and the alarms) and after every change
@@ -77,7 +82,8 @@ class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
         localeListResolutionCallback: resolvePhoneLocale,
-        builder: (context, child) => LaunchActionsListener(child: child!),
+        builder: (context, child) =>
+            LaunchActionsListener(child: CopyResultOpener(child: child!)),
         theme: TakeTrayTheme.light(),
         darkTheme: TakeTrayTheme.dark(),
         debugShowCheckedModeBanner: false,
@@ -114,7 +120,7 @@ class LaunchActionsListener extends ConsumerStatefulWidget {
 }
 
 class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
-  StreamSubscription<LaunchAction>? _subscription;
+  StreamSubscription<Launch>? _subscription;
 
   @override
   void initState() {
@@ -131,11 +137,23 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     super.dispose();
   }
 
-  void _open(LaunchAction action) {
-    scheduleMicrotask(() {
-      if (!mounted) return;
-      ref.read(appRouterProvider).go(routeFor(action));
-    });
+  /// Taps are opened one after the other, in the order they came.
+  late final LaunchQueue _queue = LaunchQueue(_openNow);
+
+  void _open(Launch launch) => _queue.add(launch);
+
+  Future<void> _openNow(Launch launch) async {
+    // After the current frame: the start action can arrive while the first
+    // frame is being built.
+    await Future<void>.microtask(() {});
+    if (!mounted) return;
+    final reels = ref.read(reelsRepositoryProvider);
+    final route = await routeFor(
+      launch,
+      (id) async => await reels.getById(id) != null,
+    );
+    if (!mounted) return;
+    ref.read(appRouterProvider).go(route);
   }
 
   void _failed(Object error) {

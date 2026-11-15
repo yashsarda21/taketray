@@ -5,10 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/background/background_sync.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/media/zone_sync.dart';
+import 'package:taketray/features/editors/view_models/copy_job_controller.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -34,7 +36,14 @@ final Logger _log = Logger('mediaLifecycle');
 /// 4. `MediaScanner.scan`: new videos, when Shooting mode is on. A Still
 ///    shooting? button tapped in the shade needs no step of its own: every
 ///    scan applies it first, inside its own job (D-106);
-/// 5. after a scan that read every volume (`ScanDone` with no failed volume;
+/// 5. the copy job (D-123): on the first run of this mount (the app's start)
+///    `EditSessionService.recoverAtStart`, once, after building the
+///    `CopyJobController` so the job is followed from then on (a recovery
+///    that failed is tried again at the next run, until it works); on every
+///    later run (a resume) `CopyJobController.onResume`, which only reads the
+///    engine's job again, never a second recovery. It runs whatever the scan
+///    did (Shooting mode off skips the scan, not this);
+/// 6. after a scan that read every volume (`ScanDone` with no failed volume;
 ///    an end from the shade counts), `BackgroundSync.flush` and then
 ///    `BackgroundBridge.clearNewClipsNotification` (D-106): the clips are in
 ///    To tag now. The new baselines reach the phone's copy first, so the
@@ -68,6 +77,8 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   late final AppLifecycleListener _listener;
   bool _running = false;
   bool _again = false;
+  bool _recovered = false;
+  bool _copyStep = false;
 
   @override
   void initState() {
@@ -109,6 +120,14 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
   }
 
   Future<void> _run() async {
+    // Building the editing service gives the repositories their copy
+    // clean-up (R8, D-123); it must be in place before the scan, whose
+    // re-attach can merge a duplicate out of a reel.
+    await guarded(
+      _log,
+      'Wiring the copy clean-up',
+      () async => ref.read(editSessionServiceProvider),
+    );
     await guarded(
       _log,
       'The zone sync',
@@ -129,6 +148,10 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       'The scan',
       () => ref.read(mediaScannerProvider).scan(),
     );
+    if (!mounted) return;
+    // Not awaited: a bridge call that never returns must hold neither the
+    // flush and the clear below nor the next run (T6-M6).
+    unawaited(_copyJob());
     // A volume that failed may still hold clips the job counts.
     if (scanned is! ScanDone || scanned.failedVolumes.isNotEmpty || !mounted) {
       return;
@@ -144,6 +167,35 @@ class _MediaLifecycleState extends ConsumerState<MediaLifecycle> {
       'Clearing the new clips notification',
       () => ref.read(backgroundBridgeProvider).clearNewClipsNotification(),
     );
+  }
+
+  /// Step 5: recovery once per start, then only a read of the job. One at a
+  /// time: a run that finds the last one still going leaves it alone.
+  Future<void> _copyJob() async {
+    if (_copyStep) return;
+    _copyStep = true;
+    try {
+      if (!_recovered) {
+        // A recovery that failed (it threw, or the service logged a failure
+        // and answered null) is tried again at the next run: until it works
+        // the saved plan blocks every start and Done editing (T6-M2).
+        final worked = await guarded(_log, 'The copy recovery', () async {
+          ref.read(copyJobControllerProvider);
+          final service = ref.read(editSessionServiceProvider);
+          await service.recoverAtStart();
+          return !service.recoveryFailed;
+        });
+        _recovered = worked ?? false;
+        return;
+      }
+      await guarded(
+        _log,
+        'Reading the copy job',
+        () => ref.read(copyJobControllerProvider.notifier).onResume(),
+      );
+    } finally {
+      _copyStep = false;
+    }
   }
 
   Future<void> _prune() => guarded(_log, 'Pruning the thumbnails', () async {

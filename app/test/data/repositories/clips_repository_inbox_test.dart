@@ -328,18 +328,18 @@ void main() {
       final [a] = await clips.saveDetected([shot(1)]);
       final reel = await reels.create('Goa');
       await db
-          .into(db.vnSessions)
+          .into(db.editSessions)
           .insert(
-            VnSessionsCompanion.insert(
+            EditSessionsCompanion.insert(
               reelId: Value(reel.id),
               folderName: 'Goa',
               createdAt: _t0,
             ),
           );
       await db
-          .into(db.vnCopies)
+          .into(db.editCopies)
           .insert(
-            VnCopiesCompanion.insert(
+            EditCopiesCompanion.insert(
               reelId: reel.id,
               clipId: a,
               copyMediaStoreId: 500,
@@ -352,7 +352,7 @@ void main() {
       await clips.removeMissingFromInbox(a);
 
       expect(await clipIds(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), hasLength(1));
+      expect(await db.select(db.editCopies).get(), hasLength(1));
     });
 
     test('one transaction: a failing step changes nothing', () async {

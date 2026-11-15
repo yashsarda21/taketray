@@ -7,6 +7,7 @@ import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
@@ -18,6 +19,7 @@ import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart' show startEditing;
 
 String _uri(int mediaStoreId) =>
     'content://media/external_primary/video/media/$mediaStoreId';
@@ -850,6 +852,143 @@ void main() {
     });
   });
 
+  group('remove while the reel is being edited (R8, p8-task11-fix)', () {
+    const plain = 'Removed from Goa. The video is still in your gallery.';
+
+    testApp('the clip with a copy: the snack says the copy was deleted, the '
+        'copy is gone, and Undo brings only the clip back', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      final copies = await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+      expect(find.text(plain), findsNothing);
+      expect(await clipIdsOf(tester, goa.id), {ids[1]});
+      expect(h.editors.calls, contains('deleteCopies'));
+      expect(h.editors.existing, isNot(contains(copies.single)));
+
+      await tester.tap(find.text('Undo'));
+      await settleApp(tester);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+      expect(h.editors.existing, isNot(contains(copies.single)));
+    });
+
+    testApp('a clip with no copy in a session: the plain snack', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[1]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+      expect(find.textContaining('copy in the folder'), findsNothing);
+      expect(h.editors.calls, isNot(contains('deleteCopies')));
+    });
+
+    testApp('a clip sent to CapCut (no copy): the plain snack', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
+      );
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+    });
+
+    testApp('no session: the plain snack and the editors bridge is not '
+        'touched', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(find.text(plain), findsOneWidget);
+      expect(h.editors.calls, isEmpty);
+    });
+
+    testApp('a copy that cannot be deleted: "Couldn\'t delete the copies", '
+        'nothing removed, and a retry works', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
+      expect(find.text('Something went wrong. Try again.'), findsNothing);
+      expect(find.textContaining('Removed from Goa'), findsNothing);
+      expect(title(tester), '1 of 2 · Goa');
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+      expect(await clipIdsOf(tester, goa.id), {ids[1]});
+    });
+
+    testApp('"Remove from reel" under "can\'t be played" says it too', (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
+      );
+      h.editors.allow({'deleteCopies'});
+      platform.failUris.add(_uri(1));
+      await open(tester, goa.id, ids[0]);
+
+      await tester.tap(find.text('Remove from reel'));
+      await settleApp(tester);
+
+      expect(
+        find.text('$plain Its copy in the folder was deleted.'),
+        findsOneWidget,
+      );
+    });
+  });
+
   group('add and move', () {
     Future<void> pick(WidgetTester tester, String reel, String confirm) async {
       await tester.tap(find.text(reel));
@@ -1013,6 +1152,119 @@ void main() {
     });
   });
 
+  group('Share (Phase 8)', () {
+    setUp(() => h.editors.allow({'shareWithChooser'}));
+
+    testApp('Share is the fourth action, after Remove', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+
+      await open(tester, goa.id, ids.single);
+
+      expect(
+        [
+          for (final a
+              in tester
+                  .widget<TtViewerActions>(find.byType(TtViewerActions))
+                  .actions)
+            a.label,
+        ],
+        ['Add to reel', 'Move', 'Remove', 'Share'],
+      );
+    });
+
+    testApp("Share opens Android's share menu with this clip, no session", (
+      tester,
+    ) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[1]);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+      final (clipsShared, chooserTitle) = h.editors.chooserShares.single;
+      expect([for (final c in clipsShared) c.mediaStoreId], [2]);
+      expect(chooserTitle, 'Share video');
+      expect(h.editors.sent, isEmpty);
+      expect(find.byType(TtSnack), findsNothing);
+      expect(title(tester), '2 of 2 · Goa');
+    });
+
+    testApp('a second tap while the share is opening opens no second '
+        'chooser', (tester) async {
+      h.editors.hold('shareWithChooser');
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.tap(find.text('Share'), warnIfMissed: false);
+      await tester.runAsync(settle);
+      h.editors.release('shareWithChooser');
+      await settleApp(tester);
+
+      expect(h.editors.chooserShares, hasLength(1));
+
+      // Once it is over, Share works again.
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      expect(h.editors.chooserShares, hasLength(2));
+    });
+
+    testApp('a clip that went missing meanwhile: the missing snack, no '
+        'share', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1, 2]);
+      await open(tester, goa.id, ids[0]);
+      // The viewer has not noticed yet; the share finds out.
+      await real(tester, () => flagForTest(h, {ids[0]}, missing: true));
+
+      await tester.tap(find.text('Share'));
+      await tester.runAsync(settle);
+      await tester.pump();
+
+      expect(h.editors.chooserShares, isEmpty);
+      expect(
+        find.text('These clips are missing from your phone.'),
+        findsOneWidget,
+      );
+    });
+
+    testApp('nothing opened: the failure snack, not "missing" (T9-m3)', (
+      tester,
+    ) async {
+      h.editors.chooserResult = false;
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+    });
+
+    testApp('a share that throws says something went wrong, and can be '
+        'tried again', (tester) async {
+      h.editors.failNext('shareWithChooser');
+      final goa = await real(tester, () => reels.create('Goa'));
+      final ids = await reelWith(tester, goa.id, [1]);
+      await open(tester, goa.id, ids.single);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+
+      await tester.tap(find.text('Share'));
+      await settleApp(tester);
+      // The attempt that threw is not recorded by the fake.
+      expect(h.editors.chooserShares, hasLength(1));
+    });
+  });
+
   group('large text and accessibility', () {
     for (final brightness in Brightness.values) {
       testApp('2x text at 360 dp, ${brightness.name}', (tester) async {
@@ -1045,6 +1297,7 @@ void main() {
         expect(find.text('Add to reel'), findsOneWidget);
         expect(find.text('Move'), findsOneWidget);
         expect(find.text('Remove'), findsOneWidget);
+        expect(find.text('Share'), findsOneWidget);
         await expectTtAccessible(tester);
       });
 

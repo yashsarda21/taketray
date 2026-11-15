@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
+import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -8,8 +10,11 @@ import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 /// Settings, the third tab (`screens.js`: `routes.settings`). Until Phase 10
-/// builds the rest around them, it holds two groups (D-107):
+/// builds the rest around them, it holds three groups (D-107, D-130):
 ///
+/// - **Clips:** "Storage used by VN copies" with a chevron, and "{size} in {n}
+///   reels" or "None" under it (the sessions that hold copies; empty until the
+///   first read), which opens the VN copies screen (`Routes.copiesStorage`);
 /// - **Help:** "Notifications not arriving?" with a chevron, which opens the
 ///   help screen (`Routes.notificationsHelp`);
 /// - **Permissions:** "Notifications", "Allowed" with a check, or "Not
@@ -33,9 +38,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// Opens the help page once however fast the taps.
   final OpenOnce _help = OpenOnce();
 
+  /// Opens the VN copies screen once however fast the taps.
+  final OpenOnce _copies = OpenOnce();
+
   @override
   void dispose() {
     _help.dispose();
+    _copies.dispose();
     super.dispose();
   }
 
@@ -56,11 +65,36 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // read is shown as not allowed, so the user can still reach Allow.
     final granted = access.value?.granted ?? false;
     final showPermissions = access.hasValue || access.hasError;
+    final copies = ref.watch(copiesSummaryProvider).value;
     return Scaffold(
       appBar: TtAppBar(large: true, title: l10n.navSettings),
       body: ListView(
         padding: EdgeInsets.only(bottom: TtNavPill.reservedHeight(context)),
         children: [
+          TtGroupLabel(l10n.settingsGroupClips),
+          TtGroupedRows(
+            children: [
+              TtListRow(
+                leading: const TtRowIcon(
+                  icon: Symbols.sd_storage_rounded,
+                  boxed: false,
+                ),
+                title: l10n.settingsCopiesTitle,
+                subtitle: copies == null
+                    ? null
+                    : copies.reels == 0
+                    ? l10n.settingsCopiesNone
+                    : l10n.settingsCopiesSummary(
+                        byteSizeText(l10n, copies.bytes),
+                        copies.reels,
+                      ),
+                trailing: const Icon(Symbols.chevron_right_rounded),
+                onTap: () => _copies.open(
+                  () => context.push<void>(Routes.copiesStorage),
+                ),
+              ),
+            ],
+          ),
           TtGroupLabel(l10n.settingsGroupHelp),
           TtGroupedRows(
             children: [

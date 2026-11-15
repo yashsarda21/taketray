@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/clip_time.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -18,6 +19,11 @@ part 'reel_detail_controller.g.dart';
 
 // Ids, counts and error types only, never a reel name or a path (D-10).
 final Logger _log = Logger('reelDetail');
+
+/// What taking a missing clip out of a reel did: `record` is what Undo needs
+/// (empty when nothing was removed) and `copiesDeleted` is how many of its
+/// copies in the editing folder were deleted first (R8; 0 with no session).
+typedef MissingRemoval = ({RemoveUndo record, int copiesDeleted});
 
 /// What a reel's page shows (D-87).
 @immutable
@@ -95,13 +101,23 @@ Future<Map<int, ClipLocalTime>> reelClipTimes(Ref ref, int reelId) async {
 ///   by type. A clip whose video is gone is flagged, the list emits again,
 ///   and the tile turns into the missing tile. A later change of the list
 ///   (or of the times) does not verify again; opening the reel again does.
+/// - **Opening the reel checks its copies** (D-128): once per open,
+///   `EditSessionService.verifyCopies` forgets the copies of the reel's
+///   editing session whose files were deleted outside TakeTray, so their
+///   clips show under "New since you started editing" again. A reel with no
+///   session asks the phone nothing. Like the verify, it never blocks or
+///   fails the page: an error is logged by type and the copies stay as they
+///   were.
 @Riverpod(retry: noRetry)
 class ReelDetailController extends _$ReelDetailController {
   /// Whether this open has started its verify.
   bool _verifyStarted = false;
 
+  /// Whether this open has started its copy check.
+  bool _copiesChecked = false;
+
   /// The removals that are running, by clip id.
-  final Map<int, Future<RemoveUndo>> _removing = {};
+  final Map<int, Future<MissingRemoval>> _removing = {};
 
   @override
   Future<ReelDetailState?> build(int reelId) async {
@@ -114,6 +130,10 @@ class ReelDetailController extends _$ReelDetailController {
 
     final reel = await reelFuture;
     if (reel == null) return null;
+    if (!_copiesChecked) {
+      _copiesChecked = true;
+      unawaited(_checkCopies());
+    }
     final clips = await clipsFuture;
     if (!_verifyStarted && clips.isNotEmpty) {
       _verifyStarted = true;
@@ -148,23 +168,35 @@ class ReelDetailController extends _$ReelDetailController {
     },
   );
 
+  /// Forgets the copies of this reel whose files are gone. Never throws,
+  /// for the same reason as [_verify].
+  Future<void> _checkCopies() => guarded<void>(
+    _log,
+    'The copy check',
+    () => ref.read(editSessionServiceProvider).verifyCopies(reelId),
+  );
+
   /// Takes the missing clip [clipId] out of this reel and returns what Undo
   /// needs (D-84): the link, with its `addedAt`, and the clip itself if no
-  /// other reel and not To tag held it.
+  /// other reel and not To tag held it, with how many copies were deleted
+  /// for it during an editing session (0 or 1) for the snack.
   ///
   /// Only a clip that is flagged missing and is in this reel is removed: if
   /// the verify found its video again, or the clip is not here, nothing
-  /// changes and the record is empty (the view then says nothing).
+  /// changes and the record is empty (the view then says nothing). During an
+  /// editing session its copy is deleted first (R8); when it cannot be,
+  /// `CopiesNotDeleted` is thrown and nothing is removed.
   ///
   /// Single-flight per clip: a second tap while the first runs gets the same
   /// future, so the link is removed once and there is one record. Throws when
   /// the write failed (after logging the error's type); the view tells the
   /// user.
-  Future<RemoveUndo> removeMissing(int clipId) {
+  Future<MissingRemoval> removeMissing(int clipId) {
     final running = _removing[clipId];
     if (running != null) return running;
     final repository = ref.read(clipsRepositoryProvider);
-    final run = _remove(repository, clipId);
+    final editing = ref.read(editSessionServiceProvider);
+    final run = _remove(repository, editing, clipId);
     _removing[clipId] = run;
     unawaited(
       run.then<void>((_) {}, onError: (_) {}).then<void>((_) {
@@ -174,20 +206,32 @@ class ReelDetailController extends _$ReelDetailController {
     return run;
   }
 
-  Future<RemoveUndo> _remove(ClipsRepository clips, int clipId) async {
+  Future<MissingRemoval> _remove(
+    ClipsRepository clips,
+    EditSessionService editing,
+    int clipId,
+  ) async {
     final id = reelId;
     try {
       final inReel = await clips.watchReelClips(id).first;
       final here = inReel.where((c) => c.clip.id == clipId);
       if (here.isEmpty || !here.single.clip.missing) {
-        return RemoveUndo(
-          reelId: id,
-          removedLinks: const [],
-          sweptClips: const [],
-          touch: null,
+        return (
+          record: RemoveUndo(
+            reelId: id,
+            removedLinks: const [],
+            sweptClips: const [],
+            touch: null,
+          ),
+          copiesDeleted: 0,
         );
       }
-      return await clips.removeClipsFromReel(id, [clipId]);
+      // Its copy goes first (R8); if it cannot, nothing is removed.
+      final copies = await editing.beforeClipsLeaveReel(id, {clipId});
+      return (
+        record: await clips.removeClipsFromReel(id, [clipId]),
+        copiesDeleted: copies,
+      );
     } on Object catch (error) {
       _log.warning(
         'Removing clip $clipId from reel $id failed: ${error.runtimeType}',

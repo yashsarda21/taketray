@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -446,6 +447,67 @@ void main() {
       expect(await pendingIds(), ids.toSet());
       expect(stateOf().index, 0);
       expect(stateOf().skipped, 0);
+    });
+
+    // D-132: a `go` that takes the player away pops its route while the
+    // navigator rebuilds, so leave() can be called inside a build, where a
+    // provider must not change. The session shuts and the hold ends at once;
+    // only the check (its state) goes after the frame. A player opened again
+    // in the same frame (enter) must still find the session open.
+    testWidgets('leave inside a build ends the hold at once, drops the check '
+        'after the frame, and an enter in the same frame still opens it', (
+      tester,
+    ) async {
+      late List<int> ids;
+      late Reel goa;
+      late TagSessionController session;
+      late Future<TagOutcome?> tagged;
+      await tester.runAsync(() async {
+        ids = await waiting(2);
+        goa = await reel('Goa');
+        session = await start();
+        tagged = session.tapReel(goa.id);
+        await settle();
+      });
+      expect(stateOf().confirmingReelId, goa.id);
+
+      bool? cancelledInBuild;
+      int? checkInBuild;
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: c,
+          child: Builder(
+            builder: (context) {
+              if (cancelledInBuild == null) {
+                session
+                  ..leave()
+                  ..enter();
+                cancelledInBuild = holds.made.single.cancelled;
+                checkInBuild = stateOf().confirmingReelId;
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ),
+      );
+
+      expect(cancelledInBuild, isTrue);
+      expect(checkInBuild, goa.id);
+      // The frame is over: the check has gone.
+      expect(stateOf().confirmingReelId, isNull);
+      expect(await tester.runAsync(() => tagged), isNull);
+      // The player that entered takes actions: a new tap tags.
+      late TagOutcome? again;
+      await tester.runAsync(() async {
+        final next = session.tapReel(goa.id);
+        await settle();
+        holds.fireAll();
+        again = await next;
+        await settle();
+      });
+      expect(again?.clipId, ids[0]);
+      expect(await tester.runAsync(() => reelsOf(ids[0])), {goa.id});
+      await tester.pumpWidget(const SizedBox.shrink());
     });
 
     test('enter after leave takes actions again', () async {

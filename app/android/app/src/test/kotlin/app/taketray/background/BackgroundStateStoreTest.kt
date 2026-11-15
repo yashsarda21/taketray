@@ -3,7 +3,10 @@ package app.taketray.background
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.test.core.app.ApplicationProvider
+import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
@@ -83,6 +86,7 @@ class BackgroundStateStoreTest {
                 eveningMinutes = 1_439,
                 stillReminderEnabled = true,
                 stillAnswered = false,
+                copiesReminders = emptyList(),
             )
         assertEquals(on, BackgroundState.from(msg))
     }
@@ -217,6 +221,161 @@ class BackgroundStateStoreTest {
         assertEquals(1L, store.stillPostedSince())
         assertEquals(2L, store.eveningHandledDay())
         assertEquals(3L, store.eveningArmedFor())
+    }
+
+    // ---- The copies reminders (Phase 8, D-124) ----
+
+    private val wedding = BackgroundState.CopiesReminder(7, "Wedding \"Goa\" \u00e9\u00e8 \ud83c\udfac", 1_234_567_890, 1_780_000_000_000)
+    private val trip = BackgroundState.CopiesReminder(9, "Trip", 0, 1_780_100_000_000)
+
+    /** The JSON a Phase 6 build stored: the same fields, and no `copiesReminders`. */
+    private fun phase6Json(): String =
+        JSONObject(on.toJson()).also { it.remove("copiesReminders") }.toString()
+
+    @Test
+    fun `a stored Phase 6 state without copies reminders loads with an empty list`() {
+        val old = phase6Json()
+        assertFalse("the fixture is the old shape", "copiesReminders" in old)
+        prefs.edit().putString(BackgroundStateStore.KEY_STATE, old).commit()
+        assertEquals(on.copy(copiesReminders = emptyList()), store.state())
+        assertEquals(emptyList<BackgroundState.CopiesReminder>(), store.state().copiesReminders)
+        // The next write adds the field and keeps it.
+        store.write(store.state().copy(copiesReminders = listOf(wedding)))
+        assertEquals(listOf(wedding), BackgroundStateStore(afterProcessEnd()).state().copiesReminders)
+    }
+
+    @Test
+    fun `copies reminders round trip, in order, and survive the process ending`() {
+        val state = on.copy(copiesReminders = listOf(trip, wedding))
+        store.write(state)
+        assertEquals(state, store.state())
+        assertEquals(listOf(trip, wedding), BackgroundStateStore(afterProcessEnd()).state().copiesReminders)
+        // Empty is empty.
+        store.write(state.copy(copiesReminders = emptyList()))
+        assertEquals(emptyList<BackgroundState.CopiesReminder>(), BackgroundStateStore(afterProcessEnd()).state().copiesReminders)
+    }
+
+    @Test
+    fun `the message from Dart carries its copies reminders`() {
+        val msg =
+            BackgroundStateMsg(
+                shootingOn = false,
+                sinceMs = null,
+                baselines = emptyList(),
+                watchedFolders = emptyList(),
+                waitingShotMs = emptyList(),
+                eveningEnabled = false,
+                eveningMinutes = 0,
+                stillReminderEnabled = false,
+                stillAnswered = false,
+                copiesReminders =
+                    listOf(
+                        CopiesReminderMsg(7, "Wedding", 1_234_567_890, 1_780_000_000_000),
+                        CopiesReminderMsg(9, "Trip", 5, 1_780_100_000_000),
+                    ),
+            )
+        assertEquals(
+            listOf(
+                BackgroundState.CopiesReminder(7, "Wedding", 1_234_567_890, 1_780_000_000_000),
+                BackgroundState.CopiesReminder(9, "Trip", 5, 1_780_100_000_000),
+            ),
+            BackgroundState.from(msg).copiesReminders,
+        )
+    }
+
+    @Test
+    fun `a malformed copies reminders field makes the whole state read as off`() {
+        val good = JSONObject(on.copy(copiesReminders = listOf(wedding)).toJson())
+        for (bad in listOf<Any>(
+            "soon",
+            JSONArray().put(1),
+            JSONArray().put(JSONObject().put("reelId", 7)),
+            JSONArray().put(JSONObject().put("reelId", "seven").put("reelName", "W").put("copyBytes", 1).put("lastCopiedAtMs", 2)),
+            JSONArray().put(JSONObject().put("reelId", 7).put("reelName", "W").put("copyBytes", 1).put("lastCopiedAtMs", "now")),
+        )) {
+            prefs.edit().putString(BackgroundStateStore.KEY_STATE, JSONObject(good.toString()).put("copiesReminders", bad).toString()).commit()
+            assertEquals("$bad", BackgroundState.OFF, store.state())
+        }
+    }
+
+    @Test
+    fun `usable copies reminders have a valid reel id and time, one per reel, the newest`() {
+        val max = BackgroundState.MAX_REEL_ID
+        fun r(
+            id: Long,
+            at: Long = 1_780_000_000_000,
+        ) = BackgroundState.CopiesReminder(id, "R$id", 10, at)
+        val state =
+            BackgroundState.OFF.copy(
+                copiesReminders =
+                    listOf(
+                        r(0), // not a reel id
+                        r(-997), // would land on Phase 6's notification 3
+                        r(-999),
+                        r(max + 1), // its request code would overflow
+                        r(Long.MAX_VALUE),
+                        r(1, at = 0), // no time known
+                        r(2, at = -5),
+                        r(3, at = 1_000),
+                        r(3, at = 5_000), // the same reel twice: the newer
+                        r(3, at = 2_000),
+                        r(max),
+                        r(1),
+                    ),
+            )
+        assertEquals(
+            listOf(r(3, at = 5_000), r(max), r(1)).sortedBy { it.reelId },
+            state.usableCopiesReminders().sortedBy { it.reelId },
+        )
+    }
+
+    @Test
+    fun `copies shown marks round trip per reel and survive the process ending`() {
+        assertNull(store.copiesShown(7))
+        store.setCopiesShown(7, 1_780_000_000_000)
+        store.setCopiesShown(9, 1_780_100_000_000)
+        assertEquals(1_780_000_000_000, store.copiesShown(7))
+        assertEquals(1_780_100_000_000, BackgroundStateStore(afterProcessEnd()).copiesShown(9))
+        assertNull(BackgroundStateStore(afterProcessEnd()).copiesShown(8))
+        // A new batch replaces the mark of that reel only.
+        store.setCopiesShown(7, 1_790_000_000_000)
+        assertEquals(1_790_000_000_000, BackgroundStateStore(afterProcessEnd()).copiesShown(7))
+        assertEquals(1_780_100_000_000, store.copiesShown(9))
+        // Independent of the mirror, which is written over and over.
+        store.write(on)
+        store.write(BackgroundState.OFF)
+        assertEquals(1_790_000_000_000, store.copiesShown(7))
+    }
+
+    @Test
+    fun `pruning the shown marks keeps exactly the reels named`() {
+        store.setCopiesShown(7, 1)
+        store.setCopiesShown(9, 2)
+        store.setCopiesShown(11, 3)
+        store.pruneCopiesShown(setOf(9, 12))
+        assertNull(store.copiesShown(7))
+        assertEquals(2L, BackgroundStateStore(afterProcessEnd()).copiesShown(9))
+        assertNull(store.copiesShown(11))
+        // Nothing to keep: all go. Pruning nothing twice is harmless.
+        store.pruneCopiesShown(emptySet())
+        store.pruneCopiesShown(emptySet())
+        assertNull(BackgroundStateStore(afterProcessEnd()).copiesShown(9))
+    }
+
+    @Test
+    fun `an unreadable shown marks value reads as no marks and the next write replaces it`() {
+        for (junk in listOf("[]", "{\"7\": \"soon\"}", "not json", "")) {
+            prefs.edit().putString(BackgroundStateStore.KEY_COPIES_SHOWN, junk).commit()
+            assertNull(junk, store.copiesShown(7))
+            store.pruneCopiesShown(setOf(7)) // must not throw
+            store.setCopiesShown(7, 42)
+            assertEquals(junk, 42L, store.copiesShown(7))
+            prefs.edit().remove(BackgroundStateStore.KEY_COPIES_SHOWN).commit()
+        }
+        prefs.edit().putInt(BackgroundStateStore.KEY_COPIES_SHOWN, 3).commit()
+        assertNull(store.copiesShown(7))
+        store.setCopiesShown(7, 43)
+        assertEquals(43L, store.copiesShown(7))
     }
 
     @Test

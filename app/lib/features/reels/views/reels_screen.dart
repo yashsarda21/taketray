@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
+import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
@@ -31,7 +34,10 @@ const int _columns = 2;
 /// 4. the reels, two to a row, newest first, as a lazy grid of `TtReelCard`s;
 ///    a card shows the cover (the oldest clip with a picture), the status,
 ///    "{n} clips · {m:ss}" (the length of the clips that are not missing)
-///    and "{n} missing", and opens the reel's page.
+///    and "{n} missing", and opens the reel's page. A reel being edited
+///    shows the pill "Editing in {editor}" ("VN", "CapCut", "Edits"; R8) and
+///    is read with ". Editing in {editor}" at the end (D-128); no pill until
+///    the sessions are known.
 ///
 /// **Empty:** with no reel at all, "Plan your first reel" and a **New reel**
 /// button, and no floating button. With reels but none passing the chosen
@@ -71,6 +77,8 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final home = ref.watch(homeControllerProvider).value;
+    final editors =
+        ref.watch(reelEditorsProvider).value ?? const <int, EditorApp>{};
     final controller = ref.read(homeControllerProvider.notifier);
     final hasReels = home != null && home.hasReels;
 
@@ -151,6 +159,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                       key: ValueKey(home.reels[index].reel.id),
                       summary: home.reels[index],
                       cover: home.covers[home.reels[index].reel.id],
+                      editor: editors[home.reels[index].reel.id],
                       onOpen: _openReel,
                     ),
                   ),
@@ -225,18 +234,22 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
-/// One reel on Home (`h.reelCard` in the prototype, without the VN pill and
-/// the references badge, which are Phases 8 and 9).
+/// One reel on Home (`h.reelCard` in the prototype, without the references
+/// badge, which is Phase 9).
 class _ReelCard extends StatelessWidget {
   const new({
     required this.summary,
     required this.cover,
+    required this.editor,
     required this.onOpen,
     super.key,
   });
 
   final ReelSummary summary;
   final ImageProvider? cover;
+
+  /// The editor the reel is being edited in, or null.
+  final EditorApp? editor;
 
   /// Opens the reel's page (once, however fast the taps).
   final ValueChanged<int> onOpen;
@@ -248,6 +261,18 @@ class _ReelCard extends StatelessWidget {
     final status = statusName(l10n, reel.status);
     final clips = l10n.reelCardClips(summary.clipCount);
     final missing = summary.missingCount;
+    final label = missing > 0
+        ? l10n.reelCardSemanticsMissing(
+            reel.name,
+            status,
+            summary.clipCount,
+            missing,
+          )
+        : l10n.reelCardSemantics(reel.name, status, summary.clipCount);
+    final editor = this.editor;
+    final editing = editor == null
+        ? null
+        : l10n.reelEditingIn(editorShortName(l10n, editor));
     return TtReelCard(
       name: reel.name,
       status: statusKindOf(reel.status),
@@ -262,14 +287,10 @@ class _ReelCard extends StatelessWidget {
       missingText: missing > 0 ? l10n.reelCardMissing(missing) : null,
       emptyLabel: l10n.reelCardEmptyArt,
       cover: cover,
-      semanticLabel: missing > 0
-          ? l10n.reelCardSemanticsMissing(
-              reel.name,
-              status,
-              summary.clipCount,
-              missing,
-            )
-          : l10n.reelCardSemantics(reel.name, status, summary.clipCount),
+      vnLabel: editing,
+      semanticLabel: editing == null
+          ? label
+          : l10n.reelCardSemanticsEditing(label, editing),
       onTap: () => onOpen(reel.id),
     );
   }

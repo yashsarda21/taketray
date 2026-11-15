@@ -136,6 +136,14 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
+        <!-- The three editors TakeTray hands clips to (D-121): Android 11+
+             hides other apps unless they are named here, so without these an
+             installed editor would read as missing. Exactly these three; the
+             names live in Dart (EditorApp.packageName) and two tests check
+             them. The share chooser and the market:// link need no entry. -->
+        <package android:name="com.lemon.lvoverseas"/>
+        <package android:name="com.instagram.basel"/>
+        <package android:name="com.frontrow.vlog"/>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

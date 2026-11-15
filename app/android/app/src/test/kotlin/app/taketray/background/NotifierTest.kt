@@ -133,7 +133,7 @@ class NotifierTest {
             assertTrue(pending.flags and PendingIntent.FLAG_UPDATE_CURRENT != 0)
             val intent = Intent(pending.savedIntent)
             assertEquals(ComponentName(app, MainActivity::class.java), intent.component)
-            assertEquals(LaunchActionMsg.TO_TAG, LaunchActions.read(intent))
+            assertEquals(LaunchMsg(LaunchActionMsg.TO_TAG), LaunchActions.read(intent))
         }
         val camera = shadowOf(n.action("Open camera").actionIntent)
         assertEquals(

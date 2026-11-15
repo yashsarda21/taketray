@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
-import 'package:taketray/domain/models/vn_copy.dart';
-import 'package:taketray/domain/models/vn_session.dart';
 
 /// What one remove, move, add-to-reel, reel delete, skip or restore changed,
 /// so that Undo can put it back (D-84, D-94).
@@ -244,12 +244,12 @@ final class DeleteReelUndo extends UndoRecord {
     required this.reel,
     required List<ClipLink> links,
     required List<ReelReference> references,
-    required this.vnSession,
-    required List<VnCopy> vnCopies,
+    required this.editSession,
+    required List<EditCopy> editCopies,
     required List<Clip> sweptClips,
   }) : links = List.unmodifiable(links),
        references = List.unmodifiable(references),
-       vnCopies = List.unmodifiable(vnCopies),
+       editCopies = List.unmodifiable(editCopies),
        sweptClips = List.unmodifiable(sweptClips);
 
   /// The deleted reel, every field; null when there was no such reel (the
@@ -262,11 +262,14 @@ final class DeleteReelUndo extends UndoRecord {
   /// The reel's references.
   final List<ReelReference> references;
 
-  /// The reel's VN session, if it had one (phase 8).
-  final VnSession? vnSession;
+  /// The reel's editing session, if it had one (D-120). The app ends the
+  /// session before it deletes a reel (R8), so on the app's path this is
+  /// null and [editCopies] is empty; they are kept as a defence in depth.
+  /// The session's sent rows are not kept: Undo never brings them back.
+  final EditSession? editSession;
 
   /// The copy rows of that session.
-  final List<VnCopy> vnCopies;
+  final List<EditCopy> editCopies;
 
   /// Every field of each clip the orphan sweep deleted (D-56).
   final List<Clip> sweptClips;

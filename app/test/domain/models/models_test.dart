@@ -4,11 +4,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/edit_session.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
-import 'package:taketray/domain/models/vn_copy.dart';
-import 'package:taketray/domain/models/vn_session.dart';
+import 'package:taketray/domain/models/sent_clip.dart';
 import 'package:taketray/domain/models/zone_entry.dart';
 
 /// Encodes to JSON text and back, as a file on disk would.
@@ -119,24 +121,35 @@ void main() {
       expect(ReelReference.fromJson(viaText(bare.toJson())), bare);
     });
 
-    test('VnSession', () {
-      final session = VnSession(
+    test('EditSession', () {
+      final session = EditSession(
         reelId: 1,
+        editor: EditorApp.capcut,
         folderName: 'Goa (2)',
         createdAt: DateTime.utc(2026, 3, 10),
       );
-      expect(VnSession.fromJson(viaText(session.toJson())), session);
+      expect(EditSession.fromJson(viaText(session.toJson())), session);
     });
 
-    test('VnCopy', () {
-      const copy = VnCopy(
+    test('EditCopy', () {
+      final copy = EditCopy(
         reelId: 1,
         clipId: 7,
         copyMediaStoreId: 555,
         fileName: '2026-03-10_14-00-15.mp4',
         sizeBytes: 12345678,
+        copiedAt: DateTime.utc(2026, 3, 10, 14, 1),
       );
-      expect(VnCopy.fromJson(viaText(copy.toJson())), copy);
+      expect(EditCopy.fromJson(viaText(copy.toJson())), copy);
+    });
+
+    test('SentClip', () {
+      final sent = SentClip(
+        reelId: 1,
+        clipId: 7,
+        sentAt: DateTime.utc(2026, 3, 10, 14, 2),
+      );
+      expect(SentClip.fromJson(viaText(sent.toJson())), sent);
     });
 
     test('ZoneEntry', () {

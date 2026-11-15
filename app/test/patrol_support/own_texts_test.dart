@@ -36,6 +36,14 @@ void main() {
       expect(OwnText.evening(2).value, 'You shot 2 clips today. Tag them?');
     });
 
+    test('the copies reminder text is the native one', () {
+      final native = RegExp('<string name="copies_text">(.*?)</string>')
+          .firstMatch(strings)!
+          .group(1)!;
+      expect(OwnText.copiesBody().value, native);
+      expect(OwnText.copiesBody().value, 'Done editing? Tap to clean up.');
+    });
+
     test('a count of zero or less is no notification text', () {
       expect(() => OwnText.newClips(0), throwsArgumentError);
       expect(() => OwnText.evening(-1), throwsArgumentError);

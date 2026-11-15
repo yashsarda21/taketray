@@ -154,4 +154,30 @@ class ReminderTimesTest {
         // Summer time: London's day starts at 23:00 UTC the day before.
         assertEquals("2026-07-09T23:00:00Z", at(ReminderTimes.startOfToday(ms("2026-07-10T12:00:00Z"), london)))
     }
+    // ---- The copies reminder (Phase 8, D-124) ----
+
+    @Test
+    fun `copies are due exactly 3 days of 24 hours after the last copies`() {
+        assertEquals(3, ReminderTimes.COPIES_AFTER_DAYS)
+        assertEquals("2026-11-08T12:00:00Z", at(ReminderTimes.copiesDueAt(ms("2026-11-05T12:00:00Z"))))
+        assertEquals(3 * 24 * 60 * 60 * 1000L, ReminderTimes.copiesDueAt(0))
+        // To the millisecond: one before the third day is not the third day.
+        assertEquals("2026-11-08T12:00:00.001Z", at(ReminderTimes.copiesDueAt(ms("2026-11-05T12:00:00.001Z"))))
+        assertEquals(ms("2026-11-05T12:00:00Z") + 259_200_000L, ReminderTimes.copiesDueAt(ms("2026-11-05T12:00:00Z")))
+    }
+
+    @Test
+    fun `copies due time is elapsed time, not calendar days, across a daylight saving change`() {
+        // London's clocks go back on 2026-10-25: three calendar days later would be 73 hours.
+        val shot = ms("2026-10-24T12:00:00Z")
+        assertEquals("2026-10-27T12:00:00Z", at(ReminderTimes.copiesDueAt(shot)))
+        // And forward on 2026-03-29.
+        assertEquals("2026-03-31T12:00:00Z", at(ReminderTimes.copiesDueAt(ms("2026-03-28T12:00:00Z"))))
+    }
+
+    @Test
+    fun `copies due time saturates instead of overflowing`() {
+        assertEquals(Long.MAX_VALUE, ReminderTimes.copiesDueAt(Long.MAX_VALUE))
+        assertEquals(Long.MAX_VALUE, ReminderTimes.copiesDueAt(Long.MAX_VALUE - 1000))
+    }
 }

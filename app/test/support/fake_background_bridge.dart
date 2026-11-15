@@ -47,6 +47,9 @@ class FakeBackgroundBridge implements BackgroundBridge {
 
   LaunchAction? startAction;
 
+  /// The reel of [startAction] (a Done editing start).
+  int? startReelId;
+
   final List<String> calls = [];
 
   int launchListens = 0;
@@ -56,8 +59,8 @@ class FakeBackgroundBridge implements BackgroundBridge {
   final Map<String, int> _failures = {};
   final Map<String, Completer<void>> _gates = {};
 
-  late final StreamController<LaunchAction> _launches =
-      StreamController<LaunchAction>.broadcast(
+  late final StreamController<Launch> _launches =
+      StreamController<Launch>.broadcast(
         onListen: _start,
         onCancel: () => launchCancels++,
       );
@@ -73,7 +76,8 @@ class FakeBackgroundBridge implements BackgroundBridge {
   Completer<void> gate(String method) => _gates[method] = Completer<void>();
 
   /// A notification tapped while the app runs.
-  void emit(LaunchAction action) => _launches.add(action);
+  void emit(LaunchAction action, {int? reelId}) =>
+      _launches.add(Launch(action, reelId: reelId));
 
   /// An error on [launchActions].
   void emitError(Object error) => _launches.addError(error);
@@ -99,7 +103,7 @@ class FakeBackgroundBridge implements BackgroundBridge {
     _started = true;
     final start = startAction;
     startAction = null;
-    if (start != null) _launches.add(start);
+    if (start != null) _launches.add(Launch(start, reelId: startReelId));
   }
 
   @override
@@ -150,5 +154,5 @@ class FakeBackgroundBridge implements BackgroundBridge {
       _call('openBatterySettings', () => batteryOpens);
 
   @override
-  Stream<LaunchAction> get launchActions => _launches.stream;
+  Stream<Launch> get launchActions => _launches.stream;
 }

@@ -55,4 +55,4 @@ final class BackgroundSyncProvider
   }
 }
 
-String _$backgroundSyncHash() => r'72bb259e37eaf2b154948c9ed28dd36ecafa0534';
+String _$backgroundSyncHash() => r'cf00c6486dbb9614a896be3d42ccc2f3db4434ca';

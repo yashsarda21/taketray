@@ -11,20 +11,22 @@ import 'package:taketray/data/backup/backup_service.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
-import 'package:taketray/data/repositories/vn_repository.dart';
 import 'package:taketray/data/repositories/zone_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
-import 'package:taketray/domain/models/vn_copy.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
 import '../../support/clip_setup.dart';
 import '../../support/fixed_clock.dart';
+import '../../support/statement_log.dart';
 import '../../support/test_database.dart';
 
 final DateTime _t0 = DateTime.utc(2026, 10, 26, 9);
@@ -88,7 +90,10 @@ class _Seeded {
   late final ReelsRepository reels = ReelsRepository(db, clock);
   late final ClipsRepository clips = ClipsRepository(db, clock);
   late final ReferencesRepository references = ReferencesRepository(db, clock);
-  late final VnRepository vn = VnRepository(db, clock);
+  late final EditSessionsRepository sessions = EditSessionsRepository(
+    db,
+    clock,
+  );
   late final SettingsRepository settings = SettingsRepository(db, clock);
   late final ZoneRepository zones = ZoneRepository(db, clock);
 
@@ -128,16 +133,18 @@ class _Seeded {
     clock.advance(_minute);
     await references.add(london, 'https://youtu.be/xyz');
 
-    await vn.startSession(goa, 'Goa');
-    await vn.addCopy(
-      VnCopy(
+    await sessions.startSession(goa, EditorApp.capcut, 'Goa');
+    await sessions.recordCopies([
+      EditCopy(
         reelId: goa,
         clipId: shared,
         copyMediaStoreId: 9001,
         fileName: '20261026_0700_VID_1.mp4',
         sizeBytes: 1001,
+        copiedAt: clock.now(),
       ),
-    );
+    ]);
+    await sessions.recordSent(goa, [shared, pending]);
 
     await zones.record(_t0.subtract(const Duration(days: 30)), 'Asia/Kolkata');
     await zones.record(_t0.subtract(const Duration(days: 2)), 'Europe/London');
@@ -254,18 +261,25 @@ void main() {
       });
     });
 
-    test('leaves out VN sessions and phone-state settings', () async {
+    test('leaves out editing sessions and phone-state settings', () async {
       await _Seeded(db, clock).fill();
+      expect(await db.select(db.sentClips).get(), hasLength(2));
 
-      final file = jsonDecode(await backup.exportJson()) as Map;
+      final text = await backup.exportJson();
+      final file = jsonDecode(text) as Map;
 
       expect((file['settings'] as Map).keys, SettingsRepository.exportedKeys);
-      // No value anywhere in the file comes from the VN session or its copy:
-      // its folder ("Goa"), the copy's MediaStore id or its file name.
+      // No value anywhere in the file comes from the editing session, its
+      // copy or its sent rows: the folder ("Goa"), the editor, the copy's
+      // MediaStore id or its file name; and no section or key names them.
       final values = _leafValues(file);
       expect(values, isNot(contains(9001)));
       expect(values, isNot(contains('20261026_0700_VID_1.mp4')));
       expect(values, isNot(contains('Goa')));
+      expect(values, isNot(contains('capcut')));
+      for (final word in ['vn', 'session', 'cop', 'sent', 'editor']) {
+        expect(text.toLowerCase(), isNot(contains('"$word')), reason: word);
+      }
       expect(values, contains('Goa 🌴'), reason: 'the reel itself is there');
     });
   });
@@ -295,8 +309,8 @@ void main() {
             inboxSkipped: 1,
           ),
         );
-        expect(await other.select(other.vnSessions).get(), isEmpty);
-        expect(await other.select(other.vnCopies).get(), isEmpty);
+        expect(await other.select(other.editSessions).get(), isEmpty);
+        expect(await other.select(other.editCopies).get(), isEmpty);
         expect(
           await SettingsRepository(other, clock).load(),
           const AppSettings(
@@ -392,7 +406,12 @@ void main() {
       final after = await _everyRow(db);
       String withoutLeftOut(String rows) => rows
           .split('\n')
-          .where((l) => !l.startsWith('vn_') && !l.startsWith('settings'))
+          .where(
+            (l) =>
+                !l.startsWith('vn_') &&
+                !l.startsWith('sent_clips') &&
+                !l.startsWith('settings'),
+          )
           .join('\n');
       expect(withoutLeftOut(after), withoutLeftOut(before));
     });
@@ -842,8 +861,9 @@ void main() {
       final reels = await db.select(db.reels).get();
       expect([for (final r in reels) r.id], unorderedEquals([3, 7, 9]));
       expect(await db.select(db.clips).get(), hasLength(4));
-      expect(await db.select(db.vnSessions).get(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), isEmpty);
+      expect(await db.select(db.editSessions).get(), isEmpty);
+      expect(await db.select(db.editCopies).get(), isEmpty);
+      expect(await db.select(db.sentClips).get(), isEmpty);
       final keys = [for (final s in await db.select(db.settings).get()) s.key];
       expect(keys, unorderedEquals(SettingsRepository.exportedKeys));
       final zones = await ZoneRepository(db, clock).all();
@@ -1152,6 +1172,39 @@ void main() {
     },
   );
 
+  test('import deletes every row of all ten tables itself, children first, '
+      'sent_clips too', () async {
+    // The cascades would empty sent_clips anyway (through vn_sessions); the
+    // import must not rely on them (D-59: anything that keeps a clip id must
+    // be wiped by the import).
+    final log = StatementLog();
+    final logged = loggedTestDatabase(log);
+    addTearDown(logged.close);
+    await _Seeded(logged, clock).fill();
+    log.clear();
+
+    await BackupService(logged, clock).importJson(_fixture());
+
+    final deleted = [
+      for (final sql in log.writes)
+        if (RegExp(r'^DELETE FROM "(\w+)";?$').firstMatch(sql) case final m?)
+          m.group(1)!,
+    ];
+    expect(logged.allTables, hasLength(10));
+    expect(deleted.toSet(), {
+      for (final t in logged.allTables) t.actualTableName,
+    });
+    expect(
+      deleted.indexOf('sent_clips'),
+      lessThan(deleted.indexOf('vn_sessions')),
+    );
+    expect(
+      deleted.indexOf('vn_copies'),
+      lessThan(deleted.indexOf('vn_sessions')),
+    );
+    expect(deleted.indexOf('vn_sessions'), lessThan(deleted.indexOf('reels')));
+  });
+
   group('database errors during the replace', () {
     /// A database on drift's background isolate, as on the phone
     /// (drift_flutter), in a file that is deleted after the test.
@@ -1245,12 +1298,28 @@ void main() {
     await seeded.clips.removeClipsFromReel(seeded.london, [
       ...(await db.select(db.clipReels).get()).map((l) => l.clipId),
     ]);
-    await seeded.vn.endSession(seeded.goa);
+    await seeded.sessions.endSession(seeded.goa);
     await expectLater(
-      seeded.vn.startSession(seeded.goa, ' \u200B '),
+      seeded.sessions.startSession(seeded.goa, EditorApp.vn, ' \u200B '),
       throwsArgumentError,
     );
-    await seeded.vn.startSession(seeded.london, 'Secret folder');
+    await seeded.sessions.startSession(
+      seeded.london,
+      EditorApp.edits,
+      'Secret folder',
+    );
+    await seeded.sessions.recordSent(seeded.london, [1, 2]);
+    await seeded.sessions.recordCopies([
+      EditCopy(
+        reelId: seeded.london,
+        clipId: 1,
+        copyMediaStoreId: 4242,
+        fileName: 'Secret copy.mp4',
+        sizeBytes: 10,
+        copiedAt: clock.now(),
+      ),
+    ]);
+    await seeded.sessions.removeCopies(seeded.london, [4242]);
     await db
         .into(db.settings)
         .insertOnConflictUpdate(
@@ -1264,7 +1333,14 @@ void main() {
 
     expect(
       {for (final r in records) r.loggerName},
-      containsAll(['reels', 'clips', 'references', 'vn', 'zones', 'settings']),
+      containsAll([
+        'reels',
+        'clips',
+        'references',
+        'editSessions',
+        'zones',
+        'settings',
+      ]),
       reason: 'every repository logged something',
     );
     // The raw message, not `formatRecord`: that redacts paths and URIs, which

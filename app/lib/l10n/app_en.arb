@@ -2137,5 +2137,1368 @@
   "manualPickAllow": "Allow full access instead",
   "@manualPickAllow": {
     "description": "Button of the Manual mode sheet that asks for full video access, so Add videos can show folders."
+  },
+  "editSelectTitle": "Pick clips to edit",
+  "@editSelectTitle": {
+    "description": "Title of the screen where the clips to send to an editor are picked. The reel's name is under it."
+  },
+  "editSelectClear": "Clear",
+  "@editSelectClear": {
+    "description": "Top bar button on the clip picking screen that un-ticks every clip. It replaces Select all while every clip is ticked."
+  },
+  "editSelectInfo": "Clips go to your editor in the order you shot them.",
+  "@editSelectInfo": {
+    "description": "Note under the title of the clip picking screen."
+  },
+  "editBarNone": "No clips picked",
+  "@editBarNone": {
+    "description": "Bottom bar of the clip picking screen when nothing is ticked."
+  },
+  "editBarNoneHint": "Tap the clips you want to edit",
+  "@editBarNoneHint": {
+    "description": "Line under No clips picked."
+  },
+  "editBarPicked": "{count, plural, one{1 clip} other{{count} clips}} · {duration}",
+  "@editBarPicked": {
+    "description": "Bottom bar of the clip picking screen: how many clips are ticked and their total length, such as 12 clips · 1:18.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "editBarPickedDetail": "{size} · in shooting order",
+  "@editBarPickedDetail": {
+    "description": "Line under the ticked count on the clip picking screen: their total size, such as 900 MB, and that they go in the order they were shot.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editContinue": "Continue",
+  "@editContinue": {
+    "description": "Button of the clip picking screen that opens the editor sheet. It is off while no clip is ticked."
+  },
+  "sizeMegabytes": "{number}\u00a0MB",
+  "@sizeMegabytes": {
+    "description": "A size in decimal megabytes, with a no-break space before the unit so the number and the unit never part. {number} is a whole number such as 900.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "sizeGigabytes": "{number}\u00a0GB",
+  "@sizeGigabytes": {
+    "description": "A size in decimal gigabytes, with a no-break space before the unit so the number and the unit never part. {number} is a number with at most one decimal such as 1.2.",
+    "placeholders": {
+      "number": {
+        "type": "String"
+      }
+    }
+  },
+  "editorSheetTitle": "{count, plural, one{Edit 1 clip in…} other{Edit {count} clips in…}}",
+  "@editorSheetTitle": {
+    "description": "Title of the editor sheet: how many clips go to the editor chosen below.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editorSheetSubtitle": "{duration} · in shooting order",
+  "@editorSheetSubtitle": {
+    "description": "Line under the editor sheet title: the clips' total length, such as 1:18, and that they go in the order they were shot.",
+    "placeholders": {
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "editorNameCapcut": "CapCut",
+  "@editorNameCapcut": {
+    "description": "Name of the CapCut editor app."
+  },
+  "editorNameEdits": "Instagram Edits",
+  "@editorNameEdits": {
+    "description": "Name of the Instagram Edits editor app in the editor sheet, snacks and dialogs."
+  },
+  "editorNameVn": "VN",
+  "@editorNameVn": {
+    "description": "Name of the VN editor app."
+  },
+  "editorOther": "Other app…",
+  "@editorOther": {
+    "description": "Row of the editor sheet that opens Android's share menu."
+  },
+  "editorGetsOriginals": "Gets your original clips",
+  "@editorGetsOriginals": {
+    "description": "Line under CapCut and Instagram Edits in the editor sheet: they open the clips themselves, not copies."
+  },
+  "editorMakesCopies": "Makes temporary copies · {size}",
+  "@editorMakesCopies": {
+    "description": "Line under VN in the editor sheet: TakeTray copies the clips, and the size of the copies, such as 900 MB.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editorOtherSub": "Opens Android's share menu",
+  "@editorOtherSub": {
+    "description": "Line under Other app… in the editor sheet."
+  },
+  "editorNotInstalled": "Not installed",
+  "@editorNotInstalled": {
+    "description": "Line under an editor that is not on the phone, in the editor sheet."
+  },
+  "editorNotInstalledSemantics": "{editor}, not installed",
+  "@editorNotInstalledSemantics": {
+    "description": "Screen-reader label of a greyed-out editor row in the editor sheet.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorGreyedNote": "Editors you don't have are greyed out.",
+  "@editorGreyedNote": {
+    "description": "Note at the bottom of the editor sheet when an editor is not installed."
+  },
+  "editorSentSnack": "{count, plural, one{Sent 1 clip to {editor}} other{Sent {count} clips to {editor}}}",
+  "@editorSentSnack": {
+    "description": "Snack after the clips were handed to CapCut or Instagram Edits.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorOpenFailed": "Couldn't open {editor}. Try again.",
+  "@editorOpenFailed": {
+    "description": "Line in the editor sheet when CapCut or Instagram Edits did not open with the clips.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingTitle": "{editor} isn't installed",
+  "@editorMissingTitle": {
+    "description": "Title of the dialog shown when the phone has no such editor app.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingBody": "Install {editor} from the Play Store, or choose another editor.",
+  "@editorMissingBody": {
+    "description": "Body of the dialog shown when the phone has no such editor app.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editorMissingChoose": "Choose another",
+  "@editorMissingChoose": {
+    "description": "Button of the editor-missing dialog that goes back to the editor sheet."
+  },
+  "editorMissingStore": "Open Play Store",
+  "@editorMissingStore": {
+    "description": "Button of the editor-missing dialog that opens the editor's Play Store page."
+  },
+  "markStatusTitle": "Mark {name} as {status}?",
+  "@markStatusTitle": {
+    "description": "Title of the dialog that offers a new status for a reel. The status is Ready to edit or Published.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "markStatusReadyBody": "Helps you find it under Ready to edit. You can change this any time.",
+  "@markStatusReadyBody": {
+    "description": "Body of the dialog that offers to mark a reel Ready to edit."
+  },
+  "markStatusPublishedBody": "It moves to the Published filter. You can change this any time.",
+  "@markStatusPublishedBody": {
+    "description": "Body of the dialog that offers to mark a reel Published."
+  },
+  "markStatusNotNow": "Not now",
+  "@markStatusNotNow": {
+    "description": "Button of the mark-status dialog that changes nothing."
+  },
+  "markStatusConfirm": "Mark as {status}",
+  "@markStatusConfirm": {
+    "description": "Button of the mark-status dialog that sets the status. The status is Ready to edit or Published.",
+    "placeholders": {
+      "status": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditVideo": "Edit video",
+  "@reelEditVideo": {
+    "description": "Button on a reel's page, and its three-dot menu entry, that opens the clip picking screen for an editor."
+  },
+  "reelMenuShare": "Share",
+  "@reelMenuShare": {
+    "description": "Entry in the three-dot menu of a reel's page while clips are chosen: shares them through Android's share menu."
+  },
+  "viewerShare": "Share",
+  "@viewerShare": {
+    "description": "Action of the clip viewer that shares the clip through Android's share menu."
+  },
+  "shareChooserTitle": "{count, plural, one{Share video} other{Share {count} videos}}",
+  "@shareChooserTitle": {
+    "description": "Title of Android's share menu when clips are shared.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shareClipsMissing": "These clips are missing from your phone.",
+  "@shareClipsMissing": {
+    "description": "Snack when a share found no clip left on the phone."
+  },
+  "copySpaceTitle": "Copy clips for {editor}",
+  "@copySpaceTitle": {
+    "description": "Title of the screen that checks the phone has room for the copies an editor needs. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceNeed": "{count, plural, one{This clip needs {size}} other{These {count} clips need {size}}}",
+  "@copySpaceNeed": {
+    "description": "Headline of the space check when the copies fit: how many clips and the size of their copies, such as 900 MB.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceFree": "You have {free} free.",
+  "@copySpaceFree": {
+    "description": "Line under the space check headline: how much room the phone has, such as 6.2 GB.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyLegendCopies": "Copies: {size}",
+  "@copyLegendCopies": {
+    "description": "Legend of the storage bar: the size of the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyLegendFreeAfter": "Free after copying: {size}",
+  "@copyLegendFreeAfter": {
+    "description": "Legend of the storage bar: the room that is left after the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copySpaceBarSemantics": "Free space {free}, copies need {need}",
+  "@copySpaceBarSemantics": {
+    "description": "What a screen reader says for the storage bar when the copies fit.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      },
+      "need": {
+        "type": "String"
+      }
+    }
+  },
+  "copyReserveNote": "TakeTray keeps {size} free for your phone.",
+  "@copyReserveNote": {
+    "description": "Small note on the space check: the room TakeTray never fills, such as 500 MB.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyWhyTitle": "Why copies?",
+  "@copyWhyTitle": {
+    "description": "Title of the note that explains why an editor needs copies."
+  },
+  "vnCopyWhyBody": "VN needs all the clips in one folder. TakeTray copies them to {folder}. Your original clips stay where they are.",
+  "@vnCopyWhyBody": {
+    "description": "Body of the Why copies? note for VN. The folder is the path under Movies, such as Movies/TakeTray/Goa, shown in bold.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyTemporaryTitle": "Copies are temporary",
+  "@copyTemporaryTitle": {
+    "description": "Title of the note that says the copies are deleted later."
+  },
+  "vnCopyTemporaryBody": "After you export from VN, tap Done editing and TakeTray deletes them.",
+  "@vnCopyTemporaryBody": {
+    "description": "Body of the Copies are temporary note for VN."
+  },
+  "copyStart": "{count, plural, one{Copy 1 clip} other{Copy {count} clips}}",
+  "@copyStart": {
+    "description": "Button of the space check that starts copying.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyBack": "Back",
+  "@copyBack": {
+    "description": "Button of the space check, and of the screen where no clip could be copied, that goes back."
+  },
+  "copyShortTitle": "Not enough space",
+  "@copyShortTitle": {
+    "description": "Headline of the space check when the copies do not fit."
+  },
+  "copyShortBody": "{count, plural, one{This clip needs {size}. You have {free} free.} other{These {count} clips need {size}. You have {free} free.}}",
+  "@copyShortBody": {
+    "description": "Line under the Not enough space headline: the size of the copies and the room the phone has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortHave": "You have {free}",
+  "@copyShortHave": {
+    "description": "Legend of the storage bar when the copies do not fit: the room the phone has.",
+    "placeholders": {
+      "free": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortBy": "Short by {size}",
+  "@copyShortBy": {
+    "description": "Legend of the storage bar when the copies do not fit: how much more room is needed, with the room TakeTray keeps free.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortBarSemantics": "Copies need {need}, you have {free}, short by {size}",
+  "@copyShortBarSemantics": {
+    "description": "What a screen reader says for the storage bar when the copies do not fit.",
+    "placeholders": {
+      "need": {
+        "type": "String"
+      },
+      "free": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copyShortHelpTitle": "What you can do",
+  "@copyShortHelpTitle": {
+    "description": "Title of the note on the Not enough space screen."
+  },
+  "copyShortHelpBody": "Select fewer clips, or free up space on your phone and try again.",
+  "@copyShortHelpBody": {
+    "description": "Body of the note on the Not enough space screen."
+  },
+  "copySelectFewer": "Select fewer clips",
+  "@copySelectFewer": {
+    "description": "Button of the Not enough space screen that goes back to choosing clips."
+  },
+  "copyNothingTitle": "Nothing to copy",
+  "@copyNothingTitle": {
+    "description": "Headline of the space check when no clip is left to copy."
+  },
+  "copyNothingBody": "These clips are already copied, or missing from your phone.",
+  "@copyNothingBody": {
+    "description": "Line under the Nothing to copy headline."
+  },
+  "copyStartFailed": "Couldn't start copying. Try again.",
+  "@copyStartFailed": {
+    "description": "Message on the space check when copying could not start, or the phone's free room could not be read."
+  },
+  "copyProgressTitle": "Copying clips for {editor}",
+  "@copyProgressTitle": {
+    "description": "Title of the screen that shows the copying going on. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyProgressCount": "{done} of {total} clips",
+  "@copyProgressCount": {
+    "description": "Under the copying title: how many clips are done out of all.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyProgressBytes": "{done} of {all} · into Movies/TakeTray/{folder}",
+  "@copyProgressBytes": {
+    "description": "Under the clip count: the size copied so far, the whole size and the folder the copies go to.",
+    "placeholders": {
+      "done": {
+        "type": "String"
+      },
+      "all": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyPercent": "{percent}%",
+  "@copyPercent": {
+    "description": "What a screen reader says for the progress bar: the percent done.",
+    "placeholders": {
+      "percent": {
+        "type": "int"
+      }
+    }
+  },
+  "copyKeepOpen": "Keep TakeTray open until copying finishes. The screen stays on until then.",
+  "@copyKeepOpen": {
+    "description": "Line on the copying screen. Copying stops if TakeTray is closed, so the user is asked to keep it open."
+  },
+  "copyStopTitle": "Stop copying?",
+  "@copyStopTitle": {
+    "description": "Title of the dialog that asks whether to stop copying."
+  },
+  "copyStopBody": "{count, plural, =0{No copies have been made yet. Your original clips aren't affected.} one{The 1 copy made so far will be deleted. Your original clips aren't affected.} other{The {count} copies made so far will be deleted. Your original clips aren't affected.}}",
+  "@copyStopBody": {
+    "description": "Body of the Stop copying dialog: how many copies will be deleted.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyKeepCopying": "Keep copying",
+  "@copyKeepCopying": {
+    "description": "Button of the Stop copying dialog that carries on."
+  },
+  "copyStop": "Stop",
+  "@copyStop": {
+    "description": "Button of the Stop copying dialog that stops and deletes the copies."
+  },
+  "copyStoppedFirst": "Copying stopped. No copies were kept.",
+  "@copyStoppedFirst": {
+    "description": "Snack after the user stopped the first copy of a reel."
+  },
+  "copyStoppedAdd": "Copying stopped. The new copies were deleted.",
+  "@copyStoppedAdd": {
+    "description": "Snack after the user stopped a copy that was adding clips to a folder that already had copies."
+  },
+  "copySpaceFullTitle": "Phone storage is full",
+  "@copySpaceFullTitle": {
+    "description": "Headline when the phone ran out of room while copying."
+  },
+  "copySpaceFullBody": "{done} of {total} clips were copied before space ran out. Free up some space, then try again.",
+  "@copySpaceFullBody": {
+    "description": "Line under the Phone storage is full headline.",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyDeleteStop": "Delete copies and stop",
+  "@copyDeleteStop": {
+    "description": "Button that deletes the copies made so far and stops."
+  },
+  "copyInterruptedTitle": "Copying stopped",
+  "@copyInterruptedTitle": {
+    "description": "Headline when copying stopped in the middle: TakeTray was closed, or the phone could not save a file."
+  },
+  "copyInterruptedBody": "TakeTray was closed before copying finished. {done} of {total} clips were copied.",
+  "@copyInterruptedBody": {
+    "description": "Line under the Copying stopped headline when TakeTray was closed in the middle of copying (found after a restart).",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyStorageErrorBody": "The phone couldn't save the copies. {done} of {total} clips were copied.",
+  "@copyStorageErrorBody": {
+    "description": "Line under the Copying stopped headline when the copy stopped while TakeTray was open (the phone could not save a file).",
+    "placeholders": {
+      "done": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedTitle": "{count, plural, one{1 clip couldn't be copied} other{{count} clips couldn't be copied}}",
+  "@copyFailedTitle": {
+    "description": "Headline when some clips could not be copied and the others were.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedOneBody": "The clip from {time} may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedOneBody": {
+    "description": "Line under the headline when one clip could not be copied. The time is when the clip was shot.",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      },
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedOneBodyNoTime": "It may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedOneBodyNoTime": {
+    "description": "Line under the headline when one clip could not be copied and its time is not known.",
+    "placeholders": {
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyFailedManyBody": "They may have been deleted or moved. {others, plural, one{The other clip was copied.} other{The other {others} clips were copied.}}",
+  "@copyFailedManyBody": {
+    "description": "Line under the headline when several clips could not be copied.",
+    "placeholders": {
+      "others": {
+        "type": "int"
+      }
+    }
+  },
+  "copyContinueWith": "{count, plural, one{Continue with 1 clip} other{Continue with {count} clips}}",
+  "@copyContinueWith": {
+    "description": "Button that goes on with the clips that were copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAllFailedTitle": "{count, plural, one{The clip couldn't be copied} other{The clips couldn't be copied}}",
+  "@copyAllFailedTitle": {
+    "description": "Headline when no clip could be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAllFailedBody": "{count, plural, one{It may have been deleted or moved.} other{They may have been deleted or moved.}}",
+  "@copyAllFailedBody": {
+    "description": "Line under the headline when no clip could be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copyAddedSnack": "{count, plural, one{1 clip added to the {editor} folder} other{{count} clips added to the {editor} folder}}",
+  "@copyAddedSnack": {
+    "description": "Snack after more clips were copied into a folder that already had copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyReadyTitle": "Ready for {editor}",
+  "@copyReadyTitle": {
+    "description": "Headline of the screen that says the copies are made. The editor is VN.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "vnReadyNewProject": "New project",
+  "@vnReadyNewProject": {
+    "description": "The VN button the user is told to tap, shown in bold."
+  },
+  "vnReadyIntro": "In VN, tap {newProject} and open the {folder} folder.",
+  "@vnReadyIntro": {
+    "description": "Line under the Ready for VN headline. The button name and the folder are shown in bold.",
+    "placeholders": {
+      "newProject": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copyStepNumber": "Step {number}",
+  "@copyStepNumber": {
+    "description": "Small label above a step title.",
+    "placeholders": {
+      "number": {
+        "type": "int"
+      }
+    }
+  },
+  "vnStep1Title": "Open VN, tap New project",
+  "@vnStep1Title": {
+    "description": "Title of step 1 of the VN instructions."
+  },
+  "vnStep1Body": "It's the big + button.",
+  "@vnStep1Body": {
+    "description": "Help line of step 1 of the VN instructions."
+  },
+  "vnStep2Title": "Open the {folder} folder",
+  "@vnStep2Title": {
+    "description": "Title of step 2 of the VN instructions.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "vnStep2Body": "Inside Movies › TakeTray.",
+  "@vnStep2Body": {
+    "description": "Help line of step 2 of the VN instructions."
+  },
+  "vnStep3Title": "Select all the clips",
+  "@vnStep3Title": {
+    "description": "Title of step 3 of the VN instructions."
+  },
+  "vnStep3Body": "They're already in shooting order.",
+  "@vnStep3Body": {
+    "description": "Help line of step 3 of the VN instructions."
+  },
+  "vnFolderCamera": "Camera",
+  "@vnFolderCamera": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "vnFolderDownload": "Download",
+  "@vnFolderDownload": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "vnFolderWhatsApp": "WhatsApp Video",
+  "@vnFolderWhatsApp": {
+    "description": "Name of a folder in the picture of VN's folder list. It is VN's own folder name."
+  },
+  "copyOpenEditor": "Open {editor}",
+  "@copyOpenEditor": {
+    "description": "Button of the Ready screen that opens the editor.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "copyDone": "Done",
+  "@copyDone": {
+    "description": "Button of the Ready screen that goes back to the reel."
+  },
+  "editorShortEdits": "Edits",
+  "@editorShortEdits": {
+    "description": "Instagram Edits in the short places: the reel card pill, the editing banner and a section button (R8). CapCut and VN keep their names."
+  },
+  "reelEditingIn": "Editing in {editor}",
+  "@reelEditingIn": {
+    "description": "A reel card's pill, and the editing banner's title, while the reel is being edited in {editor} (\"VN\", \"CapCut\", \"Edits\").",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingInSize": "Editing in {editor} · {size}",
+  "@reelEditingInSize": {
+    "description": "The editing banner's title when the reel's folder holds copies: their total size.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingCopies": "{count, plural, one{1 copy in Movies/TakeTray/{folder}} other{{count} copies in Movies/TakeTray/{folder}}}",
+  "@reelEditingCopies": {
+    "description": "The VN editing banner's second line: the copies and the folder they are in.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingSentOn": "Sent on {date}",
+  "@reelEditingSentOn": {
+    "description": "The CapCut or Edits editing banner's second line: the day the clips were first sent.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelEditingSentOnCopies": "Sent on {date} · {count, plural, one{1 copy in Movies/TakeTray/{folder}} other{{count} copies in Movies/TakeTray/{folder}}}",
+  "@reelEditingSentOnCopies": {
+    "description": "The CapCut or Edits editing banner's second line when clips added later were copied into the folder.",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "reelDoneEditing": "Done editing",
+  "@reelDoneEditing": {
+    "description": "Button of the editing banner, and the confirm button of the Done editing question when there are no copies to delete."
+  },
+  "reelAddMoreClips": "Add more clips",
+  "@reelAddMoreClips": {
+    "description": "Button of the VN editing banner: opens the picker that copies more clips into the reel's folder."
+  },
+  "reelCopyShow": "Show",
+  "@reelCopyShow": {
+    "description": "Button of the banner shown while a reel's clips are being copied: opens the copying screen."
+  },
+  "reelNewSinceTitle": "New since you started editing",
+  "@reelNewSinceTitle": {
+    "description": "Title of the part of a reel's page with the clips the editor does not have yet."
+  },
+  "reelNewSinceSubtitle": "{count, plural, one{1 clip · not in your edit yet} other{{count} clips · not in your edit yet}}",
+  "@reelNewSinceSubtitle": {
+    "description": "Line under \"New since you started editing\".",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelCopyToFolder": "Copy to {editor} folder",
+  "@reelCopyToFolder": {
+    "description": "Button of the \"New since you started editing\" part: opens the picker that copies clips into the editor's folder.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelInEditTitle": "In your edit",
+  "@reelInEditTitle": {
+    "description": "Title of the part of a reel's page with the clips the editor already has."
+  },
+  "reelInEditFolder": "{count, plural, one{1 clip · in the {editor} folder} other{{count} clips · in the {editor} folder}}",
+  "@reelInEditFolder": {
+    "description": "Line under \"In your edit\" for VN: the clips whose copy is in the folder.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelInEditSent": "{count, plural, one{1 clip · sent to {editor} on {date}} other{{count} clips · sent to {editor} on {date}}}",
+  "@reelInEditSent": {
+    "description": "Line under \"In your edit\" for CapCut or Edits: the clips sent, and the day they were first sent.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsEditing": "{card}. {editing}",
+  "@reelCardSemanticsEditing": {
+    "description": "What a screen reader says for a reel card while the reel is being edited: the card's usual words, then \"Editing in {editor}\".",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      },
+      "editing": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddTitle": "Add clips to {editor} folder",
+  "@editAddTitle": {
+    "description": "Title of the picker that copies more clips into a reel's editing folder.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editInFolderMark": "In {editor} folder",
+  "@editInFolderMark": {
+    "description": "Mark on a clip tile of that picker: the clip's copy is in the folder already.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "clipTileSemanticsInFolder": "{label}, already in {editor} folder",
+  "@clipTileSemanticsInFolder": {
+    "description": "What a screen reader says for a clip tile whose copy is in the folder already: the tile's usual words, then this.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarCount": "{count, plural, one{1 new clip to copy} other{{count} new clips to copy}}",
+  "@editAddBarCount": {
+    "description": "Bottom bar of the add picker: how many ticked clips will be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAddBarDetail": "{size} · copies are added, never renamed",
+  "@editAddBarDetail": {
+    "description": "Second line of the add picker's bottom bar: the size of the clips to copy.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarNone": "Pick clips to add",
+  "@editAddBarNone": {
+    "description": "Bottom bar of the add picker when no new clip is ticked."
+  },
+  "editAddBarInFolder": "{count} already in the {editor} folder",
+  "@editAddBarInFolder": {
+    "description": "Second line of the add picker's bottom bar when no new clip is ticked.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddCopy": "Copy",
+  "@editAddCopy": {
+    "description": "Button of the add picker's bottom bar: goes on to the space check."
+  },
+  "editAlreadyInFolderSnack": "Already in the {editor} folder. Copies are deleted when you tap Done editing.",
+  "@editAlreadyInFolderSnack": {
+    "description": "Snack when a clip that is already in the folder is tapped in the add picker.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelAddToProject": "Add to your {editor} project",
+  "@reelAddToProject": {
+    "description": "Button of the \"New since you started editing\" part for CapCut and Edits: opens the picker that copies the new clips into the reel's folder, to add from that album.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddProjectTitle": "Add clips to your {editor} project",
+  "@editAddProjectTitle": {
+    "description": "Title of the picker that copies more clips into the folder of a CapCut or Edits project.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "editInTheFolderMark": "In the folder",
+  "@editInTheFolderMark": {
+    "description": "Mark on a clip tile of the CapCut and Edits add picker: the clip's copy is in the folder already."
+  },
+  "clipTileSemanticsInTheFolder": "{label}, already in the folder",
+  "@clipTileSemanticsInTheFolder": {
+    "description": "What a screen reader says for a clip tile of the CapCut and Edits add picker whose copy is in the folder already: the tile's usual words, then this.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddFolderBarCount": "{count, plural, one{1 clip to copy} other{{count} clips to copy}}",
+  "@editAddFolderBarCount": {
+    "description": "Bottom bar of the CapCut and Edits add picker: how many ticked clips will be copied.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAddFolderBarDetail": "{size} · into Movies/TakeTray/{folder}",
+  "@editAddFolderBarDetail": {
+    "description": "Second line of the CapCut and Edits add picker's bottom bar: the size of the clips to copy and the folder they go into.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "editAddBarInTheFolder": "{count} already in the folder",
+  "@editAddBarInTheFolder": {
+    "description": "Second line of the CapCut and Edits add picker's bottom bar when no new clip is ticked.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editAlreadyInTheFolderSnack": "Already in the folder. Copies are deleted when you tap Done editing.",
+  "@editAlreadyInTheFolderSnack": {
+    "description": "Snack when a clip that is already in the folder is tapped in the CapCut and Edits add picker."
+  },
+  "projectCopyWhyBody": "{editor} adds clips to a project from an album. TakeTray copies the clips you picked to {folder}. Your original clips stay where they are.",
+  "@projectCopyWhyBody": {
+    "description": "Body of the Why copies? note for CapCut and Edits. The folder is the path under Movies, such as Movies/TakeTray/Goa, shown in bold.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectCopyTemporaryBody": "After you export from {editor}, tap Done editing and TakeTray deletes them.",
+  "@projectCopyTemporaryBody": {
+    "description": "Body of the Copies are temporary note for CapCut and Edits.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectReadyTitle": "Ready to add in {editor}",
+  "@projectReadyTitle": {
+    "description": "Headline of the screen that says the copies for a CapCut or Edits project are made.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectReadyIntro": "In your {editor} project, tap {plus} and open the {folder} album.",
+  "@projectReadyIntro": {
+    "description": "Line under the Ready to add headline. The plus sign and the folder are shown in bold.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "plus": {
+        "type": "String"
+      },
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep1Title": "Open your project in {editor}",
+  "@projectStep1Title": {
+    "description": "Title of step 1 of the CapCut and Edits instructions.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep1Body": "The one you started from TakeTray.",
+  "@projectStep1Body": {
+    "description": "Help line of step 1 of the CapCut and Edits instructions."
+  },
+  "projectStep2Title": "Open the {folder} album",
+  "@projectStep2Title": {
+    "description": "Title of step 2 of the CapCut and Edits instructions.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "projectStep2Body": "It's in Movies › TakeTray.",
+  "@projectStep2Body": {
+    "description": "Help line of step 2 of the CapCut and Edits instructions."
+  },
+  "projectStep3Title": "Pick the new clips",
+  "@projectStep3Title": {
+    "description": "Title of step 3 of the CapCut and Edits instructions."
+  },
+  "projectStep3Body": "They're in shooting order.",
+  "@projectStep3Body": {
+    "description": "Help line of step 3 of the CapCut and Edits instructions."
+  },
+  "doneEditingExportedTitle": "Have you exported your video?",
+  "@doneEditingExportedTitle": {
+    "description": "Title of the Done editing question when copies will be deleted."
+  },
+  "doneEditingVnBody": "Once the copies are deleted, the VN project for {name} can't be edited any more. This frees {size}.",
+  "@doneEditingVnBody": {
+    "description": "Body of the Done editing question for VN; {name} is the reel's name, shown in bold.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingCopiesBody": "Once the copies are deleted, clips you added to your {editor} project from the folder may show as missing. This frees {size}.",
+  "@doneEditingCopiesBody": {
+    "description": "Body of the Done editing question for CapCut or Instagram Edits when the folder holds copies.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingSafe": "Your original clips are safe in your gallery.",
+  "@doneEditingSafe": {
+    "description": "Reassurance in the Done editing question."
+  },
+  "doneEditingNotYet": "Not yet",
+  "@doneEditingNotYet": {
+    "description": "Button of the Done editing question that changes nothing."
+  },
+  "doneEditingDeleteCopies": "Delete copies",
+  "@doneEditingDeleteCopies": {
+    "description": "Button of the Done editing question that deletes the copies and ends the editing."
+  },
+  "doneEditingFreedSnack": "Copies deleted · {size} freed",
+  "@doneEditingFreedSnack": {
+    "description": "Snack after Done editing deleted the copies.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingFreedLeftSnack": "Copies deleted · {size} freed. {count, plural, one{1 file was changed outside TakeTray, so it was left in the folder.} other{{count} files were changed outside TakeTray, so they were left in the folder.}}",
+  "@doneEditingFreedLeftSnack": {
+    "description": "Snack after Done editing when some files in the folder were no longer TakeTray's copies and were kept.",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "doneEditingTitle": "Done editing {name}?",
+  "@doneEditingTitle": {
+    "description": "Title of the Done editing question when there are no copies to delete.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingNoCopiesBody": "TakeTray stops showing which clips are in your {editor} project. Nothing is deleted.",
+  "@doneEditingNoCopiesBody": {
+    "description": "Body of the Done editing question when there are no copies to delete.",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "doneEditingSnack": "Done editing {name}",
+  "@doneEditingSnack": {
+    "description": "Snack after Done editing when nothing was deleted.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesNotDeleted": "Couldn't delete the copies. Try again.",
+  "@copiesNotDeleted": {
+    "description": "Said when copies in an editing folder could not be deleted, so nothing that needed them gone was done."
+  },
+  "copyStillRunning": "Copying is still running. Try again when it finishes.",
+  "@copyStillRunning": {
+    "description": "Snack when Delete on the VN copies screen is tapped for a reel whose copy job is still running; nothing is deleted and the row stays."
+  },
+  "deleteReelVnCopies": "{count, plural, one{The 1 VN copy ({size}) will also be deleted, and the VN project can't be edited after that.} other{The {count} VN copies ({size}) will also be deleted, and the VN project can't be edited after that.}}",
+  "@deleteReelVnCopies": {
+    "description": "Line of the Delete reel question when the reel has VN copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "deleteReelFolderCopies": "{count, plural, one{The 1 copy in Movies/TakeTray/{folder} ({size}) will also be deleted.} other{The {count} copies in Movies/TakeTray/{folder} ({size}) will also be deleted.}}",
+  "@deleteReelFolderCopies": {
+    "description": "Line of the Delete reel question when the reel has CapCut or Edits copies.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "folder": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesDeletedSuffix": "{count, plural, one{Its copy in the folder was deleted.} other{Their copies in the folder were deleted.}}",
+  "@copiesDeletedSuffix": {
+    "description": "Added to the remove or move snack when the clips' copies in the editing folder were deleted.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "removedWithCopies": "{message} {copies}",
+  "@removedWithCopies": {
+    "description": "The remove snack ({message}) followed by the copies sentence ({copies}).",
+    "placeholders": {
+      "message": {
+        "type": "String"
+      },
+      "copies": {
+        "type": "String"
+      }
+    }
+  },
+  "missingClipRemovedWithCopiesSnack": "Missing clip removed. {copies}",
+  "@missingClipRemovedWithCopiesSnack": {
+    "description": "The missing-clip remove snack followed by the copies sentence ({copies}), when its copy in the editing folder was deleted.",
+    "placeholders": {
+      "copies": {
+        "type": "String"
+      }
+    }
+  },
+  "movedToCopiesSnack": "Moved to {reel}. {copies}",
+  "@movedToCopiesSnack": {
+    "description": "The move snack followed by the copies sentence ({copies}).",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      },
+      "copies": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsGroupClips": "Clips",
+  "@settingsGroupClips": {
+    "description": "Heading of the Clips group in Settings (until Phase 10 builds the rest around it)."
+  },
+  "settingsCopiesTitle": "Storage used by VN copies",
+  "@settingsCopiesTitle": {
+    "description": "Title of the Settings row that opens the VN copies screen."
+  },
+  "settingsCopiesSummary": "{size} in {count, plural, one{1 reel} other{{count} reels}}",
+  "@settingsCopiesSummary": {
+    "description": "Second line of the VN copies row in Settings: how much the copies take and in how many reels, such as \"1.8 GB in 3 reels\".",
+    "placeholders": {
+      "size": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "settingsCopiesNone": "None",
+  "@settingsCopiesNone": {
+    "description": "Second line of the VN copies row in Settings when no reel has copies."
+  },
+  "copiesStorageTitle": "VN copies",
+  "@copiesStorageTitle": {
+    "description": "Title of the screen that lists the copies TakeTray made for editing."
+  },
+  "copiesStorageUsed": "used by VN copies in {count, plural, one{1 reel} other{{count} reels}}",
+  "@copiesStorageUsed": {
+    "description": "Line under the total size on the VN copies screen.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "copiesStorageRow": "{count, plural, one{1 copy} other{{count} copies}} · {size} · since {date}",
+  "@copiesStorageRow": {
+    "description": "Second line of a reel's row on the VN copies screen (VN): copies, their size and the day the editing session started.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageRowEditor": "{count, plural, one{1 copy} other{{count} copies}} for {editor} · {size} · since {date}",
+  "@copiesStorageRowEditor": {
+    "description": "Second line of a reel's row on the VN copies screen for CapCut or Instagram Edits: copies, the editor, their size and the day the session started.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "editor": {
+        "type": "String"
+      },
+      "size": {
+        "type": "String"
+      },
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageDelete": "Delete",
+  "@copiesStorageDelete": {
+    "description": "Button on a row of the VN copies screen that deletes those copies or files."
+  },
+  "copiesStorageDeleteSemantics": "Delete the copies of {name}",
+  "@copiesStorageDeleteSemantics": {
+    "description": "What a screen reader says for the Delete button of a reel's row.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageNote": "Copies are only for VN. Deleting them never touches your original clips.",
+  "@copiesStorageNote": {
+    "description": "Reassurance box under the reels on the VN copies screen."
+  },
+  "copiesStorageEmptyTitle": "No VN copies",
+  "@copiesStorageEmptyTitle": {
+    "description": "Title of the VN copies screen when there are no copies."
+  },
+  "copiesStorageEmptyBody": "When you edit a reel in VN, its temporary copies show up here.",
+  "@copiesStorageEmptyBody": {
+    "description": "Line under the title of the empty VN copies screen."
+  },
+  "copiesStorageOrphansLabel": "Not linked to a reel",
+  "@copiesStorageOrphansLabel": {
+    "description": "Heading of the group of files in the copy folders that no reel records."
+  },
+  "copiesStorageOrphansNote": "Left from an earlier install or a backup import. Android asks before deleting them.",
+  "@copiesStorageOrphansNote": {
+    "description": "Line under the \"Not linked to a reel\" heading."
+  },
+  "copiesStorageOrphanRow": "{count, plural, one{1 file} other{{count} files}} · {size}",
+  "@copiesStorageOrphanRow": {
+    "description": "Second line of a folder row in the \"Not linked to a reel\" group: its files and their size.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "size": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageOrphanDeleteSemantics": "Delete the files in {folder}",
+  "@copiesStorageOrphanDeleteSemantics": {
+    "description": "What a screen reader says for the Delete button of a folder in the \"Not linked to a reel\" group.",
+    "placeholders": {
+      "folder": {
+        "type": "String"
+      }
+    }
+  },
+  "copiesStorageNeedsAccess": "With full video access, TakeTray can also find copies left from an earlier install.",
+  "@copiesStorageNeedsAccess": {
+    "description": "Callout on the VN copies screen when TakeTray does not have full video access."
+  },
+  "copiesStorageLoadFailed": "Couldn't read the VN copies",
+  "@copiesStorageLoadFailed": {
+    "description": "Title shown when the VN copies screen could not read the copies."
   }
 }

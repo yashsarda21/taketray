@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
@@ -44,6 +46,7 @@ Future<FakeShooting> pumpHome(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
+  Map<int, EditorApp> editors = const {},
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   await pumpScreen(
@@ -59,6 +62,7 @@ Future<FakeShooting> pumpHome(
       ),
       pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
+      reelEditorsProvider.overrideWith((ref) => Stream.value(editors)),
       clockProvider.overrideWithValue(FixedClock(_now)),
       thumbnailCacheForTests,
     ],
@@ -314,6 +318,67 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('a reel being edited shows its editor on the card, and is '
+        'read with it', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpHome(
+        tester,
+        reels: mixed(),
+        editors: {5: EditorApp.vn, 4: EditorApp.capcut, 3: EditorApp.edits},
+      );
+
+      final cards = tester
+          .widgetList<TtReelCard>(find.byType(TtReelCard))
+          .toList();
+      expect(
+        [for (final c in cards) c.vnLabel],
+        ['Editing in VN', 'Editing in CapCut', 'Editing in Edits', null],
+      );
+      expect(
+        [for (final c in cards) c.semanticLabel],
+        [
+          'London Food. Collecting. 3 clips, 2 missing. Editing in VN',
+          'Day 1 Vlog. Ready to edit. 1 clip. Editing in CapCut',
+          'Goa. Published. 12 clips. Editing in Edits',
+          'Empty one. Collecting. 0 clips',
+        ],
+      );
+      expect(
+        tester.getSemantics(find.byType(TtReelCard).first).label,
+        'London Food. Collecting. 3 clips, 2 missing. Editing in VN',
+      );
+      handle.dispose();
+    });
+
+    testWidgets('while the sessions are not known, no card has a pill', (
+      tester,
+    ) async {
+      await pumpScreen(
+        tester,
+        const ReelsScreen(),
+        overrides: <Override>[
+          reelSummariesProvider.overrideWith((ref) => Stream.value(mixed())),
+          shootingModeControllerProvider.overrideWith(
+            () => FakeShooting(ShootingState.off),
+          ),
+          mediaAccessControllerProvider.overrideWith(
+            () => FakeAccess(MediaAccessLevel.full),
+          ),
+          pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
+          firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
+          reelEditorsProvider.overrideWith((ref) => const Stream.empty()),
+          clockProvider.overrideWithValue(FixedClock(_now)),
+          thumbnailCacheForTests,
+        ],
+      );
+
+      expect(find.byType(TtReelCard), findsNWidgets(4));
+      expect([
+        for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))
+          c.vnLabel,
+      ], everyElement(isNull));
+    });
+
     testWidgets('card opens reel detail', (tester) async {
       await pumpHome(tester, reels: mixed());
 
@@ -531,6 +596,8 @@ void main() {
           shooting: _on(),
           brightness: brightness,
           textScale: 2,
+          // The longest pill, and one on the long-named card.
+          editors: {5: EditorApp.capcut, 1: EditorApp.edits},
         );
         expect(tester.takeException(), isNull);
 

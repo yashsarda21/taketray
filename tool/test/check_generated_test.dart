@@ -24,9 +24,16 @@ case "$1 $2" in
     printf 'canonical\n' > android/app/src/main/kotlin/app/media/MediaApi.g.kt
     ;;
   "run drift_dev")
-    mkdir -p drift_schemas test/drift
-    printf 'canonical\n' > drift_schemas/drift_schema_v1.json
-    printf 'canonical\n' > test/drift/schema.dart
+    # Like make-migrations from schema v2 on: the dump, the steps helper next
+    # to the database class, the schema helpers, and the migration test only
+    # when there is none yet.
+    mkdir -p drift_schemas/db test/drift/db/generated lib/data
+    printf 'canonical\n' > drift_schemas/db/drift_schema_v1.json
+    printf 'canonical\n' > lib/data/db.steps.dart
+    printf 'canonical\n' > test/drift/db/generated/schema.dart
+    printf 'canonical\n' > test/drift/db/generated/schema_v1.dart
+    [ -f test/drift/db/migration_test.dart ] ||
+      printf 'template\n' > test/drift/db/migration_test.dart
     ;;
 esac
 ''';
@@ -286,10 +293,19 @@ void main() {
   });
 
   group('with drift databases in build.yaml', () {
+    const steps = 'app/lib/data/db.steps.dart';
+    const helper = 'app/test/drift/db/generated/schema_v1.dart';
+    const migrationTest = 'app/test/drift/db/migration_test.dart';
+    const schemaTest = 'app/test/drift/db/schema_test.dart';
+
     setUp(() {
       _write('app/build.yaml', 'options:\n  databases:\n    app: x.dart\n');
-      _write('app/drift_schemas/drift_schema_v1.json', 'canonical\n');
-      _write('app/test/drift/schema.dart', 'canonical\n');
+      _write('app/drift_schemas/db/drift_schema_v1.json', 'canonical\n');
+      _write(steps, 'canonical\n');
+      _write('app/test/drift/db/generated/schema.dart', 'canonical\n');
+      _write(helper, 'canonical\n');
+      _write(migrationTest, 'filled in by hand\n');
+      _write(schemaTest, 'written by hand\n');
     });
 
     test('runs make-migrations and passes when fresh', () async {
@@ -299,31 +315,99 @@ void main() {
     });
 
     test('keeps old schema dumps, which cannot be regenerated', () async {
-      _write('app/drift_schemas/drift_schema_v0.json', 'old dump\n');
+      _write('app/drift_schemas/db/drift_schema_v0.json', 'old dump\n');
       final result = await _run();
       expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
       expect(
-        File('${repo.path}/app/drift_schemas/drift_schema_v0.json')
+        File('${repo.path}/app/drift_schemas/db/drift_schema_v0.json')
             .existsSync(),
         isTrue,
       );
     });
 
     test('fails on a stale drift schema', () async {
-      _write('app/drift_schemas/drift_schema_v1.json', 'old\n');
+      _write('app/drift_schemas/db/drift_schema_v1.json', 'old\n');
       final result = await _run();
       expect(result.exitCode, 1);
       expect(
         result.stdout,
-        contains('stale: app/drift_schemas/drift_schema_v1.json'),
+        contains('stale: app/drift_schemas/db/drift_schema_v1.json'),
       );
     });
 
     test('fails on a stale schema helper under test/drift', () async {
-      _write('app/test/drift/schema.dart', 'old\n');
+      _write('app/test/drift/db/generated/schema.dart', 'old\n');
       final result = await _run();
       expect(result.exitCode, 1);
-      expect(result.stdout, contains('stale: app/test/drift/schema.dart'));
+      expect(
+        result.stdout,
+        contains('stale: app/test/drift/db/generated/schema.dart'),
+      );
+    });
+
+    test(
+      'fails on a stale schema_v*.dart helper, and regenerates it',
+      () async {
+        _write(helper, 'old\n');
+        final result = await _run();
+        expect(result.exitCode, 1);
+        expect(result.stdout, contains('stale: $helper'));
+        expect(File('${repo.path}/$helper').readAsStringSync(), 'canonical\n');
+      },
+    );
+
+    test('fails on a leftover schema helper that is no longer produced, and '
+        'deletes it', () async {
+      const orphan = 'app/test/drift/db/generated/schema_v9.dart';
+      _write(orphan, 'old\n');
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $orphan'));
+      expect(File('${repo.path}/$orphan').existsSync(), isFalse);
+    });
+
+    test(
+      'fails on a stale *.steps.dart under lib/, and regenerates it',
+      () async {
+        _write(steps, 'edited by hand\n');
+        final result = await _run();
+        expect(result.exitCode, 1);
+        expect(result.stdout, contains('stale: $steps'));
+        expect(result.stdout, isNot(contains('migration_test')));
+        expect(File('${repo.path}/$steps').readAsStringSync(), 'canonical\n');
+      },
+    );
+
+    test('fails on a *.steps.dart that was never committed', () async {
+      File('${repo.path}/$steps').deleteSync();
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $steps'));
+    });
+
+    test('fails on a leftover *.steps.dart that is no longer produced, and '
+        'deletes it', () async {
+      const orphan = 'app/lib/data/old.steps.dart';
+      _write(orphan, 'old\n');
+      final result = await _run();
+      expect(result.exitCode, 1);
+      expect(result.stdout, contains('stale: $orphan'));
+      expect(File('${repo.path}/$orphan').existsSync(), isFalse);
+    });
+
+    test('never deletes or rewrites the hand-filled migration_test.dart and '
+        'schema_test.dart', () async {
+      final result = await _run();
+      expect(result.exitCode, 0, reason: '${result.stdout}${result.stderr}');
+      expect(result.stdout, contains('generated files fresh'));
+      expect(
+        File('${repo.path}/$migrationTest').readAsStringSync(),
+        'filled in by hand\n',
+      );
+      expect(
+        File('${repo.path}/$schemaTest').readAsStringSync(),
+        'written by hand\n',
+      );
     });
   });
 }

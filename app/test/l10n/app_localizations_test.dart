@@ -259,4 +259,83 @@ void main() {
     );
     expect(l10n.calendarBackToDays, 'Back to the days');
   });
+
+  testWidgets('Phase 8 picking and editor handoff copy, verbatim', (
+    tester,
+  ) async {
+    late AppLocalizations l10n;
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Builder(
+          builder: (context) {
+            l10n = AppLocalizations.of(context);
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+
+    expect(l10n.editSelectTitle, 'Pick clips to edit');
+    expect(l10n.editSelectClear, 'Clear');
+    expect(
+      l10n.editSelectInfo,
+      'Clips go to your editor in the order you shot them.',
+    );
+    expect(l10n.editBarNone, 'No clips picked');
+    expect(l10n.editBarNoneHint, 'Tap the clips you want to edit');
+    expect(l10n.editBarPicked(1, '0:04'), '1 clip · 0:04');
+    expect(l10n.editBarPicked(12, '1:18'), '12 clips · 1:18');
+    expect(l10n.editBarPickedDetail('900 MB'), '900 MB · in shooting order');
+    expect(l10n.editContinue, 'Continue');
+    expect(l10n.sizeMegabytes('900'), '900\u00a0MB');
+    expect(l10n.sizeGigabytes('1.2'), '1.2\u00a0GB');
+    expect(l10n.editorSheetTitle(1), 'Edit 1 clip in…');
+    expect(l10n.editorSheetTitle(12), 'Edit 12 clips in…');
+    expect(l10n.editorSheetSubtitle('1:18'), '1:18 · in shooting order');
+    expect(
+      [l10n.editorNameCapcut, l10n.editorNameEdits, l10n.editorNameVn],
+      ['CapCut', 'Instagram Edits', 'VN'],
+    );
+    expect(l10n.editorOther, 'Other app…');
+    expect(l10n.editorGetsOriginals, 'Gets your original clips');
+    expect(l10n.editorMakesCopies('900 MB'), 'Makes temporary copies · 900 MB');
+    expect(l10n.editorOtherSub, "Opens Android's share menu");
+    expect(l10n.editorNotInstalled, 'Not installed');
+    expect(l10n.editorGreyedNote, "Editors you don't have are greyed out.");
+    expect(l10n.editorSentSnack(1, 'CapCut'), 'Sent 1 clip to CapCut');
+    expect(
+      l10n.editorSentSnack(5, 'Instagram Edits'),
+      'Sent 5 clips to Instagram Edits',
+    );
+    expect(l10n.editorOpenFailed('CapCut'), "Couldn't open CapCut. Try again.");
+    expect(l10n.editorMissingTitle('CapCut'), "CapCut isn't installed");
+    expect(
+      l10n.editorMissingBody('CapCut'),
+      'Install CapCut from the Play Store, or choose another editor.',
+    );
+    expect(l10n.editorMissingChoose, 'Choose another');
+    expect(l10n.editorMissingStore, 'Open Play Store');
+    expect(
+      l10n.markStatusTitle('Goa', 'Ready to edit'),
+      'Mark Goa as Ready to edit?',
+    );
+    expect(
+      l10n.markStatusReadyBody,
+      'Helps you find it under Ready to edit. You can change this any time.',
+    );
+    expect(
+      l10n.markStatusPublishedBody,
+      'It moves to the Published filter. You can change this any time.',
+    );
+    expect(l10n.markStatusNotNow, 'Not now');
+    expect(l10n.markStatusConfirm('Ready to edit'), 'Mark as Ready to edit');
+    expect(l10n.reelEditVideo, 'Edit video');
+    expect(l10n.reelMenuShare, 'Share');
+    expect(l10n.viewerShare, 'Share');
+    expect(l10n.shareChooserTitle(1), 'Share video');
+    expect(l10n.shareChooserTitle(3), 'Share 3 videos');
+    expect(l10n.shareClipsMissing, 'These clips are missing from your phone.');
+  });
 }

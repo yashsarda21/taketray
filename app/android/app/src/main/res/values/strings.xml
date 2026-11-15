@@ -41,4 +41,16 @@
     <string name="still_text">Shooting mode has been on for 14 days. Turn it off?</string>
     <string name="action_turn_off">Turn off</string>
     <string name="action_keep_on">Keep on</string>
+
+    <!-- The copies reminder (Phase 8, D-124): three days after the last copies
+         of an edit were made, one notification per reel. The title holds the
+         reel's name and the copies' size (Formatter.formatShortFileSize); the
+         lock screen shows only the public pair. The reel's name is the one
+         piece of user text in any TakeTray notification; never a video name or
+         a path. -->
+    <string name="copies_title">%1$s copies are using %2$s</string>
+    <string name="copies_text">Done editing? Tap to clean up.</string>
+    <string name="copies_public_title">TakeTray</string>
+    <string name="copies_public_text">Copies for an edit are still on your phone</string>
+    <string name="action_done_editing">Done editing</string>
 </resources>

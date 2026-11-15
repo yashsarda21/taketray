@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
@@ -7,15 +8,20 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_work_queue.dart';
 import 'package:taketray/data/media/picked_grants.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 import '../support/fake_background_bridge.dart';
 import '../support/fake_media_bridge.dart';
+import '../support/spy_edit_session_service.dart';
 import '../support/vm_harness.dart';
 
 /// A cache that only counts how often it is pruned.
@@ -74,6 +80,22 @@ class _OrderedBackground extends FakeBackgroundBridge {
   Future<NotificationAccess> notificationAccess() {
     order.add('notificationAccess');
     return super.notificationAccess();
+  }
+}
+
+/// A media bridge that runs [onScan] when the scan reads new videos.
+class _ScanProbe extends RecordingBridge {
+  void Function()? onScan;
+
+  @override
+  Future<List<MediaVideo>> videosAddedAfter(
+    String volumeName,
+    int afterGeneration,
+    List<String> folders,
+    int limit,
+  ) {
+    onScan?.call();
+    return super.videosAddedAfter(volumeName, afterGeneration, folders, limit);
   }
 }
 
@@ -232,6 +254,194 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(await tester.runAsync(h.media.toTag), hasLength(1));
+    });
+  });
+
+  group('the copy clean-up hook (D-123, fix round 2)', () {
+    testWidgets('is wired into the repositories before the first scan, so a '
+        'merge in that scan or a tag-out before the editing service was read '
+        'cleans up copies', (tester) async {
+      allowSecondDatabase();
+      final probe = _ScanProbe();
+      h = VmHarness(bridge: probe);
+      h.bridge.put([fakeVideo(id: 1, generation: 5)]);
+      await h.media.turnOnNow();
+      h.bridge.put([fakeVideo(id: 2, generation: 6)]);
+      final wiredAtScan = <bool>[];
+
+      probe.onScan = () {
+        final container = ProviderScope.containerOf(
+          tester.element(find.text('the app')),
+        );
+        wiredAtScan.add(
+          container.read(clipsRepositoryProvider).beforeLeave != null &&
+              container.read(reelsRepositoryProvider).beforeLeave != null,
+        );
+      };
+
+      await pumpLifecycle(tester);
+      await work(tester);
+
+      expect(wiredAtScan, isNotEmpty);
+      expect(wiredAtScan.every((w) => w), isTrue);
+    });
+  });
+
+  group('copy recovery (D-123, p8-task6)', () {
+    late SpyEditSessionService spy;
+
+    setUp(() => spy = SpyEditSessionService(h));
+
+    Future<void> start(WidgetTester tester) => pumpLifecycle(
+      tester,
+      extra: [editSessionServiceProvider.overrideWithValue(spy)],
+    );
+
+    testWidgets('recoverAtStart runs once per start, after the scan; a '
+        'resume reads the job again instead of a second recovery', (
+      tester,
+    ) async {
+      await h.media.turnOnNow();
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(spy.mediaCallsAtRecover.single, contains('videosAddedAfter'));
+      final currents = h.copy.calls.where((c) => c == 'current').length;
+
+      await resume(tester);
+      await work(tester);
+      await resume(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(h.copy.calls.where((c) => c == 'current').length, currents + 2);
+    });
+
+    testWidgets('runs with Shooting mode off too (the scan is skipped)', (
+      tester,
+    ) async {
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+    });
+
+    testWidgets('the copy job is followed from the start: an event is '
+        'applied with no copy screen open', (tester) async {
+      await start(tester);
+      await work(tester);
+      final now = h.media.clock.now().millisecondsSinceEpoch;
+
+      h.copy.emit(
+        CopyJob(
+          jobId: '1-$now',
+          reelId: 1,
+          folderName: 'Goa',
+          state: CopyState.running,
+          total: 1,
+          done: 1,
+          bytesDone: 1,
+          bytesTotal: 1,
+          copied: [
+            CopiedFile(
+              clipId: 1,
+              copyMediaStoreId: 601,
+              fileName: 'a.mp4',
+              sizeBytes: 1,
+              copiedAt: h.media.clock.now(),
+            ),
+          ],
+          failedClipIds: const [],
+          undeleted: const [],
+        ),
+      );
+      await work(tester);
+
+      expect(spy.applied, hasLength(1));
+    });
+
+    testWidgets('a failing recovery is logged by type and not surfaced', (
+      tester,
+    ) async {
+      final records = captureLogs();
+      spy.failRecover = StateError('boom');
+
+      await start(tester);
+      await work(tester);
+
+      expect(tester.takeException(), isNull);
+      expect(records.map((r) => r.message).join('\n'), contains('StateError'));
+    });
+
+    testWidgets('a recovery that never returns holds neither the background '
+        'copy, the notification clear nor the next run (T6-M6)', (
+      tester,
+    ) async {
+      await h.media.turnOnNow();
+      spy.holdRecover = Completer<void>();
+      await start(tester);
+      await work(tester);
+
+      expect(spy.calls, ['recover']);
+      expect(h.background.calls, contains('clearNewClipsNotification'));
+      expect(
+        h.background.calls.indexOf('writeState'),
+        isNonNegative,
+        reason: 'the flush ran',
+      );
+
+      // The run is over: a resume scans again while the recovery still hangs,
+      // and does not start a second recovery behind the first.
+      h.bridge.calls.clear();
+      await resume(tester);
+      await work(tester);
+      expect(h.bridge.calls, contains('videosAddedAfter'));
+      expect(spy.calls, ['recover']);
+
+      // When it finally answers, it counts as the start's recovery.
+      spy.holdRecover!.complete();
+      await work(tester);
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+    });
+
+    testWidgets('a recovery that threw is tried again on the next resume, '
+        'until it works, and then not again (T6-M2)', (tester) async {
+      spy.failRecover = StateError('boom');
+      await start(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover'], reason: 'retried, failed');
+
+      spy.failRecover = null;
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover', 'recover'], reason: 'worked');
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, hasLength(3), reason: 'a resume only reads the job');
+    });
+
+    testWidgets('a recovery the service reports as failed (it swallows the '
+        'error) is tried again on the next resume (T6-M2)', (tester) async {
+      spy.failedRuns = 1; // the first run reports a failure
+      await start(tester);
+      await work(tester);
+      expect(spy.calls, ['recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, ['recover', 'recover']);
+
+      await resume(tester);
+      await work(tester);
+      expect(spy.calls, hasLength(2));
     });
   });
 

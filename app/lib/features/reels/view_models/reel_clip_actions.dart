@@ -1,5 +1,6 @@
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/undo_record.dart';
@@ -15,6 +16,7 @@ class ClipActionOutcome {
     required List<UndoRecord> records,
     required List<String> reelNames,
     required this.clipCount,
+    this.copiesDeleted = 0,
   }) : records = List.unmodifiable(records),
        reelNames = List.unmodifiable(reelNames);
 
@@ -31,6 +33,11 @@ class ClipActionOutcome {
   /// many links it took out of the source reel.
   final int clipCount;
 
+  /// How many copies in the reel's editing folder were deleted first (R8),
+  /// for the snack's suffix: 0 when the reel has no session or the clips had
+  /// no copy.
+  final int copiesDeleted;
+
   /// Whether nothing changed (every clip was there already), so Undo would
   /// put nothing back.
   bool get isEmpty => records.every((r) => r.isEmpty);
@@ -43,10 +50,11 @@ class ClipActionOutcome {
 /// Kept alive, so an action that was started on a page that then goes away
 /// still finishes and can be undone.
 class ReelClipActions {
-  ReelClipActions(this._reels, this._clips);
+  ReelClipActions(this._reels, this._clips, this._editing);
 
   final ReelsRepository _reels;
   final ClipsRepository _clips;
+  final EditSessionService _editing;
 
   Future<String> _nameOf(int reelId) async {
     final reel = await _reels.getById(reelId);
@@ -97,6 +105,10 @@ class ReelClipActions {
 
   /// Moves [clipIds] from [fromReelId] to [toReelId]. Throws [StateError]
   /// for a reel that is gone, changing nothing.
+  ///
+  /// During an editing session the clips' copies are deleted first (R8,
+  /// `EditSessionService.beforeClipsLeaveReel`); when one cannot be deleted
+  /// that throws `CopiesNotDeleted` and nothing moves.
   Future<ClipActionOutcome> moveToReel({
     required int fromReelId,
     required int toReelId,
@@ -104,11 +116,13 @@ class ReelClipActions {
   }) async {
     final name = await _nameOf(toReelId);
     try {
+      final copies = await _editing.beforeClipsLeaveReel(fromReelId, clipIds);
       final record = await _clips.moveClips(fromReelId, toReelId, clipIds);
       return ClipActionOutcome(
         records: [record],
         reelNames: [name],
         clipCount: record.removedLinks.length,
+        copiesDeleted: copies,
       );
     } on Object catch (error) {
       _log.warning(
@@ -120,17 +134,23 @@ class ReelClipActions {
   }
 
   /// Removes [clipIds] from reel [reelId]. The videos stay in the gallery.
+  ///
+  /// During an editing session the clips' copies are deleted first (R8);
+  /// when one cannot be deleted that throws `CopiesNotDeleted` and nothing
+  /// is removed.
   Future<ClipActionOutcome> removeFromReel({
     required int reelId,
     required Set<int> clipIds,
   }) async {
     final name = await _nameOf(reelId);
     try {
+      final copies = await _editing.beforeClipsLeaveReel(reelId, clipIds);
       final record = await _clips.removeClipsFromReel(reelId, clipIds);
       return ClipActionOutcome(
         records: [record],
         reelNames: [name],
         clipCount: record.removedLinks.length,
+        copiesDeleted: copies,
       );
     } on Object catch (error) {
       _log.warning(
@@ -146,4 +166,5 @@ class ReelClipActions {
 ReelClipActions reelClipActions(Ref ref) => ReelClipActions(
   ref.watch(reelsRepositoryProvider),
   ref.watch(clipsRepositoryProvider),
+  ref.watch(editSessionServiceProvider),
 );

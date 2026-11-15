@@ -1,16 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 
 import '../../../support/reel_videos.dart';
+import '../../../support/spy_edit_session_service.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart';
 
 /// A verifier that only records what it was asked about.
 class _RecordingVerifier implements MediaVerifier {
@@ -192,6 +197,89 @@ void main() {
         container.read(reelDetailControllerProvider(goa.id)).hasError,
         isFalse,
       );
+    });
+  });
+
+  group('opening a reel checks its copies (R8)', () {
+    test('a copy deleted outside TakeTray is forgotten', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final copies = await startEditing(h, goa.id, EditorApp.vn, copied: ids);
+      // The second copy is gone from the folder.
+      h.editors.existing = {copies[0]};
+      final container = open(goa.id);
+
+      await stateOf(container, goa.id);
+      await settle();
+
+      final state = await container
+          .read(editSessionsRepositoryProvider)
+          .editState(goa.id);
+      expect([for (final c in state!.copies) c.clipId], [ids[0]]);
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(1));
+    });
+
+    test('once per open, not again when the clips change', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      await startEditing(h, goa.id, EditorApp.vn, copied: ids);
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+
+      await putInReel(h, goa.id, [reelVideo(2)]);
+      await settle();
+
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(1));
+      container.dispose();
+
+      final again = open(goa.id);
+      await stateOf(again, goa.id);
+      await settle();
+      expect(h.editors.calls.where((c) => c == 'existingCopies'), hasLength(2));
+    });
+
+    test('a reel with no session asks the phone nothing', () async {
+      final goa = await reels.create('Goa');
+      await putInReel(h, goa.id, [reelVideo(1)]);
+      final container = open(goa.id);
+
+      await stateOf(container, goa.id);
+      await settle();
+
+      expect(h.editors.calls, isEmpty);
+    });
+
+    test('a check that fails leaves the page and the copies as they are, '
+        'and logs the error type only', () async {
+      final goa = await reels.create('Goa Secret Trip');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      await startEditing(
+        h,
+        goa.id,
+        EditorApp.vn,
+        copied: ids,
+        folder: 'Goa Secret Trip',
+      );
+      h.editors.failNext('existingCopies');
+      final logs = captureLogs();
+      final container = open(goa.id);
+
+      final state = await stateOf(container, goa.id);
+      await settle();
+
+      expect(state!.clipCount, 1);
+      expect(
+        container.read(reelDetailControllerProvider(goa.id)).hasError,
+        isFalse,
+      );
+      final edit = await container
+          .read(editSessionsRepositoryProvider)
+          .editState(goa.id);
+      expect(edit!.copies, hasLength(1));
+      final text = logText(logs);
+      expect(text, contains('PlatformException'));
+      expect(text, isNot(contains('Goa Secret Trip')));
     });
   });
 
@@ -381,14 +469,19 @@ void main() {
       await stateOf(container, goa.id);
       await settle();
 
-      final record = await container
+      final removal = await container
           .read(reelDetailControllerProvider(goa.id).notifier)
           .removeMissing(ids.single);
       await settle();
+      final record = removal.record;
 
+      expect(removal.copiesDeleted, 0, reason: 'no session, no copy');
       expect(record.isEmpty, isFalse);
       expect(record.reelId, goa.id);
       expect(record.removedLinks.single.clipId, ids.single);
+      // A reel with no editing session touches no bridge (D-123).
+      expect(h.editors.calls, isEmpty);
+      expect(h.copy.calls, isEmpty);
       expect(
         container.read(reelDetailControllerProvider(goa.id)).value!.clipCount,
         0,
@@ -409,11 +502,12 @@ void main() {
       await stateOf(container, goa.id);
       await settle();
 
-      final record = await container
+      final removal = await container
           .read(reelDetailControllerProvider(goa.id).notifier)
           .removeMissing(ids.single);
 
-      expect(record.isEmpty, isTrue);
+      expect(removal.record.isEmpty, isTrue);
+      expect(removal.copiesDeleted, 0);
       expect(
         container.read(reelDetailControllerProvider(goa.id)).value!.clipCount,
         1,
@@ -431,11 +525,12 @@ void main() {
       await stateOf(container, goa.id);
       await settle();
 
-      final record = await container
+      final removal = await container
           .read(reelDetailControllerProvider(goa.id).notifier)
           .removeMissing(other.single);
 
-      expect(record.isEmpty, isTrue);
+      expect(removal.record.isEmpty, isTrue);
+      expect(removal.copiesDeleted, 0);
       expect(
         (await clips.watchReelClips(london.id).first).map((c) => c.clip.id),
         other,
@@ -456,7 +551,8 @@ void main() {
       final second = notifier.removeMissing(ids.single);
 
       expect(identical(first, second), isTrue);
-      expect((await first).removedLinks, hasLength(1));
+      expect((await first).record.removedLinks, hasLength(1));
+      expect((await second).record.removedLinks, hasLength(1));
     });
 
     test('a failure is thrown, and a retry works', () async {
@@ -473,9 +569,124 @@ void main() {
       );
 
       await expectLater(notifier.removeMissing(ids.single), throwsStateError);
-      final record = await notifier.removeMissing(ids.single);
+      final record = (await notifier.removeMissing(ids.single)).record;
 
       expect(record.removedLinks, hasLength(1));
+    });
+
+    test("deletes the clip's copy first (R8); when that fails nothing is "
+        'removed (p8-task6)', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)], onPhone: false);
+      final spy = SpyEditSessionService(h)
+        ..failLeave = const CopiesNotDeleted(1);
+      final container = open(
+        goa.id,
+        extra: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+      await stateOf(container, goa.id);
+      await settle();
+      final notifier = container.read(
+        reelDetailControllerProvider(goa.id).notifier,
+      );
+
+      await expectLater(
+        notifier.removeMissing(ids.single),
+        throwsA(isA<CopiesNotDeleted>()),
+      );
+      expect(spy.calls, ['leave ${goa.id} ${ids.single}']);
+      expect(await clips.clipIdsOfReel(goa.id), {ids.single});
+
+      spy.failLeave = null;
+      final record = (await notifier.removeMissing(ids.single)).record;
+      expect(spy.calls, hasLength(2));
+      expect(spy.reelClipsAtLeave.last, {ids.single});
+      expect(record.removedLinks, hasLength(1));
+    });
+
+    test('a clip that is not removed asks for no clean-up', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final spy = SpyEditSessionService(h);
+      final container = open(
+        goa.id,
+        extra: [editSessionServiceProvider.overrideWithValue(spy)],
+      );
+      await stateOf(container, goa.id);
+      await settle();
+
+      await container
+          .read(reelDetailControllerProvider(goa.id).notifier)
+          .removeMissing(ids.single);
+
+      expect(spy.calls, isEmpty);
+    });
+
+    test("during a session the clip's copy is deleted and counted "
+        '(p8-task11-fix)', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [
+        reelVideo(1),
+        reelVideo(2),
+      ], onPhone: false);
+      final copies = await startEditing(
+        h,
+        goa.id,
+        EditorApp.vn,
+        copied: [ids[0], ids[1]],
+      );
+      h.editors.allow({'deleteCopies'});
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+
+      final removal = await container
+          .read(reelDetailControllerProvider(goa.id).notifier)
+          .removeMissing(ids[0]);
+
+      expect(removal.copiesDeleted, 1, reason: 'only its own copy');
+      expect(removal.record.removedLinks.single.clipId, ids[0]);
+      expect(h.editors.existing, {copies[1]});
+    });
+
+    test('a session where the clip has no copy counts none '
+        '(p8-task11-fix)', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [
+        reelVideo(1),
+        reelVideo(2),
+      ], onPhone: false);
+      await startEditing(h, goa.id, EditorApp.vn, copied: [ids[1]]);
+      h.editors.allow({'deleteCopies'});
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+
+      final removal = await container
+          .read(reelDetailControllerProvider(goa.id).notifier)
+          .removeMissing(ids[0]);
+
+      expect(removal.copiesDeleted, 0);
+      expect(removal.record.isEmpty, isFalse);
+    });
+
+    test('two taps at once share one count (p8-task11-fix)', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)], onPhone: false);
+      await startEditing(h, goa.id, EditorApp.vn, copied: [ids.single]);
+      h.editors.allow({'deleteCopies'});
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+      final notifier = container.read(
+        reelDetailControllerProvider(goa.id).notifier,
+      );
+
+      final first = notifier.removeMissing(ids.single);
+      final second = notifier.removeMissing(ids.single);
+
+      expect((await first).copiesDeleted, 1);
+      expect((await second).copiesDeleted, 1);
     });
   });
 }

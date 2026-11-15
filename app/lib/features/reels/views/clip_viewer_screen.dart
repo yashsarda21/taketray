@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/zone_city.dart';
 import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
+import 'package:taketray/features/editors/views/open_share.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
 import 'package:taketray/features/reels/view_models/clip_viewer_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
@@ -43,7 +45,8 @@ const double _bottomMaxFraction = 0.6;
 ///   clip was shot (`ClipLocalTime.wallClock`, never converted) and " ·
 ///   {city} time" only when that is not the phone's zone; the mute switch.
 /// - **Bottom:** the scrubber, "In" with a tag for each reel the clip is in,
-///   and **Add to reel**, **Move** and **Remove**. Add and Move open the
+///   and **Add to reel**, **Move**, **Remove** and **Share** (Android's share
+///   menu for this clip, D-126). Add and Move open the
 ///   reel picker (D-88); Remove takes the clip out with "Removed from
 ///   {reel}. The video is still in your gallery." and **Undo**. Move and
 ///   Remove go on to the clip that takes its place, the one before it at the
@@ -77,6 +80,9 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
 
   /// A remove is running, so a second tap does nothing.
   bool _removing = false;
+
+  /// A share is opening, so a second tap on Share does nothing.
+  bool _sharing = false;
 
   /// The clip whose page the user is swiping away from, until the swipe
   /// settles. The pager moves the viewer to the next clip at the middle of
@@ -209,6 +215,11 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
               icon: Symbols.playlist_remove_rounded,
               label: l10n.viewerRemove,
               onPressed: () => unawaited(_remove(current.clip.id)),
+            ),
+            TtViewerAction(
+              icon: Symbols.share_rounded,
+              label: l10n.viewerShare,
+              onPressed: () => unawaited(_share(current.clip.id)),
             ),
           ],
         ),
@@ -438,9 +449,26 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
     if (mounted) _leaveIfGone();
   }
 
+  /// **Share**: opens Android's share menu for the clip showing, once however
+  /// fast the taps (D-126). The pager holds only clips that are on the phone;
+  /// one that went missing a moment ago is left out by the share, which then
+  /// says the clips are missing.
+  Future<void> _share(int clipId) async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      await openShare(context, ref, [clipId]);
+    } finally {
+      _sharing = false;
+    }
+  }
+
   /// **Remove** (and **Remove from reel** under "can't be played"): takes the
   /// clip out of this reel and says so, with **Undo**. The video stays in the
   /// gallery. The viewer goes on to the clip that takes its place.
+  ///
+  /// During an editing session the clip's copy is deleted first (R8) and the
+  /// snack says so; when it cannot be deleted nothing is removed.
   Future<void> _remove(int clipId) async {
     if (_removing) return;
     final l10n = AppLocalizations.of(context);
@@ -453,11 +481,20 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
         clipIds: {clipId},
       );
       if (!done.isEmpty) {
+        final removed = l10n.viewerRemovedSnack(done.reelNames.single);
         snacks.showUndoAll(
-          l10n.viewerRemovedSnack(done.reelNames.single),
+          done.copiesDeleted > 0
+              ? l10n.removedWithCopies(
+                  removed,
+                  l10n.copiesDeletedSuffix(done.copiesDeleted),
+                )
+              : removed,
           done.records,
         );
       }
+    } on CopiesNotDeleted {
+      // Nothing was removed (R8); the clip stays to try again.
+      snacks.show(l10n.copiesNotDeleted, done: false);
     } on Object {
       // The actions logged the type.
       snacks.show(l10n.reelActionFailed, done: false);

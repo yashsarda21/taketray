@@ -7,6 +7,12 @@ import app.taketray.background.BackgroundFlutterApi
 import app.taketray.background.BackgroundHostApi
 import app.taketray.background.BackgroundHostApiImpl
 import app.taketray.background.LaunchActionRelay
+import app.taketray.editors.EditorsHostApi
+import app.taketray.editors.EditorsHostApiImpl
+import app.taketray.editors.CopyEngine
+import app.taketray.editors.CopyFlutterApi
+import app.taketray.editors.CopyHostApi
+import app.taketray.editors.CopyHostApiImpl
 import app.taketray.media.MediaHostApi
 import app.taketray.media.MediaHostApiImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -18,6 +24,11 @@ class MainActivity : FlutterActivity() {
 
     /** The background bridge of the current engine (D-103); null before configure and after clean-up. */
     private var background: BackgroundHostApiImpl? = null
+
+    /** The editors bridge of the current engine (D-121); null before configure and after clean-up. */
+    private var editors: EditorsHostApiImpl? = null
+    /** The copy bridge of the current engine (D-122); the job itself lives in the process-wide [CopyEngine]. */
+    private var copy: CopyHostApiImpl? = null
 
     /**
      * True when Android re-created this activity from saved state (after the
@@ -47,13 +58,28 @@ class MainActivity : FlutterActivity() {
         BackgroundHostApi.setUp(messenger, bg)
         bg.launches.onIntent(intent, restored)
 
-        DebugHooks.register(flutterEngine, applicationContext)
+        // The editors bridge (D-121): shares, the store listing and the copy folders behind their guard.
+        val ed = EditorsHostApiImpl(this)
+        editors = ed
+        EditorsHostApi.setUp(messenger, ed)
+
+        // Copying (D-122): the job belongs to the process; this activity gives the bridge its window for the screen-on flag.
+        val copyFlutterApi = CopyFlutterApi(messenger)
+        val copyApi = CopyHostApiImpl(this, CopyEngine.shared(applicationContext), send = copyFlutterApi::onCopyChanged)
+        copy = copyApi
+        CopyHostApi.setUp(messenger, copyApi)
+
+        // The activity itself: the debug copy hooks read its window (the others use the application context).
+        DebugHooks.register(flutterEngine, this)
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
         val messenger = flutterEngine.dartExecutor.binaryMessenger
         MediaHostApi.setUp(messenger, null)
         BackgroundHostApi.setUp(messenger, null)
+        EditorsHostApi.setUp(messenger, null)
+        editors?.onHostGone()
+        editors = null
         media?.onHostGone()
         media = null
         background?.let {
@@ -61,6 +87,9 @@ class MainActivity : FlutterActivity() {
             it.launches.close()
         }
         background = null
+        CopyHostApi.setUp(messenger, null)
+        copy?.onHostGone()
+        copy = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -89,7 +118,11 @@ class MainActivity : FlutterActivity() {
         background?.onPermissionResult(requestCode)
     }
 
-    /** The photo picker's answer (D-112): the media bridge takes it, or drops it when no call waits (the process died). */
+    /**
+     * The photo picker's answer (D-112) and the copies' delete consent (D-121):
+     * each bridge takes only its own request code, or drops it when no call
+     * waits (the process died).
+     */
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(
         requestCode: Int,
@@ -98,6 +131,7 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onActivityResult(requestCode, resultCode, data)
         media?.onActivityResult(requestCode, resultCode, data)
+        editors?.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {
@@ -106,6 +140,8 @@ class MainActivity : FlutterActivity() {
         // these bridges belong to is destroyed with the activity.
         media?.onHostGone()
         background?.onHostGone()
+        editors?.onHostGone()
+        copy?.onHostGone()
         super.onDestroy()
     }
 }

@@ -3,10 +3,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
+import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/edit_copy.dart';
+import 'package:taketray/domain/models/edit_session.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
@@ -390,52 +394,103 @@ void main() {
   });
 
   group('delete', () {
-    test('removes the reel with its links, references and VN rows', () async {
-      final reel = await repo.create('Goa');
+    test(
+      'removes the reel with its links, references and editing rows',
+      () async {
+        final reel = await repo.create('Goa');
+        final other = await repo.create('Other');
+        final clip = await insertClip(1);
+        await link(clip, reel.id);
+        await link(clip, other.id);
+        await db
+            .into(db.reelReferences)
+            .insert(
+              ReelReferencesCompanion.insert(
+                reelId: reel.id,
+                url: 'https://example.com/a',
+                source: ReferenceSource.link,
+                createdAt: _t0,
+              ),
+            );
+        await db
+            .into(db.editSessions)
+            .insert(
+              EditSessionsCompanion.insert(
+                reelId: Value(reel.id),
+                folderName: 'Goa',
+                createdAt: _t0,
+              ),
+            );
+        await db
+            .into(db.editCopies)
+            .insert(
+              EditCopiesCompanion.insert(
+                reelId: reel.id,
+                clipId: clip,
+                copyMediaStoreId: 500,
+                fileName: 'VID_1.mp4',
+                sizeBytes: 1000,
+              ),
+            );
+
+        await repo.delete(reel.id);
+
+        expect(await repo.getById(reel.id), isNull);
+        expect(await repo.getById(other.id), isNotNull);
+        expect(await db.select(db.reelReferences).get(), isEmpty);
+        expect(await db.select(db.editSessions).get(), isEmpty);
+        expect(await db.select(db.editCopies).get(), isEmpty);
+        final links = await db.select(db.clipReels).get();
+        expect(links.map((l) => l.reelId), [other.id]);
+      },
+    );
+
+    test('cascades the editing session with its copy and sent rows, and its '
+        'record keeps the editor and each copy time; Undo brings the session '
+        'and copies back, not the sent rows (D-120)', () async {
+      final goa = await repo.create('Goa');
       final other = await repo.create('Other');
       final clip = await insertClip(1);
-      await link(clip, reel.id);
-      await link(clip, other.id);
-      await db
-          .into(db.reelReferences)
-          .insert(
-            ReelReferencesCompanion.insert(
-              reelId: reel.id,
-              url: 'https://example.com/a',
-              source: ReferenceSource.link,
-              createdAt: _t0,
-            ),
-          );
-      await db
-          .into(db.vnSessions)
-          .insert(
-            VnSessionsCompanion.insert(
-              reelId: Value(reel.id),
-              folderName: 'Goa',
-              createdAt: _t0,
-            ),
-          );
-      await db
-          .into(db.vnCopies)
-          .insert(
-            VnCopiesCompanion.insert(
-              reelId: reel.id,
-              clipId: clip,
-              copyMediaStoreId: 500,
-              fileName: 'VID_1.mp4',
-              sizeBytes: 1000,
-            ),
-          );
+      await link(clip, goa.id);
+      final sessions = EditSessionsRepository(db, clock);
+      await sessions.startSession(goa.id, EditorApp.capcut, 'Goa');
+      await sessions.startSession(other.id, EditorApp.edits, 'Other');
+      final copiedAt = _t0.add(const Duration(minutes: 3));
+      final copy = EditCopy(
+        reelId: goa.id,
+        clipId: clip,
+        copyMediaStoreId: 500,
+        fileName: 'VID_1.mp4',
+        sizeBytes: 1000,
+        copiedAt: copiedAt,
+      );
+      await sessions.recordCopies([copy]);
+      await sessions.recordSent(goa.id, [clip, 77]);
+      await sessions.recordSent(other.id, [clip]);
 
-      await repo.delete(reel.id);
+      final record = await repo.delete(goa.id);
 
-      expect(await repo.getById(reel.id), isNull);
-      expect(await repo.getById(other.id), isNotNull);
-      expect(await db.select(db.reelReferences).get(), isEmpty);
-      expect(await db.select(db.vnSessions).get(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), isEmpty);
-      final links = await db.select(db.clipReels).get();
-      expect(links.map((l) => l.reelId), [other.id]);
+      expect(
+        record.editSession,
+        EditSession(
+          reelId: goa.id,
+          editor: EditorApp.capcut,
+          folderName: 'Goa',
+          createdAt: _t0,
+        ),
+      );
+      expect(record.editCopies, [copy]);
+      expect(await sessions.sessionOf(goa.id), isNull);
+      expect(await db.select(db.editCopies).get(), isEmpty);
+      final sent = await db.select(db.sentClips).get();
+      expect([for (final s in sent) (s.reelId, s.clipId)], [(other.id, clip)]);
+
+      await repo.undo(record);
+
+      expect(await sessions.sessionOf(goa.id), record.editSession);
+      expect(await sessions.copiesOf(goa.id), [copy]);
+      expect((await sessions.watchEditState(goa.id).first)!.sentIds, isEmpty);
+      expect((await sessions.watchEditState(other.id).first)!.sentIds, {clip});
     });
 
     test('keeps a clip still in another reel, drops one only here', () async {
@@ -488,18 +543,18 @@ void main() {
       final clip = await insertClip(1);
       await link(clip, other.id);
       await db
-          .into(db.vnSessions)
+          .into(db.editSessions)
           .insert(
-            VnSessionsCompanion.insert(
+            EditSessionsCompanion.insert(
               reelId: Value(other.id),
               folderName: 'Other',
               createdAt: _t0,
             ),
           );
       await db
-          .into(db.vnCopies)
+          .into(db.editCopies)
           .insert(
-            VnCopiesCompanion.insert(
+            EditCopiesCompanion.insert(
               reelId: other.id,
               clipId: clip,
               copyMediaStoreId: 500,
@@ -512,7 +567,7 @@ void main() {
       await repo.delete(goa.id);
 
       expect(await clipIds(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), hasLength(1));
+      expect(await db.select(db.editCopies).get(), hasLength(1));
     });
 
     test('deleting a reel updates every stream that showed it', () async {

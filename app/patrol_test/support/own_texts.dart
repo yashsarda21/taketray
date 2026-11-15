@@ -26,6 +26,12 @@ final class OwnText {
     );
   }
 
+  /// The copies reminder's text, "Done editing? Tap to clean up." (Phase 8,
+  /// D-124). Its title holds the reel's name and the copies' size, so a test
+  /// taps it by this line, which only TakeTray writes.
+  factory OwnText.copiesBody() =>
+      const OwnText._('Done editing? Tap to clean up.');
+
   /// The exact text.
   final String value;
 

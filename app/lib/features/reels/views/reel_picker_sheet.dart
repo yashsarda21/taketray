@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
@@ -151,7 +152,13 @@ Future<ClipActionOutcome?> pickAndPerform(
     }
     final message = switch (mode) {
       ReelPickerMode.add => addedToText(l10n, done.reelNames),
-      ReelPickerMode.move => l10n.movedToSnack(done.reelNames.single),
+      ReelPickerMode.move =>
+        done.copiesDeleted > 0
+            ? l10n.movedToCopiesSnack(
+                done.reelNames.single,
+                l10n.copiesDeletedSuffix(done.copiesDeleted),
+              )
+            : l10n.movedToSnack(done.reelNames.single),
       // The clips really added (a clip a picked reel had already is not
       // counted), as the skip snacks count what moved.
       ReelPickerMode.tag => l10n.tagClipsAddedSnack(
@@ -212,11 +219,16 @@ Future<ClipActionOutcome?> pickAndPerform(
         // The sheet was dragged away while this ran: it is not modal any
         // more, so the snack is seen now.
         if (closed) tell(done);
-      } on Object {
+      } on Object catch (error) {
         // The actions logged the type. In the sheet it tells the user
         // itself; after it closed, a snack does.
         if (!closed) rethrow;
-        snacks.show(l10n.reelActionFailed, done: false);
+        snacks.show(
+          error is CopiesNotDeleted
+              ? l10n.copiesNotDeleted
+              : l10n.reelActionFailed,
+          done: false,
+        );
       }
     },
   );
@@ -275,6 +287,10 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
   /// The last confirm or create failed for a reason the user cannot fix.
   bool _failed = false;
 
+  /// The last confirm failed because the clips' copies in an editing folder
+  /// could not be deleted first (R8): it says so instead.
+  bool _copiesFailed = false;
+
   /// A confirm is running; the buttons wait.
   bool _busy = false;
 
@@ -308,7 +324,12 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
       });
     } on Object {
       // The controller logged the type.
-      if (mounted) setState(() => _failed = true);
+      if (mounted) {
+        setState(() {
+          _failed = true;
+          _copiesFailed = false;
+        });
+      }
     }
   }
 
@@ -323,9 +344,10 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
     try {
       await widget.perform?.call(picked);
       if (mounted) navigator.pop(picked);
-    } on Object {
+    } on Object catch (error) {
       // The caller logged the type. The sheet stays open with its picks; if
       // it was dragged away meanwhile, the caller tells the user itself.
+      _copiesFailed = error is CopiesNotDeleted;
       if (mounted) {
         setState(() {
           _busy = false;
@@ -400,7 +422,11 @@ class _ReelPickerSheetState extends ConsumerState<_ReelPickerSheet> {
     return TtSheet(
       title: title,
       footer: SheetFooter(
-        failure: _failed ? l10n.reelActionFailed : null,
+        failure: !_failed
+            ? null
+            : _copiesFailed
+            ? l10n.copiesNotDeleted
+            : l10n.reelActionFailed,
         buttons: TtButtonRow(
           children: [
             TtButton(

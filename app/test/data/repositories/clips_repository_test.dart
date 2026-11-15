@@ -806,18 +806,18 @@ void main() {
         mediaStoreClip(10),
       ])).single;
       await db
-          .into(db.vnSessions)
+          .into(db.editSessions)
           .insert(
-            VnSessionsCompanion.insert(
+            EditSessionsCompanion.insert(
               reelId: Value(reel.id),
               folderName: 'Goa',
               createdAt: _t0,
             ),
           );
       await db
-          .into(db.vnCopies)
+          .into(db.editCopies)
           .insert(
-            VnCopiesCompanion.insert(
+            EditCopiesCompanion.insert(
               reelId: reel.id,
               clipId: id,
               copyMediaStoreId: 500,
@@ -829,7 +829,7 @@ void main() {
       await repo.removeClipsFromReel(reel.id, [id]);
 
       expect(await clipIds(), isEmpty);
-      expect(await db.select(db.vnCopies).get(), hasLength(1));
+      expect(await db.select(db.editCopies).get(), hasLength(1));
     });
   });
 
@@ -1483,6 +1483,28 @@ void main() {
 
         expect([for (final c in clips) c.id], ids);
         expect(await repo.allClipIds(), ids.toSet());
+      });
+    });
+
+    group('clipIdsOfReel (p8-task6)', () {
+      test("is the reel's clip ids, read once; other reels and unknown "
+          'reels are not mixed in', () async {
+        final goa = await reels.create('Goa');
+        final paris = await reels.create('Paris');
+        final inGoa = await repo.addNewClipsToReel(goa.id, [
+          mediaStoreClip(21),
+          mediaStoreClip(22),
+        ]);
+        final inParis = await repo.addNewClipsToReel(paris.id, [
+          mediaStoreClip(23),
+        ]);
+
+        expect(await repo.clipIdsOfReel(goa.id), inGoa.toSet());
+        expect(await repo.clipIdsOfReel(paris.id), inParis.toSet());
+        expect(await repo.clipIdsOfReel(999), isEmpty);
+
+        await repo.removeClipsFromReel(goa.id, [inGoa.first]);
+        expect(await repo.clipIdsOfReel(goa.id), {inGoa.last});
       });
     });
 
