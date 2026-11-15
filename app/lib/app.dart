@@ -82,9 +82,11 @@ class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
   /// Holds the first frame until the gate knows the flags, or until
   /// [_firstFrameLimit], whichever comes first.
   void _holdFirstFrame() {
+    // Read first: if it throws, nothing is held yet, and `dispose` meets
+    // neither an unassigned `_onboarding` nor a frame nobody releases.
+    _onboarding = ref.read(onboardingGateProvider);
     WidgetsBinding.instance.deferFirstFrame();
     _holdingFirstFrame = true;
-    _onboarding = ref.read(onboardingGateProvider);
     if (_onboarding.value != null) {
       _allowFirstFrame();
       return;

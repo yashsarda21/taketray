@@ -403,8 +403,8 @@ It ends with `All tests passed!`. Open `app/lib/features/onboarding/view_models/
 **Key ideas:**
 
 - **Derive, do not arm.** The tip is a function of three stored values (`done`, `homeTipSeen`, Shooting mode). Anything that "switches the tip on" at the end of a flow can be lost to a kill; a condition on stored state cannot.
-- **Writing in `build` is not allowed.** Marking the tip seen when Shooting mode is on changes a provider, which must not happen while the tree builds, so it is done in a post-frame callback (the same lesson as the red screen in Phase 8).
-- **Wrap, do not extend.** The ring is outside the card, so a wrapper widget in the app draws it and the shared card in `taketray_ui` stays as it is, with no new package screenshots.
+- **Writing in `build` is not allowed.** Marking the tip seen when Shooting mode is on changes a provider, which must not happen while the tree builds, so it is done in a post-frame callback (the same lesson as the red screen in Phase 8). A tiny widget that is in the tree only while the mark is due queues it from `initState`, so it is queued once, not on every rebuild.
+- **Wrap, do not extend.** The ring is outside the card, so a wrapper widget in the app draws it and the shared card in `taketray_ui` stays as it is, with no new package screenshots. The wrapper is always there (`active` says whether the ring shows): a widget that appears and disappears around the card would make Flutter rebuild the card from scratch each time.
 
 **Where it lives:** `app/lib/features/shooting_mode/views/shooting_tip.dart` (`ShootingTip`, `ShootingCardHighlight`), `shooting_mode_section.dart` (the condition), `app/lib/l10n/app_en.arb`. Tests: `app/test/features/shooting_mode/views/shooting_tip_test.dart`, `shooting_tip_golden_test.dart` (Mac only), and the group "the old asks after onboarding" in `app/test/features/shooting_mode/view_models/shooting_mode_controller_test.dart`.
 

@@ -12,7 +12,9 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// primary colour while focused or in the error colour while [error] is
 /// given. The help row shows [helper], or the [error] with an error icon in
 /// its place, and an `n/max` counter on the right when [maxLength] is given;
-/// [maxLength] also refuses input past it.
+/// [maxLength] also refuses input past it. [trailing] puts a widget (a round
+/// add button) inside the box, and [focusNode] lets a screen keep or ask for
+/// the field's focus.
 class TtTextField extends StatefulWidget {
   /// A field named [label].
   const new({

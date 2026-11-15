@@ -159,14 +159,9 @@ class _ReelsStepScreenState extends ConsumerState<ReelsStepScreen> {
                 runSpacing: tt.spacing.xxs,
                 children: [
                   for (final idea in ideas)
-                    // The chip's tap target is as wide as it is given, so in
-                    // a Wrap it would take a row to itself: IntrinsicWidth
-                    // makes it as wide as its label.
-                    IntrinsicWidth(
-                      child: TtSuggestionChip(
-                        label: idea,
-                        onPressed: () => controller.addIdea(idea),
-                      ),
+                    TtSuggestionChip(
+                      label: idea,
+                      onPressed: () => controller.addIdea(idea),
                     ),
                 ],
               ),

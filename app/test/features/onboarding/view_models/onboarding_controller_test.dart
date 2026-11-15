@@ -128,6 +128,38 @@ void main() {
       );
       expect(logText(records), isNot(contains('/storage/secret')));
     });
+
+    // The first read succeeding (and being true) must not leak into the
+    // result when a later read throws: all three are false.
+    for (final failing in ['introPlayed', 'homeTipSeen']) {
+      test('$failing() throwing after earlier reads succeeded is all '
+          'false, logged by type', () async {
+        final records = captureLogs();
+        await h.media.phoneState.markOnboardingDone();
+        await h.media.phoneState.markIntroPlayed();
+        final container = containerWith(
+          _Failing(
+            h.media.db,
+            h.media.clock,
+            failIntroRead: failing == 'introPlayed',
+            failTipRead: failing == 'homeTipSeen',
+          ),
+        );
+
+        final flags = await container.read(onboardingControllerProvider.future);
+
+        expect(flags, _none);
+        expect(
+          container.read(onboardingControllerProvider),
+          isA<AsyncData<OnboardingFlags>>(),
+        );
+        expect(
+          logText(records),
+          contains('Reading onboarding failed: StateError'),
+        );
+        expect(logText(records), isNot(contains('/storage/secret')));
+      });
+    }
   });
 
   group('marks', () {
@@ -209,6 +241,24 @@ void main() {
       expect(logText(records), isNot(contains('/storage/secret')));
       expect(await h.media.phoneState.onboardingDone(), isFalse);
     });
+
+    test(
+      'finish() after a failed build read still sets done and writes',
+      () async {
+        final phone = _Failing(h.media.db, h.media.clock, failRead: true);
+        final container = containerWith(phone);
+        expect(
+          await container.read(onboardingControllerProvider.future),
+          _none,
+        );
+
+        await container.read(onboardingControllerProvider.notifier).finish();
+
+        expect(shown(container)!.done, isTrue);
+        expect(phone.writes, ['done']);
+        expect(await h.media.phoneState.onboardingDone(), isTrue);
+      },
+    );
 
     test('a failed intro or tip write also keeps its flag', () async {
       final records = captureLogs();
@@ -305,8 +355,8 @@ void main() {
 }
 
 /// A phone state that counts the onboarding writes by name, and can hold,
-/// fail or pass them, and fail the reads. Its error carries a path so a test
-/// can prove only the type is logged.
+/// fail or pass them, and fail each of the three reads. Its error carries a
+/// path so a test can prove only the type is logged.
 class _Failing extends PhoneStateRepository {
   // The super constructor's parameters are private.
   // ignore: use_super_parameters
@@ -316,11 +366,15 @@ class _Failing extends PhoneStateRepository {
     this.gate,
     this.failWrite = false,
     this.failRead = false,
+    this.failIntroRead = false,
+    this.failTipRead = false,
   }) : super(db, clock);
 
   final Completer<void>? gate;
   final bool failWrite;
   final bool failRead;
+  final bool failIntroRead;
+  final bool failTipRead;
   final List<String> writes = [];
 
   Future<void> _write(String name, Future<void> Function() real) async {
@@ -334,6 +388,16 @@ class _Failing extends PhoneStateRepository {
   Future<bool> onboardingDone() => failRead
       ? Future.error(StateError('/storage/secret'))
       : super.onboardingDone();
+
+  @override
+  Future<bool> introPlayed() => failIntroRead
+      ? Future.error(StateError('/storage/secret'))
+      : super.introPlayed();
+
+  @override
+  Future<bool> homeTipSeen() => failTipRead
+      ? Future.error(StateError('/storage/secret'))
+      : super.homeTipSeen();
 
   @override
   Future<void> markOnboardingDone() => _write('done', super.markOnboardingDone);

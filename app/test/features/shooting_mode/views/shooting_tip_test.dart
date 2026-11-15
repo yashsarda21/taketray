@@ -109,7 +109,13 @@ Future<_Pumped> _pump(
 }
 
 Finder get _tip => find.byType(ShootingTip);
-Finder get _highlight => find.byType(ShootingCardHighlight);
+
+/// The ring, only while it is drawn: the wrapper itself stays in the tree
+/// (so the card is never remounted), inactive when there is no tip.
+Finder get _highlight => find.byWidgetPredicate(
+  (w) => w is ShootingCardHighlight && w.active,
+  description: 'an active ShootingCardHighlight',
+);
 Finder get _gotIt => find.text('Got it');
 
 void main() {
@@ -249,6 +255,82 @@ void main() {
     });
   });
 
+  group('the card is never remounted by the tip', () {
+    testWidgets('the card keeps its element when Shooting mode turns on and '
+        'the tip goes', (tester) async {
+      await _pump(tester);
+      expect(_tip, findsOneWidget);
+      final card = tester.element(find.byType(TtShootingModeCard));
+
+      await tester.tap(find.byType(TtSwitch));
+      await tester.pumpAndSettle();
+
+      expect(_tip, findsNothing);
+      expect(find.text('Shooting mode on'), findsOneWidget);
+      expect(tester.element(find.byType(TtShootingModeCard)), same(card));
+    });
+
+    testWidgets('the same when Got it hides the tip', (tester) async {
+      await _pump(tester);
+      final card = tester.element(find.byType(TtShootingModeCard));
+
+      await tester.tap(_gotIt);
+      await tester.pumpAndSettle();
+
+      expect(_tip, findsNothing);
+      expect(tester.element(find.byType(TtShootingModeCard)), same(card));
+    });
+
+    testWidgets('the same when the tip is never shown (seen already) and the '
+        'card turns on', (tester) async {
+      await _pump(tester, seen: true);
+      final card = tester.element(find.byType(TtShootingModeCard));
+
+      await tester.tap(find.byType(TtSwitch));
+      await tester.pumpAndSettle();
+
+      expect(tester.element(find.byType(TtShootingModeCard)), same(card));
+    });
+  });
+
+  group('the mark when Shooting mode is on', () {
+    testWidgets('is queued once, not once per rebuild', (tester) async {
+      final stuck = _StuckOnboarding();
+      final p = await _pump(tester, shooting: _on(), onboarding: stuck);
+      expect(stuck.marked, 1);
+
+      // Rebuilds with the flag unchanged (the stuck mark changes nothing).
+      for (var minute = 1; minute <= 3; minute++) {
+        p.shooting.states.add(
+          ShootingState(
+            on: true,
+            baselines: const {},
+            since: DateTime(2026, 10, 28, 9, 41 + minute).toUtc(),
+          ),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      expect(stuck.marked, 1);
+    });
+
+    testWidgets('is queued again after the card went off and on again', (
+      tester,
+    ) async {
+      final stuck = _StuckOnboarding();
+      final p = await _pump(tester, shooting: _on(), onboarding: stuck);
+      expect(stuck.marked, 1);
+
+      p.shooting.states.add(ShootingState.off);
+      await tester.pumpAndSettle();
+      expect(stuck.marked, 1, reason: 'off: nothing to mark');
+      p.shooting.states.add(_on());
+      await tester.pumpAndSettle();
+
+      expect(stuck.marked, 2);
+    });
+  });
+
   group('it never blocks a touch outside its box', () {
     testWidgets('the banner under it still opens To tag', (tester) async {
       await _pump(tester, pending: [testClip(1)]);
@@ -277,15 +359,16 @@ void main() {
   });
 
   group('screen reader', () {
-    testWidgets('the title and text are one note after the card, and Got it '
-        'is its own button', (tester) async {
+    testWidgets('the title and text are one note, and Got it is its own '
+        'button; the note is below the card (geometry)', (tester) async {
       final handle = tester.ensureSemantics();
       await _pump(tester);
 
       final note = tester.getSemantics(find.text(_title));
       expect(note.label, contains(_title));
       expect(note.label, contains(_body));
-      // The note is read after the card: it is below it.
+      // Geometry only: the note is below the card, which is where a reader
+      // that goes top to bottom reaches it after the card.
       final cardBottom = tester.getRect(find.byType(TtShootingModeCard)).bottom;
       expect(tester.getRect(_tip).top, greaterThanOrEqualTo(cardBottom));
       final button = tester.getSemantics(_gotIt);
@@ -302,7 +385,6 @@ void main() {
         await _pump(tester, brightness: brightness);
 
         await expectTtAccessible(tester);
-        expect(tester.getSize(_gotIt).height, greaterThan(0));
         final target = find.ancestor(
           of: _gotIt,
           matching: find.byType(TtButton),

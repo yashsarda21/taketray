@@ -194,7 +194,6 @@ WelcomeArtFrame welcomeFrameAt(double t) {
       depth = _dipDepth.transform(dip.transform(t));
     }
   }
-  final glint = _glintSweep;
   return WelcomeArtFrame(
     discScale: _lerp(0.5, 1, disc),
     discOpacity: disc,
@@ -213,8 +212,8 @@ WelcomeArtFrame welcomeFrameAt(double t) {
     ],
     count: _count.transform(_countTick.transform(t)),
     reelsOpacity: _reelsFade.transform(t),
-    glint: t >= glint.begin && t < glint.end
-        ? _lerp(-1, 1, glint.transform(t))
+    glint: t >= _glintSweep.begin && t < _glintSweep.end
+        ? _lerp(-1, 1, _glintSweep.transform(t))
         : null,
   );
 }

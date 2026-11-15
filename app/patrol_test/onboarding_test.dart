@@ -10,6 +10,7 @@ import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/app_settings.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/onboarding/views/access_step_screen.dart';
 import 'package:taketray/features/onboarding/views/notifications_step_screen.dart';
 import 'package:taketray/features/onboarding/views/reels_step_screen.dart';
@@ -243,8 +244,17 @@ Future<void> _freshFullAccess(PatrolIntegrationTester $) async {
     what: 'Reels, not the welcome, after a restart',
   );
   expect($(WelcomeScreen).exists, isFalse);
-  // Give the stored Shooting mode time to be read: the tip waits for it.
-  await pumpFor($, const Duration(seconds: 1));
+  // The tip waits for the stored Shooting mode and the flags: wait until both
+  // have loaded (a positive signal), so its absence below is not just "not
+  // read yet".
+  await waitFor(
+    $,
+    () =>
+        _container($).read(shootingModeControllerProvider).value != null &&
+        _container($).read(onboardingControllerProvider).value != null,
+    what: 'the stored Shooting mode and the flags to load after the restart',
+  );
+  await $.tester.pump();
   expect(
     $(ReelsScreen).$(_l10n.shootingTipTitle).exists,
     isFalse,
@@ -495,9 +505,13 @@ void _flowTest(
   bool shootingMayBeOn = false,
 }) {
   patrolTest(description, config: _liveConfig, ($) async {
-    final prep = await _prepare(onboarded: onboarded);
+    final prep = _Prep();
     (Object, StackTrace)? failure;
     try {
+      // Inside the try: a throw while preparing (a database that will not
+      // open, a timeout) still reaches the tear-down, which puts the watched
+      // folders back and clears what was made.
+      await _prepare(prep, onboarded: onboarded);
       await body($);
     } on Object catch (error, stack) {
       failure = (error, stack);
@@ -511,16 +525,18 @@ void _flowTest(
   });
 }
 
-/// What [_prepare] changed, for [_tearDown] to put back.
+/// What [_prepare] changed, for [_tearDown] to put back. [settingsBefore] is
+/// set as soon as the settings were read, before anything is saved, so it is
+/// null only when nothing was changed yet.
 class _Prep {
-  const _Prep(this.settingsBefore);
-
-  final AppSettings settingsBefore;
+  AppSettings? settingsBefore;
 }
 
 /// The rows of the `settings` table that say what the app remembers about the
-/// first launch (the three onboarding flags) and about asking: all put back to
-/// "never" so the flow starts as a fresh install would.
+/// first launch (the three onboarding flags), about asking, and about the
+/// media it has seen (the volume versions, the re-match windows) and a copy it
+/// planned: all put back to "never" so the flow starts as a fresh install
+/// would, with nothing left over from an earlier run on this phone.
 const List<String> _firstLaunchKeys = [
   PhoneStateRepository.onboardingDoneKey,
   PhoneStateRepository.introPlayedKey,
@@ -529,6 +545,9 @@ const List<String> _firstLaunchKeys = [
   PhoneStateRepository.mediaAccessWasFullKey,
   PhoneStateRepository.folderTipSeenKey,
   PhoneStateRepository.shootingModeKey,
+  PhoneStateRepository.volumeVersionsKey,
+  PhoneStateRepository.rematchWindowsKey,
+  PhoneStateRepository.copyJobPlanKey,
 ];
 
 /// Puts the app's own database in the state a flow starts from, before any
@@ -536,20 +555,21 @@ const List<String> _firstLaunchKeys = [
 /// onboarding and the intro marked done, the tip not seen), the reels of an
 /// earlier run deleted, and only the test folder name watched. It uses a
 /// container of its own and closes it, so the app opens the database fresh.
-Future<_Prep> _prepare({required bool onboarded}) => _withDatabase((c) async {
-  final db = c.read(appDatabaseProvider);
-  await _resetFlags(db);
-  await _deleteTestReels(db, c.read(reelsRepositoryProvider));
-  final settings = c.read(settingsRepositoryProvider);
-  final before = await settings.load();
-  await settings.save(const AppSettings(watchedFolders: [testFolder]));
-  if (onboarded) {
-    final phone = c.read(phoneStateRepositoryProvider);
-    await phone.markOnboardingDone();
-    await phone.markIntroPlayed();
-  }
-  return _Prep(before);
-});
+/// What it must put back goes into [prep] before it is changed.
+Future<void> _prepare(_Prep prep, {required bool onboarded}) =>
+    _withDatabase((c) async {
+      final db = c.read(appDatabaseProvider);
+      final settings = c.read(settingsRepositoryProvider);
+      prep.settingsBefore = await settings.load();
+      await _resetFlags(db);
+      await _deleteTestReels(db, c.read(reelsRepositoryProvider));
+      await settings.save(const AppSettings(watchedFolders: [testFolder]));
+      if (onboarded) {
+        final phone = c.read(phoneStateRepositoryProvider);
+        await phone.markOnboardingDone();
+        await phone.markIntroPlayed();
+      }
+    });
 
 /// The end of a flow. Each step runs even when one before it threw, and then
 /// the first error is thrown: the flow's own [failure] when there is one.
@@ -594,7 +614,10 @@ Future<void> _tearDown(
       final db = c.read(appDatabaseProvider);
       await _deleteTestReels(db, c.read(reelsRepositoryProvider));
       await _resetFlags(db);
-      await c.read(settingsRepositoryProvider).save(prep.settingsBefore);
+      final before = prep.settingsBefore;
+      if (before != null) {
+        await c.read(settingsRepositoryProvider).save(before);
+      }
     }),
   );
   if (first case (final error, final stack)) {

@@ -148,13 +148,19 @@ class ShootingTip extends StatelessWidget {
 /// the tertiary container outside it.
 ///
 /// It only paints outside [child] (the card is opaque), so it changes no
-/// layout and no touch.
+/// layout and no touch. It is always in the tree, with [active] saying
+/// whether the ring is drawn: the card then keeps its element (and the
+/// switch its State and animation) when the tip comes or goes, instead of
+/// being remounted under a new parent.
 class ShootingCardHighlight extends StatelessWidget {
-  /// [child] with the hint ring round it.
-  const new({required this.child, super.key});
+  /// [child] with the hint ring round it while [active].
+  const new({required this.child, this.active = true, super.key});
 
   /// The card.
   final Widget child;
+
+  /// Whether the ring is drawn.
+  final bool active;
 
   @override
   Widget build(BuildContext context) {
@@ -162,11 +168,19 @@ class ShootingCardHighlight extends StatelessWidget {
     final scheme = context.scheme;
     return DecoratedBox(
       decoration: BoxDecoration(
+        // The card's own radius: `TtShootingModeCard` uses `tt.radii.xxl`
+        // (shooting_mode_card.dart). The ring must follow it, or its corners
+        // part from the card's.
         borderRadius: BorderRadius.circular(tt.radii.xxl),
-        boxShadow: [
-          BoxShadow(color: scheme.tertiaryContainer, spreadRadius: _ringWidth),
-          BoxShadow(color: scheme.surface, spreadRadius: _ringGap),
-        ],
+        boxShadow: active
+            ? [
+                BoxShadow(
+                  color: scheme.tertiaryContainer,
+                  spreadRadius: _ringWidth,
+                ),
+                BoxShadow(color: scheme.surface, spreadRadius: _ringGap),
+              ]
+            : null,
       ),
       child: child,
     );

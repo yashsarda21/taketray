@@ -206,6 +206,10 @@ void main() {
         // Flutter's Cubic is solved to within 0.001 of its x, which near
         // the end of the steep fall is up to about half a dp of y.
         expect(take(start + 0.70 * 650).dy, closeTo(6, 0.6));
+        // Just past the boundary the fall has ended and the settle begins at
+        // +6 dp: the loose check above (the fall's solver) would let +5.5
+        // through, this one does not.
+        expect(take(start + 0.70 * 650 + 0.5).dy, closeTo(6, 0.05));
         expect(take(start + 0.85 * 650).dy, closeTo(-2, 1e-3));
         expect(take(start + 650).dy, 0);
         expect(take(start + 650).opacity, 1);

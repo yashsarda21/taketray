@@ -2,12 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtTextField`: label, hint, helper, error, counter and multiline.
+/// `TtTextField`: label, hint, helper, error, counter, multiline and a
+/// trailing button.
 final WidgetbookComponent ttTextFieldComponent = WidgetbookComponent(
   name: 'TtTextField',
   useCases: [
     WidgetbookUseCase(
-      name: 'Playground',
+      name: 'Field playground',
       builder: (context) {
         final label = context.knobs.string(
           label: 'label',
@@ -42,6 +43,34 @@ final WidgetbookComponent ttTextFieldComponent = WidgetbookComponent(
             counterText: (length, max) => '$length/$max',
             multiline: multiline,
             autofocus: autofocus,
+          ),
+        );
+      },
+    ),
+    WidgetbookUseCase(
+      name: 'Field with a trailing button',
+      builder: (context) {
+        final enabled = context.knobs.boolean(
+          label: 'button enabled',
+          initialValue: true,
+        );
+        return Padding(
+          padding: EdgeInsets.all(context.tt.spacing.m),
+          child: TtTextField(
+            label: 'Reel name',
+            hint: 'London Food',
+            helper: 'Press Enter or the button to add it',
+            textInputAction: TextInputAction.done,
+            // The trailing widget is a 48 dp round button inside the 56 dp
+            // box. A screen that keeps the field focused after the action
+            // key passes its own `focusNode` too.
+            trailing: TtIconButton(
+              icon: Symbols.add_rounded,
+              semanticLabel: 'Add',
+              style: TtIconButtonStyle.circle,
+              filled: true,
+              onPressed: enabled ? () {} : null,
+            ),
           ),
         );
       },

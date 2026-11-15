@@ -13,6 +13,7 @@ import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/router/app_router.dart';
+import 'package:taketray/router/onboarding_redirect.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -493,23 +494,33 @@ void main() {
       );
     });
 
-    testApp('the start tap waits for the flags: not done drops it', (
-      tester,
-    ) async {
+    testApp('the start tap waits for the flags: not done drops it, it is not '
+        'merely redirected', (tester) async {
+      final records = captureLogs();
       final read = Completer<OnboardingFlags>();
       final harness = VmHarness(onboarding: () => _SlowOnboarding(read));
       harness.background.startAction = LaunchAction.toTag;
       final container = await _start(tester, harness);
       await tester.pump();
+      // The router's own navigations: a tap that was kept would `go` to the
+      // to-tag screen (and the redirect would send it back to the welcome).
+      final visited = <String>[];
+      final router = container.read(appRouterProvider);
+      void record() => visited.add(router.state.uri.path);
+      router.routerDelegate.addListener(record);
+      addTearDown(() => router.routerDelegate.removeListener(record));
 
       read.complete(_freshFlags);
       await tester.pumpAndSettle();
       expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(logText(records), contains('A tap during onboarding was dropped'));
+      expect(visited, isNot(contains(Routes.toTag)));
 
       await container.read(onboardingControllerProvider.notifier).finish();
       container.read(appRouterProvider).go(Routes.reels);
       await tester.pumpAndSettle();
       expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(ToTagScreen), findsNothing);
       expect(_tab(tester), 0);
     });
 
@@ -542,5 +553,55 @@ void main() {
       expect(find.byType(ToTagScreen), findsOneWidget);
       expect(_tab(tester), 1);
     });
+  });
+
+  group('the real onboarding flags (D-135, D-136)', () {
+    testApp('no rows in the database: the welcome', (tester) async {
+      final harness = VmHarness(onboarding: OnboardingController.new);
+      await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(ReelsScreen), findsNothing);
+    });
+
+    testApp('an onboardingDone row: Reels', (tester) async {
+      final harness = VmHarness(onboarding: OnboardingController.new);
+      await tester.runAsync(harness.media.phoneState.markOnboardingDone);
+      await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ReelsScreen), findsOneWidget);
+      expect(find.byType(WelcomeScreen), findsNothing);
+    });
+
+    testApp('a done row that is not true: the welcome', (tester) async {
+      final harness = VmHarness(onboarding: OnboardingController.new);
+      await tester.runAsync(harness.media.phoneState.markIntroPlayed);
+      await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+    });
+  });
+
+  testApp('a gate that cannot be read leaves no held frame behind, and '
+      'dispose meets no unassigned field', (tester) async {
+    final harness = VmHarness();
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          ...harness.appOverrides,
+          onboardingGateProvider.overrideWith((ref) => throw StateError('x')),
+        ],
+        child: const TakeTrayApp(),
+      ),
+    );
+    expect(tester.takeException(), isNotNull);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+
+    expect(tester.takeException(), isNull);
+    expect(tester.binding.sendFramesToEngine, isTrue);
   });
 }

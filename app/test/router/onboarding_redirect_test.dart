@@ -106,4 +106,62 @@ void main() {
       }
     });
   });
+
+  group('OnboardingGate.known (D-136)', () {
+    test('a known value answers at once', () async {
+      final gate = OnboardingGate()..value = _done;
+      addTearDown(gate.dispose);
+
+      expect(await gate.known(), _done);
+    });
+
+    test('waits for the first value, then answers every waiter', () async {
+      final gate = OnboardingGate();
+      addTearDown(gate.dispose);
+      final first = gate.known();
+      final second = gate.known();
+
+      gate.value = _notDone;
+
+      expect(await first, _notDone);
+      expect(await second, _notDone);
+    });
+
+    test('stopWaiting() answers waiters with "not onboarded"; a known value '
+        'stays', () async {
+      final gate = OnboardingGate();
+      addTearDown(gate.dispose);
+      final waiting = gate.known();
+
+      gate.stopWaiting();
+      expect(await waiting, notOnboarded);
+
+      gate
+        ..value = _done
+        ..stopWaiting();
+      expect(gate.value, _done);
+    });
+
+    test('a gate disposed first releases each waiting tap as "not '
+        'onboarded" (the tap is then dropped)', () async {
+      final gate = OnboardingGate();
+      final first = gate.known();
+      final second = gate.known();
+
+      gate.dispose();
+
+      const wait = Duration(milliseconds: 200);
+      expect(await first.timeout(wait), notOnboarded);
+      expect(await second.timeout(wait), notOnboarded);
+    });
+
+    test('known() on a disposed gate answers instead of throwing', () async {
+      final gate = OnboardingGate()..dispose();
+
+      expect(
+        await gate.known().timeout(const Duration(milliseconds: 200)),
+        notOnboarded,
+      );
+    });
+  });
 }

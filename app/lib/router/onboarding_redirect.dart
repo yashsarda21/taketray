@@ -47,20 +47,42 @@ class OnboardingGate extends ValueNotifier<OnboardingFlags?> {
   /// yet; a known value stays.
   void stopWaiting() => value ??= notOnboarded;
 
+  final List<Completer<OnboardingFlags>> _waiting = [];
+  bool _disposed = false;
+
   /// The flags, as soon as they are known.
+  ///
+  /// A gate disposed while taps still wait (the app's container goes down)
+  /// answers them [notOnboarded], so nothing waits for ever and each tap is
+  /// then dropped (D-136). Asking a disposed gate answers the same.
   Future<OnboardingFlags> known() {
     final now = value;
     if (now != null) return Future.value(now);
+    if (_disposed) return Future.value(notOnboarded);
     final known = Completer<OnboardingFlags>();
+    _waiting.add(known);
     void listener() {
       final flags = value;
       if (flags == null) return;
       removeListener(listener);
+      _waiting.remove(known);
       known.complete(flags);
     }
 
     addListener(listener);
     return known.future;
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    // Copied: completing a waiter does not touch the list, but a listener of
+    // a caller might.
+    for (final waiting in List.of(_waiting)) {
+      if (!waiting.isCompleted) waiting.complete(notOnboarded);
+    }
+    _waiting.clear();
+    super.dispose();
   }
 }
 

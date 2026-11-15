@@ -79,16 +79,8 @@ class ShootingModeSection extends ConsumerWidget {
     final flags = ref.watch(onboardingControllerProvider).value;
     final tipDue = flags != null && flags.done && !flags.homeTipSeen;
     final showTip = tipDue && shooting != null && !shooting.on;
-    if (tipDue && shooting != null && shooting.on) {
-      // Shooting mode is on: the tip has done its job. Not while the tree
-      // builds: a provider never changes then.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!context.mounted) return;
-        unawaited(
-          ref.read(onboardingControllerProvider.notifier).markHomeTipSeen(),
-        );
-      });
-    }
+    // Shooting mode is on: the tip has done its job (`_MarkTipSeen`).
+    final markTipSeen = tipDue && shooting != null && shooting.on;
     // D-90: on and off alike, whenever access is full and the stored state
     // was really read (not the "off" shown after a failed read).
     final earlierRow = full && shootingState.hasValue && shooting != null
@@ -178,7 +170,9 @@ class ShootingModeSection extends ConsumerWidget {
             tt.spacing.gutter,
             tt.spacing.xs,
           ),
-          child: showTip ? ShootingCardHighlight(child: card) : card,
+          // Always the same wrapper, so the card (and its switch) is not
+          // remounted when the tip comes or goes.
+          child: ShootingCardHighlight(active: showTip, child: card),
         ),
         if (showTip)
           Padding(
@@ -203,6 +197,8 @@ class ShootingModeSection extends ConsumerWidget {
             ),
             onTap: () => context.go(Routes.toTag),
           ),
+        // Last, so it moves nothing above it when it comes or goes.
+        if (markTipSeen) const _MarkTipSeen(),
       ],
     );
   }
@@ -216,4 +212,31 @@ class ShootingModeSection extends ConsumerWidget {
   /// read.
   ShootingState? _off(AsyncValue<ShootingState> state) =>
       state.hasError ? ShootingState.off : null;
+}
+
+/// Marks the Home tip seen once, when it is mounted, after the frame (a
+/// provider never changes while the tree builds). It is in the tree only
+/// while Shooting mode is on and the tip is still due, so it queues one mark
+/// per transition, not one per rebuild of the section.
+class _MarkTipSeen extends ConsumerStatefulWidget {
+  const new();
+
+  @override
+  ConsumerState<_MarkTipSeen> createState() => _MarkTipSeenState();
+}
+
+class _MarkTipSeenState extends ConsumerState<_MarkTipSeen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        ref.read(onboardingControllerProvider.notifier).markHomeTipSeen(),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }
