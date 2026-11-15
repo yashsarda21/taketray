@@ -257,6 +257,78 @@ void main() {
     });
   });
 
+  // Task 9 (D-142): onboarding's own asks come first; these pin what turning
+  // Shooting mode on still asks of a phone that went through it.
+  group('the old asks after onboarding', () {
+    NotificationAccess notAllowed() =>
+        const NotificationAccess(granted: false, canAsk: true, sdkInt: 34);
+
+    int notificationRequests() => h.background.calls
+        .where((c) => c == 'requestNotificationAccess')
+        .length;
+
+    test('onboarding already asked for notifications: turning on never asks '
+        'again', () async {
+      h.background.access = notAllowed();
+      await h.media.phoneState.markNotificationsAsked();
+
+      await controller.setOn(true);
+
+      expect(notificationRequests(), 0);
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+
+    test('Not now left it unasked: turning on asks once, and not again the '
+        'next time', () async {
+      h.background.access = notAllowed();
+      expect(await h.media.phoneState.notificationsAsked(), isFalse);
+
+      await controller.setOn(true);
+      await controller.setOn(false);
+      h.background.access = notAllowed();
+      await controller.setOn(true);
+
+      expect(notificationRequests(), 1);
+      expect(await h.media.phoneState.notificationsAsked(), isTrue);
+    });
+
+    test(
+      'Manual mode (access limited): turning on does not ask for videos',
+      () async {
+        h.bridge.access = access(MediaAccessLevel.limited);
+
+        await controller.setOn(true);
+
+        expect(h.bridge.count('requestAccess'), 0);
+        expect((await h.media.phoneState.loadShooting()).on, isTrue);
+      },
+    );
+
+    test('access denied and Android can ask again: turning on asks once, '
+        'before it is on', () async {
+      h.bridge.access = access(MediaAccessLevel.denied);
+      h.bridge.onRequestAccess = () => access(MediaAccessLevel.denied);
+
+      await controller.setOn(true);
+
+      expect(h.bridge.count('requestAccess'), 1);
+      expect(
+        h.bridge.calls.indexOf('requestAccess'),
+        lessThan(h.bridge.calls.indexOf('volumes')),
+      );
+    });
+
+    test('access denied and Android will not ask again: no question, and '
+        'still on', () async {
+      h.bridge.access = access(MediaAccessLevel.denied, canAskAgain: false);
+
+      await controller.setOn(true);
+
+      expect(h.bridge.count('requestAccess'), 0);
+      expect((await h.media.phoneState.loadShooting()).on, isTrue);
+    });
+  });
+
   group('turning off', () {
     test('off keeps To tag and forgets the session', () async {
       await controller.setOn(true);

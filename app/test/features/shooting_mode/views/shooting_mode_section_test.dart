@@ -8,6 +8,7 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
@@ -17,6 +18,7 @@ import '../../../support/accessibility.dart';
 import '../../../support/clips.dart';
 import '../../../support/fake_media_bridge.dart';
 import '../../../support/fixed_clock.dart';
+import '../../../support/fixed_onboarding.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/view_model_fakes.dart';
 import '../../../support/vm_harness.dart';
@@ -64,6 +66,9 @@ Future<Pumped> pump(
       pendingClipsProvider.overrideWith((ref) => Stream.value(pending)),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(fallback)),
       clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
+      // An onboarded phone: the Home tip never shows here (its own tests are
+      // in shooting_tip_test.dart).
+      onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
     ],
@@ -780,6 +785,7 @@ void main() {
           pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
           firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
           clockProvider.overrideWithValue(FixedClock(_now)),
+          onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
           thumbnailCacheForTests,
         ],
         settle: false,

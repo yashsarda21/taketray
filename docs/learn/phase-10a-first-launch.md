@@ -391,4 +391,31 @@ It ends with `All tests passed!`. Open `app/lib/features/onboarding/view_models/
 
 ## 9. The Home tip and the old first-time asks
 
+**What we built:** after onboarding, the first time the user lands on Reels with Shooting mode off, a dark note sits under the Shooting mode card: "Going out to shoot? Turn on Shooting mode first. New videos will wait in To tag.", with a **Got it** button. The card has a soft yellow ring round it while the note shows. Tapping **Got it**, or turning Shooting mode on (with the very switch the note points at), makes it go away for good.
+
+- **Shown from the flags alone.** The note shows when onboarding is done, the tip has not been seen and Shooting mode is off. Nothing in the last onboarding step "turns it on", so closing the app right after Create still shows it on the next open.
+- **Gone once.** Got it writes "seen" one time. Turning Shooting mode on does the same, so a person who finds the switch first never sees the note later.
+- **In the layout, not on top of it.** The note is the next item in the column under the card, right-aligned, with its arrow over the switch. It pushes the banner and the list down while it shows. Because it floats over nothing, it cannot block a tap, and the switch above it always works, even at 200 % text.
+- **The first-time asks are still there.** Turning Shooting mode on still asks for video access (only when it was denied and Android can ask again) and for notifications (once ever). After onboarding has asked, those do nothing; if the user chose "Not now", the first turn-on asks once. Tests pin each case.
+
+**Why TakeTray needs it:** a new user has nothing to shoot yet and the tray is empty; the one thing that makes the first shoot work is turning Shooting mode on before filming. A single, dismissible hint at the right moment does that without a tour.
+
+**Key ideas:**
+
+- **Derive, do not arm.** The tip is a function of three stored values (`done`, `homeTipSeen`, Shooting mode). Anything that "switches the tip on" at the end of a flow can be lost to a kill; a condition on stored state cannot.
+- **Writing in `build` is not allowed.** Marking the tip seen when Shooting mode is on changes a provider, which must not happen while the tree builds, so it is done in a post-frame callback (the same lesson as the red screen in Phase 8).
+- **Wrap, do not extend.** The ring is outside the card, so a wrapper widget in the app draws it and the shared card in `taketray_ui` stays as it is, with no new package screenshots.
+
+**Where it lives:** `app/lib/features/shooting_mode/views/shooting_tip.dart` (`ShootingTip`, `ShootingCardHighlight`), `shooting_mode_section.dart` (the condition), `app/lib/l10n/app_en.arb`. Tests: `app/test/features/shooting_mode/views/shooting_tip_test.dart`, `shooting_tip_golden_test.dart` (Mac only), and the group "the old asks after onboarding" in `app/test/features/shooting_mode/view_models/shooting_mode_controller_test.dart`.
+
+**Try it yourself:** make the tip show while Shooting mode is on. From `app/`:
+
+```bash
+../tool/flutter test test/features/shooting_mode/views/shooting_tip_test.dart
+```
+
+It ends with `All tests passed!`. In `shooting_mode_section.dart` change `final showTip = tipDue && shooting != null && !shooting.on;` to drop `&& !shooting.on`. Run it again: `Shooting mode on: no tip even while the flag cannot change` fails.
+
+**Decisions:** D-142 (all of this section), with D-135 (the flags), D-141 (finishing arms nothing), D-107 and D-75 (the old asks) as background.
+
 ## 10. On the S24

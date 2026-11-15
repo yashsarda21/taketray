@@ -3733,5 +3733,17 @@
   "reelsStepCreateNone": "Create reels",
   "@reelsStepCreateNone": {
     "description": "Main button of onboarding's last step while the list is empty and no reel exists yet: disabled."
+  },
+  "shootingTipTitle": "Going out to shoot?",
+  "@shootingTipTitle": {
+    "description": "Title of the one-time tip under the Shooting mode switch on Reels, shown after onboarding."
+  },
+  "shootingTipBody": "Turn on Shooting mode first. New videos will wait in To tag.",
+  "@shootingTipBody": {
+    "description": "Text of the one-time tip under the Shooting mode switch on Reels."
+  },
+  "shootingTipGotIt": "Got it",
+  "@shootingTipGotIt": {
+    "description": "Button that closes the Shooting mode tip for good."
   }
 }
