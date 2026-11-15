@@ -115,9 +115,9 @@ The 3.6 s first-launch animation of `design/handoff/launch-and-welcome-motion.md
 5. **Get started** is never disabled: at value 0 the screen's `Opacity` is 0 but still hit-tested, and the button works.
 6. **TalkBack:** the wordmark, headline, text and dots stay in the semantics tree from frame 0 (`Opacity(alwaysIncludeSemantics: true)`); the picture is one image and offers no tap.
 7. **Dispose:** the controller is disposed with the state, before the ticker mixin checks for an active ticker.
-### Onboarding steps (`lib/features/onboarding/views/`, `lib/features/onboarding/view_models/onboarding_steps.dart`, `lib/platform/android_sdk.dart`, Phase 10A Task 7, D-140)
+### Onboarding steps (`lib/features/onboarding/views/`, `lib/features/onboarding/view_models/onboarding_steps.dart`, `reels_step_controller.dart`, `lib/platform/android_sdk.dart`, Phase 10A Tasks 7 and 8, D-140, D-141)
 
-The video access step and the notifications step (steps 2 and 3 of 4). Both are pushed (`context.push`), so Back returns to the step before.
+The video access step, the notifications step and the reels step (steps 2, 3 and 4 of 4). The first two are pushed (`context.push`), so Back returns to the step before.
 
 1. **`OnboardingStepLayout`** (`step_layout.dart`): a 260 dp picture area on `surfaceContainer` (it reaches the top of the screen, under the status bar), then a scrolling body (`StepDots(index: step)`, the headline as a heading, the widgets of `body`; 24 dp from the sides, 12 dp apart), and the `foot` buttons under it, 16 dp from the bottom, so at 200 % text the buttons stay and the body scrolls. `StepText` is the body-large paragraph; `withBoldWord(text, word)` bolds the first `word`.
 2. **`AccessStepScreen`** (`/onboarding/access`, `ConsumerStatefulWidget`). `build` reads `mediaAccessControllerProvider` (`MediaLifecycle` refreshes it on resume), `notificationAccessControllerProvider` (kept warm for Continue) and `androidSdkProvider` (the media bridge's `accessReport().sdkInt`, read once; a failed read counts as 34).
@@ -131,6 +131,12 @@ The video access step and the notifications step (steps 2 and 3 of 4). Both are 
    - The art is a `ExcludeSemantics` notification card (268 dp wide, `surfaceContainerHigh`, radius 24, text at one size): the round `sell` app icon, "TakeTray · now", "5 new clips to tag", "Tap to tag them into your reels.", four take pictures from `assets/welcome/` and a "+1" tile.
    - "Allow notifications" awaits `askOnce()` (errors ignored), then, still mounted, pushes `Routes.onboardingReels` whatever the answer; "Not now" pushes it without asking. Both are disabled while the ask runs.
 4. **Logs (D-10):** nothing new; `allow()` and `askOnce()` log by type.
+5. **`ReelsStepScreen`** (`/onboarding/reels`, Task 8, D-141), the last step, built on `OnboardingStepLayout` with no picture (`art` null: the body starts 28 dp under the status bar). Body: dots (4 of 4), "What reels are you planning?", the text, the field ("Reel name", hint "London Food", helper "Press Enter to add the next one", 40 characters with the counter, a tonal "Add reel" button inside the box), one row per name (radio mark, name, "Remove {name}") and "Ideas" with up to four dashed chips. Foot: the main button and "Skip for now".
+   - **`ReelsStepController`** holds the names, the error, the clashing name, the names of the reels that exist (`watchAll`), `busy`, `failed` and `finished`. `add` trims, then checks `checkReelName` and `reelNameKey` against the list and the existing reels; the error text is `reelNameProblemText` (the reel form's words). Enter and the add button add and keep the field's focus; a refused name stays in the field.
+   - **finish:** `create()` (names present) sets `busy`, calls `ReelsRepository.createAll(names)` (one transaction, all or none), and only after it returns calls `OnboardingController.finish()`; then the screen goes to `Routes.reels` and the Home tip shows from the flags. A second call while it runs does nothing. `createAll` refusing a name (a reel made elsewhere) shows the duplicate and finishes nothing; any other failure shows "Something went wrong. Try again." and keeps the names. A `finish()` that fails after the reels were made clears the list (the next tap is Continue).
+   - **Main button:** "Create {n} reels" with names; "Continue" with none when a reel exists (`skip()`); "Create reels", off, otherwise. **Skip for now** and Continue call `finish()` and write no reel.
+   - **A kill between Create and the flag write:** the next open shows the welcome, then this step with the reels already in the database: "Continue", and the same names are refused as duplicates (and `createAll` refuses a second set if the step had not read them yet).
+   - Logs (D-10): the controller logs error types only, never a name.
 
 ### Deleting a reel
 

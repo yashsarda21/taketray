@@ -85,12 +85,22 @@ String? reelNameErrorText(
   AppLocalizations l10n,
   ReelFormState form,
   String typed,
-) => switch (form.nameError) {
+) => reelNameProblemText(l10n, form.nameError, form.clashingName, typed);
+
+/// The words for a name [problem] (null: none), the same as
+/// [reelNameErrorText]'s: [clashingName] is the other reel's stored name for
+/// `duplicate`, [typed] the fallback.
+String? reelNameProblemText(
+  AppLocalizations l10n,
+  ReelNameProblem? problem,
+  String? clashingName,
+  String typed,
+) => switch (problem) {
   null => null,
   ReelNameProblem.empty => l10n.reelNameEmpty,
   ReelNameProblem.tooLong => l10n.reelNameTooLong(reelNameMaxLength),
   ReelNameProblem.duplicate => l10n.reelNameDuplicate(
-    form.clashingName ?? normalizeName(typed),
+    clashingName ?? normalizeName(typed),
   ),
 };
 

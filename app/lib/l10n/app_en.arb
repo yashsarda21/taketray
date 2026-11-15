@@ -3691,5 +3691,47 @@
   "reelsStepSkip": "Skip for now",
   "@reelsStepSkip": {
     "description": "Button on onboarding's last step: finishes onboarding without creating reels and opens Reels."
+  },
+  "reelsStepBody": "Add the reels for your next trip or shoot. You can change them later.",
+  "@reelsStepBody": {
+    "description": "Text under the title of onboarding's last step."
+  },
+  "reelsStepNameHint": "London Food",
+  "@reelsStepNameHint": {
+    "description": "Hint inside the empty reel name field of onboarding's last step: an example reel name."
+  },
+  "reelsStepNameHelp": "Press Enter to add the next one",
+  "@reelsStepNameHelp": {
+    "description": "Help line under the reel name field of onboarding's last step."
+  },
+  "reelsStepAdd": "Add reel",
+  "@reelsStepAdd": {
+    "description": "What a screen reader says for the round add button inside the reel name field of onboarding's last step."
+  },
+  "reelsStepRemove": "Remove {name}",
+  "@reelsStepRemove": {
+    "description": "What a screen reader says for the close button of a reel name in the list of onboarding's last step.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelsStepIdeas": "Ideas",
+  "@reelsStepIdeas": {
+    "description": "Small heading over the suggested reel names on onboarding's last step."
+  },
+  "reelsStepCreate": "Create {count, plural, one{1 reel} other{{count} reels}}",
+  "@reelsStepCreate": {
+    "description": "Main button of onboarding's last step while reel names are in the list: makes them all and opens Reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelsStepCreateNone": "Create reels",
+  "@reelsStepCreateNone": {
+    "description": "Main button of onboarding's last step while the list is empty and no reel exists yet: disabled."
   }
 }

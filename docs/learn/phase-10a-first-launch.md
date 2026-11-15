@@ -353,6 +353,42 @@ It ends with `All tests passed!`. Open `app/lib/features/onboarding/view_models/
 
 ## 8. Planning reels and finishing
 
+**What we built:** the last step of onboarding, "What reels are you planning?". The user types the reels for their next trip or shoot (or taps an idea), sees them as a list, and taps **Create 3 reels**: the reels are made, onboarding is done, and the app opens on Reels. **Skip for now** finishes without making any.
+
+- **One name at a time, with the reel form's rules.** Enter (or the round plus inside the field) adds the name and keeps the keyboard up for the next one. A blank, a name over 40 characters, a name already in the list in another case ("goa" after "Goa") and the name of a reel that already exists are all refused, with the same words the New reel sheet uses, under the field.
+- **One write, then done.** Create makes all the reels in one database transaction (all or none) and only then marks onboarding done. A double tap makes one set.
+- **A closed app never doubles the reels.** If the app is killed after the reels were made but before "done" was saved, the next open goes through the welcome again and lands on this step with the reels already there: the button says **Continue**, and typing the same names is refused as duplicates.
+
+**Why TakeTray needs it:** an empty app is a blank page. Planning two or three reels first means the first clips the user shoots have somewhere to go, and the Home tip that follows can point at something real. The step has to be safe to run twice because Android can end the app at any moment.
+
+**Key ideas:**
+
+- **Order is the safety.** `create()` calls `createAll(names)` and waits for it, then `finish()`:
+
+  ```dart
+  await repository.createAll(names);
+  // ... then
+  await ref.read(onboardingControllerProvider.notifier).finish();
+  ```
+
+  Done first, the flag could be saved with no reels made. Reels first means the worst case is reels that exist while the flag does not, and that case is handled by reading the database (the "Continue" button), not by a second flag.
+- **The database is the truth about what exists.** The step watches the reels (`watchAll`) itself instead of remembering "I created some". Anything that makes a reel, from any screen or an earlier run, shows up the same way. The repository's own duplicate check is still the backstop if a reel appears between the last read and the write.
+- **A guard you can see.** `busy` is set before the first `await`, so the second tap of a double tap finds it set and returns. The buttons turn off from the same state.
+- **Keeping focus.** The action key of the keyboard takes focus away. Asking for focus again from `onSubmitted` (on a `FocusNode` the field now accepts) keeps it, which is what makes typing several names in a row smooth.
+- **A step with no picture.** `OnboardingStepLayout`'s picture is now optional; without it the words start 28 dp from the top.
+
+**Where it lives:** `app/lib/features/onboarding/view_models/reels_step_controller.dart` (the rules), `app/lib/features/onboarding/views/reels_step_screen.dart`, `step_layout.dart`, and `TtTextField` in `packages/taketray_ui` (`focusNode`, `trailing`). Tests: `reels_step_controller_test.dart`, `reels_step_screen_test.dart` and the screenshots in `reels_step_golden_test.dart` (empty, three names, reels that exist, an error, and 2x text with the keyboard up).
+
+**Try it yourself:** make Create finish before it creates, and watch a test notice. From `app/`:
+
+```bash
+../tool/flutter test test/features/onboarding/view_models/reels_step_controller_test.dart
+```
+
+It ends with `All tests passed!`. Open `app/lib/features/onboarding/view_models/reels_step_controller.dart`, and in `create()` add `unawaited(ref.read(onboardingControllerProvider.notifier).finish());` just before `await repository.createAll(names);`. Run it again: `createAll completes before finish` fails (and so do the tests that check the order of the two calls). Take the line out.
+
+**Decisions:** D-141 (all of this section), with D-135 (`createAll`, `finish`), D-136 (the routes and the redirect), D-80 and D-84 (the reel name rules) as background.
+
 ## 9. The Home tip and the old first-time asks
 
 ## 10. On the S24

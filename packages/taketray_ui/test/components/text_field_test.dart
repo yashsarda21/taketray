@@ -116,6 +116,46 @@ void main() {
       );
     });
 
+    testWidgets("a given focus node is the field's own", (tester) async {
+      final node = FocusNode();
+      addTearDown(node.dispose);
+      await tester.pumpWidget(
+        _field(TtTextField(label: 'Reel name', focusNode: node)),
+      );
+      expect(node.hasFocus, isFalse);
+      node.requestFocus();
+      await tester.pump();
+      expect(node.hasFocus, isTrue);
+      expect(
+        tester.widget<EditableText>(find.byType(EditableText)).focusNode,
+        same(node),
+      );
+    });
+
+    testWidgets('a trailing widget sits inside the box and takes taps', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(
+        _field(
+          TtTextField(
+            label: 'Reel name',
+            trailing: TtIconButton(
+              icon: Symbols.add_rounded,
+              semanticLabel: 'Add reel',
+              onPressed: () => taps++,
+            ),
+          ),
+        ),
+      );
+      final box = tester.getRect(find.byType(TextField));
+      final button = tester.getRect(find.byType(TtIconButton));
+      expect(box.contains(button.center), isTrue);
+      expect(button.right, lessThanOrEqualTo(box.right));
+      await tester.tap(find.byType(TtIconButton));
+      expect(taps, 1);
+    });
+
     testWidgets('text field error is in semantics', (tester) async {
       final handle = tester.ensureSemantics();
       try {

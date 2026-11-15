@@ -6,22 +6,28 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// (`.art.soft`: `display: grid; place-items: center; height: 260px`).
 const double _artHeight = 260;
 
+/// `.ob .body { padding: 24px 24px 0 }`, and `padding-top: 28px` on a step
+/// with no picture (the reels step): from the top of the safe area.
+const double _noArtTop = 28;
+
 /// The layout of one onboarding step after the welcome (the prototype's `.ob`):
 /// a soft picture area of 260 dp on the surface container that reaches the
 /// top of the screen under the status bar, a body that scrolls (step dots, the
 /// title and the [body] widgets, 12 dp apart, 24 dp from the sides) and the
 /// buttons of [foot] at the bottom, which stay in place at any text size.
 ///
-/// The steps of Phase 10A share it (D-140): the video access step, the
-/// notifications step and, in Task 8, the reels step.
+/// The steps of Phase 10A share it (D-140, D-141): the video access step, the
+/// notifications step and the reels step. A step without a picture (the reels
+/// step) gives no [art]: the body then starts 28 dp under the status bar.
 class OnboardingStepLayout extends StatelessWidget {
   /// A step at [step] (from 0) of four with [art], [title], [body] and
   /// [foot]. A null [title] draws the picture and the dots only (while the
-  /// step does not know what to show yet).
+  /// step does not know what to show yet). A null [art] leaves the picture
+  /// area out.
   const new({
     required this.step,
-    required this.artKey,
-    required this.art,
+    this.artKey,
+    this.art,
     this.title,
     this.body = const [],
     this.foot = const [],
@@ -32,10 +38,11 @@ class OnboardingStepLayout extends StatelessWidget {
   final int step;
 
   /// The key of the picture area, for tests.
-  final Key artKey;
+  final Key? artKey;
 
-  /// The picture, drawn in the middle of the picture area.
-  final Widget art;
+  /// The picture, drawn in the middle of the picture area; null for a step
+  /// with no picture area at all.
+  final Widget? art;
 
   /// The step's headline, read out as a heading; null for none.
   final String? title;
@@ -51,6 +58,7 @@ class OnboardingStepLayout extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     final title = this.title;
+    final art = this.art;
     return Scaffold(
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -62,23 +70,26 @@ class OnboardingStepLayout extends StatelessWidget {
                 children: [
                   // The picture reaches the top of the screen, under the
                   // status bar, like the welcome's.
-                  ColoredBox(
-                    key: artKey,
-                    color: scheme.surfaceContainer,
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        top: MediaQuery.paddingOf(context).top,
-                      ),
-                      child: SizedBox(
-                        height: _artHeight,
-                        child: Center(child: art),
+                  if (art != null)
+                    ColoredBox(
+                      key: artKey,
+                      color: scheme.surfaceContainer,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: MediaQuery.paddingOf(context).top,
+                        ),
+                        child: SizedBox(
+                          height: _artHeight,
+                          child: Center(child: art),
+                        ),
                       ),
                     ),
-                  ),
                   Padding(
                     padding: EdgeInsets.fromLTRB(
                       tt.spacing.xl,
-                      tt.spacing.xl,
+                      art == null
+                          ? MediaQuery.paddingOf(context).top + _noArtTop
+                          : tt.spacing.xl,
                       tt.spacing.xl,
                       tt.spacing.none,
                     ),

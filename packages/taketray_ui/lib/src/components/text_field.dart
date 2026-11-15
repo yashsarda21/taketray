@@ -25,6 +25,8 @@ class TtTextField extends StatefulWidget {
     this.counterText,
     this.multiline = false,
     this.autofocus = false,
+    this.focusNode,
+    this.trailing,
     this.textInputAction,
     this.onChanged,
     this.onSubmitted,
@@ -63,6 +65,15 @@ class TtTextField extends StatefulWidget {
 
   /// Whether the field takes focus when it first appears.
   final bool autofocus;
+
+  /// The field's focus, or null for it to keep its own. A screen that keeps
+  /// the field focused after the action key (the next name of a list) asks
+  /// for focus again on this node from [onSubmitted].
+  final FocusNode? focusNode;
+
+  /// A widget inside the box at its trailing edge, such as a round add
+  /// button (a 48 dp `TtIconButton` fits the 56 dp box).
+  final Widget? trailing;
 
   /// What the keyboard's action key does.
   final TextInputAction? textInputAction;
@@ -176,6 +187,7 @@ class _TtTextFieldState extends State<TtTextField> {
             child: TextField(
               controller: _controller,
               autofocus: widget.autofocus,
+              focusNode: widget.focusNode,
               minLines: widget.multiline
                   ? TtMetrics.textFieldMultilineLines.toInt()
                   : null,
@@ -195,6 +207,7 @@ class _TtTextFieldState extends State<TtTextField> {
                 hintText: widget.hint,
                 // The counter is drawn in the help row, not by Material.
                 counterText: '',
+                suffixIcon: widget.trailing,
                 floatingLabelBehavior: FloatingLabelBehavior.always,
                 labelStyle: labelStyle,
                 floatingLabelStyle: labelStyle,
