@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The tray (D-137): rises 14 units over 300 ms, then catches the clips at
+     700 ms with a 220 ms squash (wider 1.04, shorter 0.9, peak at 40 %). The
+     squash eases each leg with the standard curve, as the prototype's CSS
+     keyframes do. Units are the vector's viewport units. -->
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+    android:ordering="together">
+    <objectAnimator
+        android:propertyName="translateY"
+        android:startOffset="0"
+        android:duration="300"
+        android:valueFrom="14"
+        android:valueTo="0"
+        android:valueType="floatType"
+        android:interpolator="@interpolator/splash_emphasized_decelerate" />
+    <objectAnimator
+        android:propertyName="scaleX"
+        android:startOffset="700"
+        android:duration="220">
+        <propertyValuesHolder android:propertyName="scaleX">
+            <keyframe android:fraction="0" android:value="1" />
+            <keyframe android:fraction="0.4" android:value="1.04"
+                android:interpolator="@interpolator/splash_standard" />
+            <keyframe android:fraction="1" android:value="1"
+                android:interpolator="@interpolator/splash_standard" />
+        </propertyValuesHolder>
+    </objectAnimator>
+    <objectAnimator
+        android:propertyName="scaleY"
+        android:startOffset="700"
+        android:duration="220">
+        <propertyValuesHolder android:propertyName="scaleY">
+            <keyframe android:fraction="0" android:value="1" />
+            <keyframe android:fraction="0.4" android:value="0.9"
+                android:interpolator="@interpolator/splash_standard" />
+            <keyframe android:fraction="1" android:value="1"
+                android:interpolator="@interpolator/splash_standard" />
+        </propertyValuesHolder>
+    </objectAnimator>
+</set>

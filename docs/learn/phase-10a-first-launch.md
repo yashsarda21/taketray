@@ -151,6 +151,70 @@ It ends with `All tests passed!`. Now open `app/lib/app.dart` and, in `_firstFra
 
 ## 4. The animated splash
 
+**What we built:** the first thing every launch shows: the tray icon on a graphite screen, animating for under a second.
+
+- **The motion.** The tray rises in, two clips drop into it one after the other, and the tray squashes slightly as it catches them. It plays once, in 920 ms, and never loops.
+- **The wordmark.** "TakeTray" in the app's own heavy font sits still at the bottom.
+- **The exit.** When the app's first screen is ready, the splash fades out in 200 ms. It never waits for the animation to finish.
+- **Both colour modes.** Light mode is graphite; dark mode is the light graphite with a dark icon disc.
+
+**Why TakeTray needs it:** the owner wanted a more inviting first impression (D-133). The catch is that people open TakeTray many times a day, so the splash must add no waiting. Android already shows a splash before our code runs, so TakeTray only decorates that one instead of building its own.
+
+**Key ideas:**
+
+- **It is all resources.** The look is not code. A theme named `LaunchTheme` points at an icon, a background colour, the wordmark and a duration. Android reads that theme before the app process has finished starting:
+
+  ```xml
+  <style name="LaunchTheme" parent="Theme.SplashScreen.IconBackground">
+      <item name="windowSplashScreenBackground">@color/splash_background</item>
+      <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_animated</item>
+      <item name="windowSplashScreenAnimationDuration">900</item>
+      <item name="postSplashScreenTheme">@style/NormalTheme</item>
+  </style>
+  ```
+
+  `postSplashScreenTheme` is the theme the app uses once the splash is gone: Flutter's normal one.
+
+- **An animated vector is a drawing plus a list of moves.** The drawing is the launcher icon cut into three named groups (`back`, `front`, `tray`). A second file lists, for each group, which animator to run:
+
+  ```xml
+  <target android:name="back" android:animation="@animator/splash_back" />
+  ```
+
+  Each animator is a start delay, a duration, a from and a to. For the back clip: wait 150 ms, then move 400 ms from 40 units above to 0 (the icon is drawn on a 108-unit square), slowing down as it lands (the "emphasized decelerate" curve).
+
+- **Rotation stays inside.** The clips are tilted (-12 and 7 degrees). If the moving group were also tilted, "down" would be a slanted line. So the tilt sits on an inner group and the outer group only moves straight down.
+
+- **Fading a vector means fading its paths.** A vector group has no opacity, so each path's `fillAlpha` goes 0 to 1 along with the move.
+
+- **The exit is code, and it is short.** `MainActivity.onCreate` installs the splash first, before `super.onCreate`, then gives it one exit listener:
+
+  ```kotlin
+  fun fadeOut(view: View, remove: () -> Unit) {
+      view.animate().alpha(0f).setDuration(FADE_MS).withEndAction(remove).start()
+  }
+  ```
+
+  Faster out (200 ms) than in (the motion) is the rule for the whole phase.
+
+- **Nothing makes the splash wait.** Android's splash API has a `setKeepOnScreenCondition` for that. TakeTray does not use it. The splash leaves as soon as Flutter draws its first frame, and since the last task Dart holds that frame until the onboarding flags are read, so the splash simply covers that short wait. It works because `FlutterActivity` itself holds the activity's first draw until Flutter's first frame.
+
+- **The wordmark is a drawing, not a picture.** The letters' outlines were taken from the bundled font and written as vector paths, so they are sharp at every density and change colour with dark mode. A one-off script made them; it is not in the repository.
+
+- **What the old phones and settings get.** Android 11 shows the still icon (the library does not animate there). With "Remove animations" on, Android shows the finished icon by itself.
+
+**Where it lives:** `app/android/app/src/main/res/values/styles.xml` (`LaunchTheme`), `values/colors.xml` and `values-night/colors.xml`, `res/drawable/splash_icon_vector.xml`, `splash_icon_animated.xml` and `splash_wordmark.xml`, `res/animator/` and `res/interpolator/`, `app/android/app/src/main/kotlin/app/taketray/LaunchSplash.kt` and the first lines of `MainActivity.onCreate`. Tests: `app/android/app/src/test/kotlin/app/taketray/SplashTest.kt`.
+
+**Try it yourself:** change the length of the motion and watch a test notice. From the repo root:
+
+```bash
+tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.SplashTest'
+```
+
+It ends with `BUILD SUCCESSFUL`. Now open `app/android/app/src/main/res/values/styles.xml` and change `windowSplashScreenAnimationDuration` from `900` to `1200`. Run it again: `the splash animation lasts 900 ms and stays within Android's 1000 ms` fails, because Android's advice is to stay under a second. Put `900` back. (You will only see the splash itself on a phone; that check is in section 10.)
+
+**Decisions:** D-137 (all of this section), with D-133 (the design) and D-136 (the held first frame the splash covers) as background.
+
 ## 5. The welcome's picture
 
 ## 6. The welcome intro

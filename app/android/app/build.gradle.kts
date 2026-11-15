@@ -93,6 +93,11 @@ dependencies {
     // declared so the bridge never depends on that by accident.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
+    // The launch splash (D-137): Theme.SplashScreen, installSplashScreen and
+    // the exit listener. The compat library gives Android 11 the same look
+    // (a still icon); Android 12+ animates it.
+    implementation("androidx.core:core-splashscreen:1.0.1")
+
     androidTestUtil("androidx.test:orchestrator:1.5.1")
 
     // Android unit tests on the JVM (tool/test_android, D-67). The SDK levels

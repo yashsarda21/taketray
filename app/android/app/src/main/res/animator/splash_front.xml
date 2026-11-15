@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="translateY"
+    android:startOffset="300"
+    android:duration="450"
+    android:valueFrom="-48"
+    android:valueTo="0"
+    android:valueType="floatType"
+    android:interpolator="@interpolator/splash_emphasized_decelerate" />
