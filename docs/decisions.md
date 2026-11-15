@@ -1716,3 +1716,50 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Why: the assertion is a real fault (an inconsistent tree), not noise; deferring to the end of the frame is Riverpod's and Flutter's own advice and keeps everything outside a build exactly as it was.
 - Alternatives considered: wrapping the call in a try/catch (hides it, and release has no assertion to catch); a `Future`/microtask for every `leave()` (changes the immediate behaviour the hold tests pin); deferring the whole `leave()` from the screen (an `enter()` in the same frame would be undone); not leaving on a declarative pop (the hold would outlive the close until the session is disposed).
 - Consequences: one more rule to keep (written above and in `docs/flow.md` at the tag player's session and the viewer's paging). A test that only pumps a screen with the stub router cannot see a declarative pop; the tag player's group pumps the whole app for it. What only the S24 can prove: the owner's own steps, in a debug build, without the red screen.
+
+### D-133 · Launch and welcome motion: a 900 ms animated splash icon on every launch, and a 3.6 s welcome intro on first launch only (design approved, built in Phase 10A)
+- Date: 2026-11-15 · Phase: design, built in Phase 10A (owner, 2026-11-15: Phase 10 before Phase 9; design changes are built with the phase that develops that part, D-134) · Builds on the chosen B · Tray welcome and the tray icon · Design: hub Motion page "Launch and welcome", Screens 1–2, `design/prototype/assets/intro.js`, handoff `design/handoff/launch-and-welcome-motion.md`
+- What the owner asked: the app opens on the logo only; a 3–4 s animation would be more attractive. The owner approved the hub version ("lgtm", 2026-11-15) and then asked that design changes be built with the phase that develops them: both parts are built in Phase 10A, which the owner moved ahead of Phase 9 (D-134).
+- Decision:
+  1. **Splash, every launch:** the launcher icon becomes an animated vector (Android 12+ SplashScreen API through `core-splashscreen`). In 900 ms the tray rises in, the back and front clips drop in, and the tray squashes as it catches them. The wordmark stays still. The splash leaves with a 200 ms fade as soon as Flutter's first frame is drawn, never held for the animation. Android 11 shows the still icon.
+  2. **Welcome (B · Tray), first launch only, 3.6 s:**
+     - the disc and tray come in;
+     - the three takes fall in one by one (600, 1000, 1400 ms), with an overshoot and a tray dip on each landing;
+     - each reel tab pops on;
+     - the count ticks 0 → 23 takes in step with the drops, then "· 3 reels";
+     - the wordmark, headline and text rise in (2.2–2.95 s);
+     - a light glints across the tray (2.9–3.6 s).
+  3. **Rules for both:**
+     - Get started works from frame 0.
+     - A tap on the picture skips to the end.
+     - It plays once (the final frame on any later visit).
+     - It never loops.
+     - Remove animations → the final frame.
+     - TalkBack reads the copy from frame 0.
+- Why: the owner wanted a more inviting first impression. A 3–4 s animation on every launch would make each open wait, many times a day (Shooting mode, tagging between takes), and Android recommends at most 1000 ms for the splash icon. So the short moment is on every launch, and the long one is where a first impression actually happens, on the first launch.
+- Alternatives considered:
+  - a 3–4 s animated splash on every launch: rejected, it delays every open and goes against the Android guidance;
+  - a Flutter-drawn second splash screen after the system one: rejected, it adds a screen and a wait;
+  - a looping welcome: rejected, decorative loops distract (UI skill).
+- Consequences:
+  - The splash needs the `core-splashscreen` dependency, a `Theme.SplashScreen` launch theme, an `animated-vector` drawable and an exit listener in `MainActivity`.
+  - The welcome needs a stored "intro played" flag with the onboarding state.
+  - `docs/flow.md` gets the splash at "App start" and the intro with onboarding when they are built, in the same commit.
+
+### D-134 · Phase 10 before Phase 9, split into 10A (first launch) and 10B (Settings)
+- Date: 2026-11-15 · Phase: 10A · Design: `docs/superpowers/specs/2026-11-15-phase-10-onboarding-settings-design.md` (owner-approved 2026-11-15) · Plan: `docs/superpowers/plans/2026-11-15-phase-10a-first-launch.md`
+- What the owner asked:
+  - Approved design changes (such as D-133) are built when the phase that develops that part of the app comes up, not ahead of it.
+  - Phase 10 (onboarding, Settings, help, error log) comes before Phase 9 (References). Nothing in Phase 10 needs references; Phase 9 later plugs "save a reference on first launch" into this onboarding.
+  - Existing installs get no special case: the owner's own TakeTray has dummy data, so any install without "onboarding done" goes through onboarding once.
+  - Chat-app folders such as WhatsApp Video can be watched (for 10B), with a warning on the row.
+- Decision:
+  1. Two branches, one after the other: **10A, first launch** (D-133's splash and welcome intro, the onboarding steps, the Home tip, the access and notification asks) and **10B, Settings** (the full Settings screen, Watched folders, Export and import, Send error log, the rest of the Phase 10 items in `docs/later.md`). The splash moves from Phase 11 into 10A because its fade leads into the welcome.
+  2. Onboarding takes over the app through a **router redirect**: the steps are ordinary routes, and while onboarding is not done every other location goes to the welcome. A gate widget in front of the app was rejected (notification taps, the media start-up and the root messenger live inside the app it would replace).
+  3. Sharing the log and choosing backup files (10B) use Android's own APIs through Pigeon (`FileProvider` and the share sheet, the document picker), not `share_plus` or `file_picker`.
+  4. Calls made for the owner (from the design): the full-screen "Allow video access again" stays the existing banner; a launch action that arrives during onboarding is dropped, not replayed; Back goes to the previous step and closes the app on the welcome; "onboarding done" is written only when the reels step finishes; the Shooting mode switch still asks for video access when it is denied, and its notification ask stays as the once-only fallback after "Not now"; the reels step lists only the names typed there and says "Continue" when reels already exist; the "share any Instagram reel" tip waits for Phase 9.
+  5. Task D-numbers: Task 2 D-135, Task 3 D-136, Task 4 D-137, Task 5 D-138, Task 6 D-139, Task 7 D-140, Task 8 D-141, Task 9 D-142, Task 10 D-143.
+- Why: building a design change before the flow around it exists means building screens twice; onboarding first gives Phase 9 a real first-launch path to plug into; two branches keep each review and phone check a manageable size.
+- Alternatives considered: Phase 9 before 10 (Phase 9 would need a stand-in for "onboarding runs first"); one Phase 10 branch (too large for one review); skipping onboarding for installs that already have reels (rejected by the owner).
+- Consequences: Phase 11 no longer lists the splash. 10B must make an import keep the onboarding flags (they are phone state in the `settings` table, which `BackupService._replaceAll` clears today).
+
