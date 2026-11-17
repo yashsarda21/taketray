@@ -41,6 +41,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 11 (polish and release)
 
+- **A backup save that fails while writing leaves its document behind** (D-147). `saveDocument` creates the document first, then writes it; a write that fails (the storage full, the provider gone) answers an error, and the user sees "Couldn't save the backup.", but the empty or partial file stays where they chose to save it. Importing it later is refused as not a TakeTray backup, so no data is at risk. Fix idea: on a failed write, `DocumentsContract.deleteDocument` the new document, best effort.
 - **Name an SD card and a USB drive apart in Add videos** (D-114). A volume's name cannot tell them apart, so every volume but the phone's is "Other storage" (numbered when there are two). Android's `StorageVolume.getDescription` would give "SD card" or the drive's name, for one more bridge call. Only seen when two folders with one name are on two storages.
 - **Add videos' grid pages by offset** (D-114). A video deleted from the folder between two page reads can be skipped until the next resume (a new one is kept once, not twice). Keyset paging (after the last date and id shown) would close it, for a new bridge call. Rare: the folder must change while the user scrolls it.
 

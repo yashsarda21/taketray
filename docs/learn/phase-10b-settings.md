@@ -171,6 +171,95 @@ Then break one thing on purpose. In `backup_actions.dart`, change the import lin
 
 ## 4. The files bridge
 
+### What we built
+
+A new bridge between Dart and Kotlin, `FilesBridge`, for the four things the rest of the phase asks of Android: open the share sheet for one of TakeTray's own files (the error log), let the user save a document (a backup) and open one (to import it), let the user choose a folder (to watch it), and tell the app its version and the Android release. Nothing on screen changes yet; sections 5 to 8 use it.
+
+### Why TakeTray needs it
+
+TakeTray never uses the network and asks for no storage permission. Android has a clean way to do all four jobs without either: its own screens. When the user picks a place to save, a file to open or a folder, that choice is the permission, for that one call. The share sheet works the same way: TakeTray hands one file to the app the user picks, with a read grant on that one address. A plugin such as `share_plus` would bring its own Android code and manifest entries (D-134), so the bridge is about 300 lines of Kotlin on Android's own APIs.
+
+### Key ideas
+
+**1. A contract first.** Like the other bridges, the shape of the calls is written once in `pigeons/files_api.dart`, and Pigeon writes the Dart and the Kotlin plumbing. Every call is `@async`, because each one waits for the user or for storage:
+
+```dart
+@async
+String? openDocument(List<String> mimeTypes, int maxBytes);
+
+@async
+String? pickFolder();
+```
+
+**2. A cancel is not an error.** If the user backs out of a picker, the call answers null. Errors are kept for real problems, and Dart turns Kotlin's error codes into one small enum, so a screen can `switch` on it:
+
+```dart
+throw FileBridgeException(switch (e.code) {
+  'invalid_path' => FilesProblem.invalidPath,
+  'too_large' => FilesProblem.tooLarge,
+  'unsupported_folder' => FilesProblem.unsupportedFolder,
+  _ => FilesProblem.failed,
+});
+```
+
+**3. Share only from one folder.** The share sheet reads the file through a `FileProvider`, a small content provider from androidx that turns a file into a `content://` address another app may read once. It is told about one folder only, the cache's `shared/`:
+
+```xml
+<paths>
+    <cache-path name="shared" path="shared/"/>
+</paths>
+```
+
+Kotlin checks the path before the provider sees it. It resolves `..` and links first, so `cache/shared/../taketray.sqlite` cannot slip through, and a folder that merely starts with the same letters (`cache/sharedx/`) is refused too:
+
+```kotlin
+val shared = File(context.cacheDir, SHARED_DIR).canonicalFile
+val target = file.canonicalFile
+if (!target.path.startsWith(shared.path + File.separator)) return null
+return if (target.isFile) target else null
+```
+
+The provider's authority is `${applicationId}.files`, so the dev build (`app.taketray.dev`) and the real app never fight over one name.
+
+**4. Read a bounded amount.** A backup can be at most 20 MB. Asking a document "how big are you?" is not reliable (some providers do not know), so Kotlin reads in 64 KiB pieces and stops at the first byte past the limit. Exactly the limit is fine; one byte more is `too_large`. An endless stream can never fill the memory:
+
+```kotlin
+total += n
+if (total > maxBytes) return null
+out.write(buffer, 0, n)
+```
+
+**5. A folder, by name only.** The folder picker answers an address such as `content://com.android.externalstorage.documents/tree/primary%3ADCIM%2FCamera`. Its last part, decoded, is `primary:DCIM/Camera`: the volume, then the folder's path, which is exactly how MediaStore names a folder (`DCIM/Camera`). TakeTray keeps that name and nothing else. It never calls `takePersistableUriPermission`, so it keeps no grant: it reads the folder through MediaStore like every other folder. An address from any other provider (Downloads, a cloud drive) cannot be read that way, so it is refused with `unsupported_folder`.
+
+**6. One picker at a time.** Each picker starts with a request code (`4101` save, `4102` open, `4103` folder), and Android sends the answer to `MainActivity.onActivityResult`, which passes it to each bridge. The files bridge has one waiting slot: a second picker call while one is open is `busy`. If Android killed TakeTray while the picker was open, the answer arrives at a new activity where nobody is waiting; it is dropped, and only its type is logged.
+
+**7. A fake for the screens.** `FakeFilesBridge` (in `test/support/`) answers what a test sets, records every call, can fail the next call with a chosen problem, and can hold a call so a test can tap twice while the first is still running.
+
+### Where it lives
+
+- `app/pigeons/files_api.dart`: the contract (generated: `lib/platform/files_api.g.dart`, `android/.../files/FilesApi.g.kt`).
+- `app/lib/platform/files_bridge.dart`: `FilesBridge`, `PigeonFilesBridge`, `FilesProblem`, `FileBridgeException`, `AppInfo`, `filesBridgeProvider`.
+- `app/android/app/src/main/kotlin/app/taketray/files/FilesHostApiImpl.kt`: the Kotlin side; `MainActivity.kt` sets it up and passes it the picker answers.
+- `app/android/app/src/main/AndroidManifest.xml` (the `<provider>`) and `res/xml/file_paths.xml`.
+- Tests: `app/test/platform/files_bridge_test.dart`, `fake_files_bridge_test.dart`, `app/test/support/fake_files_bridge.dart`; Kotlin `android/app/src/test/kotlin/app/taketray/files/FilesHostApiImplTest.kt` and `ManifestTest.kt`.
+- Docs: `docs/flow.md` ("Files bridge"), D-147.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+tool/test_android -ProbolectricSdks=35 --tests 'app.taketray.files.*' --tests 'app.taketray.ManifestTest'
+cd app && ../tool/flutter test test/platform/files_bridge_test.dart test/platform/fake_files_bridge_test.dart
+```
+
+Then break one thing on purpose. In `FilesHostApiImpl.kt`, change `if (total > maxBytes)` to `if (total >= maxBytes)` and run the Kotlin tests: "openDocument allows exactly maxBytes and refuses one byte more" fails, because a file of exactly the limit is now refused. Put it back. Then delete the `startsWith(shared.path + File.separator)` line: "shareFile refuses every path that is not a file in cache shared" fails. Put it back, and run `./gradlew :app:clean` in `app/android` afterwards.
+
+### Decisions
+
+- D-147: the files bridge: the share sheet through a `FileProvider` on `cache/shared/` only, the document picker to save and open (with a byte limit), the folder picker read as a MediaStore path with no grant kept, one picker at a time, and `androidx.core` declared at the version it already had.
+
+
 ## 5. The full Settings screen
 
 ## 6. Watched folders

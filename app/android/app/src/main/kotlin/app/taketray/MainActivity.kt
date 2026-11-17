@@ -13,6 +13,8 @@ import app.taketray.editors.CopyEngine
 import app.taketray.editors.CopyFlutterApi
 import app.taketray.editors.CopyHostApi
 import app.taketray.editors.CopyHostApiImpl
+import app.taketray.files.FilesHostApi
+import app.taketray.files.FilesHostApiImpl
 import app.taketray.media.MediaHostApi
 import app.taketray.media.MediaHostApiImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -29,6 +31,9 @@ class MainActivity : FlutterActivity() {
     private var editors: EditorsHostApiImpl? = null
     /** The copy bridge of the current engine (D-122); the job itself lives in the process-wide [CopyEngine]. */
     private var copy: CopyHostApiImpl? = null
+
+    /** The files bridge of the current engine (D-147); null before configure and after clean-up. */
+    private var files: FilesHostApiImpl? = null
 
     /**
      * True when Android re-created this activity from saved state (after the
@@ -72,6 +77,11 @@ class MainActivity : FlutterActivity() {
         copy = copyApi
         CopyHostApi.setUp(messenger, copyApi)
 
+        // Files (D-147): the share sheet, the document and folder pickers, the app's version.
+        val filesApi = FilesHostApiImpl(this)
+        files = filesApi
+        FilesHostApi.setUp(messenger, filesApi)
+
         // The activity itself: the debug copy hooks read its window (the others use the application context).
         DebugHooks.register(flutterEngine, this)
     }
@@ -93,6 +103,9 @@ class MainActivity : FlutterActivity() {
         CopyHostApi.setUp(messenger, null)
         copy?.onHostGone()
         copy = null
+        FilesHostApi.setUp(messenger, null)
+        files?.onHostGone()
+        files = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -122,9 +135,9 @@ class MainActivity : FlutterActivity() {
     }
 
     /**
-     * The photo picker's answer (D-112) and the copies' delete consent (D-121):
-     * each bridge takes only its own request code, or drops it when no call
-     * waits (the process died).
+     * The photo picker's answer (D-112), the copies' delete consent (D-121)
+     * and the files pickers' answers (D-147): each bridge takes only its own
+     * request code, or drops it when no call waits (the process died).
      */
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(
@@ -135,6 +148,7 @@ class MainActivity : FlutterActivity() {
         super.onActivityResult(requestCode, resultCode, data)
         media?.onActivityResult(requestCode, resultCode, data)
         editors?.onActivityResult(requestCode, resultCode, data)
+        files?.onActivityResult(requestCode, resultCode, data)
     }
 
     override fun onDestroy() {
@@ -145,6 +159,7 @@ class MainActivity : FlutterActivity() {
         background?.onHostGone()
         editors?.onHostGone()
         copy?.onHostGone()
+        files?.onHostGone()
         super.onDestroy()
     }
 }

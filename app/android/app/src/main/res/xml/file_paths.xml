@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the files provider (D-147) may hand out: only the files in the app's
+     cache/shared/ folder (the error log bundle the share sheet sends). No
+     other folder, no files-path, no external path. Checked by ManifestTest. -->
+<paths>
+    <cache-path name="shared" path="shared/"/>
+</paths>
