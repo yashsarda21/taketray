@@ -10,6 +10,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 
@@ -113,24 +114,15 @@ class BackupService {
     return json;
   }
 
-  /// Replaces everything in the database with the backup in [json].
+  /// Replaces the database's data with the backup in [json].
   ///
   /// The whole file is checked first (`decodeBackup`); a file that fails
-  /// throws [BackupException] and the database is not touched. Then, in one
-  /// transaction, every row of every table is deleted (editing sessions with
-  /// their copy and sent rows, and phone-state settings, too) and the
-  /// backup's rows are inserted with their ids. If anything fails in there,
-  /// the transaction rolls back and the old data stays; a constraint the
-  /// checks missed is still reported as [BackupProblem.invalidData], never as
-  /// a raw database error.
+  /// throws [BackupException] and the database is not touched. Then
+  /// [importDecoded] stores it.
   ///
-  /// Imported ids may be ids the database used before the import, for other
-  /// rows: that is safe only because this same transaction deletes every row
-  /// that could still hold an old clip id (`vn_copies` and `sent_clips`,
-  /// D-54, D-120). SQLite's
-  /// `AUTOINCREMENT` counters only ever go up (inserting a higher id moves
-  /// the counter to it, deleting rows never lowers it), so rows added after
-  /// the import get ids above every imported one.
+  /// This does not wait for the media work queue and does not look for a
+  /// running copy job: `BackupActions.importJson` is the entry point the app
+  /// uses, and does both (D-146).
   Future<ImportSummary> importJson(String json) async {
     final BackupData data;
     try {
@@ -139,7 +131,29 @@ class BackupService {
       _log.warning('Import refused: $e');
       rethrow;
     }
+    return await importDecoded(data);
+  }
 
+  /// Stores a backup that [decodeBackup] already accepted.
+  ///
+  /// In one transaction, every row of every table is deleted, except the
+  /// `settings` rows this phone owns (D-146): only the keys in
+  /// `SettingsRepository.exportedKeys`, `shootingMode` and `copyJobPlan` go,
+  /// so the first-launch flags, the last-export time, the volume versions
+  /// and the rest of the phone's state survive. Editing sessions with their
+  /// copy and sent rows go too. Then the backup's rows are inserted with
+  /// their ids. If anything fails in there, the transaction rolls back and
+  /// the old data stays; a constraint the checks missed is still reported as
+  /// [BackupProblem.invalidData], never as a raw database error.
+  ///
+  /// Imported ids may be ids the database used before the import, for other
+  /// rows: that is safe only because this same transaction deletes every row
+  /// that could still hold an old clip id (`vn_copies` and `sent_clips`,
+  /// D-54, D-120). SQLite's
+  /// `AUTOINCREMENT` counters only ever go up (inserting a higher id moves
+  /// the counter to it, deleting rows never lowers it), so rows added after
+  /// the import get ids above every imported one.
+  Future<ImportSummary> importDecoded(BackupData data) async {
     try {
       await _replaceAll(data);
     } on Object catch (e) {
@@ -174,13 +188,23 @@ class BackupService {
     return summary;
   }
 
-  /// Deletes every row of every table and inserts [data], in one transaction.
+  /// The `settings` keys an import removes before it writes the backup's:
+  /// the five it restores, and the two phone-state rows that must not outlive
+  /// it, Shooting mode (its baselines belong to the old library, D-71) and
+  /// the copy plan (it names clip ids the import replaces, D-54, D-123).
+  static final Set<String> _removedSettingKeys = {
+    ...SettingsRepository.exportedKeys,
+    PhoneStateRepository.shootingModeKey,
+    PhoneStateRepository.copyJobPlanKey,
+  };
+
+  /// Deletes the data rows and inserts [data], in one transaction.
   Future<void> _replaceAll(BackupData data) async {
     await _db.transaction(() async {
       // Children before parents, so no foreign key is ever left dangling.
-      // All ten tables: the editing rows (sessions, copies, sent clips) are
-      // never exported (D-59, D-120), and the copy and sent rows hold clip
-      // ids that must not outlive the import (D-54).
+      // The editing rows (sessions, copies, sent clips) are never exported
+      // (D-59, D-120), and the copy and sent rows hold clip ids that must not
+      // outlive the import (D-54).
       await _db.delete(_db.sentClips).go();
       await _db.delete(_db.editCopies).go();
       await _db.delete(_db.editSessions).go();
@@ -189,7 +213,10 @@ class BackupService {
       await _db.delete(_db.reelReferences).go();
       await _db.delete(_db.clips).go();
       await _db.delete(_db.reels).go();
-      await _db.delete(_db.settings).go();
+      // Not the whole table: every other key is this phone's own state.
+      await (_db.delete(
+        _db.settings,
+      )..where((s) => s.key.isIn(_removedSettingKeys))).go();
       await _db.delete(_db.zoneTimeline).go();
 
       await _db.batch((b) {

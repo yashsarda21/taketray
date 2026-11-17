@@ -32,10 +32,8 @@ const Duration pickedGrantsTimeout = Duration(seconds: 15);
 /// **It never gives back a grant still in use:**
 /// - it runs on the shared [MediaWorkQueue], so an Add or a verify that is
 ///   queued before it has finished, and their rows are read. A backup import
-///   is **not** on the queue today (`BackupService.importJson` writes
-///   directly; there is no import UI before Phase 10): nothing sweeps while
-///   one can run because the sweep runs only at app start, and Phase 10 must
-///   run its import on the queue or never sweep during one (`later.md`);
+///   is on the queue too (`BackupActions.importJson`, D-146), so the sweep
+///   never runs in the middle of one;
 /// - the saved grants are read first and the rows second, so a grant taken
 ///   after the first read is not in the list it releases from;
 /// - any row with that address holds it: a missing clip, a skipped one, one

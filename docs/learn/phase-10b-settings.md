@@ -101,6 +101,74 @@ Then break one thing on purpose and watch a test catch it. In `background_sync.d
 
 ## 3. Safe imports
 
+### What we built
+
+Restoring a backup used to delete every row of the `settings` table, run beside whatever the app was doing, and could be started in the middle of a copy. This task makes an import safe. It keeps the phone's own state, waits its turn behind scans and checks, refuses while a copy job is saved, refuses a file that is too large, and reads the file off the main isolate. A new `BackupActions` class wraps the existing `BackupService` with those rules. Nothing on screen changes yet: the Export and import screen (section 7) calls it.
+
+### Why TakeTray needs it
+
+The backup holds the user's work (reels, clips, references, five settings). It does not hold what this phone knows about itself: that onboarding ran, which tips were seen, which volume versions the clips belong to. If the import deleted those, restoring a backup would show the welcome again. If it ran beside a scan, the scan could write clips into the half-restored data. If it ran during a copy, the copy's files would lose the record that names them. And a very large file decoded on the main isolate would freeze the screen.
+
+### Key ideas
+
+**1. Delete only what the import owns.** The `settings` table holds the user's five settings and the phone's own keys. The import now removes only the five exported keys plus the two phone-state rows that must not outlive it: Shooting mode (its baselines belong to the old clips) and the copy plan (it names clip ids the import replaces). Every other row, including a key a later version adds, survives:
+
+```dart
+static final Set<String> _removedSettingKeys = {
+  ...SettingsRepository.exportedKeys,
+  PhoneStateRepository.shootingModeKey,
+  PhoneStateRepository.copyJobPlanKey,
+};
+// ...
+await (_db.delete(_db.settings)
+      ..where((s) => s.key.isIn(_removedSettingKeys)))
+    .go();
+```
+
+**2. One queue for every media job.** A scan, a verify and the grant clean-up all run on `MediaWorkQueue`, one at a time, in the order they were queued. The import is now one more job on it, so a scan that was already running finishes first, and nothing starts in the middle of the import's transaction:
+
+```dart
+summary = await _queue.run(() => _service.importDecoded(data));
+```
+
+`importDecoded` is the old `importJson` minus the decoding, split out so the file can be decoded before the job waits for its turn.
+
+**3. Check cheap things before doing expensive ones.** The order is: size, then a saved copy plan, then decode, then the queued write, then the verify. A file over 20 MiB of UTF-16 code units (a Dart `String.length`) is refused without being decoded. A saved copy plan means a copy job is running or waiting, so the import is refused with nothing read.
+
+**4. Decode in the background.** `Isolate.run` runs `decodeBackup` on another isolate and returns the result. A bad file throws the same `BackupException` as before, and becomes `ImportRefused(problem)`:
+
+```dart
+Future<BackupData> decodeBackupInIsolate(String json) =>
+    Isolate.run(() => decodeBackup(json));
+```
+
+**5. A result the screen can switch on.** `ImportResult` is a sealed class, so the compiler makes the screen handle every case: `ImportDone(summary, found, total)`, `ImportRefused(problem)`, `ImportBusyCopying()` and `ImportTooLarge()`.
+
+**6. A failed check is not a failed import.** After the import, "X of Y clips found" comes from `verifyAll()`, wrapped in `guarded`. If the phone cannot answer, the data is already restored, so the result is still `ImportDone`, with 0 found, and the log holds only the error's type.
+
+**7. Record a backup only when it exists.** `exportJson()` returns the text and records nothing. The screen calls `recordExport()` once the file was really saved, so a cancelled picker never counts.
+
+### Where it lives
+
+- `app/lib/data/backup/backup_actions.dart`: `BackupActions`, `ImportResult` and the isolate decoder.
+- `app/lib/data/backup/backup_service.dart`: `importDecoded` and the narrower delete in `_replaceAll`.
+- Tests: `app/test/data/backup/backup_service_test.dart` ("an import keeps this phone's state") and `app/test/data/backup/backup_actions_test.dart` (refusals, the queue order, the failed verify).
+- Docs: `docs/flow.md` ("Backup export and import"), D-146.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/data/backup
+```
+
+Then break one thing on purpose. In `backup_actions.dart`, change the import line to `summary = await _service.importDecoded(data);` (no queue) and run `backup_actions_test.dart`: "a scan queued first finishes before the import starts" fails. Put it back. In `backup_service.dart`, delete the `.where(...)` of the settings delete and the "keeps every other settings row" test fails.
+
+### Decisions
+
+- D-146: imports keep the phone's state except Shooting mode and the copy plan, run on the media queue, are refused while a copy job is saved or when the file is over 20 MiB, and decode off the main isolate.
+
 ## 4. The files bridge
 
 ## 5. The full Settings screen

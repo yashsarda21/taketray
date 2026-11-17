@@ -281,7 +281,7 @@ void main() {
       expect(await repo.notificationsAsked(), isFalse);
     });
 
-    test('is not exported, and an import forgets it', () async {
+    test('is not exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.notificationsAskedKey)),
@@ -296,7 +296,7 @@ void main() {
 
       await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.notificationsAsked(), isFalse);
+      expect(await repo.notificationsAsked(), isTrue);
     });
   });
 
@@ -343,7 +343,7 @@ void main() {
       expect(await repo.folderTipSeen(), isFalse);
     });
 
-    test('is not exported, and an import forgets it', () async {
+    test('is not exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.folderTipSeenKey)),
@@ -358,7 +358,7 @@ void main() {
 
       await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.folderTipSeen(), isFalse);
+      expect(await repo.folderTipSeen(), isTrue);
     });
   });
 
@@ -540,7 +540,7 @@ void main() {
           expect(records.map((r) => r.message).join('\n'), contains(flag.key));
         });
 
-        test('is not exported, and an import forgets it', () async {
+        test('is not exported, and an import keeps it (D-146)', () async {
           expect(SettingsRepository.exportedKeys, isNot(contains(flag.key)));
           await flag.mark();
           expect(
@@ -552,7 +552,7 @@ void main() {
 
           await BackupService(db, clock).importJson(fixture);
 
-          expect(await flag.read(), isFalse);
+          expect(await flag.read(), isTrue);
         });
       });
     }
@@ -735,17 +735,20 @@ void main() {
       expect(text, isNot(contains('external_primary')));
     });
 
-    test('import turns Shooting mode off', () async {
-      await turnOn();
-      await repo.markAccessWasFull();
-      final fixture = File('test/data/backup/fixtures/backup_v1.json')
-          .readAsStringSync();
+    test(
+      'import turns Shooting mode off and keeps the access memory (D-146)',
+      () async {
+        await turnOn();
+        await repo.markAccessWasFull();
+        final fixture = File('test/data/backup/fixtures/backup_v1.json')
+            .readAsStringSync();
 
-      await BackupService(db, clock).importJson(fixture);
+        await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.loadShooting(), ShootingState.off);
-      expect(await repo.accessWasFull(), isFalse);
-    });
+        expect(await repo.loadShooting(), ShootingState.off);
+        expect(await repo.accessWasFull(), isTrue);
+      },
+    );
   });
 
   group('volume versions (Ruling V)', () {
@@ -771,7 +774,7 @@ void main() {
       expect(await repo.volumeVersions(), {'external_primary': 'v1'});
     });
 
-    test('never exported, and an import forgets them', () async {
+    test('never exported, and an import keeps them (D-146)', () async {
       expect(PhoneStateRepository.volumeVersionsKey, 'mediaVolumeVersions');
       expect(
         SettingsRepository.exportedKeys,
@@ -786,7 +789,9 @@ void main() {
         File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
       );
 
-      expect(await repo.volumeVersions(), isEmpty);
+      expect(await repo.volumeVersions(), {
+        'external_primary': 'secret-version',
+      });
     });
 
     for (final (name, value) in [
@@ -918,7 +923,7 @@ void main() {
       expect(await repo.rematchWindow(phone), isNotNull);
     });
 
-    test('never exported, and an import forgets it', () async {
+    test('never exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.rematchWindowsKey)),
@@ -931,7 +936,7 @@ void main() {
         File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
       );
 
-      expect(await repo.rematchWindow(phone), isNull);
+      expect(await repo.rematchWindow(phone), isNotNull);
     });
 
     for (final (name, value) in [

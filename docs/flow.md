@@ -258,7 +258,7 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the editor han
 
 ### Backup export and import
 
-Nothing calls this yet. The Settings screen (phase 10) will choose the file with the Storage Access Framework and show the warning before an import; the "X of Y clips found" report after an import needs the media bridge (phase 3) and that screen (phase 10). See D-59. All in `data/backup/`.
+Only `BackupActions` calls this so far; the Settings screen (Task 7) will choose the file with the Storage Access Framework, show the warning before an import and the "X of Y clips found" report. See D-59, D-146. All in `data/backup/`.
 
 **Export** (`backup_service.dart › BackupService.exportJson()`):
 
@@ -266,7 +266,18 @@ Nothing calls this yet. The Settings screen (phase 10) will choose the file with
 2. `backup_format.dart › encodeBackup(data, clock.now())` writes the v1 object (`app`, `schemaVersion`, `exportedAt`, then the seven sections) with `JsonEncoder.withIndent('  ')`; times are UTC ISO-8601 with milliseconds and `Z` (`DateTime.toIso8601String`, so a year outside 0000 to 9999 is `-0001` or `+010001`).
 3. Logs the row counts (never names, links, labels or file names, D-10) and returns the text.
 
-**Import** (`backup_service.dart › BackupService.importJson(json)`):
+**Import through the app** (`backup_actions.dart › BackupActions.importJson(json)`, D-146; this is what the Settings screen calls):
+
+1. `json.length` (UTF-16 code units) over `maxImportCodeUnits` (20 MiB) → `ImportTooLarge`; nothing is decoded.
+2. `PhoneStateRepository.copyJobPlan() != null` → `ImportBusyCopying`; nothing is read, and the database is unchanged.
+3. `decodeBackupInIsolate(json)` (`Isolate.run(() => decodeBackup(json))`, below). A `BackupException` → `ImportRefused(problem)`; nothing was written.
+4. `MediaWorkQueue.run(() => BackupService.importDecoded(data))`: any job queued first (a scan, a verify, the grant clean-up) finishes before the transaction starts, and later jobs wait for it (D-72). A `BackupException(invalidData)` from a database constraint → `ImportRefused`; any other error is rethrown.
+5. `MediaVerifier.verifyAll()` through `guarded` (it queues after the import). A failure logs the error's type only and counts `found` as 0.
+6. `ImportDone(summary, found, total)`, `total` being the imported clip count.
+
+`exportJson()` returns the text and records nothing; `recordExport()` records `lastExport` after the file is saved. `hasCopies()` reports whether any `vn_copies` row exists, for the screen's warning.
+
+**Import** (`backup_service.dart › BackupService.importJson(json)`, which decodes and then calls `importDecoded(data)`):
 
 1. `backup_format.dart › decodeBackup(json)` reads the whole file before the database is touched:
    1. `jsonDecode`; a `FormatException` → `BackupException(notJson)`.
@@ -275,9 +286,9 @@ Nothing calls this yet. The Settings screen (phase 10) will choose the file with
    3. `_readV1`: `exportedAt`, then `reels`, `references`, `clips`, `clipReels`, `inbox`, `zoneTimeline` and `settings`, each through `_Fields`, whose getters throw `_Invalid('<path>')` for a missing key or a wrong type; the section loops check ids (1 to 2^53, unique), links to `reels` and `clips` read earlier, duplicates, names, labels, links, the clip identity rule (a detected clip has a volume and a number and no picker link, a picked clip a picker link and neither a volume nor a number, D-72; a negative `mediaStoreId` must be minus the clip's own `id`, D-71), minutes and times (D-59 lists them). Any `_Invalid` → `BackupException(invalidData, where: path)`. Text is trimmed, links cleaned as the repositories do, and times cut to whole milliseconds (as stored), so a duplicate zone instant is caught here. A time is read by `_parseInstant`: the `_instant` pattern (year `dddd`, `-dddd` or `±dddddd`), then `DateTime.utc` of the fields must give back the same fields (no 30 February, no wrapped year) and `DateTime.parse` must not throw (a time past what a `DateTime` holds is invalid, not a crash).
    4. Normalising: of the references of one reel with the same cleaned link, all but the one with the lowest id are dropped; an `inbox` row whose clip has a `clip_reels` row is dropped (the link wins, D-57); then every clip with neither a link nor an `inbox` row is dropped (the orphan rule, D-56). `BackupData.referencesDropped`, `inboxRowsDropped` and `orphanClipsDropped` count them.
    5. On any `BackupException`: logs the problem and path (no values) and rethrows. Nothing was written.
-2. `_replaceAll` › `_db.transaction`: deletes every row of all ten tables, itself (not through the cascades): `sent_clips`, `vn_copies`, `vn_sessions`, `clip_reels`, `inbox`, `reel_references`, `clips`, `reels`, `settings` and `zone_timeline` (children first), then one `batch` inserts `reels`, `clips`, `clip_reels`, `inbox`, `reel_references`, the five settings rows (each value `jsonEncode`d, as `SettingsRepository.save` writes them) and `zone_timeline`, all with the file's ids. Any failure rolls the whole transaction back. A `SqliteException` with result code `SQLITE_CONSTRAINT` (directly, or as the `remoteCause` of drift's `DriftRemoteException` when the database runs on its background isolate) is logged by its code only and rethrown as `BackupException(invalidData)`; any other error is rethrown as it is.
+2. `importDecoded` › `_replaceAll` › `_db.transaction`: deletes every row of nine tables, itself (not through the cascades): `sent_clips`, `vn_copies`, `vn_sessions`, `clip_reels`, `inbox`, `reel_references`, `clips`, `reels` and `zone_timeline` (children first), and from `settings` only the keys in `exportedKeys` plus `shootingMode` and `copyJobPlan` (D-146: `onboardingDone`, `introPlayed`, `homeTipSeen`, `lastExport`, `notificationsAsked`, `folderTipSeen`, `mediaAccessWasFull`, the volume versions, the re-match windows and any other key stay), then one `batch` inserts `reels`, `clips`, `clip_reels`, `inbox`, `reel_references`, the five settings rows (each value `jsonEncode`d, as `SettingsRepository.save` writes them) and `zone_timeline`, all with the file's ids. Any failure rolls the whole transaction back. A `SqliteException` with result code `SQLITE_CONSTRAINT` (directly, or as the `remoteCause` of drift's `DriftRemoteException` when the database runs on its background isolate) is logged by its code only and rethrown as `BackupException(invalidData)`; any other error is rethrown as it is.
 3. Imported ids may be ids used before the import; that is safe because `vn_copies` and `sent_clips`, the only tables where a clip id outlives its clip, were emptied in the same transaction (D-54, D-120). SQLite moves each `AUTOINCREMENT` counter (`sqlite_sequence`) up to the highest inserted id and never down, so rows added later get ids above every imported one.
-4. Logs the counts (and the dropped inbox rows, orphan clips and duplicate references) and returns `ImportSummary(reels, clips, references, inboxPending, inboxSkipped)`. Every `watch…` stream re-queries. Shooting mode is off afterwards (its key is gone); phase 3 resets the baselines.
+4. Logs the counts (and the dropped inbox rows, orphan clips and duplicate references) and returns `ImportSummary(reels, clips, references, inboxPending, inboxSkipped)`. Every `watch…` stream re-queries. Shooting mode is off afterwards (its key is gone); the first-launch flags are kept, so onboarding does not run again.
 
 ### Local checks (`tool/check`)
 

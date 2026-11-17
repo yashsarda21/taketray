@@ -27,10 +27,12 @@ final Logger _log = Logger('phoneState');
 /// job's plan, D-123), the three first-launch flags `onboardingDone`,
 /// `introPlayed` and `homeTipSeen` (D-135) and `lastExport` (when a backup
 /// file was last saved, D-145). None is in
-/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
-/// import deletes them (D-71, D-72, D-108):
-/// after a restore Shooting mode is off, and no volume version or re-match
-/// window is known, because they belong to the phone's own media library.
+/// `SettingsRepository.exportedKeys`, so a backup never holds them. An import
+/// keeps them, except `shootingMode` and `copyJobPlan` (D-146): after a
+/// restore Shooting mode is off (its baselines belong to the old clips,
+/// D-71), and no copy job is saved (an import is refused while one is).
+/// The volume versions and re-match windows stay: they belong to the phone's
+/// own media library, not to the backup.
 ///
 /// `shootingMode` holds the whole [ShootingState] as one JSON value, so
 /// switching on, the start time and the baselines change together or not at
