@@ -3371,7 +3371,7 @@
   },
   "settingsGroupClips": "Clips",
   "@settingsGroupClips": {
-    "description": "Heading of the Clips group in Settings (until Phase 10 builds the rest around it)."
+    "description": "Heading of the Clips group in Settings."
   },
   "settingsCopiesTitle": "Storage used by VN copies",
   "@settingsCopiesTitle": {
@@ -3745,5 +3745,156 @@
   "shootingTipGotIt": "Got it",
   "@shootingTipGotIt": {
     "description": "Button that closes the Shooting mode tip for good."
+  },
+  "settingsGroupShooting": "Shooting mode",
+  "@settingsGroupShooting": {
+    "description": "Heading of the Shooting mode group in Settings."
+  },
+  "settingsGroupReminders": "Reminders",
+  "@settingsGroupReminders": {
+    "description": "Heading of the Reminders group in Settings."
+  },
+  "settingsGroupYourData": "Your data",
+  "@settingsGroupYourData": {
+    "description": "Heading of the group in Settings that holds Export and import."
+  },
+  "settingsGroupAbout": "About",
+  "@settingsGroupAbout": {
+    "description": "Heading of the About group at the end of Settings."
+  },
+  "settingsStillTitle": "Remind me to turn it off",
+  "@settingsStillTitle": {
+    "description": "Title of the Settings row with the switch for the \"Still shooting?\" reminder."
+  },
+  "settingsStillSubtitle": "If Shooting mode stays on for 14 days",
+  "@settingsStillSubtitle": {
+    "description": "Second line of the \"Still shooting?\" reminder row in Settings."
+  },
+  "settingsStillSemantics": "Remind me to turn off Shooting mode",
+  "@settingsStillSemantics": {
+    "description": "What a screen reader says for the switch of the \"Still shooting?\" reminder in Settings."
+  },
+  "settingsEveningTitle": "Evening reminder",
+  "@settingsEveningTitle": {
+    "description": "Title of the Settings row with the switch for the evening reminder about waiting clips."
+  },
+  "settingsEveningSubtitle": "{time}, only if clips are waiting",
+  "@settingsEveningSubtitle": {
+    "description": "Second line of the evening reminder row in Settings. {time} is the reminder time in the phone's 12 or 24-hour format, such as \"9:00 PM\" or \"21:00\".",
+    "placeholders": {
+      "time": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsEveningSemantics": "Evening reminder",
+  "@settingsEveningSemantics": {
+    "description": "What a screen reader says for the switch of the evening reminder in Settings."
+  },
+  "settingsReminderTimeTitle": "Reminder time",
+  "@settingsReminderTimeTitle": {
+    "description": "Title of the Settings row that opens the time picker for the evening reminder. It is shown only while the evening reminder is on."
+  },
+  "settingsCopiesReminderTitle": "VN copies reminder",
+  "@settingsCopiesReminderTitle": {
+    "description": "Title of the Settings row with the switch for the reminder to delete VN copies."
+  },
+  "settingsCopiesReminderSubtitle": "3 days after copying, if copies are still there",
+  "@settingsCopiesReminderSubtitle": {
+    "description": "Second line of the VN copies reminder row in Settings."
+  },
+  "settingsCopiesReminderSemantics": "VN copies reminder",
+  "@settingsCopiesReminderSemantics": {
+    "description": "What a screen reader says for the switch of the VN copies reminder in Settings."
+  },
+  "settingsWatchedTitle": "Watched folders",
+  "@settingsWatchedTitle": {
+    "description": "Title of the Settings row that opens the watched folders screen, and the title of that screen."
+  },
+  "settingsWatchedNone": "None",
+  "@settingsWatchedNone": {
+    "description": "Second line of the Watched folders row in Settings when no folder is watched."
+  },
+  "settingsErrorLogTitle": "Send error log",
+  "@settingsErrorLogTitle": {
+    "description": "Title of the Settings row that sends the app's error log."
+  },
+  "settingsErrorLogSubtitle": "Logs from this phone, to send by email or chat",
+  "@settingsErrorLogSubtitle": {
+    "description": "Second line of the Send error log row in Settings."
+  },
+  "settingsBackupTitle": "Export and import",
+  "@settingsBackupTitle": {
+    "description": "Title of the Settings row that opens the backup screen, and the title of that screen."
+  },
+  "settingsBackupLast": "Last backup: {date}",
+  "@settingsBackupLast": {
+    "description": "Second line of the Export and import row in Settings. {date} is the day of the last backup, such as \"Nov 12\".",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsBackupNone": "No backup yet",
+  "@settingsBackupNone": {
+    "description": "Second line of the Export and import row in Settings when no backup was made."
+  },
+  "settingsVideoTitle": "Video access",
+  "@settingsVideoTitle": {
+    "description": "Title of the Settings row that tells whether TakeTray can see all videos."
+  },
+  "settingsVideoAll": "All videos",
+  "@settingsVideoAll": {
+    "description": "Second line of the Video access row in Settings when TakeTray can see all videos."
+  },
+  "settingsVideoSome": "Some videos only · Manual mode",
+  "@settingsVideoSome": {
+    "description": "Second line of the Video access row in Settings when only some videos are allowed."
+  },
+  "settingsVideoNone": "Not allowed",
+  "@settingsVideoNone": {
+    "description": "Second line of the Video access row in Settings when no video is allowed."
+  },
+  "settingsVideoAllowAll": "Allow all",
+  "@settingsVideoAllowAll": {
+    "description": "Button of the Video access row in Settings when only some videos are allowed."
+  },
+  "settingsVideoAllowAllSemantics": "Allow all videos",
+  "@settingsVideoAllowAllSemantics": {
+    "description": "What a screen reader says for the Allow all button of the Video access row in Settings."
+  },
+  "settingsVideoAllow": "Allow",
+  "@settingsVideoAllow": {
+    "description": "Button of the Video access row in Settings when no video is allowed."
+  },
+  "settingsVideoAllowSemantics": "Allow video access",
+  "@settingsVideoAllowSemantics": {
+    "description": "What a screen reader says for the Allow button of the Video access row in Settings."
+  },
+  "settingsPrivacyTitle": "Your videos never leave your phone",
+  "@settingsPrivacyTitle": {
+    "description": "Title of the privacy row in the About group of Settings."
+  },
+  "settingsPrivacyBody": "No account, no cloud, no ads. TakeTray only stores which clips are in which reel.",
+  "@settingsPrivacyBody": {
+    "description": "Second line of the privacy row in the About group of Settings."
+  },
+  "settingsAboutTitle": "TakeTray",
+  "@settingsAboutTitle": {
+    "description": "Title of the row in the About group of Settings that shows the app version."
+  },
+  "settingsVersion": "Version {version}",
+  "@settingsVersion": {
+    "description": "Second line of the TakeTray row in Settings. {version} is the app version, such as \"1.0.0\".",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "settingsVersionUnknown": "Version",
+  "@settingsVersionUnknown": {
+    "description": "Second line of the TakeTray row in Settings while the app version is not known."
   }
 }

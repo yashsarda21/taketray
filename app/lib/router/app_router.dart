@@ -19,7 +19,9 @@ import 'package:taketray/features/onboarding/views/welcome_intro.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/settings/views/backup_screen.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
+import 'package:taketray/features/settings/views/watched_folders_screen.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
@@ -192,6 +194,20 @@ GoRouter appRouter(Ref ref) {
                     // (D-130); Back returns to Settings.
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (context, state) => const CopiesStorageScreen(),
+                  ),
+                  GoRoute(
+                    path: 'watched-folders',
+                    // Full screen above the shell, like the help screen
+                    // (D-148); Back returns to Settings.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const WatchedFoldersScreen(),
+                  ),
+                  GoRoute(
+                    path: 'backup',
+                    // Full screen above the shell, like the help screen
+                    // (D-148); Back returns to Settings.
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (context, state) => const BackupScreen(),
                   ),
                 ],
               ),

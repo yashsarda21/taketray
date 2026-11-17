@@ -27,7 +27,9 @@ import 'package:taketray/features/onboarding/views/welcome_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/settings/views/backup_screen.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
+import 'package:taketray/features/settings/views/watched_folders_screen.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
@@ -631,6 +633,8 @@ void main() {
     router.go(Routes.settings);
     await tester.pumpAndSettle();
 
+    // Settings is longer than the screen now.
+    await tester.ensureVisible(find.text('Notifications not arriving?'));
     await tester.tap(find.text('Notifications not arriving?'));
     await tester.pumpAndSettle();
 
@@ -670,6 +674,7 @@ void main() {
     router.go(Routes.settings);
     await tester.pumpAndSettle();
 
+    await tester.ensureVisible(find.text('Storage used by VN copies'));
     await tester.tap(find.text('Storage used by VN copies'));
     await tester.pumpAndSettle();
 
@@ -699,6 +704,58 @@ void main() {
 
     expect(find.byType(CopiesStorageScreen), findsNothing);
     expect(find.byType(SettingsScreen), findsOneWidget);
+  });
+
+  for (final (name, location, title, screen) in [
+    (
+      'watched folders',
+      Routes.watchedFolders,
+      'Watched folders',
+      WatchedFoldersScreen,
+    ),
+    ('backup', Routes.backup, 'Export and import', BackupScreen),
+  ]) {
+    testApp('the $name screen is a full-screen page above Settings', (
+      tester,
+    ) async {
+      final (_, router) = await _pumpApp(tester);
+      router.go(Routes.settings);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text(title));
+      await tester.tap(find.text(title));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(screen), findsOneWidget);
+      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
+
+      await tester.tap(find.byType(TtIconButton));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(screen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget);
+      expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 2);
+    });
+
+    testApp('the system Back key leaves the $name screen for Settings', (
+      tester,
+    ) async {
+      final (_, router) = await _pumpApp(tester);
+      router.go(location);
+      await tester.pumpAndSettle();
+      expect(find.byType(screen), findsOneWidget);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(screen), findsNothing);
+      expect(find.byType(SettingsScreen), findsOneWidget);
+    });
+  }
+
+  test('the locations of the watched folders and the backup screens', () {
+    expect(Routes.watchedFolders, '/settings/watched-folders');
+    expect(Routes.backup, '/settings/backup');
   });
 
   group('Picking clips for an editor (Phase 8, D-126)', () {

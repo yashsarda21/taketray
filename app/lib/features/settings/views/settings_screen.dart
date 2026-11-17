@@ -1,152 +1,59 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
-import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
-import 'package:taketray/features/editors/views/editor_text.dart';
-import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
-import 'package:taketray/features/reels/views/open_once.dart';
+import 'package:taketray/features/settings/views/settings_rows/about_group.dart';
+import 'package:taketray/features/settings/views/settings_rows/clips_group.dart';
+import 'package:taketray/features/settings/views/settings_rows/data_group.dart';
+import 'package:taketray/features/settings/views/settings_rows/help_group.dart';
+import 'package:taketray/features/settings/views/settings_rows/permissions_group.dart';
+import 'package:taketray/features/settings/views/settings_rows/reminder_groups.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
-import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
-/// Settings, the third tab (`screens.js`: `routes.settings`). Until Phase 10
-/// builds the rest around them, it holds three groups (D-107, D-130):
+/// Settings, the third tab (`screens.js`: `routes.settings`; Phase 10B,
+/// D-148). Seven groups, in the prototype's order, each in
+/// `settings_rows/`:
 ///
-/// - **Clips:** "Storage used by VN copies" with a chevron, and "{size} in {n}
-///   reels" or "None" under it (the sessions that hold copies; empty until the
-///   first read), which opens the VN copies screen (`Routes.copiesStorage`);
-/// - **Help:** "Notifications not arriving?" with a chevron, which opens the
-///   help screen (`Routes.notificationsHelp`);
-/// - **Permissions:** "Notifications", "Allowed" with a check, or "Not
-///   allowed" with a tonal **Allow** button. **Allow** asks when Android will
-///   show its dialog and opens the phone's notification settings otherwise
-///   (`NotificationAccessController.allow`); if that page cannot be opened,
-///   "Couldn't open settings on this phone." The row follows the state, which
-///   is read again on every resume, so it is right after the user comes back
-///   from the phone's settings. While the first read is running the group is
-///   left out. If it failed, the row says "Not allowed" with **Allow**: the
-///   permission is unknown, and the button reads it again (and opens the
-///   phone's notification settings if it still cannot be read).
-class SettingsScreen extends ConsumerStatefulWidget {
+/// - **Shooting mode:** "Remind me to turn it off" (switch);
+/// - **Reminders:** "Evening reminder" (switch), "Reminder time" (only while
+///   the evening reminder is on; a time picker), "VN copies reminder"
+///   (switch);
+/// - **Clips:** "Watched folders" (`Routes.watchedFolders`) and "Storage used
+///   by VN copies" (`Routes.copiesStorage`);
+/// - **Help:** "Notifications not arriving?" (`Routes.notificationsHelp`) and
+///   "Send error log";
+/// - **Your data:** "Export and import" (`Routes.backup`);
+/// - **Permissions:** "Video access" and "Notifications", each with its
+///   Allow button;
+/// - **About:** the privacy line and the app version.
+///
+/// The switches save at once (`SettingsController`) and follow the saved
+/// settings. Times follow the phone's 12 or 24-hour setting.
+///
+/// The rows are in a plain scroll view, not a lazy list: there are a dozen of
+/// them, and every one is built, so a screen reader and the tests see them
+/// all.
+class SettingsScreen extends StatelessWidget {
   const new({super.key});
-
-  @override
-  ConsumerState<SettingsScreen> createState() => _SettingsScreenState();
-}
-
-class _SettingsScreenState extends ConsumerState<SettingsScreen> {
-  /// Opens the help page once however fast the taps.
-  final OpenOnce _help = OpenOnce();
-
-  /// Opens the VN copies screen once however fast the taps.
-  final OpenOnce _copies = OpenOnce();
-
-  @override
-  void dispose() {
-    _help.dispose();
-    _copies.dispose();
-    super.dispose();
-  }
-
-  Future<void> _allow() async {
-    final l10n = AppLocalizations.of(context);
-    final worked = await ref
-        .read(notificationAccessControllerProvider.notifier)
-        .allow();
-    if (worked || !mounted) return;
-    showTtSnack(context, message: l10n.notificationsHelpOpenFailed);
-  }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final access = ref.watch(notificationAccessControllerProvider);
-    // Running the first read: unknown, nothing to show yet. A failed first
-    // read is shown as not allowed, so the user can still reach Allow.
-    final granted = access.value?.granted ?? false;
-    final showPermissions = access.hasValue || access.hasError;
-    final copies = ref.watch(copiesSummaryProvider).value;
     return Scaffold(
       appBar: TtAppBar(large: true, title: l10n.navSettings),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: EdgeInsets.only(bottom: TtNavPill.reservedHeight(context)),
-        children: [
-          TtGroupLabel(l10n.settingsGroupClips),
-          TtGroupedRows(
-            children: [
-              TtListRow(
-                leading: const TtRowIcon(
-                  icon: Symbols.sd_storage_rounded,
-                  boxed: false,
-                ),
-                title: l10n.settingsCopiesTitle,
-                subtitle: copies == null
-                    ? null
-                    : copies.reels == 0
-                    ? l10n.settingsCopiesNone
-                    : l10n.settingsCopiesSummary(
-                        byteSizeText(l10n, copies.bytes),
-                        copies.reels,
-                      ),
-                trailing: const Icon(Symbols.chevron_right_rounded),
-                onTap: () => _copies.open(
-                  () => context.push<void>(Routes.copiesStorage),
-                ),
-              ),
-            ],
-          ),
-          TtGroupLabel(l10n.settingsGroupHelp),
-          TtGroupedRows(
-            children: [
-              TtListRow(
-                leading: const TtRowIcon(
-                  icon: Symbols.notifications_off_rounded,
-                  boxed: false,
-                ),
-                title: l10n.notificationsHelpTitle,
-                subtitle: l10n.notificationsHelpRowSubtitle,
-                trailing: const Icon(Symbols.chevron_right_rounded),
-                onTap: () => _help.open(
-                  () => context.push<void>(Routes.notificationsHelp),
-                ),
-              ),
-            ],
-          ),
-          if (showPermissions) ...[
-            TtGroupLabel(l10n.settingsGroupPermissions),
-            TtGroupedRows(
-              children: [_notificationsRow(l10n, granted: granted)],
-            ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ShootingReminderGroup(),
+            RemindersGroup(),
+            ClipsGroup(),
+            HelpGroup(),
+            DataGroup(),
+            PermissionsGroup(),
+            AboutGroup(),
           ],
-        ],
+        ),
       ),
-    );
-  }
-
-  Widget _notificationsRow(AppLocalizations l10n, {required bool granted}) {
-    return TtListRow(
-      leading: const TtRowIcon(
-        icon: Symbols.notifications_rounded,
-        boxed: false,
-      ),
-      title: l10n.settingsNotificationsTitle,
-      subtitle: granted
-          ? l10n.settingsNotificationsAllowed
-          : l10n.settingsNotificationsNotAllowed,
-      stackTrailingAtLargeText: true,
-      trailing: granted
-          ? Icon(
-              Symbols.check_circle_rounded,
-              fill: 1,
-              color: context.scheme.primary,
-            )
-          : TtButton(
-              label: l10n.settingsNotificationsAllow,
-              semanticLabel: l10n.settingsNotificationsAllowSemantics,
-              kind: TtButtonKind.tonal,
-              size: TtButtonSize.small,
-              onPressed: _allow,
-            ),
     );
   }
 }

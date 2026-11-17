@@ -262,6 +262,63 @@ Then break one thing on purpose. In `FilesHostApiImpl.kt`, change `if (total > m
 
 ## 5. The full Settings screen
 
+### What we built
+
+The Settings tab now looks like the prototype: seven groups, from "Shooting mode" at the top to "About" at the bottom. The two reminder switches from section 2 are there, with the evening reminder's time (it opens Android's time picker), a "VN copies reminder" switch, "Watched folders", "Export and import", "Send error log", and a "Video access" row next to "Notifications". "Watched folders" and "Export and import" open empty stand-in screens for now; sections 6 and 7 fill them in, and section 8 gives "Send error log" its action.
+
+### Why TakeTray needs it
+
+Until now the reminders could be switched off only by editing the database. A user who finds the evening reminder at the wrong hour, or does not want "Still shooting?", needs a place to say so. The screen also tells them, in one look, what TakeTray can see (all videos, some, none) and when they last made a backup.
+
+### Key ideas
+
+**1. Two quick taps must both stay.** Every switch saves the whole set of five settings. If two taps each read the settings, change one value and save, the second save can overwrite the first. `SettingsController` reads the stored settings (not what the screen shows, which may be a frame behind) and runs the changes one after the other:
+
+```dart
+Future<void> _change(AppSettings Function(AppSettings) change) {
+  final repository = ref.read(settingsRepositoryProvider);
+  final run = _tail.then((_) async {
+    final latest = await repository.load();
+    await repository.save(change(latest));
+  });
+  _tail = run.then<void>((_) {}, onError: (Object _) {});
+  return run;
+}
+```
+
+`_tail` never fails, so one failed save does not stop the next change; the failure goes only to the caller that asked for it.
+
+**2. A time that is not a minute of the day is refused.** `setEveningMinutes(1440)` throws `ArgumentError` before it saves anything. The repository checks too, but a guard in the controller means a bug in a caller never reaches the database.
+
+**3. The screen shows what is saved.** A switch's value comes from `SettingsRepository.watch()`, so a switch whose save failed stays where it was. Until the first read arrives the switches are disabled.
+
+**4. The phone's clock style.** "21:00" or "9:00 PM" comes from the phone's 12 or 24-hour setting (`MediaQuery.alwaysUse24HourFormatOf`), as every other time in the app does.
+
+**5. One tap, one call.** The Allow buttons for video access go through `OpenOnce.openSlow`, which lets one call through and ignores the taps while it runs and for a moment after. The row of each permission is left out while its first read runs, and says "Not allowed" with a button if the read failed, so the user can always reach it.
+
+**6. Why not a `ListView`.** A `ListView` builds only the rows near the screen. With thirteen rows, the ones at the bottom would not exist for a screen reader or a test. A plain `SingleChildScrollView` builds them all, which is cheap for a list this short.
+
+### Where it lives
+
+- `app/lib/features/settings/view_models/settings_controller.dart`: `SettingsController`, `lastExportProvider`, `appInfoProvider`.
+- `app/lib/features/settings/views/settings_screen.dart` and `settings_rows/`: one widget per group.
+- `app/lib/features/settings/views/watched_folders_screen.dart` and `backup_screen.dart`: stand-ins.
+- `app/lib/router/routes.dart` and `app_router.dart`: `Routes.watchedFolders` and `Routes.backup`.
+- Tests: `app/test/features/settings/view_models/settings_controller_test.dart`, `views/settings_screen_test.dart`, `views/settings_golden_test.dart` (goldens in `views/goldens/macos/`), `app/test/router/app_router_test.dart`; the fake is `app/test/support/fake_settings.dart`.
+- Docs: `docs/flow.md` ("Settings"), D-148.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/settings test/router/app_router_test.dart
+```
+
+Then break one thing on purpose. In `settings_controller.dart`, make `_change` call `repository.load()` and `save` directly, without `_tail.then`: "two switches in the same frame both persist" fails, because both calls read the old settings. Or change `minutes >= 24 * 60` to `minutes > 24 * 60`: "1440 throws ArgumentError and saves nothing" fails.
+
+### Decisions
+
+- D-148: the full Settings screen: the prototype's order and copy, a queued read-modify-save controller, the 0..1439 guard, the phone's time format, the Video access row, and stand-in screens for Tasks 6 and 7.
+
 ## 6. Watched folders
 
 ## 7. Export and import

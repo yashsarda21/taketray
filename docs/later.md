@@ -20,18 +20,13 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 ## Phase 10 (onboarding and settings)
 
 - **Import and editing sessions (Phase 8).** A backup import deletes the editing-session rows (`vn_sessions`, `vn_copies`, `sent_clips`; editing data is never exported), so the copies already on the phone become orphans on the storage screen. When the import UI is built, warn before the import, or delete the copies first.
-- **Storage used by VN copies moves into the full Settings screen (Phase 8).** Phase 8 adds one interim row for it in a "Clips" group; Phase 10 puts it where the prototype shows it, keeping the screen (`copies_storage_screen.dart`) and its tests.
 - **Automatic friends' and device folders (Phase 7 rulings, D-111).** Phase 7 adds them by hand only (Add videos). Watching more folders automatically belongs to the Watched folders screen. Open risks from the owner's request (2026-10-30): busy WhatsApp groups and forwards could flood To tag; WhatsApp's Sent copies duplicate the owner's own clips (Add videos hides Sent folders); WhatsApp strips the shooting date, so a clip is dated when it was received. Shooting devices (GoPro, Insta360, DJI, a mirrorless camera, a second phone) are folders like any other, with no brand code; their apps save to their own folders, a whole day is often copied at once, and Insta360's raw 360° files must be exported first.
 - **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.
 - **Two TakeTray notifications at once are grouped, and Still shooting? is folded even alone (product note, no change now).** When Still shooting? and the new-clips notification are both in the shade, the phone (seen on the S24, 2026-11-06) groups them and folds the older one away; the user expands the group to reach "Turn off". The S24 also showed Still shooting? collapsed when it was the app's only notification: its text showed and its buttons did not, until it was expanded (final review M-3). The body tap to Reels, where the dialog asks, always works. That is standard Android behaviour, so TakeTray does nothing about it. The Patrol flow for "Turn off" avoids it by tapping while Still shooting? is the app's only notification (D-109). Revisit only if the owner finds the folded Still shooting? question easy to miss (for example with a notification group key of our own, or a longer gap between the two).
-- **The Settings screen grows around the interim rows** (D-107). `SettingsScreen` has only Help ("Notifications not arriving?") and Permissions ("Notifications"). Phase 10 adds Shooting mode, Reminders, Clips, Your data, Video access and About around them, in the prototype's order, keeping the two rows' behaviour and tests.
-
 
 
 - The Export/Import buttons: show "X of Y clips found" after the media check (`ImportDone.found` of `total`, D-146), and say in the import summary that picked clips restored from a backup come back missing when their grants were released at an earlier start; that is unavoidable.
 
-
-- The reminder-time form must keep `eveningReminderMinutes` within 0 to 1439 itself: `AppSettings` does not check it, and `SettingsRepository.save` throws `ArgumentError` for anything else.
 
 - `.ib.tonal` icon button.
 - `TtListRow` tall and disabled variants.

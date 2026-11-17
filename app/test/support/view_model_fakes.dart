@@ -22,15 +22,18 @@ MediaAccessView accessView(MediaAccessLevel level) => MediaAccessView(
 );
 
 /// A [MediaAccessController] that shows [level] (null: the first read
-/// failed), counts the Allow taps, and shows what a test pushes with [show].
+/// failed; [loading]: the first read never ends), counts the Allow taps, and
+/// shows what a test pushes with [show].
 class FakeAccess extends MediaAccessController {
-  FakeAccess(this.level);
+  FakeAccess(this.level, {this.loading = false});
 
   final MediaAccessLevel? level;
+  final bool loading;
   int allowed = 0;
 
   @override
   Future<MediaAccessView> build() async {
+    if (loading) return await Completer<MediaAccessView>().future;
     final l = level;
     if (l == null) throw StateError('the first read failed');
     return accessView(l);

@@ -43,6 +43,12 @@ const notificationsHelpRouteMarker = 'the notifications help route';
 /// What the VN copies route shows in a test that only has one screen.
 const copiesStorageRouteMarker = 'the VN copies route';
 
+/// What the watched folders route shows in a test that only has one screen.
+const watchedFoldersRouteMarker = 'the watched folders route';
+
+/// What the backup route shows in a test that only has one screen.
+const backupRouteMarker = 'the backup route';
+
 /// What the Reels route shows in a test that only has one screen.
 const reelsRouteMarker = 'the Reels route';
 
@@ -90,7 +96,9 @@ GoRouter routerOf(WidgetTester tester) =>
 /// `/to-tag/skipped` route that shows [skippedRouteMarker], and a
 /// `/settings/notifications-help` route that shows
 /// [notificationsHelpRouteMarker], and a `/settings/vn-copies` route that
-/// shows [copiesStorageRouteMarker], and an `/edit` route that shows
+/// shows [copiesStorageRouteMarker], and a `/settings/watched-folders` route
+/// that shows [watchedFoldersRouteMarker], and a `/settings/backup` route
+/// that shows [backupRouteMarker], and an `/edit` route that shows
 /// [editSelectRouteMarker] with an `/edit/space` route that shows
 /// [copySpaceRouteMarker] (Task 10 registers the real space screen), and a
 /// `/add-videos` route that shows
@@ -252,6 +260,16 @@ Future<ProviderContainer> pumpScreen(
         path: Routes.copiesStorage,
         builder: (context, state) =>
             const Scaffold(body: Text(copiesStorageRouteMarker)),
+      ),
+      GoRoute(
+        path: Routes.watchedFolders,
+        builder: (context, state) =>
+            const Scaffold(body: Text(watchedFoldersRouteMarker)),
+      ),
+      GoRoute(
+        path: Routes.backup,
+        builder: (context, state) =>
+            const Scaffold(body: Text(backupRouteMarker)),
       ),
       GoRoute(
         path: Routes.toTag,
