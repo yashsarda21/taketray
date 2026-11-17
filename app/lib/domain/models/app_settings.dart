@@ -13,6 +13,13 @@ abstract class AppSettings with _$AppSettings {
 
     /// Minutes after local midnight; 1260 is 21:00.
     @Default(1260) int eveningReminderMinutes,
+
+    /// Whether "Still shooting?" is asked after two weeks of Shooting mode
+    /// (D-145).
+    @Default(true) bool stillReminderEnabled,
+
+    /// Whether a session's copies are reminded about, to delete them (D-145).
+    @Default(true) bool copiesReminderEnabled,
   }) = _AppSettings;
 
   factory AppSettings.fromJson(Map<String, dynamic> json) =>

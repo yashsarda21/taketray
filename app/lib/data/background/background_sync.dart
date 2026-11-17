@@ -199,10 +199,12 @@ class BackgroundSync {
       waitingShots: shots,
       eveningEnabled: settings.eveningReminderEnabled,
       eveningMinutes: settings.eveningReminderMinutes,
-      // Settings has no switch for it until Phase 10.
-      stillReminderEnabled: true,
+      stillReminderEnabled: settings.stillReminderEnabled,
       stillAnswered: shooting.on && shooting.stillAnswered,
-      copiesReminders: await _copiesReminders(),
+      // Off: none are written, so the phone cancels any it has posted (D-145).
+      copiesReminders: settings.copiesReminderEnabled
+          ? await _copiesReminders()
+          : const [],
     );
   }
 }

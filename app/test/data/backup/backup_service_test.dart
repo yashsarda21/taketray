@@ -154,6 +154,7 @@ class _Seeded {
         watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
         eveningReminderEnabled: false,
         eveningReminderMinutes: 1200,
+        stillReminderEnabled: false,
       ),
     );
     await db
@@ -258,6 +259,8 @@ void main() {
         'watchedFolders': ['DCIM/Camera'],
         'eveningReminderEnabled': true,
         'eveningReminderMinutes': 1260,
+        'stillReminderEnabled': true,
+        'copiesReminderEnabled': true,
       });
     });
 
@@ -277,8 +280,14 @@ void main() {
       expect(values, isNot(contains('20261026_0700_VID_1.mp4')));
       expect(values, isNot(contains('Goa')));
       expect(values, isNot(contains('capcut')));
+      // `copiesReminderEnabled` is a user setting that happens to start with
+      // "cop"; it is the only such key, and it is checked by name.
+      final withoutSetting = text.toLowerCase().replaceAll(
+        '"copiesreminderenabled"',
+        '',
+      );
       for (final word in ['vn', 'session', 'cop', 'sent', 'editor']) {
-        expect(text.toLowerCase(), isNot(contains('"$word')), reason: word);
+        expect(withoutSetting, isNot(contains('"$word')), reason: word);
       }
       expect(values, contains('Goa 🌴'), reason: 'the reel itself is there');
     });
@@ -317,10 +326,40 @@ void main() {
             watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
             eveningReminderEnabled: false,
             eveningReminderMinutes: 1200,
+            stillReminderEnabled: false,
           ),
         );
       },
     );
+
+    test('the two new switches round-trip in every combination', () async {
+      for (final (still, copies) in [
+        (true, true),
+        (true, false),
+        (false, true),
+        (false, false),
+      ]) {
+        final source = testDatabase();
+        addTearDown(source.close);
+        final saved = AppSettings(
+          stillReminderEnabled: still,
+          copiesReminderEnabled: copies,
+        );
+        await SettingsRepository(source, clock).save(saved);
+        final file = jsonDecode(
+          await BackupService(source, clock).exportJson(),
+        ) as Map<String, dynamic>;
+        expect((file['settings'] as Map)['stillReminderEnabled'], still);
+        expect((file['settings'] as Map)['copiesReminderEnabled'], copies);
+        expect(file['schemaVersion'], 1);
+
+        final target = testDatabase();
+        addTearDown(target.close);
+        await BackupService(target, clock).importJson(jsonEncode(file));
+
+        expect(await SettingsRepository(target, clock).load(), saved);
+      }
+    });
 
     test('a detached clip (negative mediaStoreId) round-trips', () async {
       final clips = ClipsRepository(db, clock);
@@ -770,6 +809,18 @@ void main() {
             (f) => (f['settings'] as Map).remove('eveningReminderEnabled'),
             where: 'settings.eveningReminderEnabled',
           ),
+          'a still reminder switch that is text': (
+            (f) => (f['settings'] as Map)['stillReminderEnabled'] = 'yes',
+            where: 'settings.stillReminderEnabled',
+          ),
+          'a copies reminder switch that is a number': (
+            (f) => (f['settings'] as Map)['copiesReminderEnabled'] = 1,
+            where: 'settings.copiesReminderEnabled',
+          ),
+          'a still reminder switch that is null': (
+            (f) => (f['settings'] as Map)['stillReminderEnabled'] = null,
+            where: 'settings.stillReminderEnabled',
+          ),
           'a watched folder that is not text': (
             (f) =>
                 (f['settings'] as Map)['watchedFolders'] = ['DCIM/Camera', 3],
@@ -842,6 +893,62 @@ void main() {
         );
       });
     }
+
+    test('a file from before the two switches: both read as on, and the '
+        'file is still version 1', () async {
+      final file = _fixtureMap();
+      (file['settings'] as Map)
+        ..remove('stillReminderEnabled')
+        ..remove('copiesReminderEnabled');
+      expect(file['schemaVersion'], 1);
+
+      final data = decodeBackup(jsonEncode(file));
+
+      expect(data.settings.stillReminderEnabled, isTrue);
+      expect(data.settings.copiesReminderEnabled, isTrue);
+      // The three old settings are read as before.
+      expect(data.settings.eveningReminderEnabled, isFalse);
+      expect(data.settings.eveningReminderMinutes, 1200);
+      expect(data.settings.watchedFolders, ['DCIM/Camera', 'Movies/WhatsApp']);
+      await backup.importJson(jsonEncode(file));
+      expect(
+        await SettingsRepository(db, clock).load(),
+        const AppSettings(
+          watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
+          eveningReminderEnabled: false,
+          eveningReminderMinutes: 1200,
+        ),
+      );
+    });
+
+    test('only one of the two switches missing: that one is on, the other is '
+        'kept', () async {
+      final file = _fixtureMap();
+      (file['settings'] as Map)
+        ..['stillReminderEnabled'] = false
+        ..remove('copiesReminderEnabled');
+
+      final data = decodeBackup(jsonEncode(file));
+
+      expect(data.settings.stillReminderEnabled, isFalse);
+      expect(data.settings.copiesReminderEnabled, isTrue);
+    });
+
+    test('the three old settings are still required', () async {
+      for (final key in [
+        'watchedFolders',
+        'eveningReminderEnabled',
+        'eveningReminderMinutes',
+      ]) {
+        final file = _fixtureMap();
+        (file['settings'] as Map).remove(key);
+        await expectRejected(
+          jsonEncode(file),
+          BackupProblem.invalidData,
+          where: 'settings.$key',
+        );
+      }
+    });
 
     test('the fixture itself is accepted (so each case above breaks one '
         'rule)', () async {

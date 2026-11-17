@@ -18,7 +18,10 @@ mixin _$AppSettings {
 
 /// Folders (relative to the storage root) scanned for new clips.
  List<String> get watchedFolders; bool get eveningReminderEnabled;/// Minutes after local midnight; 1260 is 21:00.
- int get eveningReminderMinutes;
+ int get eveningReminderMinutes;/// Whether "Still shooting?" is asked after two weeks of Shooting mode
+/// (D-145).
+ bool get stillReminderEnabled;/// Whether a session's copies are reminded about, to delete them (D-145).
+ bool get copiesReminderEnabled;
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -32,20 +35,20 @@ $AppSettingsCopyWith<AppSettings> get copyWith => _$AppSettingsCopyWithImpl<AppS
 @override
 bool operator ==(Object other) {
   final _this = this as AppSettings;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppSettings&&const DeepCollectionEquality().equals(other.watchedFolders, _this.watchedFolders)&&(identical(other.eveningReminderEnabled, _this.eveningReminderEnabled) || other.eveningReminderEnabled == _this.eveningReminderEnabled)&&(identical(other.eveningReminderMinutes, _this.eveningReminderMinutes) || other.eveningReminderMinutes == _this.eveningReminderMinutes));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is AppSettings&&const DeepCollectionEquality().equals(other.watchedFolders, _this.watchedFolders)&&(identical(other.eveningReminderEnabled, _this.eveningReminderEnabled) || other.eveningReminderEnabled == _this.eveningReminderEnabled)&&(identical(other.eveningReminderMinutes, _this.eveningReminderMinutes) || other.eveningReminderMinutes == _this.eveningReminderMinutes)&&(identical(other.stillReminderEnabled, _this.stillReminderEnabled) || other.stillReminderEnabled == _this.stillReminderEnabled)&&(identical(other.copiesReminderEnabled, _this.copiesReminderEnabled) || other.copiesReminderEnabled == _this.copiesReminderEnabled));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
   final _this = this as AppSettings;
-  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.watchedFolders),_this.eveningReminderEnabled,_this.eveningReminderMinutes);
+  return Object.hash(runtimeType,const DeepCollectionEquality().hash(_this.watchedFolders),_this.eveningReminderEnabled,_this.eveningReminderMinutes,_this.stillReminderEnabled,_this.copiesReminderEnabled);
 }
 
 @override
 String toString() {
   final _this = this as AppSettings;
-  return 'AppSettings(watchedFolders: ${_this.watchedFolders}, eveningReminderEnabled: ${_this.eveningReminderEnabled}, eveningReminderMinutes: ${_this.eveningReminderMinutes})';
+  return 'AppSettings(watchedFolders: ${_this.watchedFolders}, eveningReminderEnabled: ${_this.eveningReminderEnabled}, eveningReminderMinutes: ${_this.eveningReminderMinutes}, stillReminderEnabled: ${_this.stillReminderEnabled}, copiesReminderEnabled: ${_this.copiesReminderEnabled})';
 }
 
 
@@ -56,7 +59,7 @@ abstract mixin class $AppSettingsCopyWith<$Res>  {
   factory $AppSettingsCopyWith(AppSettings value, $Res Function(AppSettings) _then) = _$AppSettingsCopyWithImpl;
 @useResult
 $Res call({
- List<String> watchedFolders, bool eveningReminderEnabled, int eveningReminderMinutes
+ List<String> watchedFolders, bool eveningReminderEnabled, int eveningReminderMinutes, bool stillReminderEnabled, bool copiesReminderEnabled
 });
 
 
@@ -73,12 +76,14 @@ class _$AppSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? watchedFolders = null,Object? eveningReminderEnabled = null,Object? eveningReminderMinutes = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? watchedFolders = null,Object? eveningReminderEnabled = null,Object? eveningReminderMinutes = null,Object? stillReminderEnabled = null,Object? copiesReminderEnabled = null,}) {
   return _then(AppSettings(
 watchedFolders: null == watchedFolders ? _self.watchedFolders : watchedFolders // ignore: cast_nullable_to_non_nullable
 as List<String>,eveningReminderEnabled: null == eveningReminderEnabled ? _self.eveningReminderEnabled : eveningReminderEnabled // ignore: cast_nullable_to_non_nullable
 as bool,eveningReminderMinutes: null == eveningReminderMinutes ? _self.eveningReminderMinutes : eveningReminderMinutes // ignore: cast_nullable_to_non_nullable
-as int,
+as int,stillReminderEnabled: null == stillReminderEnabled ? _self.stillReminderEnabled : stillReminderEnabled // ignore: cast_nullable_to_non_nullable
+as bool,copiesReminderEnabled: null == copiesReminderEnabled ? _self.copiesReminderEnabled : copiesReminderEnabled // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 
@@ -163,10 +168,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes,  bool stillReminderEnabled,  bool copiesReminderEnabled)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _AppSettings() when $default != null:
-return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes);case _:
+return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes,_that.stillReminderEnabled,_that.copiesReminderEnabled);case _:
   return orElse();
 
 }
@@ -184,10 +189,10 @@ return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningR
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes,  bool stillReminderEnabled,  bool copiesReminderEnabled)  $default,) {final _that = this;
 switch (_that) {
 case _AppSettings():
-return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes);case _:
+return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes,_that.stillReminderEnabled,_that.copiesReminderEnabled);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -204,10 +209,10 @@ return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningR
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( List<String> watchedFolders,  bool eveningReminderEnabled,  int eveningReminderMinutes,  bool stillReminderEnabled,  bool copiesReminderEnabled)?  $default,) {final _that = this;
 switch (_that) {
 case _AppSettings() when $default != null:
-return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes);case _:
+return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningReminderMinutes,_that.stillReminderEnabled,_that.copiesReminderEnabled);case _:
   return null;
 
 }
@@ -219,7 +224,7 @@ return $default(_that.watchedFolders,_that.eveningReminderEnabled,_that.eveningR
 @JsonSerializable()
 
 class _AppSettings implements AppSettings {
-  const _AppSettings({ List<String> watchedFolders = const ['DCIM/Camera'], this.eveningReminderEnabled = true, this.eveningReminderMinutes = 1260}): _watchedFolders = watchedFolders;
+  const _AppSettings({ List<String> watchedFolders = const ['DCIM/Camera'], this.eveningReminderEnabled = true, this.eveningReminderMinutes = 1260, this.stillReminderEnabled = true, this.copiesReminderEnabled = true}): _watchedFolders = watchedFolders;
   factory _AppSettings.fromJson(Map<String, dynamic> json) => _$AppSettingsFromJson(json);
 
 /// Folders (relative to the storage root) scanned for new clips.
@@ -234,6 +239,11 @@ class _AppSettings implements AppSettings {
 @override@JsonKey() final  bool eveningReminderEnabled;
 /// Minutes after local midnight; 1260 is 21:00.
 @override@JsonKey() final  int eveningReminderMinutes;
+/// Whether "Still shooting?" is asked after two weeks of Shooting mode
+/// (D-145).
+@override@JsonKey() final  bool stillReminderEnabled;
+/// Whether a session's copies are reminded about, to delete them (D-145).
+@override@JsonKey() final  bool copiesReminderEnabled;
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
@@ -248,18 +258,18 @@ Map<String, dynamic> toJson() {
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppSettings&&const DeepCollectionEquality().equals(other.watchedFolders, _watchedFolders)&&(identical(other.eveningReminderEnabled, eveningReminderEnabled) || other.eveningReminderEnabled == eveningReminderEnabled)&&(identical(other.eveningReminderMinutes, eveningReminderMinutes) || other.eveningReminderMinutes == eveningReminderMinutes));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _AppSettings&&const DeepCollectionEquality().equals(other.watchedFolders, _watchedFolders)&&(identical(other.eveningReminderEnabled, eveningReminderEnabled) || other.eveningReminderEnabled == eveningReminderEnabled)&&(identical(other.eveningReminderMinutes, eveningReminderMinutes) || other.eveningReminderMinutes == eveningReminderMinutes)&&(identical(other.stillReminderEnabled, stillReminderEnabled) || other.stillReminderEnabled == stillReminderEnabled)&&(identical(other.copiesReminderEnabled, copiesReminderEnabled) || other.copiesReminderEnabled == copiesReminderEnabled));
 }
 
 @JsonKey(includeFromJson: false, includeToJson: false)
 @override
 int get hashCode {
-    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_watchedFolders),eveningReminderEnabled,eveningReminderMinutes);
+    return Object.hash(runtimeType,const DeepCollectionEquality().hash(_watchedFolders),eveningReminderEnabled,eveningReminderMinutes,stillReminderEnabled,copiesReminderEnabled);
 }
 
 @override
 String toString() {
-    return 'AppSettings(watchedFolders: $watchedFolders, eveningReminderEnabled: $eveningReminderEnabled, eveningReminderMinutes: $eveningReminderMinutes)';
+    return 'AppSettings(watchedFolders: $watchedFolders, eveningReminderEnabled: $eveningReminderEnabled, eveningReminderMinutes: $eveningReminderMinutes, stillReminderEnabled: $stillReminderEnabled, copiesReminderEnabled: $copiesReminderEnabled)';
 }
 
 
@@ -270,7 +280,7 @@ abstract mixin class _$AppSettingsCopyWith<$Res> implements $AppSettingsCopyWith
   factory _$AppSettingsCopyWith(_AppSettings value, $Res Function(_AppSettings) _then) = __$AppSettingsCopyWithImpl;
 @override @useResult
 $Res call({
- List<String> watchedFolders, bool eveningReminderEnabled, int eveningReminderMinutes
+ List<String> watchedFolders, bool eveningReminderEnabled, int eveningReminderMinutes, bool stillReminderEnabled, bool copiesReminderEnabled
 });
 
 
@@ -287,12 +297,14 @@ class __$AppSettingsCopyWithImpl<$Res>
 
 /// Create a copy of AppSettings
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? watchedFolders = null,Object? eveningReminderEnabled = null,Object? eveningReminderMinutes = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? watchedFolders = null,Object? eveningReminderEnabled = null,Object? eveningReminderMinutes = null,Object? stillReminderEnabled = null,Object? copiesReminderEnabled = null,}) {
   return _then(_AppSettings(
 watchedFolders: null == watchedFolders ? _self._watchedFolders : watchedFolders // ignore: cast_nullable_to_non_nullable
 as List<String>,eveningReminderEnabled: null == eveningReminderEnabled ? _self.eveningReminderEnabled : eveningReminderEnabled // ignore: cast_nullable_to_non_nullable
 as bool,eveningReminderMinutes: null == eveningReminderMinutes ? _self.eveningReminderMinutes : eveningReminderMinutes // ignore: cast_nullable_to_non_nullable
-as int,
+as int,stillReminderEnabled: null == stillReminderEnabled ? _self.stillReminderEnabled : stillReminderEnabled // ignore: cast_nullable_to_non_nullable
+as bool,copiesReminderEnabled: null == copiesReminderEnabled ? _self.copiesReminderEnabled : copiesReminderEnabled // ignore: cast_nullable_to_non_nullable
+as bool,
   ));
 }
 

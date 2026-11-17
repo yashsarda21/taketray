@@ -3,6 +3,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/still_shooting.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
@@ -18,6 +19,7 @@ final Logger _log = Logger('stillShooting');
 ///
 /// **When:** [claim] gives the Shooting mode session to ask about, at most
 /// once per app session (this process), and only when
+/// - the "Still shooting?" switch in Settings is on (D-145);
 /// - `stillShootingDue`: on, not answered, at least 14 days;
 /// - no shade button for this session is waiting. The phone may have posted
 ///   the "Still shooting?" notification at about the same time as the app
@@ -60,6 +62,12 @@ class StillShootingPrompt {
       // The controller's state is the cheap first look; the database decides.
       final shown = await _firstLook();
       if (!stillShootingDue(shown, now)) return null;
+
+      // The switch in Settings (D-145): off, the question is never asked, and
+      // the claim is not used up, so turning it on again asks. It is read
+      // only once something is due, so a check that is not due reads nothing.
+      final settings = await _ref.read(settingsRepositoryProvider).load();
+      if (!settings.stillReminderEnabled) return null;
 
       final bridge = _ref.read(backgroundBridgeProvider);
       final ShadeAction? waiting;

@@ -164,6 +164,10 @@ String encodeBackup(
         data.settings.eveningReminderEnabled,
     SettingsRepository.eveningReminderMinutesKey:
         data.settings.eveningReminderMinutes,
+    SettingsRepository.stillReminderEnabledKey:
+        data.settings.stillReminderEnabled,
+    SettingsRepository.copiesReminderEnabledKey:
+        data.settings.copiesReminderEnabled,
   },
   'zoneTimeline': [
     for (final z in data.zoneTimeline) {'at': _time(z.at), 'zoneId': z.zoneId},
@@ -425,6 +429,15 @@ AppSettings _readSettings(_Fields s) {
       SettingsRepository.eveningReminderEnabledKey,
     ),
     eveningReminderMinutes: minutes,
+    // Added after the first version-1 files were written: missing is on.
+    stillReminderEnabled: s.optionalBoolean(
+      SettingsRepository.stillReminderEnabledKey,
+      orElse: true,
+    ),
+    copiesReminderEnabled: s.optionalBoolean(
+      SettingsRepository.copiesReminderEnabledKey,
+      orElse: true,
+    ),
   );
 }
 
@@ -555,6 +568,11 @@ class _Fields {
   String? nullableString(String key) => value<String?>(key);
 
   bool boolean(String key) => value<bool>(key);
+
+  /// A true/false value that an older file may not have: [orElse] when the
+  /// key is missing, refused when it is there with another kind of value.
+  bool optionalBoolean(String key, {required bool orElse}) =>
+      _map.containsKey(key) ? boolean(key) : orElse;
 
   T choice<T extends Enum>(String key, List<T> values) =>
       values.asNameMap()[string(key)] ?? (throw invalid(key));

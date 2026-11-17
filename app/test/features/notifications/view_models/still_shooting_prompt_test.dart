@@ -91,6 +91,59 @@ void main() {
     });
   });
 
+  group('the Still shooting? reminder switch (D-145)', () {
+    Future<void> setSwitch({required bool on}) async =>
+        await h.media.settings.save(
+          (await h.media.settings.load()).copyWith(stillReminderEnabled: on),
+        );
+
+    test('due, but the switch is off: no prompt', () async {
+      daysLater(20);
+      await setSwitch(on: false);
+
+      expect(await prompt.claim(), isNull);
+    });
+
+    test('the switch off does not use up the claim: on again, the prompt '
+        'comes', () async {
+      daysLater(20);
+      await setSwitch(on: false);
+      expect(await prompt.claim(), isNull);
+
+      await setSwitch(on: true);
+
+      expect(await prompt.claim(), since);
+    });
+
+    test('due, switch on (the default): the prompt as before', () async {
+      daysLater(14);
+      await setSwitch(on: true);
+
+      expect(await prompt.claim(), since);
+    });
+
+    test('the switch off, not due: still nothing', () async {
+      daysLater(1);
+      await setSwitch(on: false);
+
+      expect(await prompt.claim(), isNull);
+    });
+
+    test(
+      'a switch off does not answer the session: it stays unanswered',
+      () async {
+        daysLater(20);
+        await setSwitch(on: false);
+        await prompt.claim();
+
+        expect(
+          (await h.media.phoneState.loadShooting()).stillAnswered,
+          isFalse,
+        );
+      },
+    );
+  });
+
   group('answered in the shade first', () {
     test('a waiting Keep on for this session: no question', () async {
       daysLater(15);

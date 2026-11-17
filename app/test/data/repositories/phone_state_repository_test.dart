@@ -362,6 +362,103 @@ void main() {
     });
   });
 
+  group('lastExport', () {
+    test('the key is the documented name', () {
+      expect(PhoneStateRepository.lastExportKey, 'lastExport');
+    });
+
+    test('none recorded is null', () async {
+      expect(await repo.lastExport(), isNull);
+    });
+
+    test('a recorded time reads back as the same UTC instant', () async {
+      final at = DateTime.utc(2026, 11, 17, 8, 30, 15, 123);
+
+      await repo.recordExport(at);
+
+      final read = await repo.lastExport();
+      expect(read, at);
+      expect(read!.isUtc, isTrue);
+      expect(await _raw('lastExport'), '${at.millisecondsSinceEpoch}');
+    });
+
+    test('a local time is stored as the same instant', () async {
+      final local = DateTime.fromMillisecondsSinceEpoch(
+        DateTime.utc(2026, 11, 17, 8).millisecondsSinceEpoch,
+      );
+
+      await repo.recordExport(local);
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8));
+    });
+
+    test('microseconds are cut to whole milliseconds', () async {
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8, 0, 0, 5, 999));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8, 0, 0, 5));
+    });
+
+    test('recording again replaces the time, never adds a row', () async {
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+      await repo.recordExport(DateTime.utc(2026, 11, 18, 9));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 18, 9));
+      final rows = await (db.select(
+        db.settings,
+      )..where((s) => s.key.equals('lastExport'))).get();
+      expect(rows, hasLength(1));
+    });
+
+    test('a time before 1970 survives', () async {
+      await repo.recordExport(DateTime.utc(1969, 12, 31, 23));
+
+      expect(await repo.lastExport(), DateTime.utc(1969, 12, 31, 23));
+    });
+
+    for (final bad in [
+      '{not json',
+      '"yesterday"',
+      'true',
+      '1.5',
+      'null',
+      '[1]',
+      '9999999999999999',
+    ]) {
+      test('an unreadable value ($bad) is null, with the key name '
+          'logged and never the value', () async {
+        await _put('lastExport', bad);
+        final records = _record();
+
+        expect(await repo.lastExport(), isNull);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('lastExport'));
+        expect(lines, isNot(contains(bad)));
+      });
+    }
+
+    test('a corrupt value is replaced by a new record', () async {
+      await _put('lastExport', '"yesterday"');
+
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8));
+    });
+
+    test('is phone state: not exported, and not in a backup file', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.lastExportKey)),
+      );
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('lastExport')),
+      );
+    });
+  });
+
   group('onboarding flags (D-135)', () {
     final flags =
         <

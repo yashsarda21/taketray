@@ -28,6 +28,8 @@ void main() {
     expect(settings.watchedFolders, ['DCIM/Camera']);
     expect(settings.eveningReminderEnabled, isTrue);
     expect(settings.eveningReminderMinutes, 1260);
+    expect(settings.stillReminderEnabled, isTrue);
+    expect(settings.copiesReminderEnabled, isTrue);
   });
 
   test('save then load round-trips', () async {
@@ -35,11 +37,31 @@ void main() {
       watchedFolders: ['DCIM/Camera', 'Movies/Drone'],
       eveningReminderEnabled: false,
       eveningReminderMinutes: 75,
+      stillReminderEnabled: false,
+      copiesReminderEnabled: false,
     );
 
     await repo.save(saved);
 
     expect(await repo.load(), saved);
+  });
+
+  test('the two new switches are stored and read independently', () async {
+    // Swapped keys, or one switch written under both names, would pass a test
+    // that sets them together.
+    await repo.save(const AppSettings(stillReminderEnabled: false));
+    expect(await repo.load(), const AppSettings(stillReminderEnabled: false));
+
+    await repo.save(const AppSettings(copiesReminderEnabled: false));
+    expect(await repo.load(), const AppSettings(copiesReminderEnabled: false));
+  });
+
+  test('the keys are the documented names', () {
+    expect(SettingsRepository.stillReminderEnabledKey, 'stillReminderEnabled');
+    expect(
+      SettingsRepository.copiesReminderEnabledKey,
+      'copiesReminderEnabled',
+    );
   });
 
   test('save stores one JSON row per key and updates them in place', () async {
@@ -53,6 +75,8 @@ void main() {
       'watchedFolders': '["B","C"]',
       'eveningReminderEnabled': 'true',
       'eveningReminderMinutes': '1260',
+      'stillReminderEnabled': 'true',
+      'copiesReminderEnabled': 'true',
     });
   });
 
@@ -69,6 +93,35 @@ void main() {
     expect(settings.eveningReminderMinutes, 30);
     expect(settings.eveningReminderEnabled, isTrue);
     expect(settings.watchedFolders, ['DCIM/Camera']);
+    expect(settings.stillReminderEnabled, isTrue);
+    expect(settings.copiesReminderEnabled, isTrue);
+  });
+
+  test('a corrupt switch is on, and its key name is logged', () async {
+    await _put('stillReminderEnabled', '"no"');
+    await _put('copiesReminderEnabled', '{not json');
+    final records = <LogRecord>[];
+    final sub = Logger('settings').onRecord.listen(records.add);
+    addTearDown(sub.cancel);
+
+    final settings = await repo.load();
+
+    expect(settings.stillReminderEnabled, isTrue);
+    expect(settings.copiesReminderEnabled, isTrue);
+    final lines = records.map((r) => r.message).join('\n');
+    expect(lines, contains('stillReminderEnabled'));
+    expect(lines, contains('copiesReminderEnabled'));
+    expect(lines, isNot(contains('"no"')));
+  });
+
+  test('a stored false for a new switch is read as off', () async {
+    await _put('stillReminderEnabled', 'false');
+    await _put('copiesReminderEnabled', 'false');
+
+    final settings = await repo.load();
+
+    expect(settings.stillReminderEnabled, isFalse);
+    expect(settings.copiesReminderEnabled, isFalse);
   });
 
   test(
@@ -112,10 +165,14 @@ void main() {
     await _put('watchedFolders', '{not json');
     await _put('eveningReminderEnabled', '0');
     await _put('eveningReminderMinutes', '"30"');
+    await _put('stillReminderEnabled', '1');
+    await _put('copiesReminderEnabled', 'null');
     const saved = AppSettings(
       watchedFolders: ['Movies/Drone'],
       eveningReminderEnabled: false,
       eveningReminderMinutes: 30,
+      stillReminderEnabled: false,
+      copiesReminderEnabled: false,
     );
 
     await repo.save(saved);
@@ -128,6 +185,8 @@ void main() {
       'watchedFolders': '["Movies/Drone"]',
       'eveningReminderEnabled': 'false',
       'eveningReminderMinutes': '30',
+      'stillReminderEnabled': 'false',
+      'copiesReminderEnabled': 'false',
     });
   });
 
@@ -155,11 +214,103 @@ void main() {
     expect((await repo.load()).eveningReminderEnabled, isFalse);
   });
 
-  test('exportedKeys is exactly the three user settings', () {
+  test('exportedKeys is exactly the five user settings', () {
     expect(SettingsRepository.exportedKeys, {
       'watchedFolders',
       'eveningReminderEnabled',
       'eveningReminderMinutes',
+      'stillReminderEnabled',
+      'copiesReminderEnabled',
+    });
+  });
+
+  group('a corrupt value is logged once per key per repository', () {
+    List<String> warnings(List<LogRecord> records) => [
+      for (final r in records)
+        if (r.level == Level.WARNING) r.message,
+    ];
+
+    test('three emissions of watch log one warning', () async {
+      await _put('eveningReminderMinutes', '99999');
+      final records = <LogRecord>[];
+      final sub = Logger('settings').onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final emitted = <AppSettings>[];
+      final watching = repo.watch().listen(emitted.add);
+      addTearDown(watching.cancel);
+      await pumpEventQueue();
+
+      // Each write of another key re-reads every row, the corrupt one too.
+      await _put('watchedFolders', '["A"]');
+      await pumpEventQueue();
+      await _put('watchedFolders', '["B"]');
+      await pumpEventQueue();
+
+      expect(emitted, hasLength(3));
+      final lines = warnings(records);
+      expect(lines, hasLength(1));
+      expect(lines.single, contains('eveningReminderMinutes'));
+    });
+
+    test('load after watch, and load again, do not log it again', () async {
+      await _put('eveningReminderMinutes', '99999');
+      final records = <LogRecord>[];
+      final sub = Logger('settings').onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+
+      await repo.load();
+      await repo.load();
+      await repo.watch().first;
+
+      expect(warnings(records), hasLength(1));
+    });
+
+    test('each corrupt key is logged once, by its own name', () async {
+      await _put('eveningReminderMinutes', '99999');
+      await _put('stillReminderEnabled', '"no"');
+      final records = <LogRecord>[];
+      final sub = Logger('settings').onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+
+      await repo.load();
+      await repo.load();
+
+      final lines = warnings(records);
+      expect(lines, hasLength(2));
+      expect(
+        lines.where((l) => l.contains('eveningReminderMinutes')),
+        hasLength(1),
+      );
+      expect(
+        lines.where((l) => l.contains('stillReminderEnabled')),
+        hasLength(1),
+      );
+    });
+
+    test('another repository instance logs it again', () async {
+      await _put('eveningReminderMinutes', '99999');
+      final records = <LogRecord>[];
+      final sub = Logger('settings').onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+
+      await repo.load();
+      await SettingsRepository(
+        db,
+        FixedClock(DateTime.utc(2026, 10, 26)),
+      ).load();
+
+      expect(warnings(records), hasLength(2));
+    });
+
+    test('a key that was never corrupt logs nothing', () async {
+      await repo.save(const AppSettings());
+      final records = <LogRecord>[];
+      final sub = Logger('settings').onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+
+      await repo.load();
+
+      expect(warnings(records), isEmpty);
     });
   });
 
@@ -180,6 +331,24 @@ void main() {
       expect(emitted, [
         const AppSettings(),
         const AppSettings(eveningReminderEnabled: false),
+      ]);
+    });
+
+    test('a change to either new switch emits', () async {
+      final emitted = <AppSettings>[];
+      final sub = repo.watch().listen(emitted.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repo.save(const AppSettings(stillReminderEnabled: false));
+      await pumpEventQueue();
+      await repo.save(const AppSettings(copiesReminderEnabled: false));
+      await pumpEventQueue();
+
+      expect(emitted, [
+        const AppSettings(),
+        const AppSettings(stillReminderEnabled: false),
+        const AppSettings(copiesReminderEnabled: false),
       ]);
     });
   });

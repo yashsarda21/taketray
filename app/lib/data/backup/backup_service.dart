@@ -205,7 +205,7 @@ class BackupService {
     });
   }
 
-  /// The three settings rows, each value JSON as `SettingsRepository.save`
+  /// The five settings rows, each value JSON as `SettingsRepository.save`
   /// writes it.
   List<SettingsCompanion> _settingRows(BackupData data) => [
     for (final (key, value) in [
@@ -217,6 +217,14 @@ class BackupService {
       (
         SettingsRepository.eveningReminderMinutesKey,
         data.settings.eveningReminderMinutes,
+      ),
+      (
+        SettingsRepository.stillReminderEnabledKey,
+        data.settings.stillReminderEnabled,
+      ),
+      (
+        SettingsRepository.copiesReminderEnabledKey,
+        data.settings.copiesReminderEnabled,
       ),
     ])
       SettingsCompanion.insert(key: key, value: jsonEncode(value)),
