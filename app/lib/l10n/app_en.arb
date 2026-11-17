@@ -3897,4 +3897,66 @@
   "@settingsVersionUnknown": {
     "description": "Second line of the TakeTray row in Settings while the app version is not known."
   }
+  ,
+  "watchedInfo": "While Shooting mode is on, new videos saved in these folders go to To tag.",
+  "@watchedInfo": {
+    "description": "The note at the top of the Watched folders screen."
+  },
+  "watchedNoneWatched": "No folder is watched, so Shooting mode finds no new videos.",
+  "@watchedNoneWatched": {
+    "description": "A note under the first one on the Watched folders screen while every folder is off."
+  },
+  "watchedRowSubtitle": "{path} · {detail}",
+  "@watchedRowSubtitle": {
+    "description": "Second line of a row of the Watched folders screen: the folder's path, then the number of videos in it (or that it is gone).",
+    "placeholders": {
+      "path": {
+        "type": "String"
+      },
+      "detail": {
+        "type": "String"
+      }
+    }
+  },
+  "watchedGone": "Not on this phone now",
+  "@watchedGone": {
+    "description": "In the second line of a Watched folders row whose folder is not on the phone any more, in place of the number of videos."
+  },
+  "watchedChatWarning": "Clips from chat apps are dated when they arrived. Busy groups and forwards land in To tag too.",
+  "@watchedChatWarning": {
+    "description": "A warning under a Watched folders row that is a chat app's folder (WhatsApp, Telegram, Signal, Messenger, Snapchat)."
+  },
+  "watchedAdd": "Add a folder",
+  "@watchedAdd": {
+    "description": "The row of the Watched folders screen that opens Android's folder picker."
+  },
+  "watchedTip": "Pro camera apps like Open Camera or MotionCam save to their own folders. Turn them on here if you shoot with them.",
+  "@watchedTip": {
+    "description": "The tip at the bottom of the Watched folders screen."
+  },
+  "watchedAccessBanner": "Allow all videos to see your other folders",
+  "@watchedAccessBanner": {
+    "description": "The banner of the Watched folders screen when TakeTray can only see the videos the user picked; its button is Allow all."
+  },
+  "watchedSwitchSemantics": "Watch {name}",
+  "@watchedSwitchSemantics": {
+    "description": "What a screen reader says for the switch of a Watched folders row. {name} is the folder's name.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "watchedUnsupported": "Choose a folder on this phone or its SD card.",
+  "@watchedUnsupported": {
+    "description": "Shown when the folder the user chose cannot be watched (Downloads, a cloud drive, a USB drive, the storage root)."
+  },
+  "watchedOwnFolder": "TakeTray's own copies can't be watched.",
+  "@watchedOwnFolder": {
+    "description": "Shown when the user chose the folder where TakeTray puts its temporary VN copies."
+  },
+  "watchedAddFailed": "Couldn't add that folder. Try again.",
+  "@watchedAddFailed": {
+    "description": "Shown when choosing or saving a watched folder failed."
+  }
 }

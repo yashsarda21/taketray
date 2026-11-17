@@ -272,21 +272,14 @@ Until now the reminders could be switched off only by editing the database. A us
 
 ### Key ideas
 
-**1. Two quick taps must both stay.** Every switch saves the whole set of five settings. If two taps each read the settings, change one value and save, the second save can overwrite the first. `SettingsController` reads the stored settings (not what the screen shows, which may be a frame behind) and runs the changes one after the other:
+**1. Two quick taps must both stay.** Every switch saves the whole set of five settings. If two taps each read the settings, change one value and save, the second save can overwrite the first. `SettingsController` therefore calls `SettingsRepository.update`, which reads the stored settings (not what the screen shows, which may be a frame behind), changes them and saves them inside one database transaction:
 
 ```dart
-Future<void> _change(AppSettings Function(AppSettings) change) {
-  final repository = ref.read(settingsRepositoryProvider);
-  final run = _tail.then((_) async {
-    final latest = await repository.load();
-    await repository.save(change(latest));
-  });
-  _tail = run.then<void>((_) {}, onError: (Object _) {});
-  return run;
-}
+Future<void> _change(AppSettings Function(AppSettings) change) =>
+    ref.read(settingsRepositoryProvider).update(change);
 ```
 
-`_tail` never fails, so one failed save does not stop the next change; the failure goes only to the caller that asked for it.
+The database runs transactions one after the other, so the second tap reads what the first saved. (Task 5 first did this with a queue inside the controller; section 6 explains why that was not enough and was replaced.) A failed save goes only to the caller that asked for it; the next change still runs.
 
 **2. A time that is not a minute of the day is refused.** `setEveningMinutes(1440)` throws `ArgumentError` before it saves anything. The repository checks too, but a guard in the controller means a bug in a caller never reaches the database.
 
@@ -313,13 +306,68 @@ Future<void> _change(AppSettings Function(AppSettings) change) {
 cd app && ../tool/flutter test test/features/settings test/router/app_router_test.dart
 ```
 
-Then break one thing on purpose. In `settings_controller.dart`, make `_change` call `repository.load()` and `save` directly, without `_tail.then`: "two switches in the same frame both persist" fails, because both calls read the old settings. Or change `minutes >= 24 * 60` to `minutes > 24 * 60`: "1440 throws ArgumentError and saves nothing" fails.
+Then break one thing on purpose. In `settings_controller.dart`, make `_change` call `repository.load()` and `save` directly instead of `update`: "two switches in the same frame both persist" fails, because both calls read the old settings. Or change `minutes >= 24 * 60` to `minutes > 24 * 60`: "1440 throws ArgumentError and saves nothing" fails.
 
 ### Decisions
 
-- D-148: the full Settings screen: the prototype's order and copy, a queued read-modify-save controller, the 0..1439 guard, the phone's time format, the Video access row, and stand-in screens for Tasks 6 and 7.
+- D-148: the full Settings screen: the prototype's order and copy, a read-modify-save controller (a queue at first, `update` from D-149), the 0..1439 guard, the phone's time format, the Video access row, and stand-in screens for Tasks 6 and 7.
 
 ## 6. Watched folders
+
+### What we built
+
+"Watched folders" in Settings now opens a real screen. It lists the folders on the phone that hold videos, each with a switch; the ones that are on are the folders Shooting mode looks in. WhatsApp, Telegram, Signal, Messenger and Snapchat folders are in the list like any other, with a warning: a clip from a chat is dated when it arrived, and busy groups and forwards will land in To tag too. "Add a folder" opens Android's folder picker for anything the list does not show (a pro camera app's own folder, say). A folder that was watched but is no longer on the phone stays in the list as "Not on this phone now", so it can still be turned off. Without full video access only the watched folders show, with a banner to allow all videos.
+
+### Why TakeTray needs it
+
+Until now Shooting mode watched `DCIM/Camera` and nothing else, with no way to change it. People shoot with other apps, and some want a chat folder watched on purpose. The owner chose to allow it and warn, rather than hide it.
+
+### Key ideas
+
+**1. One folder, one row.** A folder is stored as a path with no volume, such as `DCIM/Camera`, because that is all the picker gives back and all the scanner needs. So the phone's `DCIM/Camera` and the SD card's are the same watched folder. The controller compares paths with no slash at either end and A to Z case folded, and adds the counts of both volumes into one row.
+
+**2. Names, not parts of names.** `isChatFolder` is true when any path segment is exactly one of twelve names (`WhatsApp`, `com.whatsapp`, `Telegram`, ...). `Pictures/Signals` is not a chat folder; a test lists a dozen such near misses.
+
+```dart
+bool isChatFolder(String relativePath) =>
+    _segments(relativePath).any((s) => _chatSegments.contains(_lower(s)));
+```
+
+**3. Turning a folder on does not pull in its history.** TakeTray remembers, for each volume, how far MediaStore's generation counter had got when Shooting mode went on. A video already in the folder was added before that, so it is below the line and the scanner never sees it as new. No code was needed; a scanner test pins it, so a later change cannot break it quietly.
+
+**4. Two screens, one settings row set (ruling R3).** `SettingsRepository.save` writes all five keys. Task 5 ordered the Settings switches with a queue inside their own controller, but the Watched folders controller is another object: a folder toggle and an evening switch in the same frame could each read the old settings and one would erase the other. The fix is `SettingsRepository.update(change)`, which reads, changes and writes inside one database transaction, so the second writer waits for the first and then reads what it saved. Both controllers use it.
+
+```dart
+final saved = await _db.transaction(() async {
+  final next = change(_fromRows(await _selectExported().get()));
+  _validate(next);
+  await _write(next);
+  return next;
+});
+```
+
+**5. Refusing what cannot work.** The storage root has no folder in MediaStore, so watching it would find nothing; TakeTray's own `Movies/TakeTray/` holds temporary copies that would flood To tag. `addFolder` refuses both, and the folder picker's own "not a phone or SD folder" answer (Downloads, a cloud drive) shows "Choose a folder on this phone or its SD card."
+
+### Where it lives
+
+- `app/lib/domain/rules/chat_folders.dart`: `isChatFolder`, `isOwnCopyFolder`.
+- `app/lib/features/settings/view_models/watched_folders_controller.dart`: the rows, `setWatched`, `addFolder`.
+- `app/lib/features/settings/views/watched_folders_screen.dart`.
+- `app/lib/data/repositories/settings_repository.dart`: `update`.
+- Tests: `test/domain/rules/chat_folders_test.dart`, `test/features/settings/view_models/watched_folders_controller_test.dart`, `views/watched_folders_screen_test.dart`, `views/watched_folders_golden_test.dart` (goldens in `views/goldens/macos/watched_*.png`), `test/data/repositories/settings_repository_test.dart` (`update`), `test/data/media/media_scanner_test.dart` (the baseline pin); the fake is `test/support/fake_watched_folders.dart`.
+- Docs: `docs/flow.md` ("Watched folders", "Settings"), D-149.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/domain/rules/chat_folders_test.dart test/features/settings test/data/repositories/settings_repository_test.dart
+```
+
+Then break things on purpose. In `chat_folders.dart` make the check `_lower(s).contains(c)`: `Pictures/Signals` fails. In `settings_repository.dart` take the `_db.transaction(` wrapper off `update`: "two updates at once from two repositories both persist" fails, because both read the old settings. In the controller, drop the `gone: true` row: the "gone path" tests fail.
+
+### Decisions
+
+- D-149: watched folders with chat apps included, the screen and its rules, and `SettingsRepository.update` for every settings change (ruling R3).
 
 ## 7. Export and import
 

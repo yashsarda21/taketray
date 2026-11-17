@@ -11,8 +11,10 @@ import '../../../support/fixed_clock.dart';
 import '../../../support/test_database.dart';
 
 /// A [SettingsRepository] on a real in-memory database that records every
-/// `save` it is asked for (before the real one runs), and can make the next
-/// saves fail.
+/// settings value an `update` is about to save (and every `save`), and can
+/// make the next saves fail. The controller saves through `update` (D-149,
+/// ruling R3), so a failed save is an `update` whose change throws: nothing
+/// is written.
 class _SpyRepo implements SettingsRepository {
   _SpyRepo(this.inner);
 
@@ -39,6 +41,19 @@ class _SpyRepo implements SettingsRepository {
     }
     await inner.save(settings);
   }
+
+  @override
+  Future<AppSettings> update(
+    AppSettings Function(AppSettings current) change,
+  ) => inner.update((current) {
+    final next = change(current);
+    saves.add(next);
+    if (failSaves > 0) {
+      failSaves--;
+      throw StateError('the database said no');
+    }
+    return next;
+  });
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -202,6 +217,28 @@ void main() {
         const AppSettings(
           watchedFolders: ['Movies/Drone'],
           eveningReminderEnabled: false,
+        ),
+      );
+    });
+
+    test('a switch here and a save made through another repository, in '
+        'the same frame, both persist (R3)', () async {
+      await container.read(settingsControllerProvider.future);
+      // The Watched folders screen saves through its own repository.
+      final other = SettingsRepository(db, FixedClock(DateTime.utc(2026, 11)));
+
+      await Future.wait([
+        controller().setEvening(false),
+        other.update((s) => s.copyWith(watchedFolders: ['Movies/Drone'])),
+        controller().setStillReminder(false),
+      ]);
+
+      expect(
+        await stored(),
+        const AppSettings(
+          watchedFolders: ['Movies/Drone'],
+          eveningReminderEnabled: false,
+          stillReminderEnabled: false,
         ),
       );
     });

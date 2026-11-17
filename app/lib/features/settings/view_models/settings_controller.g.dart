@@ -12,12 +12,14 @@ part of 'settings_controller.dart';
 /// settings now, and again each time they change (`SettingsRepository.watch`).
 /// While the first read runs the state is loading; if it fails, an error.
 ///
-/// Every setter is a read-modify-save of the **latest stored** settings, not
-/// of the state, which may not have heard of a save made a moment ago. The
-/// calls run one after the other, in the order they were made, so two quick
-/// changes (two switches tapped in the same frame) never overwrite each
-/// other. A save that fails reaches the caller of that setter only; the
-/// calls after it still run.
+/// Every setter is `SettingsRepository.update`: a read-modify-save of the
+/// **latest stored** settings in one database transaction, not of the state,
+/// which may not have heard of a save made a moment ago. The database runs
+/// the updates one after the other, so two quick changes (two switches
+/// tapped in the same frame) never overwrite each other, and neither does a
+/// change made at the same moment by another screen, such as Watched folders
+/// (D-149, ruling R3). A save that fails reaches the caller of that setter
+/// only; the calls after it still run.
 ///
 /// The background jobs read the stored settings each time they run, so what
 /// is saved here is what they use, even when the app is not opened again
@@ -30,12 +32,14 @@ final settingsControllerProvider = SettingsControllerProvider._();
 /// settings now, and again each time they change (`SettingsRepository.watch`).
 /// While the first read runs the state is loading; if it fails, an error.
 ///
-/// Every setter is a read-modify-save of the **latest stored** settings, not
-/// of the state, which may not have heard of a save made a moment ago. The
-/// calls run one after the other, in the order they were made, so two quick
-/// changes (two switches tapped in the same frame) never overwrite each
-/// other. A save that fails reaches the caller of that setter only; the
-/// calls after it still run.
+/// Every setter is `SettingsRepository.update`: a read-modify-save of the
+/// **latest stored** settings in one database transaction, not of the state,
+/// which may not have heard of a save made a moment ago. The database runs
+/// the updates one after the other, so two quick changes (two switches
+/// tapped in the same frame) never overwrite each other, and neither does a
+/// change made at the same moment by another screen, such as Watched folders
+/// (D-149, ruling R3). A save that fails reaches the caller of that setter
+/// only; the calls after it still run.
 ///
 /// The background jobs read the stored settings each time they run, so what
 /// is saved here is what they use, even when the app is not opened again
@@ -46,12 +50,14 @@ final class SettingsControllerProvider
   /// settings now, and again each time they change (`SettingsRepository.watch`).
   /// While the first read runs the state is loading; if it fails, an error.
   ///
-  /// Every setter is a read-modify-save of the **latest stored** settings, not
-  /// of the state, which may not have heard of a save made a moment ago. The
-  /// calls run one after the other, in the order they were made, so two quick
-  /// changes (two switches tapped in the same frame) never overwrite each
-  /// other. A save that fails reaches the caller of that setter only; the
-  /// calls after it still run.
+  /// Every setter is `SettingsRepository.update`: a read-modify-save of the
+  /// **latest stored** settings in one database transaction, not of the state,
+  /// which may not have heard of a save made a moment ago. The database runs
+  /// the updates one after the other, so two quick changes (two switches
+  /// tapped in the same frame) never overwrite each other, and neither does a
+  /// change made at the same moment by another screen, such as Watched folders
+  /// (D-149, ruling R3). A save that fails reaches the caller of that setter
+  /// only; the calls after it still run.
   ///
   /// The background jobs read the stored settings each time they run, so what
   /// is saved here is what they use, even when the app is not opened again
@@ -76,18 +82,20 @@ final class SettingsControllerProvider
 }
 
 String _$settingsControllerHash() =>
-    r'9e9512107f9b039c11fda475942039c12be8f424';
+    r'a414442ccebe1a68b286b395869803402e479aa0';
 
 /// The user's settings for the Settings screen (Phase 10B, D-148): the
 /// settings now, and again each time they change (`SettingsRepository.watch`).
 /// While the first read runs the state is loading; if it fails, an error.
 ///
-/// Every setter is a read-modify-save of the **latest stored** settings, not
-/// of the state, which may not have heard of a save made a moment ago. The
-/// calls run one after the other, in the order they were made, so two quick
-/// changes (two switches tapped in the same frame) never overwrite each
-/// other. A save that fails reaches the caller of that setter only; the
-/// calls after it still run.
+/// Every setter is `SettingsRepository.update`: a read-modify-save of the
+/// **latest stored** settings in one database transaction, not of the state,
+/// which may not have heard of a save made a moment ago. The database runs
+/// the updates one after the other, so two quick changes (two switches
+/// tapped in the same frame) never overwrite each other, and neither does a
+/// change made at the same moment by another screen, such as Watched folders
+/// (D-149, ruling R3). A save that fails reaches the caller of that setter
+/// only; the calls after it still run.
 ///
 /// The background jobs read the stored settings each time they run, so what
 /// is saved here is what they use, even when the app is not opened again

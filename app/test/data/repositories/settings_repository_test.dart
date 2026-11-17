@@ -314,6 +314,172 @@ void main() {
     });
   });
 
+  group('update (D-149, ruling R3)', () {
+    test('changes the stored settings and answers what it saved', () async {
+      await repo.save(
+        const AppSettings(watchedFolders: ['A'], stillReminderEnabled: false),
+      );
+
+      final saved = await repo.update(
+        (s) => s.copyWith(watchedFolders: [...s.watchedFolders, 'B']),
+      );
+
+      const expected = AppSettings(
+        watchedFolders: ['A', 'B'],
+        stillReminderEnabled: false,
+      );
+      expect(saved, expected);
+      expect(await repo.load(), expected);
+    });
+
+    test('the change gets the defaults when nothing is stored, and a '
+        'corrupt value as its default', () async {
+      final seen = <AppSettings>[];
+      await repo.update((s) {
+        seen.add(s);
+        return s;
+      });
+      await _put('eveningReminderEnabled', '"no"');
+      await repo.update((s) {
+        seen.add(s);
+        return s;
+      });
+
+      expect(seen, [const AppSettings(), const AppSettings()]);
+    });
+
+    test('leaves keys that are not settings alone', () async {
+      await _put('shootingMode', 'true');
+
+      await repo.update((s) => s.copyWith(eveningReminderEnabled: false));
+
+      final rows = {
+        for (final r in await db.select(db.settings).get()) r.key: r.value,
+      };
+      expect(rows['shootingMode'], 'true');
+      expect(rows['eveningReminderEnabled'], 'false');
+    });
+
+    test('two updates at once from two repositories both persist', () async {
+      // A folder toggle here and an evening toggle there, in the same frame
+      // (the Watched folders and Settings controllers each own a repository
+      // reference). Without one transaction around the read and the write,
+      // both read the same old settings and the second save wipes the first.
+      final other = SettingsRepository(db, FixedClock(DateTime.utc(2026, 10)));
+
+      await Future.wait([
+        repo.update((s) => s.copyWith(watchedFolders: ['DCIM/Camera', 'New'])),
+        other.update((s) => s.copyWith(eveningReminderEnabled: false)),
+      ]);
+
+      expect(
+        await repo.load(),
+        const AppSettings(
+          watchedFolders: ['DCIM/Camera', 'New'],
+          eveningReminderEnabled: false,
+        ),
+      );
+    });
+
+    test('many updates at once, from both repositories, lose none', () async {
+      final other = SettingsRepository(db, FixedClock(DateTime.utc(2026, 10)));
+      await repo.save(const AppSettings(watchedFolders: []));
+
+      await Future.wait([
+        for (var i = 0; i < 10; i++)
+          (i.isEven ? repo : other).update(
+            (s) => s.copyWith(watchedFolders: [...s.watchedFolders, 'F$i']),
+          ),
+      ]);
+
+      expect((await repo.load()).watchedFolders, hasLength(10));
+      expect((await repo.load()).watchedFolders.toSet(), {
+        for (var i = 0; i < 10; i++) 'F$i',
+      });
+    });
+
+    test('an update and a save at once: the save is never lost', () async {
+      await Future.wait([
+        repo.update((s) => s.copyWith(copiesReminderEnabled: false)),
+        repo.save(const AppSettings(eveningReminderMinutes: 5)),
+      ]);
+
+      final stored = await repo.load();
+      // Whichever ran second, the other's own change is not half-applied: a
+      // save writes all five keys, so the result is one of the two orders.
+      expect(
+        stored,
+        anyOf(
+          const AppSettings(eveningReminderMinutes: 5),
+          const AppSettings(
+            eveningReminderMinutes: 5,
+            copiesReminderEnabled: false,
+          ),
+        ),
+      );
+    });
+
+    for (final minutes in [-1, 1440, 100000]) {
+      test('a change to $minutes minutes throws ArgumentError and saves '
+          'nothing', () async {
+        await repo.save(const AppSettings(eveningReminderMinutes: 600));
+
+        await expectLater(
+          repo.update((s) => s.copyWith(eveningReminderMinutes: minutes)),
+          throwsArgumentError,
+        );
+
+        expect((await repo.load()).eveningReminderMinutes, 600);
+      });
+    }
+
+    test('0 and 1439 minutes are kept exactly', () async {
+      await repo.update((s) => s.copyWith(eveningReminderMinutes: 0));
+      expect((await repo.load()).eveningReminderMinutes, 0);
+      await repo.update((s) => s.copyWith(eveningReminderMinutes: 1439));
+      expect((await repo.load()).eveningReminderMinutes, 1439);
+    });
+
+    test('a change that throws saves nothing, reaches the caller and does '
+        'not block the next update', () async {
+      await repo.save(const AppSettings(watchedFolders: ['A']));
+
+      final failed = repo.update((s) => throw StateError('no'));
+      final next = repo.update((s) => s.copyWith(watchedFolders: ['B']));
+
+      await expectLater(failed, throwsStateError);
+      await next;
+      expect((await repo.load()).watchedFolders, ['B']);
+    });
+
+    test('an empty folder list is kept', () async {
+      await repo.update((s) => s.copyWith(watchedFolders: []));
+
+      expect((await repo.load()).watchedFolders, isEmpty);
+      final rows = {
+        for (final r in await db.select(db.settings).get()) r.key: r.value,
+      };
+      expect(rows['watchedFolders'], '[]');
+    });
+
+    test('a watcher hears one change, not one per key', () async {
+      final emitted = <AppSettings>[];
+      final sub = repo.watch().listen(emitted.add);
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      await repo.update(
+        (s) => s.copyWith(watchedFolders: ['X'], eveningReminderEnabled: false),
+      );
+      await pumpEventQueue();
+
+      expect(emitted, [
+        const AppSettings(),
+        const AppSettings(watchedFolders: ['X'], eveningReminderEnabled: false),
+      ]);
+    });
+  });
+
   group('watch', () {
     test('emits the current settings, then each change, not repeats', () async {
       final emitted = <AppSettings>[];

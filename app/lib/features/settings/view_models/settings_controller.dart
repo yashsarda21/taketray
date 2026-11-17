@@ -13,22 +13,20 @@ part 'settings_controller.g.dart';
 /// settings now, and again each time they change (`SettingsRepository.watch`).
 /// While the first read runs the state is loading; if it fails, an error.
 ///
-/// Every setter is a read-modify-save of the **latest stored** settings, not
-/// of the state, which may not have heard of a save made a moment ago. The
-/// calls run one after the other, in the order they were made, so two quick
-/// changes (two switches tapped in the same frame) never overwrite each
-/// other. A save that fails reaches the caller of that setter only; the
-/// calls after it still run.
+/// Every setter is `SettingsRepository.update`: a read-modify-save of the
+/// **latest stored** settings in one database transaction, not of the state,
+/// which may not have heard of a save made a moment ago. The database runs
+/// the updates one after the other, so two quick changes (two switches
+/// tapped in the same frame) never overwrite each other, and neither does a
+/// change made at the same moment by another screen, such as Watched folders
+/// (D-149, ruling R3). A save that fails reaches the caller of that setter
+/// only; the calls after it still run.
 ///
 /// The background jobs read the stored settings each time they run, so what
 /// is saved here is what they use, even when the app is not opened again
 /// (D-145).
 @Riverpod(retry: noRetry)
 class SettingsController extends _$SettingsController {
-  /// The end of the last change asked for. It never fails, so one failed
-  /// save does not stop the changes after it.
-  Future<void> _tail = Future.value();
-
   @override
   Stream<AppSettings> build() => ref.watch(settingsRepositoryProvider).watch();
 
@@ -58,17 +56,10 @@ class SettingsController extends _$SettingsController {
   Future<void> setCopiesReminder(bool enabled) =>
       _change((s) => s.copyWith(copiesReminderEnabled: enabled));
 
-  /// Runs [change] on the stored settings and saves the result, after the
-  /// changes asked for before it.
-  Future<void> _change(AppSettings Function(AppSettings) change) {
-    final repository = ref.read(settingsRepositoryProvider);
-    final run = _tail.then((_) async {
-      final latest = await repository.load();
-      await repository.save(change(latest));
-    });
-    _tail = run.then<void>((_) {}, onError: (Object _) {});
-    return run;
-  }
+  /// Runs [change] on the stored settings and saves the result, in one
+  /// transaction.
+  Future<void> _change(AppSettings Function(AppSettings) change) =>
+      ref.read(settingsRepositoryProvider).update(change);
 }
 
 /// When a backup file was last saved on this phone, or null (none, or not
