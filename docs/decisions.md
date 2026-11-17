@@ -1980,3 +1980,16 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - Android's Back is pressed only on a pushed step, never on the welcome itself (that finishes the activity and ends the run, as in `shade.dart`).
   - If the controller's S24 is below Android 13 the notifications step is skipped (D-140) and flow 1 and 2 fail at that step by design, with the reason in the message.
   - After a run the usual three commands apply (build the debug app, `install -r`, `pm clear app.taketray.dev`).
+
+### D-144 · Phase 10B: the full Settings screen, Watched folders, Export and import, and Send error log, stacked on 10A
+- Date: 2026-11-17 · Phase: 10B · Design: `docs/superpowers/specs/2026-11-15-phase-10-onboarding-settings-design.md` (10B part, owner-approved 2026-11-15) · Plan: `docs/superpowers/plans/2026-11-17-phase-10b-settings.md`
+- What the owner asked: start 10B while the S24 is busy, and test 10A with the phone later (2026-11-17). Chat-app folders such as WhatsApp Video can be watched, with a warning on the row (2026-11-15).
+- Decision:
+  1. `phase-10b-settings` is stacked on `phase-10a-first-launch`. 10A's PR merges first; 10B's PR follows. 10A is merged into 10B whenever it changes (its phone run is pending), and one phone session at the end may cover both phases.
+  2. Scope: the two missing user settings (the 14-day "still shooting" reminder and the 3-day VN copies reminder) reach the background; the full Settings screen in the prototype's order; Watched folders; Export and import; Send error log through Android's share sheet; the Phase 10 items in `docs/later.md` that these screens close.
+  3. Calls made for the owner (from the design's builder check): an import keeps every phone-state key except `shootingMode` and `copyJobPlan`; an import is refused while a copy job runs; the backup schema stays version 1, with the two new settings read leniently; Watched folders without full access shows only the saved folders, with an Allow all banner; chat-app folders are recognised by fixed path segments, never by phone maker; a backup file over 20 MB is refused.
+  4. One new Pigeon API (`FilesHostApi`) on Android platform APIs only: a `FileProvider` share, the document picker to save and open, the folder picker to learn a path (no grant kept), and the app's version.
+  5. Task D-numbers: Task 2 D-145, Task 3 D-146, Task 4 D-147, Task 5 D-148, Task 6 D-149, Task 7 D-150, Task 8 D-151, Task 9 D-152.
+- Why: every setting the app already reads gets a place to change it, and a user can back up, restore and report a problem without TakeTray ever using the network.
+- Alternatives considered: waiting for 10A's merge before starting (the phone was busy; stacking keeps the work moving); `share_plus` / `file_picker` (rejected in D-134: third-party Android code and manifest entries).
+- Consequences: the PR order is fixed (10A, then 10B); package goldens changed here need their CI copies regenerated after the push.
