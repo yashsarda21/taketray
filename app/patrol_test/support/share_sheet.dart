@@ -33,9 +33,13 @@ bool isChooserId(String? resourceId) =>
 /// Whether something is on top of the app by its lifecycle: the share sheet
 /// (or any other screen) makes Flutter's state `inactive` or `paused`. It
 /// needs no resource id, so it still holds when the ids above are wrong for
-/// this phone. A state not known yet is not "in the background".
+/// this phone. A null state is "unknown", never "covered": Patrol leaves the
+/// binding's state null between tests (D-143), and only `inactive`, `paused`
+/// and `hidden` count.
 bool appIsCovered(AppLifecycleState? state) =>
-    state != null && state != AppLifecycleState.resumed;
+    state == AppLifecycleState.inactive ||
+    state == AppLifecycleState.paused ||
+    state == AppLifecycleState.hidden;
 
 /// Whether the share sheet is up: a chooser view is on the screen, or
 /// (the second signal, [appIsCovered]) the app is behind something.

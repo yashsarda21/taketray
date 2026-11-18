@@ -33,6 +33,7 @@ import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/files_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/lifecycle.dart';
 import 'support/onboarded.dart';
 import 'support/patrol_files_bridge.dart';
 import 'support/share_sheet.dart';
@@ -973,16 +974,23 @@ const PatrolTesterConfig _liveConfig = PatrolTesterConfig(
 
 /// Pumps a fresh app: a new `ProviderScope` (a key of its own, so Flutter
 /// never reuses the old container), onboarded, with the fake files bridge.
-Future<void> _startApp(_Env env) => env.$.pumpWidget(
-  ProviderScope(
-    key: UniqueKey(),
-    overrides: [
-      ...onboardedOverrides,
-      filesBridgeProvider.overrideWithValue(env.files),
-    ],
-    child: const TakeTrayApp(),
-  ),
-);
+///
+/// First the binding gets back the lifecycle state Patrol's test frame wipes
+/// ([restoreResumedLifecycle], D-143): without it Android's Back can finish
+/// the activity on Android 16 and later.
+Future<void> _startApp(_Env env) async {
+  await restoreResumedLifecycle(env.$);
+  await env.$.pumpWidget(
+    ProviderScope(
+      key: UniqueKey(),
+      overrides: [
+        ...onboardedOverrides,
+        filesBridgeProvider.overrideWithValue(env.files),
+      ],
+      child: const TakeTrayApp(),
+    ),
+  );
+}
 
 /// A restart: the widget tree goes, and a fresh app reads the database again.
 Future<void> _restart(_Env env) async {

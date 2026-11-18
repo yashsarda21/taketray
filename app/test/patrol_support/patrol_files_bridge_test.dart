@@ -148,6 +148,19 @@ void main() {
       );
       expect(sheetIsUp(chooserViewSeen: false), isFalse, reason: 'unknown');
       expect(
+        sheetIsUp(chooserViewSeen: false),
+        isFalse,
+        reason: 'a null state (Patrol wipes it between tests) is not covered',
+      );
+      expect(appIsCovered(null), isFalse);
+      expect(appIsCovered(AppLifecycleState.resumed), isFalse);
+      expect(appIsCovered(AppLifecycleState.paused), isTrue);
+      expect(
+        sheetIsUp(chooserViewSeen: true),
+        isTrue,
+        reason: 'the id signal still counts with a null state',
+      );
+      expect(
         sheetIsUp(chooserViewSeen: true, lifecycle: AppLifecycleState.resumed),
         isTrue,
       );
