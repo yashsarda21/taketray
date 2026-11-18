@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/platform/files_bridge.dart';
 
@@ -131,6 +132,25 @@ void main() {
         isFalse,
       );
       expect(isChooserId(null), isFalse);
+    });
+
+    test('a second signal needs no id: the app is covered', () {
+      for (final state in [
+        AppLifecycleState.inactive,
+        AppLifecycleState.paused,
+        AppLifecycleState.hidden,
+      ]) {
+        expect(sheetIsUp(chooserViewSeen: false, lifecycle: state), isTrue);
+      }
+      expect(
+        sheetIsUp(chooserViewSeen: false, lifecycle: AppLifecycleState.resumed),
+        isFalse,
+      );
+      expect(sheetIsUp(chooserViewSeen: false), isFalse, reason: 'unknown');
+      expect(
+        sheetIsUp(chooserViewSeen: true, lifecycle: AppLifecycleState.resumed),
+        isTrue,
+      );
     });
   });
 }

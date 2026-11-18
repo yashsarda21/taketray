@@ -11,6 +11,7 @@ import 'package:taketray/app.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/media/media_scanner.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -215,7 +216,11 @@ Future<void> _switches(_Env env) async {
   expect(_isOn($, evening), isTrue);
   expect(_isOn($, still), isFalse, reason: 'stored off, shown off');
   expect(_isOn($, copies), isFalse, reason: 'stored off, shown off');
-  expect(await _stored(env), expected);
+  await _expectSettingsNow(
+    env,
+    expected,
+    'the stored settings after a restart',
+  );
 }
 
 /// Flow 1b: the switches reach the background. Shooting mode is on and a clip
@@ -232,11 +237,6 @@ Future<void> _background(_Env env) async {
   await _showTab($, _l10n.navReels);
   await _setShootingMode(env, on: true);
   await _flush(env);
-  await _waitUntil(
-    $,
-    () async => (await bg.pendingJobs()).contains(TestBackground.newClipsJobId),
-    what: 'the new-clips job to be armed by Shooting mode',
-  );
 
   // 1. One clip shot today waits in To tag (so the evening reminder has one).
   final video = await env.media!.insert();
@@ -279,20 +279,11 @@ Future<void> _background(_Env env) async {
     timeout: const Duration(seconds: 30),
   );
 
-  // 4. The evening reminder on: today's clip is counted and it is posted.
-  // (Once per evening: a second run the same day on this data needs the
-  // app's data cleared first, as after every Patrol run.)
-  await bg.fireEvening();
-  await _waitUntil(
-    $,
-    () async =>
-        (await bg.activeNotifications()).contains(TestBackground.eveningId),
-    what: 'the evening reminder to be posted with its switch on',
-    timeout: const Duration(seconds: 30),
-  );
-
-  // 5. The evening reminder off: the one in the shade goes, without the app
-  // being opened, and the receiver posts nothing more.
+  // 4. The evening reminder, off first: the receiver posts nothing and does
+  // not mark the evening as handled (it returns before that), so the "on"
+  // below can still post. Then on: today's clip is counted and it is posted
+  // (so the 4 s of nothing were not a dead hook). Then off again: the one in
+  // the shade goes without the app being opened (the arming takes it out).
   final evening = _l10n.settingsEveningTitle;
   await _switchOf($, evening).tap();
   await _expectStored(
@@ -301,13 +292,6 @@ Future<void> _background(_Env env) async {
     'the evening reminder stored as off',
   );
   await _flush(env);
-  await _waitUntil(
-    $,
-    () async =>
-        !(await bg.activeNotifications()).contains(TestBackground.eveningId),
-    what: 'the evening reminder to go when its switch is off',
-    timeout: const Duration(seconds: 30),
-  );
   await bg.fireEvening();
   await _expectNever(
     $,
@@ -315,6 +299,34 @@ Future<void> _background(_Env env) async {
         (await bg.activeNotifications()).contains(TestBackground.eveningId),
     const Duration(seconds: 4),
     'the evening reminder was posted with its switch off',
+  );
+  await _switchOf($, evening).tap();
+  await _expectStored(env, _defaults, 'the evening reminder stored as on');
+  await _flush(env);
+  await bg.fireEvening();
+  await _waitUntil(
+    $,
+    () async =>
+        (await bg.activeNotifications()).contains(TestBackground.eveningId),
+    what:
+        'the evening reminder to be posted with its switch on (evening '
+        'reminders are posted once per evening: clear the app data '
+        '(pm clear) before running this flow again the same day)',
+    timeout: const Duration(seconds: 30),
+  );
+  await _switchOf($, evening).tap();
+  await _expectStored(
+    env,
+    _defaults.copyWith(eveningReminderEnabled: false),
+    'the evening reminder stored as off again',
+  );
+  await _flush(env);
+  await _waitUntil(
+    $,
+    () async =>
+        !(await bg.activeNotifications()).contains(TestBackground.eveningId),
+    what: 'the evening reminder to go when its switch is turned off',
+    timeout: const Duration(seconds: 30),
   );
 }
 
@@ -368,7 +380,11 @@ Future<void> _watchedFolder(_Env env) async {
   env.files.answerFolder(null);
   await _tapScrolled($, folders.$(_l10n.watchedAdd));
   await pumpFor($, const Duration(seconds: 1));
-  expect(await _stored(env), const AppSettings(watchedFolders: []));
+  await _expectSettingsNow(
+    env,
+    const AppSettings(watchedFolders: []),
+    'nothing watched',
+  );
   expect(
     $(_l10n.watchedAddFailed).exists,
     isFalse,
@@ -390,7 +406,11 @@ Future<void> _watchedFolder(_Env env) async {
     () => $(_l10n.watchedOwnFolder).exists,
     what: "the message that TakeTray's own copies cannot be watched",
   );
-  expect(await _stored(env), const AppSettings(watchedFolders: []));
+  await _expectSettingsNow(
+    env,
+    const AppSettings(watchedFolders: []),
+    'nothing watched',
+  );
 
   // 4. Add a folder: the fake picks Movies/TakeTray Test. It is watched and
   // on; the "nothing watched" bar goes; picking it again adds no second one.
@@ -412,9 +432,12 @@ Future<void> _watchedFolder(_Env env) async {
   );
   await _tapScrolled($, folders.$(_l10n.watchedAdd));
   await pumpFor($, const Duration(seconds: 1));
-  expect((await _stored(env)).watchedFolders, [
-    testFolder,
-  ], reason: 'the same folder is not added twice');
+  final watched = (await _stored(env)).watchedFolders;
+  expect(
+    watched.length == 1 && watched.single == testFolder,
+    isTrue,
+    reason: 'the same folder is not added twice (${watched.length} stored)',
+  );
   expect(
     env.files.calls.where((c) => c == 'pickFolder').length,
     5,
@@ -455,14 +478,14 @@ Future<void> _watchedFolder(_Env env) async {
   final first = await env.media!.insert();
   await _waitForClip(env, first, what: 'the new video in To tag');
   expect(
-    await _pendingIds(env),
-    isNot(contains(before.mediaStoreId)),
+    (await _pendingIds(env)).contains(before.mediaStoreId),
+    isFalse,
     reason: 'a video that was there before Shooting mode is not pulled in',
   );
 
   // 8. The folder off while Shooting mode is on: a video that arrives now
-  // does not reach To tag. (A negative: it proves something because the first
-  // video did arrive the same way.)
+  // does not reach To tag, even when a scan is run. (A negative: it proves
+  // something because the first video reached To tag through the same scan.)
   await _showTab($, _l10n.navSettings);
   await _row($, _l10n.settingsWatchedTitle).tap();
   await waitFor($, () => row.evaluate().isNotEmpty, what: 'the folder row');
@@ -474,11 +497,20 @@ Future<void> _watchedFolder(_Env env) async {
   );
   await _flush(env);
   final second = await env.media!.insert();
-  await _expectNever(
-    $,
-    () async => (await _pendingIds(env)).contains(second.mediaStoreId),
-    const Duration(seconds: 6),
-    'a video that arrived while its folder was off reached To tag',
+  // No scan runs by itself while Settings is open, so one is run now and
+  // waited for: a folder switch that did nothing would let it find `second`.
+  final outcome = await env.container.read(mediaScannerProvider).scan();
+  expect(
+    outcome is ScanDone && outcome.failedVolumes.isEmpty,
+    isTrue,
+    reason: 'the scan ran to the end (it was ${outcome.runtimeType})',
+  );
+  await _showTab($, _l10n.navToTag);
+  await pumpFor($, const Duration(seconds: 1));
+  expect(
+    (await _pendingIds(env)).contains(second.mediaStoreId),
+    isFalse,
+    reason: 'a video that arrived while its folder was off reached To tag',
   );
 }
 
@@ -541,11 +573,15 @@ Future<void> _exportImport(_Env env) async {
   expect(env.files.saves, 1);
   final text = (await env.files.lastSavedText())!;
   expect(
-    jsonDecode(text),
-    isA<Map<String, dynamic>>(),
+    jsonDecode(text) is Map<String, dynamic>,
+    isTrue,
     reason: 'a backup is one JSON object',
   );
-  expect(text, contains(_reelBackup), reason: 'the reel is in the backup');
+  expect(
+    text.contains(_reelBackup),
+    isTrue,
+    reason: 'the reel is in the backup',
+  );
   final recorded = await phone.lastExport();
   expect(recorded, isNotNull, reason: 'the export date is recorded');
   await waitFor(
@@ -577,16 +613,18 @@ Future<void> _exportImport(_Env env) async {
   );
   await pumpFor($, const Duration(seconds: 1));
   expect($(_l10n.backupImportedTitle).exists, isFalse);
-  expect(await _reelNames(env), isNot(contains(_reelBackup)));
   expect(
-    await _stored(env),
-    changed,
-    reason: 'a cancelled import changes nothing',
+    (await _reelNames(env)).contains(_reelBackup),
+    isFalse,
+    reason: 'a cancelled import brings no reel back',
   );
+  await _expectSettingsNow(env, changed, 'a cancelled import changes nothing');
 
-  // 6. The import: the reel and the settings come back, "X of Y clips found"
-  // (Y is the clips the database held: this flow made none), and onboarding
-  // is not shown again (the flag is a phone state an import keeps).
+  // 6. The import: the reel and the settings come back, and onboarding is not
+  // shown again (the flag is a phone state an import keeps). The result
+  // dialog's sentence "X of Y clips found" is checked for its shape and Y
+  // only (this flow makes no clip, so it is 0 of 0 on a clean phone): that
+  // clips are really matched on the phone is hand check 13.
   await backupScreen.$(_l10n.backupImportButton).tap();
   await waitFor(
     $,
@@ -602,10 +640,14 @@ Future<void> _exportImport(_Env env) async {
   expect(
     find.textContaining(' of $total clip'),
     findsOneWidget,
-    reason: '"X of $total clips found." says how many clips the phone has',
+    reason: 'the dialog says "X of $total clips found."',
   );
   await $(_l10n.backupResultOk).tap();
-  expect(await _reelNames(env), contains(_reelBackup));
+  expect(
+    (await _reelNames(env)).contains(_reelBackup),
+    isTrue,
+    reason: 'the reel is back after the import',
+  );
   await _expectStored(env, exported, 'the backup settings after the import');
   expect(
     await phone.onboardingDone(),
@@ -637,6 +679,14 @@ Future<void> _sendErrorLog(_Env env) async {
   final (restoreLog, wroteLine) = await _ensureLogLine(support);
   env.cleanUps.add(restoreLog);
   env.cleanUps.add(() => _deleteBundles(cache));
+  // If the flow failed with the sheet still up, close it (Back, only when
+  // something is on top of the app) before the app is torn down.
+  env.cleanUps.add(() async {
+    if (await shareSheetUp($)) {
+      await $.platform.android.pressBack();
+      await waitForShareSheetToClose($);
+    }
+  });
   await env.container.read(reelsRepositoryProvider).create(_reelLog);
 
   // 2. Settings, Help, Send error log.
@@ -651,12 +701,26 @@ Future<void> _sendErrorLog(_Env env) async {
   // 4. What it was given holds the log and nothing else: one bundle in the
   // cache's `shared/` folder, with the log line, and no reel name.
   final bundles = _bundles(cache);
-  expect(bundles, hasLength(1), reason: 'one bundle is shared, never more');
+  expect(
+    bundles.length == 1,
+    isTrue,
+    reason: 'one bundle is shared, never more (${bundles.length} found)',
+  );
   final content = bundles.single.readAsStringSync();
-  expect(content, isNotEmpty);
-  if (wroteLine) expect(content, contains(_logLine));
-  expect(content, isNot(contains(_reelLog)), reason: 'no reel name in a log');
-  expect(content, isNot(contains('taketray-test-')), reason: 'no video name');
+  expect(content.isNotEmpty, isTrue, reason: 'the bundle is not empty');
+  if (wroteLine) {
+    expect(content.contains(_logLine), isTrue, reason: 'the log line is in it');
+  }
+  expect(
+    content.contains(_reelLog),
+    isFalse,
+    reason: 'a reel name reached the shared log',
+  );
+  expect(
+    content.contains('taketray-test-'),
+    isFalse,
+    reason: 'a video name reached the shared log',
+  );
 
   // 5. Back closes the sheet (Back is pressed only now that the sheet is up:
   // on the app's own root screen it would finish the activity). Nothing is
@@ -962,6 +1026,21 @@ Future<void> _expectStored(_Env env, AppSettings expected, String what) async {
     }
     await env.$.tester.pump(const Duration(milliseconds: 250));
   }
+}
+
+/// Fails now unless the stored settings are [expected]; the failure names the
+/// settings that differ, never their values (D-10).
+Future<void> _expectSettingsNow(
+  _Env env,
+  AppSettings expected,
+  String what,
+) async {
+  final stored = await _stored(env);
+  expect(
+    stored == expected,
+    isTrue,
+    reason: '$what (differs in: ${_differing(stored, expected)})',
+  );
 }
 
 /// The names of the settings that differ between [a] and [b].
