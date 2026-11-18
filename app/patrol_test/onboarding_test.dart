@@ -22,6 +22,7 @@ import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/lifecycle.dart';
 import 'support/system_dialogs.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
@@ -184,6 +185,15 @@ Future<void> _freshFullAccess(PatrolIntegrationTester $) async {
     isEmpty,
     reason: 'Enter adds the name and empties the field',
   );
+  expect(
+    _editable($).widget.focusNode.hasFocus,
+    isTrue,
+    reason: 'the field keeps the focus for the next name',
+  );
+  // The keyboard is up now (the field keeps the focus); close it, as a user
+  // does before looking at the ideas, so the chip is not under it.
+  FocusManager.instance.primaryFocus?.unfocus();
+  await $.tester.pump(const Duration(milliseconds: 500));
   await reelsStep.$(TtSuggestionChip).$(_idea).tap();
   await waitFor(
     $,
@@ -677,8 +687,22 @@ const PatrolTesterConfig _liveConfig = PatrolTesterConfig(
 /// Pumps a fresh app: a new `ProviderScope` (a key of its own, so Flutter
 /// never reuses the old container) with no overrides, so the real onboarding
 /// flags decide where it opens.
-Future<void> _startApp(PatrolIntegrationTester $) =>
-    $.pumpWidget(ProviderScope(key: UniqueKey(), child: const TakeTrayApp()));
+///
+/// First the binding gets back the lifecycle state Patrol's test frame wipes
+/// ([restoreResumedLifecycle]): without it the app never tells Android it
+/// handles Back, and Back on a pushed step finishes the activity (Closed
+/// midway).
+Future<void> _startApp(PatrolIntegrationTester $) async {
+  await restoreResumedLifecycle($);
+  expect(
+    WidgetsBinding.instance.lifecycleState,
+    AppLifecycleState.resumed,
+    reason: 'the app is in front, as a real launch reports it',
+  );
+  await $.pumpWidget(
+    ProviderScope(key: UniqueKey(), child: const TakeTrayApp()),
+  );
+}
 
 /// A restart: the widget tree goes, and a fresh app reads the database again.
 Future<void> _restartApp(PatrolIntegrationTester $) async {
@@ -778,11 +802,30 @@ String _fieldText(PatrolIntegrationTester $) =>
 
 /// Types [text] in the reels step's field and presses the keyboard's Enter
 /// ("done"), which adds the name.
+///
+/// The field must keep the focus: Patrol's `enterText` by default closes the
+/// input connection and unfocuses the field when it is done, and an Enter sent
+/// then reaches no field (Flutter drops an input action with no connection).
+/// With `hideKeyboard: false` the field stays focused with the phone's real
+/// input connection, and the Enter (`TextInputAction.done`, the message the
+/// keyboard sends; Patrol's binding has no fake keyboard, and a debug build
+/// takes the test's client id -1 as the current connection's) reaches it.
 Future<void> _typeAndPressEnter(PatrolIntegrationTester $, String text) async {
-  await $(_field.first).enterText(text);
+  await $(_field.first).enterText(text, hideKeyboard: false);
+  expect(
+    _editable($).widget.focusNode.hasFocus,
+    isTrue,
+    reason: 'the field keeps the focus, so Enter reaches it',
+  );
   await $.tester.testTextInput.receiveAction(TextInputAction.done);
   await $.tester.pump(const Duration(milliseconds: 250));
 }
+
+/// The reels step field's [EditableText].
+EditableTextState _editable(PatrolIntegrationTester $) =>
+    $.tester.state<EditableTextState>(
+      find.descendant(of: _field.first, matching: find.byType(EditableText)),
+    );
 
 /// Waits until [check] (an async read of the app's database) is true.
 Future<void> _eventually(
