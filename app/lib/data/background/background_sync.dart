@@ -24,7 +24,7 @@ final Logger _log = Logger('backgroundSync');
 ///   shooting? answer), the settings (`SettingsRepository`: the watched
 ///   folders, the evening reminder) and when the clips waiting in To tag
 ///   were shot (`ClipsRepository.pendingShotTimes`). `stillReminderEnabled`
-///   is true until Settings has a switch for it (Phase 10).
+///   and the copies reminders follow the Settings switches (Phase 10B).
 /// - **When:** [start] follows `watchShooting`, `SettingsRepository.watch`
 ///   and `watchPendingShotTimes`; each change asks for a write. The state is
 ///   read from the database when the write starts, so a write never carries

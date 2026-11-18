@@ -442,6 +442,119 @@ void main() {
       expect(rig.state!.busy, isFalse);
     });
 
+    group('the Settings row refreshes its date while a job runs (the Backup '
+        'route popped)', () {
+      /// Leaves the screen, the row invalidates its date as the route pops,
+      /// and the screen is opened again.
+      Future<void> leaveInvalidateReturn(_Rig rig) async {
+        rig.subscription.close();
+        await pumpEventQueue();
+        rig.container.invalidate(lastExportProvider);
+        await pumpEventQueue();
+        rig.container.listen(backupControllerProvider, (_, _) {});
+        await rig.loaded();
+      }
+
+      test('an import that is held: still busy on return, and a second '
+          'import or export does nothing', () async {
+        final rig = _Rig();
+        final row = rig.container.listen(lastExportProvider, (_, _) {});
+        await rig.loaded();
+        rig.files.openAnswer = '{}';
+        rig.files.hold('openDocument');
+
+        final first = rig.controller.importFrom();
+        await pumpEventQueue();
+        await leaveInvalidateReturn(rig);
+
+        expect(rig.state!.busy, isTrue);
+        expect(rig.state!.job, BackupJob.importing);
+        expect(await rig.controller.importFrom(), isNull);
+        expect(await rig.controller.export(), ExportOutcome.cancelled);
+        expect(rig.files.methods, ['openDocument']);
+
+        rig.files.release('openDocument');
+        await first;
+        await pumpEventQueue();
+        expect(rig.actions.imported, hasLength(1));
+        expect(rig.state!.busy, isFalse);
+        row.close();
+      });
+
+      test('an export that is held: still busy on return, and a second '
+          'export or import does nothing', () async {
+        final rig = _Rig();
+        final row = rig.container.listen(lastExportProvider, (_, _) {});
+        await rig.loaded();
+        rig.files.hold('saveDocument');
+
+        final first = rig.controller.export();
+        await pumpEventQueue();
+        await leaveInvalidateReturn(rig);
+
+        expect(rig.state!.job, BackupJob.exporting);
+        expect(await rig.controller.export(), ExportOutcome.cancelled);
+        expect(await rig.controller.importFrom(), isNull);
+        expect(rig.files.methods, ['saveDocument']);
+
+        rig.files.release('saveDocument');
+        expect(await first, ExportOutcome.saved);
+        await pumpEventQueue();
+        expect(rig.state!.busy, isFalse);
+        // The export that finished after its controller was replaced still
+        // tells the Settings row to read its date again.
+        expect(
+          await rig.container.read(lastExportProvider.future),
+          rig.clock.now(),
+        );
+        expect((await rig.loaded()).lastExport, rig.clock.now());
+        row.close();
+      });
+
+      test('the row refreshes while the screen is still open: the job is '
+          'kept', () async {
+        final rig = _Rig();
+        final row = rig.container.listen(lastExportProvider, (_, _) {});
+        await rig.loaded();
+        rig.files.hold('saveDocument');
+
+        final first = rig.controller.export();
+        await pumpEventQueue();
+        rig.container.invalidate(lastExportProvider);
+        await rig.loaded();
+
+        expect(rig.state!.job, BackupJob.exporting);
+        expect(await rig.controller.export(), ExportOutcome.cancelled);
+
+        rig.files.release('saveDocument');
+        await first;
+        await pumpEventQueue();
+        expect(rig.state!.busy, isFalse);
+        row.close();
+      });
+
+      test('a job that failed after the return leaves the buttons on '
+          'again', () async {
+        final rig = _Rig();
+        final row = rig.container.listen(lastExportProvider, (_, _) {});
+        await rig.loaded();
+        rig.files.hold('openDocument');
+        rig.files.failNext('openDocument');
+
+        final first = rig.controller.importFrom();
+        await pumpEventQueue();
+        await leaveInvalidateReturn(rig);
+        final failed = expectLater(first, throwsA(isA<FileBridgeException>()));
+        rig.files.release('openDocument');
+        await failed;
+        await pumpEventQueue();
+
+        expect(rig.state!.busy, isFalse);
+        expect(await rig.controller.export(), ExportOutcome.saved);
+        row.close();
+      });
+    });
+
     test('after a failed job the next one runs', () async {
       final rig = _Rig();
       await rig.loaded();

@@ -75,6 +75,34 @@ class BackupState {
   String toString() => 'BackupState(lastExport: $lastExport, job: $job)';
 }
 
+/// The job that runs, if any (D-150): `null` when none does.
+///
+/// Kept alive, and not part of [BackupController]: the Settings row reads its
+/// date again each time the Backup route pops (`ref.invalidate(
+/// lastExportProvider)`), and [BackupController] rebuilds from that date, so
+/// a notifier that is disposed and made again would forget the job and let a
+/// second one start. Nothing but a job's own start and end writes here.
+@Riverpod(keepAlive: true)
+class RunningBackupJob extends _$RunningBackupJob {
+  @override
+  BackupJob? build() => null;
+
+  /// Marks [job] as running. False, and nothing is changed, when one runs.
+  bool begin(BackupJob job) {
+    if (state != null) return false;
+    state = job;
+    return true;
+  }
+
+  /// Marks the job as ended.
+  void end() => state = null;
+
+  /// Asks the Settings row and the Backup screen to read the backup date
+  /// again. Here, and not in [BackupController], because the job that
+  /// finishes may be started by a controller that was replaced meanwhile.
+  void refreshDate() => ref.invalidate(lastExportProvider);
+}
+
 /// The Export and import screen (Phase 10B, D-150).
 ///
 /// - **One job at a time.** [export] and [importFrom] each start a job; a
@@ -82,32 +110,44 @@ class BackupState {
 ///   import runs). The job ends in a `finally`, so a picker that fails (the
 ///   activity went away) or an import that throws never leaves the buttons
 ///   off.
-/// - **A job outlives the screen.** While it runs the controller is kept
-///   alive, so leaving the screen and coming back shows it still busy and
-///   cannot start a second one. If Android kills TakeTray while its picker
-///   is open, the job dies with the process; the new process starts idle.
+/// - **A job outlives the screen and this controller.** The running job is
+///   [RunningBackupJob]'s, a kept-alive provider, so leaving the screen, or
+///   the Settings row reading the date again, never forgets it: coming back
+///   shows it still busy and cannot start a second one. While a job runs the
+///   controller is also kept alive. A job works through what it took when
+///   it started, so it ends well even if its controller was replaced. If
+///   Android kills TakeTray while its picker is open, the job dies with the
+///   process; the new process starts idle.
 /// - **The date** is `lastExportProvider`'s, the one the Settings row shows.
 ///   A save invalidates it, so the row and this screen show the new date at
 ///   once.
 @Riverpod(retry: noRetry)
 class BackupController extends _$BackupController {
-  BackupJob? _job;
-
   @override
   Future<BackupState> build() async {
+    // The job's start and end, while the date is shown. (Set during the
+    // first read, the state is not there yet: the job is read at its end.)
+    ref.listen(runningBackupJobProvider, (_, job) {
+      final current = state.value;
+      if (!ref.mounted || current == null) return;
+      state = AsyncData(BackupState(lastExport: current.lastExport, job: job));
+    });
     final last = await ref.watch(lastExportProvider.future);
-    return BackupState(lastExport: last, job: _job);
+    return BackupState(
+      lastExport: last,
+      job: ref.read(runningBackupJobProvider),
+    );
   }
 
   /// Saves a backup through Android's file picker
   /// (`taketray-backup-<local date>.json`, JSON) and, only once the picker
   /// says where it was saved, records the date. A cancel records nothing.
   Future<ExportOutcome> export() async {
-    if (_job != null) return ExportOutcome.cancelled;
     final actions = ref.read(backupActionsProvider);
     final files = ref.read(filesBridgeProvider);
     final name = backupFileName(ref.read(clockProvider).now());
     final done = _start(BackupJob.exporting);
+    if (done == null) return ExportOutcome.cancelled;
     try {
       final String? address;
       try {
@@ -122,10 +162,10 @@ class BackupController extends _$BackupController {
       // recorded only leaves the old one showing.
       await guarded(_log, 'Recording the backup date', actions.recordExport);
       _log.info('A backup was saved');
-      if (ref.mounted) ref.invalidate(lastExportProvider);
+      done.refreshDate();
       return ExportOutcome.saved;
     } finally {
-      done();
+      done.end();
     }
   }
 
@@ -136,10 +176,10 @@ class BackupController extends _$BackupController {
   /// read. A file over the limit at the picker is [ImportTooLarge]. Any other
   /// failure of the picker or the import is thrown, after it is logged.
   Future<ImportResult?> importFrom() async {
-    if (_job != null) return null;
     final actions = ref.read(backupActionsProvider);
     final files = ref.read(filesBridgeProvider);
     final done = _start(BackupJob.importing);
+    if (done == null) return null;
     try {
       final String? text;
       try {
@@ -160,7 +200,7 @@ class BackupController extends _$BackupController {
         rethrow;
       }
     } finally {
-      done();
+      done.end();
     }
   }
 
@@ -176,24 +216,30 @@ class BackupController extends _$BackupController {
       true;
 
   /// Marks [job] as running and keeps the controller alive until the
-  /// returned callback ends it.
-  void Function() _start(BackupJob job) {
-    _job = job;
+  /// returned [_Running] ends it; null when a job already runs.
+  _Running? _start(BackupJob job) {
+    final tracker = ref.read(runningBackupJobProvider.notifier);
+    if (!tracker.begin(job)) return null;
     final link = ref.keepAlive();
-    _publish();
-    return () {
-      _job = null;
-      _publish();
-      link.close();
-    };
+    return _Running(tracker, link.close, () => ref.mounted);
   }
+}
 
-  /// Shows the job in the state, keeping the date known so far.
-  void _publish() {
-    if (!ref.mounted) return;
-    state = AsyncData(
-      BackupState(lastExport: state.value?.lastExport, job: _job),
-    );
+/// A started job: ends it, and says when the date is to be read again,
+/// through what the job took at its start, never through a controller that
+/// may be gone (the Settings row invalidates the date, which replaces it).
+class _Running {
+  _Running(this._tracker, this._closeLink, this._controllerAlive);
+
+  final RunningBackupJob _tracker;
+  final void Function() _closeLink;
+  final bool Function() _controllerAlive;
+
+  void refreshDate() => _tracker.refreshDate();
+
+  void end() {
+    _tracker.end();
+    if (_controllerAlive()) _closeLink();
   }
 }
 

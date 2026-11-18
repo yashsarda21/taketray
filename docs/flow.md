@@ -273,7 +273,7 @@ The app reaches this only through `BackupActions`, which the Export and import s
 3. `decodeBackupInIsolate(json)` (`Isolate.run(() => decodeBackup(json))`, below). A `BackupException` → `ImportRefused(problem)`; nothing was written.
 4. `MediaWorkQueue.run(...)`: any job queued first (a scan, a verify, the grant clean-up) finishes before it starts, and later jobs wait for it (D-72). The job first reads `copyJobPlan()` **again** (a copy job can be saved while the import waits behind a scan): saved now → `ImportBusyCopying`, nothing written. Otherwise it runs `BackupService.importDecoded(data)`. A `BackupException(invalidData)` from a database constraint → `ImportRefused`; any other error is rethrown.
 5. `MediaVerifier.verifyAll()` through `guarded` (it queues after the import). A failure logs the error's type only and counts `found` as 0.
-6. `ImportDone(summary, found, total)`, `total` being the imported clip count.
+6. `ImportDone(summary, found, total, skipped:)`, `total` being the imported clip count and `skipped` the verify's `VerifyOutcome.skipped` count (clips it could not check, such as the MediaStore clips without full video access; 0 when the verify failed).
 
 `exportJson()` returns the text and records nothing; `recordExport()` records `lastExport` after the file is saved. `hasCopies()` reports whether any `vn_copies` row exists, for the screen's warning.
 
@@ -675,7 +675,7 @@ Kotlin never sends a route, only a `LaunchAction` and, for Done editing, a reel 
 4. **Help** (`HelpGroup`): "Notifications not arriving?" (opens the help screen) and "Send error log" / "Logs from this phone, to send by email or chat" (sends the log, see "Error log" below).
 5. **Your data** (`DataGroup`): "Export and import" / "Last backup: {date}" or "No backup yet" (`lastExportProvider`; no line until read; invalidated when the backup screen is left); opens `Routes.backup`.
 6. **Permissions** (`PermissionsGroup`): "Video access" ("All videos" with a check; "Some videos only · Manual mode" with a tonal **Allow all**; "Not allowed" with a tonal **Allow**; the buttons call `MediaAccessController.allow()` once however fast the taps; left out while its first read runs; a failed first read shows "Not allowed" with **Allow**) and "Notifications" (D-107: "Allowed" and a check, or "Not allowed" and a tonal **Allow**, screen-reader label "Allow notifications"; if the first read failed it shows "Not allowed" with **Allow**, which reads it again, then asks or opens the phone's notification settings). The group is left out only while both first reads run.
-7. **About** (`AboutGroup`): "Your videos never leave your phone" / "No account, no cloud, no ads. TakeTray only stores which clips are in which reel." and "TakeTray" / "Version {versionName}" (`appInfoProvider`; "Version" alone while unknown or failed).
+7. **About** (`AboutGroup`): "Your videos never leave your phone" / "No account, no cloud, no ads. TakeTray only stores which clips are in which reel." and "TakeTray" / "Version {versionName}" (`appInfoProvider`; "Version" alone while unknown or failed). The provider is kept alive and never retries, so a failed read is read again when the app comes back to the screen (`resumed`: `AboutGroup` invalidates it if it holds an error, once per return); a good read is kept.
 
 The switches call `SettingsController` (`setEvening`, `setEveningMinutes`, `setStillReminder`, `setCopiesReminder`): each is `SettingsRepository.update` (a read-modify-save of the stored settings in one transaction, D-149), so quick taps, and a folder change made at the same moment on the Watched folders screen, never lose one; `setEveningMinutes` throws `ArgumentError` outside 0 to 1439 before saving. The screen follows `SettingsRepository.watch()`; until the first read the switches are disabled. `Routes.watchedFolders` (`/settings/watched-folders`) and `Routes.backup` (`/settings/backup`) are children of Settings on the root navigator, full screen above the nav pill; `Routes.watchedFolders` is the Watched folders screen and `Routes.backup` the Export and import screen, both below. Goldens: `test/features/settings/views/goldens/macos/`.
 
@@ -715,18 +715,18 @@ The switches call `SettingsController` (`setEvening`, `setEveningMinutes`, `setS
 
 `BackupScreen` (`Routes.backup`, full screen above the nav pill) over `BackupController` (`backup_controller.dart`, auto-disposed, `retry: noRetry`).
 
-**The state** `BackupState(lastExport, job)`: `lastExport` is `await ref.watch(lastExportProvider.future)` (the Settings row's provider), `job` is `exporting`, `importing` or null; `busy` = a job runs. A job is a private field set before the first `await` (the guard) and published to the state; `_start` also takes `ref.keepAlive()`, and its end (in a `finally`) clears the job, publishes, and closes the link.
+**The state** `BackupState(lastExport, job)`: `lastExport` is `await ref.watch(lastExportProvider.future)` (the Settings row's provider), `job` is `exporting`, `importing` or null; `busy` = a job runs. The running job is **not** a field of the controller: it is the state of `RunningBackupJob`, a kept-alive provider, because the Settings row invalidates `lastExportProvider` when the Backup route pops and that disposes and replaces the controller. `_start` calls `RunningBackupJob.begin(job)` before the first `await` (false = a job runs: the guard) and takes `ref.keepAlive()`; the controller `ref.listen`s to the provider (and reads it when built), so any controller shows the job. The end (in a `finally`) calls `end()` and closes the link if the controller is still there. The job works only with what it took at its start, so it ends well after its controller was replaced.
 
 **Export** (`export() → ExportOutcome`):
 
-1. A job runs → `cancelled` at once (nothing called).
+1. A job runs (`begin` says no) → `cancelled` at once (nothing called).
 2. `BackupActions.exportJson()`, then `FilesBridge.saveDocument(backupFileName(clock.now()), 'application/json', text)`. `backupFileName` is `taketray-backup-<yyyy-MM-dd>.json` of the **local** day. Any error in either → `failed` (logged as the bridge's problem or the error's type).
 3. `null` (the user left the picker) → `cancelled`; nothing recorded.
-4. An address → `BackupActions.recordExport()` through `guarded` (a failure leaves the old date; the file is saved), then `ref.invalidate(lastExportProvider)`: the row and this screen read the date again. → `saved`.
+4. An address → `BackupActions.recordExport()` through `guarded` (a failure leaves the old date; the file is saved), then `RunningBackupJob.refreshDate()` (which invalidates `lastExportProvider`: the row and this screen read the date again, even when the controller that started the job was replaced meanwhile). → `saved`.
 
 **Import** (`importFrom() → ImportResult?`):
 
-1. A job runs → `null` at once.
+1. A job runs (`begin` says no) → `null` at once.
 2. `FilesBridge.openDocument(['application/json', 'text/plain', '*/*'], 20 * 1024 * 1024)`. `null` → `null` (nothing read). `FileBridgeException(tooLarge)` → `ImportTooLarge`. Any other bridge error is logged by problem and rethrown.
 3. `BackupActions.importJson(text)` (D-146: size, copy plan, isolate decode, the media queue, verify). Its answer is returned as it is; an error is logged by type and rethrown.
 
@@ -746,12 +746,14 @@ While `busy`, both buttons are disabled.
 
 | Result | Title | Text |
 |---|---|---|
-| `ImportDone(found, total)` | Backup imported | "{found} of {total} clips found." ("{found} of 1 clip found." for one) |
+| `ImportDone(found, total, skipped)` | Backup imported | "{found} of {total} clips found." ("{found} of 1 clip found." for one); with `skipped` above 0, a space and "{skipped} clips couldn't be checked without full video access." ("1 clip couldn't ..." for one) |
 | `ImportBusyCopying` | Copying is still running. Try again when it finishes. | none |
 | `ImportRefused(notJson)`, `ImportRefused(notTakeTray)` | This file isn't a TakeTray backup. | none |
 | `ImportRefused(newerVersion)` | This backup is from a newer TakeTray. Update the app, then try again. | none |
 | `ImportRefused(invalidData)` | This backup is damaged, so nothing was changed. | none |
 | `ImportTooLarge` (from the picker or `importJson`) | This file is too big to be a TakeTray backup. | none |
+
+**Left meanwhile:** when the import ends after the screen was left, there is no dialog: the result is a snack on the root messenger (D-85), the dialog's text in one line: `ImportDone` "Backup imported. {found} of {total} clips found." (and the skipped sentence), a refusal its message, a throw "Something went wrong. Try again."; a cancelled picker says nothing. Export's snacks are on the root messenger already.
 
 **Android took the app away:** if the activity is re-created while a picker is open, the waiting call fails with `host-gone` (→ `failed` / the generic snack) and the job ends; if the process was killed, the late answer is dropped by the bridge (D-147) and the new process starts with no job.
 

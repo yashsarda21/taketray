@@ -8,8 +8,8 @@ import '../../support/fixed_clock.dart';
 import '../../support/test_database.dart';
 
 // The debug build's way to set the evening reminder "to the next minutes" for
-// the owner's hand check (Phase 6, Task 9): there is no Settings row for the
-// time until Phase 10.
+// the owner's hand check (Phase 6, Task 9): it sets the same time as the
+// Settings row (Phase 10B) without opening the picker.
 
 late AppDatabase db;
 late SettingsRepository settings;
@@ -89,6 +89,21 @@ void main() {
       );
     });
 
+    test('the change is one update, not a load then a save, so a switch '
+        'tapped in the same moment is not lost', () async {
+      final spy = _Spy(db, FixedClock(DateTime.utc(2026, 11, 6)));
+      await spy.save(const AppSettings(stillReminderEnabled: false));
+      spy.calls.clear();
+
+      await applyDebugEvening(spy, inMinutes: 2, now: DateTime(2026, 11, 6, 8));
+
+      expect(spy.calls, ['update']);
+      final saved = await spy.load();
+      expect(saved.stillReminderEnabled, isFalse);
+      expect(saved.eveningReminderEnabled, isTrue);
+      expect(saved.eveningReminderMinutes, 8 * 60 + 2);
+    });
+
     test('a failing save is thrown, not hidden', () async {
       await expectLater(
         applyDebugEvening(
@@ -102,6 +117,34 @@ void main() {
   });
 }
 
+/// Settings that record which of `load`, `save` and `update` ran.
+class _Spy extends SettingsRepository {
+  // The repository's own parameters are private, so they cannot be named
+  // alike here.
+  // ignore: matching_super_parameters
+  _Spy(super.db, super.clock);
+
+  final List<String> calls = [];
+
+  @override
+  Future<AppSettings> load() {
+    calls.add('load');
+    return super.load();
+  }
+
+  @override
+  Future<void> save(AppSettings settings) {
+    calls.add('save');
+    return super.save(settings);
+  }
+
+  @override
+  Future<AppSettings> update(AppSettings Function(AppSettings current) change) {
+    calls.add('update');
+    return super.update(change);
+  }
+}
+
 /// Settings whose save fails (a database error).
 class _FailingSave implements SettingsRepository {
   @override
@@ -110,6 +153,11 @@ class _FailingSave implements SettingsRepository {
   @override
   Future<void> save(AppSettings settings) =>
       Future<void>.error(StateError('x'));
+
+  @override
+  Future<AppSettings> update(
+    AppSettings Function(AppSettings current) change,
+  ) => Future<AppSettings>.error(StateError('x'));
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);

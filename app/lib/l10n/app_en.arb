@@ -4047,6 +4047,24 @@
       }
     }
   },
+  "backupImportedSkipped": "{skipped, plural, =1{1 clip couldn't be checked without full video access.} other{{skipped} clips couldn't be checked without full video access.}}",
+  "@backupImportedSkipped": {
+    "description": "Second sentence of the text after a backup was imported, only when some clips could not be looked for because TakeTray does not have full video access. {skipped} is how many.",
+    "placeholders": {
+      "skipped": {
+        "type": "int"
+      }
+    }
+  },
+  "backupImportedSnack": "Backup imported. {summary}",
+  "@backupImportedSnack": {
+    "description": "Snack shown after a backup was imported when the Export and import screen was left meanwhile. {summary} is the text of the dialog it would have shown: how many clips were found, and how many could not be checked.",
+    "placeholders": {
+      "summary": {
+        "type": "String"
+      }
+    }
+  },
   "backupNotBackup": "This file isn't a TakeTray backup.",
   "@backupNotBackup": {
     "description": "Dialog shown when the chosen file is not a TakeTray backup. Nothing was changed."

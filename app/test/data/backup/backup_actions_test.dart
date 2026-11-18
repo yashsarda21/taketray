@@ -55,17 +55,22 @@ class _FailingService extends BackupService {
 
 /// A verifier that logs, then answers [found].
 class _LoggedVerifier extends MediaVerifier {
-  _LoggedVerifier(MediaHarness h, this.events, {this.found = const {}})
-    : super(h.bridge, h.clips, h.phoneState, h.queue, h.clock);
+  _LoggedVerifier(
+    MediaHarness h,
+    this.events, {
+    this.found = const {},
+    this.skipped = const {},
+  }) : super(h.bridge, h.clips, h.phoneState, h.queue, h.clock);
 
   final List<String> events;
   final Set<int> found;
+  final Set<int> skipped;
 
   @override
   Future<VerifyOutcome> verifyAll() {
     events.add('verify');
     return Future.value(
-      VerifyOutcome(found: found, missing: const {}, skipped: const {}),
+      VerifyOutcome(found: found, missing: const {}, skipped: skipped),
     );
   }
 }
@@ -312,6 +317,37 @@ void main() {
       final reels = await h.db.select(h.db.reels).get();
       expect(reels.map((r) => r.name), ['Goa']);
       expect(await h.db.select(h.db.clips).get(), isEmpty);
+    });
+
+    test('the clips the verify skipped are counted in ImportDone.skipped, '
+        'apart from found', () async {
+      final result = await build(
+        verifier: _LoggedVerifier(h, events, found: {10}, skipped: {11, 12}),
+      ).importJson(_fixture());
+
+      expect(
+        result,
+        isA<ImportDone>()
+            .having((r) => r.found, 'found', 1)
+            .having((r) => r.skipped, 'skipped', 2)
+            .having((r) => r.total, 'total', 4),
+      );
+    });
+
+    test('nothing skipped: ImportDone.skipped is 0', () async {
+      final result = await build(
+        verifier: _LoggedVerifier(h, events, found: {10, 11}),
+      ).importJson(_fixture());
+
+      expect(result, isA<ImportDone>().having((r) => r.skipped, 'skipped', 0));
+    });
+
+    test('the verify fails: skipped is 0 too (nothing is claimed)', () async {
+      h.bridge.failNext('accessReport');
+
+      final result = await actions.importJson(_fixture());
+
+      expect(result, isA<ImportDone>().having((r) => r.skipped, 'skipped', 0));
     });
 
     test(

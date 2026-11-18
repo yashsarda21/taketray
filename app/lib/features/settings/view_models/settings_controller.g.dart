@@ -169,19 +169,28 @@ final class LastExportProvider
 String _$lastExportHash() => r'47030d8e03abc81f1d7c7bf5b1dbc3e21ec57c45';
 
 /// The app's version and Android's release, for the About row. Read once; an
-/// error is the state ("Version" alone is shown).
+/// error is the state ("Version" alone is shown). The About group invalidates
+/// it when the app comes back to the screen after a failed read (kept alive
+/// and never retried, a failure would otherwise last until the app
+/// restarts), as `SendLog` does for its folders.
 
 @ProviderFor(appInfo)
 final appInfoProvider = AppInfoProvider._();
 
 /// The app's version and Android's release, for the About row. Read once; an
-/// error is the state ("Version" alone is shown).
+/// error is the state ("Version" alone is shown). The About group invalidates
+/// it when the app comes back to the screen after a failed read (kept alive
+/// and never retried, a failure would otherwise last until the app
+/// restarts), as `SendLog` does for its folders.
 
 final class AppInfoProvider
     extends $FunctionalProvider<AsyncValue<AppInfo>, AppInfo, FutureOr<AppInfo>>
     with $FutureModifier<AppInfo>, $FutureProvider<AppInfo> {
   /// The app's version and Android's release, for the About row. Read once; an
-  /// error is the state ("Version" alone is shown).
+  /// error is the state ("Version" alone is shown). The About group invalidates
+  /// it when the app comes back to the screen after a failed read (kept alive
+  /// and never retried, a failure would otherwise last until the app
+  /// restarts), as `SendLog` does for its folders.
   AppInfoProvider._()
     : super(
         from: null,

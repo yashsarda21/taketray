@@ -7,6 +7,7 @@ import 'package:taketray/data/backup/backup_format.dart';
 import 'package:taketray/features/settings/view_models/settings_controller.dart';
 import 'package:taketray/features/settings/views/backup_screen.dart';
 import 'package:taketray/platform/files_bridge.dart';
+import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
@@ -591,6 +592,27 @@ void main() {
             'Backup imported',
             '0 of 0 clips found.',
           ),
+          (
+            'done, some not checked (plural)',
+            const ImportDone(fakeImportSummary, 1, 4, skipped: 3),
+            'Backup imported',
+            "1 of 4 clips found. 3 clips couldn't be checked without full "
+                'video access.',
+          ),
+          (
+            'done, one not checked (singular)',
+            const ImportDone(fakeImportSummary, 0, 4, skipped: 1),
+            'Backup imported',
+            "0 of 4 clips found. 1 clip couldn't be checked without full "
+                'video access.',
+          ),
+          (
+            'done, one clip, not checked',
+            const ImportDone(fakeImportSummary, 0, 1, skipped: 1),
+            'Backup imported',
+            "0 of 1 clip found. 1 clip couldn't be checked without full "
+                'video access.',
+          ),
           ('copying', const ImportBusyCopying(), _copying, null),
           (
             'not JSON',
@@ -686,6 +708,130 @@ void main() {
       await confirmImport(tester);
 
       await expectTtAccessible(tester);
+    });
+  });
+
+  group('a result that arrives after the screen was left', () {
+    Future<PumpedBackup> startAndLeave(
+      WidgetTester tester, {
+      ImportResult? result,
+      bool export = false,
+    }) async {
+      final s = await pump(tester);
+      s.files.openAnswer = '{"a backup":1}';
+      if (result != null) s.actions.importAnswer = result;
+      if (export) {
+        s.files.hold('saveDocument');
+        await tester.tap(button('Export backup'));
+        await tester.pump();
+      } else {
+        s.actions.holdImport();
+        await confirmImport(tester);
+      }
+      routerOf(tester).go(Routes.toTag);
+      await tester.pumpAndSettle();
+      expect(find.text(toTagRouteMarker), findsOneWidget);
+      expect(find.byType(BackupScreen), findsNothing);
+      return s;
+    }
+
+    for (final (name, result, text) in <(String, ImportResult, String)>[
+      (
+        'done',
+        const ImportDone(fakeImportSummary, 3, 4),
+        'Backup imported. 3 of 4 clips found.',
+      ),
+      (
+        'done, one clip',
+        const ImportDone(fakeImportSummary, 1, 1),
+        'Backup imported. 1 of 1 clip found.',
+      ),
+      (
+        'done, some not checked',
+        const ImportDone(fakeImportSummary, 0, 4, skipped: 2),
+        "Backup imported. 0 of 4 clips found. 2 clips couldn't be "
+            'checked without full video access.',
+      ),
+      ('copying', const ImportBusyCopying(), _copying),
+      ('not a backup', const ImportRefused(BackupProblem.notJson), _notBackup),
+      ('newer', const ImportRefused(BackupProblem.newerVersion), _newer),
+      ('damaged', const ImportRefused(BackupProblem.invalidData), _damaged),
+      ('too large', const ImportTooLarge(), _tooBig),
+    ]) {
+      testWidgets('import $name: a snack on the root messenger: "$text"', (
+        tester,
+      ) async {
+        final s = await startAndLeave(tester, result: result);
+
+        s.actions.releaseImport();
+        await tester.pumpAndSettle();
+
+        expect(find.byType(SnackBar), findsOneWidget);
+        expect(find.text(text), findsOneWidget);
+        expect(find.byType(TtDialog<void>), findsNothing);
+      });
+    }
+
+    testWidgets('an import whose picker is cancelled after leaving says '
+        'nothing', (tester) async {
+      final s = await pump(tester);
+      s.files.hold('openDocument');
+      await openConfirm(tester);
+      await tester.tap(find.widgetWithText(TtButton, 'Import'));
+      await tester.pump();
+      routerOf(tester).go(Routes.toTag);
+      await tester.pumpAndSettle();
+
+      s.files.release('openDocument');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsNothing);
+      expect(s.actions.imported, isEmpty);
+    });
+
+    testWidgets('an export saved after leaving: "Backup saved"', (
+      tester,
+    ) async {
+      final s = await startAndLeave(tester, export: true);
+
+      s.files.release('saveDocument');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Backup saved'), findsOneWidget);
+      expect(s.actions.records, 1);
+    });
+
+    testWidgets("an export that fails after leaving: \"Couldn't save the "
+        'backup."', (tester) async {
+      final s = await startAndLeave(tester, export: true);
+      s.files.failNext('saveDocument');
+
+      s.files.release('saveDocument');
+      await tester.pumpAndSettle();
+
+      expect(find.text("Couldn't save the backup."), findsOneWidget);
+    });
+
+    testWidgets('an import that fails after leaving: "Something went wrong. '
+        'Try again."', (tester) async {
+      final s = await startAndLeave(tester);
+      s.actions.importError = StateError('disk full');
+
+      s.actions.releaseImport();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Something went wrong. Try again.'), findsOneWidget);
+    });
+
+    testWidgets('with the screen still open the result is the dialog, not '
+        'a snack', (tester) async {
+      final s = await pump(tester);
+      s.files.openAnswer = '{}';
+
+      await confirmImport(tester);
+
+      expect(find.byType(TtDialog<void>), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
     });
   });
 }

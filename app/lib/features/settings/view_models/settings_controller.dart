@@ -70,6 +70,9 @@ Future<DateTime?> lastExport(Ref ref) =>
     ref.watch(phoneStateRepositoryProvider).lastExport();
 
 /// The app's version and Android's release, for the About row. Read once; an
-/// error is the state ("Version" alone is shown).
+/// error is the state ("Version" alone is shown). The About group invalidates
+/// it when the app comes back to the screen after a failed read (kept alive
+/// and never retried, a failure would otherwise last until the app
+/// restarts), as `SendLog` does for its folders.
 @Riverpod(keepAlive: true, retry: noRetry)
 Future<AppInfo> appInfo(Ref ref) => ref.watch(filesBridgeProvider).appInfo();

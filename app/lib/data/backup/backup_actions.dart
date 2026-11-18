@@ -37,14 +37,18 @@ sealed class ImportResult {
 }
 
 /// The backup was stored. [found] of [total] clips were found on this phone
-/// by the verify that follows (0 when that verify failed).
+/// by the verify that follows (0 when that verify failed). [skipped] of them
+/// could not be checked at all (without full video access the verify skips
+/// the clips in MediaStore, D-72), so "0 found" for them means "not
+/// looked at", not "gone"; 0 when the verify failed.
 @immutable
 final class ImportDone extends ImportResult {
-  const ImportDone(this.summary, this.found, this.total);
+  const ImportDone(this.summary, this.found, this.total, {this.skipped = 0});
 
   final ImportSummary summary;
   final int found;
   final int total;
+  final int skipped;
 }
 
 /// The file is not a backup this app can read; nothing changed.
@@ -109,7 +113,9 @@ class BackupActions {
   ///    waited behind a scan is [ImportBusyCopying] too. A database
   ///    constraint the checks missed is [ImportRefused].
   /// 5. Every clip is verified, through [guarded]: when that fails the
-  ///    import still stands, with 0 found.
+  ///    import still stands, with 0 found and 0 skipped. The clips the verify
+  ///    could not check (without full video access, MediaStore clips) are
+  ///    [ImportDone.skipped], not missing.
   Future<ImportResult> importJson(String json) async {
     if (json.length > maxImportCodeUnits) {
       _log.warning('Import refused: file over the size limit');
@@ -144,7 +150,12 @@ class BackupActions {
       'Verifying after the import',
       _verifier.verifyAll,
     );
-    return ImportDone(summary, outcome?.found.length ?? 0, summary.clips);
+    return ImportDone(
+      summary,
+      outcome?.found.length ?? 0,
+      summary.clips,
+      skipped: outcome?.skipped.length ?? 0,
+    );
   }
 
   /// Whether any copy of a clip exists in `Movies/TakeTray/`, so the screen

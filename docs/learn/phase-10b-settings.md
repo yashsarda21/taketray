@@ -401,24 +401,23 @@ if (address == null) return ExportOutcome.cancelled;
 await guarded(_log, 'Recording the backup date', actions.recordExport);
 ```
 
-**2. One job at a time, guarded in the controller.** Disabled buttons are not enough: two taps can land in the same frame, before the screen redraws. So `export()` and `importFrom()` start by checking a private `_job` field, set before the first `await`, and the job is ended in a `finally`, so a picker that fails (Android re-created the activity) never leaves the buttons off for good.
+**2. One job at a time, guarded in the controller.** Disabled buttons are not enough: two taps can land in the same frame, before the screen redraws. So `export()` and `importFrom()` start by taking the job (`RunningBackupJob.begin`, which refuses while one runs), before the first `await`, and the job is ended in a `finally`, so a picker that fails (Android re-created the activity) never leaves the buttons off for good.
 
 ```dart
-if (_job != null) return ExportOutcome.cancelled;
-// ...
-final done = _start(BackupJob.exporting);
+final done = _start(BackupJob.exporting); // begin() says no while a job runs
+if (done == null) return ExportOutcome.cancelled;
 try {
   // ...
 } finally {
-  done();
+  done.end();
 }
 ```
 
-**3. A job outlives the screen.** The controller is auto-disposed, like most screens' view models: when the screen closes, it goes. But a user can press Back while an import runs and open the screen again. A fresh controller would have no `_job` and would let a second import start. `_start` therefore takes `ref.keepAlive()` and the end of the job closes it, so the same controller (still busy) is there when the screen comes back.
+**3. A job outlives the screen, and the controller.** The controller is auto-disposed, like most screens' view models: when the screen closes, it goes. But a user can press Back while an import runs and open the screen again, and a fresh controller must still know the job runs. `_start` takes `ref.keepAlive()` so the controller stays while a job runs, but that is not enough: the Settings row calls `ref.invalidate(lastExportProvider)` when the Backup route pops, the controller watches that date, and an invalidated provider is disposed whatever keeps it alive. So the job itself lives in a small kept-alive provider, `RunningBackupJob` (state `BackupJob?`), that the controller listens to. A job that was started by a controller that has since been replaced uses only what it took at its start, and asks for the date to be read again through that provider.
 
 **4. The local day, not UTC's.** `Clock.now()` is UTC. A backup made at 00:30 in India is still the day before in UTC, so the name would be wrong for five and a half hours each night. `backupFileName` turns the instant to local time first. The test can only catch the mistake where the zone is not UTC, and CI runs in UTC, so `tool/check` runs the file again in Europe/London, where a July 00:01 is the day before in UTC.
 
-**5. "X of Y clips found" only after an import that happened.** The result is the sealed `ImportResult` from Task 3, and a Dart `switch` over it must name every case; only `ImportDone` gets "Backup imported" and the count. A refused file's dialog has its message as the title and nothing else.
+**5. "X of Y clips found" only after an import that happened.** The result is the sealed `ImportResult` from Task 3, and a Dart `switch` over it must name every case; only `ImportDone` gets "Backup imported" and the count. A refused file's dialog has its message as the title and nothing else. Without full video access the check after an import skips the clips in MediaStore, so "0 of 4 clips found" would wrongly read as "gone": the text then adds "{skipped} clips couldn't be checked without full video access." And if the screen was left before the import ended, the same words go on a snack on the root messenger, since a dialog needs a screen.
 
 **6. Ask before opening anything.** The question comes before the picker, so Cancel (or Back, or a tap outside) leaves nothing open and nothing read. Whether VN copies exist is checked first, and a failed check counts as "yes": the sentence about them is harmless if wrong, and missing it would be the worse mistake.
 
@@ -436,7 +435,7 @@ try {
 cd app && ../tool/flutter test test/features/settings/view_models/backup_controller_test.dart test/features/settings/views/backup_screen_test.dart
 ```
 
-Then break things on purpose. Move `actions.recordExport()` above the `saveDocument` call: "cancelled: nothing is recorded" fails. Delete `if (_job != null) return ExportOutcome.cancelled;`: "a second export while one runs does nothing" and the screen's "double taps start one export" fail. Replace `ref.keepAlive()` with nothing: "coming back while it runs does not start another" fails. Show the copies sentence always: the plain question test fails.
+Then break things on purpose. Move `actions.recordExport()` above the `saveDocument` call: "cancelled: nothing is recorded" fails. Make `begin` always answer true: "a second export while one runs does nothing" and the screen's "double taps start one export" fail. Keep the job in a field of the controller again: the "leave, invalidate the date, come back" tests fail. Show the copies sentence always: the plain question test fails.
 
 ### Decisions
 

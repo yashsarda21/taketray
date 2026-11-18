@@ -1310,6 +1310,56 @@ void main() {
         expect(tester.takeException(), isNull);
       });
 
+      testWidgets('a failed read is not kept for ever: when the app comes '
+          'back the next read shows the version', (tester) async {
+        final files = FakeFilesBridge()..failNext('appInfo');
+        await pumpFull(tester, files: files);
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+        // No retry loop: one read so far.
+        await tester.pump(const Duration(seconds: 5));
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(1));
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(2));
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+      });
+
+      testWidgets('a read that fails again stays "Version", each return '
+          'tries once, and a good read is not asked for again', (tester) async {
+        final files = FakeFilesBridge()
+          ..failNext('appInfo')
+          ..failNext('appInfo');
+        await pumpFull(tester, files: files);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(2));
+        expect(tester.takeException(), isNull);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(3));
+      });
+
+      testWidgets('a version that was read well is not read again when the '
+          'app comes back', (tester) async {
+        final files = FakeFilesBridge();
+        await pumpFull(tester, files: files);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(1));
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+      });
+
       testWidgets('an empty version name reads "Version" with no gap at the '
           'end', (tester) async {
         final files = FakeFilesBridge()
@@ -1432,4 +1482,15 @@ void main() {
       );
     });
   });
+}
+
+/// The phone is left and the app comes back (`resumed`).
+void _backToTheApp(WidgetTester tester) {
+  tester.binding
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }

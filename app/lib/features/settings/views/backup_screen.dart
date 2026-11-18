@@ -27,8 +27,16 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///
 /// While a job runs (`BackupController`), both buttons are off and its
 /// section shows a progress bar. The messages are shown on the app's root
-/// messenger, so they still show if the screen was left meanwhile; the
-/// result dialog only shows while the screen is open.
+/// messenger, so they still show if the screen was left meanwhile. The result
+/// dialog only shows while the screen is open; when the screen was left
+/// before the import ended, the result is a snack instead ("Backup
+/// imported. {found} of {total} clips found.", or the dialog's text for a
+/// refusal).
+///
+/// With no full video access the verify after an import skips the clips in
+/// MediaStore: "{found} of {total} clips found." then has "{skipped} clips
+/// couldn't be checked without full video access." after it, so "0 found" is
+/// not taken for "gone".
 class BackupScreen extends ConsumerStatefulWidget {
   const new({super.key});
 
@@ -101,7 +109,13 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
       showTtSnackOn(messenger, message: l10n.reelActionFailed);
       return;
     }
-    if (result == null || !mounted) return;
+    if (result == null) return;
+    if (!mounted) {
+      // The screen was left while the job ran: there is no dialog to show,
+      // so the result goes on the root messenger.
+      showTtSnackOn(messenger, message: _snackText(l10n, result));
+      return;
+    }
     final (icon, title, body) = _resultText(l10n, result);
     await showTtDialog<void>(
       context,
@@ -204,10 +218,10 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   AppLocalizations l10n,
   ImportResult result,
 ) => switch (result) {
-  ImportDone(:final found, :final total) => (
+  ImportDone() => (
     Symbols.check_circle_rounded,
     l10n.backupImportedTitle,
-    l10n.backupImportedBody(found, total),
+    _importedBody(l10n, result),
   ),
   ImportBusyCopying() => (
     Symbols.hourglass_top_rounded,
@@ -228,6 +242,23 @@ class _BackupScreenState extends ConsumerState<BackupScreen> {
   ),
   ImportTooLarge() => (Symbols.error_rounded, l10n.backupTooLarge, null),
 };
+
+/// "{found} of {total} clips found.", and, when some clips could not be
+/// checked (no full video access), "{skipped} clips couldn't be checked
+/// without full video access." after it: "0 found" for those means "not
+/// looked at".
+String _importedBody(AppLocalizations l10n, ImportDone done) => [
+  l10n.backupImportedBody(done.found, done.total),
+  if (done.skipped > 0) l10n.backupImportedSkipped(done.skipped),
+].join(' ');
+
+/// What a result says on a snack, when the screen it belongs to was left:
+/// the dialog's text in one line ("Backup imported. 3 of 4 clips found.").
+String _snackText(AppLocalizations l10n, ImportResult result) =>
+    switch (result) {
+      ImportDone() => l10n.backupImportedSnack(_importedBody(l10n, result)),
+      _ => _resultText(l10n, result).$2,
+    };
 
 /// One section of the screen (`.desc` in `screens.js`: `routes.backup`): a
 /// glyph and a [title], the [body], an optional [note] (the last backup),
