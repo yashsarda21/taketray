@@ -505,8 +505,8 @@ Future<void> _watchedFolder(_Env env) async {
     isTrue,
     reason: 'the scan ran to the end (it was ${outcome.runtimeType})',
   );
-  await _showTab($, _l10n.navToTag);
-  await pumpFor($, const Duration(seconds: 1));
+  // (No tab is shown: the Watched folders screen covers the nav pill, and the
+  // scan above, awaited, plus the database read below is the whole proof.)
   expect(
     (await _pendingIds(env)).contains(second.mediaStoreId),
     isFalse,
@@ -679,14 +679,9 @@ Future<void> _sendErrorLog(_Env env) async {
   final (restoreLog, wroteLine) = await _ensureLogLine(support);
   env.cleanUps.add(restoreLog);
   env.cleanUps.add(() => _deleteBundles(cache));
-  // If the flow failed with the sheet still up, close it (Back, only when
-  // something is on top of the app) before the app is torn down.
-  env.cleanUps.add(() async {
-    if (await shareSheetUp($)) {
-      await $.platform.android.pressBack();
-      await waitForShareSheetToClose($);
-    }
-  });
+  // If the flow failed with the sheet still up, close it (see
+  // `closeShareSheetIfUp`: one Back at most, and only when sure).
+  env.cleanUps.add(() => closeShareSheetIfUp($));
   await env.container.read(reelsRepositoryProvider).create(_reelLog);
 
   // 2. Settings, Help, Send error log.
@@ -696,7 +691,7 @@ Future<void> _sendErrorLog(_Env env) async {
   await send.tap();
 
   // 3. The share sheet shows (no frame is pumped behind it).
-  await waitForShareSheet($);
+  final idsSeen = await waitForShareSheet($);
 
   // 4. What it was given holds the log and nothing else: one bundle in the
   // cache's `shared/` folder, with the log line, and no reel name.
@@ -725,8 +720,7 @@ Future<void> _sendErrorLog(_Env env) async {
   // 5. Back closes the sheet (Back is pressed only now that the sheet is up:
   // on the app's own root screen it would finish the activity). Nothing is
   // chosen, and Settings shows no message.
-  await $.platform.android.pressBack();
-  await waitForShareSheetToClose($);
+  await backOutOfShareSheet($, idsSeen: idsSeen);
   await waitFor(
     $,
     () => $(SettingsScreen).exists,

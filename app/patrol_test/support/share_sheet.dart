@@ -74,8 +74,9 @@ Future<bool> shareSheetUp(PatrolIntegrationTester $) async {
 /// The app is behind the sheet, so no frame is pumped meanwhile. Fails with
 /// the resource ids on the screen (no text) when neither signal shows. When
 /// only the lifecycle says it, the ids on the screen are printed, so the
-/// list above can be fixed at the next phone run.
-Future<void> waitForShareSheet(
+/// list above can be fixed at the next phone run. Answers whether a chooser
+/// view was seen (the more certain signal).
+Future<bool> waitForShareSheet(
   PatrolIntegrationTester $, {
   Duration timeout = const Duration(seconds: 20),
 }) async {
@@ -101,12 +102,35 @@ Future<void> waitForShareSheet(
       'screen: ${await describeNativeScreen($)}',
     );
   }
+  return ids;
+}
+
+/// Presses Back once on the share sheet and waits for it to close. When the
+/// sheet was found by its lifecycle signal only ([idsSeen] false), the
+/// lifecycle is read again right before Back, and Back is not pressed if the
+/// app is in front (a lifecycle stuck under Patrol's binding must never make
+/// Back finish the app's own root activity): that is a [TestFailure].
+Future<void> backOutOfShareSheet(
+  PatrolIntegrationTester $, {
+  required bool idsSeen,
+}) async {
+  if (!idsSeen && !appIsCovered(WidgetsBinding.instance.lifecycleState)) {
+    throw TestFailure(
+      'The share sheet was only inferred from the app lifecycle, and the app '
+      'is in front again: Back is not pressed',
+    );
+  }
+  await $.platform.android.pressBack();
+  await waitForShareSheetToClose($, idsAvailable: idsSeen);
 }
 
 /// Waits until the share sheet is gone: no chooser view and the app in front
-/// again. A screen that cannot be read is an error here, not "closed".
+/// again. With [idsAvailable] (a chooser view was seen when it opened) only
+/// the views count, so a lifecycle that stays covered cannot hold the wait. A
+/// screen that cannot be read is an error here, not "closed".
 Future<void> waitForShareSheetToClose(
   PatrolIntegrationTester $, {
+  bool idsAvailable = false,
   Duration timeout = const Duration(seconds: 20),
 }) async {
   final deadline = DateTime.now().add(timeout);
@@ -114,7 +138,7 @@ Future<void> waitForShareSheetToClose(
     final seen = await _chooserViewSeen($);
     if (!sheetIsUp(
       chooserViewSeen: seen,
-      lifecycle: WidgetsBinding.instance.lifecycleState,
+      lifecycle: idsAvailable ? null : WidgetsBinding.instance.lifecycleState,
     )) {
       return;
     }
@@ -126,4 +150,32 @@ Future<void> waitForShareSheetToClose(
     }
     await Future<void>.delayed(const Duration(milliseconds: 500));
   }
+}
+
+/// The tear-down's way to close a share sheet a failed flow left up: **one**
+/// Back at most, never two, and only when sure that something is on top.
+///
+/// - A chooser view on the screen (the id signal, preferred): Back once.
+/// - Only the lifecycle says the app is covered: the lifecycle is read again
+///   after a second, and Back is pressed only if it is still not `resumed`
+///   (a lifecycle stuck under Patrol's binding would otherwise make Back
+///   finish the app's own root activity and end the run). If it is still
+///   covered, Back is pressed once (`backOutOfShareSheet` reads it a last
+///   time first); it is never pressed twice.
+/// - Neither: nothing is pressed.
+///
+/// Afterwards it waits for the sheet to close (by views when they were seen).
+Future<void> closeShareSheetIfUp(PatrolIntegrationTester $) async {
+  var views = false;
+  try {
+    views = await _chooserViewSeen($);
+  } on Object {
+    views = false;
+  }
+  if (!views) {
+    if (!appIsCovered(WidgetsBinding.instance.lifecycleState)) return;
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (!appIsCovered(WidgetsBinding.instance.lifecycleState)) return;
+  }
+  await backOutOfShareSheet($, idsSeen: views);
 }
