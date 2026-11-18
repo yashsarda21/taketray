@@ -672,7 +672,7 @@ Kotlin never sends a route, only a `LaunchAction` and, for Done editing, a reel 
 1. **Shooting mode** (`ShootingReminderGroup`): "Remind me to turn it off" / "If Shooting mode stays on for 14 days" with a `TtSwitch` (`AppSettings.stillReminderEnabled`).
 2. **Reminders** (`RemindersGroup`): "Evening reminder" / "{time}, only if clips are waiting" with a switch; "Reminder time" (a chevron; only while the evening reminder is on) which opens `showTimePicker` at the stored time and saves `hour * 60 + minute` through `setEveningMinutes` (cancel saves nothing; once however fast the taps); "VN copies reminder" / "3 days after copying, if copies are still there" with a switch (`copiesReminderEnabled`). Times follow the phone's 12 or 24-hour setting (`timeOfDayText`).
 3. **Clips** (`ClipsGroup`): "Watched folders" (the folders' last path segments joined with ", ", "Main folder" for the root, "None" for no folder; opens `Routes.watchedFolders`) and "Storage used by VN copies" (D-130, as before).
-4. **Help** (`HelpGroup`): "Notifications not arriving?" (opens the help screen) and "Send error log" / "Logs from this phone, to send by email or chat" (Task 8 adds the action).
+4. **Help** (`HelpGroup`): "Notifications not arriving?" (opens the help screen) and "Send error log" / "Logs from this phone, to send by email or chat" (sends the log, see "Error log" below).
 5. **Your data** (`DataGroup`): "Export and import" / "Last backup: {date}" or "No backup yet" (`lastExportProvider`; no line until read; invalidated when the backup screen is left); opens `Routes.backup`.
 6. **Permissions** (`PermissionsGroup`): "Video access" ("All videos" with a check; "Some videos only · Manual mode" with a tonal **Allow all**; "Not allowed" with a tonal **Allow**; the buttons call `MediaAccessController.allow()` once however fast the taps; left out while its first read runs; a failed first read shows "Not allowed" with **Allow**) and "Notifications" (D-107: "Allowed" and a check, or "Not allowed" and a tonal **Allow**, screen-reader label "Allow notifications"; if the first read failed it shows "Not allowed" with **Allow**, which reads it again, then asks or opens the phone's notification settings). The group is left out only while both first reads run.
 7. **About** (`AboutGroup`): "Your videos never leave your phone" / "No account, no cloud, no ads. TakeTray only stores which clips are in which reel." and "TakeTray" / "Version {versionName}" (`appInfoProvider`; "Version" alone while unknown or failed).
@@ -1561,7 +1561,24 @@ An uncaught error:
 1. Flutter framework error → `FlutterError.onError` (prints it to the console with `presentError` in debug); async error outside the framework → `PlatformDispatcher.onError` (returns `true`, handled); error escaping `body`'s zone → the `runZonedGuarded` handler.
 2. Each calls `Logger('crash').severe(...)`, which continues at "A log record" step 1; in debug builds the zone and platform errors reach the console at "A log record" step 3.
 
-Reading the log: `LogFileSink.readAll` returns `taketray-1.log` then `taketray-0.log` (oldest first); `LogFileSink.exportFile` writes that text to `taketray-log.txt` for the Settings share action (phase 10, using the sink from `onSinkReady`).
+Reading the log: `LogFileSink.readAll` returns `taketray-1.log` then `taketray-0.log` (oldest first); `LogFileSink.exportFile` writes that text to `taketray-log.txt` (the app no longer uses it; Send error log joins the files itself, see "Error log").
+
+### Error log (Send error log: `lib/core/logging/log_bundle.dart`, `lib/features/settings/view_models/send_log.dart`, `lib/features/settings/views/settings_rows/help_group.dart`, Phase 10B Task 8, D-151)
+
+Settings › Help › "Send error log". The log files are in the support folder (`getApplicationSupportDirectory()`, see "Error logging"); the bundle is made in the cache's `shared/` folder, which Android's `FileProvider` shares from (D-147).
+
+1. `HelpGroup._sendErrorLog` (the row's tap): `OpenOnce.openSlow` lets one send through; a tap while one runs, or in the moment after, does nothing. It reads `sendLogProvider` and the root messenger first, then calls `SendLog.send()`.
+2. `SendLog.send`: reads `logDirectoryProvider` (`getApplicationSupportDirectory()`) and `cacheDirectoryProvider` (`getTemporaryDirectory()`, which on Android is `context.cacheDir`), then calls `bundleLogs(logDir, cacheDir, clock.now())`.
+3. `bundleLogs`:
+   1. deletes every `taketray-log-*.txt` in `<cacheDir>/shared/` (other files stay);
+   2. reads `taketray-1.log` then `taketray-0.log`, each whole in one `readAsBytes`; a missing or unreadable file counts as empty; a last line with no newline after it (a write in progress) is dropped;
+   3. no bytes → returns null (step 4 of `send` answers `nothing`);
+   4. creates `shared/`, writes the joined bytes to `taketray-log-<yyyy-MM-dd-HHmm>.txt` (local time) and returns the file.
+4. `send`, null bundle: logs "No log to send" and answers `SendLogOutcome.nothing`; the row shows "Nothing to send yet".
+5. `send`, a bundle: asks `FilesBridge.appInfo()` (a failure is logged by type and skipped), makes the text `TakeTray {version} on Android {release}` (`TakeTray on Android` with no answer; a blank part is left out), then `FilesBridge.shareFile(bundle.path, 'text/plain', 'TakeTray error log', text)` (Kotlin side: "Files bridge", step 2). Answers `shared`; the row says nothing, and nothing more is known about what the user does in the sheet.
+6. Any error in steps 2 to 5 (the folders, the bundle's I/O, `shareFile` with any `FilesProblem`) is logged by type and answers `failed`; the row shows "Couldn't open the share menu on this phone."
+
+The bundle holds only the log files' bytes; the share text is the only other thing sent. Nothing is added about the phone or the person (D-10, D-151).
 
 ### On-device test (Patrol)
 

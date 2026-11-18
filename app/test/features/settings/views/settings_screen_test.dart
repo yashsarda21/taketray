@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -12,6 +14,7 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
+import 'package:taketray/features/settings/view_models/send_log.dart';
 import 'package:taketray/features/settings/view_models/settings_controller.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -51,6 +54,7 @@ Future<FakeNotificationAccess> pump(
   FakeSettings? settings,
   FakeAccess? media,
   FakeFilesBridge? files,
+  ({Directory logs, Directory cache})? logFolders,
   Future<DateTime?> Function()? lastExport,
   bool use24Hour = false,
   Size size = const Size(360, 1700),
@@ -74,6 +78,10 @@ Future<FakeNotificationAccess> pump(
         () => media ?? FakeAccess(null, loading: true),
       ),
       filesBridgeProvider.overrideWithValue(files ?? FakeFilesBridge()),
+      if (logFolders != null) ...[
+        logDirectoryProvider.overrideWith((ref) async => logFolders.logs),
+        cacheDirectoryProvider.overrideWith((ref) async => logFolders.cache),
+      ],
       lastExportProvider.overrideWith(
         (ref) => (lastExport ?? () async => null)(),
       ),
@@ -427,6 +435,7 @@ void main() {
       AppSettings initial = const AppSettings(),
       MediaAccessLevel? level = MediaAccessLevel.full,
       FakeFilesBridge? files,
+      ({Directory logs, Directory cache})? logFolders,
       Future<DateTime?> Function()? lastExport,
       bool use24Hour = true,
       NotificationAccess notifications = _allowed,
@@ -440,6 +449,7 @@ void main() {
         settings: settings,
         media: media,
         files: bridge,
+        logFolders: logFolders,
         lastExport: lastExport,
         use24Hour: use24Hour,
       );
@@ -915,22 +925,125 @@ void main() {
       });
     });
 
-    group('Send error log (Task 8 adds the action)', () {
-      testWidgets('shows its title and subtitle, and a tap does nothing yet', (
-        tester,
-      ) async {
-        await pumpFull(tester);
+    group('Send error log', () {
+      late Directory root;
+      late ({Directory logs, Directory cache}) folders;
+
+      setUp(() {
+        root = Directory.systemTemp.createTempSync('taketray_row_test');
+        folders = (
+          logs: Directory('${root.path}/support')..createSync(),
+          cache: Directory('${root.path}/cache')..createSync(),
+        );
+      });
+
+      tearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+
+      void writeLog(String text) =>
+          File('${folders.logs.path}/taketray-0.log').writeAsStringSync(text);
+
+      /// Lets the bundle be made on the real file system: each file call
+      /// needs real time, and the code after it needs a pump.
+      Future<void> letFilesWork(WidgetTester tester) async {
+        for (var i = 0; i < 40; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+      }
+
+      Future<void> tapRow(WidgetTester tester) async {
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('shows its title and subtitle', (tester) async {
+        await pumpFull(tester, logFolders: folders);
 
         expect(
           subtitleOf(tester, 'Send error log'),
           'Logs from this phone, to send by email or chat',
         );
-        await tester.tap(find.text('Send error log'));
-        await tester.pumpAndSettle();
+        expect(
+          tester.widget<TtListRow>(rowTitled('Send error log')).onTap,
+          isNotNull,
+        );
+      });
 
+      testWidgets('a tap opens the share sheet with the log, and says '
+          'nothing', (tester) async {
+        writeLog('a line\n');
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+
+        // (The About row reads the version too.)
+        expect(s.files.methods.where((m) => m == 'shareFile'), hasLength(1));
+        expect(s.files.calls.last.args[2], 'TakeTray error log');
         expect(find.byType(TtSnack), findsNothing);
         expect(find.byType(SettingsScreen), findsOneWidget);
         expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('no log yet: "Nothing to send yet", and no share sheet', (
+        tester,
+      ) async {
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+
+        expect(find.text('Nothing to send yet'), findsOneWidget);
+        expect(s.files.methods, isNot(contains('shareFile')));
+      });
+
+      testWidgets('the share sheet cannot open: "Couldn\'t open the share menu '
+          'on this phone."', (tester) async {
+        writeLog('a line\n');
+        final files = FakeFilesBridge()..failNext('shareFile');
+        await pumpFull(tester, logFolders: folders, files: files);
+
+        await tapRow(tester);
+
+        expect(
+          find.text("Couldn't open the share menu on this phone."),
+          findsOneWidget,
+        );
+        expect(find.text('Nothing to send yet'), findsNothing);
+      });
+
+      testWidgets('a double tap shares once', (tester) async {
+        writeLog('a line\n');
+        final files = FakeFilesBridge()..hold('shareFile');
+        await pumpFull(tester, logFolders: folders, files: files);
+
+        await tester.tap(find.text('Send error log'));
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        // A third tap while the share sheet is still opening.
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        files.release('shareFile');
+        await letFilesWork(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'shareFile'), hasLength(1));
+      });
+
+      testWidgets('the row works again after the share sheet is closed', (
+        tester,
+      ) async {
+        writeLog('a line\n');
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+        await tester.pump(const Duration(seconds: 1));
+        await tapRow(tester);
+
+        expect(s.files.methods.where((m) => m == 'shareFile'), hasLength(2));
       });
     });
 

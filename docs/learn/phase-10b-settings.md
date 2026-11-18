@@ -433,4 +433,51 @@ Then break things on purpose. Move `actions.recordExport()` above the `saveDocum
 
 ## 8. Send error log
 
+### What we built
+
+Settings › Help › **Send error log** now works. A tap joins TakeTray's two log files into one text file and opens Android's share sheet on it, so the user can send it by email or chat. The message has the subject "TakeTray error log" and the text "TakeTray 1.0.0 on Android 15" (the app's version and the phone's Android release, nothing else). If there is no log yet, a snack says "Nothing to send yet"; if the share sheet cannot open, "Couldn't open the share menu on this phone." Closing the share sheet says nothing.
+
+### Why TakeTray needs it
+
+TakeTray has no server and no account (D-10). The only way a bug reaches the owner is a log the user chooses to send. The log was always written to a file (Phase 0); this is the missing button.
+
+### Key ideas
+
+**1. Only what the logs hold.** The app writes two files, `taketray-0.log` (current) and `taketray-1.log` (previous). The bundle is those two files' bytes, the old one first. No header, no phone model, no folder names: the log lines were already cleaned of paths and values when they were written (D-28), and this task adds nothing.
+
+```dart
+final joined = BytesBuilder(copy: false);
+for (final name in _logFileNames) {
+  joined.add(await _wholeLines(File('${logDir.path}/$name')));
+}
+```
+
+**2. A file that is being written.** The app can log while the user taps the row. Each file is read in one call, so a line written meanwhile is in the bundle or not. A read could still catch the end of a line that is only half written; every line ends with a newline, so a last line without one is dropped. The bundle never has half a line.
+
+**3. One bundle in the cache.** Android can only share files from the cache's `shared/` folder (Task 4). Before making a new bundle, the old ones (`taketray-log-*.txt`) are deleted, so a user who taps the row ten times leaves one file, not ten. The name has the minute on the phone's clock, such as `taketray-log-2026-11-17-1430.txt`, so the email attachment says when it was made.
+
+**4. The same folder on both sides.** Dart asks `path_provider` for the temporary folder; on Android that is `context.cacheDir`, the same folder the Kotlin side checks before it shares. If the two ever differed, `shareFile` would refuse the path as `invalid_path`.
+
+**5. One tap at a time.** Making the file takes a moment, and the share sheet takes another. The row uses `OpenOnce.openSlow`, the guard the Video access button already uses, so a double tap shares once.
+
+### Where it lives
+
+- `app/lib/core/logging/log_bundle.dart`: `bundleLogs`.
+- `app/lib/features/settings/view_models/send_log.dart`: `SendLog.send`, `SendLogOutcome`, the two folder providers.
+- `app/lib/features/settings/views/settings_rows/help_group.dart`: the row's tap and the two snacks.
+- Tests: `test/core/logging/log_bundle_test.dart`, `test/features/settings/view_models/send_log_test.dart`, `test/features/settings/views/settings_screen_test.dart` ("Send error log").
+- Docs: `docs/flow.md` ("Error log"), D-151.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/core/logging/log_bundle_test.dart test/features/settings/view_models/send_log_test.dart
+```
+
+Then break things on purpose. Swap the order in `_logFileNames`: "both files: the previous one first" fails. Delete the `_deleteOldBundles(shared)` line: the three "older bundles" tests fail. Delete `if (bytes.isEmpty) return null;`: every "no log to send" test fails, and the row would open the share sheet on an empty file.
+
+### Decisions
+
+- D-151: Send error log through the share sheet, what it sends, and how the bundle is made.
+
 ## 9. On the S24

@@ -3823,6 +3823,14 @@
   "@settingsErrorLogSubtitle": {
     "description": "Second line of the Send error log row in Settings."
   },
+  "settingsErrorLogNothing": "Nothing to send yet",
+  "@settingsErrorLogNothing": {
+    "description": "Snack shown when Send error log finds no log to send."
+  },
+  "settingsErrorLogFailed": "Couldn't open the share menu on this phone.",
+  "@settingsErrorLogFailed": {
+    "description": "Snack shown when Send error log could not open Android's share menu."
+  },
   "settingsBackupTitle": "Export and import",
   "@settingsBackupTitle": {
     "description": "Title of the Settings row that opens the backup screen, and the title of that screen."
