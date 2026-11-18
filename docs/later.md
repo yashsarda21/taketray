@@ -19,13 +19,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 10 (onboarding and settings)
 
-- **Import and editing sessions (Phase 8).** A backup import deletes the editing-session rows (`vn_sessions`, `vn_copies`, `sent_clips`; editing data is never exported), so the copies already on the phone become orphans on the storage screen. When the import UI is built, warn before the import, or delete the copies first.
 - **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.
 - **Two TakeTray notifications at once are grouped, and Still shooting? is folded even alone (product note, no change now).** When Still shooting? and the new-clips notification are both in the shade, the phone (seen on the S24, 2026-11-06) groups them and folds the older one away; the user expands the group to reach "Turn off". The S24 also showed Still shooting? collapsed when it was the app's only notification: its text showed and its buttons did not, until it was expanded (final review M-3). The body tap to Reels, where the dialog asks, always works. That is standard Android behaviour, so TakeTray does nothing about it. The Patrol flow for "Turn off" avoids it by tapping while Still shooting? is the app's only notification (D-109). Revisit only if the owner finds the folded Still shooting? question easy to miss (for example with a notification group key of our own, or a longer gap between the two).
-
-
-- The Export/Import buttons: show "X of Y clips found" after the media check (`ImportDone.found` of `total`, D-146), and say in the import summary that picked clips restored from a backup come back missing when their grants were released at an earlier start; that is unavoidable.
-
 
 - **Watched folders: two small gaps (Phase 10B Task 6, D-149).** A watched folder that exists but holds no video cannot be told from a gone one, so it reads "Not on this phone now" until a video lands in it (the phone's folder list has no empty folders). A chat folder with no listed segment, such as `Movies/WhatsApp Video`, gets no chat warning. Fix both if the S24 or a user shows them (the first needs an empty-folder probe, the second a wider name match).
 - `.ib.tonal` icon button.

@@ -371,6 +371,66 @@ Then break things on purpose. In `chat_folders.dart` make the check `_lower(s).c
 
 ## 7. Export and import
 
+### What we built
+
+"Export and import" in Settings now opens a real screen. **Export backup** opens Android's "save as" picker with a name like `taketray-backup-2026-11-17.json`; once the file is saved, "Backup saved" shows and the "Last backup" date changes on this screen and on the Settings row. **Import backup** asks "Import a backup?" first (and, when TakeTray's VN copies are on the phone, says they stay there), then opens Android's file picker, imports the file and says how it went: "Backup imported" with "41 of 43 clips found.", or why nothing changed ("This file isn't a TakeTray backup.", "This backup is from a newer TakeTray…", "…damaged…", "…too big…", or "Copying is still running…"). While either runs, both buttons are off and a thin progress bar shows in that section. A callout says that moving to a new phone isn't supported yet.
+
+### Why TakeTray needs it
+
+Task 3 made imports safe and Task 4 gave Dart Android's document pickers; this is the screen that joins them, so a user can keep a copy of their reels and tags and bring it back on the same phone (spec §8.6).
+
+### Key ideas
+
+**1. A backup counts only once it is saved.** The picker answers the saved document's address, or null when the user backed out. The date is recorded only after an address comes back, so a cancel, or a save that failed, never shows as "Last backup: today" (ruling R1).
+
+```dart
+address = await files.saveDocument(name, backupMimeType, json);
+// ...
+if (address == null) return ExportOutcome.cancelled;
+await guarded(_log, 'Recording the backup date', actions.recordExport);
+```
+
+**2. One job at a time, guarded in the controller.** Disabled buttons are not enough: two taps can land in the same frame, before the screen redraws. So `export()` and `importFrom()` start by checking a private `_job` field, set before the first `await`, and the job is ended in a `finally`, so a picker that fails (Android re-created the activity) never leaves the buttons off for good.
+
+```dart
+if (_job != null) return ExportOutcome.cancelled;
+// ...
+final done = _start(BackupJob.exporting);
+try {
+  // ...
+} finally {
+  done();
+}
+```
+
+**3. A job outlives the screen.** The controller is auto-disposed, like most screens' view models: when the screen closes, it goes. But a user can press Back while an import runs and open the screen again. A fresh controller would have no `_job` and would let a second import start. `_start` therefore takes `ref.keepAlive()` and the end of the job closes it, so the same controller (still busy) is there when the screen comes back.
+
+**4. The local day, not UTC's.** `Clock.now()` is UTC. A backup made at 00:30 in India is still the day before in UTC, so the name would be wrong for five and a half hours each night. `backupFileName` turns the instant to local time first. The test can only catch the mistake where the zone is not UTC: on a Mac in India, or in London in summer, it fails; on CI, which runs in UTC, it cannot tell.
+
+**5. "X of Y clips found" only after an import that happened.** The result is the sealed `ImportResult` from Task 3, and a Dart `switch` over it must name every case; only `ImportDone` gets "Backup imported" and the count. A refused file's dialog has its message as the title and nothing else.
+
+**6. Ask before opening anything.** The question comes before the picker, so Cancel (or Back, or a tap outside) leaves nothing open and nothing read. Whether VN copies exist is checked first, and a failed check counts as "yes": the sentence about them is harmless if wrong, and missing it would be the worse mistake.
+
+### Where it lives
+
+- `app/lib/features/settings/view_models/backup_controller.dart`: `BackupController`, `BackupState`, `ExportOutcome`, `backupFileName`.
+- `app/lib/features/settings/views/backup_screen.dart`: the screen, the question and the result dialog.
+- It uses `app/lib/data/backup/backup_actions.dart` (Task 3) and `app/lib/platform/files_bridge.dart` (Task 4).
+- Tests: `test/features/settings/view_models/backup_controller_test.dart`, `views/backup_screen_test.dart`, `views/backup_golden_test.dart` (goldens in `views/goldens/macos/backup_*.png`); the fake is `test/support/fake_backup_actions.dart`.
+- Docs: `docs/flow.md` ("Export and import"), D-150.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/settings/view_models/backup_controller_test.dart test/features/settings/views/backup_screen_test.dart
+```
+
+Then break things on purpose. Move `actions.recordExport()` above the `saveDocument` call: "cancelled: nothing is recorded" fails. Delete `if (_job != null) return ExportOutcome.cancelled;`: "a second export while one runs does nothing" and the screen's "double taps start one export" fail. Replace `ref.keepAlive()` with nothing: "coming back while it runs does not start another" fails. Show the copies sentence always: the plain question test fails.
+
+### Decisions
+
+- D-150: the Export and import screen, its controller, the copy, and one job at a time.
+
 ## 8. Send error log
 
 ## 9. On the S24

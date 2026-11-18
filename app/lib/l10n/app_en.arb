@@ -3958,5 +3958,105 @@
   "watchedAddFailed": "Couldn't add that folder. Try again.",
   "@watchedAddFailed": {
     "description": "Shown when choosing or saving a watched folder failed."
+  },
+  "backupExportTitle": "Export a backup",
+  "@backupExportTitle": {
+    "description": "Title of the export section of the Export and import screen."
+  },
+  "backupExportBody": "Saves your reels, tags and shot ideas to a file. Your videos aren't in it; they stay in your gallery.",
+  "@backupExportBody": {
+    "description": "What the export section of the Export and import screen does."
+  },
+  "backupExportButton": "Export backup",
+  "@backupExportButton": {
+    "description": "Button of the export section: opens Android's file picker to save a backup file."
+  },
+  "backupExportProgress": "Saving the backup",
+  "@backupExportProgress": {
+    "description": "What a screen reader says for the progress bar while a backup file is being saved."
+  },
+  "backupSaved": "Backup saved",
+  "@backupSaved": {
+    "description": "Snack shown when the backup file was saved."
+  },
+  "backupSaveFailed": "Couldn't save the backup.",
+  "@backupSaveFailed": {
+    "description": "Snack shown when the backup file could not be made or saved."
+  },
+  "backupImportTitle": "Import a backup",
+  "@backupImportTitle": {
+    "description": "Title of the import section of the Export and import screen."
+  },
+  "backupImportBody": "Brings back reels and tags from a backup made on this phone. It replaces everything in the app now.",
+  "@backupImportBody": {
+    "description": "What the import section of the Export and import screen does."
+  },
+  "backupImportButton": "Import backup",
+  "@backupImportButton": {
+    "description": "Button of the import section: asks first, then opens Android's file picker to choose a backup file."
+  },
+  "backupImportProgress": "Importing the backup",
+  "@backupImportProgress": {
+    "description": "What a screen reader says for the progress bar while a backup file is being chosen and imported."
+  },
+  "backupNewPhoneTitle": "Moving to a new phone?",
+  "@backupNewPhoneTitle": {
+    "description": "Title of the callout at the bottom of the Export and import screen."
+  },
+  "backupNewPhoneBody": "That isn't supported yet. A backup only links to videos on this phone, so on a new phone every clip would show as missing.",
+  "@backupNewPhoneBody": {
+    "description": "Text of the callout at the bottom of the Export and import screen."
+  },
+  "backupConfirmTitle": "Import a backup?",
+  "@backupConfirmTitle": {
+    "description": "Title of the question asked before an import."
+  },
+  "backupConfirmBody": "Importing replaces everything in TakeTray now. Your videos are not touched.",
+  "@backupConfirmBody": {
+    "description": "Text of the question asked before an import."
+  },
+  "backupConfirmCopies": "VN copies already on this phone stay there and show on the VN copies screen, where you can delete them.",
+  "@backupConfirmCopies": {
+    "description": "Second paragraph of the question asked before an import, shown only when VN copies made by TakeTray are on the phone."
+  },
+  "backupConfirmImport": "Import",
+  "@backupConfirmImport": {
+    "description": "Button of the question asked before an import: opens Android's file picker."
+  },
+  "backupImportedTitle": "Backup imported",
+  "@backupImportedTitle": {
+    "description": "Title of the dialog shown after a backup was imported."
+  },
+  "backupImportedBody": "{total, plural, =1{{found} of 1 clip found.} other{{found} of {total} clips found.}}",
+  "@backupImportedBody": {
+    "description": "Text of the dialog shown after a backup was imported. {total} is the number of clips in the backup, {found} how many of them are on this phone.",
+    "placeholders": {
+      "found": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
+  "backupNotBackup": "This file isn't a TakeTray backup.",
+  "@backupNotBackup": {
+    "description": "Dialog shown when the chosen file is not a TakeTray backup. Nothing was changed."
+  },
+  "backupNewerVersion": "This backup is from a newer TakeTray. Update the app, then try again.",
+  "@backupNewerVersion": {
+    "description": "Dialog shown when the chosen backup was written by a newer version of TakeTray. Nothing was changed."
+  },
+  "backupDamaged": "This backup is damaged, so nothing was changed.",
+  "@backupDamaged": {
+    "description": "Dialog shown when the chosen backup has wrong data in it."
+  },
+  "backupTooLarge": "This file is too big to be a TakeTray backup.",
+  "@backupTooLarge": {
+    "description": "Dialog shown when the chosen file is over 20 MB. Nothing was changed."
+  },
+  "backupResultOk": "OK",
+  "@backupResultOk": {
+    "description": "Button that closes the dialog shown after an import."
   }
 }

@@ -258,7 +258,7 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the editor han
 
 ### Backup export and import
 
-Only `BackupActions` calls this so far; the Settings screen (Task 7) will choose the file with the Storage Access Framework, show the warning before an import and the "X of Y clips found" report. See D-59, D-146. All in `data/backup/`.
+The app reaches this only through `BackupActions`, which the Export and import screen calls (below, D-150): it chooses the file with Android's document picker, warns before an import and shows "X of Y clips found". See D-59, D-146. All in `data/backup/`.
 
 **Export** (`backup_service.dart › BackupService.exportJson()`):
 
@@ -677,7 +677,7 @@ Kotlin never sends a route, only a `LaunchAction` and, for Done editing, a reel 
 6. **Permissions** (`PermissionsGroup`): "Video access" ("All videos" with a check; "Some videos only · Manual mode" with a tonal **Allow all**; "Not allowed" with a tonal **Allow**; the buttons call `MediaAccessController.allow()` once however fast the taps; left out while its first read runs; a failed first read shows "Not allowed" with **Allow**) and "Notifications" (D-107: "Allowed" and a check, or "Not allowed" and a tonal **Allow**, screen-reader label "Allow notifications"; if the first read failed it shows "Not allowed" with **Allow**, which reads it again, then asks or opens the phone's notification settings). The group is left out only while both first reads run.
 7. **About** (`AboutGroup`): "Your videos never leave your phone" / "No account, no cloud, no ads. TakeTray only stores which clips are in which reel." and "TakeTray" / "Version {versionName}" (`appInfoProvider`; "Version" alone while unknown or failed).
 
-The switches call `SettingsController` (`setEvening`, `setEveningMinutes`, `setStillReminder`, `setCopiesReminder`): each is `SettingsRepository.update` (a read-modify-save of the stored settings in one transaction, D-149), so quick taps, and a folder change made at the same moment on the Watched folders screen, never lose one; `setEveningMinutes` throws `ArgumentError` outside 0 to 1439 before saving. The screen follows `SettingsRepository.watch()`; until the first read the switches are disabled. `Routes.watchedFolders` (`/settings/watched-folders`) and `Routes.backup` (`/settings/backup`) are children of Settings on the root navigator, full screen above the nav pill; `Routes.watchedFolders` is the Watched folders screen below, `Routes.backup` is a stand-in with a bar and Back until Task 7. Goldens: `test/features/settings/views/goldens/macos/`.
+The switches call `SettingsController` (`setEvening`, `setEveningMinutes`, `setStillReminder`, `setCopiesReminder`): each is `SettingsRepository.update` (a read-modify-save of the stored settings in one transaction, D-149), so quick taps, and a folder change made at the same moment on the Watched folders screen, never lose one; `setEveningMinutes` throws `ArgumentError` outside 0 to 1439 before saving. The screen follows `SettingsRepository.watch()`; until the first read the switches are disabled. `Routes.watchedFolders` (`/settings/watched-folders`) and `Routes.backup` (`/settings/backup`) are children of Settings on the root navigator, full screen above the nav pill; `Routes.watchedFolders` is the Watched folders screen and `Routes.backup` the Export and import screen, both below. Goldens: `test/features/settings/views/goldens/macos/`.
 
 **Notifications help** (`NotificationsHelpScreen`, `Routes.notificationsHelp` = `/settings/notifications-help`, a child of Settings on the root navigator: full screen above the nav pill, Back returns to Settings):
 
@@ -710,6 +710,54 @@ The switches call `SettingsController` (`setEvening`, `setEveningMinutes`, `setS
 **Logs** (`watchedFolders`, `watchedFoldersScreen`): "Reading the folders failed: {Type}", "Choosing a folder failed: {problem or Type}", "Saving the folder failed: {Type}", "Saving a watched folder failed: {Type}"; never a path or folder name (D-10).
 
 **In tests:** `test/support/fake_watched_folders.dart › FakeWatchedFolders` (records `setWatched(path, on)` and `addFolder`, applies toggles, answers `addResult`, can hold `addGate`); controller tests on a real in-memory database with `FakeMediaBridge`, `FakeFilesBridge` and `FakeAccess`; goldens `test/features/settings/views/goldens/macos/watched_*.png`.
+
+### Export and import (`lib/features/settings/`, Phase 10B Task 7, D-150)
+
+`BackupScreen` (`Routes.backup`, full screen above the nav pill) over `BackupController` (`backup_controller.dart`, auto-disposed, `retry: noRetry`).
+
+**The state** `BackupState(lastExport, job)`: `lastExport` is `await ref.watch(lastExportProvider.future)` (the Settings row's provider), `job` is `exporting`, `importing` or null; `busy` = a job runs. A job is a private field set before the first `await` (the guard) and published to the state; `_start` also takes `ref.keepAlive()`, and its end (in a `finally`) clears the job, publishes, and closes the link.
+
+**Export** (`export() → ExportOutcome`):
+
+1. A job runs → `cancelled` at once (nothing called).
+2. `BackupActions.exportJson()`, then `FilesBridge.saveDocument(backupFileName(clock.now()), 'application/json', text)`. `backupFileName` is `taketray-backup-<yyyy-MM-dd>.json` of the **local** day. Any error in either → `failed` (logged as the bridge's problem or the error's type).
+3. `null` (the user left the picker) → `cancelled`; nothing recorded.
+4. An address → `BackupActions.recordExport()` through `guarded` (a failure leaves the old date; the file is saved), then `ref.invalidate(lastExportProvider)`: the row and this screen read the date again. → `saved`.
+
+**Import** (`importFrom() → ImportResult?`):
+
+1. A job runs → `null` at once.
+2. `FilesBridge.openDocument(['application/json', 'text/plain', '*/*'], 20 * 1024 * 1024)`. `null` → `null` (nothing read). `FileBridgeException(tooLarge)` → `ImportTooLarge`. Any other bridge error is logged by problem and rethrown.
+3. `BackupActions.importJson(text)` (D-146: size, copy plan, isolate decode, the media queue, verify). Its answer is returned as it is; an error is logged by type and rethrown.
+
+**`hasCopies()`**: `BackupActions.hasCopies()` through `guarded`; a failure answers true.
+
+**The screen**, top to bottom (`screens.js` `routes.backup`): a bar "Export and import" with Back; then, 16 dp at the sides, 4 dp on top, 24 dp below and 12 dp apart:
+
+1. The export section (key `backup-export`, `.desc`: surface container low, radius 20, padding 16, gap 8): `download` in the accent colour and "Export a backup"; "Saves your reels, tags and shot ideas to a file. Your videos aren't in it; they stay in your gallery."; "Last backup: {date}" (`ttDayText`, the year only when not this year) or "No backup yet" (no line while the first read runs); while exporting a `TtProgressBar` named "Saving the backup"; a filled **Export backup**.
+2. The import section (key `backup-import`): `upload_file` and "Import a backup"; "Brings back reels and tags from a backup made on this phone. It replaces everything in the app now."; while importing a `TtProgressBar` named "Importing the backup"; an outlined **Import backup**.
+3. A warning `TtCallout` (`smartphone`): "Moving to a new phone?" / "That isn't supported yet. A backup only links to videos on this phone, so on a new phone every clip would show as missing."
+
+While `busy`, both buttons are disabled.
+
+**Export backup** → `export()`, then on the root messenger: `saved` "Backup saved" (check icon), `failed` "Couldn't save the backup.", `cancelled` nothing.
+
+**Import backup** → (`_asking` ignores a second tap until the flow ends) `hasCopies()`, then `showTtDialog<bool>`: a warning glyph, "Import a backup?", "Importing replaces everything in TakeTray now. Your videos are not touched.", with copies a second paragraph "VN copies already on this phone stay there and show on the VN copies screen, where you can delete them.", and **Cancel** / **Import** (destructive). Anything but **Import** (Cancel, Back, a tap outside) ends here. Then `importFrom()`: a throw → "Something went wrong. Try again." on the root messenger; `null` → nothing; else, if the screen is still open, a dialog with **OK**:
+
+| Result | Title | Text |
+|---|---|---|
+| `ImportDone(found, total)` | Backup imported | "{found} of {total} clips found." ("{found} of 1 clip found." for one) |
+| `ImportBusyCopying` | Copying is still running. Try again when it finishes. | none |
+| `ImportRefused(notJson)`, `ImportRefused(notTakeTray)` | This file isn't a TakeTray backup. | none |
+| `ImportRefused(newerVersion)` | This backup is from a newer TakeTray. Update the app, then try again. | none |
+| `ImportRefused(invalidData)` | This backup is damaged, so nothing was changed. | none |
+| `ImportTooLarge` (from the picker or `importJson`) | This file is too big to be a TakeTray backup. | none |
+
+**Android took the app away:** if the activity is re-created while a picker is open, the waiting call fails with `host-gone` (→ `failed` / the generic snack) and the job ends; if the process was killed, the late answer is dropped by the bridge (D-147) and the new process starts with no job.
+
+**Logs** (`backupScreen`): "Saving a backup failed: {problem or Type}", "Recording the backup date failed: {Type}", "A backup was saved", "Import refused: file over the size limit", "Choosing a backup failed: {problem}", "Importing a backup failed: {Type}", "Checking for VN copies failed: {Type}"; never the file name, its address or its text (D-10).
+
+**In tests:** `test/support/fake_backup_actions.dart › FakeBackupActions` (answers, failures, a log, holds for `importJson` and `hasCopies`) with `FakeFilesBridge`; controller tests also on a real database through `VmHarness` (the file name's local-day cases can only fail away from UTC, so not on CI); goldens `test/features/settings/views/goldens/macos/backup_*.png`.
 
 ### The time where a clip was shot (`lib/data/media/clip_time.dart`, `lib/domain/rules/shooting_days.dart`, D-83)
 
