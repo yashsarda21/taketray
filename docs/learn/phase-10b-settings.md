@@ -481,3 +481,36 @@ Then break things on purpose. Swap the order in `_logFileNames`: "both files: th
 - D-151: Send error log through the share sheet, what it sends, and how the bundle is made.
 
 ## 9. On the S24
+
+**Draft: the phone run completes this section. What follows is what the run will check; the results are added after it.**
+
+**What we built:** an on-device test for Settings, and a list of hand checks for what a test cannot see. The test is `app/patrol_test/settings_test.dart`; the list is "Phase 10B check" in `docs/dev-setup.md`.
+
+- **Five flows.** *Switches*: the evening reminder off and on, its time set to 07:30 through the time picker (stored as 450), a cancelled picker, the other two reminders off and on, and the saved values shown after a restart. *The switches reach the background*: with Shooting mode on and a clip shot today waiting, the evening reminder and "Still shooting?" are fired through their own receivers; with the switch off nothing is posted, with it on they are. *Watched folder*: Add a folder, the refused folders, the folder's switch, Shooting mode on, a new test video reaches To tag, an older one and one that arrives with the folder off do not. *Export then import*: a cancelled export, export, a cancelled import, import, "X of Y clips found", onboarding stays done. *Send error log*: the share sheet opens, Back, nothing is chosen.
+- **No real picker.** Android's folder picker and document picker are drawn by a system app. The flows swap the app's files bridge for a fake that answers the folder `Movies/TakeTray Test` and keeps "saved" backups in the app's own cache. The real pickers are hand checks.
+- **Starts clean, ends clean.** Each flow saves the settings it needs before the app starts and puts the old ones back at the end, even when it failed, so the flows run in any order.
+- **Phone safety.** Only TakeTray Dev and the test videos in `Movies/TakeTray Test/`. Nothing written outside them, no screenshots, nothing printed that names a folder, a reel or a video.
+
+**Why TakeTray needs it:** the switches are saved in the database but their effect is in Android's alarms and notifications, which a widget test cannot see; the pickers and the share sheet are Android's own screens. Only the phone shows that the whole way works.
+
+**Key ideas:**
+
+- **Swap the door, keep the room.** The fake files bridge replaces only what talks to Android's pickers. Everything behind it (the controller, the repository, the database, the import) is the real code.
+- **Pair every "nothing happened" with a "something happened".** The flows prove "off posts nothing" and then "on posts it" on the same hook, so a dead hook cannot make the first check pass.
+- **Find a clip by its id, never by a count.** A clip an earlier flow left in the database is still in the list, so "exactly one" says nothing.
+- **Press Back only when something is on top.** On the app's own root screen Back would end the run, so the share sheet is found first.
+
+**Where it lives:** `app/patrol_test/settings_test.dart`, `app/patrol_test/support/patrol_files_bridge.dart` (the fake bridge), `app/patrol_test/support/share_sheet.dart` (finding the chooser), `docs/dev-setup.md` ("Phase 10B check").
+
+**Try it yourself:** check that the file builds without a phone. From the repo root:
+
+```bash
+tool/patrol build android --target patrol_test/settings_test.dart --debug
+cd app && ../tool/flutter test test/patrol_support/patrol_files_bridge_test.dart
+```
+
+The first ends with `Completed building apk` and the two APK paths. For the second, break the fake on purpose: in `patrol_files_bridge.dart` delete `_cancelOpen = false;` and "a cancelled open answers null once" fails; change the default folder and "answers the test folder when nothing is queued" fails. (Change them back.)
+
+**Decisions:** D-152 (all of this section), with D-100, D-131 and D-143 (Patrol on the S24) and D-145 to D-151 (what the flows check) as background.
+
+**Phone results:** pending. The run, what each flow showed, the share sheet's real ids and what was changed are added here after it.
