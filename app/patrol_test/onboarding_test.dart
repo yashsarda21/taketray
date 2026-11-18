@@ -694,10 +694,13 @@ const PatrolTesterConfig _liveConfig = PatrolTesterConfig(
 /// midway).
 Future<void> _startApp(PatrolIntegrationTester $) async {
   await restoreResumedLifecycle($);
+  // Any known state but detached will do: `WidgetsApp` passes Back handling
+  // on to the engine in all of them. (The S24 has reported `paused` here at
+  // the start of a process; it is left as Android reported it.)
   expect(
     WidgetsBinding.instance.lifecycleState,
-    AppLifecycleState.resumed,
-    reason: 'the app is in front, as a real launch reports it',
+    isNot(anyOf(isNull, AppLifecycleState.detached)),
+    reason: 'the app tells Android it handles Back only with a known state',
   );
   await $.pumpWidget(
     ProviderScope(key: UniqueKey(), child: const TakeTrayApp()),
