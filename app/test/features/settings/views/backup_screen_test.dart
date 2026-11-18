@@ -432,6 +432,46 @@ void main() {
     });
   });
 
+  group('import: export waits for the question', () {
+    testWidgets('Export tapped while the copies are checked does nothing, '
+        'and the import then runs', (tester) async {
+      final s = await pump(tester);
+      s.files.openAnswer = '{}';
+      s.actions.holdCopies();
+
+      await tester.tap(button('Import backup'));
+      await tester.pump();
+      await tester.tap(button('Export backup'));
+      await tester.pump();
+      s.actions.releaseCopies();
+      await tester.pumpAndSettle();
+
+      expect(s.files.calls, isEmpty, reason: 'no save picker');
+      expect(s.actions.log, ['hasCopies']);
+      await tester.tap(find.widgetWithText(TtButton, 'Import'));
+      await tester.pumpAndSettle();
+
+      expect(s.files.methods, ['openDocument']);
+      expect(find.text('Backup imported'), findsOneWidget);
+      expect(find.byType(SnackBar), findsNothing);
+    });
+
+    testWidgets('after the question is cancelled Export works again', (
+      tester,
+    ) async {
+      final s = await pump(tester);
+      await openConfirm(tester);
+      await tester.tap(find.widgetWithText(TtButton, 'Cancel'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(button('Export backup'));
+      await tester.pumpAndSettle();
+
+      expect(s.files.methods, ['saveDocument']);
+      expect(find.text('Backup saved'), findsOneWidget);
+    });
+  });
+
   group('import: the picker', () {
     testWidgets('Import opens the picker for a backup of up to 20 MB', (
       tester,

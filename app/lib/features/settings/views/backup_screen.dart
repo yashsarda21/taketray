@@ -38,10 +38,15 @@ class BackupScreen extends ConsumerStatefulWidget {
 
 class _BackupScreenState extends ConsumerState<BackupScreen> {
   /// Whether the question before an import is being asked (or its answer
-  /// acted on): a second tap on **Import backup** does nothing.
+  /// acted on): a tap on **Import backup** or **Export backup** does
+  /// nothing.
   bool _asking = false;
 
   Future<void> _export() async {
+    // From the tap on Import backup until its question is answered: the
+    // copies check before the question is no job yet, and an export started
+    // then would make the import that follows do nothing.
+    if (_asking) return;
     final l10n = AppLocalizations.of(context);
     final messenger = rootMessengerOf(context);
     final outcome = await ref.read(backupControllerProvider.notifier).export();

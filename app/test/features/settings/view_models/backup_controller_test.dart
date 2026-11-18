@@ -211,8 +211,8 @@ void main() {
         (DateTime(2026, 12, 31, 23, 59), 'taketray-backup-2026-12-31.json'),
         (DateTime(2027, 1, 1, 0, 1), 'taketray-backup-2027-01-01.json'),
         (DateTime(2027, 3, 5, 12), 'taketray-backup-2027-03-05.json'),
-        // Summer time east of Greenwich (London, India): 00:01 is still the
-        // day before in UTC.
+        // Summer time in London (tool/check runs this file there too): 00:01
+        // is 23:01 the day before in UTC.
         (DateTime(2026, 6, 30, 23, 59), 'taketray-backup-2026-06-30.json'),
         (DateTime(2026, 7, 1, 0, 1), 'taketray-backup-2026-07-01.json'),
       ]) {

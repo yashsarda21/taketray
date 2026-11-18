@@ -405,7 +405,7 @@ try {
 
 **3. A job outlives the screen.** The controller is auto-disposed, like most screens' view models: when the screen closes, it goes. But a user can press Back while an import runs and open the screen again. A fresh controller would have no `_job` and would let a second import start. `_start` therefore takes `ref.keepAlive()` and the end of the job closes it, so the same controller (still busy) is there when the screen comes back.
 
-**4. The local day, not UTC's.** `Clock.now()` is UTC. A backup made at 00:30 in India is still the day before in UTC, so the name would be wrong for five and a half hours each night. `backupFileName` turns the instant to local time first. The test can only catch the mistake where the zone is not UTC: on a Mac in India, or in London in summer, it fails; on CI, which runs in UTC, it cannot tell.
+**4. The local day, not UTC's.** `Clock.now()` is UTC. A backup made at 00:30 in India is still the day before in UTC, so the name would be wrong for five and a half hours each night. `backupFileName` turns the instant to local time first. The test can only catch the mistake where the zone is not UTC, and CI runs in UTC, so `tool/check` runs the file again in Europe/London, where a July 00:01 is the day before in UTC.
 
 **5. "X of Y clips found" only after an import that happened.** The result is the sealed `ImportResult` from Task 3, and a Dart `switch` over it must name every case; only `ImportDone` gets "Backup imported" and the count. A refused file's dialog has its message as the title and nothing else.
 
