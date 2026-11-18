@@ -31,7 +31,7 @@ const _full = WatchedFoldersView(
       videoCount: 128,
       watched: true,
       chat: false,
-      gone: false,
+      noVideos: false,
     ),
     WatchedRow(
       relativePath: 'WhatsApp/Media/WhatsApp Video',
@@ -39,7 +39,7 @@ const _full = WatchedFoldersView(
       videoCount: 42,
       watched: true,
       chat: true,
-      gone: false,
+      noVideos: false,
     ),
     WatchedRow(
       relativePath: 'Movies/Open Camera',
@@ -47,7 +47,7 @@ const _full = WatchedFoldersView(
       videoCount: 7,
       watched: false,
       chat: false,
-      gone: false,
+      noVideos: false,
     ),
     WatchedRow(
       relativePath: 'Movies/Old Rig',
@@ -55,7 +55,7 @@ const _full = WatchedFoldersView(
       videoCount: null,
       watched: true,
       chat: false,
-      gone: true,
+      noVideos: true,
     ),
   ],
 );
@@ -69,7 +69,7 @@ const _limited = WatchedFoldersView(
       videoCount: null,
       watched: true,
       chat: false,
-      gone: false,
+      noVideos: false,
     ),
     WatchedRow(
       relativePath: 'WhatsApp/Media/WhatsApp Video',
@@ -77,7 +77,7 @@ const _limited = WatchedFoldersView(
       videoCount: null,
       watched: true,
       chat: true,
-      gone: false,
+      noVideos: false,
     ),
   ],
 );
@@ -91,7 +91,7 @@ const _none = WatchedFoldersView(
       videoCount: 128,
       watched: false,
       chat: false,
-      gone: false,
+      noVideos: false,
     ),
     WatchedRow(
       relativePath: 'Movies/Open Camera',
@@ -99,7 +99,7 @@ const _none = WatchedFoldersView(
       videoCount: 7,
       watched: false,
       chat: false,
-      gone: false,
+      noVideos: false,
     ),
   ],
 );

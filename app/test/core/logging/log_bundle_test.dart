@@ -236,8 +236,11 @@ void main() {
       expect(file!.readAsStringSync(), 'whole\n');
     });
 
-    test('lines being written while the logs are joined: every line in the '
-        'bundle is whole', () async {
+    // A smoke test, not a proof: the writes are queued and the join starts at
+    // once, so it rarely reads in the middle of a write. What makes a half
+    // line impossible is pinned by the two "half line" tests above.
+    test('smoke: lines being written while the logs are joined, every line '
+        'bundled is whole', () async {
       final sink = LogFileSink(logDir, maxBytes: 600);
       final writes = <Future<void>>[];
       String line(int i) => 'line-${i.toString().padLeft(4, '0')} ${'x' * 40}';

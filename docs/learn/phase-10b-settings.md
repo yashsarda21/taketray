@@ -128,12 +128,17 @@ await (_db.delete(_db.settings)
 **2. One queue for every media job.** A scan, a verify and the grant clean-up all run on `MediaWorkQueue`, one at a time, in the order they were queued. The import is now one more job on it, so a scan that was already running finishes first, and nothing starts in the middle of the import's transaction:
 
 ```dart
-summary = await _queue.run(() => _service.importDecoded(data));
+final stored = await _queue.run<ImportSummary?>(() async {
+  if (await _phone.copyJobPlan() != null) return null;
+  return _service.importDecoded(data);
+});
 ```
+
+The job looks at the copy plan **again** as its first step. The first look (below) happens before the job waits for a scan, and a copy job can be saved while it waits; without the second look the import would replace clip ids that a running copy still points at. A plan found there is `ImportBusyCopying`, and nothing is written.
 
 `importDecoded` is the old `importJson` minus the decoding, split out so the file can be decoded before the job waits for its turn.
 
-**3. Check cheap things before doing expensive ones.** The order is: size, then a saved copy plan, then decode, then the queued write, then the verify. A file over 20 MiB of UTF-16 code units (a Dart `String.length`) is refused without being decoded. A saved copy plan means a copy job is running or waiting, so the import is refused with nothing read.
+**3. Check cheap things before doing expensive ones.** The order is: size, then a saved copy plan, then decode, then the queued write (which looks at the plan once more, when nothing else is running), then the verify. A file over 20 MiB of UTF-16 code units (a Dart `String.length`) is refused without being decoded. A saved copy plan means a copy job is running or waiting, so the import is refused with nothing read.
 
 **4. Decode in the background.** `Isolate.run` runs `decodeBackup` on another isolate and returns the result. A bad file throws the same `BackupException` as before, and becomes `ImportRefused(problem)`:
 
@@ -213,11 +218,17 @@ throw FileBridgeException(switch (e.code) {
 Kotlin checks the path before the provider sees it. It resolves `..` and links first, so `cache/shared/../taketray.sqlite` cannot slip through, and a folder that merely starts with the same letters (`cache/sharedx/`) is refused too:
 
 ```kotlin
-val shared = File(context.cacheDir, SHARED_DIR).canonicalFile
-val target = file.canonicalFile
-if (!target.path.startsWith(shared.path + File.separator)) return null
-return if (target.isFile) target else null
+return try {
+    val shared = File(context.cacheDir, SHARED_DIR).canonicalFile
+    val target = file.canonicalFile
+    if (!target.path.startsWith(shared.path + File.separator)) return null
+    if (target.isFile) target else null
+} catch (e: IOException) {
+    null // a path the file system cannot resolve, such as one with a NUL
+}
 ```
+
+Tests make a link inside `shared/` that points out (to a file, and to a folder) and a path with a NUL. Swapping `canonicalFile` for `absoluteFile.normalize()` (which does not follow links) fails the two link tests.
 
 The provider's authority is `${applicationId}.files`, so the dev build (`app.taketray.dev`) and the real app never fight over one name.
 
@@ -316,7 +327,7 @@ Then break one thing on purpose. In `settings_controller.dart`, make `_change` c
 
 ### What we built
 
-"Watched folders" in Settings now opens a real screen. It lists the folders on the phone that hold videos, each with a switch; the ones that are on are the folders Shooting mode looks in. WhatsApp, Telegram, Signal, Messenger and Snapchat folders are in the list like any other, with a warning: a clip from a chat is dated when it arrived, and busy groups and forwards will land in To tag too. "Add a folder" opens Android's folder picker for anything the list does not show (a pro camera app's own folder, say). A folder that was watched but is no longer on the phone stays in the list as "Not on this phone now", so it can still be turned off. Without full video access only the watched folders show, with a banner to allow all videos.
+"Watched folders" in Settings now opens a real screen. It lists the folders on the phone that hold videos, each with a switch; the ones that are on are the folders Shooting mode looks in. WhatsApp, Telegram, Signal, Messenger and Snapchat folders are in the list like any other, with a warning: a clip from a chat is dated when it arrived, and busy groups and forwards will land in To tag too. "Add a folder" opens Android's folder picker for anything the list does not show (a pro camera app's own folder, say). A folder that was watched but has no videos directly in it (gone, empty, or holding only subfolders: the phone's list cannot tell which) stays in the list as "No videos found here", so it can still be turned off. Without full video access only the watched folders show, with a banner to allow all videos.
 
 ### Why TakeTray needs it
 
@@ -326,7 +337,7 @@ Until now Shooting mode watched `DCIM/Camera` and nothing else, with no way to c
 
 **1. One folder, one row.** A folder is stored as a path with no volume, such as `DCIM/Camera`, because that is all the picker gives back and all the scanner needs. So the phone's `DCIM/Camera` and the SD card's are the same watched folder. The controller compares paths with no slash at either end and A to Z case folded, and adds the counts of both volumes into one row.
 
-**2. Names, not parts of names.** `isChatFolder` is true when any path segment is exactly one of twelve names (`WhatsApp`, `com.whatsapp`, `Telegram`, ...). `Pictures/Signals` is not a chat folder; a test lists a dozen such near misses.
+**2. Names, not parts of names.** `isChatFolder` is true when any path segment is exactly one of fourteen names (`WhatsApp`, `WhatsApp Video`, `com.whatsapp`, `Telegram`, ...). `Pictures/Signals` is not a chat folder; a test lists a dozen such near misses.
 
 ```dart
 bool isChatFolder(String relativePath) =>
@@ -458,7 +469,9 @@ for (final name in _logFileNames) {
 
 **4. The same folder on both sides.** Dart asks `path_provider` for the temporary folder; on Android that is `context.cacheDir`, the same folder the Kotlin side checks before it shares. If the two ever differed, `shareFile` would refuse the path as `invalid_path`.
 
-**5. One tap at a time.** Making the file takes a moment, and the share sheet takes another. The row uses `OpenOnce.openSlow`, the guard the Video access button already uses, so a double tap shares once.
+**5. A failure is not remembered.** The two folder lookups are kept alive and never retried, so a lookup that failed once would stay failed until the app restarted. `send()` drops both after any failure (`ref.invalidate`), and the next tap asks the phone again.
+
+**6. One tap at a time.** Making the file takes a moment, and the share sheet takes another. The row uses `OpenOnce.openSlow`, the guard the Video access button already uses, so a double tap shares once.
 
 ### Where it lives
 

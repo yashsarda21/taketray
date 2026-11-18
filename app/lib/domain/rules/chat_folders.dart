@@ -1,9 +1,13 @@
 /// The folder names of the chat apps, compared whole and ignoring A to Z case:
-/// WhatsApp and WhatsApp Business, Telegram, Signal, Messenger and Snapchat,
-/// each by its display name and by its Android package name (D-149).
+/// WhatsApp and WhatsApp Business (and their `WhatsApp Video` and
+/// `WhatsApp Business Video` folders, which older phones keep straight under
+/// `Movies`), Telegram, Signal, Messenger and Snapchat, each by its display
+/// name and by its Android package name (D-149).
 const Set<String> _chatSegments = {
   'whatsapp',
   'whatsapp business',
+  'whatsapp video',
+  'whatsapp business video',
   'com.whatsapp',
   'com.whatsapp.w4b',
   'telegram',

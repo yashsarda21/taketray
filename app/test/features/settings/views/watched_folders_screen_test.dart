@@ -20,7 +20,7 @@ const _camera = WatchedRow(
   videoCount: 128,
   watched: true,
   chat: false,
-  gone: false,
+  noVideos: false,
 );
 const _whatsApp = WatchedRow(
   relativePath: 'WhatsApp/Media/WhatsApp Video',
@@ -28,7 +28,7 @@ const _whatsApp = WatchedRow(
   videoCount: 42,
   watched: true,
   chat: true,
-  gone: false,
+  noVideos: false,
 );
 const _drone = WatchedRow(
   relativePath: 'Movies/Drone',
@@ -36,7 +36,7 @@ const _drone = WatchedRow(
   videoCount: 1,
   watched: false,
   chat: false,
-  gone: false,
+  noVideos: false,
 );
 const _gone = WatchedRow(
   relativePath: 'Movies/Old Rig',
@@ -44,7 +44,7 @@ const _gone = WatchedRow(
   videoCount: null,
   watched: true,
   chat: false,
-  gone: true,
+  noVideos: true,
 );
 
 const _full = WatchedFoldersView(
@@ -194,7 +194,7 @@ void main() {
               videoCount: 3,
               watched: true,
               chat: false,
-              gone: false,
+              noVideos: false,
             ),
             WatchedRow(
               relativePath: 'Movies/Camera',
@@ -202,7 +202,7 @@ void main() {
               videoCount: 5,
               watched: false,
               chat: false,
-              gone: false,
+              noVideos: false,
             ),
           ],
         ),
@@ -224,7 +224,7 @@ void main() {
               videoCount: null,
               watched: true,
               chat: false,
-              gone: false,
+              noVideos: false,
             ),
           ],
         ),
@@ -316,7 +316,7 @@ void main() {
               videoCount: 2,
               watched: false,
               chat: true,
-              gone: false,
+              noVideos: false,
             ),
             _camera,
           ],
@@ -348,15 +348,16 @@ void main() {
     });
   });
 
-  group('a folder that is gone', () {
-    testWidgets('says Not on this phone now, and no count', (tester) async {
+  group('a folder with no videos found', () {
+    testWidgets('says No videos found here, and no count', (tester) async {
       await pump(tester);
 
       expect(
         subtitleOf(tester, 'Old Rig'),
-        'Movies/Old Rig · Not on this phone now',
+        'Movies/Old Rig · No videos found here',
       );
-      expect(subtitleOf(tester, 'Old Rig'), isNot(contains('video')));
+      expect(subtitleOf(tester, 'Old Rig'), isNot(contains('Not on this')));
+      expect(subtitleOf(tester, 'Old Rig'), isNot(matches(RegExp(r'\d'))));
     });
 
     testWidgets('can be turned off', (tester) async {
@@ -382,7 +383,7 @@ void main() {
               videoCount: null,
               watched: true,
               chat: false,
-              gone: false,
+              noVideos: false,
             ),
           ],
         ),

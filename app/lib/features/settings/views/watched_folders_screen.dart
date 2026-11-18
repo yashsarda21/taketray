@@ -26,7 +26,7 @@ final Logger _log = Logger('watchedFoldersScreen');
 ///   folders" with **Allow all**; the list is then only the watched folders.
 /// - One tall row for each folder (`WatchedFoldersController`): a boxed icon
 ///   (a camera for `DCIM/Camera`, a folder for the others), the folder's
-///   name, then "path · {n} videos" (or "path · Not on this phone now"), and
+///   name, then "path · {n} videos" (or "path · No videos found here"), and
 ///   a switch. A chat app's folder adds "Clips from chat apps are dated when
 ///   they arrived. Busy groups and forwards land in To tag too."
 /// - **Add a folder** opens Android's folder picker. A cancel says nothing;
@@ -185,8 +185,8 @@ class _FolderRow extends StatelessWidget {
     final scheme = context.scheme;
     final name = row.name.isEmpty ? l10n.addFoldersMainFolder : row.name;
     final count = row.videoCount;
-    final detail = row.gone
-        ? l10n.watchedGone
+    final detail = row.noVideos
+        ? l10n.watchedNoVideos
         : count == null
         ? null
         : l10n.addFoldersCount(count);

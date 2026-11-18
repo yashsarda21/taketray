@@ -74,14 +74,4 @@ void main() {
     await second.write('second');
     expect(await second.readAll(), 'first\nsecond\n');
   });
-
-  test('exportFile content equals readAll', () async {
-    final sink = LogFileSink(dir, maxBytes: 50);
-    for (var i = 0; i < 10; i++) {
-      await sink.write('record $i');
-    }
-    final file = await sink.exportFile();
-    expect(file.uri.pathSegments.last, 'taketray-log.txt');
-    expect(await file.readAsString(), await sink.readAll());
-  });
 }

@@ -282,6 +282,38 @@ void main() {
       expect(events, ['scan start', 'decoded', 'scan end', 'import', 'verify']);
     });
 
+    test('a plan saved while a scan holds the queue: ImportBusyCopying, '
+        'database unchanged, no import, no verify', () async {
+      await ReelsRepository(h.db, h.clock).create('Goa');
+      final gate = Completer<void>();
+      final decodedGate = Completer<void>();
+      final a = build(
+        service: _LoggedService(h.db, h.clock, events),
+        verifier: _LoggedVerifier(h, events),
+        decode: (json) async {
+          final data = await decodeBackupInIsolate(json);
+          decodedGate.complete();
+          return data;
+        },
+      );
+      unawaited(h.queue.run(() => gate.future));
+
+      final result = a.importJson(_fixture());
+      await decodedGate.future;
+      await settle();
+      // The first check passed (no plan yet); the import now waits behind the
+      // scan. A copy job is saved in that window.
+      await h.phoneState.saveCopyJobPlan(_plan());
+      gate.complete();
+
+      expect(await result, isA<ImportBusyCopying>());
+      expect(events, isEmpty, reason: 'no import, no verify');
+      // The saved plan is the only change; the user's data is untouched.
+      final reels = await h.db.select(h.db.reels).get();
+      expect(reels.map((r) => r.name), ['Goa']);
+      expect(await h.db.select(h.db.clips).get(), isEmpty);
+    });
+
     test(
       'the verify fails: ImportDone with found 0, the type is logged',
       () async {

@@ -11,6 +11,10 @@ void main() {
       'Android/media/com.whatsapp.w4b/WhatsApp Business/Media/WhatsApp Business Video',
       'WhatsApp Business/Media/WhatsApp Business Video',
       'Movies/WhatsApp',
+      // The folder of older phones, on its own under Movies.
+      'Movies/WhatsApp Video',
+      'Movies/WhatsApp Business Video',
+      'movies/whatsapp video/',
       // Telegram.
       'Telegram/Telegram Video',
       'Android/media/org.telegram.messenger/Telegram/Telegram Video',
@@ -49,6 +53,9 @@ void main() {
       'Movies/Signal Backup',
       'Movies/Snapchatter',
       'Movies/Messengers',
+      'Movies/WhatsApp Videos',
+      'Movies/My WhatsApp Video',
+      'Movies/WhatsApp Video Backup',
       'Android/media/com.whatsapp.other/x',
       'DCIM/Camera/Signal2',
       '',

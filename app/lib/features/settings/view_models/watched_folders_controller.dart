@@ -22,10 +22,12 @@ final Logger _log = Logger('watchedFolders');
 /// either end (`DCIM/Camera`); it never says which storage, because the
 /// settings do not either (a folder on the SD card is the same watched
 /// folder as the phone's of that name). [name] is its last segment (`''` for
-/// a storage root). [videoCount] is null when it is not known: [gone], or
+/// a storage root). [videoCount] is null when it is not known: [noVideos], or
 /// TakeTray cannot read the phone's folders. [chat] is a chat app's folder
-/// (`isChatFolder`), whose clips are dated when they arrived. [gone] is a
-/// watched folder that is not on the phone now.
+/// (`isChatFolder`), whose clips are dated when they arrived. [noVideos] is a
+/// watched folder with no videos directly in it as far as the phone's folder
+/// list says: gone, empty, or holding only subfolders (the list names only
+/// folders that hold videos, so it cannot tell these apart).
 @immutable
 class WatchedRow {
   const WatchedRow({
@@ -34,7 +36,7 @@ class WatchedRow {
     required this.videoCount,
     required this.watched,
     required this.chat,
-    required this.gone,
+    required this.noVideos,
   });
 
   final String relativePath;
@@ -42,7 +44,7 @@ class WatchedRow {
   final int? videoCount;
   final bool watched;
   final bool chat;
-  final bool gone;
+  final bool noVideos;
 
   WatchedRow copyWith({bool? watched}) => WatchedRow(
     relativePath: relativePath,
@@ -50,7 +52,7 @@ class WatchedRow {
     videoCount: videoCount,
     watched: watched ?? this.watched,
     chat: chat,
-    gone: gone,
+    noVideos: noVideos,
   );
 
   @override
@@ -61,16 +63,16 @@ class WatchedRow {
       other.videoCount == videoCount &&
       other.watched == watched &&
       other.chat == chat &&
-      other.gone == gone;
+      other.noVideos == noVideos;
 
   @override
   int get hashCode =>
-      Object.hash(relativePath, name, videoCount, watched, chat, gone);
+      Object.hash(relativePath, name, videoCount, watched, chat, noVideos);
 
   @override
   String toString() =>
       'WatchedRow($relativePath, $name, $videoCount, watched: $watched, '
-      'chat: $chat, gone: $gone)';
+      'chat: $chat, noVideos: $noVideos)';
 }
 
 /// What the Watched folders screen shows: the [rows], and whether TakeTray
@@ -148,19 +150,21 @@ Future<PhoneFolders> phoneFolders(Ref ref) async {
 }
 
 /// The Watched folders screen (D-149): every folder on the phone with
-/// videos, with its switch, plus every watched path that is not on the phone
-/// now. The state follows the settings and the access.
+/// videos, with its switch, plus every watched path that has none. The state
+/// follows the settings and the access.
 ///
 /// - **With full access:** the rows are the Add videos list
 ///   (`browseFolders`: no empty folder, no WhatsApp Sent folder, no
 ///   `Movies/TakeTray/`), in its order; then each watched folder that the
 ///   list does not show, in the order they are watched: one that is on the
-///   phone but hidden shows with its count, one that is not is
-///   [WatchedRow.gone] with an unknown count, so it can still be turned
-///   off. A volume root is never listed: its videos have no folder, so
-///   watching it finds none.
+///   phone but hidden shows with its count, one that is not (gone, empty, or
+///   with only subfolders: the phone's list names only folders that hold
+///   videos, so it cannot tell them apart) is [WatchedRow.noVideos] with an
+///   unknown count, so it can still be turned off. A volume root is never
+///   listed: its videos have no folder, so watching it finds none.
 /// - **Without it** (limited, denied, or the read failed): only the watched
-///   paths, with no count, none of them gone: TakeTray cannot tell.
+///   paths, with no count, none of them [WatchedRow.noVideos]: TakeTray
+///   cannot tell.
 /// - **One folder, one row, however it is spelled:** a path is compared
 ///   without slashes at either end and ignoring A to Z case, and the phone's
 ///   storage and its SD card, which a relative path cannot tell apart, give
@@ -239,14 +243,15 @@ class WatchedFoldersController extends _$WatchedFoldersController {
     final watchedKeys = {for (final w in watched) _key(w)};
     final rows = <WatchedRow>[];
     final shown = <String>{};
-    WatchedRow row(String path, {int? count, bool gone = false}) => WatchedRow(
-      relativePath: path,
-      name: _nameOf(path),
-      videoCount: count,
-      watched: watchedKeys.contains(_key(path)),
-      chat: isChatFolder(path),
-      gone: gone,
-    );
+    WatchedRow row(String path, {int? count, bool noVideos = false}) =>
+        WatchedRow(
+          relativePath: path,
+          name: _nameOf(path),
+          videoCount: count,
+          watched: watchedKeys.contains(_key(path)),
+          chat: isChatFolder(path),
+          noVideos: noVideos,
+        );
 
     final folders = phone.folders;
     final onPhone = <String, int>{};
@@ -284,7 +289,7 @@ class WatchedFoldersController extends _$WatchedFoldersController {
       } else if (onPhone.containsKey(key)) {
         rows.add(row(_trim(path), count: onPhone[key]));
       } else {
-        rows.add(row(_trim(path), gone: true));
+        rows.add(row(_trim(path), noVideos: true));
       }
     }
     return WatchedFoldersView(rows: rows, fullAccess: phone.fullAccess);

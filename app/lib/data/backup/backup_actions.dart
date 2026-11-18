@@ -104,8 +104,10 @@ class BackupActions {
   /// 3. The file is decoded on a background isolate; a bad file is
   ///    [ImportRefused].
   /// 4. The data is stored as one job on the media work queue, so no scan,
-  ///    verify or grant clean-up runs in the middle of it (D-72). A database
-  ///    constraint the checks missed is [ImportRefused] too.
+  ///    verify or grant clean-up runs in the middle of it (D-72). The copy
+  ///    plan is read again at the start of that job: one saved while the job
+  ///    waited behind a scan is [ImportBusyCopying] too. A database
+  ///    constraint the checks missed is [ImportRefused].
   /// 5. Every clip is verified, through [guarded]: when that fails the
   ///    import still stands, with 0 found.
   Future<ImportResult> importJson(String json) async {
@@ -121,7 +123,17 @@ class BackupActions {
     final ImportSummary summary;
     try {
       final data = await _decode(json);
-      summary = await _queue.run(() => _service.importDecoded(data));
+      // A copy job can be saved while this job waits behind a scan: look
+      // again, now that nothing else runs.
+      final stored = await _queue.run<ImportSummary?>(() async {
+        if (await _phone.copyJobPlan() != null) return null;
+        return await _service.importDecoded(data);
+      });
+      if (stored == null) {
+        _log.warning('Import refused: a copy job was saved while waiting');
+        return const ImportBusyCopying();
+      }
+      summary = stored;
     } on BackupException catch (e) {
       _log.warning('Import refused: $e');
       return ImportRefused(e.problem);

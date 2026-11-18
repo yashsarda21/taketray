@@ -3926,9 +3926,9 @@
       }
     }
   },
-  "watchedGone": "Not on this phone now",
-  "@watchedGone": {
-    "description": "In the second line of a Watched folders row whose folder is not on the phone any more, in place of the number of videos."
+  "watchedNoVideos": "No videos found here",
+  "@watchedNoVideos": {
+    "description": "In the second line of a Watched folders row whose folder has no videos directly in it as far as the phone's folder list says (gone, empty, or only subfolders; the list cannot tell these apart), in place of the number of videos."
   },
   "watchedChatWarning": "Clips from chat apps are dated when they arrived. Busy groups and forwards land in To tag too.",
   "@watchedChatWarning": {

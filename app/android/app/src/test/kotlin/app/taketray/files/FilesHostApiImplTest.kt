@@ -14,6 +14,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Files
 import java.util.function.Supplier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -152,6 +153,41 @@ class FilesHostApiImplTest {
             for (path in refused) {
                 assertEquals(path, "invalid_path", errorOf { impl.shareFile(path, "text/plain", "s", "t") }?.code)
             }
+            assertNull(shadowOf(activity).nextStartedActivity)
+        }
+
+    @Test
+    fun `shareFile refuses a link inside cache shared that points at a file outside it`() =
+        timed {
+            val outside = File(activity.cacheDir, "other.txt").apply { writeText("x") }
+            val link = File(shared, "link.txt")
+            Files.createSymbolicLink(link.toPath(), outside.toPath())
+            assertTrue("the link was not made", Files.isSymbolicLink(link.toPath()))
+
+            assertEquals("invalid_path", errorOf { impl.shareFile(link.path, "text/plain", "s", "t") }?.code)
+            assertNull(shadowOf(activity).nextStartedActivity)
+        }
+
+    @Test
+    fun `shareFile refuses a file reached through a linked folder that leads out of cache shared`() =
+        timed {
+            File(activity.cacheDir, "other.txt").writeText("x")
+            val dir = File(shared, "dir")
+            Files.createSymbolicLink(dir.toPath(), activity.cacheDir.toPath())
+            assertTrue("the link was not made", Files.isSymbolicLink(dir.toPath()))
+
+            assertEquals("invalid_path", errorOf { impl.shareFile("${dir.path}/other.txt", "text/plain", "s", "t") }?.code)
+            assertNull(shadowOf(activity).nextStartedActivity)
+        }
+
+    @Test
+    fun `shareFile answers invalid_path, not a failure, for a path the file system cannot resolve`() =
+        timed {
+            // A NUL makes File.getCanonicalFile throw IOException("Invalid file path").
+            val error = errorOf { impl.shareFile("${shared.path}/a\u0000b.txt", "text/plain", "s", "t") }!!
+
+            assertEquals("invalid_path", error.code)
+            assertFalse(error.message.orEmpty().contains("b.txt"))
             assertNull(shadowOf(activity).nextStartedActivity)
         }
 

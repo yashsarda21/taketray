@@ -65,19 +65,21 @@ final class PhoneFoldersProvider
 String _$phoneFoldersHash() => r'58d58b52688a636b421a8e6e798238048930c41a';
 
 /// The Watched folders screen (D-149): every folder on the phone with
-/// videos, with its switch, plus every watched path that is not on the phone
-/// now. The state follows the settings and the access.
+/// videos, with its switch, plus every watched path that has none. The state
+/// follows the settings and the access.
 ///
 /// - **With full access:** the rows are the Add videos list
 ///   (`browseFolders`: no empty folder, no WhatsApp Sent folder, no
 ///   `Movies/TakeTray/`), in its order; then each watched folder that the
 ///   list does not show, in the order they are watched: one that is on the
-///   phone but hidden shows with its count, one that is not is
-///   [WatchedRow.gone] with an unknown count, so it can still be turned
-///   off. A volume root is never listed: its videos have no folder, so
-///   watching it finds none.
+///   phone but hidden shows with its count, one that is not (gone, empty, or
+///   with only subfolders: the phone's list names only folders that hold
+///   videos, so it cannot tell them apart) is [WatchedRow.noVideos] with an
+///   unknown count, so it can still be turned off. A volume root is never
+///   listed: its videos have no folder, so watching it finds none.
 /// - **Without it** (limited, denied, or the read failed): only the watched
-///   paths, with no count, none of them gone: TakeTray cannot tell.
+///   paths, with no count, none of them [WatchedRow.noVideos]: TakeTray
+///   cannot tell.
 /// - **One folder, one row, however it is spelled:** a path is compared
 ///   without slashes at either end and ignoring A to Z case, and the phone's
 ///   storage and its SD card, which a relative path cannot tell apart, give
@@ -91,19 +93,21 @@ String _$phoneFoldersHash() => r'58d58b52688a636b421a8e6e798238048930c41a';
 final watchedFoldersControllerProvider = WatchedFoldersControllerProvider._();
 
 /// The Watched folders screen (D-149): every folder on the phone with
-/// videos, with its switch, plus every watched path that is not on the phone
-/// now. The state follows the settings and the access.
+/// videos, with its switch, plus every watched path that has none. The state
+/// follows the settings and the access.
 ///
 /// - **With full access:** the rows are the Add videos list
 ///   (`browseFolders`: no empty folder, no WhatsApp Sent folder, no
 ///   `Movies/TakeTray/`), in its order; then each watched folder that the
 ///   list does not show, in the order they are watched: one that is on the
-///   phone but hidden shows with its count, one that is not is
-///   [WatchedRow.gone] with an unknown count, so it can still be turned
-///   off. A volume root is never listed: its videos have no folder, so
-///   watching it finds none.
+///   phone but hidden shows with its count, one that is not (gone, empty, or
+///   with only subfolders: the phone's list names only folders that hold
+///   videos, so it cannot tell them apart) is [WatchedRow.noVideos] with an
+///   unknown count, so it can still be turned off. A volume root is never
+///   listed: its videos have no folder, so watching it finds none.
 /// - **Without it** (limited, denied, or the read failed): only the watched
-///   paths, with no count, none of them gone: TakeTray cannot tell.
+///   paths, with no count, none of them [WatchedRow.noVideos]: TakeTray
+///   cannot tell.
 /// - **One folder, one row, however it is spelled:** a path is compared
 ///   without slashes at either end and ignoring A to Z case, and the phone's
 ///   storage and its SD card, which a relative path cannot tell apart, give
@@ -116,19 +120,21 @@ final class WatchedFoldersControllerProvider
     extends
         $AsyncNotifierProvider<WatchedFoldersController, WatchedFoldersView> {
   /// The Watched folders screen (D-149): every folder on the phone with
-  /// videos, with its switch, plus every watched path that is not on the phone
-  /// now. The state follows the settings and the access.
+  /// videos, with its switch, plus every watched path that has none. The state
+  /// follows the settings and the access.
   ///
   /// - **With full access:** the rows are the Add videos list
   ///   (`browseFolders`: no empty folder, no WhatsApp Sent folder, no
   ///   `Movies/TakeTray/`), in its order; then each watched folder that the
   ///   list does not show, in the order they are watched: one that is on the
-  ///   phone but hidden shows with its count, one that is not is
-  ///   [WatchedRow.gone] with an unknown count, so it can still be turned
-  ///   off. A volume root is never listed: its videos have no folder, so
-  ///   watching it finds none.
+  ///   phone but hidden shows with its count, one that is not (gone, empty, or
+  ///   with only subfolders: the phone's list names only folders that hold
+  ///   videos, so it cannot tell them apart) is [WatchedRow.noVideos] with an
+  ///   unknown count, so it can still be turned off. A volume root is never
+  ///   listed: its videos have no folder, so watching it finds none.
   /// - **Without it** (limited, denied, or the read failed): only the watched
-  ///   paths, with no count, none of them gone: TakeTray cannot tell.
+  ///   paths, with no count, none of them [WatchedRow.noVideos]: TakeTray
+  ///   cannot tell.
   /// - **One folder, one row, however it is spelled:** a path is compared
   ///   without slashes at either end and ignoring A to Z case, and the phone's
   ///   storage and its SD card, which a relative path cannot tell apart, give
@@ -157,22 +163,24 @@ final class WatchedFoldersControllerProvider
 }
 
 String _$watchedFoldersControllerHash() =>
-    r'fc0ff3cb31cde1d7e23ebc168cb37b2e00b5cd8a';
+    r'97a5a88ff9e1e458f53f8e25909aa0b17cb3481d';
 
 /// The Watched folders screen (D-149): every folder on the phone with
-/// videos, with its switch, plus every watched path that is not on the phone
-/// now. The state follows the settings and the access.
+/// videos, with its switch, plus every watched path that has none. The state
+/// follows the settings and the access.
 ///
 /// - **With full access:** the rows are the Add videos list
 ///   (`browseFolders`: no empty folder, no WhatsApp Sent folder, no
 ///   `Movies/TakeTray/`), in its order; then each watched folder that the
 ///   list does not show, in the order they are watched: one that is on the
-///   phone but hidden shows with its count, one that is not is
-///   [WatchedRow.gone] with an unknown count, so it can still be turned
-///   off. A volume root is never listed: its videos have no folder, so
-///   watching it finds none.
+///   phone but hidden shows with its count, one that is not (gone, empty, or
+///   with only subfolders: the phone's list names only folders that hold
+///   videos, so it cannot tell them apart) is [WatchedRow.noVideos] with an
+///   unknown count, so it can still be turned off. A volume root is never
+///   listed: its videos have no folder, so watching it finds none.
 /// - **Without it** (limited, denied, or the read failed): only the watched
-///   paths, with no count, none of them gone: TakeTray cannot tell.
+///   paths, with no count, none of them [WatchedRow.noVideos]: TakeTray
+///   cannot tell.
 /// - **One folder, one row, however it is spelled:** a path is compared
 ///   without slashes at either end and ignoring A to Z case, and the phone's
 ///   storage and its SD card, which a relative path cannot tell apart, give

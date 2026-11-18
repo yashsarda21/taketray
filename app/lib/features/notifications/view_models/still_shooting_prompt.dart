@@ -19,8 +19,10 @@ final Logger _log = Logger('stillShooting');
 ///
 /// **When:** [claim] gives the Shooting mode session to ask about, at most
 /// once per app session (this process), and only when
-/// - the "Still shooting?" switch in Settings is on (D-145);
 /// - `stillShootingDue`: on, not answered, at least 14 days;
+/// - the "Still shooting?" switch in Settings is on (D-145). It is read only
+///   once something is due, so a check that is not due reads no database;
+///   when the read fails, nothing is asked and the failure is logged by type;
 /// - no shade button for this session is waiting. The phone may have posted
 ///   the "Still shooting?" notification at about the same time as the app
 ///   started; if the user answered it first, that answer is a shade action

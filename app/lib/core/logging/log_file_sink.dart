@@ -72,14 +72,4 @@ class LogFileSink {
     }
     return buffer.toString();
   }
-
-  /// Writes [readAll] to `taketray-log.txt` in the same directory. Settings'
-  /// "Send error log" does not use it: `bundleLogs` joins the files into the
-  /// cache folder Android shares from.
-  Future<File> exportFile() async {
-    final text = await readAll();
-    final file = File('${dir.path}/taketray-log.txt');
-    await file.writeAsString(text, flush: true);
-    return file;
-  }
 }

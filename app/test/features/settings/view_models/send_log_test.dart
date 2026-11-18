@@ -216,6 +216,50 @@ void main() {
     });
   });
 
+  group('a failed folder lookup is not kept until restart', () {
+    // A tap after a failed one asks the phone again.
+    Future<void> check({required bool logFolder}) async {
+      rig.writeLog(0, 'a\n');
+      var asked = 0;
+      Future<Directory> lookup(Directory ok) async {
+        asked++;
+        if (asked == 1) throw const FileSystemException('first call fails');
+        return ok;
+      }
+
+      final container = ProviderContainer.test(
+        overrides: [
+          filesBridgeProvider.overrideWithValue(rig.files),
+          logDirectoryProvider.overrideWith(
+            (ref) => logFolder ? lookup(rig.logDir) : Future.value(rig.logDir),
+          ),
+          cacheDirectoryProvider.overrideWith(
+            (ref) =>
+                logFolder ? Future.value(rig.cacheDir) : lookup(rig.cacheDir),
+          ),
+          clockProvider.overrideWithValue(
+            FixedClock(DateTime(2026, 11, 17, 14, 30)),
+          ),
+        ],
+      );
+      final send = container.read(sendLogProvider);
+
+      expect(await send.send(), SendLogOutcome.failed);
+      expect(rig.files.methods, isNot(contains('shareFile')));
+
+      expect(await send.send(), SendLogOutcome.shared);
+      expect(rig.files.methods, contains('shareFile'));
+      expect(asked, 2);
+    }
+
+    test('the log folder: the second tap shares', () => check(logFolder: true));
+
+    test(
+      'the cache folder: the second tap shares',
+      () => check(logFolder: false),
+    );
+  });
+
   group('what is logged (D-10)', () {
     test('outcomes only: never a path or a name from the log', () async {
       final records = <String>[];

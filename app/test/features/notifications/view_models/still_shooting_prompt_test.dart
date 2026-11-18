@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/rules/still_shooting.dart';
 import 'package:taketray/features/notifications/view_models/still_shooting_prompt.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -120,6 +122,31 @@ void main() {
       await setSwitch(on: true);
 
       expect(await prompt.claim(), since);
+    });
+
+    test('the settings cannot be read: no prompt, no throw, the type is '
+        'logged, and no claim is used', () async {
+      daysLater(20);
+      final failing = _FailingSettings(h.media.db, h.media.clock);
+      final container = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          settingsRepositoryProvider.overrideWithValue(failing),
+        ],
+      );
+      final records = captureLogs();
+
+      // An error here would reach the dialog host's unawaited check.
+      expect(await container.read(stillShootingPromptProvider).claim(), isNull);
+
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), isNot(contains('secret')));
+      failing.broken = false;
+      expect(
+        await container.read(stillShootingPromptProvider).claim(),
+        since,
+        reason: 'the next check tries again',
+      );
     });
 
     test('the switch off, not due: still nothing', () async {
@@ -312,4 +339,18 @@ class _FailingOff extends PhoneStateRepository {
 
   @override
   Future<void> turnShootingOff() => Future.error(StateError('disk full'));
+}
+
+/// Settings whose read fails, with a message that holds a path, until
+/// [broken] is turned off.
+class _FailingSettings extends SettingsRepository {
+  // The super constructor's parameters are private.
+  // ignore: use_super_parameters
+  _FailingSettings(AppDatabase db, Clock clock) : super(db, clock);
+
+  bool broken = true;
+
+  @override
+  Future<AppSettings> load() =>
+      broken ? Future.error(StateError('/secret/path')) : super.load();
 }

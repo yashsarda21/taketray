@@ -9,13 +9,15 @@ part of 'send_log.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// Where the log files are: the folder `main` gave `runAppWithLogging`
-/// (`getApplicationSupportDirectory`).
+/// (`getApplicationSupportDirectory`). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 
 @ProviderFor(logDirectory)
 final logDirectoryProvider = LogDirectoryProvider._();
 
 /// Where the log files are: the folder `main` gave `runAppWithLogging`
-/// (`getApplicationSupportDirectory`).
+/// (`getApplicationSupportDirectory`). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 
 final class LogDirectoryProvider
     extends
@@ -26,7 +28,8 @@ final class LogDirectoryProvider
         >
     with $FutureModifier<Directory>, $FutureProvider<Directory> {
   /// Where the log files are: the folder `main` gave `runAppWithLogging`
-  /// (`getApplicationSupportDirectory`).
+  /// (`getApplicationSupportDirectory`). A failed lookup is dropped by
+  /// [SendLog.send], so a later tap asks again.
   LogDirectoryProvider._()
     : super(
         from: null,
@@ -56,14 +59,16 @@ String _$logDirectoryHash() => r'3a1a72e92a8330d287a017b6e266bbce788d8abb';
 
 /// The phone's cache folder. `getTemporaryDirectory` is
 /// `Context.getCacheDir()` on Android, the folder the files bridge shares
-/// from (`<cacheDir>/shared/`, D-147).
+/// from (`<cacheDir>/shared/`, D-147). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 
 @ProviderFor(cacheDirectory)
 final cacheDirectoryProvider = CacheDirectoryProvider._();
 
 /// The phone's cache folder. `getTemporaryDirectory` is
 /// `Context.getCacheDir()` on Android, the folder the files bridge shares
-/// from (`<cacheDir>/shared/`, D-147).
+/// from (`<cacheDir>/shared/`, D-147). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 
 final class CacheDirectoryProvider
     extends
@@ -75,7 +80,8 @@ final class CacheDirectoryProvider
     with $FutureModifier<Directory>, $FutureProvider<Directory> {
   /// The phone's cache folder. `getTemporaryDirectory` is
   /// `Context.getCacheDir()` on Android, the folder the files bridge shares
-  /// from (`<cacheDir>/shared/`, D-147).
+  /// from (`<cacheDir>/shared/`, D-147). A failed lookup is dropped by
+  /// [SendLog.send], so a later tap asks again.
   CacheDirectoryProvider._()
     : super(
         from: null,

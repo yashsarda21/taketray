@@ -34,13 +34,15 @@ enum SendLogOutcome {
 }
 
 /// Where the log files are: the folder `main` gave `runAppWithLogging`
-/// (`getApplicationSupportDirectory`).
+/// (`getApplicationSupportDirectory`). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 @Riverpod(keepAlive: true, retry: noRetry)
 Future<Directory> logDirectory(Ref ref) => getApplicationSupportDirectory();
 
 /// The phone's cache folder. `getTemporaryDirectory` is
 /// `Context.getCacheDir()` on Android, the folder the files bridge shares
-/// from (`<cacheDir>/shared/`, D-147).
+/// from (`<cacheDir>/shared/`, D-147). A failed lookup is dropped by
+/// [SendLog.send], so a later tap asks again.
 @Riverpod(keepAlive: true, retry: noRetry)
 Future<Directory> cacheDirectory(Ref ref) => getTemporaryDirectory();
 
@@ -79,6 +81,12 @@ class SendLog {
       return SendLogOutcome.shared;
     } on Object catch (error) {
       _log.warning('Sending the error log failed: ${_describe(error)}');
+      // The folder providers are kept alive and never retry, so a failed
+      // lookup would otherwise stay the answer until the app restarts. The
+      // next tap asks the phone again.
+      _ref
+        ..invalidate(logDirectoryProvider)
+        ..invalidate(cacheDirectoryProvider);
       return SendLogOutcome.failed;
     }
   }

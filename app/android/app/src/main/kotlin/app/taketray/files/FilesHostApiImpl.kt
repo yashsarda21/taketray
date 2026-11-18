@@ -15,6 +15,7 @@ import app.taketray.bridge.guardedOnIo
 import app.taketray.bridge.guardedWith
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -77,15 +78,20 @@ class FilesHostApiImpl(
     /**
      * [path] as a regular file inside `cache/shared/`, both compared after
      * resolving `..` and links; null for anything else (outside, the folder
-     * itself, a file that is not there, a relative path).
+     * itself, a file that is not there, a relative path, a path the file
+     * system cannot resolve, such as one holding a NUL).
      */
     private fun sharedFileOf(path: String): File? {
         val file = File(path)
         if (!file.isAbsolute) return null
-        val shared = File(context.cacheDir, SHARED_DIR).canonicalFile
-        val target = file.canonicalFile
-        if (!target.path.startsWith(shared.path + File.separator)) return null
-        return if (target.isFile) target else null
+        return try {
+            val shared = File(context.cacheDir, SHARED_DIR).canonicalFile
+            val target = file.canonicalFile
+            if (!target.path.startsWith(shared.path + File.separator)) return null
+            if (target.isFile) target else null
+        } catch (e: IOException) {
+            null
+        }
     }
 
     // ---- The document picker ----

@@ -133,7 +133,7 @@ void main() {
             videoCount: 12,
             watched: true,
             chat: false,
-            gone: false,
+            noVideos: false,
           ),
           WatchedRow(
             relativePath: 'WhatsApp/Media/WhatsApp Video',
@@ -141,7 +141,7 @@ void main() {
             videoCount: 4,
             watched: false,
             chat: true,
-            gone: false,
+            noVideos: false,
           ),
           WatchedRow(
             relativePath: 'Movies/Drone',
@@ -149,7 +149,7 @@ void main() {
             videoCount: 2,
             watched: false,
             chat: false,
-            gone: false,
+            noVideos: false,
           ),
           WatchedRow(
             relativePath: 'Movies/Gone',
@@ -157,7 +157,7 @@ void main() {
             videoCount: null,
             watched: true,
             chat: false,
-            gone: true,
+            noVideos: true,
           ),
         ]);
       },
@@ -168,9 +168,28 @@ void main() {
 
       final gone = (await view()).rows.last;
 
-      expect(gone.gone, isTrue);
+      expect(gone.noVideos, isTrue);
       expect(gone.chat, isTrue);
       expect(gone.videoCount, isNull);
+    });
+
+    test('a watched folder holding only subfolders has no videos of its own: '
+        'noVideos, no count, and the subfolder still has its row', () async {
+      await begin(
+        watched: ['Movies/Trips'],
+        folders: [folder('Movies/Trips/Goa/', 3)],
+      );
+
+      final rows = (await view()).rows;
+
+      expect(
+        [for (final r in rows) r.relativePath],
+        ['Movies/Trips/Goa', 'Movies/Trips'],
+      );
+      expect(rows.last.noVideos, isTrue);
+      expect(rows.last.videoCount, isNull);
+      expect(rows.last.watched, isTrue);
+      expect(rows.first.noVideos, isFalse);
     });
 
     test('several gone paths keep the order they are watched in', () async {
@@ -197,7 +216,7 @@ void main() {
       expect(rows, hasLength(1));
       expect(rows.single.videoCount, 13);
       expect(rows.single.watched, isTrue);
-      expect(rows.single.gone, isFalse);
+      expect(rows.single.noVideos, isFalse);
     });
 
     test('a stored path with a trailing slash or other case is the same '
@@ -211,7 +230,7 @@ void main() {
 
       expect(rows, hasLength(1));
       expect(rows.single.watched, isTrue);
-      expect(rows.single.gone, isFalse);
+      expect(rows.single.noVideos, isFalse);
       expect(rows.single.videoCount, 5);
     });
 
@@ -222,7 +241,7 @@ void main() {
       final rows = (await view()).rows;
 
       expect([for (final r in rows) r.relativePath], ['A', 'Movies/Empty']);
-      expect(rows.last.gone, isTrue);
+      expect(rows.last.noVideos, isTrue);
     });
 
     test('folders the Add videos list hides are left out, and the volume '
@@ -253,7 +272,7 @@ void main() {
 
       final row = (await view()).rows.single;
 
-      expect(row.gone, isFalse);
+      expect(row.noVideos, isFalse);
       expect(row.videoCount, 6);
       expect(row.watched, isTrue);
       expect(row.chat, isTrue);
@@ -265,7 +284,7 @@ void main() {
       final v = await view();
 
       expect(v.rows.single.watched, isFalse);
-      expect(v.rows.single.gone, isFalse);
+      expect(v.rows.single.noVideos, isFalse);
     });
 
     test('no folders at all: no rows', () async {
@@ -304,7 +323,7 @@ void main() {
             videoCount: null,
             watched: true,
             chat: false,
-            gone: false,
+            noVideos: false,
           ),
           WatchedRow(
             relativePath: 'WhatsApp/Media/WhatsApp Video',
@@ -312,7 +331,7 @@ void main() {
             videoCount: null,
             watched: true,
             chat: true,
-            gone: false,
+            noVideos: false,
           ),
         ]);
         expect(media.calls, isNot(contains('videoFolders')));
@@ -376,7 +395,7 @@ void main() {
 
       expect(v.fullAccess, isTrue);
       expect(v.rows.single.relativePath, 'Secret/Folder');
-      expect(v.rows.single.gone, isFalse);
+      expect(v.rows.single.noVideos, isFalse);
       expect(v.rows.single.videoCount, isNull);
       expect(
         records.where((r) => r.message.contains('Secret')),
