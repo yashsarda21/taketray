@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
+import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_form_controller.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
 import 'package:taketray/features/reels/views/sheet_failure.dart';
@@ -18,16 +19,20 @@ import 'package:taketray_ui/taketray_ui.dart';
 const int _descriptionCounterFrom = 900;
 
 /// Opens the New reel sheet, or, with [reel], the Reel details sheet
-/// (`screens.js`: `sheets.reelForm`, without the reference link, which is
-/// Phase 9).
+/// (`screens.js`: `sheets.reelForm`).
 ///
-/// - **New reel:** the name and the Shot ideas. **Create reel** saves, closes
-///   the sheet and shows "{name} created".
+/// - **New reel:** the name, the optional Reference link and the Shot ideas.
+///   **Create reel** saves, closes the sheet and shows "{name} created".
 /// - **Reel details:** the same, filled in, and the status choices. **Save**
 ///   saves everything in one go, closes the sheet and shows "Saved".
 ///
-/// A name that is empty, too long or another reel's is explained under the
-/// field and the sheet stays open. If the save fails for another reason,
+/// A name that is empty, too long or another reel's, or a link field with no
+/// link in it, is explained under its field (all at once) and the sheet stays
+/// open, with nothing saved (D-159). A new reel is made with its reference in
+/// one go; on an edit a link the reel already has is fine.
+///
+/// If the save fails for another reason (on an edit, also when only the
+/// reference could not be added: the reel's changes stay saved),
 /// "Something went wrong. Try again." is shown **in the sheet**, above its
 /// buttons, and the sheet stays open with what was typed (a snack would lie
 /// behind the sheet and its scrim, D-85). It goes at the next Save or edit.
@@ -146,6 +151,9 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
   /// The Shot ideas field's own node, so it can take the focus on open.
   final FocusNode _descriptionFocus = FocusNode();
 
+  /// The Reference link field (D-159). Not on the tag player's form.
+  late final TextEditingController _link = TextEditingController();
+
   /// The last save failed for a reason the user cannot fix; shown in the
   /// sheet until the next attempt or edit.
   bool _failed = false;
@@ -154,6 +162,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
   void dispose() {
     _name.dispose();
     _description.dispose();
+    _link.dispose();
     _descriptionFocus.dispose();
     super.dispose();
   }
@@ -171,6 +180,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
         name: _name.text,
         description: _description.text,
         status: widget.reel == null ? null : _status,
+        link: widget.forClip ? null : _link.text,
         createWith: widget.createForClip,
       );
       if (reel == null) return; // The sheet shows why.
@@ -201,6 +211,12 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
         reelDescriptionMaxLength,
       ),
     };
+    final linkError = form.linkError == null ? null : l10n.referenceNotALink;
+    // The references the reel has now, for the help line; none while it loads
+    // and for a new reel.
+    final savedCount = widget.reel == null
+        ? 0
+        : ref.watch(referenceCountsProvider).value?[widget.reel!.id] ?? 0;
     void typing(String _) {
       ref
           .read(reelFormControllerProvider(widget.reel?.id).notifier)
@@ -263,6 +279,18 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
             onChanged: typing,
             onSubmitted: (_) => unawaited(_save()),
           ),
+          if (!widget.forClip)
+            TtTextField(
+              label: l10n.reelLinkLabel,
+              hint: l10n.reelLinkHint,
+              helper: savedCount > 0
+                  ? l10n.reelLinkHelpSaved(savedCount)
+                  : l10n.reelLinkHelpNew,
+              controller: _link,
+              error: linkError,
+              textInputAction: TextInputAction.next,
+              onChanged: typing,
+            ),
           if (!widget.forClip)
             TtTextField(
               label: l10n.reelDescriptionLabel,

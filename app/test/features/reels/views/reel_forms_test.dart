@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
@@ -51,18 +53,55 @@ class _FlakyReels extends ReelsRepository {
   }
 }
 
+/// A references repository that can be made to fail and counts its adds.
+class _FlakyReferences extends ReferencesRepository {
+  // The parameters of ReferencesRepository are private, so they cannot be
+  // super parameters.
+  // ignore: use_super_parameters, the same reason
+  _FlakyReferences(AppDatabase db, Clock clock) : super(db, clock);
+
+  Error? failWith;
+  int adds = 0;
+
+  @override
+  Future<AddReferenceResult> add(
+    int reelId,
+    String rawUrl, {
+    String? label,
+  }) async {
+    adds++;
+    final failure = failWith;
+    if (failure != null) throw failure;
+    return await super.add(reelId, rawUrl, label: label);
+  }
+}
+
+/// The form's goldens are **macOS only, and not on CI** (D-61, D-97): make or
+/// update them with `tool/flutter test --update-goldens
+/// test/features/reels/views/reel_forms_test.dart` from `app/`.
+final bool _goldens =
+    Platform.isMacOS && !Platform.environment.containsKey('CI');
+
+const _notALink =
+    "That isn't a link. In Instagram: Share › Copy link, then paste it here.";
+const _linkLabel = 'Reference link (optional)';
+const _helpNew = 'A reel you want to recreate. You can add more later.';
+
 void main() {
   late VmHarness h;
   late _FlakyReels reels;
+  late _FlakyReferences refs;
 
   setUp(() {
     h = VmHarness();
     reels = _FlakyReels(h.media.db, h.media.clock);
+    refs = _FlakyReferences(h.media.db, h.media.clock);
   });
 
   List<Override> overrides() => [
     ...h.appOverrides,
     reelsRepositoryProvider.overrideWithValue(reels),
+    referencesRepositoryProvider.overrideWithValue(refs),
   ];
 
   /// Every reel in the database now.
@@ -192,7 +231,7 @@ void main() {
       expect(saved.single.status, ReelStatus.collecting);
     });
 
-    testApp('the fields have the prototype copy, no status, no reference', (
+    testApp('the fields have the prototype copy and no status choice', (
       tester,
     ) async {
       await pumpHost(tester);
@@ -205,10 +244,9 @@ void main() {
       expect(find.text('Concept, shots to get, songs to try…'), findsOneWidget);
       expect(find.text('Only you see this.'), findsOneWidget);
       expect(find.text('Cancel'), findsOneWidget);
-      // New reels start as Collecting: no status choice yet, and the link
-      // field waits for Phase 9.
+      // New reels start as Collecting: no status choice yet. The link field
+      // has its own tests (Phase 9A).
       expect(find.text('Status'), findsNothing);
-      expect(find.textContaining('Reference'), findsNothing);
       // The name field takes the focus at once.
       final name = tester.widget<TextField>(input('Reel name'));
       expect(name.autofocus, isTrue);
@@ -769,6 +807,291 @@ void main() {
       await expectTtAccessible(tester);
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('the Reference link field (Phase 9A)', () {
+    const reelLink = 'https://www.instagram.com/reel/ABC123/?igsh=xyz';
+    const cleaned = 'https://www.instagram.com/p/ABC123/';
+
+    Future<List<String>> savedUrls(WidgetTester tester, int reelId) async =>
+        (await tester.runAsync(() => refs.watchForReel(reelId).first))!
+            .map((r) => r.url)
+            .toList();
+
+    Future<void> typeLink(WidgetTester tester, String text) async {
+      await tester.enterText(input(_linkLabel), text);
+      await tester.pump();
+    }
+
+    testApp('the create sheet has the field between the name and the shot '
+        'ideas', (tester) async {
+      await pumpHost(tester);
+      await openForm(tester);
+
+      expect(field(_linkLabel), findsOneWidget);
+      expect(find.text('Paste an Instagram reel link'), findsOneWidget);
+      expect(find.text(_helpNew), findsOneWidget);
+      final name = tester.getTopLeft(field('Reel name')).dy;
+      final link = tester.getTopLeft(field(_linkLabel)).dy;
+      final ideas = tester.getTopLeft(field('Shot ideas (optional)')).dy;
+      expect(name, lessThan(link));
+      expect(link, lessThan(ideas));
+    });
+
+    testApp('Create reel with a link makes the reel and its reference', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeName(tester, 'Goa');
+      await typeLink(tester, reelLink);
+      await tapAndSettle(tester, find.text('Create reel'));
+
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.text('Goa created'), findsOneWidget);
+      final saved = (await storedReels(tester)).single;
+      expect(await savedUrls(tester, saved.id), [cleaned]);
+    });
+
+    testApp('"hello world" shows the link error, keeps the sheet and makes '
+        'no reel', (tester) async {
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeName(tester, 'Goa');
+      await typeLink(tester, 'hello world');
+      await tapAndSettle(tester, find.text('Create reel'));
+
+      expect(find.text(_notALink), findsOneWidget);
+      expect(find.text(_helpNew), findsNothing);
+      expect(find.text('Give this reel a name'), findsNothing);
+      expect(find.byType(TtSheet), findsOneWidget);
+      expect(await storedReels(tester), isEmpty);
+
+      // Typing in the link field takes the message away and brings the help
+      // back; a good link then saves.
+      await typeLink(tester, reelLink);
+      expect(find.text(_notALink), findsNothing);
+      expect(find.text(_helpNew), findsOneWidget);
+      await tapAndSettle(tester, find.text('Create reel'));
+      expect(await storedReels(tester), hasLength(1));
+    });
+
+    testApp('an empty name and a bad link are both shown at once', (
+      tester,
+    ) async {
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeLink(tester, 'hello world');
+      await tapAndSettle(tester, find.text('Create reel'));
+
+      expect(find.text('Give this reel a name'), findsOneWidget);
+      expect(find.text(_notALink), findsOneWidget);
+      expect(find.byType(TtSheet), findsOneWidget);
+      expect(await storedReels(tester), isEmpty);
+    });
+
+    testApp('an empty link field makes a plain reel', (tester) async {
+      await pumpHost(tester);
+      await openForm(tester);
+      await typeName(tester, 'Goa');
+      await tapAndSettle(tester, find.text('Create reel'));
+
+      expect(await storedReels(tester), hasLength(1));
+      expect(await tester.runAsync(() => refs.watchAll().first), isEmpty);
+      expect(refs.adds, 0);
+    });
+
+    testApp("the tag player's form has no link field", (tester) async {
+      await pumpHost(tester, forClip: true, createForClip: _notRun);
+      await openForm(tester);
+
+      expect(field(_linkLabel), findsNothing);
+      expect(find.text(_helpNew), findsNothing);
+    });
+
+    group('on the edit sheet', () {
+      late Reel goa;
+
+      setUp(() async {
+        goa = await reels.create('Goa', description: 'beaches');
+      });
+
+      Future<void> openEdit(WidgetTester tester, {double textScale = 1}) async {
+        await pumpHost(tester, reel: goa, textScale: textScale);
+        await openForm(tester);
+        await settleApp(tester);
+      }
+
+      Future<void> saveLinks(int count) async {
+        for (var i = 0; i < count; i++) {
+          await refs.add(goa.id, 'https://example.com/clip$i');
+        }
+      }
+
+      testApp('the help with no references is the create help', (tester) async {
+        await openEdit(tester);
+        expect(find.text(_helpNew), findsOneWidget);
+        expect(
+          tester.widget<TextField>(input(_linkLabel)).controller!.text,
+          isEmpty,
+        );
+      });
+
+      for (final (count, words) in [
+        (1, '1 reference saved'),
+        (3, '3 references saved'),
+      ]) {
+        testApp('the help with $count saved: "$words"', (tester) async {
+          await tester.runAsync(() => saveLinks(count));
+          await openEdit(tester);
+          expect(
+            find.text('$words. Add another, or manage them on the reel.'),
+            findsOneWidget,
+          );
+          expect(find.text(_helpNew), findsNothing);
+        });
+      }
+
+      testApp('a new link is added and the reel changes save too', (
+        tester,
+      ) async {
+        await openEdit(tester);
+        await typeName(tester, 'Goa 2027');
+        await typeLink(tester, reelLink);
+        await tapAndSettle(tester, find.text('Save'));
+
+        expect(find.byType(TtSheet), findsNothing);
+        expect(find.text('Saved'), findsOneWidget);
+        expect(
+          (await tester.runAsync(() => reels.getById(goa.id)))!.name,
+          'Goa 2027',
+        );
+        expect(await savedUrls(tester, goa.id), [cleaned]);
+      });
+
+      testApp('an already saved link saves with no error', (tester) async {
+        await tester.runAsync(() => refs.add(goa.id, cleaned));
+        await openEdit(tester);
+        await typeName(tester, 'Goa 2');
+        await typeLink(tester, reelLink);
+        await tapAndSettle(tester, find.text('Save'));
+
+        expect(find.byType(TtSheet), findsNothing);
+        expect(find.text('Saved'), findsOneWidget);
+        expect(find.text(_notALink), findsNothing);
+        expect(await savedUrls(tester, goa.id), [cleaned]);
+        expect(
+          (await tester.runAsync(() => reels.getById(goa.id)))!.name,
+          'Goa 2',
+        );
+      });
+
+      testApp('an empty field makes no reference call', (tester) async {
+        await openEdit(tester);
+        await typeName(tester, 'Goa 2');
+        await tapAndSettle(tester, find.text('Save'));
+
+        expect(find.text('Saved'), findsOneWidget);
+        expect(refs.adds, 0);
+      });
+
+      testApp('a bad link saves nothing, not even the name', (tester) async {
+        await openEdit(tester);
+        await typeName(tester, 'Goa 2027');
+        await typeLink(tester, 'hello world');
+        await tapAndSettle(tester, find.text('Save'));
+
+        expect(find.text(_notALink), findsOneWidget);
+        expect(find.byType(TtSheet), findsOneWidget);
+        expect(find.text('Saved'), findsNothing);
+        expect(
+          (await tester.runAsync(() => reels.getById(goa.id)))!.name,
+          'Goa',
+        );
+        expect(refs.adds, 0);
+      });
+
+      testApp('a database error adding the link says so in the sheet; the '
+          'reel change stays', (tester) async {
+        await openEdit(tester);
+        await typeName(tester, 'Goa 2027');
+        await typeLink(tester, reelLink);
+        refs.failWith = StateError('disk full');
+        await tapAndSettle(tester, find.text('Save'));
+
+        expect(
+          find.text('Something went wrong. Try again.').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.byType(TtSheet), findsOneWidget);
+        expect(find.text('Saved'), findsNothing);
+        expect(
+          (await tester.runAsync(() => reels.getById(goa.id)))!.name,
+          'Goa 2027',
+        );
+        expect(await savedUrls(tester, goa.id), isEmpty);
+
+        // Typing in the link field is an edit: the line goes.
+        await typeLink(tester, '${reelLink}2');
+        expect(find.text('Something went wrong. Try again.'), findsNothing);
+      });
+    });
+
+    testApp('the create sheet with an error is accessible at 2x text', (
+      tester,
+    ) async {
+      await pumpHost(tester, textScale: 2);
+      await openForm(tester);
+      await typeLink(tester, 'hello world');
+      await tapAndSettle(tester, find.text('Create reel'));
+      expect(find.text(_notALink), findsOneWidget);
+      await expectTtAccessible(tester);
+      expect(tester.takeException(), isNull);
+    });
+
+    Future<void> shot(WidgetTester tester, String name) => expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('goldens/macos/$name.png'),
+    );
+
+    for (final (scale, brightness, suffix) in [
+      (1.0, Brightness.light, '1x'),
+      (2.0, Brightness.light, '2x'),
+      (1.0, Brightness.dark, 'dark_1x'),
+    ]) {
+      testApp('golden: create with a link error ($suffix)', (tester) async {
+        await pumpHost(tester, textScale: scale, brightness: brightness);
+        await openForm(tester);
+        await typeLink(tester, 'hello world');
+        await tapAndSettle(tester, find.text('Create reel'));
+        await shot(tester, 'reel_form_create_error_$suffix');
+      }, skip: !_goldens);
+    }
+
+    for (final (scale, brightness, suffix) in [
+      (1.0, Brightness.light, '1x'),
+      (2.0, Brightness.light, '2x'),
+      (1.0, Brightness.dark, 'dark_1x'),
+    ]) {
+      testApp('golden: edit with 2 references ($suffix)', (tester) async {
+        final goa = (await tester.runAsync(
+          () => reels.create('Goa', description: 'beaches'),
+        ))!;
+        await tester.runAsync(() async {
+          await refs.add(goa.id, 'https://example.com/a');
+          await refs.add(goa.id, 'https://example.com/b');
+        });
+        await pumpHost(
+          tester,
+          reel: goa,
+          textScale: scale,
+          brightness: brightness,
+        );
+        await openForm(tester);
+        await settleApp(tester);
+        await shot(tester, 'reel_form_edit_two_references_$suffix');
+      }, skip: !_goldens);
+    }
   });
 
   group('the status menu', () {

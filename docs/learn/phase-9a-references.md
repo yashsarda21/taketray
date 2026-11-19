@@ -361,3 +361,60 @@ Then break one thing on purpose. In `references_section.dart`, change `if (still
 ### Decisions
 
 - D-158: the section and its three states, the card menu (Remove with Undo, no dialog), `ReferenceActions`, "Link copied" before Android 13 only, the scroll and 600 ms flash, the Home join and badge, the empty reel's second line, `focusDescription`.
+
+## 7. The reel form's link field
+
+### What we built
+
+The New reel and Reel details sheets have a new box between the name and the shot ideas: **Reference link (optional)**. Paste or type a link from Instagram, YouTube or TikTok, or a whole caption with a link in it. On a new reel, **Create reel** makes the reel and saves the link on it. On an existing reel, **Save** saves the reel and adds the link to its references. If the reel already has that link, nothing is wrong: the sheet just closes with "Saved". When the reel has references, the small help line under the box says how many. The "New reel" sheet from the tag player has no link box: that sheet only makes a reel for a clip.
+
+### Why TakeTray needs it
+
+A creator often starts a reel *because* of another reel they want to recreate. Before this, they had to make the reel, open it and add the link as a second step. Now it is one step, and the link is never lost if the reel's name turns out to be taken.
+
+### Key ideas
+
+**1. All the mistakes at once, nothing written.** Save checks the name, the shot ideas and the link before it writes anything. If any of them is wrong, every wrong field shows its message together, and no reel is made or changed (not even a good new name on an edit). A user never fixes one field only to meet the next message:
+
+```dart
+final hasLink = link != null && link.trim().isNotEmpty;
+final typed = hasLink ? typedLink(link) : null;
+final linkProblem = hasLink && typed == null ? ReferenceUrlProblem.invalid : null;
+if (nameProblem != null || descriptionProblem != null || linkProblem != null) {
+  // show them all, return null
+}
+```
+
+**2. Reuse the rule, do not copy it.** The link is checked with `typedLink`, the same function the Add reference sheet uses, so "hello world", `https://hello` and `user@example.com` are refused here too, and a caption with a link in it works.
+
+**3. A new reel and its link are one transaction.** `createWithReference` writes both or neither, so a refused name can never leave a link behind, and a reel can never exist without the link that was typed for it.
+
+**4. An edit is two steps, and the second can fail alone.** The reel's own changes are saved first, then the reference is added. A link that is already there is a normal result, not a failure (`ReferenceAlreadySaved`). If the add itself fails with a database error, the reel's changes stay saved and the sheet shows its usual "Something went wrong. Try again." with the text kept; Save again adds the link:
+
+```dart
+if (link != null) {
+  await references.add(id, link); // the result is not an error either way
+}
+```
+
+**5. Read the repositories before awaiting.** The controller reads both repositories at the start of the save, because a save that outlives the sheet cannot read providers afterwards.
+
+### Where it lives
+
+- `app/lib/features/reels/view_models/reel_form_controller.dart`: `save(link:)`, `ReelFormState.linkError`.
+- `app/lib/features/reels/views/reel_form_sheet.dart`: the field and its help line.
+- `app/lib/l10n/app_en.arb`: `reelLinkLabel`, `reelLinkHint`, `reelLinkHelpNew`, `reelLinkHelpSaved`.
+- Tests: `app/test/features/reels/view_models/reel_form_controller_test.dart` ("with a link" groups), `app/test/features/reels/views/reel_forms_test.dart` ("the Reference link field"), goldens in `app/test/features/reels/views/goldens/macos/`.
+- Docs: `docs/flow.md` ("Creating and editing a reel"), D-159.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/reels/view_models/reel_form_controller_test.dart test/features/reels/views/reel_forms_test.dart
+```
+
+Then break one thing on purpose. In `reel_form_controller.dart`, make the link check wait for a good name (`nameProblem == null && hasLink && typed == null`): "an empty name and a bad link are both shown at once" fails, because the link message no longer shows beside the name's. Put it back. Another: throw when `add` returns `ReferenceAlreadySaved`: "an already saved link saves the reel with no error" fails.
+
+### Decisions
+
+- D-159: the field and its copy, the checks together, `createWithReference` on create, reel-then-reference on edit, the already-saved result as no error, and the failure after the reel saved.

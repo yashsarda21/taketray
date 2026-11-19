@@ -10,13 +10,15 @@ part of 'reel_form_controller.dart';
 // ignore_for_file: type=lint, type=warning
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
-/// [save] checks the name and the description, both at once, then writes. The
+/// [save] checks the name, the description and the Reference link, all at
+/// once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
 /// ago counts; when editing, the reel's own name in any case is always
 /// fine, as in `ReelsRepository.rename`), and the repository's own
 /// `duplicate` is the backstop if another reel took the name between that
 /// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError`, for the view to show.
+/// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+/// show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///
@@ -31,13 +33,15 @@ final reelFormControllerProvider = ReelFormControllerFamily._();
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
-/// [save] checks the name and the description, both at once, then writes. The
+/// [save] checks the name, the description and the Reference link, all at
+/// once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
 /// ago counts; when editing, the reel's own name in any case is always
 /// fine, as in `ReelsRepository.rename`), and the repository's own
 /// `duplicate` is the backstop if another reel took the name between that
 /// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError`, for the view to show.
+/// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+/// show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///
@@ -50,13 +54,15 @@ final class ReelFormControllerProvider
     extends $NotifierProvider<ReelFormController, ReelFormState> {
   /// The create (null `reelId`) or edit sheet of one reel (D-85).
   ///
-  /// [save] checks the name and the description, both at once, then writes. The
+  /// [save] checks the name, the description and the Reference link, all at
+  /// once, then writes. The
   /// name is checked against the reels as they are now (a reel made a moment
   /// ago counts; when editing, the reel's own name in any case is always
   /// fine, as in `ReelsRepository.rename`), and the repository's own
   /// `duplicate` is the backstop if another reel took the name between that
   /// check and the write. A problem is not thrown: [save] returns null and the
-  /// state holds `nameError` / `descriptionError`, for the view to show.
+  /// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+  /// show.
   /// Anything else that goes wrong (a database error, the reel being gone) is
   /// logged by type and rethrown, for the view to tell the user.
   ///
@@ -110,17 +116,19 @@ final class ReelFormControllerProvider
 }
 
 String _$reelFormControllerHash() =>
-    r'aff3f3fc99b32b63c7bb46fe4382c52238179a38';
+    r'9d2c01ede11493a73aaef96bad2857ed7de7d603';
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
-/// [save] checks the name and the description, both at once, then writes. The
+/// [save] checks the name, the description and the Reference link, all at
+/// once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
 /// ago counts; when editing, the reel's own name in any case is always
 /// fine, as in `ReelsRepository.rename`), and the repository's own
 /// `duplicate` is the backstop if another reel took the name between that
 /// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError`, for the view to show.
+/// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+/// show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///
@@ -150,13 +158,15 @@ final class ReelFormControllerFamily extends $Family
 
   /// The create (null `reelId`) or edit sheet of one reel (D-85).
   ///
-  /// [save] checks the name and the description, both at once, then writes. The
+  /// [save] checks the name, the description and the Reference link, all at
+  /// once, then writes. The
   /// name is checked against the reels as they are now (a reel made a moment
   /// ago counts; when editing, the reel's own name in any case is always
   /// fine, as in `ReelsRepository.rename`), and the repository's own
   /// `duplicate` is the backstop if another reel took the name between that
   /// check and the write. A problem is not thrown: [save] returns null and the
-  /// state holds `nameError` / `descriptionError`, for the view to show.
+  /// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+  /// show.
   /// Anything else that goes wrong (a database error, the reel being gone) is
   /// logged by type and rethrown, for the view to tell the user.
   ///
@@ -175,13 +185,15 @@ final class ReelFormControllerFamily extends $Family
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
-/// [save] checks the name and the description, both at once, then writes. The
+/// [save] checks the name, the description and the Reference link, all at
+/// once, then writes. The
 /// name is checked against the reels as they are now (a reel made a moment
 /// ago counts; when editing, the reel's own name in any case is always
 /// fine, as in `ReelsRepository.rename`), and the repository's own
 /// `duplicate` is the backstop if another reel took the name between that
 /// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError`, for the view to show.
+/// state holds `nameError` / `descriptionError` / `linkError`, for the view to
+/// show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///

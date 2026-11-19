@@ -629,6 +629,27 @@
       }
     }
   },
+  "reelLinkLabel": "Reference link (optional)",
+  "@reelLinkLabel": {
+    "description": "Label of the optional Reference link field in the New reel and Reel details sheets."
+  },
+  "reelLinkHint": "Paste an Instagram reel link",
+  "@reelLinkHint": {
+    "description": "Hint inside the empty Reference link field of the reel sheet."
+  },
+  "reelLinkHelpNew": "A reel you want to recreate. You can add more later.",
+  "@reelLinkHelpNew": {
+    "description": "Help line under the Reference link field of the reel sheet: when creating a reel, and when editing one with no references."
+  },
+  "reelLinkHelpSaved": "{count, plural, =1{1 reference saved} other{{count} references saved}}. Add another, or manage them on the reel.",
+  "@reelLinkHelpSaved": {
+    "description": "Help line under the Reference link field when editing a reel that already has references.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "reelDescriptionLabel": "Shot ideas (optional)",
   "@reelDescriptionLabel": {
     "description": "Label of the field for a reel's concept, shots to get and songs to try."
