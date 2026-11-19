@@ -143,7 +143,7 @@ class _ReferenceSheetState extends ConsumerState<_ReferenceSheet> {
   }
 
   /// Reads the clipboard (the only place that does), once, for the first
-  /// link in it.
+  /// link in it that Save will accept (`pastedLink`).
   Future<void> _paste() async {
     final l10n = AppLocalizations.of(context);
     String? text;
@@ -153,7 +153,7 @@ class _ReferenceSheetState extends ConsumerState<_ReferenceSheet> {
       _log.warning('Reading the clipboard failed: ${error.runtimeType}');
     }
     if (!mounted) return;
-    final link = text == null ? null : firstLinkIn(text);
+    final link = text == null ? null : pastedLink(text);
     if (link == null) {
       setState(() => _linkError = l10n.referenceNoLinkOnClipboard);
       return;

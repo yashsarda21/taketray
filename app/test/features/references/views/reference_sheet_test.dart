@@ -238,6 +238,8 @@ void main() {
       ('no clipboard data (an image)', () => null),
       ('a caption with no link', () => {'text': 'Nice shots, no link here'}),
       ('a bare address (no scheme)', () => {'text': 'instagram.com/reel/A1'}),
+      ('a link with no dotted host', () => {'text': 'see https://hello.'}),
+      ('a localhost link', () => {'text': 'http://localhost/a'}),
       (
         'a failing clipboard',
         () => throw PlatformException(code: 'clipboard-error'),

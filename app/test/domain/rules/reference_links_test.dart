@@ -151,6 +151,61 @@ void main() {
     });
   });
 
+  group('pastedLink', () {
+    test('a text with a link gives the first link, like firstLinkIn', () {
+      expect(pastedLink('Look https://x.com/a. ok'), 'https://x.com/a');
+      expect(
+        pastedLink('a https://youtu.be/AAA b https://youtu.be/BBB'),
+        'https://youtu.be/AAA',
+      );
+      expect(pastedLink('(https://x.com/a)'), 'https://x.com/a');
+    });
+
+    test('a link without a dotted host is not a link', () {
+      expect(pastedLink('see https://hello.'), isNull);
+      expect(pastedLink('https://hello'), isNull);
+      expect(pastedLink('Look http://localhost/a ok'), isNull);
+      expect(pastedLink('https://.com'), isNull);
+      expect(pastedLink('https://a..com'), isNull);
+      expect(pastedLink('https://3.5'), isNull);
+    });
+
+    test('an IP address and a port are fine', () {
+      expect(pastedLink('https://192.168.1.2/a'), 'https://192.168.1.2/a');
+      expect(pastedLink('https://x.com:8080/a'), 'https://x.com:8080/a');
+    });
+
+    test('a bare address, words, nothing: null', () {
+      expect(pastedLink('instagram.com/reel/abc'), isNull);
+      expect(pastedLink('www.instagram.com/reel/abc'), isNull);
+      expect(pastedLink('hello world'), isNull);
+      expect(pastedLink(''), isNull);
+      expect(pastedLink('   '), isNull);
+      expect(pastedLink('https://'), isNull);
+    });
+
+    test('whatever it gives, typedLink gives the same (Paste and Save agree)',
+        () {
+      for (final text in [
+        'https://x.com/a',
+        'Look https://instagram.com/reel/A1 wow',
+        'a https://youtu.be/AAA b https://youtu.be/BBB',
+        'see https://hello.',
+        'https://hello',
+      ]) {
+        final pasted = pastedLink(text);
+        if (pasted != null) expect(typedLink(pasted), pasted, reason: text);
+      }
+    });
+
+    test('a very long text is fine', () {
+      expect(
+        pastedLink('${'word ' * 20000}https://x.com/end.'),
+        'https://x.com/end',
+      );
+    });
+  });
+
   group('shortLink', () {
     test('drops the scheme, www and the trailing slash', () {
       expect(

@@ -49,6 +49,18 @@ String? typedLink(String text) {
   return _withDottedHost(link);
 }
 
+/// The link in a text pasted from the clipboard (the Add sheet's Paste; the
+/// share sheet reads its text the same way).
+///
+/// The first link of [firstLinkIn], and only when its host is dotted as
+/// [typedLink] needs it, so what Paste puts in the field is what Save
+/// accepts: `see https://hello.` gives null. A bare address (no scheme) is
+/// not a pasted link.
+String? pastedLink(String text) {
+  final found = firstLinkIn(text);
+  return found == null ? null : _withDottedHost(found);
+}
+
 /// A name with letters or digits, `-` or `_`: one part of a host.
 final _hostPart = RegExp(r'^[\p{L}\p{N}_-]+$', unicode: true);
 final _digits = RegExp(r'^\d+$');
