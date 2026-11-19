@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
@@ -429,7 +430,14 @@ void main() {
   });
 
   group('the full Settings screen (Phase 10B, D-148)', () {
-    Future<({FakeSettings settings, FakeAccess media, FakeFilesBridge files})>
+    Future<
+      ({
+        FakeSettings settings,
+        FakeAccess media,
+        FakeFilesBridge files,
+        FakeNotificationAccess notifications,
+      })
+    >
     pumpFull(
       WidgetTester tester, {
       AppSettings initial = const AppSettings(),
@@ -439,11 +447,12 @@ void main() {
       Future<DateTime?> Function()? lastExport,
       bool use24Hour = true,
       NotificationAccess notifications = _allowed,
+      bool openSettingsResult = true,
     }) async {
       final settings = FakeSettings(initial);
       final media = FakeAccess(level);
       final bridge = files ?? FakeFilesBridge();
-      await pump(
+      final fake = await pump(
         tester,
         notifications,
         settings: settings,
@@ -453,7 +462,13 @@ void main() {
         lastExport: lastExport,
         use24Hour: use24Hour,
       );
-      return (settings: settings, media: media, files: bridge);
+      fake.openSettingsResult = openSettingsResult;
+      return (
+        settings: settings,
+        media: media,
+        files: bridge,
+        notifications: fake,
+      );
     }
 
     String plain(String? text) => (text ?? '').replaceAll(RegExp('[  ]'), ' ');
@@ -1266,6 +1281,252 @@ void main() {
         expect(groupLabel('Permissions'), findsNothing);
         expect(rowTitled('Video access'), findsNothing);
       });
+
+      group(
+        'allowed rows open Android settings (owner request, 2026-11-19)',
+        () {
+          const hint = 'Opens Android settings to change it';
+
+          /// What a screen reader gets for the row titled [title].
+          SemanticsData semanticsOf(WidgetTester tester, String title) =>
+              tester.getSemantics(find.text(title)).getSemanticsData();
+
+          testWidgets('full access: the row is tappable, the check stays', (
+            tester,
+          ) async {
+            await pumpFull(tester);
+
+            final row = tester.widget<TtListRow>(rowTitled('Video access'));
+            expect(row.onTap, isNotNull);
+            expect(
+              find.descendant(
+                of: rowTitled('Video access'),
+                matching: find.byIcon(Symbols.check_circle_rounded),
+              ),
+              findsOneWidget,
+            );
+            expect(buttonIn('Video access'), findsNothing);
+          });
+
+          testWidgets('tapping the full-access row opens the page once, never '
+              'allow()', (tester) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 1);
+            expect(h.media.allowed, 0);
+            expect(find.byType(TtSnack), findsNothing);
+          });
+
+          testWidgets('a double tap on the row opens it once', (tester) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pump();
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 1);
+            expect(h.media.allowed, 0);
+          });
+
+          testWidgets('the row works again after the window of the first tap', (
+            tester,
+          ) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+            await tester.pump(const Duration(seconds: 2));
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 2);
+          });
+
+          for (final level in [
+            MediaAccessLevel.limited,
+            MediaAccessLevel.denied,
+          ]) {
+            testWidgets('$level: the row itself does nothing, the button still '
+                'calls allow()', (tester) async {
+              final h = await pumpFull(tester, level: level);
+
+              expect(
+                tester.widget<TtListRow>(rowTitled('Video access')).onTap,
+                isNull,
+              );
+              await tester.tap(find.text('Video access'));
+              await tester.pumpAndSettle();
+              expect(h.media.settingsOpened, 0);
+              expect(h.media.allowed, 0);
+
+              await tester.tap(buttonIn('Video access'));
+              await tester.pumpAndSettle();
+              expect(h.media.allowed, 1);
+              expect(h.media.settingsOpened, 0);
+            });
+          }
+
+          testWidgets('the row follows the state: a lost permission loses the '
+              'tap', (tester) async {
+            final h = await pumpFull(tester);
+
+            h.media.show(MediaAccessLevel.denied);
+            await tester.pump();
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 0);
+            expect(buttonIn('Video access'), findsOneWidget);
+          });
+
+          testWidgets('full access: a button with the hint, the state text is '
+              'kept', (tester) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester);
+
+            final data = semanticsOf(tester, 'Video access');
+            expect(data.flagsCollection.isButton, isTrue);
+            expect(data.hint, hint);
+            expect(data.label, contains('Video access'));
+            expect(data.label, contains('All videos'));
+            handle.dispose();
+          });
+
+          testWidgets('not full: no hint on the row', (tester) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester, level: MediaAccessLevel.limited);
+
+            expect(semanticsOf(tester, 'Video access').hint, isNot(hint));
+            expect(find.bySemanticsLabel('Allow all videos'), findsOneWidget);
+            handle.dispose();
+          });
+
+          testWidgets('allowed notifications: the row is tappable, the check '
+              'stays', (tester) async {
+            await pumpFull(tester);
+
+            expect(
+              tester.widget<TtListRow>(rowTitled('Notifications')).onTap,
+              isNotNull,
+            );
+            expect(
+              find.descendant(
+                of: rowTitled('Notifications'),
+                matching: find.byIcon(Symbols.check_circle_rounded),
+              ),
+              findsOneWidget,
+            );
+            expect(buttonIn('Notifications'), findsNothing);
+          });
+
+          testWidgets(
+            'tapping the allowed Notifications row opens the settings '
+            'once, never allow()',
+            (tester) async {
+              final h = await pumpFull(tester);
+
+              await tester.tap(find.text('Notifications'));
+              await tester.pumpAndSettle();
+
+              expect(h.notifications.settingsOpened, 1);
+              expect(h.notifications.allowed, 0);
+              expect(h.media.settingsOpened, 0);
+              expect(find.byType(TtSnack), findsNothing);
+            },
+          );
+
+          testWidgets('a double tap on the Notifications row opens once', (
+            tester,
+          ) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pump();
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+
+            expect(h.notifications.settingsOpened, 1);
+            expect(h.notifications.allowed, 0);
+          });
+
+          testWidgets('a settings page that will not open shows the snack, and '
+              'the row works again at once', (tester) async {
+            final h = await pumpFull(tester, openSettingsResult: false);
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+
+            expect(h.notifications.settingsOpened, 1);
+            expect(h.notifications.allowed, 0);
+            expect(
+              find.text("Couldn't open settings on this phone."),
+              findsOneWidget,
+            );
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+            expect(h.notifications.settingsOpened, 2);
+          });
+
+          for (final (name, access) in [
+            ('askable', _askable),
+            ('blocked', _blocked),
+          ]) {
+            testWidgets('$name: the row itself does nothing, the button still '
+                'calls allow()', (tester) async {
+              final h = await pumpFull(tester, notifications: access);
+
+              expect(
+                tester.widget<TtListRow>(rowTitled('Notifications')).onTap,
+                isNull,
+              );
+              await tester.tap(find.text('Notifications'));
+              await tester.pumpAndSettle();
+              expect(h.notifications.settingsOpened, 0);
+              expect(h.notifications.allowed, 0);
+
+              await tester.tap(buttonIn('Notifications'));
+              await tester.pumpAndSettle();
+              expect(h.notifications.allowed, 1);
+              expect(h.notifications.settingsOpened, 0);
+            });
+          }
+
+          testWidgets(
+            'allowed notifications: a button with the hint, the state '
+            'text is kept',
+            (tester) async {
+              final handle = tester.ensureSemantics();
+              await pumpFull(tester);
+
+              final data = semanticsOf(tester, 'Notifications');
+              expect(data.flagsCollection.isButton, isTrue);
+              expect(data.hint, hint);
+              expect(data.label, contains('Notifications'));
+              expect(data.label, contains('Allowed'));
+              handle.dispose();
+            },
+          );
+
+          testWidgets('not allowed notifications: no hint on the row', (
+            tester,
+          ) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester, notifications: _askable);
+
+            expect(semanticsOf(tester, 'Notifications').hint, isNot(hint));
+            expect(
+              find.bySemanticsLabel('Allow notifications'),
+              findsOneWidget,
+            );
+            handle.dispose();
+          });
+        },
+      );
     });
 
     group('About', () {

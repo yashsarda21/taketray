@@ -31,6 +31,9 @@ class FakeAccess extends MediaAccessController {
   final bool loading;
   int allowed = 0;
 
+  /// How often the Android settings page was asked for.
+  int settingsOpened = 0;
+
   @override
   Future<MediaAccessView> build() async {
     if (loading) return await Completer<MediaAccessView>().future;
@@ -41,6 +44,9 @@ class FakeAccess extends MediaAccessController {
 
   @override
   Future<void> allow() async => allowed++;
+
+  @override
+  Future<void> openSettings() async => settingsOpened++;
 
   void show(MediaAccessLevel l) => state = AsyncData(accessView(l));
 }
@@ -61,6 +67,10 @@ class FakeNotificationAccess extends NotificationAccessController {
   bool allowResult;
   int allowed = 0;
 
+  /// How often the notification settings were asked for, and what that gives.
+  int settingsOpened = 0;
+  bool openSettingsResult = true;
+
   @override
   Future<NotificationAccess> build() {
     if (loading) return Completer<NotificationAccess>().future;
@@ -73,6 +83,12 @@ class FakeNotificationAccess extends NotificationAccessController {
   Future<bool> allow() async {
     allowed++;
     return allowResult;
+  }
+
+  @override
+  Future<bool> openSettings() async {
+    settingsOpened++;
+    return openSettingsResult;
   }
 
   void show(NotificationAccess a) => state = AsyncData(a);

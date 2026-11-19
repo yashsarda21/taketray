@@ -3880,6 +3880,10 @@
   "@settingsVideoAllowSemantics": {
     "description": "What a screen reader says for the Allow button of the Video access row in Settings."
   },
+  "settingsPermissionManageHint": "Opens Android settings to change it",
+  "@settingsPermissionManageHint": {
+    "description": "Screen-reader hint of the Video access and Notifications rows in Settings when the permission is allowed: the row is a button that opens this app's page in Android's settings, where the user can turn the permission off."
+  },
   "settingsPrivacyTitle": "Your videos never leave your phone",
   "@settingsPrivacyTitle": {
     "description": "Title of the privacy row in the About group of Settings."

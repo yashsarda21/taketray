@@ -300,6 +300,8 @@ The database runs transactions one after the other, so the second tap reads what
 
 **5. One tap, one call.** The Allow buttons for video access go through `OpenOnce.openSlow`, which lets one call through and ignores the taps while it runs and for a moment after. The row of each permission is left out while its first read runs, and says "Not allowed" with a button if the read failed, so the user can always reach it.
 
+**5b. Turning a permission off.** Android does not let an app take back its own permission, so when Video access says "All videos" or Notifications says "Allowed", tapping the row opens Android's settings page for TakeTray (`openSettings()`), where the user can switch it off; on return the resume refresh shows the not-allowed look (D-148, owner request of 2026-11-19).
+
 **6. Why not a `ListView`.** A `ListView` builds only the rows near the screen. With thirteen rows, the ones at the bottom would not exist for a screen reader or a test. A plain `SingleChildScrollView` builds them all, which is cheap for a list this short.
 
 ### Where it lives

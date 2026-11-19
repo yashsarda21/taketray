@@ -185,6 +185,55 @@ void main() {
     });
   });
 
+  group('openSettings (the allowed row, D-148)', () {
+    test('opens the notification settings once, asks for nothing', () async {
+      await start(_access(granted: true, canAsk: false));
+
+      final ok = await controller.openSettings();
+
+      expect(ok, isTrue);
+      expect(calls('openNotificationSettings'), 1);
+      expect(calls('requestNotificationAccess'), 0);
+      expect(calls('notificationAccess'), 1, reason: 'only the first read');
+      expect(shown(), _access(granted: true, canAsk: false));
+    });
+
+    test('opens them even when Android would still ask', () async {
+      await start(_access());
+
+      final ok = await controller.openSettings();
+
+      expect(ok, isTrue);
+      expect(calls('openNotificationSettings'), 1);
+      expect(calls('requestNotificationAccess'), 0);
+    });
+
+    test('a page that cannot open gives false, never throws, logs the type '
+        'only', () async {
+      await start(_access(granted: true, canAsk: false));
+      final records = captureLogs();
+      h.background.failNext('openNotificationSettings');
+
+      final ok = await controller.openSettings();
+
+      expect(ok, isFalse);
+      expect(logText(records), contains('PlatformException'));
+      expect(logText(records), isNot(contains('failed on purpose')));
+      expect(shown(), _access(granted: true, canAsk: false));
+    });
+
+    test('works while the first read has not run', () async {
+      controller = h.container.read(
+        notificationAccessControllerProvider.notifier,
+      );
+
+      final ok = await controller.openSettings();
+
+      expect(ok, isTrue);
+      expect(calls('openNotificationSettings'), 1);
+    });
+  });
+
   group('asking once', () {
     test('asks on Android 13 and later, and remembers it', () async {
       await start(_access());

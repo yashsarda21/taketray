@@ -14,12 +14,18 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   **Allow**. The buttons call `MediaAccessController.allow` (one call
 ///   however fast the taps). While the first read runs the row is left out;
 ///   if it failed, the row says "Not allowed" with **Allow** (the permission
-///   is unknown, and the button reads it again).
+///   is unknown, and the button reads it again). With "All videos" the whole
+///   row is a button that opens this app's page in Android's settings
+///   (`MediaAccessController.openSettings`), where the user can turn the
+///   access off: an app cannot revoke its own permission.
 /// - **Notifications (D-107):** "Allowed" with a check, or "Not allowed" with
 ///   a tonal **Allow**. **Allow** asks when Android will show its dialog and
 ///   opens the phone's notification settings otherwise
 ///   (`NotificationAccessController.allow`); if that page cannot be opened,
 ///   "Couldn't open settings on this phone." Same rules for the first read.
+///   With "Allowed" the whole row is a button that opens the phone's
+///   notification settings for this app (`NotificationAccessController
+///   .openSettings`), with the same snack if they cannot be opened.
 ///
 /// Both follow their state, which is read again on every resume, so the rows
 /// are right after the user comes back from the phone's settings. A row
@@ -36,9 +42,13 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
   /// Lets one Allow of the video access through however fast the taps.
   final OpenOnce _video = OpenOnce();
 
+  /// The same for the allowed Notifications row (opening the phone's page).
+  final OpenOnce _notificationsPage = OpenOnce();
+
   @override
   void dispose() {
     _video.dispose();
+    _notificationsPage.dispose();
     super.dispose();
   }
 
@@ -51,6 +61,37 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
       pushing();
     });
   }
+
+  /// Opens Android's page for this app, to turn video access off; one tap at
+  /// a time.
+  void _manageVideo() {
+    final controller = ref.read(mediaAccessControllerProvider.notifier);
+    _video.openSlow((pushing) async {
+      await controller.openSettings();
+      pushing();
+    });
+  }
+
+  /// Opens the phone's notification settings for this app; one tap at a time.
+  /// If they cannot be opened the window is released at once and the user is
+  /// told.
+  void _manageNotifications() {
+    final l10n = AppLocalizations.of(context);
+    final controller = ref.read(notificationAccessControllerProvider.notifier);
+    _notificationsPage.openSlow((pushing) async {
+      final worked = await controller.openSettings();
+      if (worked) {
+        pushing();
+        return;
+      }
+      if (!mounted) return;
+      showTtSnack(context, message: l10n.notificationsHelpOpenFailed);
+    });
+  }
+
+  /// A row that opens Android's settings tells a screen reader so.
+  Widget _manage(AppLocalizations l10n, Widget row) =>
+      Semantics(hint: l10n.settingsPermissionManageHint, child: row);
 
   Future<void> _allowNotifications() async {
     final l10n = AppLocalizations.of(context);
@@ -90,7 +131,8 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
   }
 
   Widget _videoRow(AppLocalizations l10n, MediaAccessLevel? level) {
-    return TtListRow(
+    final full = level == MediaAccessLevel.full;
+    final row = TtListRow(
       leading: const TtRowIcon(
         icon: Symbols.photo_library_rounded,
         boxed: false,
@@ -102,7 +144,8 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
         _ => l10n.settingsVideoNone,
       },
       stackTrailingAtLargeText: true,
-      trailing: level == MediaAccessLevel.full
+      onTap: full ? _manageVideo : null,
+      trailing: full
           ? Icon(
               Symbols.check_circle_rounded,
               fill: 1,
@@ -120,10 +163,11 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
               onPressed: _allowVideo,
             ),
     );
+    return full ? _manage(l10n, row) : row;
   }
 
   Widget _notificationsRow(AppLocalizations l10n, {required bool granted}) {
-    return TtListRow(
+    final row = TtListRow(
       leading: const TtRowIcon(
         icon: Symbols.notifications_rounded,
         boxed: false,
@@ -133,6 +177,7 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
           ? l10n.settingsNotificationsAllowed
           : l10n.settingsNotificationsNotAllowed,
       stackTrailingAtLargeText: true,
+      onTap: granted ? _manageNotifications : null,
       trailing: granted
           ? Icon(
               Symbols.check_circle_rounded,
@@ -147,5 +192,6 @@ class _PermissionsGroupState extends ConsumerState<PermissionsGroup> {
               onPressed: _allowNotifications,
             ),
     );
+    return granted ? _manage(l10n, row) : row;
   }
 }
