@@ -53,14 +53,13 @@ class ReelFormState {
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
 /// [save] checks the name, the description and the Reference link, all at
-/// once, then writes. The
-/// name is checked against the reels as they are now (a reel made a moment
-/// ago counts; when editing, the reel's own name in any case is always
-/// fine, as in `ReelsRepository.rename`), and the repository's own
-/// `duplicate` is the backstop if another reel took the name between that
-/// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError` / `linkError`, for the view to
-/// show.
+/// once, then writes. The name is checked against the reels as they are now
+/// (a reel made a moment ago counts; when editing, the reel's own name in any
+/// case is always fine, as in `ReelsRepository.rename`), and the
+/// repository's own `duplicate` is the backstop if another reel took the name
+/// between that check and the write. A problem is not thrown: [save] returns
+/// null and the state holds `nameError` / `descriptionError` / `linkError`,
+/// for the view to show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///
