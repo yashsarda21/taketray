@@ -1,4 +1,4 @@
-import 'dart:async' as async;
+import 'dart:async' as async show AsyncError;
 
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/repositories/references_repository.dart';

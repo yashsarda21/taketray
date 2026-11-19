@@ -117,4 +117,4 @@ final class ShootingReferencesProvider
 }
 
 String _$shootingReferencesHash() =>
-    r'186e79ef737cb4af3fb7a603178fa0cc25357233';
+    r'e61942251fdf337ba7ffaf02c6ad84b2b7c87305';
