@@ -310,7 +310,7 @@ class _ReelCard extends StatelessWidget {
       referencesSemanticLabel: references > 0
           ? l10n.reelCardReferences(references)
           : null,
-      onReferencesTap: () => onOpenReferences(reel.id),
+      onReferencesTap: references > 0 ? () => onOpenReferences(reel.id) : null,
     );
   }
 }
