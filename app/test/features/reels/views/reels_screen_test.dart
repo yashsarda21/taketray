@@ -49,6 +49,7 @@ Future<FakeShooting> pumpHome(
   double textScale = 1,
   bool settle = true,
   Map<int, EditorApp> editors = const {},
+  Map<int, int> referenceCounts = const {},
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   await pumpScreen(
@@ -65,6 +66,9 @@ Future<FakeShooting> pumpHome(
       pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
       reelEditorsProvider.overrideWith((ref) => Stream.value(editors)),
+      referenceCountsProvider.overrideWith(
+        (ref) => Stream.value(referenceCounts),
+      ),
       clockProvider.overrideWithValue(FixedClock(_now)),
       onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
       thumbnailCacheForTests,
@@ -370,6 +374,7 @@ void main() {
           pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
           firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
           reelEditorsProvider.overrideWith((ref) => const Stream.empty()),
+          referenceCountsProvider.overrideWith((ref) => Stream.value(const {})),
           clockProvider.overrideWithValue(FixedClock(_now)),
           onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
           thumbnailCacheForTests,
@@ -442,6 +447,87 @@ void main() {
         scrollable: find.byType(Scrollable).first,
       );
       expect(find.text('Reel 1'), findsWidgets);
+    });
+  });
+
+  group('the references badge (Phase 9A)', () {
+    Map<String, int> countsByName(WidgetTester tester) => {
+      for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))
+        c.name: c.referenceCount,
+    };
+
+    String location(WidgetTester tester, int reelId) =>
+        GoRouterState.of(tester.element(find.text(reelRouteMarker(reelId)))).uri
+            .toString();
+
+    testWidgets("each card counts its own reel's references; none is no "
+        'badge', (tester) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2, 3: 1});
+
+      expect(countsByName(tester), {
+        'London Food': 2,
+        'Day 1 Vlog': 0,
+        'Goa': 1,
+        'Empty one': 0,
+      });
+      expect(find.bySemanticsLabel('2 references, open them'), findsOneWidget);
+      expect(find.bySemanticsLabel('1 reference, open them'), findsOneWidget);
+      final london = tester.widget<TtReelCard>(find.byType(TtReelCard).first);
+      expect(london.referencesSemanticLabel, '2 references, open them');
+      expect(london.onReferencesTap, isNotNull);
+      final day1 = tester.widget<TtReelCard>(find.byType(TtReelCard).at(1));
+      expect(day1.referencesSemanticLabel, isNull);
+    });
+
+    testWidgets('a count for no shown reel gives no badge', (tester) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {99: 4});
+
+      expect(countsByName(tester).values, everyElement(0));
+      expect(find.textContaining('references, open them'), findsNothing);
+    });
+
+    testWidgets('the badge opens the reel at its References section', (
+      tester,
+    ) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
+
+      await tester.tap(find.bySemanticsLabel('2 references, open them'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(reelRouteMarker(5)), findsOneWidget);
+      expect(location(tester, 5), '/reels/5?refs=1');
+    });
+
+    testWidgets("the card's own tap still opens the reel's page", (
+      tester,
+    ) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
+
+      await tester.tap(find.text('London Food'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(reelRouteMarker(5)), findsOneWidget);
+      expect(location(tester, 5), '/reels/5');
+    });
+
+    testWidgets('a double tap on the badge opens one page', (tester) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
+
+      final badge = find.bySemanticsLabel('2 references, open them');
+      await tester.tap(badge);
+      await tester.tap(badge);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(reelRouteMarker(5), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the badge passes the accessibility checks', (tester) async {
+      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2, 4: 12});
+
+      await expectTtAccessible(tester);
     });
   });
 

@@ -43,15 +43,23 @@ const int _descriptionCounterFrom = 900;
 ///
 /// The success snacks are on the root messenger, so they show after the sheet
 /// has closed, even if the sheet was dragged away while it saved.
+///
+/// The name field takes the focus, or, with [focusDescription] (the reel
+/// page's **Write shot ideas**, D-158), the Shot ideas field.
 Future<void> showReelForm(
   BuildContext context, {
   Reel? reel,
   bool forClip = false,
   Future<Reel?> Function(String name)? onCreateForClip,
+  bool focusDescription = false,
 }) {
   assert(
     !forClip || (reel == null && onCreateForClip != null),
     'a form for a clip makes a new reel and needs onCreateForClip',
+  );
+  assert(
+    !(forClip && focusDescription),
+    'the form for a clip has no Shot ideas field',
   );
   final l10n = AppLocalizations.of(context);
   final snacks = ReelSnacks.of(context);
@@ -61,6 +69,7 @@ Future<void> showReelForm(
       reel: reel,
       forClip: forClip,
       createForClip: onCreateForClip,
+      focusDescription: focusDescription,
       onSaved: (saved) {
         if (forClip) return;
         snacks.show(
@@ -109,6 +118,7 @@ class _ReelFormSheet extends ConsumerStatefulWidget {
     required this.reel,
     required this.forClip,
     required this.createForClip,
+    required this.focusDescription,
     required this.onSaved,
     required this.onFailedAfterClose,
   });
@@ -116,6 +126,7 @@ class _ReelFormSheet extends ConsumerStatefulWidget {
   final Reel? reel;
   final bool forClip;
   final Future<Reel?> Function(String name)? createForClip;
+  final bool focusDescription;
   final ValueChanged<Reel> onSaved;
   final VoidCallback onFailedAfterClose;
 
@@ -132,6 +143,9 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
   );
   late ReelStatus _status = widget.reel?.status ?? ReelStatus.collecting;
 
+  /// The Shot ideas field's own node, so it can take the focus on open.
+  final FocusNode _descriptionFocus = FocusNode();
+
   /// The last save failed for a reason the user cannot fix; shown in the
   /// sheet until the next attempt or edit.
   bool _failed = false;
@@ -140,6 +154,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
   void dispose() {
     _name.dispose();
     _description.dispose();
+    _descriptionFocus.dispose();
     super.dispose();
   }
 
@@ -241,7 +256,7 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
             error: nameError,
             maxLength: reelNameMaxLength,
             counterText: l10n.reelCounter,
-            autofocus: true,
+            autofocus: !widget.focusDescription,
             textInputAction: widget.forClip
                 ? TextInputAction.done
                 : TextInputAction.next,
@@ -254,6 +269,8 @@ class _ReelFormSheetState extends ConsumerState<_ReelFormSheet> {
               hint: l10n.reelDescriptionHint,
               helper: l10n.reelDescriptionHelp,
               controller: _description,
+              focusNode: _descriptionFocus,
+              autofocus: widget.focusDescription,
               error: descriptionError,
               multiline: true,
               maxLength: reelDescriptionMaxLength,

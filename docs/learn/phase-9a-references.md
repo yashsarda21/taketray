@@ -282,3 +282,82 @@ Then break one thing on purpose. In `reference_sheet.dart`, call `Clipboard.getD
 ### Decisions
 
 - D-157: the sheet, Paste on tap, the controller's results, `typedLink` never giving junk, Undo through the snack's hook, the shared helpers.
+
+## 6. The References section and the Home badge
+
+### What we built
+
+The reel page now shows the links saved on it, right under the reel's name and shot ideas. A reel with none shows one dashed "Add reference" row. A reel with some shows "References · 3", a small **Add** button, and a card for each link, newest first. Tapping a card opens the link in Instagram, YouTube, TikTok or the browser, whichever the phone picks. Each card's ⋮ menu has **Edit label**, **Copy link** and **Remove**; Remove is instant, with **Undo** in the snack. When a reel has links but no shot ideas, a note under the cards says "Write the shots you need" and its button opens the reel's details with the Shot ideas box ready to type in.
+
+On Home, a reel card with links shows a small badge with their number. Tapping the badge opens the reel page already scrolled to the References section, which flashes once so the eye finds it. The empty reel page also says that a reel can be shared from Instagram straight into TakeTray.
+
+### Why TakeTray needs it
+
+The links were saved in Phases 2 and 5 but nothing showed them. A creator saves a reel to copy its style, then needs to watch it again when planning the shots, and again while shooting. The section puts them next to the clips; the badge makes them one tap away from Home.
+
+### Key ideas
+
+**1. The section is a sliver that watches its own list.** It sits in the reel page's `CustomScrollView` between the header and the clips, and watches the references of its reel. Until the first list arrives it draws nothing, so the page never shows "Add reference" and then swaps it for cards:
+
+```dart
+final references = ref.watch(reelReferencesProvider(widget.reel.id)).value;
+if (references == null) {
+  return const SliverToBoxAdapter(child: SizedBox.shrink());
+}
+```
+
+**2. Actions in a view model, words in the view.** `ReferenceActions` opens, copies and removes, and logs only ids and error types. The section decides what to say. Removing returns the Undo record that the repository made, and the snack hands it back to the shared Undo code:
+
+```dart
+final undo = await ref.read(referenceActionsProvider).remove(reference.id);
+if (undo != null) snacks.showUndo(l10n.referenceRemovedSnack, undo);
+```
+
+**3. Say only what Android does not.** Android 13 and later show their own "Copied" bubble, so TakeTray says "Link copied" only on older phones. If the version cannot be read, the app assumes a newer phone and says nothing:
+
+```dart
+if (sdk < _ownCopyConfirmationFrom) {
+  snacks.show(l10n.referenceLinkCopiedSnack, icon: Symbols.content_copy_rounded);
+}
+```
+
+**4. Scroll, then flash, once, and never when animations are off.** After the first frame that has the list, the section asks its scroll view to bring it to the top. Only when that finishes, and only if the phone allows animations, does it make an animation controller for the 600 ms highlight. With "Remove animations" on, no controller exists, so no ticker can run:
+
+```dart
+await Scrollable.ensureVisible(box, duration: still ? Duration.zero : motion.medium2, ...);
+if (still || !mounted) return;
+setState(() {
+  _flash = AnimationController(vsync: this, duration: _flashLength)..forward();
+});
+```
+
+**5. Join in the provider, not in SQL.** Home's reel list comes from one large query that runs again on every clip change. The reference counts come from a second, small stream, and Home's provider joins them by reel id. If the counts cannot be read, Home still shows the reels, just without badges:
+
+```dart
+summary.copyWith(referenceCount: referenceCount[summary.reel.id] ?? 0)
+```
+
+**6. One guard for two buttons.** The badge and the card share the same `OpenOnce`, so a quick tap on both opens one page.
+
+### Where it lives
+
+- `app/lib/features/references/views/references_section.dart`: `ReferencesSection`, the cards, the prompt, the arrival.
+- `app/lib/features/references/view_models/reference_actions.dart`: `ReferenceActions`, `reelReferencesProvider`.
+- `app/lib/features/reels/views/reel_detail_screen.dart`: where the section goes, `focusReferences`, the empty reel's second line.
+- `app/lib/features/reels/view_models/home_controller.dart` and `views/reels_screen.dart`: `referenceCountsProvider`, the join, the badge.
+- `app/lib/router/routes.dart` and `app_router.dart`: `Routes.reelReferences` (`?refs=1`).
+- `app/lib/features/reels/views/reel_form_sheet.dart`: `showReelForm(focusDescription:)`.
+- Tests: `app/test/features/references/views/references_section_test.dart`, `view_models/reference_actions_test.dart`, the reel page, Home and router tests; `app/test/support/fake_links_bridge.dart`.
+- Docs: `docs/flow.md` ("The References section", "Home, the Reels tab", "Opening a reel"), D-158.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/references test/features/reels/views/reels_screen_test.dart test/router/app_router_test.dart
+```
+
+Then break one thing on purpose. In `references_section.dart`, change `if (still || !mounted) return;` to `if (!mounted) return;`: the test "with Remove animations it jumps into view with no flash and no ticker" fails, because the highlight now runs. Put it back. Another: in `home_controller.dart` read `referenceCount[summary.reel.id + 1]`: the badge tests fail, because each card shows its neighbour's count.
+
+### Decisions
+
+- D-158: the section and its three states, the card menu (Remove with Undo, no dialog), `ReferenceActions`, "Link copied" before Android 13 only, the scroll and 600 ms flash, the Home join and badge, the empty reel's second line, `focusDescription`.

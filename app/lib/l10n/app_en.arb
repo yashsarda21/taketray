@@ -4203,5 +4203,108 @@
         "type": "String"
       }
     }
+  },
+  "referencesAddRowTitle": "Add reference",
+  "@referencesAddRowTitle": {
+    "description": "Title of the dashed row on a reel page with no references; tapping it opens the Add reference sheet."
+  },
+  "referencesAddRowSubtitle": "Save a reel you want to recreate",
+  "@referencesAddRowSubtitle": {
+    "description": "Line under \"Add reference\" on a reel page with no references."
+  },
+  "referencesAddRowSemantics": "Add reference. Save a reel you want to recreate",
+  "@referencesAddRowSemantics": {
+    "description": "What a screen reader says for the Add reference row on a reel page."
+  },
+  "referencesHeader": "References · {count}",
+  "@referencesHeader": {
+    "description": "Heading of a reel page's References section, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "referencesAddButton": "Add",
+  "@referencesAddButton": {
+    "description": "Small button beside the References heading that opens the Add reference sheet."
+  },
+  "referencesAddButtonSemantics": "Add reference",
+  "@referencesAddButtonSemantics": {
+    "description": "What a screen reader says for the Add button beside the References heading."
+  },
+  "referencesPromptTitle": "Write the shots you need",
+  "@referencesPromptTitle": {
+    "description": "Title of the note under the references of a reel that has no shot ideas yet."
+  },
+  "referencesPromptBody": "Watch your references, then list the shots to get while you're out.",
+  "@referencesPromptBody": {
+    "description": "Text of the note under the references of a reel that has no shot ideas yet."
+  },
+  "referencesPromptAction": "Write shot ideas",
+  "@referencesPromptAction": {
+    "description": "Button in the note under the references; opens the reel's details with the shot ideas field ready to type in."
+  },
+  "referenceOpen": "Open",
+  "@referenceOpen": {
+    "description": "The word on a reference card that says tapping it opens the link."
+  },
+  "referenceOpenSemantics": "Open reference: {title}, {source}",
+  "@referenceOpenSemantics": {
+    "description": "What a screen reader says for a reference card: its title (its label, or its short link) and what the link is (\"Instagram\", \"YouTube Short\").",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceMoreSemantics": "More options for {title}",
+  "@referenceMoreSemantics": {
+    "description": "What a screen reader says for a reference card's ⋮ button.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceMenuEditLabel": "Edit label",
+  "@referenceMenuEditLabel": {
+    "description": "Entry of a reference card's menu that opens the Edit label sheet."
+  },
+  "referenceMenuCopyLink": "Copy link",
+  "@referenceMenuCopyLink": {
+    "description": "Entry of a reference card's menu that puts the link on the clipboard."
+  },
+  "referenceMenuRemove": "Remove",
+  "@referenceMenuRemove": {
+    "description": "Entry of a reference card's menu that removes the reference at once (with Undo)."
+  },
+  "referenceRemovedSnack": "Reference removed",
+  "@referenceRemovedSnack": {
+    "description": "Snack shown after a reference was removed; it has an Undo button."
+  },
+  "referenceLinkCopiedSnack": "Link copied",
+  "@referenceLinkCopiedSnack": {
+    "description": "Snack shown after Copy link, only on Android 12 and older (newer Android shows its own)."
+  },
+  "referenceOpenFailed": "No app on this phone can open this link.",
+  "@referenceOpenFailed": {
+    "description": "Snack shown when a reference was tapped and no app or browser on the phone could open its link."
+  },
+  "reelCardReferences": "{count, plural, =1{1 reference} other{{count} references}}, open them",
+  "@reelCardReferences": {
+    "description": "What a screen reader says for the references badge on a Home reel card; tapping it opens the reel at its References section.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelEmptyShareHint": "You can also share a reel from Instagram to TakeTray to save it as a reference.",
+  "@reelEmptyShareHint": {
+    "description": "Second paragraph of the empty reel page's text."
   }
 }

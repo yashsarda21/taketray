@@ -8,15 +8,19 @@ import 'package:taketray/data/media/media_verifier.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
+import 'package:taketray/features/reels/views/reel_edit_banner.dart';
+import 'package:taketray/features/references/views/references_section.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -25,6 +29,7 @@ import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart' show startEditing;
 
 /// A verifier that only records what it was asked about.
 class _RecordingVerifier implements MediaVerifier {
@@ -79,10 +84,11 @@ void main() {
     bool use24Hour = false,
     Locale? locale,
     List<Override> overrides = const [],
+    bool focusReferences = false,
   }) async {
     await pumpScreen(
       tester,
-      ReelDetailScreen(reelId: id),
+      ReelDetailScreen(reelId: id, focusReferences: focusReferences),
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
@@ -579,7 +585,9 @@ void main() {
       expect(state.title, 'No clips yet');
       expect(
         state.body,
-        'Tag clips from To tag, or add videos from your phone.',
+        'Tag clips from To tag, or add videos from your phone.\n\n'
+        'You can also share a reel from Instagram to TakeTray to save it as '
+        'a reference.',
       );
       // The header says it too.
       expect(
@@ -1150,6 +1158,118 @@ void main() {
       await open(tester, goa.id);
 
       await expectTtAccessible(tester);
+    });
+  });
+
+  group('the References section (Phase 9A)', () {
+    Future<ReelReference> addRef(
+      WidgetTester tester,
+      int reelId,
+      String url, {
+      String? label,
+    }) async {
+      final refs = h.container.read(referencesRepositoryProvider);
+      final result = await real(
+        tester,
+        () => refs.add(reelId, url, label: label),
+      );
+      return (result as ReferenceAdded).reference;
+    }
+
+    Finder section() => find.byKey(referencesSectionKey);
+
+    double viewportTop(WidgetTester tester) =>
+        tester.getTopLeft(find.byType(CustomScrollView)).dy;
+
+    testApp('sits under the header and above the clips', (tester) async {
+      h.editors.allowOnly({'apps'});
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await addRef(tester, goa.id, 'https://youtube.com/shorts/B2');
+      await open(tester, goa.id);
+
+      expect(find.byType(ReferencesSection), findsOneWidget);
+      expect(find.text('References · 1'), findsOneWidget);
+      final top = tester.getTopLeft(section()).dy;
+      expect(
+        top,
+        greaterThanOrEqualTo(
+          tester.getBottomLeft(find.byType(TtReelHeader<ReelStatus>)).dy,
+        ),
+      );
+      expect(
+        tester.getBottomLeft(section()).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.byType(TtDayHeader)).dy),
+      );
+    });
+
+    testApp('sits above the editing banner', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1)]),
+      );
+      await tester.runAsync(
+        () => startEditing(h, goa.id, EditorApp.vn, copied: ids),
+      );
+      await open(tester, goa.id);
+
+      expect(find.byType(TtAddReferenceTile), findsOneWidget);
+      expect(
+        tester.getBottomLeft(section()).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.byType(ReelEditBanner)).dy),
+      );
+    });
+
+    testApp('an empty reel shows the Add row above the empty state', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await open(tester, goa.id);
+
+      expect(find.byType(TtAddReferenceTile), findsOneWidget);
+      expect(
+        tester.getBottomLeft(section()).dy,
+        lessThanOrEqualTo(tester.getTopLeft(find.byType(TtEmptyState)).dy),
+      );
+    });
+
+    Future<Reel> reelWith40Clips(WidgetTester tester) async {
+      h.editors.allowOnly({'apps'});
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () =>
+            putInReel(h, goa.id, [for (var i = 1; i <= 40; i++) reelVideo(i)]),
+      );
+      await addRef(tester, goa.id, 'https://youtube.com/shorts/B2');
+      return goa;
+    }
+
+    testApp('focusReferences scrolls the section to the top after the first '
+        'frame', (tester) async {
+      final goa = await reelWith40Clips(tester);
+      await open(tester, goa.id, focusReferences: true);
+
+      expect(
+        tester.getTopLeft(section()).dy,
+        moreOrLessEquals(viewportTop(tester)),
+      );
+      expect(find.byKey(referencesFlashKey), findsNothing);
+    });
+
+    testApp('a plain open does not scroll', (tester) async {
+      final goa = await reelWith40Clips(tester);
+      await open(tester, goa.id);
+
+      expect(
+        tester.getTopLeft(section()).dy,
+        greaterThan(viewportTop(tester) + 1),
+      );
+      expect(
+        tester.getTopLeft(find.byType(TtReelHeader<ReelStatus>)).dy,
+        greaterThanOrEqualTo(viewportTop(tester)),
+      );
     });
   });
 

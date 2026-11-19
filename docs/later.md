@@ -12,7 +12,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 9 (references)
 
-- Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas). (9A: Tasks 6 and 7.)
+- Phase 4 left this (final review M-6, D-80): the Reel details form's **link field**. (9A: Task 7.)
 - The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it. (9A Task 2 adds `firstLinkIn`; 9B's share uses it.)
 - The banner margin is not configurable (`refs.js` overrides it). (9B: the Save reference sheet's "Already saved" banner.)
 

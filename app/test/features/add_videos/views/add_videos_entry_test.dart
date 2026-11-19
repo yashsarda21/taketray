@@ -366,7 +366,9 @@ void main() {
       await open(tester, id);
 
       expect(
-        find.text('Tag clips from To tag, or add videos from your phone.'),
+        find.textContaining(
+          'Tag clips from To tag, or add videos from your phone.',
+        ),
         findsOneWidget,
       );
       expect(find.widgetWithText(TtButton, 'Go to To tag'), findsOneWidget);

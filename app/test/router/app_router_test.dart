@@ -9,8 +9,10 @@ import 'package:taketray/app.dart';
 import 'package:taketray/data/media/add_videos_service.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/add_videos/views/add_folders_screen.dart';
 import 'package:taketray/features/add_videos/views/add_grid_screen.dart';
 import 'package:taketray/features/editors/views/copies_storage_screen.dart';
@@ -27,6 +29,7 @@ import 'package:taketray/features/onboarding/views/welcome_screen.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/references/views/references_section.dart';
 import 'package:taketray/features/settings/views/backup_screen.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/settings/views/watched_folders_screen.dart';
@@ -265,6 +268,72 @@ void main() {
     expect(find.byType(TtDialog<bool>), findsNothing);
     expect(find.text('Done editing'), findsOneWidget);
   });
+
+  test('the References location is the reel page with the refs flag', () {
+    expect(Routes.reelReferencesParameter, 'refs');
+    expect(Routes.reelReferences(7), '/reels/7?refs=1');
+    final uri = Uri.parse(Routes.reelReferences(12345));
+    expect(uri.path, Routes.reel(12345));
+    expect(uri.queryParameters, {Routes.reelReferencesParameter: '1'});
+  });
+
+  testApp('the References location opens the reel page at its References '
+      'section, scrolled into view after the first frame', (tester) async {
+    final h = reelHarness();
+    h.editors.allowOnly({'apps'});
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    await tester.runAsync(
+      () => putInReel(h, reel.id, [for (var i = 1; i <= 40; i++) reelVideo(i)]),
+    );
+    await tester.runAsync(
+      () => h.container
+          .read(referencesRepositoryProvider)
+          .add(reel.id, 'https://youtube.com/shorts/B2'),
+    );
+    final (_, router) = await _pumpApp(tester, harness: h);
+
+    router.go(Routes.reelReferences(reel.id));
+    await _settle(tester);
+
+    final screen = tester.widget<ReelDetailScreen>(
+      find.byType(ReelDetailScreen),
+    );
+    expect(screen.reelId, reel.id);
+    expect(screen.focusReferences, isTrue);
+    expect(screen.askDoneEditing, isFalse);
+    final page = find.descendant(
+      of: find.byType(ReelDetailScreen),
+      matching: find.byType(CustomScrollView),
+    );
+    expect(
+      tester.getTopLeft(find.byKey(referencesSectionKey)).dy,
+      moreOrLessEquals(tester.getTopLeft(page).dy),
+    );
+    expect(find.text('References · 1'), findsOneWidget);
+  });
+
+  for (final location in ['/reels/5', '/reels/5?refs=0', '/reels/5?refs=']) {
+    testApp('$location does not focus the References section', (tester) async {
+      final h = VmHarness();
+      final reels = h.container.read(reelsRepositoryProvider);
+      Reel? reel;
+      for (var i = 0; i < 5; i++) {
+        reel = await reels.create('Reel $i');
+      }
+      expect(reel!.id, 5);
+      final (_, router) = await _pumpApp(tester, harness: h);
+
+      router.go(location);
+      await _settle(tester);
+
+      expect(
+        tester
+            .widget<ReelDetailScreen>(find.byType(ReelDetailScreen))
+            .focusReferences,
+        isFalse,
+      );
+    });
+  }
 
   testApp('unknown id route goes to Reels', (tester) async {
     final (_, router) = await _pumpApp(tester);

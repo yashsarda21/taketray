@@ -28,6 +28,7 @@ import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/reel_picker_sheet.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
+import 'package:taketray/features/references/views/references_section.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart'
     show formatClipDuration;
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -55,6 +56,10 @@ enum _SelectionAction { edit, selectAll, share }
 /// 2. the reel's header (`TtReelHeader`): name, the status pill that opens the
 ///    status menu ("Marked as {status}"), "{n} clips · {m:ss}" or "No clips
 ///    yet", "{m} missing", and Shot ideas with Show more / Show less;
+/// 2a. the References section (`ReferencesSection`, Phase 9A, D-158): an
+///    Add reference row, or the reference cards with an Add button, and a
+///    nudge to write shot ideas. With [focusReferences] (`?refs=1`, the Home
+///    badge) it is scrolled into view once and flashes;
 /// 3. the clips, a `TtDayHeader` "Day {n} · {date}" with "{k} clips" for each
 ///    shooting day (D-83) and a three-column grid of `TtClipTile`s under it.
 ///    Everything is a lazy sliver: 300 clips build a screenful.
@@ -80,9 +85,10 @@ enum _SelectionAction { edit, selectAll, share }
 /// **Loading** shows a skeleton day header and nine skeleton tiles (also if
 /// the first read fails: the design has no error state). **No clips** shows
 /// the empty reel illustration, "No clips yet", "Tag clips from To tag, or
-/// add videos from your phone." and two buttons, **Go to To tag** and **Add
-/// videos**. A reel that is gone (an id that names no reel, or a reel deleted
-/// while the page is open) sends the app to Reels.
+/// add videos from your phone." and "You can also share a reel from
+/// Instagram to TakeTray to save it as a reference.", and two buttons, **Go
+/// to To tag** and **Add videos**. A reel that is gone (an id that names no
+/// reel, or a reel deleted while the page is open) sends the app to Reels.
 ///
 /// **Choosing clips** (D-88; `ReelSelection`). **Select clips** in the ⋮ menu
 /// or a long press on a tile starts it. The app bar becomes the selection bar
@@ -123,15 +129,22 @@ enum _SelectionAction { edit, selectAll, share }
 /// moving clips deletes their copies first (R8): the snack says so ("Its
 /// copy in the folder was deleted."), and copies that cannot be deleted
 /// remove nothing and say "Couldn't delete the copies. Try again.".
-///
-/// Not built: References (Phase 9), hidden (D-80).
 class ReelDetailScreen extends ConsumerStatefulWidget {
-  const new({required this.reelId, this.askDoneEditing = false, super.key});
+  const new({
+    required this.reelId,
+    this.askDoneEditing = false,
+    this.focusReferences = false,
+    super.key,
+  });
 
   final int reelId;
 
   /// Whether to ask Done editing once on open (`Routes.reelDoneEditing`).
   final bool askDoneEditing;
+
+  /// Whether to scroll to the References section once on open, and flash it
+  /// (`Routes.reelReferences`).
+  final bool focusReferences;
 
   @override
   ConsumerState<ReelDetailScreen> createState() => _ReelDetailScreenState();
@@ -375,6 +388,10 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                   ...reelLoadingSlivers(context)
                 else ...[
                   SliverToBoxAdapter(child: _header(context, state)),
+                  ReferencesSection(
+                    reel: state.reel,
+                    focus: widget.focusReferences,
+                  ),
                   if (edit != null || job != null)
                     SliverToBoxAdapter(
                       child: ReelEditBanner(
@@ -398,7 +415,9 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                       child: TtEmptyState(
                         illustration: TtIllustrationKind.emptyReel,
                         title: l10n.reelNoClips,
-                        body: l10n.reelEmptyBody,
+                        body:
+                            '${l10n.reelEmptyBody}\n\n'
+                            '${l10n.reelEmptyShareHint}',
                         actions: [
                           TtButton(
                             label: l10n.reelEmptyAction,

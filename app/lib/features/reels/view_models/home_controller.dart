@@ -1,12 +1,17 @@
 import 'package:flutter/painting.dart';
+import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
 
 part 'home_controller.g.dart';
+
+// Error types only (D-10).
+final Logger _log = Logger('home');
 
 /// The side, in logical pixels, a cover picture is asked for (D-86).
 ///
@@ -48,7 +53,18 @@ class HomeState {
 Stream<List<ReelSummary>> reelSummaries(Ref ref) =>
     ref.watch(reelsRepositoryProvider).watchReelSummaries();
 
+/// How many references each reel has (reel id to count; a reel with none is
+/// not in the map), again after every change
+/// (`ReferencesRepository.watchCounts`, D-158).
+@riverpod
+Stream<Map<int, int>> referenceCounts(Ref ref) =>
+    ref.watch(referencesRepositoryProvider).watchCounts();
+
 /// The state of Home: the reels, the chosen filter and each card's cover.
+///
+/// Each reel's `referenceCount` is joined in here from [referenceCounts] by
+/// the reel's id (D-158), not in the summaries' query, so a new reference
+/// updates the badge without re-reading the clips.
 ///
 /// The filter lives here, not in the widget, so it survives the screen being
 /// rebuilt; it starts at All. It is not stored: a restart starts at All.
@@ -72,7 +88,25 @@ class HomeController extends _$HomeController {
   @override
   Future<HomeState> build() async {
     _cache = ref.watch(thumbnailCacheProvider).value;
-    _all = await ref.watch(reelSummariesProvider.future);
+    // Both are watched before either is awaited, so both streams run.
+    final summaries = ref.watch(reelSummariesProvider.future);
+    final counts = ref
+        .watch(referenceCountsProvider.future)
+        .then<Map<int, int>>(
+          (counts) => counts,
+          // The badges are a hint: a failed read shows the reels without them.
+          onError: (Object error) {
+            _log.warning(
+              'Reading the reference counts failed: ${error.runtimeType}',
+            );
+            return const <int, int>{};
+          },
+        );
+    final referenceCount = await counts;
+    _all = [
+      for (final summary in await summaries)
+        summary.copyWith(referenceCount: referenceCount[summary.reel.id] ?? 0),
+    ];
     return _compose();
   }
 

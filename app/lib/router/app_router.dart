@@ -109,11 +109,16 @@ GoRouter appRouter(Ref ref) {
                       _log.warning('Unknown location; showing Reels');
                       return Routes.reels;
                     },
-                    // `?done=1` (the copies reminder) asks Done editing once.
+                    // `?done=1` (the copies reminder) asks Done editing once;
+                    // `?refs=1` (the Home badge) shows the References section.
                     builder: (context, state) => ReelDetailScreen(
                       reelId: _reelId(state)!,
                       askDoneEditing:
                           state.uri.queryParameters[Routes.reelDoneParameter] ==
+                          '1',
+                      focusReferences:
+                          state.uri.queryParameters[Routes
+                              .reelReferencesParameter] ==
                           '1',
                     ),
                     routes: [

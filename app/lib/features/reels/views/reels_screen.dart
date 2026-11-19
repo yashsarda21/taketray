@@ -34,7 +34,10 @@ const int _columns = 2;
 /// 4. the reels, two to a row, newest first, as a lazy grid of `TtReelCard`s;
 ///    a card shows the cover (the oldest clip with a picture), the status,
 ///    "{n} clips · {m:ss}" (the length of the clips that are not missing)
-///    and "{n} missing", and opens the reel's page. A reel being edited
+///    and "{n} missing", and opens the reel's page. A reel with references
+///    has a badge with their number, its own button ("{n} references, open
+///    them"), which opens the reel's page at its References section
+///    (`Routes.reelReferences`, D-158). A reel being edited
 ///    shows the pill "Editing in {editor}" ("VN", "CapCut", "Edits"; R8) and
 ///    is read with ". Editing in {editor}" at the end (D-128); no pill until
 ///    the sessions are known.
@@ -65,6 +68,11 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
 
   void _openReel(int reelId) =>
       _reel.open(() => context.push(Routes.reel(reelId)));
+
+  /// The references badge: the reel's page at its References section, through
+  /// the same guard as the card.
+  void _openReferences(int reelId) =>
+      _reel.open(() => context.push(Routes.reelReferences(reelId)));
 
   @override
   void dispose() {
@@ -161,6 +169,7 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                       cover: home.covers[home.reels[index].reel.id],
                       editor: editors[home.reels[index].reel.id],
                       onOpen: _openReel,
+                      onOpenReferences: _openReferences,
                     ),
                   ),
                 ),
@@ -234,14 +243,15 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
-/// One reel on Home (`h.reelCard` in the prototype, without the references
-/// badge, which is Phase 9).
+/// One reel on Home (`h.reelCard` in the prototype), with the references
+/// badge when it has any.
 class _ReelCard extends StatelessWidget {
   const new({
     required this.summary,
     required this.cover,
     required this.editor,
     required this.onOpen,
+    required this.onOpenReferences,
     super.key,
   });
 
@@ -254,6 +264,9 @@ class _ReelCard extends StatelessWidget {
   /// Opens the reel's page (once, however fast the taps).
   final ValueChanged<int> onOpen;
 
+  /// Opens the reel's page at its References section.
+  final ValueChanged<int> onOpenReferences;
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -261,6 +274,7 @@ class _ReelCard extends StatelessWidget {
     final status = statusName(l10n, reel.status);
     final clips = l10n.reelCardClips(summary.clipCount);
     final missing = summary.missingCount;
+    final references = summary.referenceCount;
     final label = missing > 0
         ? l10n.reelCardSemanticsMissing(
             reel.name,
@@ -292,6 +306,11 @@ class _ReelCard extends StatelessWidget {
           ? label
           : l10n.reelCardSemanticsEditing(label, editing),
       onTap: () => onOpen(reel.id),
+      referenceCount: references,
+      referencesSemanticLabel: references > 0
+          ? l10n.reelCardReferences(references)
+          : null,
+      onReferencesTap: () => onOpenReferences(reel.id),
     );
   }
 }

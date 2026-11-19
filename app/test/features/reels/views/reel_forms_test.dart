@@ -85,6 +85,7 @@ void main() {
     double textScale = 1,
     Brightness brightness = Brightness.light,
     Size size = const Size(360, 800),
+    bool focusDescription = false,
   }) async {
     await pumpScreen(
       tester,
@@ -97,6 +98,7 @@ void main() {
               reel: reel,
               forClip: forClip,
               onCreateForClip: createForClip,
+              focusDescription: focusDescription,
             ),
           ),
         ),
@@ -132,6 +134,42 @@ void main() {
     await tester.pump();
     await settleApp(tester);
   }
+
+  group('the focus (Phase 9A)', () {
+    bool focused(WidgetTester tester, String label) => tester
+        .widget<EditableText>(
+          find.descendant(
+            of: field(label),
+            matching: find.byType(EditableText),
+          ),
+        )
+        .focusNode
+        .hasFocus;
+
+    testApp('Reel details opens on the name', (tester) async {
+      final goa = (await tester.runAsync(() => reels.create('Goa')))!;
+      await pumpHost(tester, reel: goa);
+      await openForm(tester);
+
+      expect(focused(tester, 'Reel name'), isTrue);
+      expect(focused(tester, 'Shot ideas (optional)'), isFalse);
+    });
+
+    testApp('focusDescription opens on the shot ideas, not the name', (
+      tester,
+    ) async {
+      final goa = (await tester.runAsync(
+        () => reels.create('Goa', description: 'Beach'),
+      ))!;
+      await pumpHost(tester, reel: goa, focusDescription: true);
+      await openForm(tester);
+
+      expect(find.text('Reel details'), findsOneWidget);
+      expect(focused(tester, 'Shot ideas (optional)'), isTrue);
+      expect(focused(tester, 'Reel name'), isFalse);
+      expect(tester.widget<TextField>(input('Reel name')).autofocus, isFalse);
+    });
+  });
 
   group('the create sheet', () {
     testApp('create flow shows the created snack', (tester) async {
