@@ -91,11 +91,7 @@ void main() {
     '1. A typed link and a label: open, Edit label, Remove, Undo',
     _typed,
   );
-  _flowTest(
-    '2. Paste, then the Home badge opens the reel',
-    _paste,
-    clipboard: true,
-  );
+  _flowTest('2. Paste, then the Home badge opens the reel', _paste);
   _flowTest('3. A new reel with a Reference link', _reelForm);
   _flowTest(
     '4. Shooting mode: the References sheet',
@@ -347,8 +343,13 @@ Future<void> _paste(_Env env) async {
     () =>
         $(ReelDetailScreen).exists &&
         $(ReelDetailScreen).$(_reelPaste).exists &&
-        section.$(_l10n.referencesHeader(1)).exists,
-    what: 'the reel page at its References section',
+        section.$(_l10n.referencesHeader(1)).visible,
+    what: 'the reel page with its References section on screen',
+  );
+  expect(
+    section.$(_l10n.referencesHeader(1)).visible,
+    isTrue,
+    reason: 'the badge tap scrolled the References section into view',
   );
   expect(section.$(_shortPaste).exists, isTrue, reason: 'the card is there');
   expect(env.links.opened, isEmpty, reason: 'nothing was opened');
@@ -560,7 +561,6 @@ void _flowTest(
   String description,
   Future<void> Function(_Env env) body, {
   bool shootingMayBeOn = false,
-  bool clipboard = false,
 }) {
   patrolTest(description, config: _liveConfig, ($) async {
     final prep = _Prep();
@@ -581,7 +581,6 @@ void _flowTest(
       prep,
       env: env,
       shootingMayBeOn: shootingMayBeOn,
-      clipboard: clipboard,
       failure: failure,
     );
   });
@@ -604,7 +603,6 @@ Future<void> _tearDown(
   _Prep prep, {
   required _Env env,
   required bool shootingMayBeOn,
-  required bool clipboard,
   (Object, StackTrace)? failure,
 }) async {
   var first = failure;
@@ -639,7 +637,9 @@ Future<void> _tearDown(
         .flush()
         .timeout(const Duration(seconds: 15));
   });
-  if (clipboard || env.clipboardTouched) {
+  // Only a flow that wrote to the clipboard empties it: one that failed
+  // before writing leaves the owner's clipboard alone.
+  if (env.clipboardTouched) {
     await step(() => Clipboard.setData(const ClipboardData(text: '')));
   }
   // Close the app, then clean the database with a container of its own.
@@ -649,23 +649,28 @@ Future<void> _tearDown(
   });
   await step(
     () => _withDatabase((c) async {
-      await _deleteTestReels(
-        c.read(appDatabaseProvider),
-        c.read(reelsRepositoryProvider),
-      );
-      final before = prep.settingsBefore;
-      if (before != null) {
-        await c.read(settingsRepositoryProvider).save(before);
-      }
       // The controller's setOn(false) swallows its failures and a timeout
       // above skips the rest of that step, so Shooting mode is switched off
       // here too, in the database, and read back: a phone left in Shooting
-      // mode fails the flow instead of passing quietly.
-      if (shootingMayBeOn) {
-        final phone = c.read(phoneStateRepositoryProvider);
-        await phone.turnShootingOff();
-        if ((await phone.loadShooting()).on) {
-          throw TestFailure('Shooting mode is still on after the flow');
+      // mode fails the flow instead of passing quietly. First in this
+      // closure, so a failure of the clean-up after it cannot skip it; and
+      // its own failure still lets that clean-up run (the `finally`).
+      try {
+        if (shootingMayBeOn) {
+          final phone = c.read(phoneStateRepositoryProvider);
+          await phone.turnShootingOff();
+          if ((await phone.loadShooting()).on) {
+            throw TestFailure('Shooting mode is still on after the flow');
+          }
+        }
+      } finally {
+        await _deleteTestReels(
+          c.read(appDatabaseProvider),
+          c.read(reelsRepositoryProvider),
+        );
+        final before = prep.settingsBefore;
+        if (before != null) {
+          await c.read(settingsRepositoryProvider).save(before);
         }
       }
     }),

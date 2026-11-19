@@ -86,6 +86,70 @@ void main() {
     expect(off, greaterThan(tearDown.indexOf('SizedBox.shrink()')));
   });
 
+  int fail0(String closure) => closure.indexOf('throw TestFailure');
+
+  test('Shooting mode is read off first in the last step (M28)', () {
+    final tearDown = bodyOf('Future<void> _tearDown(');
+    final last = tearDown.indexOf('_withDatabase((c) async {');
+    expect(last, greaterThanOrEqualTo(0));
+    final closure = tearDown.substring(last);
+    final off = closure.indexOf('phone.turnShootingOff()');
+    expect(off, greaterThanOrEqualTo(0));
+    expect(
+      closure.indexOf('if (shootingMayBeOn)'),
+      lessThan(off),
+      reason: 'the guard is the first thing in the closure',
+    );
+    // Its own failure still lets the clean-up run.
+    expect(closure.indexOf('} finally {'), greaterThan(fail0(closure)));
+    // Before anything that could throw and skip it.
+    expect(off, lessThan(closure.indexOf('_deleteTestReels(')));
+    expect(off, lessThan(closure.indexOf('settingsRepositoryProvider')));
+    // And the read-back and the failure come before that work too, and the
+    // work is in the `finally`, so the failure does not skip it.
+    final fail = fail0(closure);
+    expect(fail, greaterThan(off));
+    expect(fail, lessThan(closure.indexOf('_deleteTestReels(')));
+    expect(fail, lessThan(closure.indexOf('settingsRepositoryProvider')));
+    expect(
+      closure.indexOf('} finally {'),
+      lessThan(closure.indexOf('_deleteTestReels(')),
+    );
+  });
+
+  test('the clipboard is emptied only when a flow wrote to it (M24)', () {
+    final tearDown = bodyOf('Future<void> _tearDown(');
+    final empty = tearDown.indexOf(
+      "Clipboard.setData(const ClipboardData(text: ''))",
+    );
+    final guard = tearDown.lastIndexOf('if (', empty);
+    expect(tearDown.substring(guard, empty), contains('env.clipboardTouched'));
+    // No static flag: a flow that failed before writing never touches it.
+    expect(tearDown.substring(guard, empty), isNot(contains('clipboard ||')));
+    expect(tearDown, isNot(contains('required bool clipboard')));
+    expect(bodyOf('void _flowTest('), isNot(contains('clipboard:')));
+    expect(source, isNot(contains('clipboard: true')));
+  });
+
+  test('flow 2 marks the clipboard touched before it writes', () {
+    final flow = bodyOf('Future<void> _paste(');
+    final mark = flow.indexOf('env.clipboardTouched = true;');
+    final firstWrite = flow.indexOf('Clipboard.setData(');
+    expect(mark, greaterThanOrEqualTo(0));
+    expect(mark, lessThan(firstWrite), reason: 'a failed write is cleaned up');
+  });
+
+  test('flow 2: the Home badge tap lands on a visible References section', () {
+    final flow = bodyOf('Future<void> _paste(');
+    final tap = flow.indexOf(r"card.$('1').tap()");
+    final after = flow.substring(tap);
+    expect(
+      after,
+      contains(r'section.$(_l10n.referencesHeader(1)).visible'),
+      reason: 'on screen, not only in the tree',
+    );
+  });
+
   test('flow 2: the clipboard holds a link while the sheet opens', () {
     final flow = bodyOf('Future<void> _paste(');
     final withLink = flow.indexOf(
