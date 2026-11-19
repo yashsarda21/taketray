@@ -1,5 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
@@ -10,6 +12,17 @@ import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/references/view_models/shooting_references.dart';
 
 import '../../../support/vm_harness.dart';
+
+/// A references repository whose stream of every reference fails.
+class _FailingStream extends ReferencesRepository {
+  // The parameters of ReferencesRepository are private, so they cannot be
+  // super parameters.
+  // ignore: use_super_parameters, the same reason
+  _FailingStream(AppDatabase db, Clock clock) : super(db, clock);
+
+  @override
+  Stream<List<ReelReference>> watchAll() => Stream.error(StateError('boom'));
+}
 
 void main() {
   late VmHarness h;
@@ -310,6 +323,26 @@ void main() {
       await reels.rename(goa.id, 'Goa trip');
 
       expect(await names(), ['Goa trip']);
+    });
+  });
+
+  group('a failure of the streams', () {
+    test('is the underlying error, not a ParallelWaitError', () async {
+      final failing = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          referencesRepositoryProvider.overrideWithValue(
+            _FailingStream(h.media.db, h.media.clock),
+          ),
+        ],
+      )..listen(shootingReferencesProvider, (_, _) {});
+      await settle();
+
+      final state = failing.read(shootingReferencesProvider);
+      expect(state.hasError, isTrue);
+      expect(state.error, isA<StateError>());
+      expect(state.error, isNot(isA<ParallelWaitError<Object?, Object?>>()));
+      expect((state.error! as StateError).message, 'boom');
     });
   });
 }

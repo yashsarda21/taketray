@@ -1,3 +1,5 @@
+import 'dart:async' as async;
+
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
@@ -77,12 +79,17 @@ Stream<List<ReferenceGroup>> shootingReferences(Ref ref) async* {
       ref.watch(reelSummariesProvider.future),
       ref.watch(allReferencesProvider.future),
     ).wait;
-  } on Object {
+  } on Object catch (error) {
     // Shooting mode went off again while they loaded: this provider is
     // disposed, so both futures end with an error nobody wants. A real
-    // failure of the streams is still the provider's error.
+    // failure of the streams is still the provider's error: the first one,
+    // not the wrapper `.wait` puts around it.
     if (!ref.mounted) return;
-    rethrow;
+    if (error is! ParallelWaitError<Object?, Object?>) rethrow;
+    final (reelsError, referencesError) =
+        error.errors! as (async.AsyncError?, async.AsyncError?);
+    final cause = reelsError ?? referencesError!;
+    Error.throwWithStackTrace(cause.error, cause.stackTrace);
   }
   yield groupShootingReferences(summaries, references);
 }
