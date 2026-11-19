@@ -211,3 +211,74 @@ Then break one thing on purpose. In `tt_metrics.dart`, change `referenceOpenIcon
 ### Decisions
 
 - D-156: the card's `moreItems` / `onMoreSelected` menu, and the icon-only Open mark from 150 % text.
+
+## 5. The Add / edit reference sheet
+
+### What we built
+
+The sheet that saves a link on a reel, and the same sheet in "Edit label" form for a link already saved. You type or paste a link, give it an optional label of up to 60 characters, and Save. A **Paste** button inside the Link field reads the clipboard and takes the first link out of it. Saving shows "Reference saved" with Undo.
+
+Nothing opens it yet: the References section (section 6) and the Shooting mode sheet (section 8) will.
+
+### Why TakeTray needs it
+
+A link a person copied in Instagram is the start of every reference. Android 12 and later tell the user "TakeTray pasted from your clipboard" whenever an app reads it, so the app reads it only when the user taps Paste. And what people type is messy: `hello.` or `.com` or a number like `3.5` must not become a card that opens nowhere.
+
+### Key ideas
+
+**1. The clipboard is read in one place.** Only the Paste button's handler calls it, and a clipboard that is empty, an image or broken just means "no link":
+
+```dart
+text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+...
+final link = text == null ? null : firstLinkIn(text);
+```
+
+**2. A result, not an exception, for what the user can fix.** The controller returns one of five results and the sheet switches over them, so the compiler makes sure every case is handled:
+
+```dart
+switch (await controller.saveNew(_link.text, _label.text)) {
+  case ReferenceSaved(:final reference): ...
+  case ReferenceNotALink(): ...
+  case ReferenceAlreadyIn(:final reelName): ...
+  case ReferenceLabelTooLong() || ReferenceSaveFailed(): ...
+}
+```
+
+**3. One flight at a time.** A double tap on Save must make one reference. The controller keeps the running save and hands it to a second caller, and the sheet also returns early while a save runs:
+
+```dart
+final running = _newInFlight;
+if (running != null) return running;
+```
+
+**4. "Looks like a link" has rules.** `typedLink` strips the full stop that ends a sentence, then insists the address has a real host: at least two parts, each made of letters, digits, `-` or `_`, and a last part that is not just digits (except an IP address). `user@example.com` is an email, not a link.
+
+**5. Undo of an add is a delete.** The Undo button deletes the new reference. If it is already gone, nothing happens and nothing fails.
+
+**6. The icon is the phone's, or a plain link symbol.** TakeTray never draws a logo. If the source app is installed its icon is shown; otherwise a neutral tile with a link symbol:
+
+```dart
+bytes == null ? link : Image.memory(bytes, ..., errorBuilder: (context, _, _) => link)
+```
+
+### Where it lives
+
+- `app/lib/features/references/views/reference_sheet.dart`: `showReferenceSheet` and its state.
+- `app/lib/features/references/view_models/reference_form_controller.dart`: `saveNew`, `saveLabel`, the five results.
+- `app/lib/features/references/views/reference_text.dart` and `reference_source_icon.dart`: the helpers the cards use.
+- `app/lib/domain/rules/reference_links.dart`: `typedLink`.
+- Tests: `app/test/features/references/` and `app/test/domain/rules/reference_links_test.dart`.
+- Docs: `docs/flow.md` ("The Add / edit reference sheet"), D-157.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/references test/domain/rules/reference_links_test.dart
+```
+
+Then break one thing on purpose. In `reference_sheet.dart`, call `Clipboard.getData` from `initState`: the test "nothing touches the clipboard until Paste" fails. Put it back. Another: in `reference_form_controller.dart` delete the two lines that return `_newInFlight`: "double Save saves once" fails.
+
+### Decisions
+
+- D-157: the sheet, Paste on tap, the controller's results, `typedLink` never giving junk, Undo through the snack's hook, the shared helpers.

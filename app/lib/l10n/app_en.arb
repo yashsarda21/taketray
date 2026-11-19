@@ -4088,5 +4088,120 @@
   "backupResultOk": "OK",
   "@backupResultOk": {
     "description": "Button that closes the dialog shown after an import."
+  },
+  "referenceSheetTitleAdd": "Add reference",
+  "@referenceSheetTitleAdd": {
+    "description": "Title of the sheet that saves a link on a reel."
+  },
+  "referenceSheetTitleEdit": "Edit label",
+  "@referenceSheetTitleEdit": {
+    "description": "Title of the sheet that changes the label of a saved reference."
+  },
+  "referenceSheetSubtitleAdd": "to {reelName}",
+  "@referenceSheetSubtitleAdd": {
+    "description": "Line under the Add reference title: the reel the link is saved on.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceSheetSubtitleEdit": "{reelName}",
+  "@referenceSheetSubtitleEdit": {
+    "description": "Line under the Edit label title: the reel the reference is on.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceLinkLabel": "Link",
+  "@referenceLinkLabel": {
+    "description": "Label of the field for a reference's link."
+  },
+  "referenceLinkHelp": "Instagram, YouTube or any other link",
+  "@referenceLinkHelp": {
+    "description": "Help line under the link field."
+  },
+  "referenceLinkHint": "https://www.instagram.com/reel/…",
+  "@referenceLinkHint": {
+    "description": "Hint inside the empty link field."
+  },
+  "referenceLabelLabel": "Label (optional)",
+  "@referenceLabelLabel": {
+    "description": "Label of the field for a reference's own name for it."
+  },
+  "referenceLabelHint": "Fast cuts, food close-ups",
+  "@referenceLabelHint": {
+    "description": "Hint inside the empty reference label field."
+  },
+  "referencePasteButton": "Paste",
+  "@referencePasteButton": {
+    "description": "Button inside the link field that reads the clipboard once and takes the first link from it."
+  },
+  "referenceSaveButton": "Save",
+  "@referenceSaveButton": {
+    "description": "Button that saves the reference or its label."
+  },
+  "referenceNotALink": "That isn't a link. In Instagram: Share › Copy link, then paste it here.",
+  "@referenceNotALink": {
+    "description": "Error under the link field when what was typed has no link in it."
+  },
+  "referenceNoLinkOnClipboard": "There's no link on your clipboard.",
+  "@referenceNoLinkOnClipboard": {
+    "description": "Error under the link field when Paste found no link on the clipboard."
+  },
+  "referenceAlreadyIn": "Already saved in {reelName}",
+  "@referenceAlreadyIn": {
+    "description": "Error under the link field when the reel already has that link. The name is the reel's name as stored.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceSaveFailed": "Couldn't save the reference.",
+  "@referenceSaveFailed": {
+    "description": "Shown in the Add / edit reference sheet, above its buttons, when saving failed for a reason the user cannot fix (the reel is gone, the database failed)."
+  },
+  "referenceSavedSnack": "Reference saved",
+  "@referenceSavedSnack": {
+    "description": "Snack shown after a reference was saved; it has an Undo button."
+  },
+  "referenceLabelSavedSnack": "Label saved",
+  "@referenceLabelSavedSnack": {
+    "description": "Snack shown after the label of a reference was saved."
+  },
+  "referenceKindInstagram": "Instagram",
+  "@referenceKindInstagram": {
+    "description": "What an Instagram reel or post link is called on a reference card and in the Edit label sheet."
+  },
+  "referenceKindInstagramProfile": "Instagram profile",
+  "@referenceKindInstagramProfile": {
+    "description": "What an Instagram profile link is called on a reference card."
+  },
+  "referenceKindYoutubeShort": "YouTube Short",
+  "@referenceKindYoutubeShort": {
+    "description": "What a YouTube Shorts link is called on a reference card."
+  },
+  "referenceKindYoutubeVideo": "YouTube video",
+  "@referenceKindYoutubeVideo": {
+    "description": "What any other YouTube link is called on a reference card."
+  },
+  "referenceKindTiktok": "TikTok video",
+  "@referenceKindTiktok": {
+    "description": "What a TikTok link is called on a reference card."
+  },
+  "referenceCardSubtitle": "{kind} · {link}",
+  "@referenceCardSubtitle": {
+    "description": "Second line of a reference card that has a label: what the link is, and the link without its https://www. start.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    }
   }
 }

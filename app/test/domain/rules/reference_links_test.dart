@@ -94,6 +94,61 @@ void main() {
     test('two words with a dot are not a link', () {
       expect(typedLink('see x.com'), isNull);
     });
+
+    test('a dotted single word with nothing around the dot is not a link', () {
+      expect(typedLink('hello.'), isNull);
+      expect(typedLink('.com'), isNull);
+      expect(typedLink('.'), isNull);
+      expect(typedLink('...'), isNull);
+      expect(typedLink('a..com'), isNull);
+      expect(typedLink('x.com..'), 'https://x.com');
+    });
+
+    test('a bare address loses the punctuation that ends a sentence', () {
+      expect(typedLink('x.com.'), 'https://x.com');
+      expect(typedLink('x.com/a).'), 'https://x.com/a');
+      expect(typedLink('x.com/a,'), 'https://x.com/a');
+      expect(typedLink('x.com/a!'), 'https://x.com/a');
+      expect(typedLink('(instagram.com/reel/abc)'), isNull);
+      expect(
+        typedLink('instagram.com/reel/abc)'),
+        'https://instagram.com/reel/abc',
+      );
+    });
+
+    test('a number or an email or another scheme is not an address', () {
+      expect(typedLink('3.5'), isNull);
+      expect(typedLink('1.2.3'), isNull);
+      expect(typedLink('user@example.com'), isNull);
+      expect(typedLink('mailto:a@b.com'), isNull);
+      expect(typedLink('tel:1.2'), isNull);
+      expect(typedLink('ftp://x.com/a'), isNull);
+    });
+
+    test('an IP address and a port are fine', () {
+      expect(typedLink('192.168.1.2/a'), 'https://192.168.1.2/a');
+      expect(typedLink('x.com:8080/a'), 'https://x.com:8080/a');
+    });
+
+    test('a link with a scheme needs a dotted host too', () {
+      expect(typedLink('https://hello'), isNull);
+      expect(typedLink('https://hello.'), isNull);
+      expect(typedLink('Look http://localhost/a ok'), isNull);
+      expect(typedLink('https://x.com/a'), 'https://x.com/a');
+    });
+
+    test('whatever it gives, normalizeReferenceUrl accepts', () {
+      for (final text in [
+        'x.com/a',
+        'https://x.com/a)',
+        ' www.instagram.com/reel/A1/ ',
+        'Look https://instagram.com/reel/A1 wow',
+      ]) {
+        final link = typedLink(text);
+        expect(link, isNotNull, reason: text);
+        expect(normalizeReferenceUrl(link!), isNotNull, reason: text);
+      }
+    });
   });
 
   group('shortLink', () {

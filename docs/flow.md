@@ -234,7 +234,7 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the editor han
 
 **A reel with its first link** (`ReelsRepository.createWithReference(name, {url, description, label})`, D-154): the name, description, link (`normalizeReferenceUrl`, null throws `ReferenceUrlProblem.invalid`) and label (`checkReferenceLabel`) are checked first. Then one `_db.transaction`: the name must be free (`ReelNameProblem.duplicate` otherwise), the reel is inserted `collecting` with `createdAt` = `updatedAt` = now, and its reference is inserted (`source` from `referenceSourceOf`, blank label stored as none, `createdAt` = now). A failure at any step leaves no reel and no reference. It logs `Created reel <id> with a reference`.
 
-**Reading links out of text** (`domain/rules/reference_links.dart`, D-154): `firstLinkIn(text)` finds the first `http(s)://` run of non-space characters and strips trailing `)`, `.`, `,` and `!`; `typedLink(text)` adds the typed-address case (one word with a `.` becomes `https://word`); both give the text to `normalizeReferenceUrl`, which decides whether it is a link. `shortLink(url)` shortens a stored link for display; `referenceKindOf(uri)` names its kind (Instagram, Instagram profile, YouTube Short, YouTube video, TikTok, link).
+**Reading links out of text** (`domain/rules/reference_links.dart`, D-154): `firstLinkIn(text)` finds the first `http(s)://` run of non-space characters and strips trailing `)`, `.`, `,` and `!`; `typedLink(text)` adds the typed-address case (one word, its trailing `)`, `.`, `,` and `!` stripped, becomes `https://word`) and gives null for junk (D-157: the result must pass `normalizeReferenceUrl` and have a dotted host of named parts, such as `x.com`; `hello.`, `.com`, `3.5`, `user@example.com` and `https://hello` are not links); the share screen and the Add sheet give the text to `normalizeReferenceUrl`, which decides whether it is a link. `shortLink(url)` shortens a stored link for display; `referenceKindOf(uri)` names its kind (Instagram, Instagram profile, YouTube Short, YouTube video, TikTok, link).
 
 **Editing session** (`edit_sessions_repository.dart › EditSessionsRepository`, D-120; SQL tables `vn_sessions`, `vn_copies`, `sent_clips`):
 
@@ -1585,6 +1585,33 @@ Opens a reference link in the app or browser the phone picks, and reads the Inst
 2. `iconOnly` is `MediaQuery.textScalerOf(context).scale(14) >= 21` (`TtMetrics.referenceOpenProbeSize`, `referenceOpenIconOnlyFrom`): true from 150 % text, 21 sp itself included.
 3. The main part is one button (`Semantics` named `openSemanticLabel`, an `InkWell` calling `onOpen`) holding the art, the title (2 lines) and subtitle (1 line), and `_OpenMark`. `_OpenMark` draws the open icon, and the word `openLabel` only when `iconOnly` is false. The button's semantics do not change with `iconOnly`.
 4. With `hasMore`, a `TtMenuButton<T>` (D-51) follows the main part. Its anchor is a 48 dp `TtIconButton` (⋮) named `moreSemanticLabel` whose press calls the menu's `open`. Choosing an entry closes the menu and calls `onMoreSelected(value)`; tapping outside closes it with no call. The more button never calls `onOpen`.
+
+### The Add / edit reference sheet (`lib/features/references/`, Phase 9A Task 5, D-157)
+
+`showReferenceSheet(context, reelId:, editing:)` opens the sheet that saves a link on a reel, or, with `editing`, changes one reference's label. Nothing calls it yet (Task 6's References section and Task 8's Shooting mode sheet will). Paths are relative to `app/lib/features/references/`.
+
+**Opening it** (`views/reference_sheet.dart › showReferenceSheet`): reads `AppLocalizations`, `ReelSnacks.of(context)` (the root messenger) and `referencesRepositoryProvider` now, so the snacks and the Undo work after the sheet has closed, then `showTtSheet`. The title is "Add reference" or "Edit label"; the line under it is "to {reel}" or "{reel}" (`reelByIdProvider(reelId)`, left out while the reel is not loaded or gone). Add mode never asks the phone for icons.
+
+**Paste** (`_ReferenceSheetState._paste`, the Paste button inside the Link field; the only code that reads the clipboard):
+1. `Clipboard.getData(Clipboard.kTextPlain)`. A `PlatformException` or any other error is logged by type (`referenceSheet`) and counts as "nothing".
+2. `firstLinkIn(text)` (a null text gives null). Null → the Link field shows "There's no link on your clipboard." and what was typed stays.
+3. A link → the field's text is the link (cursor at the end), the message and any failure go, and the Label field takes the focus.
+Typing in either field clears the message and the failure line.
+
+**Saving a new reference** (`_save`, from Save or Enter in Label):
+1. If `referenceFormControllerProvider(reelId)` says a save runs, it returns. Otherwise it clears the message and the failure line and calls `ReferenceFormController.saveNew(link text, label text)`.
+2. `saveNew` (single-flight: a call while one runs returns the same future) reads the two repositories first, then `typedLink(linkText)`; null → `ReferenceNotALink`. A label over 60 characters (`checkReferenceLabel`) → `ReferenceLabelTooLong`. Then the state is "saving" and `ReferencesRepository.add(reelId, link, label: label)`:
+   - `ReferenceAdded` → `ReferenceSaved(reference)`.
+   - `ReferenceAlreadySaved` → `ReelsRepository.getById(reelId)`; `ReferenceAlreadyIn(name)`, or `ReferenceSaveFailed` when the reel is gone.
+   - `InvalidInputException` → `ReferenceLabelTooLong` or `ReferenceNotALink` (the repository's rules are the same ones).
+   - Any other error (a deleted reel makes `StateError`) → `ReferenceSaveFailed`, logged `Saving a reference failed: <ErrorType>`.
+3. The sheet: `ReferenceSaved` → pops the sheet, then shows "Reference saved" with Undo through `ReelSnacks.showUndoAll(message, const [], undo: …)`; Undo deletes the new id with `ReferencesRepository.delete` (no error when it is already gone). `ReferenceNotALink` → "That isn't a link. In Instagram: Share › Copy link, then paste it here." under the Link field and the focus goes back to it; `ReferenceAlreadyIn(name)` → "Already saved in {name}" under it; `ReferenceSaveFailed` (or too long) → "Couldn't save the reference." above the buttons, the text kept. If the sheet was dragged away meanwhile, a success still shows its snack and a failure shows the failure as a snack.
+
+**Edit label** (`editing` given): no Link field and no Paste. A source row shows `referenceSourceIcon` (40 dp), `referenceKindText` and `shortLink`. The Label field is filled with the label and focused. Save → `ReferenceFormController.saveLabel(id, label)` (single-flight): `ReferencesRepository.setLabel` (a blank label clears it); true → pops and shows "Label saved"; false (the reference is gone, a database error) → "Couldn't save the reference." in the sheet.
+
+**Shared helpers** (`views/reference_text.dart`, `views/reference_source_icon.dart`): `referenceKindText(l10n, uri)` is `referenceKindOf(uri)` in words (the host without `www.` / `m.` for a plain link); `referenceCardText(l10n, reference)` is the card's title (the label, or `shortLink`) and subtitle ("{kind} · {short link}", or the kind alone without a label); `referenceSourceIcon(context, source, {size})` watches `sourceIconsProvider` and draws the source's PNG with `Image.memory`, or `Symbols.link_rounded` in a `surfaceContainerHighest` tile while there is none (not installed, a plain link, loading, failed, or a PNG that will not decode), with a 28 % corner and a 2 dp ring.
+
+**Tests:** `test/features/references/view_models/reference_form_controller_test.dart` (every result, junk inputs, double Save, a reel deleted before Save, a log with no link or label), `views/reference_sheet_test.dart` (a clipboard mock counting `Clipboard.getData`, Paste cases, Enter, Undo, edit mode, double tap, accessibility; macOS-only goldens in `views/goldens/macos/`), `views/reference_text_test.dart`, and `test/domain/rules/reference_links_test.dart` for `typedLink`.
 
 ### Error logging
 
