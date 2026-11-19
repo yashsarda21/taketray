@@ -1,6 +1,6 @@
 # Learning guide: Phase 10B, Settings
 
-This guide explains the full Settings screen: the switches for every reminder and how they reach the background, the Watched folders screen (chat apps included), Export and import of a backup, and Send error log through Android's share sheet. It is written as the phase is built; each section is filled in by the task that builds it.
+This guide explains the full Settings screen: the switches for every reminder and how they reach the background, the Watched folders screen (chat apps included), Export and import of a backup, and Send error log through Android's share sheet. It ends with how it was checked on a real Samsung Galaxy S24 Ultra running Android 17, and what that found.
 
 Every snippet is real code from this repository. You don't need to know Flutter or Android well to follow it; basic programming knowledge is enough.
 
@@ -496,8 +496,6 @@ Then break things on purpose. Swap the order in `_logFileNames`: "both files: th
 
 ## 9. On the S24
 
-**Draft: the phone run completes this section. What follows is what the run will check; the results are added after it.**
-
 **What we built:** an on-device test for Settings, and a list of hand checks for what a test cannot see. The test is `app/patrol_test/settings_test.dart`; the list is "Phase 10B check" in `docs/dev-setup.md`.
 
 - **Five flows.** *Switches*: the evening reminder off and on, its time set to 07:30 through the time picker (stored as 450), a cancelled picker, the other two reminders off and on, and the saved values shown after a restart. *The switches reach the background*: with Shooting mode on and a clip shot today waiting, the evening reminder and "Still shooting?" are fired through their own receivers; with the switch off nothing is posted, with it on they are. *Watched folder*: Add a folder, the refused folders, the folder's switch, Shooting mode on, a new test video reaches To tag, an older one and one that arrives with the folder off do not. *Export then import*: a cancelled export, export, a cancelled import, import, "X of Y clips found", onboarding stays done. *Send error log*: the share sheet opens, Back, nothing is chosen.
@@ -527,4 +525,12 @@ The first ends with `Completed building apk` and the two APK paths. For the seco
 
 **Decisions:** D-152 (all of this section), with D-100, D-131 and D-143 (Patrol on the S24) and D-145 to D-151 (what the flows check) as background.
 
-**Phone results:** pending. The run, what each flow showed, the share sheet's real ids and what was changed are added here after it.
+**Phone results.** The five flows ran on the S24 (Android 17) on 2026-11-19, twice.
+
+- **Run 1: 4 of 5 passed.** Flow 4 (Send error log) failed because the share sheet never opened. The app was fine; the test was not. Every flow ran on the fake files bridge, and the fake's `shareFile` deliberately throws, so that no flow can open the real share sheet by mistake. Flow 4 is the one flow that must open it, so the app answered "Couldn't open the share menu on this phone." and Android was never asked for a chooser. A diagnostic run showed it: the fake's calls were `appInfo, appInfo, shareFile`, the failed message was on screen, one bundle had been made, and the app was still in front.
+- **The fix was in the test only.** `PatrolFilesBridge.create(realShareSheet: true)` hands `shareFile` to the real bridge unchanged, while the pickers stay fake, and only flow 4 asks for it. Unit tests cover both ways, and each key line was checked by breaking it.
+- **Run 2: 5 of 5 passed.** Flow 4 took 8 seconds: the real share sheet was found and closed with one Back, and Settings showed no message.
+- **The owner's hand checks 1 to 18 all passed.** They cover what a test cannot see: the look against the prototype in light and dark, text at 2x, a reminder arriving at the time set, the real folder and document pickers, the WhatsApp warning, an import of an older backup, Send error log to the owner's own mail, TalkBack, and leaving for Android's own screens and a kill.
+- **A request that came from the phone.** While using the screen on the S24 the owner asked: if I want to turn off notifications and video access, can I do that here? At first the answer was no, because the rows only offered to turn a permission on. Android does not let an app take back its own permission, so the fix is to lead the user to the page where they can (decision D-148, section 5b above): when access is allowed, the whole row opens Android's settings page for TakeTray. This was built after the Patrol runs and is part of the hand checks, which passed with it, the Permissions group included.
+
+**What this teaches:** a safety fake is only safe if the one flow that needs the real thing can switch it off, and a failing on-device test needs its cause found before anything in the app is changed. Both are written up in D-152.
