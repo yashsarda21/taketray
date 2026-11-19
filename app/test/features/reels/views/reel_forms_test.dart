@@ -1049,6 +1049,20 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
+    testApp('the create sheet with the link error is accessible in dark', (
+      tester,
+    ) async {
+      for (final scale in [1.0, 2.0]) {
+        await pumpHost(tester, textScale: scale, brightness: Brightness.dark);
+        await openForm(tester);
+        await typeLink(tester, 'hello world');
+        await tapAndSettle(tester, find.text('Create reel'));
+        expect(find.text(_notALink), findsOneWidget);
+        await expectTtAccessible(tester);
+        expect(tester.takeException(), isNull);
+      }
+    });
+
     Future<void> shot(WidgetTester tester, String name) => expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/macos/$name.png'),
