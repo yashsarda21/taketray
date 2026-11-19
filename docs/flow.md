@@ -1552,6 +1552,30 @@ The share sheet, the document picker (save and open), the folder picker and the 
 
 **In tests:** `test/support/fake_files_bridge.dart › FakeFilesBridge` (settable `saveAnswer` (default an address), `openAnswer`, `folderAnswer` (both default null, a cancel) and `appInfoAnswer` (`1.0.0`, Android `15`); records `calls` (method and arguments, in order, failed and held ones included), `methods` and `saved` (name and text of each answered save); `failNext(method, [problem])` queues a `FileBridgeException`; `hold(method)` / `release(method)` keep calls waiting after they are recorded). Dart: `test/platform/{files_bridge,fake_files_bridge}_test.dart`. Kotlin (Robolectric, `tool/test_android`): `files/FilesHostApiImplTest.kt` (the chooser and its grant read back through the real provider, every refused path, the exact bytes written, the `maxBytes` boundary and an endless stream, the tree table, no persisted grant, `busy`, dropped results, `host-gone`; it clears `FileProvider`'s static `sCache` before each test, because Robolectric gives each test a new cache folder) and `ManifestTest.kt` (the provider's flags and authority, and the paths file holding exactly the one entry).
 
+### Links bridge and the source icons (`lib/platform/links_bridge.dart`, `pigeons/links_api.dart`, `android/.../links/`, `lib/features/references/view_models/source_icons.dart`, Phase 9A Task 3, D-155)
+
+Opens a reference link in the app or browser the phone picks, and reads the Instagram, YouTube and TikTok apps' own icons. No permission is needed. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/links/`.
+
+**Making the contract:** `pigeons/links_api.dart` → `lib/platform/links_api.g.dart` and `links/LinksApi.g.kt` (package `app.taketray.links`, error class `LinksError`); `cd app && ../tool/dart run pigeon --input pigeons/links_api.dart` (`tool/check_generated` covers it). One `@async` method, `openLink`.
+
+**Opening a link:**
+1. A caller (Task 6's reference card) reads `linksBridgeProvider` (`links_bridge.dart › linksBridge`, kept alive, builds `PigeonLinksBridge()`) and calls `openLink(url)`.
+2. `PigeonLinksBridge.openLink` calls `LinksHostApi.openLink(url)`. **[bridge]**
+3. `LinksHostApiImpl.openLink` (main thread, inside `guardedWith("openLink", ::linksFailure)`): `Uri.parse(url)`; `isWebLink` needs the scheme `http` or `https` (any case) and a non-empty host. Anything else logs "not a web link; nothing started" and answers false.
+4. No activity (`onHostGone` ran) → `LinksError("no-activity")`. Otherwise `Intent(ACTION_VIEW, uri)` with `CATEGORY_BROWSABLE`, started with the activity's `startActivity`; true. `ActivityNotFoundException` → false.
+5. Any other exception goes through `linksFailure` to `LinksError("native-error", "openLink failed: <ExceptionClass>")`, logged at warning under `TakeTrayLinks`; the message never carries the address (D-10).
+6. Back in Dart, a `PlatformException` is logged as `Opening a link failed: <code>` under the logger `linksBridge` and answers false. Any other error passes through.
+
+**Kotlin set-up:** `MainActivity.configureFlutterEngine` makes `LinksHostApiImpl(this)` and calls `LinksHostApi.setUp`; `cleanUpFlutterEngine` unregisters it and calls `onHostGone`; `onDestroy` calls `onHostGone` too.
+
+**The source icons** (`source_icons.dart`):
+1. `sourceAppPackages` maps each `ReferenceSource` to its package names in the order to try (TikTok has two; `link` has none).
+2. `sourceIconsProvider` (kept alive) calls `editorsBridgeProvider`'s `apps(allPackages, iconPx: 48)` once. **[bridge]** (the editors contract).
+3. It keeps the installed apps that gave an icon, then gives each source the icon of its first such package. A source with none is absent from the map.
+4. A throwing bridge gives `{}` and logs `Asking the phone for the source icons failed: <ErrorType>` under the logger `sourceIcons`. The failure is kept for the life of the app (no retry).
+
+**Manifest:** `<queries>` names the three editors and the four source packages; `editor_packages_manifest_test.dart` (against `sourceAppPackages` and `EditorApp`) and `ManifestTest.kt` check exactly these seven.
+
 ### Error logging
 
 Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.
