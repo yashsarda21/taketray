@@ -666,6 +666,40 @@ void main() {
       expect(find.byType(TtAddReferenceTile), findsOneWidget);
       expect(sectionTop(tester), moreOrLessEquals(viewportTop(tester)));
     });
+
+    testApp('flashes the Add row with animations on, full width, no error', (
+      tester,
+    ) async {
+      await makeGoa(tester);
+      await pumpSection(
+        tester,
+        focus: true,
+        filler: true,
+        animations: true,
+        settle: false,
+      );
+      await arrive(tester);
+      // The scroll, animated, then the highlight.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      await tester.pump();
+      expect(find.byKey(referencesFlashKey), findsOneWidget);
+
+      // Wide as the page less the 16 dp gutters, while the highlight runs.
+      final page = tester.getSize(find.byType(CustomScrollView)).width;
+      final tile = find.byType(TtAddReferenceTile);
+      expect(tester.getSize(tile).width, moreOrLessEquals(page - 32));
+      expect(find.text('Add reference'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.getSize(tile).width, moreOrLessEquals(page - 32));
+      expect(tester.takeException(), isNull);
+
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(referencesFlashKey), findsNothing);
+      expect(tester.getSize(tile).width, moreOrLessEquals(page - 32));
+      expect(tester.takeException(), isNull);
+      expect(tester.binding.transientCallbackCount, 0);
+    });
   });
 
   group('accessibility', () {
