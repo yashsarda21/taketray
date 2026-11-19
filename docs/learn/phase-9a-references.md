@@ -418,3 +418,55 @@ Then break one thing on purpose. In `reel_form_controller.dart`, make the link c
 ### Decisions
 
 - D-159: the field and its copy, the checks together, `createWithReference` on create, reel-then-reference on edit, the already-saved result as no error, and the failure after the reel saved.
+
+## 8. Shooting mode's References
+
+### What we built
+
+While Shooting mode is on and any Collecting or Ready to edit reel has a reference, the Shooting mode card gets a first row: **References · N**. Tap it and a sheet lists those reels, one group each: the reel's cover and name, how many references it has, the reel's **Shot ideas**, and a card per reference. Tap a card and the link opens. Tap a reel's header and you land on that reel's page, scrolled to its References. A reel with no shot ideas shows "No shot ideas yet." and **Write the shots you need**, which opens the reel's form on the shot ideas. A button on each group folds it away.
+
+### Why TakeTray needs it
+
+You save references to copy a style, then you go out to film. The shot ideas are what you wrote to remember what to get. Both belong one tap from the place you turn Shooting mode on, with no hunting through reels while you stand in the street.
+
+### Key ideas
+
+**1. Reuse Home's stream, do not re-sort.** The reels come from `reelSummariesProvider`, the same stream Home draws, so the order inside a status is the order the user already knows. The grouping is a plain function over two lists, so it is easy to test without a database:
+
+```dart
+List<ReferenceGroup> groupShootingReferences(summaries, references) => [
+  for (final status in _listed)          // collecting, then ready
+    for (final summary in summaries)     // Home's order
+      if (summary.reel.status == status && hasReferences(summary))
+        ReferenceGroup(reel: summary, references: byReel[summary.reel.id]!),
+];
+```
+
+**2. A provider that watches two streams.** `shootingReferencesProvider` watches `.future` of both upstream providers. When either emits again, Riverpod rebuilds it, so the sheet and the row stay live without any listener code of ours.
+
+**3. Local state in the sheet.** Which groups are folded is the sheet's own business: a `Set<int>` of reel ids in the `State`. It is not stored, and it survives data changes (a new reference arriving does not unfold a group you folded).
+
+**4. The sheet answers, the screen acts.** The sheet does not navigate. It pops with a small value (`_OpenReel(id)` or `_WriteShots(reel)`), and `showShootingReferencesSheet` acts on it with the screen's own `context` once the sheet is gone. That is how "close the sheet, then push" is made certain.
+
+**5. A failure goes where the user can see it.** A snack shown while a sheet is open sits behind the sheet's scrim (D-85), so "No app on this phone can open this link." is the sheet's footer line here, and the next tap clears it.
+
+### Where it lives
+
+- `app/lib/features/references/view_models/shooting_references.dart`: `ReferenceGroup`, `groupShootingReferences`, `shootingReferenceCount`, `shootingReferencesProvider`.
+- `app/lib/features/references/views/shooting_references_sheet.dart`: `showShootingReferencesSheet` and the group widgets.
+- `app/lib/features/shooting_mode/views/shooting_mode_section.dart`: the row.
+- `app/lib/l10n/app_en.arb`: the `shootingReferences…` strings.
+- Tests: `test/features/references/view_models/shooting_references_test.dart`, `test/features/shooting_mode/views/shooting_mode_section_test.dart` ("the References row"), `test/features/references/views/shooting_references_sheet_test.dart`.
+- Docs: `docs/flow.md` ("The Shooting mode References row and sheet"), D-160.
+
+### Try it yourself
+
+```sh
+cd app && ../tool/flutter test test/features/references/view_models/shooting_references_test.dart test/features/shooting_mode/views/shooting_mode_section_test.dart test/features/references/views/shooting_references_sheet_test.dart
+```
+
+Then break one thing on purpose. In `shooting_references.dart`, change `_listed` to `[ReelStatus.ready, ReelStatus.collecting]`: "Collecting reels come before Ready to edit" fails. Or add `ReelStatus.published` to it: "Published reels are left out" fails. Put it back.
+
+### Decisions
+
+- D-160: the data and its order, the row and when it shows, the sheet's content and taps, and the failure line in the sheet.

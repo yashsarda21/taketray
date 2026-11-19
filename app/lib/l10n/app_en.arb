@@ -4327,5 +4327,64 @@
   "reelEmptyShareHint": "You can also share a reel from Instagram to TakeTray to save it as a reference.",
   "@reelEmptyShareHint": {
     "description": "Second paragraph of the empty reel page's text."
+  },
+  "shootingReferencesTitle": "References",
+  "@shootingReferencesTitle": {
+    "description": "Title of the sheet, opened from the Shooting mode card, that lists the references of the Collecting and Ready to edit reels."
+  },
+  "shootingReferencesSubtitle": "From your Collecting and Ready to edit reels, with their shot ideas",
+  "@shootingReferencesSubtitle": {
+    "description": "Line under the title of the Shooting mode References sheet."
+  },
+  "shootingReferencesGroupCount": "{count, plural, =1{1 reference} other{{count} references}}",
+  "@shootingReferencesGroupCount": {
+    "description": "Under a reel's name in the Shooting mode References sheet: how many references it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingReferencesGroupSemantics": "{reelName}, {count, plural, =1{1 reference} other{{count} references}}. Open the reel at its references",
+  "@shootingReferencesGroupSemantics": {
+    "description": "What a screen reader says for a reel's header in the Shooting mode References sheet; tapping it opens the reel at its References section.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingReferencesNoShots": "No shot ideas yet.",
+  "@shootingReferencesNoShots": {
+    "description": "In the Shooting mode References sheet, under a reel with references but no shot ideas."
+  },
+  "shootingReferencesWriteShots": "Write the shots you need",
+  "@shootingReferencesWriteShots": {
+    "description": "Small button beside the no-shot-ideas line in the Shooting mode References sheet; it opens the reel's form on its shot ideas."
+  },
+  "shootingReferencesHide": "Hide {reelName}'s references",
+  "@shootingReferencesHide": {
+    "description": "What a screen reader says for the button that collapses a reel's group in the Shooting mode References sheet.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "shootingReferencesShow": "Show {reelName}'s references",
+  "@shootingReferencesShow": {
+    "description": "What a screen reader says for the button that expands a collapsed reel group in the Shooting mode References sheet.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "shootingReferencesEmpty": "No references in your Collecting or Ready to edit reels.",
+  "@shootingReferencesEmpty": {
+    "description": "Shown in the Shooting mode References sheet when no Collecting or Ready to edit reel has a reference (for instance after the last one was removed while the sheet was open)."
   }
 }
