@@ -63,4 +63,42 @@ void main() {
     // Each step runs even when one before it threw.
     expect(tearDown, contains('first ??= (error, stack)'));
   });
+
+  test('the tear-down turns Shooting mode off and reads it back', () {
+    final tearDown = bodyOf('Future<void> _tearDown(');
+    final off = tearDown.indexOf('phone.turnShootingOff()');
+    expect(off, greaterThanOrEqualTo(0));
+    final closed = tearDown.indexOf('SizedBox.shrink()');
+    expect(
+      tearDown.substring(closed, off),
+      contains('if (shootingMayBeOn)'),
+      reason: 'a flow that never turns it on is not forced off',
+    );
+    final read = tearDown.indexOf('phone.loadShooting()', off);
+    expect(read, greaterThan(off), reason: 'read back after the off');
+    expect(
+      tearDown.indexOf('.on)', read),
+      greaterThan(read),
+      reason: 'and checks it is off',
+    );
+    expect(tearDown.indexOf('throw TestFailure', read), greaterThan(read));
+    // After the app was closed: the last step, with a container of its own.
+    expect(off, greaterThan(tearDown.indexOf('SizedBox.shrink()')));
+  });
+
+  test('flow 2: the clipboard holds a link while the sheet opens', () {
+    final flow = bodyOf('Future<void> _paste(');
+    final withLink = flow.indexOf(
+      'Clipboard.setData(const ClipboardData(text: _captionWithLink))',
+    );
+    final open = flow.indexOf(r'section.$(_l10n.referencesAddRowTitle).tap()');
+    final empty = flow.indexOf('opening the sheet reads nothing');
+    final noLink = flow.indexOf(
+      'Clipboard.setData(const ClipboardData(text: _captionWithoutLink))',
+    );
+    expect(withLink, greaterThanOrEqualTo(0));
+    expect(withLink, lessThan(open), reason: 'link on the clipboard first');
+    expect(open, lessThan(empty));
+    expect(empty, lessThan(noLink), reason: 'no-link caption comes after');
+  });
 }

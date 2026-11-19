@@ -274,15 +274,24 @@ Future<void> _paste(_Env env) async {
     what: 'the Add reference row',
   );
 
-  // A clipboard with text and no link: opening the sheet reads nothing, the
-  // Paste button says there is no link and fills nothing.
+  // The clipboard holds a caption WITH a link while the sheet opens: if the
+  // sheet read it on open (the spec: nothing is read until Paste is tapped),
+  // the link would be in the field. With a no-link caption that read would
+  // leave the field empty too and prove nothing.
   env.clipboardTouched = true;
-  await Clipboard.setData(const ClipboardData(text: _captionWithoutLink));
+  await Clipboard.setData(const ClipboardData(text: _captionWithLink));
   await section.$(_l10n.referencesAddRowTitle).tap();
   await _waitForSheet(env, _l10n.referenceSheetTitleAdd);
   final link = _fieldOf(_l10n.referenceLinkLabel);
   await pumpFor($, const Duration(seconds: 1));
-  expect(_textOf($, link), isEmpty, reason: 'opening the sheet pastes nothing');
+  expect(
+    _textOf($, link),
+    isEmpty,
+    reason: 'opening the sheet reads nothing from the clipboard',
+  );
+  // Now a caption with no link: the Paste button says there is no link and
+  // fills nothing.
+  await Clipboard.setData(const ClipboardData(text: _captionWithoutLink));
   await sheet.$(_l10n.referencePasteButton).tap();
   await waitFor(
     $,
@@ -647,6 +656,17 @@ Future<void> _tearDown(
       final before = prep.settingsBefore;
       if (before != null) {
         await c.read(settingsRepositoryProvider).save(before);
+      }
+      // The controller's setOn(false) swallows its failures and a timeout
+      // above skips the rest of that step, so Shooting mode is switched off
+      // here too, in the database, and read back: a phone left in Shooting
+      // mode fails the flow instead of passing quietly.
+      if (shootingMayBeOn) {
+        final phone = c.read(phoneStateRepositoryProvider);
+        await phone.turnShootingOff();
+        if ((await phone.loadShooting()).on) {
+          throw TestFailure('Shooting mode is still on after the flow');
+        }
       }
     }),
   );
