@@ -21,3 +21,75 @@ Every snippet is real code from this repository. You don't need to know Flutter 
 7. [The reel form's link field](#7-the-reel-forms-link-field)
 8. [Shooting mode's References](#8-shooting-modes-references)
 9. [On the S24](#9-on-the-s24)
+
+## 2. Link rules, remove with Undo, a reel with its link
+
+### What we built
+
+The data side of references. Three pure functions read a link out of text people paste or type (`firstLinkIn`, `typedLink`) and shorten one for display (`shortLink`); a fourth, `referenceKindOf`, says what kind of page a saved link points to. Removing a reference now hands back a record so the screen can offer Undo. `createWithReference` saves a new reel and its first link in one step. `watchAll` lists every reference.
+
+Nothing on screen changes yet. The screens in sections 3 to 8 use these.
+
+### Why TakeTray needs it
+
+People share a whole sentence, not a link: `Title https://vm.tiktok.com/ZM8x/` or `see (https://youtu.be/a1).` The saving code, `normalizeReferenceUrl`, refuses anything with a space in it (D-55), so something has to find the link first. Every removal in TakeTray can be undone for a few seconds; references were the one exception. And a reel made from a shared link must never be left with no link because the second save failed.
+
+### Key ideas
+
+**1. Find the link, then let the one cleaner decide.** `firstLinkIn` only finds and trims the end of a sentence; it does not judge whether the link is good:
+
+```dart
+final link = match.group(0)!.replaceFirst(_trailingPunctuation, '');
+```
+
+`normalizeReferenceUrl` stays the single place that cleans a link, so the same page saved twice is still one reference.
+
+**2. `/reel/` and `/p/` are the same after cleaning.** Saved Instagram links are rewritten to `/p/CODE/`, so a reel and a post cannot be told apart later. That is why the card says "Instagram" for both, and only a profile reads differently:
+
+```dart
+ReferenceSource.instagram =>
+  url.path.startsWith('/p/')
+      ? ReferenceKind.instagram
+      : ReferenceKind.instagramProfile,
+```
+
+**3. An Undo record is a snapshot taken inside the same transaction.** `delete` reads the row and the reel's time, deletes, and writes the new time, all together, so the record cannot disagree with what happened:
+
+```dart
+final before = await _updatedAtOf(row.reelId);
+...
+return ReferenceRemoveUndo(
+  reference: _toReference(row),
+  touch: before == null ? null : ReelTouch(reelId: row.reelId, before: before, after: after),
+);
+```
+
+**4. Undo is careful about a world that moved.** The reference comes back with its old id, label and time, but not when the reel is gone, and not when the same link was saved again meanwhile. The reel's "last changed" time goes back only while it is still the value the removal wrote, so a rename since is kept.
+
+**5. One transaction for a reel and its link.** `createWithReference` checks everything it can first, then inserts both rows inside `_db.transaction`. If the reference insert fails after the reel is in, the whole transaction rolls back and there is no reel.
+
+### Where it lives
+
+- `app/lib/domain/rules/reference_links.dart`: the link rules and `ReferenceKind`.
+- `app/lib/domain/models/undo_record.dart`: `ReferenceRemoveUndo`.
+- `app/lib/data/repositories/references_repository.dart`: `delete` (now returns the record) and `watchAll`.
+- `app/lib/data/repositories/undo_writer.dart`: `_undoReferenceRemove`.
+- `app/lib/data/repositories/reels_repository.dart`: `createWithReference`.
+- Docs: `docs/flow.md` ("References, VN folders, settings and time zones", "Undo"), D-154.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/domain/rules/reference_links_test.dart \
+  test/data/repositories/undo_writer_references_test.dart \
+  test/data/repositories/references_repository_test.dart \
+  test/data/repositories/reels_repository_test.dart
+```
+
+Then break one thing on purpose. In `reference_links.dart`, change `_trailingPunctuation` to `r'$^'` (it never matches) and run the first file: the tests that strip a `)` or a `.` fail. Put it back.
+
+### Decisions
+
+- D-154: link rules, `ReferenceKind`, `delete` returns a `ReferenceRemoveUndo`, Undo skips a reel that is gone or a link saved again, `createWithReference` in one transaction, `watchAll`.

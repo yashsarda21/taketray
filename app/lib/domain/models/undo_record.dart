@@ -277,3 +277,19 @@ final class DeleteReelUndo extends UndoRecord {
   @override
   bool get isEmpty => reel == null;
 }
+
+/// What `ReferencesRepository.delete` changed: one reference removed from a
+/// reel (D-154).
+final class ReferenceRemoveUndo extends UndoRecord {
+  const ReferenceRemoveUndo({required this.reference, required this.touch});
+
+  /// The deleted reference, every field (its id and `createdAt` included).
+  final ReelReference reference;
+
+  /// The reel's `updatedAt` before the delete and the value the delete wrote;
+  /// null when the delete did not touch the reel.
+  final ReelTouch? touch;
+
+  @override
+  bool get isEmpty => false;
+}
