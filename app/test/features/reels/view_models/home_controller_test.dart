@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
@@ -107,6 +108,78 @@ void main() {
         expect(covers.keys, containsAll([byName['Goa'], byName['Empty']]));
       },
     );
+  });
+
+  group('reference counts (Phase 9A)', () {
+    int countOf(String name) =>
+        current().reels.singleWhere((s) => s.reel.name == name).referenceCount;
+
+    test("each reel gets its own reel's count, and none is 0", () async {
+      await first();
+      final refs = container.read(referencesRepositoryProvider);
+      final goa = await reels.create('Goa');
+      h.media.clock.advance(const Duration(minutes: 1));
+      final london = await reels.create('London Food');
+      h.media.clock.advance(const Duration(minutes: 1));
+      await reels.create('Day 1 Vlog');
+      await refs.add(goa.id, 'https://youtube.com/shorts/A');
+      await refs.add(goa.id, 'https://youtube.com/shorts/B');
+      await refs.add(london.id, 'https://youtube.com/shorts/C');
+      await settle();
+
+      expect(countOf('Goa'), 2);
+      expect(countOf('London Food'), 1);
+      expect(countOf('Day 1 Vlog'), 0);
+    });
+
+    test('the counts follow a remove and an add', () async {
+      await first();
+      final refs = container.read(referencesRepositoryProvider);
+      final goa = await reels.create('Goa');
+      final added = await refs.add(goa.id, 'https://youtube.com/shorts/A');
+      await settle();
+      expect(countOf('Goa'), 1);
+
+      await refs.delete((added as ReferenceAdded).reference.id);
+      await settle();
+      expect(countOf('Goa'), 0);
+
+      await refs.add(goa.id, 'https://youtube.com/shorts/B');
+      await refs.add(goa.id, 'https://youtube.com/shorts/C');
+      await settle();
+      expect(countOf('Goa'), 2);
+    });
+
+    test('counts that cannot be read show the reels with none', () async {
+      final failing = ProviderContainer.test(
+        overrides: [
+          ...h.appOverrides,
+          referenceCountsProvider.overrideWith(
+            (ref) => Stream.error(StateError('disk full')),
+          ),
+        ],
+      )..listen(homeControllerProvider, (_, _) {});
+      await failing.read(reelsRepositoryProvider).create('Goa');
+
+      final state = await failing.read(homeControllerProvider.future);
+      expect([for (final s in state.reels) s.reel.name], ['Goa']);
+      expect(state.reels.single.referenceCount, 0);
+    });
+
+    test('a filter keeps the counts', () async {
+      await first();
+      final refs = container.read(referencesRepositoryProvider);
+      final goa = await reels.create('Goa');
+      await reels.create('London Food');
+      await refs.add(goa.id, 'https://youtube.com/shorts/A');
+      await settle();
+
+      container
+          .read(homeControllerProvider.notifier)
+          .setFilter(ReelFilter.collecting);
+      expect(countOf('Goa'), 1);
+      expect(countOf('London Food'), 0);
+    });
   });
 
   group('covers and the thumbnail cache', () {

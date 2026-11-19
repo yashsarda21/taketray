@@ -150,14 +150,21 @@
 
          In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
     <queries>
-        <!-- The three editors TakeTray hands clips to (D-121): Android 11+
-             hides other apps unless they are named here, so without these an
-             installed editor would read as missing. Exactly these three; the
-             names live in Dart (EditorApp.packageName) and two tests check
+        <!-- The three editors TakeTray hands clips to (D-121), and the apps
+             the reference links come from (D-155): Android 11+ hides other
+             apps unless they are named here, so without these an installed
+             editor would read as missing, and a reference card could not show
+             its source app's own icon (Instagram, YouTube, TikTok in its two
+             packages). Exactly these; the names live in Dart
+             (EditorApp.packageName, sourceAppPackages) and two tests check
              them. The share chooser and the market:// link need no entry. -->
         <package android:name="com.lemon.lvoverseas"/>
         <package android:name="com.instagram.basel"/>
         <package android:name="com.frontrow.vlog"/>
+        <package android:name="com.instagram.android"/>
+        <package android:name="com.google.android.youtube"/>
+        <package android:name="com.zhiliaoapp.musically"/>
+        <package android:name="com.ss.android.ugc.trill"/>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>

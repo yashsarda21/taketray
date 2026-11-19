@@ -6,16 +6,12 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Phase 4
 
-- Phase 3 left these (D-76):
-  - The Shooting mode card's `rows` slot (D-79) holds the Add earlier videos row; Phase 4/5 puts References first in the same list.
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
 ## Phase 9 (references)
 
-- Phase 4 left these (final review M-6, D-80): the reel card's **references badge**, the Reel details form's **link field**, and the **References section** on the reel page (under Shot ideas).
-- The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it.
-- The reference card's "Open" button takes half the row at 2×.
-- The banner margin is not configurable (`refs.js` overrides it).
+- The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it. (9A Task 2 adds `firstLinkIn`; 9B's share uses it.)
+- The banner margin is not configurable (`refs.js` overrides it). (9B: the Save reference sheet's "Already saved" banner.)
 
 ## Phase 10 (onboarding and settings)
 

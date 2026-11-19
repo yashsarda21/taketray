@@ -1061,6 +1061,15 @@ abstract final class TtMetrics {
   /// wraps it; this keeps a long label from squeezing the title away).
   static const double referenceOpenMaxWidth = 120;
 
+  /// The font size the "Open" mark reads the text scale from: it is asked
+  /// how large 14 sp has become.
+  static const double referenceOpenProbeSize = 14;
+
+  /// From this scaled size on (21 sp, which is 150 % of the 14 sp probe) the
+  /// "Open" mark shows only its icon, so the word does not take half the row
+  /// (not in the prototype, which never scales text).
+  static const double referenceOpenIconOnlyFrom = 21;
+
   // ---- Add-reference tile ----
 
   /// Least height of the add-reference tile.

@@ -5,6 +5,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/domain/rules/reference_url.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
@@ -89,7 +90,7 @@ class ReferencesRepository {
               reelId: reelId,
               url: url.toString(),
               source: referenceSourceOf(url),
-              label: Value(_cleanLabel(label)),
+              label: Value(cleanReferenceLabel(label)),
               createdAt: _clock.storedNow(),
             ),
           );
@@ -119,29 +120,41 @@ class ReferencesRepository {
         _db.reelReferences,
       )..where((r) => r.id.equals(id))).getSingleOrNull();
       if (row == null) throw StateError('No reference with id $id');
-      await (_db.update(_db.reelReferences)..where((r) => r.id.equals(id)))
-          .write(ReelReferencesCompanion(label: Value(_cleanLabel(label))));
+      await (_db.update(
+        _db.reelReferences,
+      )..where((r) => r.id.equals(id))).write(
+        ReelReferencesCompanion(label: Value(cleanReferenceLabel(label))),
+      );
       await _touchReel(row.reelId);
     });
     _log.info('Set the label of reference $id');
   }
 
-  /// Deletes reference [id] and sets its reel's `updatedAt` to now; an unknown
-  /// id deletes nothing and changes nothing. The same link can be saved again
-  /// afterwards.
-  Future<void> delete(int id) async {
-    final removed = await _db.transaction(() async {
+  /// Deletes reference [id] and sets its reel's `updatedAt` to now, and
+  /// returns what Undo needs to put it back (D-154); an unknown id deletes
+  /// nothing, changes nothing and returns null. The same link can be saved
+  /// again afterwards.
+  Future<ReferenceRemoveUndo?> delete(int id) async {
+    final record = await _db.transaction<ReferenceRemoveUndo?>(() async {
       final row = await (_db.select(
         _db.reelReferences,
       )..where((r) => r.id.equals(id))).getSingleOrNull();
-      if (row == null) return 0;
+      if (row == null) return null;
+      final before = await _updatedAtOf(row.reelId);
       await (_db.delete(
         _db.reelReferences,
       )..where((r) => r.id.equals(id))).go();
-      await _touchReel(row.reelId);
-      return 1;
+      final after = _clock.storedNow();
+      await _touchReel(row.reelId, after);
+      return ReferenceRemoveUndo(
+        reference: _toReference(row),
+        touch: before == null
+            ? null
+            : ReelTouch(reelId: row.reelId, before: before, after: after),
+      );
     });
-    _log.info('Deleted $removed references (id $id)');
+    _log.info('Deleted ${record == null ? 0 : 1} references (id $id)');
+    return record;
   }
 
   /// The references of reel [reelId], newest first (ties: highest id first),
@@ -153,6 +166,16 @@ class ReferencesRepository {
               (r) => OrderingTerm.desc(r.createdAt),
               (r) => OrderingTerm.desc(r.id),
             ]))
+          .watch()
+          .map((rows) => [for (final row in rows) _toReference(row)]);
+
+  /// Every reference of every reel, newest first (ties: highest id first),
+  /// again after every change.
+  Stream<List<ReelReference>> watchAll() =>
+      (_db.select(_db.reelReferences)..orderBy([
+            (r) => OrderingTerm.desc(r.createdAt),
+            (r) => OrderingTerm.desc(r.id),
+          ]))
           .watch()
           .map((rows) => [for (final row in rows) _toReference(row)]);
 
@@ -171,19 +194,16 @@ class ReferencesRepository {
     );
   }
 
-  /// A blank label is no label; otherwise the trimmed text.
-  String? _cleanLabel(String? label) {
-    if (label == null) return null;
-    final trimmed = normalizeName(label);
-    return trimmed.isEmpty ? null : trimmed;
-  }
-
   /// Sets the reel's `updatedAt` to now, so a reference change moves the reel
   /// to the top of Home (D-58). Run inside a transaction.
-  Future<void> _touchReel(int reelId) =>
+  Future<void> _touchReel(int reelId, [DateTime? at]) =>
       (_db.update(_db.reels)..where((r) => r.id.equals(reelId))).write(
-        ReelsCompanion(updatedAt: Value(_clock.storedNow())),
+        ReelsCompanion(updatedAt: Value(at ?? _clock.storedNow())),
       );
+
+  Future<DateTime?> _updatedAtOf(int reelId) async => (await (_db.select(
+    _db.reels,
+  )..where((r) => r.id.equals(reelId))).getSingleOrNull())?.updatedAt;
 
   Future<void> _requireReel(int reelId) async {
     final row = await (_db.select(

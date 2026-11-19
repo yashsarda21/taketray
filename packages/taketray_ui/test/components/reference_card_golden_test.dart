@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:taketray_ui/src/components/internal/menu_panel.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_golden.dart';
 
 /// The width of a full-width card at 360 dp (16 + 328 + 16).
 const _full = 328.0;
+
+const _items = [
+  TtMenuItem<String>('edit', 'Edit label', icon: Symbols.edit_rounded),
+  TtMenuItem<String>(
+    'remove',
+    'Remove reference',
+    icon: Symbols.delete_rounded,
+    destructive: true,
+  ),
+];
 
 void main() {
   ttGoldenTest(
@@ -32,6 +43,9 @@ void main() {
               'Instagram · instagram.com/reel/a-very-long-link-that-goes-on',
         ),
       ),
+      // An open MenuAnchor overlay cannot be painted by the CI variant (see
+      // menu_golden_test.dart), so the panel is drawn under the card.
+      TtScenario('with the menu open', _Card(menuOpen: true)),
       TtScenario('add reference tile', _Add()),
       TtScenario(
         'add reference tile, long text',
@@ -52,15 +66,38 @@ class _Card extends StatelessWidget {
     this.subtitle = 'Instagram · instagram.com/reel/abc',
     this.more = true,
     this.letter = 'I',
+    this.menuOpen = false,
   });
 
   final String title;
   final String subtitle;
   final bool more;
   final String? letter;
+  final bool menuOpen;
 
   @override
-  Widget build(BuildContext context) => TtReferenceCard(
+  Widget build(BuildContext context) {
+    final card = _card(context);
+    if (!menuOpen) return card;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        card,
+        Material(
+          type: MaterialType.transparency,
+          elevation: TtMetrics.menuElevation,
+          shadowColor: context.scheme.shadow,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(TtMetrics.menuRadius),
+          ),
+          child: TtMenuPanel<String>(items: _items, onSelected: (_) {}),
+        ),
+      ],
+    );
+  }
+
+  Widget _card(BuildContext context) => TtReferenceCard<String>(
     title: title,
     subtitle: subtitle,
     sourceIcon: _SourceIcon(letter: letter),
@@ -68,7 +105,8 @@ class _Card extends StatelessWidget {
     openSemanticLabel: 'Open reference: $title, $subtitle',
     onOpen: () {},
     moreSemanticLabel: more ? 'More options for $title' : null,
-    onMore: more ? () {} : null,
+    moreItems: more ? _items : null,
+    onMoreSelected: more ? (_) {} : null,
   );
 }
 

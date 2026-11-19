@@ -11,6 +11,7 @@ import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/platform/editors_bridge.dart';
 import 'package:taketray/platform/files_bridge.dart';
+import 'package:taketray/platform/links_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 import '../data/media/media_harness.dart';
@@ -18,6 +19,7 @@ import 'fake_background_bridge.dart';
 import 'fake_copy_bridge.dart';
 import 'fake_editors_bridge.dart';
 import 'fake_files_bridge.dart';
+import 'fake_links_bridge.dart';
 import 'fixed_onboarding.dart';
 
 export '../data/media/media_harness.dart';
@@ -86,6 +88,9 @@ class VmHarness {
   /// Settings).
   final FakeFilesBridge files = FakeFilesBridge();
 
+  /// The links bridge in the overrides (Phase 9A: opening a reference).
+  final FakeLinksBridge links = FakeLinksBridge();
+
   /// Makes the onboarding controller of [appOverrides], once per container.
   final OnboardingController Function() onboarding;
 
@@ -98,6 +103,7 @@ class VmHarness {
     editorsBridgeProvider.overrideWithValue(editors),
     copyBridgeProvider.overrideWithValue(copy),
     filesBridgeProvider.overrideWithValue(files),
+    linksBridgeProvider.overrideWithValue(links),
     clockProvider.overrideWithValue(media.clock),
   ];
 

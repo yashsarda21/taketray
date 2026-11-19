@@ -12,6 +12,8 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/references/view_models/shooting_references.dart';
+import 'package:taketray/features/references/views/shooting_references_sheet.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/open_camera.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
@@ -37,6 +39,9 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   first stored clip that is not missing, as the prototype does; none if
 ///   there is no such clip), and rows at the bottom (D-79: the card's `rows`
 ///   slot holds References first, then Add earlier videos, then the strip):
+///   - **References · N** (link icon), when the Collecting and Ready to edit
+///     reels have N references (D-160); it opens the References sheet
+///     (`showShootingReferencesSheet`);
 ///   - **Add earlier videos** (history icon, "Shot before Shooting mode was
 ///     on", a chevron), while access is full; it opens the sheet, and stays
 ///     after an add (D-90);
@@ -98,6 +103,23 @@ class ShootingModeSection extends ConsumerWidget {
           )
         : null;
 
+    // D-160: the References of the Collecting and Ready to edit reels, while
+    // Shooting mode is on. Not read while it is off, and a failed or pending
+    // read shows no row.
+    final referenceCount = shooting != null && shooting.on
+        ? shootingReferenceCount(
+            ref.watch(shootingReferencesProvider).value ?? const [],
+          )
+        : 0;
+    final referencesRow = referenceCount > 0
+        ? TtCardRow(
+            kind: TtCardRowKind.link,
+            icon: Symbols.link_rounded,
+            title: l10n.referencesHeader(referenceCount),
+            onPressed: () => unawaited(showShootingReferencesSheet(context)),
+          )
+        : null;
+
     final Widget card;
     if (shooting == null) {
       card = const SizedBox.shrink();
@@ -143,8 +165,7 @@ class ShootingModeSection extends ConsumerWidget {
               ),
         cameraLabel: l10n.shootingOpenCamera,
         onOpenCamera: () => unawaited(openCameraOrSay(context, ref)),
-        // References (Phase 4/5) will come first in this list.
-        rows: [?earlierRow],
+        rows: [?referencesRow, ?earlierRow],
         toTagStrip: pending.isEmpty
             ? null
             : TtCardRow(

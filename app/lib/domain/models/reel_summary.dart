@@ -25,5 +25,10 @@ abstract class ReelSummary with _$ReelSummary {
     /// id) that has a picture to show: a MediaStore clip that is not missing
     /// and holds a MediaStore number above 0. Null when the reel has none.
     Clip? cover,
+
+    /// How many references (saved links) the reel has. The repository's query
+    /// does not read it: Home joins it in from
+    /// `ReferencesRepository.watchCounts` (D-158), so it is 0 elsewhere.
+    @Default(0) int referenceCount,
   }) = _ReelSummary;
 }

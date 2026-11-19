@@ -98,16 +98,25 @@ class ManifestTest {
     }
 
     @Test
-    fun `the three editors are queried by package, and nothing else is`() {
-        // The package names live in Dart (EditorApp.packageName, D-119); a Dart
-        // test checks exactly these three against the source manifest. The
-        // unit-test manifest also merges androidx.test's own queries (test
-        // builds only), so only those may stand beside the three.
+    fun `the three editors and the source apps are queried by package, and nothing else is`() {
+        // The package names live in Dart (EditorApp.packageName, D-119, and
+        // sourceAppPackages, D-155); a Dart test checks exactly these seven
+        // against the source manifest. The unit-test manifest also merges
+        // androidx.test's own queries (test builds only), so only those may
+        // stand beside the seven.
         val editors = listOf("com.frontrow.vlog", "com.instagram.basel", "com.lemon.lvoverseas")
+        val sources =
+            listOf(
+                "com.google.android.youtube",
+                "com.instagram.android",
+                "com.ss.android.ugc.trill",
+                "com.zhiliaoapp.musically",
+            )
+        val expected = (editors + sources).sorted()
         val queried = queriedPackages()
-        assertEquals(editors, queried.filter { it in editors }.sorted())
+        assertEquals(expected, queried.filter { it in expected }.sorted())
         val testTooling = listOf("androidx.test.", "com.google.android.apps.common.testing.")
-        val others = queried.filter { it !in editors }
+        val others = queried.filter { it !in expected }
         assertTrue("unexpected package queries: $others", others.all { p -> testTooling.any { p.startsWith(it) } })
     }
 
