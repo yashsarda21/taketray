@@ -90,7 +90,7 @@ class ReferencesRepository {
               reelId: reelId,
               url: url.toString(),
               source: referenceSourceOf(url),
-              label: Value(_cleanLabel(label)),
+              label: Value(cleanReferenceLabel(label)),
               createdAt: _clock.storedNow(),
             ),
           );
@@ -120,8 +120,11 @@ class ReferencesRepository {
         _db.reelReferences,
       )..where((r) => r.id.equals(id))).getSingleOrNull();
       if (row == null) throw StateError('No reference with id $id');
-      await (_db.update(_db.reelReferences)..where((r) => r.id.equals(id)))
-          .write(ReelReferencesCompanion(label: Value(_cleanLabel(label))));
+      await (_db.update(
+        _db.reelReferences,
+      )..where((r) => r.id.equals(id))).write(
+        ReelReferencesCompanion(label: Value(cleanReferenceLabel(label))),
+      );
       await _touchReel(row.reelId);
     });
     _log.info('Set the label of reference $id');
@@ -189,13 +192,6 @@ class ReferencesRepository {
           row.read(_db.reelReferences.reelId)!: row.read(count)!,
       },
     );
-  }
-
-  /// A blank label is no label; otherwise the trimmed text.
-  String? _cleanLabel(String? label) {
-    if (label == null) return null;
-    final trimmed = normalizeName(label);
-    return trimmed.isEmpty ? null : trimmed;
   }
 
   /// Sets the reel's `updatedAt` to now, so a reference change moves the reel

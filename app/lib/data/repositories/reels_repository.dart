@@ -59,18 +59,7 @@ class ReelsRepository {
     _checkDescription(description);
     final row = await _db.transaction(() async {
       await _checkUnique(name);
-      final now = _clock.storedNow();
-      return await _db
-          .into(_db.reels)
-          .insertReturning(
-            ReelsCompanion.insert(
-              name: normalizeName(name),
-              description: Value(_cleanDescription(description)),
-              status: ReelStatus.collecting,
-              createdAt: now,
-              updatedAt: now,
-            ),
-          );
+      return await _insertReel(name, description, _clock.storedNow());
     });
     _log.info('Created reel ${row.id}');
     return reelFromRow(row);
@@ -103,18 +92,7 @@ class ReelsRepository {
     final row = await _db.transaction(() async {
       await _checkUnique(name);
       final now = _clock.storedNow();
-      final reel = await _db
-          .into(_db.reels)
-          .insertReturning(
-            ReelsCompanion.insert(
-              name: normalizeName(name),
-              description: Value(_cleanDescription(description)),
-              status: ReelStatus.collecting,
-              createdAt: now,
-              updatedAt: now,
-            ),
-          );
-      final trimmed = label == null ? '' : normalizeName(label);
+      final reel = await _insertReel(name, description, now);
       await _db
           .into(_db.reelReferences)
           .insert(
@@ -122,7 +100,7 @@ class ReelsRepository {
               reelId: reel.id,
               url: link.toString(),
               source: referenceSourceOf(link),
-              label: Value(trimmed.isEmpty ? null : trimmed),
+              label: Value(cleanReferenceLabel(label)),
               createdAt: now,
             ),
           );
@@ -396,6 +374,21 @@ class ReelsRepository {
       }
     }
   }
+
+  /// Inserts a `collecting` reel created and updated at [now] and returns its
+  /// row. Run inside the write's transaction, after the checks.
+  Future<ReelRow> _insertReel(String name, String? description, DateTime now) =>
+      _db
+          .into(_db.reels)
+          .insertReturning(
+            ReelsCompanion.insert(
+              name: normalizeName(name),
+              description: Value(_cleanDescription(description)),
+              status: ReelStatus.collecting,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
 
   String? _cleanDescription(String? description) {
     if (description == null) return null;

@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/native.dart' show SqliteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
@@ -284,6 +285,8 @@ void main() {
       expect(reel.name, 'Goa');
       expect(reel.description, 'Beach trip');
       expect(reel.status, ReelStatus.collecting);
+      expect(reel.createdAt, _t0);
+      expect(reel.updatedAt, _t0);
       final saved = await references();
       expect(saved, hasLength(1));
       expect(saved.single.reelId, reel.id);
@@ -397,7 +400,7 @@ void main() {
 
       await expectLater(
         repo.createWithReference('Goa', url: 'https://example.com/a'),
-        throwsA(anything),
+        throwsA(isA<SqliteException>()),
       );
 
       expect(await db.select(db.reels).get(), isEmpty);
