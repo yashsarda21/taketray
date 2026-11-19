@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -5,10 +6,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/domain/rules/reference_url.dart';
+import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/references/views/reference_sheet.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -27,6 +32,31 @@ const _noLink = "There's no link on your clipboard.";
 const _notALink =
     "That isn't a link. In Instagram: Share › Copy link, then paste it here.";
 const _failed = "Couldn't save the reference.";
+
+/// A references repository whose `add` waits until [gate] completes, then
+/// fails with [failWith] when it is set: a slow save the sheet can be
+/// dragged away from.
+class _HeldReferences extends ReferencesRepository {
+  // The parameters of ReferencesRepository are private, so they cannot be
+  // super parameters.
+  // ignore: use_super_parameters, the same reason
+  _HeldReferences(AppDatabase db, Clock clock) : super(db, clock);
+
+  final Completer<void> gate = Completer<void>();
+  Object? failWith;
+
+  @override
+  Future<AddReferenceResult> add(
+    int reelId,
+    String rawUrl, {
+    String? label,
+  }) async {
+    await gate.future;
+    final failure = failWith;
+    if (failure != null) throw failure;
+    return await super.add(reelId, rawUrl, label: label);
+  }
+}
 
 void main() {
   late VmHarness h;
@@ -73,6 +103,7 @@ void main() {
     ReelReference? editing,
     double textScale = 1,
     Brightness brightness = Brightness.light,
+    ReferencesRepository? references,
   }) => pumpScreen(
     tester,
     Scaffold(
@@ -84,7 +115,11 @@ void main() {
         ),
       ),
     ),
-    overrides: h.appOverrides,
+    overrides: [
+      ...h.appOverrides,
+      if (references != null)
+        referencesRepositoryProvider.overrideWithValue(references),
+    ],
     textScale: textScale,
     brightness: brightness,
   );
@@ -94,9 +129,25 @@ void main() {
     WidgetTester tester, {
     double textScale = 1,
     Brightness brightness = Brightness.light,
+    ReferencesRepository? references,
   }) async {
     goa = await real(tester, () => reels.create('Goa'));
-    await pumpHostOver(tester, textScale: textScale, brightness: brightness);
+    await pumpHostOver(
+      tester,
+      textScale: textScale,
+      brightness: brightness,
+      references: references,
+    );
+  }
+
+  /// Taps Save, then drags the sheet away (a tap on the scrim) while the
+  /// save is still held.
+  Future<void> saveThenDismiss(WidgetTester tester) async {
+    await tester.tap(find.text('Save'));
+    await tester.pump();
+    await tester.tapAt(const Offset(10, 10));
+    await tester.pumpAndSettle();
+    expect(find.byType(TtSheet), findsNothing);
   }
 
   Future<void> open(WidgetTester tester) async {
@@ -390,6 +441,78 @@ void main() {
       expect(await stored(tester), hasLength(1));
       expect(find.text('Already saved in Goa'), findsNothing);
       expect(find.text('Reference saved'), findsOneWidget);
+    });
+
+    group('a sheet dragged away while the save runs', () {
+      late _HeldReferences held;
+
+      setUp(() => held = _HeldReferences(h.media.db, h.media.clock));
+
+      Future<void> startHeldSave(WidgetTester tester) async {
+        await pumpHost(tester, references: held);
+        await open(tester);
+        await type(tester, 'Link', 'https://x.com/a');
+        await saveThenDismiss(tester);
+      }
+
+      testApp('a save that succeeds still shows "Reference saved"', (
+        tester,
+      ) async {
+        await startHeldSave(tester);
+        held.gate.complete();
+        await settleApp(tester);
+
+        expect(find.text('Reference saved'), findsOneWidget);
+        expect(find.text(_failed), findsNothing);
+        expect(await stored(tester), hasLength(1));
+        // Undo still works.
+        await tapAndSettle(tester, find.text('Undo'));
+        expect(await stored(tester), isEmpty);
+      });
+
+      testApp('a save that fails shows the failure as a snack', (tester) async {
+        held.failWith = StateError('forced');
+        await startHeldSave(tester);
+        held.gate.complete();
+        await settleApp(tester);
+
+        expect(find.text(_failed), findsOneWidget);
+        expect(find.text('Reference saved'), findsNothing);
+        expect(await stored(tester), isEmpty);
+      });
+
+      testApp('a link already saved shows where, as a snack (D-157)', (
+        tester,
+      ) async {
+        goa = await real(tester, () => reels.create('Goa'));
+        await saved(tester, 'https://x.com/a');
+        await pumpHostOver(tester, references: held);
+        await open(tester);
+        await type(tester, 'Link', 'https://x.com/a');
+        await saveThenDismiss(tester);
+        held.gate.complete();
+        await settleApp(tester);
+
+        expect(find.text('Already saved in Goa'), findsOneWidget);
+        expect(find.text('Reference saved'), findsNothing);
+        expect(find.text(_failed), findsNothing);
+        expect(await stored(tester), hasLength(1));
+      });
+
+      testApp('a link the repository refuses shows the not-a-link text, '
+          'as a snack (D-157)', (tester) async {
+        held.failWith = const InvalidInputException(
+          ReferenceUrlProblem.invalid,
+        );
+        await startHeldSave(tester);
+        held.gate.complete();
+        await settleApp(tester);
+
+        expect(find.text(_notALink), findsOneWidget);
+        expect(find.text('Reference saved'), findsNothing);
+        expect(find.text(_failed), findsNothing);
+        expect(await stored(tester), isEmpty);
+      });
     });
 
     testApp('Cancel closes the sheet and saves nothing', (tester) async {

@@ -45,7 +45,8 @@ final Logger _log = Logger('referenceSheet');
 /// above its buttons, and the text is kept (D-85).
 ///
 /// The snacks are on the root messenger, so they show after the sheet has
-/// closed.
+/// closed. A save the user dragged the sheet away from still finishes: it
+/// shows "Reference saved", or, for a problem, its words as a snack.
 Future<void> showReferenceSheet(
   BuildContext context, {
   required int reelId,
@@ -83,8 +84,7 @@ Future<void> showReferenceSheet(
       },
       // Only used when the sheet is gone: then nothing is modal, and a snack
       // is seen.
-      onFailedAfterClose: () =>
-          snacks.show(l10n.referenceSaveFailed, done: false),
+      onProblemAfterClose: (message) => snacks.show(message, done: false),
     ),
   );
 }
@@ -94,13 +94,16 @@ class _ReferenceSheet extends ConsumerStatefulWidget {
     required this.reelId,
     required this.editing,
     required this.onSaved,
-    required this.onFailedAfterClose,
+    required this.onProblemAfterClose,
   });
 
   final int reelId;
   final ReelReference? editing;
   final ValueChanged<ReelReference> onSaved;
-  final VoidCallback onFailedAfterClose;
+
+  /// Tells the user what went wrong with a save that finished after the sheet
+  /// was dragged away (the sheet's own lines have no screen then).
+  final ValueChanged<String> onProblemAfterClose;
 
   @override
   ConsumerState<_ReferenceSheet> createState() => _ReferenceSheetState();
@@ -186,7 +189,7 @@ class _ReferenceSheetState extends ConsumerState<_ReferenceSheet> {
     final ReelReference saved;
     if (editing != null) {
       if (!await controller.saveLabel(editing.id, _label.text)) {
-        return _failedSave();
+        return _failedSave(l10n);
       }
       saved = editing;
     } else {
@@ -199,27 +202,28 @@ class _ReferenceSheetState extends ConsumerState<_ReferenceSheet> {
           return _linkProblem(l10n.referenceAlreadyIn(reelName));
         // The field stops at 60 characters, so this is a bug, told as one.
         case ReferenceLabelTooLong() || ReferenceSaveFailed():
-          return _failedSave();
+          return _failedSave(l10n);
       }
     }
     if (mounted) navigator.pop();
     widget.onSaved(saved);
   }
 
-  /// Says what is wrong with the link, under its field, and goes back to it.
+  /// Says what is wrong with the link, under its field, and goes back to it;
+  /// in a snack if the sheet was dragged away meanwhile.
   void _linkProblem(String message) {
-    if (!mounted) return;
+    if (!mounted) return widget.onProblemAfterClose(message);
     setState(() => _linkError = message);
     _linkFocus.requestFocus();
   }
 
   /// Tells the user the save failed, in the sheet, or in a snack if the sheet
   /// was dragged away meanwhile.
-  void _failedSave() {
+  void _failedSave(AppLocalizations l10n) {
     if (mounted) {
       setState(() => _failed = true);
     } else {
-      widget.onFailedAfterClose();
+      widget.onProblemAfterClose(l10n.referenceSaveFailed);
     }
   }
 

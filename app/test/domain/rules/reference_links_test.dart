@@ -184,19 +184,21 @@ void main() {
       expect(pastedLink('https://'), isNull);
     });
 
-    test('whatever it gives, typedLink gives the same (Paste and Save agree)',
-        () {
-      for (final text in [
-        'https://x.com/a',
-        'Look https://instagram.com/reel/A1 wow',
-        'a https://youtu.be/AAA b https://youtu.be/BBB',
-        'see https://hello.',
-        'https://hello',
-      ]) {
-        final pasted = pastedLink(text);
-        if (pasted != null) expect(typedLink(pasted), pasted, reason: text);
-      }
-    });
+    test(
+      'whatever it gives, typedLink gives the same (Paste and Save agree)',
+      () {
+        for (final text in [
+          'https://x.com/a',
+          'Look https://instagram.com/reel/A1 wow',
+          'a https://youtu.be/AAA b https://youtu.be/BBB',
+          'see https://hello.',
+          'https://hello',
+        ]) {
+          final pasted = pastedLink(text);
+          if (pasted != null) expect(typedLink(pasted), pasted, reason: text);
+        }
+      },
+    );
 
     test('a very long text is fine', () {
       expect(
