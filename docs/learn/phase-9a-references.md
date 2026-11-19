@@ -231,8 +231,10 @@ A link a person copied in Instagram is the start of every reference. Android 12 
 ```dart
 text = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
 ...
-final link = text == null ? null : firstLinkIn(text);
+final link = text == null ? null : pastedLink(text);
 ```
+
+`pastedLink` is `firstLinkIn` plus the dotted-host rule `typedLink` uses, so Paste never puts into the field something Save would then call "not a link" (`see https://hello.` is no link on either side).
 
 **2. A result, not an exception, for what the user can fix.** The controller returns one of five results and the sheet switches over them, so the compiler makes sure every case is handled:
 
