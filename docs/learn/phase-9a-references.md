@@ -470,3 +470,48 @@ Then break one thing on purpose. In `shooting_references.dart`, change `_listed`
 ### Decisions
 
 - D-160: the data and its order, the row and when it shows, the sheet's content and taps, and the failure line in the sheet.
+
+## 9. On the S24
+
+**What we built:** an on-device test for references, and a list of hand checks for what a test cannot see. The test is `app/patrol_test/references_test.dart`; the list is "Phase 9A check" in `docs/dev-setup.md`.
+
+- **Four flows.** *A typed link and a label*: the Add row, the Add reference sheet, the card, a tap that reaches the links bridge with the stored link, a link the phone cannot open ("No app on this phone can open this link."), Edit label, Remove, Undo (the same reference comes back, not a copy) and Home's badge. *Paste*: a clipboard with no link says so and fills nothing, then a caption with a link is pasted (only the link goes in), Save, the card, the badge shows 1 and its tap lands on the reel with the section in view. *A new reel with a Reference link*: the reel is made with its reference and its page shows it. *Shooting mode: the References sheet*: two Collecting reels with references, the card's References row opens the sheet, a card tap reaches the bridge, one group folds away, and its header opens that reel at its References.
+- **No real link.** The app's links bridge is swapped for a fake that writes down each link it is asked to open and answers "opened". No browser, Instagram or YouTube ever starts in front of the test. The real apps are hand checks.
+- **Starts clean, ends clean.** Each flow deletes the `TakeTray Test *` reels before it starts and again at the end, even when it failed, and puts back the watched folder and (in flow 2) empties the clipboard. No flow trusts a count another flow could have changed.
+- **Phone safety.** Only TakeTray Dev. No permission is asked, no video is made, nothing is written outside the app's own data, and nothing that names a reel or a link is printed.
+- **Not run yet.** The flows are written and checked against the phone's rules with no device. The phone run comes last, after the review of the whole phase; the controller fills in its results below.
+
+**Why TakeTray needs it:** a widget test draws one screen at a time on a computer. Only the phone shows the whole way: the reel page, the sheet over it, the keyboard, the database under both and the Home screen that changes after a reference is saved.
+
+**Key ideas:**
+
+- **Swap the door, keep the room.** The fake replaces only the one call that would start another app. The sheet, the repository, the database and the Home badge are the real code.
+- **A "not there" check needs a "there" beside it.** Every check that something is absent first waits for something that must be on the same screen, so a screen that has not loaded yet cannot make it pass. `_expectAbsent` builds that rule into its arguments.
+- **Turn a mode on the cheapest safe way.** Shooting mode's switch asks for two permissions, and references need neither, so flow 4 turns the mode on in the database and turns it off again, through the controller, in the tear-down.
+- **Guard the rules in the source.** A test that cannot run here still has a small unit test that reads its file: the fake is installed on every pump, every `enterText` keeps the keyboard up, nothing is tapped at a point, and the tear-down runs every step.
+
+**Where it lives:** `app/patrol_test/references_test.dart`, `app/patrol_test/support/patrol_links_bridge.dart` (the fake bridge), `app/test/patrol_support/patrol_links_bridge_test.dart` and `references_source_test.dart` (their tests), `docs/dev-setup.md` ("Phase 9A check").
+
+**Try it yourself:** check that the file builds without a phone. From the repo root:
+
+```bash
+tool/patrol build android --target patrol_test/references_test.dart --debug
+cd app && ../tool/flutter test test/patrol_support/patrol_links_bridge_test.dart test/patrol_support/references_source_test.dart
+```
+
+The first ends with `Completed building apk` and the two APK paths. For the second, break the fake on purpose: in `patrol_links_bridge.dart` change `bool answer = true;` to `false` and "answers true and records the link, in order" fails; delete `_opened.add(url);` and the recorded-links tests fail. (Change them back.) Then delete the line `linksBridgeProvider.overrideWithValue(env.links),` from `references_test.dart`: "every app that is pumped has the fake links bridge" fails, which is exactly the mistake that would let a real link open.
+
+**Decisions:** D-161 (all of this section), with D-152 (the same split for Settings), D-143 (the lifecycle state) and D-153 to D-160 (what the flows check) as background.
+
+**Phone results.** To be filled in by the controller after the run on the S24.
+
+**What this teaches:** a flow you cannot run still has to be written so that it cannot lie. Its dangerous door (a real link opening) is shut by a fake that is guarded in the source, every "absent" check is anchored to a "present" one, and what only a person can judge (the real apps, the paste message, TalkBack, large text, colours and icons) is written down as numbered hand checks instead of being forgotten.
+
+## What the phase leaves you with
+
+- **A reference is a plain, tested row**: a link cleaned so the same page is never saved twice, an optional label, and the kind of page it points to. Removing one hands back a record, so Undo puts back exactly what was there.
+- **The link rules are pure functions** (`firstLinkIn`, `typedLink`, `shortLink`, `referenceKindOf`), so a caption, a typed address and a long link are all handled in one place and tested without a phone.
+- **Opening a link and reading an app's icon go through one small bridge** that needs no permission, and each has a fake, so every screen that uses them is tested without a phone.
+- **The clipboard is read only when the user taps Paste.** Nothing reads it on open, so Android's paste message shows only after the tap.
+- **The same card appears in three places** (the reel page, the Edit label sheet's source row and the Shooting mode sheet) with one set of words and one icon rule.
+- **Phase 9B plugs into it.** Sharing a reel from Instagram to TakeTray will save into the same table through the same rules.

@@ -40,7 +40,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
-| 9 | Reference reels | Next |
+| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A ✅ Done, **Next: Phase 9B Sharing in** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -218,6 +218,18 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Allowed permission rows open Android's settings** (an owner request from the S24): Android does not let an app take back its own permission, so when Video access says "All videos" or Notifications says "Allowed", tapping that row opens TakeTray's page in Android's settings, where it can be turned off.
 - **Phone tests** on the S24 (Android 17): five on-device flows (the switches, the switches reaching the background, a watched folder, export then import, and Send error log). The first run passed 4 of 5; the Send error log flow failed because the test's safety fake refused to open the share sheet, a fault in the test and not the app. It now uses the real share sheet, and the second run passed 5 of 5. The real folder and document pickers, the look against the prototype, TalkBack and a real reminder arriving cannot be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 10B check): checks 1 to 18 all passed, including the new permission rows.
 - **Learning guide**: [docs/learn/phase-10b-settings.md](docs/learn/phase-10b-settings.md) explains the whole phase in plain English, with the real code.
+
+### Phase 9A: References in the app
+- **References on a reel**: a reel's page has a References section. With none it shows one dashed **Add reference** row ("Save a reel you want to recreate"); with some it shows "References · 3", a small **Add** button and a card per link, newest first. Tapping a card opens the link in the Instagram, YouTube or TikTok app, or the browser, whichever the phone picks; if nothing can, it says so. Each card's ⋮ menu has **Edit label**, **Copy link** and **Remove** (instant, with **Undo**). A reel with links and no shot ideas gets a note, "Write the shots you need", that opens its details on the shot ideas.
+- **Add reference sheet**: type or paste a link and give it an optional label of up to 60 characters. **Paste** is the only thing that ever reads the clipboard, so Android's own paste message shows only after you tap it; it takes the first link out of a whole caption. A link that is not a link, or is already saved on the reel, is told under the field. **Edit label** is the same sheet for a link already saved.
+- **The reel form's Reference link**: the New reel and Reel details sheets have an optional link box. A new reel is made with its link in one step (all or nothing), and an existing reel keeps the link in its references; the help line says how many it has.
+- **The Home badge**: a reel card with references shows a small badge with their number. Tapping it opens the reel at its References section, scrolled into view and flashed once (not with "Remove animations").
+- **Shooting mode's References**: while Shooting mode is on and a Collecting or Ready to edit reel has a reference, its card gets a **References · N** row. It opens a sheet that groups the references by reel with each reel's shot ideas, so they can be read while filming; a group can be folded away, a card opens its link and a header opens that reel at its References.
+- **The phone's own icons**: a card shows the real icon of the Instagram, YouTube or TikTok app when it is installed, and a plain link symbol otherwise. TakeTray never draws a logo of its own.
+- **Under the hood**: a new Links bridge (one Pigeon file, no permission; the app declares the few `<queries>` it needs to read icons) opens links, and the link rules (finding the first link in a caption, cleaning one so the same page is not saved twice, short forms for display) are plain tested functions. The database is unchanged (still schema 2) and a backup already held references.
+- **Phone tests**: four on-device flows are written (a typed link, Paste with the Home badge, the reel form's link, and the Shooting mode sheet) with a fake that stands in for the links bridge, so no real link is ever opened; they run on the S24 last, together with the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9A check): real Instagram and YouTube, Android's paste message, TalkBack, 200 % text, dark mode, the Shooting mode sheet's colours, the keyboard on opening the New reel sheet, and an install over the release build with references kept.
+- **Still to come**: Phase 9B, **Sharing in**: sharing a reel from Instagram straight to TakeTray to save it as a reference.
+- **Learning guide**: [docs/learn/phase-9a-references.md](docs/learn/phase-9a-references.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 
