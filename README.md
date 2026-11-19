@@ -39,8 +39,9 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 6 | Background detection and notifications | ✅ Done |
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
-| 9 | Reference reels | Next |
-| 10 | Onboarding, settings, error log | Planned |
+| 10A | First launch (splash, welcome, onboarding) | ✅ Done |
+| 10B | Settings, watched folders, export and import, error log | Next |
+| 9 | Reference reels (moved after Phase 10, D-134) | Planned |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -196,6 +197,18 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Phone tests** on the S24: sending 3 clips to CapCut in one share, an editor that is not installed, a real VN copy of 3 clips with the screen kept on, cancelling a copy, adding a clip later, removing a clip during a session, sharing from the viewer, and the reminder's tap. All 8 passed after one fix to the test (a greyed row cannot be tapped like a button), and a deliberately wrong expectation failed as it should. Every other on-phone test file passes (23 tests) and the release check says `RELEASE PERMISSIONS OK`. The real editors, Android's consent dialog and large copies can't be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 8 check, 12 steps, 2026-11-15): all behaved as written. The hand checks also found a red error screen, caused by TakeTray changing a screen's state while the screen was still being built; it is fixed and did not come back.
 - **Still to come**: copying in the background with a foreground service, and moving clips into a reel album instead of copying, are parked in [docs/later.md](docs/later.md) until users ask. The on/off switch for the reminder belongs to Settings in Phase 10.
 - **Learning guide**: [docs/learn/phase-8-editor-handoff.md](docs/learn/phase-8-editor-handoff.md) explains the whole phase in plain English, with the real code.
+
+### Phase 10A: First launch
+Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs reference reels, and Phase 9 will later plug "save a reference on the first launch" into this onboarding. It is built as two branches, 10A (first launch) and 10B (Settings).
+
+- **Animated launch splash**: on every launch the tray icon rises in, two clips drop into it and the tray squashes slightly as it catches them, in under a second (920 ms), once, never looping. When the first screen is ready the splash fades out in 200 ms and never makes you wait for the animation to finish. Android 11 shows the still icon, and "Remove animations" shows the finished icon.
+- **The B · Tray welcome**: on the first launch, a welcome screen plays a 3.6 s intro (three clips drop into a tray, each reel tab pops on, the count ticks up to "23 takes · 3 reels", then the headline "One tray for every take" rises into place). **Get started** works from the first frame and a tap on the picture skips to the end. The intro plays once: if you close the app and come back before finishing, you see the welcome's final frame, never a blank app. With "Remove animations" on, it shows the final frame at once.
+- **Onboarding steps in TakeTray's own words**: **video access** (why TakeTray needs it, then Android's own question with a hint to choose "Allow all", and a clear look for "not allowed" with a way to carry on in Manual mode), **notifications** (asked on Android 13 and newer, with "Not now" allowed) and **planning your first reels** (type names or tap ideas such as Food, then **Create 2 reels** or **Skip for now**; the reels are saved all together or not at all). Back goes to the previous step; "onboarding done" is saved only when the last step finishes.
+- **The Shooting mode tip**: once, on Reels, a small tip with a ring around the Shooting mode card points at the switch. **Got it**, or turning Shooting mode on, removes it for good.
+- **Under the hood**: a router redirect keeps every other screen away until onboarding is done; the three first-launch flags are phone state, so an export and import never carries them.
+- **Phone tests** on the S24 (Android 17): four on-device flows (a fresh phone, Manual mode, closing midway, and the Home tip with the Shooting mode switch). The first two runs found faults in the test harness, not the app (Patrol's typing closed the keyboard connection, and an empty lifecycle state made Android 16 and newer close the app on Back); both were fixed and the third run passed 4 of 4. All nine older on-device test files passed once more. The splash, the intro's smoothness, TalkBack, a real kill and Android's own settings page cannot be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 10A check): checks 1 to 19 all passed, and the release build installed over the real app showed onboarding once and kept its data. (The blur behind Android's own permission dialog is the system's, not TakeTray's.)
+- **Still to come**: the full Settings screen, Watched folders, Export and import and the error log are Phase 10B; reference reels are Phase 9.
+- **Learning guide**: [docs/learn/phase-10a-first-launch.md](docs/learn/phase-10a-first-launch.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 
