@@ -312,6 +312,61 @@ void main() {
       expect(taps, 1);
     });
 
+    testWidgets('in a Wrap two chips sit side by side, each as wide as its '
+        'label and no narrower than the 48 dp target', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Wrap(
+            children: [
+              TtSuggestionChip(label: 'London Food', onPressed: () {}),
+              TtSuggestionChip(label: 'Tokyo', onPressed: () {}),
+              TtSuggestionChip(label: 'A', onPressed: () {}),
+            ],
+          ),
+        ),
+      );
+
+      final chips = [
+        for (final e in find.byType(TtSuggestionChip).evaluate())
+          tester.getRect(find.byWidget(e.widget)),
+      ];
+      expect(chips[1].top, chips[0].top, reason: 'one row');
+      expect(chips[1].left, greaterThanOrEqualTo(chips[0].right));
+      expect(chips[2].top, chips[0].top);
+      expect(chips[0].width, lessThan(200), reason: 'not the full width');
+      expect(chips[2].width, greaterThanOrEqualTo(48));
+      // The label's own box is inside its chip.
+      expect(
+        tester.getRect(find.text('London Food')).width,
+        lessThanOrEqualTo(chips[0].width),
+      );
+    });
+
+    testWidgets('a label too long for the row ellipsizes inside the width it '
+        'is given, in a Wrap', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          SizedBox(
+            width: 200,
+            child: Wrap(
+              children: [
+                TtSuggestionChip(
+                  label: 'A very long idea for a reel name that keeps going',
+                  onPressed: () {},
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(
+        tester.getRect(find.byType(TtSuggestionChip)).width,
+        lessThanOrEqualTo(200),
+      );
+    });
+
     for (final brightness in Brightness.values) {
       testWidgets('passes the accessibility guidelines '
           '(${brightness.name})', (tester) async {

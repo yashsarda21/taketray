@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch splash icon (D-137): the tray rises, two clips drop into it
+     and it squashes slightly as it catches them, in 920 ms (Android's
+     recommended limit is 1000 ms). The numbers are in
+     design/handoff/launch-and-welcome-motion.md section 1. With "Remove
+     animations" on, Android shows the settled vector. -->
+<animated-vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/splash_icon_vector">
+    <target android:name="tray" android:animation="@animator/splash_tray" />
+    <target android:name="back" android:animation="@animator/splash_back" />
+    <target android:name="front" android:animation="@animator/splash_front" />
+    <target android:name="tray_body" android:animation="@animator/splash_fade_tray" />
+    <target android:name="tray_rim" android:animation="@animator/splash_fade_tray" />
+    <target android:name="back_clip" android:animation="@animator/splash_fade_back" />
+    <target android:name="front_clip" android:animation="@animator/splash_fade_front" />
+    <target android:name="front_play" android:animation="@animator/splash_fade_front" />
+</animated-vector>

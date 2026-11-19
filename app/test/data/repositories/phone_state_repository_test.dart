@@ -362,6 +362,118 @@ void main() {
     });
   });
 
+  group('onboarding flags (D-135)', () {
+    final flags =
+        <
+          ({
+            String name,
+            String key,
+            Future<bool> Function() read,
+            Future<void> Function() mark,
+          })
+        >[
+          (
+            name: 'onboardingDone',
+            key: PhoneStateRepository.onboardingDoneKey,
+            read: () => repo.onboardingDone(),
+            mark: () => repo.markOnboardingDone(),
+          ),
+          (
+            name: 'introPlayed',
+            key: PhoneStateRepository.introPlayedKey,
+            read: () => repo.introPlayed(),
+            mark: () => repo.markIntroPlayed(),
+          ),
+          (
+            name: 'homeTipSeen',
+            key: PhoneStateRepository.homeTipSeenKey,
+            read: () => repo.homeTipSeen(),
+            mark: () => repo.markHomeTipSeen(),
+          ),
+        ];
+
+    test('the keys are the documented names', () {
+      expect(PhoneStateRepository.onboardingDoneKey, 'onboardingDone');
+      expect(PhoneStateRepository.introPlayedKey, 'introPlayed');
+      expect(PhoneStateRepository.homeTipSeenKey, 'homeTipSeen');
+    });
+
+    for (final flag in flags) {
+      group(flag.name, () {
+        test('false on an empty table, true after its mark, once or '
+            'twice', () async {
+          expect(await flag.read(), isFalse);
+
+          await flag.mark();
+          await flag.mark();
+
+          expect(await flag.read(), isTrue);
+          expect(await _raw(flag.key), 'true');
+        });
+
+        test('marking one leaves the other two false', () async {
+          await flag.mark();
+
+          final answers = [
+            for (final other in flags)
+              if (other.key != flag.key) await other.read(),
+          ];
+          expect(answers, [false, false]);
+        });
+
+        test('a JSON value that is not a bool reads as false, key name '
+            'only', () async {
+          const secret = 'private-note';
+          await _put(flag.key, '"$secret"');
+          final records = _record();
+
+          expect(await flag.read(), isFalse);
+
+          final lines = records.map((r) => r.message).join('\n');
+          expect(lines, contains(flag.key));
+          expect(lines, isNot(contains(secret)));
+        });
+
+        test('a value that is not JSON reads as false', () async {
+          await _put(flag.key, 'not json');
+          final records = _record();
+
+          expect(await flag.read(), isFalse);
+
+          expect(records.map((r) => r.message).join('\n'), contains(flag.key));
+        });
+
+        test('is not exported, and an import forgets it', () async {
+          expect(SettingsRepository.exportedKeys, isNot(contains(flag.key)));
+          await flag.mark();
+          expect(
+            await BackupService(db, clock).exportJson(),
+            isNot(contains(flag.key)),
+          );
+          final fixture = File('test/data/backup/fixtures/backup_v1.json')
+              .readAsStringSync();
+
+          await BackupService(db, clock).importJson(fixture);
+
+          expect(await flag.read(), isFalse);
+        });
+      });
+    }
+
+    test('marks log what happened, never a value', () async {
+      final records = _record();
+
+      await repo.markOnboardingDone();
+      await repo.markIntroPlayed();
+      await repo.markHomeTipSeen();
+
+      final lines = records.map((r) => r.message).toList();
+      expect(lines, contains('Marked onboarding done'));
+      expect(lines, contains('Marked the intro played'));
+      expect(lines, contains('Marked the Home tip seen'));
+    });
+  });
+
   group('copy job plan (D-123, p8-task6)', () {
     CopyJobPlan plan(String jobId, {int reelId = 3}) => CopyJobPlan(
       jobId: jobId,

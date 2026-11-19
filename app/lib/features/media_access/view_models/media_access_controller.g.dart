@@ -67,7 +67,7 @@ final class MediaAccessControllerProvider
 }
 
 String _$mediaAccessControllerHash() =>
-    r'1d2cd8dd8bc6f623cbd606f6330c6e06e6f4e12b';
+    r'27eefac743dd97241553424f19aa5aeff058b861';
 
 /// Whether TakeTray may read the videos, for the Shooting mode card's banner
 /// and its "Allow" button (D-68, D-75).

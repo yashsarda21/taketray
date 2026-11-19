@@ -9,6 +9,7 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
@@ -20,6 +21,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../../../support/accessibility.dart';
 import '../../../support/clips.dart';
 import '../../../support/fixed_clock.dart';
+import '../../../support/fixed_onboarding.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/reel_summaries.dart';
 import '../../../support/view_model_fakes.dart';
@@ -64,6 +66,7 @@ Future<FakeShooting> pumpHome(
       firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
       reelEditorsProvider.overrideWith((ref) => Stream.value(editors)),
       clockProvider.overrideWithValue(FixedClock(_now)),
+      onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
       thumbnailCacheForTests,
     ],
     brightness: brightness,
@@ -368,6 +371,7 @@ void main() {
           firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
           reelEditorsProvider.overrideWith((ref) => const Stream.empty()),
           clockProvider.overrideWithValue(FixedClock(_now)),
+          onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
           thumbnailCacheForTests,
         ],
       );

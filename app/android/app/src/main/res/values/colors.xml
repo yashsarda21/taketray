@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launch splash (D-137), light. TtColors light: primary (the window)
+         and onPrimary (the wordmark). The icon background is the tray
+         launcher's own, ic_launcher_background.xml, so on this splash it
+         matches the window. values-night/colors.xml has the dark ones. -->
+    <color name="splash_background">#516072</color>
+    <color name="splash_icon_background">#516072</color>
+    <color name="splash_on_primary">#FFFFFF</color>
+</resources>

@@ -1,10 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Theme applied to the Android Window while the process is starting when the OS's Dark Mode setting is off -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
-        <!-- Show a splash screen on the activity. Automatically removed when
-             the Flutter engine draws its first frame -->
-        <item name="android:windowBackground">@drawable/launch_background</item>
+    <!-- The launch theme (D-137): the system splash screen, animated on
+         Android 12+ and a still icon on Android 11 (core-splashscreen).
+         Theme.SplashScreen.IconBackground is a Theme.SplashScreen child that
+         also gives Android 11 the icon's disc, so the pale back clip shows on
+         the dark splash. One theme for light and dark: the colours come from
+         values-night/colors.xml. It leaves when Flutter draws its first frame,
+         which Dart holds until the onboarding flags are read (D-136); there is
+         no keep-on-screen condition for the animation's sake. -->
+    <style name="LaunchTheme" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_animated</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/splash_icon_background</item>
+        <!-- Informational from Android 13; Android's limit is 1000. -->
+        <item name="windowSplashScreenAnimationDuration">900</item>
+        <!-- Android 12+ only; older versions ignore it. -->
+        <item name="android:windowSplashScreenBrandingImage">@drawable/splash_wordmark</item>
+        <item name="postSplashScreenTheme">@style/NormalTheme</item>
     </style>
     <!-- Theme applied to the Android Window as soon as the process has started.
          This theme determines the color of the Android Window while your

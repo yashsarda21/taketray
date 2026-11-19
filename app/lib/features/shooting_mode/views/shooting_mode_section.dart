@@ -11,9 +11,11 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/open_camera.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
+import 'package:taketray/features/shooting_mode/views/shooting_tip.dart';
 import 'package:taketray/features/shooting_mode/views/waiting_duration_text.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
@@ -72,6 +74,13 @@ class ShootingModeSection extends ConsumerWidget {
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
     final controller = ref.read(shootingModeControllerProvider.notifier);
     final full = access?.level == MediaAccessLevel.full;
+    // The one-time tip (D-142): after onboarding, until Got it or the first
+    // time Shooting mode is on. An unread flag is "not due".
+    final flags = ref.watch(onboardingControllerProvider).value;
+    final tipDue = flags != null && flags.done && !flags.homeTipSeen;
+    final showTip = tipDue && shooting != null && !shooting.on;
+    // Shooting mode is on: the tip has done its job (`_MarkTipSeen`).
+    final markTipSeen = tipDue && shooting != null && shooting.on;
     // D-90: on and off alike, whenever access is full and the stored state
     // was really read (not the "off" shown after a failed read).
     final earlierRow = full && shootingState.hasValue && shooting != null
@@ -156,12 +165,26 @@ class ShootingModeSection extends ConsumerWidget {
         Padding(
           padding: EdgeInsets.fromLTRB(
             tt.spacing.gutter,
-            tt.spacing.xxs,
+            // The tip's ring reaches 6 dp out: room for it above the card.
+            showTip ? tt.spacing.xs : tt.spacing.xxs,
             tt.spacing.gutter,
             tt.spacing.xs,
           ),
-          child: card,
+          // Always the same wrapper, so the card (and its switch) is not
+          // remounted when the tip comes or goes.
+          child: ShootingCardHighlight(active: showTip, child: card),
         ),
+        if (showTip)
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: tt.spacing.gutter),
+            child: ShootingTip(
+              onGotIt: () => unawaited(
+                ref
+                    .read(onboardingControllerProvider.notifier)
+                    .markHomeTipSeen(),
+              ),
+            ),
+          ),
         // The prototype's `banner attn`: only while Shooting mode is off (the
         // on card has its own "N clips to tag" strip) and a clip waits.
         if (shooting != null && !shooting.on && pending.isNotEmpty)
@@ -174,6 +197,8 @@ class ShootingModeSection extends ConsumerWidget {
             ),
             onTap: () => context.go(Routes.toTag),
           ),
+        // Last, so it moves nothing above it when it comes or goes.
+        if (markTipSeen) const _MarkTipSeen(),
       ],
     );
   }
@@ -187,4 +212,31 @@ class ShootingModeSection extends ConsumerWidget {
   /// read.
   ShootingState? _off(AsyncValue<ShootingState> state) =>
       state.hasError ? ShootingState.off : null;
+}
+
+/// Marks the Home tip seen once, when it is mounted, after the frame (a
+/// provider never changes while the tree builds). It is in the tree only
+/// while Shooting mode is on and the tip is still due, so it queues one mark
+/// per transition, not one per rebuild of the section.
+class _MarkTipSeen extends ConsumerStatefulWidget {
+  const new();
+
+  @override
+  ConsumerState<_MarkTipSeen> createState() => _MarkTipSeenState();
+}
+
+class _MarkTipSeenState extends ConsumerState<_MarkTipSeen> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(
+        ref.read(onboardingControllerProvider.notifier).markHomeTipSeen(),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const SizedBox.shrink();
 }

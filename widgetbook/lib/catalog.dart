@@ -3,6 +3,7 @@ import 'package:taketray_widgetbook/components/app_icon.dart';
 import 'package:taketray_widgetbook/components/badges.dart';
 import 'package:taketray_widgetbook/components/banners.dart';
 import 'package:taketray_widgetbook/components/bottom_bar.dart';
+import 'package:taketray_widgetbook/components/brand_mark.dart';
 import 'package:taketray_widgetbook/components/buttons.dart';
 import 'package:taketray_widgetbook/components/clip_tile.dart';
 import 'package:taketray_widgetbook/components/date_range_calendar.dart';
@@ -144,6 +145,7 @@ final List<WidgetbookNode> ttCatalog = [
       ttStepListComponent,
       ttIllustratedStepsComponent,
       ttAppIconComponent,
+      ttBrandMarkComponent,
       ttInfoBarComponent,
       ttProgressBarComponent,
       ttIllustrationComponent,

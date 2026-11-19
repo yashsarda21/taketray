@@ -129,6 +129,29 @@ class NotificationAccessController extends _$NotificationAccessController {
     return _asking = next;
   }
 
+  /// Onboarding's "Allow notifications" (D-140): [askOnce] while the phone
+  /// was never asked, so the user sees the dialog once; after that [allow],
+  /// which asks if Android still will and otherwise opens this app's
+  /// notification settings, so the button never does nothing. Nothing is
+  /// asked or opened where the permission is given, or (before Android 13)
+  /// where there is no dialog and notifications are on. A flag that cannot
+  /// be read counts as never asked. Never throws.
+  Future<void> askOnceOrAllow() async {
+    final phone = ref.read(phoneStateRepositoryProvider);
+    final asked =
+        await guarded(
+          _log,
+          'Reading notificationsAsked',
+          phone.notificationsAsked,
+        ) ??
+        false;
+    if (!asked) {
+      await askOnce();
+      return;
+    }
+    await guarded(_log, 'Allowing notifications', allow);
+  }
+
   Future<void> _askOnce() =>
       guarded(_log, 'Asking for notifications', () async {
         final bridge = ref.read(backgroundBridgeProvider);

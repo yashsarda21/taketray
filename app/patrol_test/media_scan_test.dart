@@ -11,6 +11,7 @@ import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/onboarded.dart';
 import 'support/system_dialogs.dart';
 import 'support/test_media.dart';
 import 'support/thumbnail.dart';
@@ -31,7 +32,12 @@ void main() {
     config: _liveConfig,
     ($) async {
       final media = await TestMedia.start();
-      await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+      await $.pumpWidget(
+        ProviderScope(
+          overrides: onboardedOverrides,
+          child: const TakeTrayApp(),
+        ),
+      );
       final container = ProviderScope.containerOf($.tester.element(_app));
       final bridge = container.read(mediaBridgeProvider);
       final toTag = $(ToTagScreen);

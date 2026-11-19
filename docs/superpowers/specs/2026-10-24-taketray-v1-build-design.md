@@ -181,8 +181,8 @@ Each phase: **plan** (superpowers:writing-plans) → **build** (Sonnet implement
 | 7 | **Add videos + Manual mode:** folder browser, system photo picker fallback | Friends' WhatsApp/Quick Share videos can be added |
 | 8 | **Editor handoff:** clip selection, editor chooser, CapCut/Edits multi-share, VN copy flow (space, progress, ready, Editing-in-VN state, Done editing, reminder, storage screen) | Clips open in one CapCut/Edits project; VN shows the folder; copies are cleaned up |
 | 9 | **References:** share target, Save reference sheet (incl. first launch), add/edit sheet, References section, Shooting mode References sheet | Sharing an Instagram reel saves it |
-| 10 | **Onboarding, Settings, help, error log** | First launch end to end on a fresh install |
-| 11 | **Release prep:** icon, splash, release signing, R8, no-INTERNET release manifest check, performance pass (500-clip grid smooth, cold start), accessibility pass, Play Console material (privacy policy, data safety, photo/video permission declaration, listing assets) | Signed app bundle ready to upload |
+| 10 | **Onboarding, Settings, help, error log** (built before Phase 9, in two parts: 10A first launch with the splash, 10B Settings; D-134) | First launch end to end on a fresh install |
+| 11 | **Release prep:** icon, release signing, R8, no-INTERNET release manifest check, performance pass (500-clip grid smooth, cold start), accessibility pass, Play Console material (privacy policy, data safety, photo/video permission declaration, listing assets) | Signed app bundle ready to upload |
 
 ## 10. Quality bar (every phase)
 

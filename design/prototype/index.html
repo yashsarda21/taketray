@@ -226,6 +226,37 @@
         <p class="eyebrow">Foundations</p>
         <h1>Motion</h1>
         <p class="lede">Material 3 motion tokens. Motion explains what happened (the clip went into the reel, the next one arrived). It never decorates. With reduced motion on, slides become 150 ms fades and loops stop on their last frame.</p>
+        <h2 id="launch-welcome">Launch and welcome</h2>
+        <p>The opening logo moves for under a second; the welcome screen has a 3.6 s intro on first launch only. Nothing waits for either: the app opens as soon as it is ready, and Get started works from the first frame.</p>
+        <div class="intro-demo" id="intro-demo">
+          <div class="phone"><div class="ph rh-dark"></div></div>
+          <div class="ctl">
+            <div class="row"><button class="pbtn primary" id="intro-replay" type="button"><span class="ms">replay</span>Replay launch</button><button class="pbtn" id="intro-welcome" type="button"><span class="ms">play_arrow</span>Welcome only</button></div>
+            <label>Speed <select id="intro-speed"><option value="1">1×</option><option value="0.5">0.5×</option><option value="0.25">0.25× (slow motion)</option></select></label>
+            <label>Theme <select id="intro-theme"><option value="dark">Dark</option><option value="light">Light</option></select></label>
+            <p class="muted">Frame-by-frame stills are on Screens 1 and 2. In the Prototype, Start from: Onboarding plays it with the rest of the flow; tap the picture to skip the intro.</p>
+          </div>
+        </div>
+        <h3>Splash (every launch)</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>What happens</th><th>Token</th></tr></thead><tbody>
+          <tr><td class="num">0–300 ms</td><td>The marigold tray rises 14 units and fades in.</td><td>medium2, emphasizedDecelerate</td></tr>
+          <tr><td class="num">150–550 ms</td><td>The back clip drops in from above the circle (−40 units).</td><td>medium4, emphasizedDecelerate</td></tr>
+          <tr><td class="num">300–750 ms</td><td>The front clip, with its play mark, drops in (−48 units).</td><td>long1, emphasizedDecelerate</td></tr>
+          <tr><td class="num">700–920 ms</td><td>The tray squashes slightly (scale 1.04 × 0.9) as it catches them, then settles.</td><td>220 ms, standard</td></tr>
+          <tr><td class="num">when ready</td><td>The splash fades out. It leaves as soon as the first screen is drawn, even mid-animation.</td><td>short4 (200 ms)</td></tr>
+        </tbody></table></div>
+        <h3>Welcome intro (first launch only)</h3>
+        <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>What happens</th><th>Token</th></tr></thead><tbody>
+          <tr><td class="num">0–200 ms</td><td>The screen fades in from the splash. Get started is already there and works.</td><td>short4, standard</td></tr>
+          <tr><td class="num">0–500 ms</td><td>The background disc grows in (scale 0.5 → 1).</td><td>long2, emphasizedDecelerate</td></tr>
+          <tr><td class="num">100–550 ms</td><td>The tray rises 80 dp and fades in.</td><td>long1, emphasizedDecelerate</td></tr>
+          <tr><td class="num">600 / 1000 / 1400 ms</td><td>London Food, Cinematic and Day 1 Vlog fall from the top, 650 ms each: they speed up as they fall, overshoot 6 dp, bounce back 2 dp and settle. The tray dips 5 dp as each one lands.</td><td>650 ms; dip 240 ms, standard</td></tr>
+          <tr><td class="num">+480 ms each</td><td>That take's reel tab pops on (scale 0.4 → 1).</td><td>medium1, emphasizedDecelerate</td></tr>
+          <tr><td class="num">650–1900 ms</td><td>The count ticks steadily from 0 to 23 takes, keeping pace with the drops; "· 3 reels" fades in when the last take has landed.</td><td>1250 ms, linear</td></tr>
+          <tr><td class="num">2200 / 2350 / 2500 ms</td><td>Wordmark, headline and text rise 14 dp and fade in, one after another; the step dots fade in with the text.</td><td>long1, emphasizedDecelerate</td></tr>
+          <tr><td class="num">2900–3600 ms</td><td>A soft light glints once across the tray. The intro is over.</td><td>700 ms, standard</td></tr>
+        </tbody></table></div>
+        <ul class="notes"><li>Never loops. Plays once: if the person comes back to Welcome, the final frame shows.</li><li>A tap on the picture skips to the final frame.</li><li>With "Remove animations" on, both show their final frame at once.</li><li>TalkBack reads the headline and text from the first frame: they are only faded, never removed.</li></ul>
         <h2>Tag and advance</h2>
         <p>The most repeated moment in the app, up to 40 times a day. It must feel instant and certain.</p>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Time</th><th>What happens</th><th>Token</th></tr></thead><tbody>
@@ -249,7 +280,7 @@
           <tr><td>Bottom sheets</td><td>Up 400 ms emphasizedDecelerate, down 250 ms emphasizedAccelerate (exit faster than enter).</td></tr>
           <tr><td>Dialogs</td><td>Fade + scale .92 → 1, 300 ms.</td></tr>
           <tr><td>Selection</td><td>Tile image shrinks to 86% with rounded corners and the tick pops in, 200 ms. No layout shift.</td></tr>
-          <tr><td>Welcome</td><td>One moment per option: A · the slate's clapper stick claps shut (380 ms, emphasized accelerate, after 450 ms); B · three takes drop into the tray (520 ms each, 100 ms stagger); C · the three day rows rise in (420 ms, 140 ms stagger). With reduced motion, the final frame only.</td></tr>
+          <tr><td>Welcome</td><td>B · Tray (chosen): the 3.6 s first-launch intro under <a href="#launch-welcome">Launch and welcome</a>. The unused options keep one moment each: A · the slate's clapper stick claps shut (380 ms, emphasized accelerate, after 450 ms); B · three takes drop into the tray (520 ms each, 100 ms stagger); C · the three day rows rise in (420 ms, 140 ms stagger). With reduced motion, the final frame only.</td></tr>
           <tr><td>Reference jump</td><td>From the Home badge or the References sheet, reel detail scrolls to References and rings the section in marigold for 1 s, then fades.</td></tr>
           <tr><td>VN copying</td><td>Determinate bar, linear, updated per clip.</td></tr>
         </tbody></table></div>
@@ -333,10 +364,10 @@
         <h2>Assets</h2>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Asset</th><th>Format</th><th>Notes</th></tr></thead><tbody>
           <tr><td>App icon</td><td>Adaptive icon (foreground, background, monochrome) vector</td><td><code>design/handoff/icons/tray/</code> (recommended concept); background #7332DF, tray #FFB954.</td></tr>
-          <tr><td>Splash icon</td><td>Vector</td><td>The same foreground; window background = primary.</td></tr>
+          <tr><td>Splash icon</td><td>Animated vector (API 31+)</td><td>The same foreground in three groups (back clip, front clip, tray), animated for 900 ms; window background = primary. Still icon on Android 11. See <code>design/handoff/launch-and-welcome-motion.md</code>.</td></tr>
           <tr><td>Notification small icon</td><td>24 dp white vector</td><td><code>ic_stat_taketray.xml</code>: the tray with one take.</td></tr>
           <tr><td>Empty-state illustrations</td><td>Vector drawables (7)</td><td>caught up, Shooting mode off, no reels, empty reel, empty folder, permission, skipped. Colours from theme attributes so they follow dark mode.</td></tr>
-          <tr><td>Welcome</td><td>Compose layout + one animation</td><td>Depends on the option chosen: the slate claps shut (380 ms), takes drop into the tray (520 ms, staggered), or the day rows appear (420 ms, staggered). Static final frame with reduced motion.</td></tr>
+          <tr><td>Welcome</td><td>Flutter layout + one 3.6 s intro</td><td>B · Tray: one <code>AnimationController</code> with an interval per element, first launch only, tap to skip, final frame with reduced motion. See <code>design/handoff/launch-and-welcome-motion.md</code>.</td></tr>
           <tr><td>Source app icons (references)</td><td>From <code>PackageManager</code></td><td>Instagram's or YouTube's own launcher icon, as installed. Never redrawn; a link icon when there is no app.</td></tr>
           <tr><td>Editor icons</td><td>From <code>PackageManager</code></td><td>Never bundled.</td></tr>
           <tr><td>Icons</td><td>Material Symbols Rounded</td><td>See Design system › Iconography.</td></tr>
@@ -464,6 +495,7 @@
 <script src="assets/app.js"></script>
 <script src="assets/refs.js"></script>
 <script src="assets/earlier.js"></script>
+<script src="assets/intro.js"></script>
 <script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
 </body>
 </html>

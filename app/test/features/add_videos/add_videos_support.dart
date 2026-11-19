@@ -20,6 +20,7 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -262,6 +263,8 @@ class AddHarness {
 
   List<Override> get overrides => [
     ...h.overrides,
+    // The whole app is pumped with these too: an onboarded phone (D-136).
+    onboardingControllerProvider.overrideWith(h.onboarding),
     mediaAccessControllerProvider.overrideWith(() => fakeAccess),
     thumbnailCacheProvider.overrideWith(
       (ref) async => ThumbnailCache(bridge, cacheFolder),

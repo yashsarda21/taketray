@@ -15,6 +15,7 @@ import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/router/app_router.dart';
+import 'package:taketray/router/onboarding_redirect.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 /// Root widget: the TakeTray light and dark themes, following the system
@@ -30,6 +31,12 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// `BackgroundSync` once, which writes the phone's copy of the background
 /// state now (re-arming the job and the alarms) and after every change
 /// (D-106).
+///
+/// The first frame is held until the onboarding flags are read (D-136): the
+/// system splash covers the read, so neither Reels nor the welcome shows
+/// before the router knows which one is right. After [_firstFrameLimit] the
+/// app stops waiting and shows the welcome; the media work, `BackgroundSync`
+/// and `CopyResultOpener` start as always, onboarding or not.
 class TakeTrayApp extends ConsumerStatefulWidget {
   const new({super.key});
 
@@ -47,14 +54,75 @@ const int _debugEveningInMinutes = int.fromEnvironment(
   'TAKETRAY_EVENING_IN_MINUTES',
 );
 
+/// How long the first frame waits for the onboarding flags (D-136). A read
+/// takes milliseconds; this only bounds a database that hangs, so the user
+/// never stares at the splash for ever.
+const Duration _firstFrameLimit = Duration(seconds: 2);
+
+// Flags and durations only (D-10).
+final Logger _startLog = Logger('appStart');
+
 class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
+  late final OnboardingGate _onboarding;
+
+  /// Whether this widget still holds Flutter's first frame.
+  bool _holdingFirstFrame = false;
+  Timer? _firstFrameTimer;
+
   @override
   void initState() {
     super.initState();
+    _holdFirstFrame();
     if (kDebugMode && _debugEveningInMinutes > 0) {
       unawaited(_setDebugEvening());
     }
     ref.read(backgroundSyncProvider).start();
+  }
+
+  /// Holds the first frame until the gate knows the flags, or until
+  /// [_firstFrameLimit], whichever comes first.
+  void _holdFirstFrame() {
+    // Read first: if it throws, nothing is held yet, and `dispose` meets
+    // neither an unassigned `_onboarding` nor a frame nobody releases.
+    _onboarding = ref.read(onboardingGateProvider);
+    WidgetsBinding.instance.deferFirstFrame();
+    _holdingFirstFrame = true;
+    if (_onboarding.value != null) {
+      _allowFirstFrame();
+      return;
+    }
+    _onboarding.addListener(_onOnboarding);
+    _firstFrameTimer = Timer(_firstFrameLimit, _firstFrameTooLate);
+  }
+
+  void _onOnboarding() {
+    if (_onboarding.value != null) _allowFirstFrame();
+  }
+
+  void _firstFrameTooLate() {
+    _startLog.warning(
+      'The onboarding flags took over ${_firstFrameLimit.inSeconds} s; '
+      'showing the welcome',
+    );
+    _onboarding.stopWaiting();
+    _allowFirstFrame();
+  }
+
+  /// Lets the first frame go, once: the binding asserts on a second call.
+  void _allowFirstFrame() {
+    if (!_holdingFirstFrame) return;
+    _holdingFirstFrame = false;
+    _firstFrameTimer?.cancel();
+    _onboarding.removeListener(_onOnboarding);
+    WidgetsBinding.instance.allowFirstFrame();
+  }
+
+  @override
+  void dispose() {
+    // Taken down before the flags came (a test, a hot restart): a frame that
+    // stays held would hold every later one too.
+    _allowFirstFrame();
+    super.dispose();
   }
 
   Future<void> _setDebugEvening() async {
@@ -107,8 +175,10 @@ final Logger _log = Logger('launchActions');
 ///
 /// A tap goes to its screen with `GoRouter.go` (the allow-list is
 /// [routeFor]), after the current frame: the start action can arrive while
-/// the first frame is being built. A stream error (the start action could
-/// not be read) is logged by type and the listener goes on.
+/// the first frame is being built. A tap waits for the onboarding flags, and
+/// one that comes before onboarding is done is dropped (D-136). A stream
+/// error (the start action could not be read) is logged by type and the
+/// listener goes on.
 class LaunchActionsListener extends ConsumerStatefulWidget {
   const new({required this.child, super.key});
 
@@ -147,6 +217,15 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     // frame is being built.
     await Future<void>.microtask(() {});
     if (!mounted) return;
+    // During onboarding a tap is dropped, not kept for later (D-136): it must
+    // not open a screen over onboarding, nor move the user off their step.
+    // The start tap comes before the flags are read, so it waits for them.
+    final flags = await ref.read(onboardingGateProvider).known();
+    if (!mounted) return;
+    if (!flags.done) {
+      _log.info('A tap during onboarding was dropped');
+      return;
+    }
     final reels = ref.read(reelsRepositoryProvider);
     final route = await routeFor(
       launch,

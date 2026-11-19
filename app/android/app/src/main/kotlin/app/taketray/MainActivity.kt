@@ -38,6 +38,9 @@ class MainActivity : FlutterActivity() {
     private var restored = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // First of all, before super: the compat splash swaps the launch theme
+        // for NormalTheme and attaches the 200 ms exit fade (D-137).
+        LaunchSplash.install(this)
         // Before super: super.onCreate runs configureFlutterEngine.
         restored = savedInstanceState != null
         super.onCreate(savedInstanceState)

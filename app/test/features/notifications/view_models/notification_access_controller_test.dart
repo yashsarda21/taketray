@@ -1,5 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/connection.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
 
@@ -10,6 +13,16 @@ NotificationAccess _access({
   bool canAsk = true,
   int sdk = 34,
 }) => NotificationAccess(granted: granted, canAsk: canAsk, sdkInt: sdk);
+
+/// A phone state whose "asked" flag cannot be read.
+class _UnreadablePhoneState extends PhoneStateRepository {
+  // The base class's fields are private, so its names are not ours to match.
+  // ignore: matching_super_parameters
+  _UnreadablePhoneState(super.db, super.clock);
+
+  @override
+  Future<bool> notificationsAsked() async => throw StateError('unreadable');
+}
 
 void main() {
   late VmHarness h;
@@ -275,6 +288,102 @@ void main() {
 
       expect(calls('requestNotificationAccess'), 0);
       expect(await h.media.phoneState.notificationsAsked(), isFalse);
+    });
+  });
+
+  group('the onboarding button (D-140): ask once, else Allow', () {
+    test(
+      'never asked: asks once through the dialog and remembers it',
+      () async {
+        await start(_access());
+
+        await controller.askOnceOrAllow();
+
+        expect(calls('requestNotificationAccess'), 1);
+        expect(calls('openNotificationSettings'), 0);
+        expect(await h.media.phoneState.notificationsAsked(), isTrue);
+      },
+    );
+
+    test(
+      'never asked and Android 12: nothing to ask, nothing opened',
+      () async {
+        await start(_access(canAsk: false, sdk: 32));
+
+        await controller.askOnceOrAllow();
+
+        expect(calls('requestNotificationAccess'), 0);
+        expect(calls('openNotificationSettings'), 0);
+      },
+    );
+
+    test('asked before, not allowed, Android can ask: asks again', () async {
+      await h.media.phoneState.markNotificationsAsked();
+      await start(_access());
+      h.background.onRequestNotificationAccess = () =>
+          _access(granted: true, canAsk: false);
+
+      await controller.askOnceOrAllow();
+
+      expect(calls('requestNotificationAccess'), 1);
+      expect(calls('openNotificationSettings'), 0);
+      expect(shown()!.granted, isTrue);
+    });
+
+    test("asked before, not allowed, Android cannot ask: opens the app's "
+        'notification settings', () async {
+      await h.media.phoneState.markNotificationsAsked();
+      await start(_access(canAsk: false));
+
+      await controller.askOnceOrAllow();
+
+      expect(calls('openNotificationSettings'), 1);
+      expect(calls('requestNotificationAccess'), 0);
+    });
+
+    test('asked before, already allowed: nothing is asked or opened', () async {
+      await h.media.phoneState.markNotificationsAsked();
+      await start(_access(granted: true, canAsk: false));
+
+      await controller.askOnceOrAllow();
+
+      expect(calls('requestNotificationAccess'), 0);
+      expect(calls('openNotificationSettings'), 0);
+    });
+
+    test('the flag cannot be read: no throw, nothing opened', () async {
+      final records = captureLogs();
+      final broken = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          phoneStateRepositoryProvider.overrideWith(
+            (ref) => _UnreadablePhoneState(
+              ref.watch(appDatabaseProvider),
+              ref.watch(clockProvider),
+            ),
+          ),
+        ],
+      );
+      h.background.access = _access();
+      broken.listen(notificationAccessControllerProvider, (_, _) {});
+      await broken.read(notificationAccessControllerProvider.future);
+
+      await broken
+          .read(notificationAccessControllerProvider.notifier)
+          .askOnceOrAllow();
+
+      expect(calls('openNotificationSettings'), 0);
+      expect(logText(records), contains('StateError'));
+    });
+
+    test('settings that cannot open do not throw', () async {
+      await h.media.phoneState.markNotificationsAsked();
+      await start(_access(canAsk: false));
+      h.background.failNext('openNotificationSettings');
+
+      await controller.askOnceOrAllow();
+
+      expect(calls('openNotificationSettings'), 1);
     });
   });
 }

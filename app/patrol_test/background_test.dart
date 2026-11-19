@@ -18,6 +18,7 @@ import 'package:taketray/features/shooting_mode/view_models/shooting_mode_contro
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
+import 'support/onboarded.dart';
 import 'support/own_texts.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
@@ -526,7 +527,9 @@ Future<void> _scenario(
   // is.
   if (waitsForTheRealJob) await TestBackground().waitUntilCool();
   final media = await TestMedia.start();
-  await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+  await $.pumpWidget(
+    ProviderScope(overrides: onboardedOverrides, child: const TakeTrayApp()),
+  );
   final container = ProviderScope.containerOf($.tester.element(_app));
   final restoreFolders = await watchOnlyTestFolder(
     container.read(settingsRepositoryProvider),

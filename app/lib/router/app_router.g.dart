@@ -8,26 +8,41 @@ part of 'app_router.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The app's router: three tabs, each with its own navigation stack.
+/// The app's router: three tabs, each with its own navigation stack, and
+/// onboarding's four screens above them.
 ///
 /// Kept alive so the navigation state survives when nothing is watching for a
-/// frame.
+/// frame. Onboarding (D-136): every location first goes through
+/// [onboardingRedirect] with the [OnboardingGate]'s flags, and the gate is the
+/// router's `refreshListenable`, so a change of the flags (the first read,
+/// `finish()`) redirects the current location again. The gate is never
+/// rebuilt, so neither is the router.
 
 @ProviderFor(appRouter)
 final appRouterProvider = AppRouterProvider._();
 
-/// The app's router: three tabs, each with its own navigation stack.
+/// The app's router: three tabs, each with its own navigation stack, and
+/// onboarding's four screens above them.
 ///
 /// Kept alive so the navigation state survives when nothing is watching for a
-/// frame.
+/// frame. Onboarding (D-136): every location first goes through
+/// [onboardingRedirect] with the [OnboardingGate]'s flags, and the gate is the
+/// router's `refreshListenable`, so a change of the flags (the first read,
+/// `finish()`) redirects the current location again. The gate is never
+/// rebuilt, so neither is the router.
 
 final class AppRouterProvider
     extends $FunctionalProvider<GoRouter, GoRouter, GoRouter>
     with $Provider<GoRouter> {
-  /// The app's router: three tabs, each with its own navigation stack.
+  /// The app's router: three tabs, each with its own navigation stack, and
+  /// onboarding's four screens above them.
   ///
   /// Kept alive so the navigation state survives when nothing is watching for a
-  /// frame.
+  /// frame. Onboarding (D-136): every location first goes through
+  /// [onboardingRedirect] with the [OnboardingGate]'s flags, and the gate is the
+  /// router's `refreshListenable`, so a change of the flags (the first read,
+  /// `finish()`) redirects the current location again. The gate is never
+  /// rebuilt, so neither is the router.
   AppRouterProvider._()
     : super(
         from: null,
@@ -61,4 +76,4 @@ final class AppRouterProvider
   }
 }
 
-String _$appRouterHash() => r'b741ac082f294e43eac48fb067ae83cdf0e7caca';
+String _$appRouterHash() => r'e3c8eed0d364c519d36dbd0b189d69b2b7fb96c0';

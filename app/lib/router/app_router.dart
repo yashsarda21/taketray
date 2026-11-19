@@ -12,6 +12,10 @@ import 'package:taketray/features/editors/views/copy_ready_screen.dart';
 import 'package:taketray/features/editors/views/copy_space_screen.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
+import 'package:taketray/features/onboarding/views/access_step_screen.dart';
+import 'package:taketray/features/onboarding/views/notifications_step_screen.dart';
+import 'package:taketray/features/onboarding/views/reels_step_screen.dart';
+import 'package:taketray/features/onboarding/views/welcome_intro.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
@@ -20,6 +24,7 @@ import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/views/skipped_screen.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart';
+import 'package:taketray/router/onboarding_redirect.dart';
 import 'package:taketray/router/popup_route_tracker.dart';
 import 'package:taketray/router/routes.dart';
 
@@ -44,12 +49,18 @@ int? _positive(String? text) {
 /// number.
 int? _reelId(GoRouterState state) => _id(state, Routes.reelIdParameter);
 
-/// The app's router: three tabs, each with its own navigation stack.
+/// The app's router: three tabs, each with its own navigation stack, and
+/// onboarding's four screens above them.
 ///
 /// Kept alive so the navigation state survives when nothing is watching for a
-/// frame.
+/// frame. Onboarding (D-136): every location first goes through
+/// [onboardingRedirect] with the [OnboardingGate]'s flags, and the gate is the
+/// router's `refreshListenable`, so a change of the flags (the first read,
+/// `finish()`) redirects the current location again. The gate is never
+/// rebuilt, so neither is the router.
 @Riverpod(keepAlive: true)
 GoRouter appRouter(Ref ref) {
+  final onboarding = ref.watch(onboardingGateProvider);
   // The navigator above the tab shell. A full-screen route (the clip viewer)
   // names it as its `parentNavigatorKey` to be drawn over the shell, with no
   // nav pill. One key for each router, so two apps never share one.
@@ -63,6 +74,11 @@ GoRouter appRouter(Ref ref) {
     navigatorKey: rootNavigatorKey,
     observers: [popups.observerForNavigator()],
     initialLocation: Routes.reels,
+    refreshListenable: onboarding,
+    // Before any route's own redirect: while onboarding is not done, no
+    // location outside it is even matched.
+    redirect: (context, state) =>
+        onboardingRedirect(state.uri, onboarding.value),
     // Any location no route matches (an old deep link, `/reels/stale`, a
     // typo) goes to Reels instead of go_router's error page. The location is
     // not logged: it can carry user data.
@@ -183,6 +199,7 @@ GoRouter appRouter(Ref ref) {
           ),
         ],
       ),
+      ...onboardingRoutes(),
       addVideosRoute(),
       editSelectRoute(),
       ...copyRoutes(),
@@ -191,6 +208,29 @@ GoRouter appRouter(Ref ref) {
   ref.onDispose(router.dispose);
   return router;
 }
+
+/// Onboarding (Phase 10A, D-136): the welcome and its three steps, top-level
+/// routes on the root navigator, outside the tab shell, so no nav pill shows.
+/// The steps are pushed (Back returns to the step before; on the welcome it
+/// closes the app), and finishing goes to Reels.
+List<RouteBase> onboardingRoutes() => [
+  GoRoute(
+    path: Routes.welcome,
+    builder: (context, state) => const WelcomeIntro(),
+  ),
+  GoRoute(
+    path: Routes.onboardingAccess,
+    builder: (context, state) => const AccessStepScreen(),
+  ),
+  GoRoute(
+    path: Routes.onboardingNotifications,
+    builder: (context, state) => const NotificationsStepScreen(),
+  ),
+  GoRoute(
+    path: Routes.onboardingReels,
+    builder: (context, state) => const ReelsStepScreen(),
+  ),
+];
 
 /// The target of an Add videos location: To tag without
 /// [Routes.addVideosReelParameter], the reel it names otherwise. Null when it

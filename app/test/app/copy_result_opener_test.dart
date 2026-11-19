@@ -5,21 +5,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/features/editors/views/copy_progress_screen.dart';
+import 'package:taketray/features/editors/views/copy_ready_screen.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/onboarding/views/welcome_screen.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/router/app_router.dart';
 import 'package:taketray/router/routes.dart';
 
 import '../features/editors/copy_support.dart';
+import '../support/fixed_onboarding.dart';
 import '../support/test_app.dart';
 import '../support/vm_harness.dart';
 
 const int _mb = 1000000;
 
+/// An onboarding controller whose first read waits for [read].
+class _SlowOnboarding extends OnboardingController {
+  _SlowOnboarding(this.read);
+
+  final Completer<OnboardingFlags> read;
+
+  @override
+  Future<OnboardingFlags> build() => read.future;
+}
+
+const OnboardingFlags _doneFlags = OnboardingFlags(
+  done: true,
+  introPlayed: true,
+  homeTipSeen: true,
+);
+
 void main() {
   late VmHarness h;
 
-  setUp(() {
-    h = VmHarness(now: DateTime.utc(2026, 10, 30, 12));
+  /// Makes [h] a harness with [onboarding] (null: onboarded, as every other
+  /// test), its fakes open as the copy tests need them.
+  void useHarness([OnboardingController Function()? onboarding]) {
+    h = VmHarness(now: DateTime.utc(2026, 10, 30, 12), onboarding: onboarding);
     h.copy.allowAll();
     h.editors
       ..allow({
@@ -30,7 +52,9 @@ void main() {
         'deleteCopies',
       })
       ..bytesFree = 64000 * _mb;
-  });
+  }
+
+  setUp(useHarness);
 
   /// A VN job of four clips, started, with the app not yet running.
   Future<VnJob> startedJob(WidgetTester tester) async {
@@ -332,5 +356,119 @@ void main() {
     // The plan is kept for the next start.
     final again = await startApp(tester);
     expect(again, isNotNull);
+  });
+
+  group('during onboarding (D-136)', () {
+    Finder welcomes() => find.byType(WelcomeScreen, skipOffstage: false);
+    Finder readies() => find.byType(CopyReadyScreen, skipOffstage: false);
+    Finder copyScreens() =>
+        find.byType(CopyProgressScreen, skipOffstage: false);
+
+    /// Onboarding ends as the last step does: the flag, then Reels.
+    Future<void> finishOnboarding(
+      WidgetTester tester,
+      ProviderContainer container,
+    ) async {
+      await container.read(onboardingControllerProvider.notifier).finish();
+      container.read(appRouterProvider).go(Routes.reels);
+      await settleApp(tester);
+    }
+
+    testApp('a finished copy waiting on a phone that is not onboarded: one '
+        'welcome, no copy screen over it, the result is kept', (tester) async {
+      useHarness(FixedOnboarding.fresh);
+      final job = await startedJob(tester);
+      h.copy.job = job.report(state: CopyState.finished, copied: [0, 1, 2, 3]);
+
+      final container = await startApp(tester);
+      await resumeApp(tester);
+
+      expect(welcomes(), findsOneWidget);
+      expect(readies(), findsNothing);
+      expect(find.text('Ready for VN'), findsNothing);
+
+      // The result was not taken: it opens on Reels, once.
+      await finishOnboarding(tester, container);
+      expect(find.text('Ready for VN'), findsOneWidget);
+      expect(readies(), findsOneWidget);
+      expect(welcomes(), findsNothing);
+      await resumeApp(tester);
+      expect(readies(), findsOneWidget);
+    });
+
+    testApp('a result that ends while a step shows is kept for Reels too', (
+      tester,
+    ) async {
+      useHarness(FixedOnboarding.fresh);
+      final job = await startedJob(tester);
+      h.copy.job = job.report(copied: [0]);
+      final container = await startApp(tester);
+      expect(copyScreens(), findsNothing);
+      expect(welcomes(), findsOneWidget);
+
+      h.copy.emit(job.report(state: CopyState.spaceFull, copied: [0, 1]));
+      await settleApp(tester);
+      expect(copyScreens(), findsNothing);
+      expect(welcomes(), findsOneWidget);
+
+      await finishOnboarding(tester, container);
+      expect(find.text('Phone storage is full'), findsOneWidget);
+      expect(copyScreens(), findsOneWidget);
+    });
+
+    testApp('a job that still runs waits for Reels too: its screen opens '
+        'once, with the screen kept on', (tester) async {
+      useHarness(FixedOnboarding.fresh);
+      final job = await startedJob(tester);
+      h.copy.job = job.report(copied: [0]);
+
+      final container = await startApp(tester);
+      await resumeApp(tester);
+      expect(copyScreens(), findsNothing);
+      expect(h.copy.screenOnCalls, isEmpty);
+      expect(welcomes(), findsOneWidget);
+
+      await finishOnboarding(tester, container);
+      expect(find.text('Copying clips for VN'), findsOneWidget);
+      expect(copyScreens(), findsOneWidget);
+      expect(h.copy.screenOnCalls, [true]);
+      await resumeApp(tester);
+      expect(copyScreens(), findsOneWidget);
+    });
+
+    testApp('the flags still unknown (the first read is slow), then done: '
+        'the result opens once', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      useHarness(() => _SlowOnboarding(read));
+      final job = await startedJob(tester);
+      h.copy.job = job.report(state: CopyState.finished, copied: [0, 1, 2, 3]);
+
+      await startApp(tester);
+      // Past the first frame's limit: the welcome shows, the flags unknown.
+      await tester.pump(const Duration(seconds: 3));
+      await settleApp(tester);
+      expect(welcomes(), findsOneWidget);
+      expect(readies(), findsNothing);
+
+      read.complete(_doneFlags);
+      await settleApp(tester);
+
+      expect(find.text('Ready for VN'), findsOneWidget);
+      expect(readies(), findsOneWidget);
+      expect(welcomes(), findsNothing);
+      await resumeApp(tester);
+      expect(readies(), findsOneWidget);
+    });
+
+    testApp('an onboarded phone is not held back: the result opens at the '
+        'start (no second opening when the gate is known)', (tester) async {
+      final job = await startedJob(tester);
+      h.copy.job = job.report(state: CopyState.finished, copied: [0, 1, 2, 3]);
+
+      await startApp(tester);
+
+      expect(find.text('Ready for VN'), findsOneWidget);
+      expect(readies(), findsOneWidget);
+    });
   });
 }

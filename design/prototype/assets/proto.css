@@ -1150,3 +1150,81 @@ table.tbl { border-collapse: collapse; width: 100%; font-size: 13.5px; }
 .fs2 .ev-row.stack .txt { flex-basis: calc(100% - 40px); }
 .fs2 .ev-row.stack .ev-trail { margin-left: 40px; }
 .fs2 .btn { white-space: normal; text-align: center; }
+
+/* ------------------------------------------------------------------ */
+/* Launch and welcome motion (15 Nov 2026). Every animated element's   */
+/* delay is offset by --at, so a frame can be frozen (gallery) or a    */
+/* re-render can carry on where the intro was.                         */
+/* ------------------------------------------------------------------ */
+@property --tk { syntax: '<integer>'; inherits: false; initial-value: 23; }
+
+/* Splash: the launcher icon's layers animate; the wordmark stays still */
+.splash .sp-tray, .splash .sp-back, .splash .sp-front { transform-box: fill-box; }
+.splash .sp-tray {
+  transform-origin: 50% 100%;
+  animation: spTray var(--dur-medium2) var(--ease-emphasized-decelerate) both, spCatch 220ms var(--ease-standard) none;
+  animation-delay: calc(0ms - var(--at, 0ms)), calc(700ms - var(--at, 0ms));
+}
+.splash .sp-back { animation: spDrop var(--dur-medium4) var(--ease-emphasized-decelerate) both; animation-delay: calc(150ms - var(--at, 0ms)); }
+.splash .sp-front { animation: spDropFront var(--dur-long1) var(--ease-emphasized-decelerate) both; animation-delay: calc(300ms - var(--at, 0ms)); }
+@keyframes spTray { from { transform: translateY(14px); opacity: 0; } }
+@keyframes spCatch { 40% { transform: scale(1.04, .9); } }
+@keyframes spDrop { from { transform: translateY(-40px); opacity: 0; } }
+@keyframes spDropFront { from { transform: translateY(-48px); opacity: 0; } }
+
+/* Welcome (B · Tray) intro, 3.6 s */
+.wel-tray.motion-intro { animation: wiFade var(--dur-short4) var(--ease-standard) both; animation-delay: calc(0ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .tray-art { cursor: default; }
+.wel-tray.motion-intro .disc { animation: wiDisc var(--dur-long2) var(--ease-emphasized-decelerate) both; animation-delay: calc(0ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .tray {
+  overflow: hidden;
+  animation: wiTray var(--dur-long1) var(--ease-emphasized-decelerate) both, wiCatch 240ms var(--ease-standard) none, wiCatch 240ms var(--ease-standard) none, wiCatch 240ms var(--ease-standard) none;
+  animation-delay: calc(100ms - var(--at, 0ms)), calc(1050ms - var(--at, 0ms)), calc(1450ms - var(--at, 0ms)), calc(1850ms - var(--at, 0ms));
+}
+.wel-tray.motion-intro .tray::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; translate: -100% 0;
+  background: linear-gradient(100deg, transparent 32%, color-mix(in srgb, #fff 60%, transparent) 50%, transparent 68%);
+  animation: wiGlint 700ms var(--ease-standard) none; animation-delay: calc(2900ms - var(--at, 0ms));
+}
+.wel-tray.motion-intro .take { --d: 600ms; animation: wiDrop 650ms linear both; animation-delay: calc(var(--d) - var(--at, 0ms)); }
+.wel-tray.motion-intro .t2 { --d: 1000ms; }
+.wel-tray.motion-intro .t3 { --d: 1400ms; }
+.wel-tray.motion-intro .take .tab { transform-origin: 0 100%; animation: wiTab var(--dur-medium1) var(--ease-emphasized-decelerate) both; animation-delay: calc(var(--d) + 480ms - var(--at, 0ms)); }
+.wel-tray .cnt { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wel-tray .cnt .tk { display: inline-block; min-width: 2ch; text-align: right; counter-reset: tk var(--tk); }
+.wel-tray .cnt .tk::after { content: counter(tk); }
+.wel-tray.motion-intro .cnt .tk { animation: wiCount 1250ms linear both; animation-delay: calc(650ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .cnt .rl { display: inline-block; animation: wiFade var(--dur-medium1) var(--ease-standard) both; animation-delay: calc(1900ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .wel-body .wm { animation: wiRise var(--dur-long1) var(--ease-emphasized-decelerate) both; animation-delay: calc(2200ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .wel-body h1 { animation: wiRise var(--dur-long1) var(--ease-emphasized-decelerate) both; animation-delay: calc(2350ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .wel-body p { animation: wiRise var(--dur-long1) var(--ease-emphasized-decelerate) both; animation-delay: calc(2500ms - var(--at, 0ms)); }
+.wel-tray.motion-intro .wel-body .steps-dots { animation: wiFade var(--dur-medium2) var(--ease-standard) both; animation-delay: calc(2500ms - var(--at, 0ms)); }
+@keyframes wiFade { from { opacity: 0; } }
+@keyframes wiDisc { from { scale: .5; opacity: 0; } }
+@keyframes wiTray { from { translate: 0 80px; opacity: 0; } }
+@keyframes wiCatch { 40% { translate: 0 5px; scale: 1.01 .97; } }
+@keyframes wiDrop {
+  0% { translate: 0 -260px; opacity: 0; animation-timing-function: cubic-bezier(.5, 0, 1, 1); }
+  15% { opacity: 1; }
+  70% { translate: 0 6px; animation-timing-function: var(--ease-standard); }
+  85% { translate: 0 -2px; }
+  100% { translate: 0 0; opacity: 1; }
+}
+@keyframes wiTab { from { scale: .4; opacity: 0; } }
+@keyframes wiCount { from { --tk: 0; } to { --tk: 23; } }
+@keyframes wiRise { from { translate: 0 14px; opacity: 0; } }
+@keyframes wiGlint { from { translate: -100% 0; opacity: 1; } to { translate: 100% 0; opacity: 1; } }
+
+/* Frozen frame (gallery), final frame, and reduced motion */
+.motion-intro.sp-frozen *, .motion-intro.wi-frozen, .motion-intro.wi-frozen *, .motion-intro.wi-frozen *::after { animation-play-state: paused !important; }
+.motion-intro.sp-final *, .motion-intro.wi-final, .motion-intro.wi-final *, .motion-intro.wi-final *::after,
+.ph.rm .motion-intro, .ph.rm .motion-intro *, .ph.rm .motion-intro *::after { animation: none !important; }
+@media (prefers-reduced-motion: reduce) {
+  .motion-intro, .motion-intro *, .motion-intro *::after { animation: none !important; }
+}
+
+/* Motion page demo */
+.intro-demo { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; margin: 12px 0 8px; }
+.intro-demo .ctl { display: flex; flex-direction: column; gap: 12px; min-width: 0; flex: 1 1 220px; }
+.intro-demo .ctl .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.intro-demo .ctl label { display: flex; gap: 8px; align-items: center; font-size: 14px; }

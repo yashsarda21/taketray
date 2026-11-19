@@ -234,7 +234,9 @@ class TtSuggestionChip extends StatelessWidget {
   }
 }
 
-/// Gives a chip button semantics and a 48 dp tall tap target around it.
+/// Gives a chip button semantics and a 48 dp tall tap target around it. The
+/// target is as wide as the chip (at least 48 dp), so chips sit side by side
+/// in a `Wrap`.
 class _ChipTapTarget extends StatelessWidget {
   const new({
     required this.label,
@@ -268,7 +270,9 @@ class _ChipTapTarget extends StatelessWidget {
             minWidth: context.tt.sizes.touchTarget,
             minHeight: context.tt.sizes.touchTarget,
           ),
-          child: Center(heightFactor: 1, child: child),
+          // widthFactor 1 too: in a Wrap the chip gets a loose width, and a
+          // Center without it would take all of it, one chip to a row.
+          child: Center(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

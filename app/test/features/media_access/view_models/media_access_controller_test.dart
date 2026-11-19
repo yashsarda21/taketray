@@ -424,6 +424,49 @@ void main() {
     });
   });
 
+  group('openSettings', () {
+    for (final (level, canAsk) in [
+      (denied, true),
+      (denied, false),
+      (limited, true),
+      (full, true),
+    ]) {
+      test('${level.name}, canAskAgain $canAsk: opens the settings page and '
+          'never shows the dialog', () async {
+        h.bridge.access = access(level, canAskAgain: canAsk);
+        await viewAfterBuild();
+
+        await controller.openSettings();
+
+        expect(h.bridge.count('openAppSettings'), 1);
+        expect(h.bridge.count('requestAccess'), 0);
+      });
+    }
+
+    test('does not change the state (the resume refresh will)', () async {
+      h.bridge.access = access(denied);
+      await viewAfterBuild();
+      final before = current();
+
+      await controller.openSettings();
+
+      expect(current(), before);
+    });
+
+    test('an error is logged by type, not thrown', () async {
+      final records = captureLogs();
+      h.bridge.access = access(denied);
+      await viewAfterBuild();
+      h.bridge.failNext('openAppSettings');
+
+      await controller.openSettings();
+
+      expect(logText(records), contains('PlatformException'));
+      expect(logText(records), isNot(contains('failed on purpose')));
+      expect(current()!.level, denied);
+    });
+  });
+
   group('MediaAccessView', () {
     test('has value equality', () {
       const a = MediaAccessView(

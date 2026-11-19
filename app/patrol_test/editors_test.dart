@@ -28,6 +28,7 @@ import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import 'support/editors_hooks.dart';
+import 'support/onboarded.dart';
 import 'support/own_texts.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
@@ -828,7 +829,9 @@ Future<void> _scenario(
   Future<void> Function(_Env env) body,
 ) async {
   final media = await TestMedia.start();
-  await $.pumpWidget(const ProviderScope(child: TakeTrayApp()));
+  await $.pumpWidget(
+    ProviderScope(overrides: onboardedOverrides, child: const TakeTrayApp()),
+  );
   final container = ProviderScope.containerOf($.tester.element(_app));
   final restoreFolders = await watchOnlyTestFolder(
     container.read(settingsRepositoryProvider),

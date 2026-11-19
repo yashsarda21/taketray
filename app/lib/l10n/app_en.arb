@@ -3500,5 +3500,250 @@
   "copiesStorageLoadFailed": "Couldn't read the VN copies",
   "@copiesStorageLoadFailed": {
     "description": "Title shown when the VN copies screen could not read the copies."
+  },
+  "welcomeHeadline": "One tray for every take",
+  "@welcomeHeadline": {
+    "description": "Headline of the welcome, the first screen of onboarding."
+  },
+  "welcomeGetStarted": "Get started",
+  "@welcomeGetStarted": {
+    "description": "Main button of the welcome: opens the first onboarding step (video access)."
+  },
+  "welcomeBody": "Film with your phone's camera as usual. New clips land in your tray, ready to sort into the reels you plan.",
+  "@welcomeBody": {
+    "description": "Text under the headline of the welcome."
+  },
+  "welcomeTakeLondonFood": "London Food",
+  "@welcomeTakeLondonFood": {
+    "description": "Label on the first sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakeCinematic": "Cinematic",
+  "@welcomeTakeCinematic": {
+    "description": "Label on the second sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakeDayOneVlog": "Day 1 Vlog",
+  "@welcomeTakeDayOneVlog": {
+    "description": "Label on the third sample take in the welcome's picture: a reel name the picture shows as an example."
+  },
+  "welcomeTakesCount": "{count, plural, =1{{count} take} other{{count} takes}}",
+  "@welcomeTakesCount": {
+    "description": "The first part of the label on the tray in the welcome's picture, a count that ticks up to 23 while the intro plays. The number is drawn right-aligned in a fixed width so the word does not move, so the number must stay in the text as written.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "welcomeReelsCount": " · 3 reels",
+  "@welcomeReelsCount": {
+    "description": "The second part of the label on the tray in the welcome's picture, after the takes count: a separator and the number of sample reels. Starts with a space and a middle dot."
+  },
+  "welcomeArtLabel": "Three takes standing in a tray, labelled London Food, Cinematic and Day 1 Vlog",
+  "@welcomeArtLabel": {
+    "description": "What a screen reader says for the welcome's picture (one image: the tabs and the count in it are not read out)."
+  },
+  "onboardingStepLabel": "Step {step} of {count}",
+  "@onboardingStepLabel": {
+    "description": "What a screen reader says for the row of dots that shows where the user is in onboarding.",
+    "placeholders": {
+      "step": {
+        "type": "int"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "accessBeforeTitle": "Let TakeTray see your videos",
+  "@accessBeforeTitle": {
+    "description": "Title of onboarding's video access step, before access is asked."
+  },
+  "notificationsStepTitle": "Know when clips are waiting",
+  "@notificationsStepTitle": {
+    "description": "Title of onboarding's notifications step."
+  },
+  "accessBeforeBody": "To find new clips you shoot, TakeTray needs access to all your videos.",
+  "@accessBeforeBody": {
+    "description": "Text under the title of onboarding's video access step, before access is asked."
+  },
+  "accessPrivacyTitle": "Your videos stay on your phone",
+  "@accessPrivacyTitle": {
+    "description": "Bold first line of the reassurance box on onboarding's video access step."
+  },
+  "accessPrivacyBody": "TakeTray only reads them. It never uploads, moves or deletes them.",
+  "@accessPrivacyBody": {
+    "description": "Text of the reassurance box on onboarding's video access step."
+  },
+  "accessAllow": "Allow access",
+  "@accessAllow": {
+    "description": "Main button of onboarding's video access step, before access is asked: shows Android's permission dialog."
+  },
+  "accessHint": "On the next screen, choose {label}.",
+  "@accessHint": {
+    "description": "Hint under the Allow access button. {label} is the choice in Android's permission dialog, Allow all or Allow; the screen shows it in bold.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "accessChoiceAllowAll": "Allow all",
+  "@accessChoiceAllowAll": {
+    "description": "The choice in Android's video permission dialog on Android 14 and later that gives TakeTray access to every video. Must match the words Android shows."
+  },
+  "accessChoiceAllow": "Allow",
+  "@accessChoiceAllow": {
+    "description": "The choice in Android's video permission dialog before Android 14 that gives TakeTray access to every video. Must match the word Android shows."
+  },
+  "accessSomeTitle": "TakeTray can see only some videos",
+  "@accessSomeTitle": {
+    "description": "Title of onboarding's video access step when the user allowed only selected videos."
+  },
+  "accessSomeBody": "You allowed access to selected videos, so TakeTray can't find new clips by itself. You can still add videos yourself. We call this Manual mode.",
+  "@accessSomeBody": {
+    "description": "Text of onboarding's video access step when only selected videos are allowed."
+  },
+  "accessSomeCalloutTitle": "Want new clips found for you?",
+  "@accessSomeCalloutTitle": {
+    "description": "Bold first line of the callout on onboarding's video access step when only selected videos are allowed."
+  },
+  "accessSomeCalloutBody": "Choose Allow all in the next step or in Android settings.",
+  "@accessSomeCalloutBody": {
+    "description": "Text of the callout when only selected videos are allowed. The words Allow all are shown in bold; they must match the arb text 'accessChoiceAllowAll'."
+  },
+  "accessSomeAllowAll": "Allow all videos",
+  "@accessSomeAllowAll": {
+    "description": "Main button of onboarding's video access step when only selected videos are allowed: asks to widen the access."
+  },
+  "accessContinueManual": "Continue in Manual mode",
+  "@accessContinueManual": {
+    "description": "Quiet button of onboarding's video access step that goes on without full video access."
+  },
+  "accessDeniedTitle": "TakeTray can't see your videos",
+  "@accessDeniedTitle": {
+    "description": "Title of onboarding's video access step when access was refused and the permission dialog cannot be shown again."
+  },
+  "accessDeniedBody": "Without video access, new clips aren't found automatically. You can still pick videos yourself in Manual mode.",
+  "@accessDeniedBody": {
+    "description": "Text of onboarding's video access step when access was refused."
+  },
+  "accessDeniedCalloutTitle": "To allow access later",
+  "@accessDeniedCalloutTitle": {
+    "description": "Bold first line of the callout on onboarding's video access step when access was refused."
+  },
+  "accessDeniedCalloutBody": "Settings › Apps › TakeTray › Permissions › Photos and videos › {label}.",
+  "@accessDeniedCalloutBody": {
+    "description": "Where to find the permission in Android's settings. {label} is the choice to pick there, Allow all or Allow.",
+    "placeholders": {
+      "label": {
+        "type": "String"
+      }
+    }
+  },
+  "accessOpenSettings": "Open settings",
+  "@accessOpenSettings": {
+    "description": "Main button of onboarding's video access step when access was refused: opens TakeTray's page in Android's settings."
+  },
+  "accessAllSetTitle": "All set",
+  "@accessAllSetTitle": {
+    "description": "Title of onboarding's video access step when TakeTray can see every video."
+  },
+  "accessAllSetBody": "TakeTray can now find the new clips you shoot while Shooting mode is on.",
+  "@accessAllSetBody": {
+    "description": "Text of onboarding's video access step when TakeTray can see every video."
+  },
+  "onboardingContinue": "Continue",
+  "@onboardingContinue": {
+    "description": "Main button of onboarding's video access step when all is set: goes to the next step."
+  },
+  "notificationsStepBody": "One quiet notification when new clips are waiting, and a reminder at 9 pm if you haven't tagged them. No sound.",
+  "@notificationsStepBody": {
+    "description": "Text under the title of onboarding's notifications step."
+  },
+  "notificationsStepAllow": "Allow notifications",
+  "@notificationsStepAllow": {
+    "description": "Main button of onboarding's notifications step: shows Android's notification permission dialog, then goes on."
+  },
+  "notificationsStepNotNow": "Not now",
+  "@notificationsStepNotNow": {
+    "description": "Quiet button of onboarding's notifications step: goes on without asking."
+  },
+  "notificationCardApp": "TakeTray · now",
+  "@notificationCardApp": {
+    "description": "Header of the sample notification on onboarding's notifications step: the app name, a middle dot and 'now'."
+  },
+  "notificationCardTitle": "5 new clips to tag",
+  "@notificationCardTitle": {
+    "description": "Title of the sample notification on onboarding's notifications step."
+  },
+  "notificationCardBody": "Tap to tag them into your reels.",
+  "@notificationCardBody": {
+    "description": "Second line of the sample notification on onboarding's notifications step."
+  },
+  "notificationCardMore": "+1",
+  "@notificationCardMore": {
+    "description": "Last small tile of the sample notification's row of clip pictures: one more clip than the four shown."
+  },
+  "reelsStepTitle": "What reels are you planning?",
+  "@reelsStepTitle": {
+    "description": "Title of onboarding's last step, where the user types the reels they plan."
+  },
+  "reelsStepSkip": "Skip for now",
+  "@reelsStepSkip": {
+    "description": "Button on onboarding's last step: finishes onboarding without creating reels and opens Reels."
+  },
+  "reelsStepBody": "Add the reels for your next trip or shoot. You can change them later.",
+  "@reelsStepBody": {
+    "description": "Text under the title of onboarding's last step."
+  },
+  "reelsStepNameHint": "London Food",
+  "@reelsStepNameHint": {
+    "description": "Hint inside the empty reel name field of onboarding's last step: an example reel name."
+  },
+  "reelsStepNameHelp": "Press Enter to add the next one",
+  "@reelsStepNameHelp": {
+    "description": "Help line under the reel name field of onboarding's last step."
+  },
+  "reelsStepAdd": "Add reel",
+  "@reelsStepAdd": {
+    "description": "What a screen reader says for the round add button inside the reel name field of onboarding's last step."
+  },
+  "reelsStepRemove": "Remove {name}",
+  "@reelsStepRemove": {
+    "description": "What a screen reader says for the close button of a reel name in the list of onboarding's last step.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "reelsStepIdeas": "Ideas",
+  "@reelsStepIdeas": {
+    "description": "Small heading over the suggested reel names on onboarding's last step."
+  },
+  "reelsStepCreate": "Create {count, plural, one{1 reel} other{{count} reels}}",
+  "@reelsStepCreate": {
+    "description": "Main button of onboarding's last step while reel names are in the list: makes them all and opens Reels.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelsStepCreateNone": "Create reels",
+  "@reelsStepCreateNone": {
+    "description": "Main button of onboarding's last step while the list is empty and no reel exists yet: disabled."
+  },
+  "shootingTipTitle": "Going out to shoot?",
+  "@shootingTipTitle": {
+    "description": "Title of the one-time tip under the Shooting mode switch on Reels, shown after onboarding."
+  },
+  "shootingTipBody": "Turn on Shooting mode first. New videos will wait in To tag.",
+  "@shootingTipBody": {
+    "description": "Text of the one-time tip under the Shooting mode switch on Reels."
+  },
+  "shootingTipGotIt": "Got it",
+  "@shootingTipGotIt": {
+    "description": "Button that closes the Shooting mode tip for good."
   }
 }

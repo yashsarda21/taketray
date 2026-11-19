@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launch splash (D-137), dark. TtColors dark: primary and onPrimary.
+         The icon background stays the launcher's graphite, so the icon is a
+         dark disc on the light window. -->
+    <color name="splash_background">#B8C8DD</color>
+    <color name="splash_icon_background">#516072</color>
+    <color name="splash_on_primary">#243142</color>
+</resources>

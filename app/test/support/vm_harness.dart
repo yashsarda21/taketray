@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/platform/background_bridge.dart';
 import 'package:taketray/platform/copy_bridge.dart';
 import 'package:taketray/platform/editors_bridge.dart';
@@ -15,6 +16,7 @@ import '../data/media/media_harness.dart';
 import 'fake_background_bridge.dart';
 import 'fake_copy_bridge.dart';
 import 'fake_editors_bridge.dart';
+import 'fixed_onboarding.dart';
 
 export '../data/media/media_harness.dart';
 
@@ -33,13 +35,20 @@ export '../data/media/media_harness.dart';
 /// even if the caller swallowed the error. A test that means to use them
 /// says so: `h.editors.allow({'deleteCopies'})`, `h.copy.allowAll()`.
 ///
+/// [appOverrides] put an onboarded phone into the app (a
+/// [FixedOnboarding.onboarded]), so the app opens on Reels as it did before
+/// onboarding existed (D-136); [onboarding] makes a different controller for
+/// a test of first launch.
+///
 /// The container is disposed when the test ends.
 class VmHarness {
   VmHarness({
     DateTime? now,
     RecordingBridge? bridge,
     FakeBackgroundBridge? background,
-  }) : media = MediaHarness(now: now, bridge: bridge, background: background) {
+    OnboardingController Function()? onboarding,
+  }) : media = MediaHarness(now: now, bridge: bridge, background: background),
+       onboarding = onboarding ?? FixedOnboarding.onboarded {
     container = ProviderContainer.test(overrides: overrides);
     editors.allowOnly(const {});
     copy.allowOnly(const {'current'});
@@ -71,6 +80,9 @@ class VmHarness {
   /// The copy bridge in the overrides.
   final FakeCopyBridge copy = FakeCopyBridge();
 
+  /// Makes the onboarding controller of [appOverrides], once per container.
+  final OnboardingController Function() onboarding;
+
   /// The overrides that put the harness's database, bridge and clock into any
   /// container or `ProviderScope`.
   late final List<Override> overrides = [
@@ -85,10 +97,13 @@ class VmHarness {
   /// [overrides] plus a thumbnail cache on a folder that does not exist
   /// (pruning it is a no-op), for tests that run the whole app: its start
   /// prunes the cache, and the real folder comes from a platform channel.
+  /// The onboarding controller is [onboarding]'s (onboarded unless the test
+  /// says otherwise), so the app does not open on the welcome.
   late final List<Override> appOverrides = [
     ...overrides,
     thumbnailCacheProvider.overrideWith(
       (ref) async => ThumbnailCache(media.bridge, Directory('/nonexistent')),
     ),
+    onboardingControllerProvider.overrideWith(onboarding),
   ];
 }
