@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -8,10 +10,12 @@ import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/references/views/shooting_references_sheet.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
+import '../../../support/fake_media_bridge.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
@@ -245,6 +249,93 @@ void main() {
       await pumpHost(tester);
 
       expect(find.byIcon(Symbols.movie_rounded), findsNWidgets(2));
+    });
+
+    group('the cover in a header', () {
+      /// A 1 x 1 PNG.
+      final png = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA'
+        '60e6kgAAAABJRU5ErkJggg==',
+      );
+
+      /// Goa with a clip in it, a reference, and (with [picture]) a thumbnail
+      /// on the phone; London with a reference and no clip.
+      // Flutter's image cache outlives a test: a picture one test loaded
+      // would answer the next one's request for the same video.
+      setUp(() => PaintingBinding.instance.imageCache.clear());
+
+      Future<void> goaWithClip(
+        WidgetTester tester, {
+        bool picture = false,
+      }) async {
+        final goa = await makeReel(tester, 'Goa');
+        final london = await makeReel(tester, 'London');
+        await save(tester, goa, 'https://www.instagram.com/reel/A1/');
+        await save(tester, london, 'https://youtube.com/shorts/q8Yb2LmT0sE');
+        final ids = await real(tester, () => h.media.store([fakeVideo(id: 1)]));
+        await real(tester, () => h.media.clips.addClipsToReel(goa.id, ids));
+        if (picture) {
+          h.media.bridge.thumbnails[('external_primary', 1)] = png;
+        }
+      }
+
+      /// Waits, off the test's clock (the picture is asked for, read and
+      /// decoded in real time), until [done], at most about 5 seconds.
+      Future<void> waitUntil(WidgetTester tester, bool Function() done) async {
+        for (var i = 0; i < 100 && !done(); i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 100)),
+          );
+          // The cache's timeouts run on the test's clock.
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
+
+      Finder filmInImage() => find.descendant(
+        of: find.byType(Image),
+        matching: find.byIcon(Symbols.movie_rounded),
+      );
+
+      testApp('a reel with a clip shows its thumbnail, not the film icon', (
+        tester,
+      ) async {
+        await goaWithClip(tester, picture: true);
+        await pumpHost(tester);
+        await waitUntil(
+          tester,
+          () =>
+              find.byType(Image).evaluate().isNotEmpty &&
+              tester.renderObject<RenderImage>(find.byType(Image)).image !=
+                  null,
+        );
+
+        final image = tester.widget<Image>(find.byType(Image));
+        expect(image.image, isA<ClipThumbnailImage>());
+        expect(image.errorBuilder, isNotNull);
+        // Only London's header has the film icon, and not in an Image.
+        expect(filmInImage(), findsNothing);
+        expect(find.byIcon(Symbols.movie_rounded), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testApp('a thumbnail that is not there falls back to the film icon', (
+        tester,
+      ) async {
+        await goaWithClip(tester);
+        await pumpHost(tester);
+        await waitUntil(tester, () => filmInImage().evaluate().isNotEmpty);
+
+        expect(find.byType(Image), findsOneWidget);
+        expect(
+          tester.widget<Image>(find.byType(Image)).image,
+          isA<ClipThumbnailImage>(),
+        );
+        // The picture failed: its error builder shows the film icon. (London,
+        // with no clip, shows the icon without an Image.)
+        expect(filmInImage(), findsOneWidget);
+        expect(find.byIcon(Symbols.movie_rounded), findsNWidgets(2));
+        expect(tester.takeException(), isNull);
+      });
     });
 
     testApp('no references anywhere: the empty line', (tester) async {
