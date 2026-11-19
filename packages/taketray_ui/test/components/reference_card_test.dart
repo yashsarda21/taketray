@@ -25,6 +25,8 @@ Widget _card({
   VoidCallback? onOpen,
   ValueChanged<String>? onMoreSelected,
   bool more = true,
+  List<TtMenuItem<String>> moreItems = _items,
+  bool selectable = true,
   double width = 328,
 }) => Center(
   child: SizedBox(
@@ -37,8 +39,8 @@ Widget _card({
       openSemanticLabel: 'Open reference: $title, Instagram',
       onOpen: onOpen ?? () {},
       moreSemanticLabel: more ? 'More options for $title' : null,
-      moreItems: more ? _items : null,
-      onMoreSelected: more ? (onMoreSelected ?? (_) {}) : null,
+      moreItems: more ? moreItems : null,
+      onMoreSelected: more && selectable ? (onMoreSelected ?? (_) {}) : null,
     ),
   ),
 );
@@ -102,51 +104,14 @@ void main() {
     });
 
     testWidgets('an empty moreItems list shows no more button', (tester) async {
-      await tester.pumpWidget(
-        ttTestApp(
-          Center(
-            child: SizedBox(
-              width: 328,
-              child: TtReferenceCard<String>(
-                title: 'T',
-                subtitle: 'S',
-                sourceIcon: const SizedBox.square(dimension: 18),
-                openLabel: 'Open',
-                openSemanticLabel: 'Open reference',
-                onOpen: () {},
-                moreSemanticLabel: 'More',
-                moreItems: const [],
-                onMoreSelected: (_) {},
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(ttTestApp(_card(moreItems: const [])));
       expect(find.byIcon(Symbols.more_vert_rounded), findsNothing);
     });
 
     testWidgets('moreItems without onMoreSelected show no more button', (
       tester,
     ) async {
-      await tester.pumpWidget(
-        ttTestApp(
-          Center(
-            child: SizedBox(
-              width: 328,
-              child: TtReferenceCard<String>(
-                title: 'T',
-                subtitle: 'S',
-                sourceIcon: const SizedBox.square(dimension: 18),
-                openLabel: 'Open',
-                openSemanticLabel: 'Open reference',
-                onOpen: () {},
-                moreSemanticLabel: 'More',
-                moreItems: _items,
-              ),
-            ),
-          ),
-        ),
-      );
+      await tester.pumpWidget(ttTestApp(_card(selectable: false)));
       expect(find.byIcon(Symbols.more_vert_rounded), findsNothing);
     });
 
