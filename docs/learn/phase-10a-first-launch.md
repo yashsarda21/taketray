@@ -1,6 +1,6 @@
 # Learning guide: Phase 10A, the first launch
 
-This guide explains how TakeTray greets someone who has just installed it: the animated splash on every launch, the B · Tray welcome with its 3.6 s intro on the first launch, the steps that ask for video access and notifications in TakeTray's own words, the step that plans the first reels, and the one-time tip that points at Shooting mode. It is written as the phase is built; each section is filled in by the task that builds it.
+This guide explains how TakeTray greets someone who has just installed it: the animated splash on every launch, the B · Tray welcome with its 3.6 s intro on the first launch, the steps that ask for video access and notifications in TakeTray's own words, the step that plans the first reels, and the one-time tip that points at Shooting mode. The last section shows how it was checked on a real Samsung Galaxy S24 Ultra running Android 17, and what that found.
 
 Every snippet is real code from this repository. You don't need to know Flutter or Android well to follow it; basic programming knowledge is enough.
 
@@ -423,8 +423,6 @@ It ends with `All tests passed!`. In `shooting_mode_section.dart` change `final 
 
 ## 10. On the S24
 
-**Draft: the phone run completes this section. What follows is what the run will check; the results are added after it.**
-
 **What we built:** an on-device test for the whole first launch, and a list of hand checks for what a test cannot see. The test is `app/patrol_test/onboarding_test.dart`; the list is "Phase 10A check" in `docs/dev-setup.md`.
 
 - **Four flows.** *Fresh phone*: welcome, Get started, Allow access, Android's "Allow all", All set, Continue, Allow notifications, Android's "Allow", a typed name and an idea, "Create 2 reels", Reels with the tip, Got it. *Manual mode*: "Don't allow", Continue in Manual mode, Not now, Skip for now, Reels with the banner. *Closed midway*: Get started, Back, a restart, the welcome's final frame. *The tip and the switch*: turning Shooting mode on with its own switch hides the tip.
@@ -452,4 +450,13 @@ It ends with `Completed building apk` and the two APK paths. Then open `app/patr
 
 **Decisions:** D-143 (all of this section), with D-100 and D-131 (Patrol on the S24), D-136 (the onboarded harness) and D-137 to D-142 (what the flows check) as background.
 
-**Phone results:** pending. The run, what each flow showed and what was changed are added here after it.
+**Phone results.** The flows were run on the S24 (Android 17) on 2026-11-18, three times, and the third run passed 4 of 4.
+
+- **Run 1 found two faults, both in the test code, not in the app.** First, Patrol's `enterText` closes the fake input connection once it has typed, so the Enter that followed had nowhere to go and the typed name never joined the list; the fix types with `hideKeyboard: false`, so the field keeps its focus and the Enter reaches it. Second, after every test Patrol resets Flutter's binding, which leaves the app's lifecycle state empty (null) while the screen is still in front. On Android 16 and later, with predictive Back, Flutter then never tells the system that the app handles Back, so the system finished the activity and the run ended. A real launch always has a state, so users never see this; the test now puts the state back to `resumed` before each flow (`restoreResumedLifecycle`). Run 2 then found that the new guard was too strict (the phone had reported `paused`, which is harmless), and it was relaxed.
+- **Run 3: 4 of 4 passed.** Fresh phone, Manual mode, Closed midway, and The Home tip and the switch.
+- **Nothing else broke.** Every older Patrol file passed once more: `app_shell` 1, `database` 1, `reels` 1, `tagging` 5, `media_access` 2, `media_scan` 3, `add_videos` 3, `background` 7 and `editors` 8.
+- **The owner's hand checks 1 to 19 all passed.** These are the things a test cannot see: the splash's motion, the intro's smoothness, TalkBack, a real kill during onboarding and Android's own settings page. Check 16 asked whether text typed but not added to the list should be dropped when you tap Create or Skip; the owner accepted that, so it stays as it is.
+- **The release build was installed over the real app** with `install -r`. Onboarding showed once and the owner's data was kept.
+- **One thing that looks like TakeTray's but is not.** The blur behind Android's own permission dialog is drawn by the system, not by TakeTray, so the app cannot change it.
+
+**What this teaches:** two of the three runs failed, and both times the app was fine; the test harness was what lied. When an on-device test fails, find out whether the phone, the app or the test is wrong before touching the app. The full story, with the evidence for each fault, is in D-143.
