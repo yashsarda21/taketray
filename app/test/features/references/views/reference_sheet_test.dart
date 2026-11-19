@@ -43,7 +43,7 @@ class _HeldReferences extends ReferencesRepository {
   _HeldReferences(AppDatabase db, Clock clock) : super(db, clock);
 
   final Completer<void> gate = Completer<void>();
-  Object? failWith;
+  Exception? failWith;
 
   @override
   Future<AddReferenceResult> add(
@@ -471,7 +471,7 @@ void main() {
       });
 
       testApp('a save that fails shows the failure as a snack', (tester) async {
-        held.failWith = StateError('forced');
+        held.failWith = Exception('forced');
         await startHeldSave(tester);
         held.gate.complete();
         await settleApp(tester);
