@@ -137,6 +137,28 @@ void main() {
       expect(typedLink('https://x.com/a'), 'https://x.com/a');
     });
 
+    test('a Unicode domain is a link, typed with or without a scheme (F1)', () {
+      expect(typedLink('https://café.fr'), 'https://café.fr');
+      expect(typedLink('café.fr'), 'https://café.fr');
+      expect(typedLink('bücher.de/x'), 'https://bücher.de/x');
+      expect(typedLink('Look https://bücher.de/x ok'), 'https://bücher.de/x');
+      expect(typedLink('https://例え.jp/a'), 'https://例え.jp/a');
+    });
+
+    test('a punycode domain is still a link (F1)', () {
+      expect(typedLink('https://xn--caf-dma.fr'), 'https://xn--caf-dma.fr');
+      expect(typedLink('xn--caf-dma.fr'), 'https://xn--caf-dma.fr');
+    });
+
+    test('a bad percent run in a host is not a link (F1)', () {
+      expect(typedLink('https://%zz.com'), isNull);
+      expect(typedLink('%zz.com'), isNull);
+      expect(typedLink('https://%.com'), isNull);
+      expect(typedLink('https://%2.com'), isNull);
+      expect(typedLink('https://caf%.fr'), isNull);
+      expect(typedLink('https://%C3.com'), isNull);
+    });
+
     test('whatever it gives, normalizeReferenceUrl accepts', () {
       for (final text in [
         'x.com/a',
@@ -205,6 +227,19 @@ void main() {
         pastedLink('${'word ' * 20000}https://x.com/end.'),
         'https://x.com/end',
       );
+    });
+
+    test('a pasted caption with a Unicode domain gives the link (F1)', () {
+      expect(
+        pastedLink('Great shop https://bücher.de/x thanks'),
+        'https://bücher.de/x',
+      );
+      expect(pastedLink('https://café.fr'), 'https://café.fr');
+      expect(
+        pastedLink('see https://xn--caf-dma.fr/a'),
+        'https://xn--caf-dma.fr/a',
+      );
+      expect(pastedLink('see https://%zz.com'), isNull);
     });
   });
 

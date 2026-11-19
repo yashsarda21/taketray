@@ -415,6 +415,7 @@ tool/patrol test -d RZCY80PHWCZ -t patrol_test/references_test.dart
 
 The phone must be unlocked, on the home screen, with USB debugging allowed, and in English. The run takes a few minutes (four flows). It uses only TakeTray Dev's own data and the clipboard, asks for no permission, never opens a link and prints no user data (only fixed step descriptions; flow 3 prints one line, "new reel form: name field focused on open: true or false").
 
+- **Flow 2 uses the phone's clipboard.** It replaces whatever is on the clipboard (the old text is never read) with a caption and empties the clipboard after, so keep nothing you need on the clipboard during the run.
 - **Flow 4 expects only its own three references.** The References row counts every Collecting and Ready to edit reel's references, so the flow fails at its start, with the reason, when another reference is in TakeTray Dev's data. The clean-up after every run (below) is what avoids that.
 - If a flow fails, delete what is left in TakeTray Dev (the reels `TakeTray Test Ref *`), or clear its data in the clean-up below.
 

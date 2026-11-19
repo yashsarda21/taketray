@@ -40,7 +40,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
-| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A ✅ Done, **Next: Phase 9B Sharing in** |
+| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A built, phone check pending (S24 run and CI package goldens), **Next: Phase 9B Sharing in** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -219,7 +219,7 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Phone tests** on the S24 (Android 17): five on-device flows (the switches, the switches reaching the background, a watched folder, export then import, and Send error log). The first run passed 4 of 5; the Send error log flow failed because the test's safety fake refused to open the share sheet, a fault in the test and not the app. It now uses the real share sheet, and the second run passed 5 of 5. The real folder and document pickers, the look against the prototype, TalkBack and a real reminder arriving cannot be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 10B check): checks 1 to 18 all passed, including the new permission rows.
 - **Learning guide**: [docs/learn/phase-10b-settings.md](docs/learn/phase-10b-settings.md) explains the whole phase in plain English, with the real code.
 
-### Phase 9A: References in the app
+### Phase 9A: References in the app (built; phone check pending)
 - **References on a reel**: a reel's page has a References section. With none it shows one dashed **Add reference** row ("Save a reel you want to recreate"); with some it shows "References · 3", a small **Add** button and a card per link, newest first. Tapping a card opens the link in the Instagram, YouTube or TikTok app, or the browser, whichever the phone picks; if nothing can, it says so. Each card's ⋮ menu has **Edit label**, **Copy link** and **Remove** (instant, with **Undo**). A reel with links and no shot ideas gets a note, "Write the shots you need", that opens its details on the shot ideas.
 - **Add reference sheet**: type or paste a link and give it an optional label of up to 60 characters. **Paste** is the only thing that ever reads the clipboard, so Android's own paste message shows only after you tap it; it takes the first link out of a whole caption. A link that is not a link, or is already saved on the reel, is told under the field. **Edit label** is the same sheet for a link already saved.
 - **The reel form's Reference link**: the New reel and Reel details sheets have an optional link box. A new reel is made with its link in one step (all or nothing), and an existing reel keeps the link in its references; the help line says how many it has.

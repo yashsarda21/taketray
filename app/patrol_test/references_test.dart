@@ -653,8 +653,12 @@ Future<void> _tearDown(
       // above skips the rest of that step, so Shooting mode is switched off
       // here too, in the database, and read back: a phone left in Shooting
       // mode fails the flow instead of passing quietly. First in this
-      // closure, so a failure of the clean-up after it cannot skip it; and
-      // its own failure still lets that clean-up run (the `finally`).
+      // closure, so a failure of the clean-up after it cannot skip it. The
+      // check's error is kept in a local so the clean-up still runs, and it
+      // is the check's error that is thrown (M29): a clean-up that throws as
+      // well does not replace it.
+      Object? checkError;
+      StackTrace? checkStack;
       try {
         if (shootingMayBeOn) {
           final phone = c.read(phoneStateRepositoryProvider);
@@ -663,7 +667,11 @@ Future<void> _tearDown(
             throw TestFailure('Shooting mode is still on after the flow');
           }
         }
-      } finally {
+      } on Object catch (error, stack) {
+        checkError = error;
+        checkStack = stack;
+      }
+      try {
         await _deleteTestReels(
           c.read(appDatabaseProvider),
           c.read(reelsRepositoryProvider),
@@ -672,6 +680,12 @@ Future<void> _tearDown(
         if (before != null) {
           await c.read(settingsRepositoryProvider).save(before);
         }
+      } on Object catch (_) {
+        // Only when the check passed is the clean-up's error the one to show.
+        if (checkError == null) rethrow;
+      }
+      if (checkError != null) {
+        Error.throwWithStackTrace(checkError, checkStack!);
       }
     }),
   );

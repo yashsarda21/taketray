@@ -100,22 +100,46 @@ void main() {
       lessThan(off),
       reason: 'the guard is the first thing in the closure',
     );
-    // Its own failure still lets the clean-up run.
-    expect(closure.indexOf('} finally {'), greaterThan(fail0(closure)));
+    // Its own failure still lets the clean-up run: the check's error is
+    // caught into a local, and the clean-up is a second block after it.
+    final caught = closure.indexOf('catch (error, stack)');
+    expect(caught, greaterThan(fail0(closure)));
+    expect(closure.indexOf('checkError = error'), greaterThan(caught));
     // Before anything that could throw and skip it.
     expect(off, lessThan(closure.indexOf('_deleteTestReels(')));
     expect(off, lessThan(closure.indexOf('settingsRepositoryProvider')));
     // And the read-back and the failure come before that work too, and the
-    // work is in the `finally`, so the failure does not skip it.
+    // work comes after the check's catch, so the failure does not skip it.
     final fail = fail0(closure);
     expect(fail, greaterThan(off));
     expect(fail, lessThan(closure.indexOf('_deleteTestReels(')));
     expect(fail, lessThan(closure.indexOf('settingsRepositoryProvider')));
-    expect(
-      closure.indexOf('} finally {'),
-      lessThan(closure.indexOf('_deleteTestReels(')),
-    );
+    expect(caught, lessThan(closure.indexOf('_deleteTestReels(')));
   });
+
+  test(
+    'the check failure is thrown first, the clean-up failure after (M29)',
+    () {
+      final tearDown = bodyOf('Future<void> _tearDown(');
+      final closure = tearDown.substring(
+        tearDown.indexOf('_withDatabase((c) async {'),
+      );
+      final cleanUp = closure.indexOf('_deleteTestReels(');
+      // A clean-up that throws is swallowed when the check failed, and
+      // rethrown when it did not.
+      final swallow = closure.indexOf('if (checkError == null) rethrow;');
+      expect(swallow, greaterThan(cleanUp), reason: 'guards the clean-up');
+      expect(closure.indexOf('catch (', cleanUp), lessThan(swallow));
+      // Then the check's error, with its stack, is the one thrown.
+      final thrown = closure.indexOf(
+        'Error.throwWithStackTrace(checkError',
+        swallow,
+      );
+      expect(thrown, greaterThan(swallow));
+      // The clean-up is not in a `finally`: a throw there would replace it.
+      expect(closure, isNot(contains('} finally {')));
+    },
+  );
 
   test('the clipboard is emptied only when a flow wrote to it (M24)', () {
     final tearDown = bodyOf('Future<void> _tearDown(');

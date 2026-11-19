@@ -32,7 +32,8 @@ String? firstLinkIn(String text) {
 ///
 /// What it gives is never junk (D-157): `normalizeReferenceUrl` accepts it,
 /// and its host has a dot with a name on both sides of every dot, such as
-/// `x.com` (so `hello.`, `.com` and `a..com` are not links). Its last part
+/// `x.com` (so `hello.`, `.com` and `a..com` are not links); a Unicode host
+/// (`café.fr`) counts by its letters, not its `%XX` form. Its last part
 /// has a letter (`3.5` is a number, not an address), unless it is an IPv4
 /// address. A bare address with a user name in it (`user@example.com`,
 /// `mailto:a@b.com`) is not a link. A link with a scheme needs the dotted
@@ -65,12 +66,25 @@ String? pastedLink(String text) {
 final _hostPart = RegExp(r'^[\p{L}\p{N}_-]+$', unicode: true);
 final _digits = RegExp(r'^\d+$');
 
+/// The host with its `%XX` runs decoded (Dart gives `café.fr` as
+/// `caf%C3%A9.fr`), or null when a run is not valid UTF-8, so `%zz.com` and
+/// `%C3.com` stay refused.
+String? _decodedHost(String host) {
+  try {
+    return Uri.decodeComponent(host);
+  } on FormatException {
+    return null;
+  }
+}
+
 /// [link] when `normalizeReferenceUrl` accepts it and its host is dotted
 /// (see [typedLink]), else null.
 String? _withDottedHost(String link) {
   final url = normalizeReferenceUrl(link);
   if (url == null) return null;
-  final parts = url.host.split('.');
+  final host = _decodedHost(url.host);
+  if (host == null) return null;
+  final parts = host.split('.');
   if (parts.length < 2 || !parts.every(_hostPart.hasMatch)) return null;
   final isIpv4 = parts.length == 4 && parts.every(_digits.hasMatch);
   if (!isIpv4 && _digits.hasMatch(parts.last)) return null;
