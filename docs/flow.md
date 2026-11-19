@@ -1576,6 +1576,16 @@ Opens a reference link in the app or browser the phone picks, and reads the Inst
 
 **Manifest:** `<queries>` names the three editors and the four source packages; `editor_packages_manifest_test.dart` (against `sourceAppPackages` and `EditorApp`) and `ManifestTest.kt` check exactly these seven.
 
+### The reference card's menu and large-text Open (`packages/taketray_ui/lib/src/components/reference_card.dart`, Phase 9A Task 4, D-156)
+
+`TtReferenceCard<T>` draws one reference: art, title, subtitle, an "Open" mark and an optional more menu. Nothing in the app uses it yet (Task 6's References section will).
+
+**Building it** (`TtReferenceCard.build`):
+1. `hasMore` is true only when `moreItems` is non-empty and `onMoreSelected` is given. The constructor asserts that `moreItems` (even an empty list) comes with a `moreSemanticLabel`.
+2. `iconOnly` is `MediaQuery.textScalerOf(context).scale(14) >= 21` (`TtMetrics.referenceOpenProbeSize`, `referenceOpenIconOnlyFrom`): true from 150 % text, 21 sp itself included.
+3. The main part is one button (`Semantics` named `openSemanticLabel`, an `InkWell` calling `onOpen`) holding the art, the title (2 lines) and subtitle (1 line), and `_OpenMark`. `_OpenMark` draws the open icon, and the word `openLabel` only when `iconOnly` is false. The button's semantics do not change with `iconOnly`.
+4. With `hasMore`, a `TtMenuButton<T>` (D-51) follows the main part. Its anchor is a 48 dp `TtIconButton` (⋮) named `moreSemanticLabel` whose press calls the menu's `open`. Choosing an entry closes the menu and calls `onMoreSelected(value)`; tapping outside closes it with no call. The more button never calls `onOpen`.
+
 ### Error logging
 
 Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.

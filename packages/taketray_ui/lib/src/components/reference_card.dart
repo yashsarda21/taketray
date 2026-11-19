@@ -5,20 +5,25 @@ import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/internal/dashed_border.dart';
+import 'package:taketray_ui/src/components/menu.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
 /// A reference to a video to recreate: a striped art tile with the source's
 /// app icon, a title and subtitle, and an "Open" mark. An optional more
-/// button follows.
+/// menu follows.
 ///
 /// TakeTray never fetches the referenced video, so this is a designed card,
-/// not a thumbnail. The title clamps to 2 lines and the subtitle to 1.
+/// not a thumbnail. The title clamps to 2 lines and the subtitle to 1. At
+/// 150 % text and up (14 sp reads as 21 sp or more) the "Open" mark shows
+/// only its icon, so the word does not take half the row; the main button's
+/// semantics are the same.
 ///
 /// The main part is one button named [openSemanticLabel] (it should say what
-/// opens, and where). The more button, shown only when [onMore] is given, is
-/// a separate 48 dp button named [moreSemanticLabel].
-class TtReferenceCard extends StatelessWidget {
+/// opens, and where). The more button, shown only when [moreItems] has
+/// entries and [onMoreSelected] is given, is a separate 48 dp button named
+/// [moreSemanticLabel] that opens a [TtMenuButton] of [moreItems].
+class TtReferenceCard<T> extends StatelessWidget {
   /// A card for the reference [title] that calls [onOpen] when tapped.
   const new({
     required this.title,
@@ -28,10 +33,11 @@ class TtReferenceCard extends StatelessWidget {
     required this.openSemanticLabel,
     required this.onOpen,
     this.moreSemanticLabel,
-    this.onMore,
+    this.moreItems,
+    this.onMoreSelected,
     super.key,
   }) : assert(
-         onMore == null || moreSemanticLabel != null,
+         moreItems == null || moreSemanticLabel != null,
          'The more button needs a semantics label',
        );
 
@@ -58,14 +64,23 @@ class TtReferenceCard extends StatelessWidget {
   /// What a screen reader says for the more button.
   final String? moreSemanticLabel;
 
-  /// Called when the more button is tapped; null hides the button.
-  final VoidCallback? onMore;
+  /// The entries of the more menu; null or empty hides the button.
+  final List<TtMenuItem<T>>? moreItems;
+
+  /// Called with the value of the chosen menu entry; null hides the button.
+  final ValueChanged<T>? onMoreSelected;
 
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
-    final more = onMore;
+    final items = moreItems;
+    final selected = onMoreSelected;
+    final hasMore = items != null && items.isNotEmpty && selected != null;
+    final iconOnly =
+        MediaQuery.textScalerOf(context)
+            .scale(TtMetrics.referenceOpenProbeSize) >=
+        TtMetrics.referenceOpenIconOnlyFrom;
     // proto.css: .refcard, tt-style.css: .style-tt .refcard
     return Material(
       color: scheme.surfaceContainerLow,
@@ -128,7 +143,10 @@ class TtReferenceCard extends StatelessWidget {
                           constraints: const BoxConstraints(
                             maxWidth: TtMetrics.referenceOpenMaxWidth,
                           ),
-                          child: _OpenMark(label: openLabel),
+                          child: _OpenMark(
+                            label: openLabel,
+                            iconOnly: iconOnly,
+                          ),
                         ),
                       ],
                     ),
@@ -137,11 +155,15 @@ class TtReferenceCard extends StatelessWidget {
               ),
             ),
           ),
-          if (more != null)
-            TtIconButton(
-              icon: Symbols.more_vert_rounded,
-              semanticLabel: moreSemanticLabel!,
-              onPressed: more,
+          if (hasMore)
+            TtMenuButton<T>(
+              items: items,
+              onSelected: selected,
+              builder: (context, open) => TtIconButton(
+                icon: Symbols.more_vert_rounded,
+                semanticLabel: moreSemanticLabel!,
+                onPressed: open,
+              ),
             ),
         ],
       ),
@@ -149,11 +171,13 @@ class TtReferenceCard extends StatelessWidget {
   }
 }
 
-/// "Open" with the open-in-new icon, in the primary colour.
+/// "Open" with the open-in-new icon, in the primary colour; only the icon
+/// when [iconOnly] (large text).
 class _OpenMark extends StatelessWidget {
-  const new({required this.label});
+  const new({required this.label, required this.iconOnly});
 
   final String label;
+  final bool iconOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -171,14 +195,15 @@ class _OpenMark extends StatelessWidget {
             size: tt.sizes.iconSmall,
             color: color,
           ),
-          Flexible(
-            child: Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: tt.text.material.labelLarge!.copyWith(color: color),
+          if (!iconOnly)
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: tt.text.material.labelLarge!.copyWith(color: color),
+              ),
             ),
-          ),
         ],
       ),
     );

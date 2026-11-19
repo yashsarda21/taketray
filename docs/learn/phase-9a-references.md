@@ -155,3 +155,59 @@ Then break one thing on purpose. In `LinksHostApiImpl.kt`, make `isWebLink` retu
 ### Decisions
 
 - D-155: the Links bridge, only `http`/`https` open, `ActivityNotFoundException` is false, the source packages and icons, the seven `<queries>` entries.
+
+## 4. The reference card's menu and large text
+
+### What we built
+
+The design system's reference card (the row for one saved link) got two changes. Its ⋮ button now opens a real menu, so a screen can offer "Edit label" and "Remove" without the card knowing what they do. And at large text sizes the word "Open" disappears, leaving just its icon.
+
+Nothing on screen changes yet: the References section (section 6) is the first user of the card.
+
+### Why TakeTray needs it
+
+A reference card has three jobs: open the link, edit its label, remove it. Opening is the whole card, so the other two need a menu, and the app already has one menu component. At 200 % text size the word "Open" took half the row, leaving the title a few letters per line. The icon already says "this leaves the app", so at large sizes it is enough.
+
+### Key ideas
+
+**1. The card does not know what the menu does.** It is generic over the value of an entry, and only reports which value was chosen:
+
+```dart
+TtReferenceCard<String>(
+  // ...
+  moreItems: const [TtMenuItem('edit', 'Edit label'), TtMenuItem('remove', 'Remove')],
+  onMoreSelected: (value) { /* 'edit' or 'remove' */ },
+)
+```
+
+**2. No items, no button.** The ⋮ shows only when there are items and someone listens for the choice; a button that opens nothing would be a trap for a screen-reader user.
+
+**3. Ask how big 14 sp really is.** Android scales text in ways that are not a single factor, so the card asks the scaler what a 14 sp text becomes and compares it with 21 (150 %):
+
+```dart
+final iconOnly =
+    MediaQuery.textScalerOf(context).scale(TtMetrics.referenceOpenProbeSize) >=
+    TtMetrics.referenceOpenIconOnlyFrom;
+```
+
+**4. Hiding the word does not hide the meaning.** The main button's spoken label ("Open reference: ..., Instagram") is the same at every size; only the picture changed.
+
+### Where it lives
+
+- `packages/taketray_ui/lib/src/components/reference_card.dart`: `TtReferenceCard<T>`, `_OpenMark`.
+- `packages/taketray_ui/lib/src/theme/tt_metrics.dart`: `referenceOpenProbeSize`, `referenceOpenIconOnlyFrom`.
+- `packages/taketray_ui/test/components/reference_card_test.dart` and `reference_card_golden_test.dart`.
+- `widgetbook/lib/components/reference_card.dart`: the playground.
+- Docs: `docs/flow.md` ("The reference card's menu and large-text Open"), D-156.
+
+### Try it yourself
+
+```sh
+cd packages/taketray_ui && ../../tool/flutter test test/components/reference_card_test.dart
+```
+
+Then break one thing on purpose. In `tt_metrics.dart`, change `referenceOpenIconOnlyFrom` from 21 to 28 (200 %) and run it again: the 150 % test fails. Put it back.
+
+### Decisions
+
+- D-156: the card's `moreItems` / `onMoreSelected` menu, and the icon-only Open mark from 150 % text.

@@ -2188,3 +2188,17 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - Each source package in `<queries>` lets the app see that one other app is installed; it reads nothing else about it. The list is exactly seven names, and a test on each side fails if one is added or lost.
   - A phone with none of the apps shows the generic link symbol for every card; nothing else changes.
   - The icon call happens once. An app installed after launch shows its icon after the next launch.
+
+### D-156 · Phase 9A: the reference card gets a real menu and a large-text Open mark
+- Date: 2026-11-19 · Phase: 9A · Task: 4 · Builds on D-51 (`TtMenuButton`), D-153 (the phase) · Code: `packages/taketray_ui/lib/src/components/reference_card.dart`, `packages/taketray_ui/lib/src/theme/tt_metrics.dart`, `widgetbook/lib/components/reference_card.dart`
+- Decision:
+  1. **`TtReferenceCard<T>`** replaces `onMore` with `List<TtMenuItem<T>>? moreItems` and `ValueChanged<T>? onMoreSelected`. The more button is a `TtMenuButton<T>` whose anchor is the same 48 dp `TtIconButton` (⋮) as before, named by `moreSemanticLabel`. It shows only when `moreItems` has entries **and** `onMoreSelected` is given; otherwise no button. The assert stays: `moreItems` (even an empty list) needs a `moreSemanticLabel`.
+  2. **Large text.** The "Open" mark asks the text scaler how large 14 sp has become (`MediaQuery.textScalerOf(context).scale(14)`). At 21 sp or more (150 %, boundary included) it draws only the open icon. The main button's semantics are unchanged: the label still says what opens and where. At 140 % and below the word shows as before. The two numbers are `TtMetrics.referenceOpenProbeSize` (14) and `referenceOpenIconOnlyFrom` (21).
+  3. The title still clamps to 2 lines and the subtitle to 1. A 2,000-character title at 200 % and 360 dp does not overflow.
+  4. Goldens: the macOS set gained a "with the menu open" scenario (card with the menu panel drawn under it, as `menu_golden_test.dart` does, because an open `MenuAnchor` overlay is not painted by the CI variant); the 2× column of every scenario shows the icon-only mark.
+- Why: the card is the one place a reference's actions (edit label, remove) live, and Android's menu pattern is the app's pattern (D-51). At 2× the word "Open" took half the row and squeezed the title to a few letters per line, while the icon alone already says "opens elsewhere" and the whole card is the button.
+- Alternatives considered: reading `textScaleFactor` (deprecated, and wrong for the non-linear scaling Android 14 applies; `scale(14)` is what the text really becomes); hiding the mark entirely at large text (the icon is the only hint that tapping leaves the app); wrapping or truncating the word (still takes width a large title needs); keeping `onMore` beside the menu (two ways to do one thing).
+- Consequences:
+  - `TtReferenceCard` is generic: a test that finds it by type needs `find.byType(TtReferenceCard<String>)` (or its value type).
+  - The app does not use the card yet (Task 6 does); only Widgetbook and the package tests changed.
+  - CI goldens (`goldens/ci/reference_card_{light,dark}.png`) must be remade on Linux at the phase end; the macOS ones are committed.
