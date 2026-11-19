@@ -112,12 +112,73 @@ void main() {
     );
   });
 
-  test('shareFile fails the flow instead of opening a share sheet', () {
-    expect(
-      () => bridge.shareFile('p', 'text/plain', 's', 't'),
-      throwsStateError,
-    );
-    expect(bridge.calls, ['shareFile']);
+  group('shareFile', () {
+    test('fails the flow instead of opening a share sheet', () {
+      expect(
+        () => bridge.shareFile('p', 'text/plain', 's', 't'),
+        throwsStateError,
+      );
+      expect(bridge.calls, ['shareFile']);
+    });
+
+    test('without realShareSheet the real bridge is never asked', () async {
+      final real = _RecordingBridge();
+      final fake = await PatrolFilesBridge.create(cache: cache, real: real);
+      expect(
+        () => fake.shareFile('p', 'text/plain', 's', 't'),
+        throwsStateError,
+      );
+      expect(real.shares, isEmpty, reason: 'no real share sheet by mistake');
+      await fake.dispose();
+    });
+
+    // Flow 4 (Send error log) needs Android's real share sheet: the one
+    // flow that opts in passes the call to the real bridge as it is.
+    test('with realShareSheet the call reaches the real bridge', () async {
+      final real = _RecordingBridge();
+      final fake = await PatrolFilesBridge.create(
+        cache: cache,
+        real: real,
+        realShareSheet: true,
+      );
+      await fake.shareFile('/c/shared/a.txt', 'text/plain', 'S', 'T');
+      expect(real.shares, [
+        ['/c/shared/a.txt', 'text/plain', 'S', 'T'],
+      ]);
+      expect(fake.calls, ['shareFile']);
+      await fake.dispose();
+    });
+
+    test('with realShareSheet a real failure reaches the caller', () async {
+      final real = _RecordingBridge(
+        shareError: const FileBridgeException(FilesProblem.invalidPath),
+      );
+      final fake = await PatrolFilesBridge.create(
+        cache: cache,
+        real: real,
+        realShareSheet: true,
+      );
+      await expectLater(
+        fake.shareFile('p', 'text/plain', 's', 't'),
+        throwsA(const FileBridgeException(FilesProblem.invalidPath)),
+      );
+      expect(real.shares, hasLength(1));
+      await fake.dispose();
+    });
+
+    test('with realShareSheet the pickers stay fake', () async {
+      final real = _RecordingBridge();
+      final fake = await PatrolFilesBridge.create(
+        cache: cache,
+        real: real,
+        realShareSheet: true,
+      );
+      expect(await fake.pickFolder(), 'Movies/TakeTray Test');
+      expect(await fake.saveDocument('a.json', 'x/y', 't'), isNotNull);
+      expect(await fake.openDocument(['*/*'], 100), 't');
+      expect(real.others, isEmpty, reason: 'only shareFile is real');
+      await fake.dispose();
+    });
   });
 
   group('the share sheet ids', () {
@@ -166,4 +227,50 @@ void main() {
       );
     });
   });
+}
+
+/// A real bridge stand-in that records what reached it.
+class _RecordingBridge implements FilesBridge {
+  _RecordingBridge({this.shareError});
+
+  final FileBridgeException? shareError;
+  final List<List<String>> shares = [];
+  final List<String> others = [];
+
+  @override
+  Future<void> shareFile(
+    String path,
+    String mimeType,
+    String subject,
+    String text,
+  ) async {
+    shares.add([path, mimeType, subject, text]);
+    if (shareError != null) throw shareError!;
+  }
+
+  @override
+  Future<String?> saveDocument(
+    String suggestedName,
+    String mimeType,
+    String text,
+  ) async {
+    others.add('saveDocument');
+    return null;
+  }
+
+  @override
+  Future<String?> openDocument(List<String> mimeTypes, int maxBytes) async {
+    others.add('openDocument');
+    return null;
+  }
+
+  @override
+  Future<String?> pickFolder() async {
+    others.add('pickFolder');
+    return null;
+  }
+
+  @override
+  Future<AppInfo> appInfo() async =>
+      const AppInfo(versionName: '1', androidRelease: '17');
 }

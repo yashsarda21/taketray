@@ -22,8 +22,11 @@ import 'package:taketray/platform/files_bridge.dart';
 ///   With nothing saved yet it answers `null`.
 /// - **`appInfo`** is the real bridge's answer (the app's version name and
 ///   Android's release: nothing about the owner).
-/// - **`shareFile`** is not used by the flows that fake the bridge; it fails
-///   the flow at once (a [StateError]) rather than open the real share sheet.
+/// - **`shareFile`** fails the flow at once (a [StateError]) rather than
+///   open the real share sheet, unless the bridge was made with
+///   `realShareSheet: true`: then the call goes to the real bridge as it is
+///   (Android's own share sheet, with the real FileProvider). Only flow 4,
+///   Send error log, asks for that; the pickers stay fake there too.
 ///
 /// What the fakes cannot show (the real pickers, where a file lands, the
 /// share sheet's attachment) is on the owner's hand-check list
@@ -31,24 +34,31 @@ import 'package:taketray/platform/files_bridge.dart';
 ///
 /// Nothing here prints a path, a name or what a file holds (D-10).
 class PatrolFilesBridge implements FilesBridge {
-  PatrolFilesBridge._(this._dir, this._real);
+  PatrolFilesBridge._(this._dir, this._real, this._realShareSheet);
 
   /// A bridge whose files live in the app's cache ([cache], for the unit
   /// test of this file: the phone's own cache by default). Any file left by an
-  /// earlier run is deleted first.
+  /// earlier run is deleted first. With [realShareSheet], `shareFile` is the
+  /// [real] bridge's (Android's share sheet); without it, it throws.
   static Future<PatrolFilesBridge> create({
     Directory? cache,
     FilesBridge? real,
+    bool realShareSheet = false,
   }) async {
     final root = cache ?? await getTemporaryDirectory();
     final dir = Directory('${root.path}/patrol-files');
     if (dir.existsSync()) await dir.delete(recursive: true);
     await dir.create(recursive: true);
-    return PatrolFilesBridge._(dir, real ?? PigeonFilesBridge());
+    return PatrolFilesBridge._(
+      dir,
+      real ?? PigeonFilesBridge(),
+      realShareSheet,
+    );
   }
 
   final Directory _dir;
   final FilesBridge _real;
+  final bool _realShareSheet;
 
   final List<Object?> _folderAnswers = [];
   bool _cancelSave = false;
@@ -99,6 +109,9 @@ class PatrolFilesBridge implements FilesBridge {
     String text,
   ) {
     calls.add('shareFile');
+    if (_realShareSheet) {
+      return _real.shareFile(path, mimeType, subject, text);
+    }
     throw StateError('shareFile is not faked: this flow never shares a file');
   }
 

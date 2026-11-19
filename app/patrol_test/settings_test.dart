@@ -114,7 +114,11 @@ void main() {
     onboardingInDatabase: true,
     resetLastExport: true,
   );
-  _flowTest('4. Send error log opens the share sheet', _sendErrorLog);
+  _flowTest(
+    '4. Send error log opens the share sheet',
+    _sendErrorLog,
+    realShareSheet: true,
+  );
 }
 
 // =============================================================== the flows
@@ -667,8 +671,10 @@ Future<void> _exportImport(_Env env) async {
   );
 }
 
-/// Flow 4: Send error log, with the real bridge. The share sheet opens (found
-/// by Android's chooser resource ids), Back closes it, nothing is chosen.
+/// Flow 4: Send error log, with the real bridge's `shareFile` (the frame is
+/// asked for `realShareSheet`; the pickers stay fake). The share sheet opens
+/// (found by Android's chooser resource ids), Back closes it, nothing is
+/// chosen.
 Future<void> _sendErrorLog(_Env env) async {
   final $ = env.$;
   final support = await getApplicationSupportDirectory();
@@ -765,7 +771,8 @@ class _Prep {
 /// [onboardingInDatabase] stores onboarding as done in the database too (the
 /// app is pumped onboarded either way), so a flow can prove an import keeps
 /// it; [resetLastExport] starts with no "last backup" date and puts the old
-/// one back.
+/// one back; [realShareSheet] lets the fake files bridge pass `shareFile` to
+/// the real one (Android's share sheet), for flow 4 only.
 void _flowTest(
   String description,
   Future<void> Function(_Env env) body, {
@@ -774,6 +781,7 @@ void _flowTest(
   bool shootingMayBeOn = false,
   bool onboardingInDatabase = false,
   bool resetLastExport = false,
+  bool realShareSheet = false,
 }) {
   patrolTest(description, config: _liveConfig, ($) async {
     final prep = _Prep();
@@ -792,7 +800,7 @@ void _flowTest(
         onboardingInDatabase: onboardingInDatabase,
         resetLastExport: resetLastExport,
       );
-      files = await PatrolFilesBridge.create();
+      files = await PatrolFilesBridge.create(realShareSheet: realShareSheet);
       env = _Env($, files, testMedia);
       await _startApp(env);
       await waitFor($, () => $(ReelsScreen).exists, what: 'Reels (onboarded)');
