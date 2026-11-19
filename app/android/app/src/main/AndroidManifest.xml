@@ -124,6 +124,20 @@
             android:name=".background.EveningDeferJobService"
             android:permission="android.permission.BIND_JOB_SERVICE"
             android:exported="false"/>
+        <!-- The files provider (D-147): the share sheet reads TakeTray's own
+             file in cache/shared/ (res/xml/file_paths.xml) through it, with a
+             read grant on that one address. Not exported: no other app can
+             open it except through such a grant. The authority carries the
+             application id, so the dev and the release build never clash. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

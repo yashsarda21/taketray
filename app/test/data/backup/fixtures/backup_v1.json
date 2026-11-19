@@ -175,7 +175,9 @@
       "Movies/WhatsApp"
     ],
     "eveningReminderEnabled": false,
-    "eveningReminderMinutes": 1200
+    "eveningReminderMinutes": 1200,
+    "stillReminderEnabled": false,
+    "copiesReminderEnabled": true
   },
   "zoneTimeline": [
     {

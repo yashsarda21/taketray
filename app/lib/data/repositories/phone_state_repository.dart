@@ -21,15 +21,18 @@ final Logger _log = Logger('phoneState');
 /// permission, which rebuilt volumes have clips to match again, and whether
 /// Add videos' folder tip was dismissed.
 ///
-/// It lives in the `settings` table under ten keys, `shootingMode`,
+/// It lives in the `settings` table under eleven keys, `shootingMode`,
 /// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked`,
 /// `mediaRematchWindows`, `folderTipSeen`, `copyJobPlan` (the running copy
-/// job's plan, D-123) and the three first-launch flags `onboardingDone`,
-/// `introPlayed` and `homeTipSeen` (D-135). None is in
-/// `SettingsRepository.exportedKeys`, so a backup never holds them, and an
-/// import deletes them (D-71, D-72, D-108):
-/// after a restore Shooting mode is off, and no volume version or re-match
-/// window is known, because they belong to the phone's own media library.
+/// job's plan, D-123), the three first-launch flags `onboardingDone`,
+/// `introPlayed` and `homeTipSeen` (D-135) and `lastExport` (when a backup
+/// file was last saved, D-145). None is in
+/// `SettingsRepository.exportedKeys`, so a backup never holds them. An import
+/// keeps them, except `shootingMode` and `copyJobPlan` (D-146): after a
+/// restore Shooting mode is off (its baselines belong to the old clips,
+/// D-71), and no copy job is saved (an import is refused while one is).
+/// The volume versions and re-match windows stay: they belong to the phone's
+/// own media library, not to the backup.
 ///
 /// `shootingMode` holds the whole [ShootingState] as one JSON value, so
 /// switching on, the start time and the baselines change together or not at
@@ -51,6 +54,7 @@ class PhoneStateRepository {
   static const introPlayedKey = 'introPlayed';
   static const homeTipSeenKey = 'homeTipSeen';
   static const copyJobPlanKey = 'copyJobPlan';
+  static const lastExportKey = 'lastExport';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -348,6 +352,38 @@ class PhoneStateRepository {
   Future<void> markHomeTipSeen() async {
     await _markFlag(homeTipSeenKey);
     _log.info('Marked the Home tip seen');
+  }
+
+  /// When the last backup file was saved on this phone (D-145), or null when
+  /// none was, or the value cannot be read (only the key's name is logged).
+  /// Phone state: a backup never holds it.
+  Future<DateTime?> lastExport() async {
+    final text = await _rawValue(lastExportKey);
+    if (text == null) return null;
+    try {
+      final value = jsonDecode(text);
+      if (value is int && value.abs() <= _maxEpochMs) {
+        return DateTime.fromMillisecondsSinceEpoch(value, isUtc: true);
+      }
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $lastExportKey is corrupt, reading it as none');
+    return null;
+  }
+
+  /// Remembers that a backup file was saved at [at] (UTC milliseconds), in
+  /// place of an earlier time or an unreadable value.
+  Future<void> recordExport(DateTime at) async {
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: lastExportKey,
+            value: jsonEncode(at.millisecondsSinceEpoch),
+          ),
+        );
+    _log.info('Recorded the last export');
   }
 
   /// A true/false flag stored as JSON; a missing row is false, an unreadable

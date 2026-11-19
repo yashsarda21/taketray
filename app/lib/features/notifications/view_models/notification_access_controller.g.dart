@@ -72,7 +72,7 @@ final class NotificationAccessControllerProvider
 }
 
 String _$notificationAccessControllerHash() =>
-    r'7d6b2560f9ded89ac8841f4e5c521676350b445a';
+    r'07e5bb7b15373fd7d89c4993f21de29d3636fa24';
 
 /// Whether TakeTray may post notifications, for the Notifications row in
 /// Settings and the one question asked when Shooting mode is first turned on

@@ -807,6 +807,121 @@ void main() {
       expect(logText(records), isNot(contains('Zq')));
     });
   });
+
+  group('the reminder switches (Phase 10B, D-145)', () {
+    Future<int> reelWithCopy(String name, int clipId) async {
+      final reel = await reels.create(name);
+      await edits.startSession(reel.id, EditorApp.vn, name);
+      await edits.recordCopies([
+        EditCopy(
+          reelId: reel.id,
+          clipId: clipId,
+          copyMediaStoreId: 900 + clipId,
+          fileName: 'copy$clipId.mp4',
+          sizeBytes: 1000,
+          copiedAt: DateTime.utc(2026, 6, 1, 8 + clipId),
+        ),
+      ]);
+      return reel.id;
+    }
+
+    Future<void> setSwitches({bool? still, bool? copies}) async =>
+        await h.settings.save(
+          (await h.settings.load()).copyWith(
+            stillReminderEnabled: still ?? true,
+            copiesReminderEnabled: copies ?? true,
+          ),
+        );
+
+    test('both on: still reminder on, copies reminders written', () async {
+      final a = await reelWithCopy('A', 1);
+
+      sync.start();
+      await settle();
+
+      expect(native.state!.stillReminderEnabled, isTrue);
+      expect(native.state!.copiesReminders.map((r) => r.reelId), [a]);
+    });
+
+    test('the still switch off is written as stillReminderEnabled: false, '
+        'and nothing else changes with it', () async {
+      final a = await reelWithCopy('A', 1);
+      await setSwitches(still: false);
+
+      sync.start();
+      await settle();
+
+      expect(native.state!.stillReminderEnabled, isFalse);
+      expect(native.state!.eveningEnabled, isTrue);
+      expect(native.state!.copiesReminders.map((r) => r.reelId), [a]);
+    });
+
+    test('the copies switch off with two sessions holding copies: no '
+        'reminders, and the still switch stays on', () async {
+      await reelWithCopy('A', 1);
+      await reelWithCopy('B', 2);
+      await setSwitches(copies: false);
+
+      sync.start();
+      await settle();
+
+      expect(native.state!.copiesReminders, isEmpty);
+      expect(native.state!.stillReminderEnabled, isTrue);
+      expect(native.state!.eveningEnabled, isTrue);
+    });
+
+    test('switching back on brings the two reminders back', () async {
+      final a = await reelWithCopy('A', 1);
+      final b = await reelWithCopy('B', 2);
+      await setSwitches(copies: false);
+      sync.start();
+      await settle();
+      expect(native.state!.copiesReminders, isEmpty);
+
+      await setSwitches(copies: true);
+      await settle();
+
+      expect(native.state!.copiesReminders.map((r) => r.reelId), [a, b]);
+    });
+
+    test('turning a switch off while the app runs writes the new state, '
+        'and turning it on again writes it back', () async {
+      sync.start();
+      await settle();
+      expect(native.state!.stillReminderEnabled, isTrue);
+
+      await setSwitches(still: false);
+      await settle();
+      expect(native.state!.stillReminderEnabled, isFalse);
+
+      await setSwitches(still: true);
+      await settle();
+      expect(native.state!.stillReminderEnabled, isTrue);
+    });
+
+    test('the copies switch is not Shooting mode: it works with Shooting mode '
+        'on too', () async {
+      await h.turnOnNow();
+      await reelWithCopy('A', 1);
+      await setSwitches(copies: false);
+
+      sync.start();
+      await settle();
+
+      expect(native.state!.shootingOn, isTrue);
+      expect(native.state!.copiesReminders, isEmpty);
+    });
+
+    test('the copies stay in the database while the switch is off', () async {
+      await reelWithCopy('A', 1);
+      await setSwitches(copies: false);
+      sync.start();
+      await settle();
+
+      expect(await edits.summaries(), hasLength(1));
+      expect((await edits.summaries()).single.copyCount, 1);
+    });
+  });
 }
 
 class _FailingEdits extends EditSessionsRepository {

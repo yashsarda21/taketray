@@ -12,6 +12,7 @@ import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/data/repositories/settings_repository.dart';
@@ -154,6 +155,7 @@ class _Seeded {
         watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
         eveningReminderEnabled: false,
         eveningReminderMinutes: 1200,
+        stillReminderEnabled: false,
       ),
     );
     await db
@@ -258,6 +260,8 @@ void main() {
         'watchedFolders': ['DCIM/Camera'],
         'eveningReminderEnabled': true,
         'eveningReminderMinutes': 1260,
+        'stillReminderEnabled': true,
+        'copiesReminderEnabled': true,
       });
     });
 
@@ -277,8 +281,14 @@ void main() {
       expect(values, isNot(contains('20261026_0700_VID_1.mp4')));
       expect(values, isNot(contains('Goa')));
       expect(values, isNot(contains('capcut')));
+      // `copiesReminderEnabled` is a user setting that happens to start with
+      // "cop"; it is the only such key, and it is checked by name.
+      final withoutSetting = text.toLowerCase().replaceAll(
+        '"copiesreminderenabled"',
+        '',
+      );
       for (final word in ['vn', 'session', 'cop', 'sent', 'editor']) {
-        expect(text.toLowerCase(), isNot(contains('"$word')), reason: word);
+        expect(withoutSetting, isNot(contains('"$word')), reason: word);
       }
       expect(values, contains('Goa 🌴'), reason: 'the reel itself is there');
     });
@@ -317,10 +327,40 @@ void main() {
             watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
             eveningReminderEnabled: false,
             eveningReminderMinutes: 1200,
+            stillReminderEnabled: false,
           ),
         );
       },
     );
+
+    test('the two new switches round-trip in every combination', () async {
+      for (final (still, copies) in [
+        (true, true),
+        (true, false),
+        (false, true),
+        (false, false),
+      ]) {
+        final source = testDatabase();
+        addTearDown(source.close);
+        final saved = AppSettings(
+          stillReminderEnabled: still,
+          copiesReminderEnabled: copies,
+        );
+        await SettingsRepository(source, clock).save(saved);
+        final file = jsonDecode(
+          await BackupService(source, clock).exportJson(),
+        ) as Map<String, dynamic>;
+        expect((file['settings'] as Map)['stillReminderEnabled'], still);
+        expect((file['settings'] as Map)['copiesReminderEnabled'], copies);
+        expect(file['schemaVersion'], 1);
+
+        final target = testDatabase();
+        addTearDown(target.close);
+        await BackupService(target, clock).importJson(jsonEncode(file));
+
+        expect(await SettingsRepository(target, clock).load(), saved);
+      }
+    });
 
     test('a detached clip (negative mediaStoreId) round-trips', () async {
       final clips = ClipsRepository(db, clock);
@@ -770,6 +810,18 @@ void main() {
             (f) => (f['settings'] as Map).remove('eveningReminderEnabled'),
             where: 'settings.eveningReminderEnabled',
           ),
+          'a still reminder switch that is text': (
+            (f) => (f['settings'] as Map)['stillReminderEnabled'] = 'yes',
+            where: 'settings.stillReminderEnabled',
+          ),
+          'a copies reminder switch that is a number': (
+            (f) => (f['settings'] as Map)['copiesReminderEnabled'] = 1,
+            where: 'settings.copiesReminderEnabled',
+          ),
+          'a still reminder switch that is null': (
+            (f) => (f['settings'] as Map)['stillReminderEnabled'] = null,
+            where: 'settings.stillReminderEnabled',
+          ),
           'a watched folder that is not text': (
             (f) =>
                 (f['settings'] as Map)['watchedFolders'] = ['DCIM/Camera', 3],
@@ -842,6 +894,62 @@ void main() {
         );
       });
     }
+
+    test('a file from before the two switches: both read as on, and the '
+        'file is still version 1', () async {
+      final file = _fixtureMap();
+      (file['settings'] as Map)
+        ..remove('stillReminderEnabled')
+        ..remove('copiesReminderEnabled');
+      expect(file['schemaVersion'], 1);
+
+      final data = decodeBackup(jsonEncode(file));
+
+      expect(data.settings.stillReminderEnabled, isTrue);
+      expect(data.settings.copiesReminderEnabled, isTrue);
+      // The three old settings are read as before.
+      expect(data.settings.eveningReminderEnabled, isFalse);
+      expect(data.settings.eveningReminderMinutes, 1200);
+      expect(data.settings.watchedFolders, ['DCIM/Camera', 'Movies/WhatsApp']);
+      await backup.importJson(jsonEncode(file));
+      expect(
+        await SettingsRepository(db, clock).load(),
+        const AppSettings(
+          watchedFolders: ['DCIM/Camera', 'Movies/WhatsApp'],
+          eveningReminderEnabled: false,
+          eveningReminderMinutes: 1200,
+        ),
+      );
+    });
+
+    test('only one of the two switches missing: that one is on, the other is '
+        'kept', () async {
+      final file = _fixtureMap();
+      (file['settings'] as Map)
+        ..['stillReminderEnabled'] = false
+        ..remove('copiesReminderEnabled');
+
+      final data = decodeBackup(jsonEncode(file));
+
+      expect(data.settings.stillReminderEnabled, isFalse);
+      expect(data.settings.copiesReminderEnabled, isTrue);
+    });
+
+    test('the three old settings are still required', () async {
+      for (final key in [
+        'watchedFolders',
+        'eveningReminderEnabled',
+        'eveningReminderMinutes',
+      ]) {
+        final file = _fixtureMap();
+        (file['settings'] as Map).remove(key);
+        await expectRejected(
+          jsonEncode(file),
+          BackupProblem.invalidData,
+          where: 'settings.$key',
+        );
+      }
+    });
 
     test('the fixture itself is accepted (so each case above breaks one '
         'rule)', () async {
@@ -1061,6 +1169,124 @@ void main() {
     });
   });
 
+  group("an import keeps this phone's state (D-146)", () {
+    Future<void> put(String key, String value) => db
+        .into(db.settings)
+        .insert(SettingsCompanion.insert(key: key, value: value));
+
+    Future<Map<String, String>> settingsDump() async => {
+      for (final row in await db.select(db.settings).get()) row.key: row.value,
+    };
+
+    /// Every phone-state key an import keeps, with a value of its own.
+    const kept = {
+      PhoneStateRepository.onboardingDoneKey: 'true',
+      PhoneStateRepository.introPlayedKey: 'true',
+      PhoneStateRepository.homeTipSeenKey: 'true',
+      PhoneStateRepository.lastExportKey: '"2026-11-01T09:00:00.000Z"',
+      PhoneStateRepository.notificationsAskedKey: 'true',
+      PhoneStateRepository.folderTipSeenKey: 'true',
+      PhoneStateRepository.mediaAccessWasFullKey: 'true',
+      PhoneStateRepository.volumeVersionsKey: '{"external_primary":"v7"}',
+      PhoneStateRepository.rematchWindowsKey: '{"external_primary":[1,2]}',
+      // A key a later TakeTray adds: kept too, never named in the import.
+      'someFutureKey': '42',
+    };
+
+    test('keeps every other settings row, value for value', () async {
+      for (final e in kept.entries) {
+        await put(e.key, e.value);
+      }
+
+      await backup.importJson(_fixture());
+
+      final after = await settingsDump();
+      for (final e in kept.entries) {
+        expect(after[e.key], e.value, reason: e.key);
+      }
+    });
+
+    test('removes Shooting mode and the copy plan', () async {
+      await put(PhoneStateRepository.shootingModeKey, '{"on":true}');
+      await put(PhoneStateRepository.copyJobPlanKey, '{"jobId":"j"}');
+      await put(PhoneStateRepository.onboardingDoneKey, 'true');
+
+      await backup.importJson(_fixture());
+
+      final after = await settingsDump();
+      expect(after, isNot(contains(PhoneStateRepository.shootingModeKey)));
+      expect(after, isNot(contains(PhoneStateRepository.copyJobPlanKey)));
+      expect(after, contains(PhoneStateRepository.onboardingDoneKey));
+    });
+
+    test("replaces the five exported keys with the file's", () async {
+      await SettingsRepository(db, clock).save(
+        const AppSettings(
+          watchedFolders: ['Old/Folder'],
+          eveningReminderEnabled: false,
+          eveningReminderMinutes: 60,
+          stillReminderEnabled: false,
+          copiesReminderEnabled: false,
+        ),
+      );
+      final before = await SettingsRepository(db, clock).load();
+      await put(PhoneStateRepository.onboardingDoneKey, 'true');
+
+      await backup.importJson(_fixture());
+
+      final loaded = await SettingsRepository(db, clock).load();
+      expect(loaded, isNot(before));
+      expect(loaded, decodeBackup(_fixture()).settings);
+      final after = await settingsDump();
+      expect(after.keys.toSet(), {
+        ...SettingsRepository.exportedKeys,
+        PhoneStateRepository.onboardingDoneKey,
+      });
+    });
+
+    test('an exported key the phone never had is added; a missing one in '
+        'the phone is still written', () async {
+      // Nothing seeded: the five rows come only from the file.
+      await backup.importJson(_fixture());
+
+      expect(
+        (await settingsDump()).keys.toSet(),
+        SettingsRepository.exportedKeys,
+      );
+    });
+
+    test('an import that fails keeps phone state and the old rows', () async {
+      await put(PhoneStateRepository.shootingModeKey, '{"on":true}');
+      await put(PhoneStateRepository.onboardingDoneKey, 'true');
+      await db.customStatement(
+        'CREATE TRIGGER refuse_reels BEFORE INSERT ON reels '
+        "BEGIN SELECT RAISE(ABORT, 'refused'); END",
+      );
+      final before = await settingsDump();
+
+      await expectLater(
+        backup.importJson(_fixture()),
+        _throwsProblem(BackupProblem.invalidData),
+      );
+
+      // The roll-back also keeps the Shooting mode row the import would have
+      // removed.
+      expect(await settingsDump(), before);
+    });
+
+    test('importDecoded stores a decoded file as importJson does', () async {
+      final viaDecoded = freshDatabase();
+      final summary = await BackupService(
+        viaDecoded,
+        clock,
+      ).importDecoded(decodeBackup(_fixture()));
+      await backup.importJson(_fixture());
+
+      expect(summary.clips, 4);
+      expect(await _everyRow(viaDecoded), await _everyRow(db));
+    });
+  });
+
   group('states the app never makes are brought back to its rules', () {
     test('a clip in a reel and in To tag keeps only its link', () async {
       final file = _fixtureMap();
@@ -1172,8 +1398,8 @@ void main() {
     },
   );
 
-  test('import deletes every row of all ten tables itself, children first, '
-      'sent_clips too', () async {
+  test('import deletes the rows of nine tables and its own settings itself, '
+      'children first, sent_clips too', () async {
     // The cascades would empty sent_clips anyway (through vn_sessions); the
     // import must not rely on them (D-59: anything that keeps a clip id must
     // be wiped by the import).
@@ -1191,9 +1417,20 @@ void main() {
           m.group(1)!,
     ];
     expect(logged.allTables, hasLength(10));
+    // Nine tables are emptied; `settings` only of the rows an import owns
+    // (D-146), so its delete has a WHERE and is not in this list.
     expect(deleted.toSet(), {
-      for (final t in logged.allTables) t.actualTableName,
+      for (final t in logged.allTables)
+        if (t.actualTableName != 'settings') t.actualTableName,
     });
+    expect(
+      log.writes.where(
+        (sql) =>
+            sql.startsWith('DELETE FROM "settings" WHERE') &&
+            !sql.contains(PhoneStateRepository.onboardingDoneKey),
+      ),
+      hasLength(1),
+    );
     expect(
       deleted.indexOf('sent_clips'),
       lessThan(deleted.indexOf('vn_sessions')),

@@ -22,15 +22,21 @@ MediaAccessView accessView(MediaAccessLevel level) => MediaAccessView(
 );
 
 /// A [MediaAccessController] that shows [level] (null: the first read
-/// failed), counts the Allow taps, and shows what a test pushes with [show].
+/// failed; [loading]: the first read never ends), counts the Allow taps, and
+/// shows what a test pushes with [show].
 class FakeAccess extends MediaAccessController {
-  FakeAccess(this.level);
+  FakeAccess(this.level, {this.loading = false});
 
   final MediaAccessLevel? level;
+  final bool loading;
   int allowed = 0;
+
+  /// How often the Android settings page was asked for.
+  int settingsOpened = 0;
 
   @override
   Future<MediaAccessView> build() async {
+    if (loading) return await Completer<MediaAccessView>().future;
     final l = level;
     if (l == null) throw StateError('the first read failed');
     return accessView(l);
@@ -38,6 +44,9 @@ class FakeAccess extends MediaAccessController {
 
   @override
   Future<void> allow() async => allowed++;
+
+  @override
+  Future<void> openSettings() async => settingsOpened++;
 
   void show(MediaAccessLevel l) => state = AsyncData(accessView(l));
 }
@@ -58,6 +67,10 @@ class FakeNotificationAccess extends NotificationAccessController {
   bool allowResult;
   int allowed = 0;
 
+  /// How often the notification settings were asked for, and what that gives.
+  int settingsOpened = 0;
+  bool openSettingsResult = true;
+
   @override
   Future<NotificationAccess> build() {
     if (loading) return Completer<NotificationAccess>().future;
@@ -70,6 +83,12 @@ class FakeNotificationAccess extends NotificationAccessController {
   Future<bool> allow() async {
     allowed++;
     return allowResult;
+  }
+
+  @override
+  Future<bool> openSettings() async {
+    settingsOpened++;
+    return openSettingsResult;
   }
 
   void show(NotificationAccess a) => state = AsyncData(a);

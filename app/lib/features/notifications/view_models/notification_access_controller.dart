@@ -113,6 +113,22 @@ class NotificationAccessController extends _$NotificationAccessController {
     }
   }
 
+  /// Opens this app's notification settings, for the Notifications row when
+  /// notifications are allowed, so the user can turn them off there (Android
+  /// does not let an app revoke its own permissions). Asks for nothing and
+  /// reads nothing: the state is not changed here, the refresh on resume shows
+  /// what the user chose. False when the page could not be opened, so the
+  /// screen can say so. Never throws: the error type is logged (D-10).
+  Future<bool> openSettings() async {
+    try {
+      await ref.read(backgroundBridgeProvider).openNotificationSettings();
+      return true;
+    } on Object catch (error) {
+      _log.warning('Opening the settings page failed: ${error.runtimeType}');
+      return false;
+    }
+  }
+
   /// Asks for the permission, once in the life of this install (D-107): when
   /// Shooting mode is turned on. Used by `ShootingModeController`.
   ///

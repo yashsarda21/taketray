@@ -1,17 +1,31 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/repositories/edit_sessions_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/editor_app.dart';
+import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
+import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
+import 'package:taketray/features/settings/view_models/send_log.dart';
+import 'package:taketray/features/settings/view_models/settings_controller.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/platform/files_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/accessibility.dart';
+import '../../../support/fake_files_bridge.dart';
+import '../../../support/fake_settings.dart';
+import '../../../support/fixed_clock.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
@@ -23,6 +37,13 @@ const _allowed = NotificationAccess(granted: true, canAsk: false, sdkInt: 34);
 const _askable = NotificationAccess(granted: false, canAsk: true, sdkInt: 34);
 const _blocked = NotificationAccess(granted: false, canAsk: false, sdkInt: 34);
 
+/// The day the tests are on: the backup date's year is left out in it.
+final DateTime _today = DateTime.utc(2026, 11, 17, 12);
+
+/// Pumps the Settings screen. The settings, the video access and the version
+/// are what a test gives; the defaults are the ones that leave the rows of
+/// the earlier phases alone: video access is still being read (no Video
+/// access row), the settings are the defaults, the version is 1.0.0.
 Future<FakeNotificationAccess> pump(
   WidgetTester tester,
   NotificationAccess? access, {
@@ -31,6 +52,13 @@ Future<FakeNotificationAccess> pump(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   CopiesSummary? copies = const CopiesSummary(bytes: 0, reels: 0),
+  FakeSettings? settings,
+  FakeAccess? media,
+  FakeFilesBridge? files,
+  ({Directory logs, Directory cache})? logFolders,
+  Future<DateTime?> Function()? lastExport,
+  bool use24Hour = false,
+  Size size = const Size(360, 1700),
 }) async {
   final fake = FakeNotificationAccess(
     access,
@@ -40,8 +68,25 @@ Future<FakeNotificationAccess> pump(
   await pumpScreen(
     tester,
     const SettingsScreen(),
+    use24Hour: use24Hour,
+    size: size,
     overrides: <Override>[
       notificationAccessControllerProvider.overrideWith(() => fake),
+      settingsControllerProvider.overrideWith(
+        () => settings ?? FakeSettings(const AppSettings()),
+      ),
+      mediaAccessControllerProvider.overrideWith(
+        () => media ?? FakeAccess(null, loading: true),
+      ),
+      filesBridgeProvider.overrideWithValue(files ?? FakeFilesBridge()),
+      if (logFolders != null) ...[
+        logDirectoryProvider.overrideWith((ref) async => logFolders.logs),
+        cacheDirectoryProvider.overrideWith((ref) async => logFolders.cache),
+      ],
+      lastExportProvider.overrideWith(
+        (ref) => (lastExport ?? () async => null)(),
+      ),
+      clockProvider.overrideWithValue(FixedClock(_today)),
       // Not read yet when null.
       copiesSummaryProvider.overrideWith(
         (ref) => copies == null
@@ -384,6 +429,1277 @@ void main() {
     });
   });
 
+  group('the full Settings screen (Phase 10B, D-148)', () {
+    Future<
+      ({
+        FakeSettings settings,
+        FakeAccess media,
+        FakeFilesBridge files,
+        FakeNotificationAccess notifications,
+      })
+    >
+    pumpFull(
+      WidgetTester tester, {
+      AppSettings initial = const AppSettings(),
+      MediaAccessLevel? level = MediaAccessLevel.full,
+      FakeFilesBridge? files,
+      ({Directory logs, Directory cache})? logFolders,
+      Future<DateTime?> Function()? lastExport,
+      bool use24Hour = true,
+      NotificationAccess notifications = _allowed,
+      bool openSettingsResult = true,
+    }) async {
+      final settings = FakeSettings(initial);
+      final media = FakeAccess(level);
+      final bridge = files ?? FakeFilesBridge();
+      final fake = await pump(
+        tester,
+        notifications,
+        settings: settings,
+        media: media,
+        files: bridge,
+        logFolders: logFolders,
+        lastExport: lastExport,
+        use24Hour: use24Hour,
+      );
+      fake.openSettingsResult = openSettingsResult;
+      return (
+        settings: settings,
+        media: media,
+        files: bridge,
+        notifications: fake,
+      );
+    }
+
+    String plain(String? text) => (text ?? '').replaceAll(RegExp('[  ]'), ' ');
+
+    Finder switchIn(String title) =>
+        find.descendant(of: rowTitled(title), matching: find.byType(TtSwitch));
+
+    String? subtitleOf(WidgetTester tester, String title) =>
+        plain(tester.widget<TtListRow>(rowTitled(title)).subtitle);
+
+    double top(WidgetTester tester, Finder finder) =>
+        tester.getTopLeft(finder).dy;
+
+    testWidgets('the groups and rows are in the prototype order', (
+      tester,
+    ) async {
+      await pumpFull(tester);
+
+      final groups = [
+        'Shooting mode',
+        'Reminders',
+        'Clips',
+        'Help',
+        'Your data',
+        'Permissions',
+        'About',
+      ];
+      final rows = [
+        'Remind me to turn it off',
+        'Evening reminder',
+        'Reminder time',
+        'VN copies reminder',
+        'Watched folders',
+        'Storage used by VN copies',
+        'Notifications not arriving?',
+        'Send error log',
+        'Export and import',
+        'Video access',
+        'Notifications',
+        'Your videos never leave your phone',
+        'TakeTray',
+      ];
+      // Every label and row one under the other, in one list.
+      final tops = [
+        top(tester, groupLabel('Shooting mode')),
+        top(tester, rowTitled('Remind me to turn it off')),
+        top(tester, groupLabel('Reminders')),
+        top(tester, rowTitled('Evening reminder')),
+        top(tester, rowTitled('Reminder time')),
+        top(tester, rowTitled('VN copies reminder')),
+        top(tester, groupLabel('Clips')),
+        top(tester, rowTitled('Watched folders')),
+        top(tester, rowTitled('Storage used by VN copies')),
+        top(tester, groupLabel('Help')),
+        top(tester, rowTitled('Notifications not arriving?')),
+        top(tester, rowTitled('Send error log')),
+        top(tester, groupLabel('Your data')),
+        top(tester, rowTitled('Export and import')),
+        top(tester, groupLabel('Permissions')),
+        top(tester, rowTitled('Video access')),
+        top(tester, rowTitled('Notifications')),
+        top(tester, groupLabel('About')),
+        top(tester, rowTitled('Your videos never leave your phone')),
+        top(tester, rowTitled('TakeTray')),
+      ];
+      for (var i = 1; i < tops.length; i++) {
+        expect(tops[i], greaterThan(tops[i - 1]), reason: 'item $i is lower');
+      }
+      for (final g in groups) {
+        expect(groupLabel(g), findsOneWidget);
+      }
+      for (final r in rows) {
+        expect(rowTitled(r), findsOneWidget);
+      }
+    });
+
+    group('Remind me to turn it off', () {
+      testWidgets('shows its copy and follows the setting', (tester) async {
+        await pumpFull(
+          tester,
+          initial: const AppSettings(stillReminderEnabled: false),
+        );
+
+        expect(
+          subtitleOf(tester, 'Remind me to turn it off'),
+          'If Shooting mode stays on for 14 days',
+        );
+        expect(
+          tester.widget<TtSwitch>(switchIn('Remind me to turn it off')).value,
+          isFalse,
+        );
+      });
+
+      testWidgets('a tap on the switch turns it off, then on', (tester) async {
+        final h = await pumpFull(tester);
+        expect(
+          tester.widget<TtSwitch>(switchIn('Remind me to turn it off')).value,
+          isTrue,
+        );
+
+        await tester.tap(switchIn('Remind me to turn it off'));
+        await tester.pumpAndSettle();
+        expect(h.settings.calls, ['setStillReminder(false)']);
+        expect(
+          tester.widget<TtSwitch>(switchIn('Remind me to turn it off')).value,
+          isFalse,
+        );
+
+        await tester.tap(switchIn('Remind me to turn it off'));
+        await tester.pumpAndSettle();
+        expect(h.settings.calls.last, 'setStillReminder(true)');
+      });
+
+      testWidgets('a screen reader hears the switch by its own name', (
+        tester,
+      ) async {
+        final handle = tester.ensureSemantics();
+        await pumpFull(tester);
+
+        expect(
+          find.bySemanticsLabel('Remind me to turn off Shooting mode'),
+          findsOneWidget,
+        );
+        handle.dispose();
+      });
+    });
+
+    group('Evening reminder and Reminder time', () {
+      testWidgets('the time row is only there while the reminder is on', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester);
+        expect(rowTitled('Reminder time'), findsOneWidget);
+
+        await tester.tap(switchIn('Evening reminder'));
+        await tester.pumpAndSettle();
+
+        expect(h.settings.calls, ['setEvening(false)']);
+        expect(rowTitled('Reminder time'), findsNothing);
+        expect(rowTitled('Evening reminder'), findsOneWidget);
+        expect(rowTitled('VN copies reminder'), findsOneWidget);
+
+        await tester.tap(switchIn('Evening reminder'));
+        await tester.pumpAndSettle();
+        expect(h.settings.calls.last, 'setEvening(true)');
+        expect(rowTitled('Reminder time'), findsOneWidget);
+      });
+
+      testWidgets('the reminder starts off: no time row', (tester) async {
+        await pumpFull(
+          tester,
+          initial: const AppSettings(eveningReminderEnabled: false),
+        );
+
+        expect(rowTitled('Reminder time'), findsNothing);
+        expect(
+          tester.widget<TtSwitch>(switchIn('Evening reminder')).value,
+          isFalse,
+        );
+        // The line under the title still says when it would come.
+        expect(
+          subtitleOf(tester, 'Evening reminder'),
+          '21:00, only if clips are waiting',
+        );
+      });
+
+      for (final (minutes, h24, h12) in [
+        (1260, '21:00', '9:00 PM'),
+        (0, '00:00', '12:00 AM'),
+        (1439, '23:59', '11:59 PM'),
+        (725, '12:05', '12:05 PM'),
+        (65, '01:05', '1:05 AM'),
+      ]) {
+        testWidgets('$minutes minutes read "$h24" on a 24-hour phone', (
+          tester,
+        ) async {
+          await pumpFull(
+            tester,
+            initial: AppSettings(eveningReminderMinutes: minutes),
+          );
+
+          expect(
+            subtitleOf(tester, 'Evening reminder'),
+            '$h24, only if clips are waiting',
+          );
+          expect(subtitleOf(tester, 'Reminder time'), h24);
+        });
+
+        testWidgets('$minutes minutes read "$h12" on a 12-hour phone', (
+          tester,
+        ) async {
+          await pumpFull(
+            tester,
+            initial: AppSettings(eveningReminderMinutes: minutes),
+            use24Hour: false,
+          );
+
+          expect(
+            subtitleOf(tester, 'Evening reminder'),
+            '$h12, only if clips are waiting',
+          );
+          expect(subtitleOf(tester, 'Reminder time'), h12);
+        });
+      }
+
+      testWidgets('the time row has a chevron and opens the time picker at '
+          'the time now', (tester) async {
+        await pumpFull(
+          tester,
+          initial: const AppSettings(eveningReminderMinutes: 450),
+        );
+        expect(
+          find.descendant(
+            of: rowTitled('Reminder time'),
+            matching: find.byIcon(Symbols.chevron_right_rounded),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(Dialog), findsOneWidget);
+        final dialog = tester.widget<TimePickerDialog>(
+          find.byType(TimePickerDialog),
+        );
+        expect(dialog.initialTime, const TimeOfDay(hour: 7, minute: 30));
+      });
+
+      /// Types the time into the picker's text fields and presses OK.
+      Future<void> pickTime(
+        WidgetTester tester,
+        String hour,
+        String minute, {
+        String? period,
+      }) async {
+        await tester.tap(find.byTooltip('Switch to text input mode'));
+        await tester.pumpAndSettle();
+        final fields = find.byType(TextField);
+        await tester.enterText(fields.at(0), hour);
+        await tester.enterText(fields.at(1), minute);
+        if (period != null) {
+          await tester.tap(find.text(period));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('OK'));
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('a picked time is saved as minutes after midnight', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester);
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.pumpAndSettle();
+        await pickTime(tester, '07', '05');
+
+        expect(h.settings.calls, ['setEveningMinutes(425)']);
+        expect(find.byType(Dialog), findsNothing);
+        expect(subtitleOf(tester, 'Reminder time'), '07:05');
+        expect(
+          subtitleOf(tester, 'Evening reminder'),
+          '07:05, only if clips are waiting',
+        );
+      });
+
+      for (final (hour, minute, minutes) in [
+        ('00', '00', 0),
+        ('23', '59', 1439),
+      ]) {
+        testWidgets('$hour:$minute is saved as $minutes, exactly', (
+          tester,
+        ) async {
+          final h = await pumpFull(tester);
+
+          await tester.tap(find.text('Reminder time'));
+          await tester.pumpAndSettle();
+          await pickTime(tester, hour, minute);
+
+          expect(h.settings.calls, ['setEveningMinutes($minutes)']);
+        });
+      }
+
+      testWidgets('on a 12-hour phone 11:59 PM is saved as 1439', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester, use24Hour: false);
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.pumpAndSettle();
+        await pickTime(tester, '11', '59');
+
+        expect(h.settings.calls, ['setEveningMinutes(1439)']);
+      });
+
+      testWidgets('on a 12-hour phone 12:00 AM is saved as 0', (tester) async {
+        final h = await pumpFull(tester, use24Hour: false);
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.pumpAndSettle();
+        await pickTime(tester, '12', '00', period: 'AM');
+
+        expect(h.settings.calls, ['setEveningMinutes(0)']);
+      });
+
+      testWidgets('cancelling the picker changes nothing', (tester) async {
+        final h = await pumpFull(tester);
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+
+        expect(h.settings.calls, isEmpty);
+        expect(find.byType(Dialog), findsNothing);
+        expect(subtitleOf(tester, 'Reminder time'), '21:00');
+      });
+
+      testWidgets('two fast taps on the row open one picker', (tester) async {
+        await pumpFull(tester);
+
+        await tester.tap(find.text('Reminder time'));
+        await tester.tap(find.text('Reminder time'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+
+        expect(find.byType(TimePickerDialog), findsOneWidget);
+      });
+
+      testWidgets('the switch is named for a screen reader', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpFull(tester);
+
+        expect(find.bySemanticsLabel('Evening reminder'), findsWidgets);
+        handle.dispose();
+      });
+    });
+
+    group('VN copies reminder', () {
+      testWidgets('shows its copy and the switch calls setCopiesReminder', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester);
+
+        expect(
+          subtitleOf(tester, 'VN copies reminder'),
+          '3 days after copying, if copies are still there',
+        );
+        await tester.tap(switchIn('VN copies reminder'));
+        await tester.pumpAndSettle();
+
+        expect(h.settings.calls, ['setCopiesReminder(false)']);
+        expect(
+          tester.widget<TtSwitch>(switchIn('VN copies reminder')).value,
+          isFalse,
+        );
+      });
+
+      testWidgets('two switches tapped one after the other both reach the '
+          'controller', (tester) async {
+        final h = await pumpFull(tester);
+
+        await tester.tap(switchIn('VN copies reminder'));
+        await tester.tap(switchIn('Remind me to turn it off'));
+        await tester.pumpAndSettle();
+
+        expect(h.settings.calls, [
+          'setCopiesReminder(false)',
+          'setStillReminder(false)',
+        ]);
+      });
+    });
+
+    group('while the settings are not known', () {
+      testWidgets('the rows are there, and the switches cannot be used', (
+        tester,
+      ) async {
+        final settings = FakeSettings(null);
+        await pump(
+          tester,
+          _allowed,
+          settings: settings,
+          media: FakeAccess(MediaAccessLevel.full),
+        );
+
+        expect(rowTitled('Remind me to turn it off'), findsOneWidget);
+        expect(rowTitled('Evening reminder'), findsOneWidget);
+        expect(rowTitled('VN copies reminder'), findsOneWidget);
+        for (final title in [
+          'Remind me to turn it off',
+          'Evening reminder',
+          'VN copies reminder',
+        ]) {
+          expect(
+            tester.widget<TtSwitch>(switchIn(title)).onChanged,
+            isNull,
+            reason: title,
+          );
+        }
+        expect(tester.takeException(), isNull);
+        expect(settings.calls, isEmpty);
+      });
+
+      testWidgets('they work as soon as the settings arrive', (tester) async {
+        final settings = FakeSettings(null);
+        await pump(tester, _allowed, settings: settings);
+
+        settings.show(const AppSettings(eveningReminderEnabled: false));
+        await tester.pump();
+
+        expect(
+          tester.widget<TtSwitch>(switchIn('Evening reminder')).onChanged,
+          isNotNull,
+        );
+        expect(rowTitled('Reminder time'), findsNothing);
+      });
+    });
+
+    group('Watched folders', () {
+      for (final (folders, text) in [
+        (<String>['DCIM/Camera'], 'Camera'),
+        (
+          <String>['DCIM/Camera', 'WhatsApp/Media/WhatsApp Video'],
+          'Camera, WhatsApp Video',
+        ),
+        (<String>[], 'None'),
+        (<String>['DCIM/Camera/'], 'Camera'),
+        (<String>[''], 'Main folder'),
+        (
+          <String>['Movies/Open Camera', 'Movies/MotionCam', 'DCIM/Camera'],
+          'Open Camera, MotionCam, Camera',
+        ),
+      ]) {
+        testWidgets('$folders read "$text"', (tester) async {
+          await pumpFull(tester, initial: AppSettings(watchedFolders: folders));
+
+          expect(subtitleOf(tester, 'Watched folders'), text);
+        });
+      }
+
+      testWidgets('the row has a chevron and opens the watched folders '
+          'screen', (tester) async {
+        await pumpFull(tester);
+        expect(
+          find.descendant(
+            of: rowTitled('Watched folders'),
+            matching: find.byIcon(Symbols.chevron_right_rounded),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Watched folders'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(watchedFoldersRouteMarker), findsOneWidget);
+      });
+
+      testWidgets('two fast taps push one screen', (tester) async {
+        await pumpFull(tester);
+
+        await tester.tap(find.text('Watched folders'));
+        await tester.tap(find.text('Watched folders'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        routerOf(tester).pop();
+        await tester.pumpAndSettle();
+
+        expect(find.text(watchedFoldersRouteMarker), findsNothing);
+        expect(find.byType(SettingsScreen), findsOneWidget);
+      });
+    });
+
+    group('Send error log', () {
+      late Directory root;
+      late ({Directory logs, Directory cache}) folders;
+
+      setUp(() {
+        root = Directory.systemTemp.createTempSync('taketray_row_test');
+        folders = (
+          logs: Directory('${root.path}/support')..createSync(),
+          cache: Directory('${root.path}/cache')..createSync(),
+        );
+      });
+
+      tearDown(() {
+        if (root.existsSync()) root.deleteSync(recursive: true);
+      });
+
+      void writeLog(String text) =>
+          File('${folders.logs.path}/taketray-0.log').writeAsStringSync(text);
+
+      /// Lets the bundle be made on the real file system: each file call
+      /// needs real time, and the code after it needs a pump.
+      Future<void> letFilesWork(WidgetTester tester) async {
+        for (var i = 0; i < 40; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 5)),
+          );
+          await tester.pump();
+        }
+      }
+
+      Future<void> tapRow(WidgetTester tester) async {
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('shows its title and subtitle', (tester) async {
+        await pumpFull(tester, logFolders: folders);
+
+        expect(
+          subtitleOf(tester, 'Send error log'),
+          'Logs from this phone, to send by email or chat',
+        );
+        expect(
+          tester.widget<TtListRow>(rowTitled('Send error log')).onTap,
+          isNotNull,
+        );
+      });
+
+      testWidgets('a tap opens the share sheet with the log, and says '
+          'nothing', (tester) async {
+        writeLog('a line\n');
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+
+        // (The About row reads the version too.)
+        expect(s.files.methods.where((m) => m == 'shareFile'), hasLength(1));
+        expect(s.files.calls.last.args[2], 'TakeTray error log');
+        expect(find.byType(TtSnack), findsNothing);
+        expect(find.byType(SettingsScreen), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('no log yet: "Nothing to send yet", and no share sheet', (
+        tester,
+      ) async {
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+
+        expect(find.text('Nothing to send yet'), findsOneWidget);
+        expect(s.files.methods, isNot(contains('shareFile')));
+      });
+
+      testWidgets('the share sheet cannot open: "Couldn\'t open the share menu '
+          'on this phone."', (tester) async {
+        writeLog('a line\n');
+        final files = FakeFilesBridge()..failNext('shareFile');
+        await pumpFull(tester, logFolders: folders, files: files);
+
+        await tapRow(tester);
+
+        expect(
+          find.text("Couldn't open the share menu on this phone."),
+          findsOneWidget,
+        );
+        expect(find.text('Nothing to send yet'), findsNothing);
+      });
+
+      testWidgets('a double tap shares once', (tester) async {
+        writeLog('a line\n');
+        final files = FakeFilesBridge()..hold('shareFile');
+        await pumpFull(tester, logFolders: folders, files: files);
+
+        await tester.tap(find.text('Send error log'));
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        // A third tap while the share sheet is still opening.
+        await tester.tap(find.text('Send error log'));
+        await letFilesWork(tester);
+        files.release('shareFile');
+        await letFilesWork(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'shareFile'), hasLength(1));
+      });
+
+      testWidgets('the row works again after the share sheet is closed', (
+        tester,
+      ) async {
+        writeLog('a line\n');
+        final s = await pumpFull(tester, logFolders: folders);
+
+        await tapRow(tester);
+        await tester.pump(const Duration(seconds: 1));
+        await tapRow(tester);
+
+        expect(s.files.methods.where((m) => m == 'shareFile'), hasLength(2));
+      });
+    });
+
+    group('Export and import', () {
+      testWidgets('"No backup yet" before any export', (tester) async {
+        await pumpFull(tester);
+
+        expect(subtitleOf(tester, 'Export and import'), 'No backup yet');
+      });
+
+      for (final (time, text) in [
+        (DateTime.utc(2026, 11, 12, 12), 'Last backup: Nov 12'),
+        (DateTime.utc(2026, 1, 3, 12), 'Last backup: Jan 3'),
+        (DateTime.utc(2025, 3, 5, 12), 'Last backup: Mar 5, 2025'),
+      ]) {
+        testWidgets('a backup on $time reads "$text"', (tester) async {
+          await pumpFull(tester, lastExport: () async => time);
+
+          expect(subtitleOf(tester, 'Export and import'), text);
+        });
+      }
+
+      testWidgets('a last export that cannot be read says "No backup yet"', (
+        tester,
+      ) async {
+        await pumpFull(
+          tester,
+          lastExport: () => Future<DateTime?>.error(StateError('x')),
+        );
+
+        expect(subtitleOf(tester, 'Export and import'), 'No backup yet');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('the row has a chevron and opens the backup screen', (
+        tester,
+      ) async {
+        await pumpFull(tester);
+        expect(
+          find.descendant(
+            of: rowTitled('Export and import'),
+            matching: find.byIcon(Symbols.chevron_right_rounded),
+          ),
+          findsOneWidget,
+        );
+
+        await tester.tap(find.text('Export and import'));
+        await tester.pumpAndSettle();
+
+        expect(find.text(backupRouteMarker), findsOneWidget);
+      });
+
+      testWidgets('coming back from the backup screen reads the date again', (
+        tester,
+      ) async {
+        var exported = false;
+        await pumpFull(
+          tester,
+          lastExport: () async =>
+              exported ? DateTime.utc(2026, 11, 14, 12) : null,
+        );
+        expect(subtitleOf(tester, 'Export and import'), 'No backup yet');
+
+        await tester.tap(find.text('Export and import'));
+        await tester.pumpAndSettle();
+        exported = true;
+        routerOf(tester).pop();
+        await tester.pumpAndSettle();
+
+        expect(subtitleOf(tester, 'Export and import'), 'Last backup: Nov 14');
+      });
+    });
+
+    group('Video access', () {
+      Finder buttonIn(String title) => find.descendant(
+        of: rowTitled(title),
+        matching: find.byType(TtButton),
+      );
+
+      testWidgets('all videos: a check and no button', (tester) async {
+        await pumpFull(tester);
+
+        expect(subtitleOf(tester, 'Video access'), 'All videos');
+        expect(
+          find.descendant(
+            of: rowTitled('Video access'),
+            matching: find.byIcon(Symbols.check_circle_rounded),
+          ),
+          findsOneWidget,
+        );
+        expect(buttonIn('Video access'), findsNothing);
+      });
+
+      testWidgets('some videos: "Manual mode" and a tonal Allow all', (
+        tester,
+      ) async {
+        await pumpFull(tester, level: MediaAccessLevel.limited);
+
+        expect(
+          subtitleOf(tester, 'Video access'),
+          'Some videos only · Manual mode',
+        );
+        expect(
+          find.descendant(
+            of: rowTitled('Video access'),
+            matching: find.byIcon(Symbols.check_circle_rounded),
+          ),
+          findsNothing,
+        );
+        final button = tester.widget<TtButton>(buttonIn('Video access'));
+        expect(button.label, 'Allow all');
+        expect(button.kind, TtButtonKind.tonal);
+        expect(button.size, TtButtonSize.small);
+      });
+
+      testWidgets('not allowed: a tonal Allow', (tester) async {
+        await pumpFull(tester, level: MediaAccessLevel.denied);
+
+        expect(subtitleOf(tester, 'Video access'), 'Not allowed');
+        final button = tester.widget<TtButton>(buttonIn('Video access'));
+        expect(button.label, 'Allow');
+        expect(button.kind, TtButtonKind.tonal);
+        expect(button.size, TtButtonSize.small);
+      });
+
+      for (final (level, label) in [
+        (MediaAccessLevel.limited, 'Allow all'),
+        (MediaAccessLevel.denied, 'Allow'),
+      ]) {
+        testWidgets('the $label button calls allow() once, whatever the '
+            'taps', (tester) async {
+          final h = await pumpFull(tester, level: level);
+
+          await tester.tap(buttonIn('Video access'));
+          await tester.pump();
+          await tester.tap(buttonIn('Video access'));
+          await tester.pumpAndSettle();
+
+          expect(h.media.allowed, 1);
+          expect(find.byType(TtSnack), findsNothing);
+        });
+      }
+
+      testWidgets('the button works again after the window of the first '
+          'tap', (tester) async {
+        final h = await pumpFull(tester, level: MediaAccessLevel.denied);
+
+        await tester.tap(buttonIn('Video access'));
+        await tester.pumpAndSettle();
+        await tester.pump(const Duration(seconds: 2));
+        await tester.tap(buttonIn('Video access'));
+        await tester.pumpAndSettle();
+
+        expect(h.media.allowed, 2);
+      });
+
+      testWidgets('the row follows the state: Manual mode turns to a check', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester, level: MediaAccessLevel.limited);
+
+        h.media.show(MediaAccessLevel.full);
+        await tester.pump();
+
+        expect(subtitleOf(tester, 'Video access'), 'All videos');
+        expect(buttonIn('Video access'), findsNothing);
+      });
+
+      testWidgets('the Allow buttons of the two permissions are told apart '
+          'by a screen reader', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpFull(
+          tester,
+          level: MediaAccessLevel.denied,
+          notifications: _askable,
+        );
+
+        expect(find.bySemanticsLabel('Allow video access'), findsOneWidget);
+        expect(find.bySemanticsLabel('Allow notifications'), findsOneWidget);
+        handle.dispose();
+      });
+
+      testWidgets('a limited level: the button reads "Allow all videos" to a '
+          'screen reader', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpFull(tester, level: MediaAccessLevel.limited);
+
+        expect(find.bySemanticsLabel('Allow all videos'), findsOneWidget);
+        handle.dispose();
+      });
+
+      testWidgets('a first read that failed shows Not allowed with Allow', (
+        tester,
+      ) async {
+        final h = await pumpFull(tester, level: null);
+
+        expect(subtitleOf(tester, 'Video access'), 'Not allowed');
+        await tester.tap(buttonIn('Video access'));
+        await tester.pumpAndSettle();
+        expect(h.media.allowed, 1);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('while the first read runs there is no Video access row', (
+        tester,
+      ) async {
+        await pump(tester, _allowed);
+
+        expect(rowTitled('Video access'), findsNothing);
+        // The Notifications row still has its group.
+        expect(groupLabel('Permissions'), findsOneWidget);
+        expect(rowTitled('Notifications'), findsOneWidget);
+      });
+
+      testWidgets('with both reads running, no Permissions group', (
+        tester,
+      ) async {
+        await pump(tester, null, loading: true);
+
+        expect(groupLabel('Permissions'), findsNothing);
+        expect(rowTitled('Video access'), findsNothing);
+      });
+
+      group(
+        'allowed rows open Android settings (owner request, 2026-11-19)',
+        () {
+          const hint = 'Opens Android settings to change it';
+
+          /// What a screen reader gets for the row titled [title].
+          SemanticsData semanticsOf(WidgetTester tester, String title) =>
+              tester.getSemantics(find.text(title)).getSemanticsData();
+
+          testWidgets('full access: the row is tappable, the check stays', (
+            tester,
+          ) async {
+            await pumpFull(tester);
+
+            final row = tester.widget<TtListRow>(rowTitled('Video access'));
+            expect(row.onTap, isNotNull);
+            expect(
+              find.descendant(
+                of: rowTitled('Video access'),
+                matching: find.byIcon(Symbols.check_circle_rounded),
+              ),
+              findsOneWidget,
+            );
+            expect(buttonIn('Video access'), findsNothing);
+          });
+
+          testWidgets('tapping the full-access row opens the page once, never '
+              'allow()', (tester) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 1);
+            expect(h.media.allowed, 0);
+            expect(find.byType(TtSnack), findsNothing);
+          });
+
+          testWidgets('a double tap on the row opens it once', (tester) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pump();
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 1);
+            expect(h.media.allowed, 0);
+          });
+
+          testWidgets('the row works again after the window of the first tap', (
+            tester,
+          ) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+            await tester.pump(const Duration(seconds: 2));
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 2);
+          });
+
+          for (final level in [
+            MediaAccessLevel.limited,
+            MediaAccessLevel.denied,
+          ]) {
+            testWidgets('$level: the row itself does nothing, the button still '
+                'calls allow()', (tester) async {
+              final h = await pumpFull(tester, level: level);
+
+              expect(
+                tester.widget<TtListRow>(rowTitled('Video access')).onTap,
+                isNull,
+              );
+              await tester.tap(find.text('Video access'));
+              await tester.pumpAndSettle();
+              expect(h.media.settingsOpened, 0);
+              expect(h.media.allowed, 0);
+
+              await tester.tap(buttonIn('Video access'));
+              await tester.pumpAndSettle();
+              expect(h.media.allowed, 1);
+              expect(h.media.settingsOpened, 0);
+            });
+          }
+
+          testWidgets('the row follows the state: a lost permission loses the '
+              'tap', (tester) async {
+            final h = await pumpFull(tester);
+
+            h.media.show(MediaAccessLevel.denied);
+            await tester.pump();
+            await tester.tap(find.text('Video access'));
+            await tester.pumpAndSettle();
+
+            expect(h.media.settingsOpened, 0);
+            expect(buttonIn('Video access'), findsOneWidget);
+          });
+
+          testWidgets('full access: a button with the hint, the state text is '
+              'kept', (tester) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester);
+
+            final data = semanticsOf(tester, 'Video access');
+            expect(data.flagsCollection.isButton, isTrue);
+            expect(data.hint, hint);
+            expect(data.label, contains('Video access'));
+            expect(data.label, contains('All videos'));
+            handle.dispose();
+          });
+
+          testWidgets('not full: no hint on the row', (tester) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester, level: MediaAccessLevel.limited);
+
+            expect(semanticsOf(tester, 'Video access').hint, isNot(hint));
+            expect(find.bySemanticsLabel('Allow all videos'), findsOneWidget);
+            handle.dispose();
+          });
+
+          testWidgets('allowed notifications: the row is tappable, the check '
+              'stays', (tester) async {
+            await pumpFull(tester);
+
+            expect(
+              tester.widget<TtListRow>(rowTitled('Notifications')).onTap,
+              isNotNull,
+            );
+            expect(
+              find.descendant(
+                of: rowTitled('Notifications'),
+                matching: find.byIcon(Symbols.check_circle_rounded),
+              ),
+              findsOneWidget,
+            );
+            expect(buttonIn('Notifications'), findsNothing);
+          });
+
+          testWidgets(
+            'tapping the allowed Notifications row opens the settings '
+            'once, never allow()',
+            (tester) async {
+              final h = await pumpFull(tester);
+
+              await tester.tap(find.text('Notifications'));
+              await tester.pumpAndSettle();
+
+              expect(h.notifications.settingsOpened, 1);
+              expect(h.notifications.allowed, 0);
+              expect(h.media.settingsOpened, 0);
+              expect(find.byType(TtSnack), findsNothing);
+            },
+          );
+
+          testWidgets('a double tap on the Notifications row opens once', (
+            tester,
+          ) async {
+            final h = await pumpFull(tester);
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pump();
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+
+            expect(h.notifications.settingsOpened, 1);
+            expect(h.notifications.allowed, 0);
+          });
+
+          testWidgets('a settings page that will not open shows the snack, and '
+              'the row works again at once', (tester) async {
+            final h = await pumpFull(tester, openSettingsResult: false);
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+
+            expect(h.notifications.settingsOpened, 1);
+            expect(h.notifications.allowed, 0);
+            expect(
+              find.text("Couldn't open settings on this phone."),
+              findsOneWidget,
+            );
+
+            await tester.tap(find.text('Notifications'));
+            await tester.pumpAndSettle();
+            expect(h.notifications.settingsOpened, 2);
+          });
+
+          for (final (name, access) in [
+            ('askable', _askable),
+            ('blocked', _blocked),
+          ]) {
+            testWidgets('$name: the row itself does nothing, the button still '
+                'calls allow()', (tester) async {
+              final h = await pumpFull(tester, notifications: access);
+
+              expect(
+                tester.widget<TtListRow>(rowTitled('Notifications')).onTap,
+                isNull,
+              );
+              await tester.tap(find.text('Notifications'));
+              await tester.pumpAndSettle();
+              expect(h.notifications.settingsOpened, 0);
+              expect(h.notifications.allowed, 0);
+
+              await tester.tap(buttonIn('Notifications'));
+              await tester.pumpAndSettle();
+              expect(h.notifications.allowed, 1);
+              expect(h.notifications.settingsOpened, 0);
+            });
+          }
+
+          testWidgets(
+            'allowed notifications: a button with the hint, the state '
+            'text is kept',
+            (tester) async {
+              final handle = tester.ensureSemantics();
+              await pumpFull(tester);
+
+              final data = semanticsOf(tester, 'Notifications');
+              expect(data.flagsCollection.isButton, isTrue);
+              expect(data.hint, hint);
+              expect(data.label, contains('Notifications'));
+              expect(data.label, contains('Allowed'));
+              handle.dispose();
+            },
+          );
+
+          testWidgets('not allowed notifications: no hint on the row', (
+            tester,
+          ) async {
+            final handle = tester.ensureSemantics();
+            await pumpFull(tester, notifications: _askable);
+
+            expect(semanticsOf(tester, 'Notifications').hint, isNot(hint));
+            expect(
+              find.bySemanticsLabel('Allow notifications'),
+              findsOneWidget,
+            );
+            handle.dispose();
+          });
+        },
+      );
+    });
+
+    group('About', () {
+      testWidgets('the privacy line and the version', (tester) async {
+        await pumpFull(tester);
+
+        expect(
+          subtitleOf(tester, 'Your videos never leave your phone'),
+          'No account, no cloud, no ads. TakeTray only stores which clips '
+          'are in which reel.',
+        );
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+        // Plain rows: nothing to tap.
+        expect(tester.widget<TtListRow>(rowTitled('TakeTray')).onTap, isNull);
+        expect(
+          tester
+              .widget<TtListRow>(
+                rowTitled('Your videos never leave your phone'),
+              )
+              .onTap,
+          isNull,
+        );
+      });
+
+      testWidgets('the version is the one the phone reports', (tester) async {
+        final files = FakeFilesBridge()
+          ..appInfoAnswer = const AppInfo(
+            versionName: '2.14.3',
+            androidRelease: '15',
+          );
+        await pumpFull(tester, files: files);
+
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 2.14.3');
+      });
+
+      testWidgets('when the version cannot be read: "Version" alone, no '
+          'error', (tester) async {
+        final files = FakeFilesBridge()..failNext('appInfo');
+        await pumpFull(tester, files: files);
+
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('a failed read is not kept for ever: when the app comes '
+          'back the next read shows the version', (tester) async {
+        final files = FakeFilesBridge()..failNext('appInfo');
+        await pumpFull(tester, files: files);
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+        // No retry loop: one read so far.
+        await tester.pump(const Duration(seconds: 5));
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(1));
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(2));
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+      });
+
+      testWidgets('a read that fails again stays "Version", each return '
+          'tries once, and a good read is not asked for again', (tester) async {
+        final files = FakeFilesBridge()
+          ..failNext('appInfo')
+          ..failNext('appInfo');
+        await pumpFull(tester, files: files);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(2));
+        expect(tester.takeException(), isNull);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(3));
+      });
+
+      testWidgets('a version that was read well is not read again when the '
+          'app comes back', (tester) async {
+        final files = FakeFilesBridge();
+        await pumpFull(tester, files: files);
+
+        _backToTheApp(tester);
+        await tester.pumpAndSettle();
+
+        expect(files.methods.where((m) => m == 'appInfo'), hasLength(1));
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+      });
+
+      testWidgets('an empty version name reads "Version" with no gap at the '
+          'end', (tester) async {
+        final files = FakeFilesBridge()
+          ..appInfoAnswer = const AppInfo(
+            versionName: '',
+            androidRelease: '15',
+          );
+        await pumpFull(tester, files: files);
+
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+      });
+
+      testWidgets('while the version is being read: "Version" alone', (
+        tester,
+      ) async {
+        final files = FakeFilesBridge()..hold('appInfo');
+        await pump(
+          tester,
+          _allowed,
+          files: files,
+          media: FakeAccess(MediaAccessLevel.full),
+        );
+
+        expect(subtitleOf(tester, 'TakeTray'), 'Version');
+
+        files.release('appInfo');
+        await tester.pumpAndSettle();
+        expect(subtitleOf(tester, 'TakeTray'), 'Version 1.0.0');
+      });
+    });
+
+    testApp('with the real database the switches save, and two quick '
+        'taps both stay', (tester) async {
+      final h = reelHarness();
+      await pumpScreen(
+        tester,
+        const SettingsScreen(),
+        size: const Size(360, 1700),
+        overrides: [
+          ...h.appOverrides,
+          notificationAccessControllerProvider.overrideWith(
+            () => FakeNotificationAccess(_allowed),
+          ),
+          mediaAccessControllerProvider.overrideWith(
+            () => FakeAccess(MediaAccessLevel.full),
+          ),
+        ],
+        settle: false,
+      );
+      await settleApp(tester);
+      expect(
+        tester.widget<TtSwitch>(switchIn('Evening reminder')).value,
+        isTrue,
+      );
+
+      await tester.tap(switchIn('Evening reminder'));
+      await tester.tap(switchIn('VN copies reminder'));
+      await settleApp(tester);
+
+      final repo = h.container.read(settingsRepositoryProvider);
+      expect(
+        await real(tester, repo.load),
+        const AppSettings(
+          eveningReminderEnabled: false,
+          copiesReminderEnabled: false,
+        ),
+      );
+      expect(
+        tester.widget<TtSwitch>(switchIn('Evening reminder')).value,
+        isFalse,
+      );
+      expect(
+        tester.widget<TtSwitch>(switchIn('VN copies reminder')).value,
+        isFalse,
+      );
+      expect(rowTitled('Reminder time'), findsNothing);
+    });
+  });
+
   group('layout', () {
     for (final (scale, brightness, access) in [
       (1.0, Brightness.light, _allowed),
@@ -427,4 +1743,15 @@ void main() {
       );
     });
   });
+}
+
+/// The phone is left and the app comes back (`resumed`).
+void _backToTheApp(WidgetTester tester) {
+  tester.binding
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+    ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
 }

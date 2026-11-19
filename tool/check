@@ -38,7 +38,8 @@ STYLE_DIRS=(app/lib/features packages/taketray_ui/lib/src/components)
 # any zone, and run here so a day count or a wall clock built on local
 # DateTimes fails across a change (CI's own zone, UTC, has none). The
 # midnight tick (D-86) must end the 25-hour and the 23-hour London days at
-# midnight, not 24 hours after it started.
+# midnight, not 24 hours after it started. The backup file is named after the
+# local day (D-150): in London's summer time 00:01 is the day before in UTC.
 DST_MEMBER=app
 DST_TESTS=(
   test/core/midnight_tick_test.dart
@@ -49,6 +50,7 @@ DST_TESTS=(
   test/domain/rules/skipped_days_test.dart
   test/data/media/clip_time_test.dart
   test/features/shooting_mode/views/shooting_time_text_test.dart
+  test/features/settings/view_models/backup_controller_test.dart
 )
 
 cd "$(dirname "$0")/.."

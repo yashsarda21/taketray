@@ -11,8 +11,9 @@ int eveningMinutesIn(DateTime now, int inMinutes) =>
     (now.hour * 60 + now.minute + inMinutes) % Duration.minutesPerDay;
 
 /// The debug build's way to set the evening reminder "to the next minutes"
-/// (Phase 6, Task 9): Settings has no row for the time until Phase 10, so the
-/// owner's hand check builds the debug app with
+/// (Phase 6, Task 9): so the owner's hand check does not have to open the
+/// Settings time picker (which Settings has had since Phase 10B) and wait for
+/// a time two minutes away, it builds the debug app with
 /// `--dart-define=TAKETRAY_EVENING_IN_MINUTES=2`, and `TakeTrayApp` calls
 /// this at app start (debug builds only).
 ///
@@ -27,9 +28,10 @@ Future<bool> applyDebugEvening(
   required DateTime now,
 }) async {
   if (inMinutes <= 0) return false;
-  final current = await settings.load();
-  await settings.save(
-    current.copyWith(
+  // One transaction, as the Settings switches: a switch tapped in the same
+  // moment is kept, not written over by a stale copy.
+  await settings.update(
+    (current) => current.copyWith(
       eveningReminderEnabled: true,
       eveningReminderMinutes: eveningMinutesIn(now, inMinutes),
     ),

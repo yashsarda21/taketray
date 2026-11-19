@@ -281,7 +281,7 @@ void main() {
       expect(await repo.notificationsAsked(), isFalse);
     });
 
-    test('is not exported, and an import forgets it', () async {
+    test('is not exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.notificationsAskedKey)),
@@ -296,7 +296,7 @@ void main() {
 
       await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.notificationsAsked(), isFalse);
+      expect(await repo.notificationsAsked(), isTrue);
     });
   });
 
@@ -343,7 +343,7 @@ void main() {
       expect(await repo.folderTipSeen(), isFalse);
     });
 
-    test('is not exported, and an import forgets it', () async {
+    test('is not exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.folderTipSeenKey)),
@@ -358,7 +358,104 @@ void main() {
 
       await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.folderTipSeen(), isFalse);
+      expect(await repo.folderTipSeen(), isTrue);
+    });
+  });
+
+  group('lastExport', () {
+    test('the key is the documented name', () {
+      expect(PhoneStateRepository.lastExportKey, 'lastExport');
+    });
+
+    test('none recorded is null', () async {
+      expect(await repo.lastExport(), isNull);
+    });
+
+    test('a recorded time reads back as the same UTC instant', () async {
+      final at = DateTime.utc(2026, 11, 17, 8, 30, 15, 123);
+
+      await repo.recordExport(at);
+
+      final read = await repo.lastExport();
+      expect(read, at);
+      expect(read!.isUtc, isTrue);
+      expect(await _raw('lastExport'), '${at.millisecondsSinceEpoch}');
+    });
+
+    test('a local time is stored as the same instant', () async {
+      final local = DateTime.fromMillisecondsSinceEpoch(
+        DateTime.utc(2026, 11, 17, 8).millisecondsSinceEpoch,
+      );
+
+      await repo.recordExport(local);
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8));
+    });
+
+    test('microseconds are cut to whole milliseconds', () async {
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8, 0, 0, 5, 999));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8, 0, 0, 5));
+    });
+
+    test('recording again replaces the time, never adds a row', () async {
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+      await repo.recordExport(DateTime.utc(2026, 11, 18, 9));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 18, 9));
+      final rows = await (db.select(
+        db.settings,
+      )..where((s) => s.key.equals('lastExport'))).get();
+      expect(rows, hasLength(1));
+    });
+
+    test('a time before 1970 survives', () async {
+      await repo.recordExport(DateTime.utc(1969, 12, 31, 23));
+
+      expect(await repo.lastExport(), DateTime.utc(1969, 12, 31, 23));
+    });
+
+    for (final bad in [
+      '{not json',
+      '"yesterday"',
+      'true',
+      '1.5',
+      'null',
+      '[1]',
+      '9999999999999999',
+    ]) {
+      test('an unreadable value ($bad) is null, with the key name '
+          'logged and never the value', () async {
+        await _put('lastExport', bad);
+        final records = _record();
+
+        expect(await repo.lastExport(), isNull);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('lastExport'));
+        expect(lines, isNot(contains(bad)));
+      });
+    }
+
+    test('a corrupt value is replaced by a new record', () async {
+      await _put('lastExport', '"yesterday"');
+
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+
+      expect(await repo.lastExport(), DateTime.utc(2026, 11, 17, 8));
+    });
+
+    test('is phone state: not exported, and not in a backup file', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.lastExportKey)),
+      );
+      await repo.recordExport(DateTime.utc(2026, 11, 17, 8));
+
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('lastExport')),
+      );
     });
   });
 
@@ -443,7 +540,7 @@ void main() {
           expect(records.map((r) => r.message).join('\n'), contains(flag.key));
         });
 
-        test('is not exported, and an import forgets it', () async {
+        test('is not exported, and an import keeps it (D-146)', () async {
           expect(SettingsRepository.exportedKeys, isNot(contains(flag.key)));
           await flag.mark();
           expect(
@@ -455,7 +552,7 @@ void main() {
 
           await BackupService(db, clock).importJson(fixture);
 
-          expect(await flag.read(), isFalse);
+          expect(await flag.read(), isTrue);
         });
       });
     }
@@ -638,17 +735,20 @@ void main() {
       expect(text, isNot(contains('external_primary')));
     });
 
-    test('import turns Shooting mode off', () async {
-      await turnOn();
-      await repo.markAccessWasFull();
-      final fixture = File('test/data/backup/fixtures/backup_v1.json')
-          .readAsStringSync();
+    test(
+      'import turns Shooting mode off and keeps the access memory (D-146)',
+      () async {
+        await turnOn();
+        await repo.markAccessWasFull();
+        final fixture = File('test/data/backup/fixtures/backup_v1.json')
+            .readAsStringSync();
 
-      await BackupService(db, clock).importJson(fixture);
+        await BackupService(db, clock).importJson(fixture);
 
-      expect(await repo.loadShooting(), ShootingState.off);
-      expect(await repo.accessWasFull(), isFalse);
-    });
+        expect(await repo.loadShooting(), ShootingState.off);
+        expect(await repo.accessWasFull(), isTrue);
+      },
+    );
   });
 
   group('volume versions (Ruling V)', () {
@@ -674,7 +774,7 @@ void main() {
       expect(await repo.volumeVersions(), {'external_primary': 'v1'});
     });
 
-    test('never exported, and an import forgets them', () async {
+    test('never exported, and an import keeps them (D-146)', () async {
       expect(PhoneStateRepository.volumeVersionsKey, 'mediaVolumeVersions');
       expect(
         SettingsRepository.exportedKeys,
@@ -689,7 +789,9 @@ void main() {
         File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
       );
 
-      expect(await repo.volumeVersions(), isEmpty);
+      expect(await repo.volumeVersions(), {
+        'external_primary': 'secret-version',
+      });
     });
 
     for (final (name, value) in [
@@ -821,7 +923,7 @@ void main() {
       expect(await repo.rematchWindow(phone), isNotNull);
     });
 
-    test('never exported, and an import forgets it', () async {
+    test('never exported, and an import keeps it (D-146)', () async {
       expect(
         SettingsRepository.exportedKeys,
         isNot(contains(PhoneStateRepository.rematchWindowsKey)),
@@ -834,7 +936,7 @@ void main() {
         File('test/data/backup/fixtures/backup_v1.json').readAsStringSync(),
       );
 
-      expect(await repo.rematchWindow(phone), isNull);
+      expect(await repo.rematchWindow(phone), isNotNull);
     });
 
     for (final (name, value) in [

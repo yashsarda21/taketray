@@ -39,9 +39,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 6 | Background detection and notifications | ✅ Done |
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
-| 10A | First launch (splash, welcome, onboarding) | ✅ Done |
-| 10B | Settings, watched folders, export and import, error log | Next |
-| 9 | Reference reels (moved after Phase 10, D-134) | Planned |
+| 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
+| 9 | Reference reels | Next |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -209,6 +208,16 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Phone tests** on the S24 (Android 17): four on-device flows (a fresh phone, Manual mode, closing midway, and the Home tip with the Shooting mode switch). The first two runs found faults in the test harness, not the app (Patrol's typing closed the keyboard connection, and an empty lifecycle state made Android 16 and newer close the app on Back); both were fixed and the third run passed 4 of 4. All nine older on-device test files passed once more. The splash, the intro's smoothness, TalkBack, a real kill and Android's own settings page cannot be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 10A check): checks 1 to 19 all passed, and the release build installed over the real app showed onboarding once and kept its data. (The blur behind Android's own permission dialog is the system's, not TakeTray's.)
 - **Still to come**: the full Settings screen, Watched folders, Export and import and the error log are Phase 10B; reference reels are Phase 9.
 - **Learning guide**: [docs/learn/phase-10a-first-launch.md](docs/learn/phase-10a-first-launch.md) explains the whole phase in plain English, with the real code.
+
+### Phase 10B: Settings
+- **Every reminder switch reaches the background**: besides the evening reminder, "Remind me to turn it off" (Still shooting?) and "VN copies reminder" now have their own switches, and each one changes what the background job and Android's alarms do, not only what is saved. Switching the evening reminder off also removes one that is already showing, without opening the app.
+- **The full Settings screen**, in seven groups: Shooting mode, Reminders (with the reminder time, shown in the phone's 12 or 24-hour style), Clips (Watched folders, Storage used by VN copies), Help (Notifications not arriving?, Send error log), Your data (Export and import), Permissions (Video access, Notifications) and About (the privacy line and the version). Every change is saved safely even when two switches are tapped at once.
+- **Watched folders**: choose which folders TakeTray looks in for new videos, with an on/off switch for each. Chat-app folders such as WhatsApp Video can be watched, with a warning on the row. Only videos that arrive after a folder is turned on are picked up, and TakeTray's own folders are refused.
+- **Export and import**: a backup is one file you save with Android's own document picker, with the date of the last backup shown on the row. An import brings back your reels, clips and settings, says "X of Y clips found" (clips are matched to the videos on this phone), keeps this phone's own state (onboarding, the last backup date) and **refuses while VN copies are being made**. Nothing leaves the phone and no storage permission is needed.
+- **Send error log**: shares the log through Android's share sheet (mail, chat or save), with no reel names and no video names in it.
+- **Allowed permission rows open Android's settings** (an owner request from the S24): Android does not let an app take back its own permission, so when Video access says "All videos" or Notifications says "Allowed", tapping that row opens TakeTray's page in Android's settings, where it can be turned off.
+- **Phone tests** on the S24 (Android 17): five on-device flows (the switches, the switches reaching the background, a watched folder, export then import, and Send error log). The first run passed 4 of 5; the Send error log flow failed because the test's safety fake refused to open the share sheet, a fault in the test and not the app. It now uses the real share sheet, and the second run passed 5 of 5. The real folder and document pickers, the look against the prototype, TalkBack and a real reminder arriving cannot be driven by a test, so the owner checked them by hand ([docs/dev-setup.md](docs/dev-setup.md), Phase 10B check): checks 1 to 18 all passed, including the new permission rows.
+- **Learning guide**: [docs/learn/phase-10b-settings.md](docs/learn/phase-10b-settings.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 

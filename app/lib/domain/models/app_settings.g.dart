@@ -15,6 +15,8 @@ _AppSettings _$AppSettingsFromJson(Map<String, dynamic> json) => _AppSettings(
   eveningReminderEnabled: json['eveningReminderEnabled'] as bool? ?? true,
   eveningReminderMinutes:
       (json['eveningReminderMinutes'] as num?)?.toInt() ?? 1260,
+  stillReminderEnabled: json['stillReminderEnabled'] as bool? ?? true,
+  copiesReminderEnabled: json['copiesReminderEnabled'] as bool? ?? true,
 );
 
 Map<String, dynamic> _$AppSettingsToJson(_AppSettings instance) =>
@@ -22,4 +24,6 @@ Map<String, dynamic> _$AppSettingsToJson(_AppSettings instance) =>
       'watchedFolders': instance.watchedFolders,
       'eveningReminderEnabled': instance.eveningReminderEnabled,
       'eveningReminderMinutes': instance.eveningReminderMinutes,
+      'stillReminderEnabled': instance.stillReminderEnabled,
+      'copiesReminderEnabled': instance.copiesReminderEnabled,
     };

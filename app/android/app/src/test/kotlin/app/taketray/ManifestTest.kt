@@ -9,6 +9,7 @@ import app.taketray.background.BootReceiver
 import app.taketray.background.ReminderReceiver
 import app.taketray.background.ReminderScheduler
 import app.taketray.background.ShadeActionReceiver
+import app.taketray.files.FilesHostApiImpl
 import app.taketray.media.TimeZoneChangedReceiver
 import java.io.File
 import java.util.Properties
@@ -20,12 +21,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.w3c.dom.Element
+import org.xmlpull.v1.XmlPullParser
 
 /**
  * The manifest's background parts (D-105), as Android reads the merged
  * manifest: no other app can send TakeTray's receivers anything, the
  * reminder and shade receivers take explicit broadcasts only, and no
- * exact-alarm or foreground-service permission is asked for.
+ * exact-alarm or foreground-service permission is asked for. The files
+ * provider (D-147) is not exported and hands out `cache/shared/` only.
  */
 @RunWith(RobolectricTestRunner::class)
 class ManifestTest {
@@ -130,5 +133,33 @@ class ManifestTest {
             assertFalse("$permission is requested", permission.startsWith("android.permission.FOREGROUND_SERVICE"))
         }
         assertFalse("WAKE_LOCK is requested", "android.permission.WAKE_LOCK" in requested)
+    }
+
+    @Test
+    fun `the files provider is not exported, grants addresses one by one, and is named after the build`() {
+        // D-147: the share sheet reads TakeTray's file through this provider only.
+        val providers = pm.getPackageInfo(app.packageName, PackageManager.GET_PROVIDERS).providers.orEmpty()
+        val files = providers.filter { it.authority.orEmpty().endsWith(".files") }
+        assertEquals(1, files.size)
+        val provider = files.single()
+        assertEquals("androidx.core.content.FileProvider", provider.name)
+        assertFalse("the files provider is exported", provider.exported)
+        assertTrue("the files provider grants no URI permissions", provider.grantUriPermissions)
+        // ${applicationId}.files: the dev and the release build never share an authority.
+        assertEquals("${app.packageName}.files", provider.authority)
+        assertEquals(FilesHostApiImpl.authorityOf(app), provider.authority)
+    }
+
+    @Test
+    fun `the files provider covers cache shared and nothing else`() {
+        val paths = mutableListOf<Triple<String, String?, String?>>()
+        app.resources.getXml(R.xml.file_paths).use { xml ->
+            while (xml.next() != XmlPullParser.END_DOCUMENT) {
+                if (xml.eventType == XmlPullParser.START_TAG && xml.name != "paths") {
+                    paths += Triple(xml.name, xml.getAttributeValue(null, "name"), xml.getAttributeValue(null, "path"))
+                }
+            }
+        }
+        assertEquals(listOf(Triple("cache-path", "shared", "shared/")), paths)
     }
 }

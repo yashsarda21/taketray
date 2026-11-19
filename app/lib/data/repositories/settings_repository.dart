@@ -18,16 +18,21 @@ final Logger _log = Logger('settings');
 /// Each setting is one row in the key/value `settings` table, its value
 /// written as JSON. A key with no row has its default (the one in
 /// [AppSettings]); a row that cannot be read as the right kind of value is
-/// treated as missing, and its key name is logged (D-58).
+/// treated as missing, and its key name is logged, once per key (D-58).
 class SettingsRepository {
   // Takes a Clock like every repository, but settings carry no times.
   new(this._db, Clock _);
 
   final AppDatabase _db;
 
+  /// The keys whose corrupt value was already logged by this repository.
+  final Set<String> _warned = {};
+
   static const watchedFoldersKey = 'watchedFolders';
   static const eveningReminderEnabledKey = 'eveningReminderEnabled';
   static const eveningReminderMinutesKey = 'eveningReminderMinutes';
+  static const stillReminderEnabledKey = 'stillReminderEnabled';
+  static const copiesReminderEnabledKey = 'copiesReminderEnabled';
 
   /// The keys of the user's settings, and the only ones a backup exports.
   ///
@@ -39,15 +44,55 @@ class SettingsRepository {
     watchedFoldersKey,
     eveningReminderEnabledKey,
     eveningReminderMinutesKey,
+    stillReminderEnabledKey,
+    copiesReminderEnabledKey,
   };
 
   /// The settings now. A missing or corrupt value is its default.
   Future<AppSettings> load() async => _fromRows(await _selectExported().get());
 
-  /// Writes all three settings in one transaction. Other keys in the table are
+  /// Writes all five settings in one transaction. Other keys in the table are
   /// left alone. Throws [ArgumentError], saving nothing, when
   /// `eveningReminderMinutes` is not a minute of the day (0 to 1439).
+  ///
+  /// It writes every key from [settings] as it is, so a caller that read the
+  /// settings earlier can undo a change made since. A change of some of the
+  /// settings should go through [update].
   Future<void> save(AppSettings settings) async {
+    _validate(settings);
+    await _db.transaction(() => _write(settings));
+    _log.info('Saved the settings');
+  }
+
+  /// Reads the stored settings, applies [change] to them and saves the
+  /// result, all in **one database transaction**, and answers what it saved
+  /// (D-149, ruling R3).
+  ///
+  /// Two updates never overlap, however many repositories or screens make
+  /// them: the second waits for the first to commit and then reads what the
+  /// first saved. So a folder turned on in Watched folders and a switch
+  /// turned off in Settings, in the same frame, both stay, which neither
+  /// could promise with `load` then `save`.
+  ///
+  /// [change] runs inside the transaction and must be quick and must not
+  /// await anything else (a transaction holds the database). If it throws, or
+  /// gives a value [save] would refuse (a time that is not a minute of the
+  /// day: [ArgumentError]), nothing is saved and the error reaches the
+  /// caller; the updates after it still run.
+  Future<AppSettings> update(
+    AppSettings Function(AppSettings current) change,
+  ) async {
+    final saved = await _db.transaction(() async {
+      final next = change(_fromRows(await _selectExported().get()));
+      _validate(next);
+      await _write(next);
+      return next;
+    });
+    _log.info('Saved the settings');
+    return saved;
+  }
+
+  void _validate(AppSettings settings) {
     if (!_validMinutes(settings.eveningReminderMinutes)) {
       throw ArgumentError.value(
         settings.eveningReminderMinutes,
@@ -55,12 +100,14 @@ class SettingsRepository {
         'must be 0 to 1439',
       );
     }
-    await _db.transaction(() async {
-      await _put(watchedFoldersKey, settings.watchedFolders);
-      await _put(eveningReminderEnabledKey, settings.eveningReminderEnabled);
-      await _put(eveningReminderMinutesKey, settings.eveningReminderMinutes);
-    });
-    _log.info('Saved the settings');
+  }
+
+  Future<void> _write(AppSettings settings) async {
+    await _put(watchedFoldersKey, settings.watchedFolders);
+    await _put(eveningReminderEnabledKey, settings.eveningReminderEnabled);
+    await _put(eveningReminderMinutesKey, settings.eveningReminderMinutes);
+    await _put(stillReminderEnabledKey, settings.stillReminderEnabled);
+    await _put(copiesReminderEnabledKey, settings.copiesReminderEnabled);
   }
 
   /// The settings now and each time they change. Writes to other keys, and
@@ -90,6 +137,12 @@ class SettingsRepository {
       eveningReminderMinutes:
           _read<int>(raw, eveningReminderMinutesKey, _asMinutes) ??
           defaults.eveningReminderMinutes,
+      stillReminderEnabled:
+          _read<bool>(raw, stillReminderEnabledKey, _asBool) ??
+          defaults.stillReminderEnabled,
+      copiesReminderEnabled:
+          _read<bool>(raw, copiesReminderEnabledKey, _asBool) ??
+          defaults.copiesReminderEnabled,
     );
   }
 
@@ -104,7 +157,11 @@ class SettingsRepository {
     } on FormatException {
       // Not JSON: fall through to the log line.
     }
-    _log.warning('Setting $key is corrupt, using its default');
+    // `watch` reads every row again on each change, so a corrupt row would be
+    // logged on every emission: once per key per repository is enough.
+    if (_warned.add(key)) {
+      _log.warning('Setting $key is corrupt, using its default');
+    }
     return null;
   }
 

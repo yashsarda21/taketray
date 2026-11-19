@@ -253,6 +253,57 @@ void main() {
     );
 
     test(
+      'a folder watched later gives no history: its old videos are below the '
+      'baseline (D-149)',
+      () async {
+        // The folder already holds videos, from before Shooting mode.
+        bridge.put([
+          video(1, 1),
+          video(2, 2, folder: 'WhatsApp/Media/WhatsApp Video/'),
+          video(3, 3, folder: 'WhatsApp/Media/WhatsApp Video/'),
+        ]);
+        await h.turnOnNow();
+        expect(await h.baselineOf(phone), at(3));
+
+        // The user turns the folder on while Shooting mode runs.
+        await h.settings.update(
+          (s) => s.copyWith(
+            watchedFolders: [
+              ...s.watchedFolders,
+              'WhatsApp/Media/WhatsApp Video',
+            ],
+          ),
+        );
+
+        expect(await h.scanner.scan(), scanDone(added: 0));
+        expect(await h.allClips(), isEmpty);
+
+        // A video that arrives after the change is added.
+        bridge.put([video(4, 4, folder: 'WhatsApp/Media/WhatsApp Video/')]);
+        expect(await h.scanner.scan(), scanDone(added: 1));
+        expect([for (final c in await h.toTag()) c.mediaStoreId], [4]);
+      },
+    );
+
+    test('a folder switched off stops finding its new videos, and back on '
+        'finds only those after the switch-on', () async {
+      bridge.put([video(1, 1)]);
+      await h.turnOnNow();
+      await h.settings.update((s) => s.copyWith(watchedFolders: []));
+      bridge.put([video(2, 2)]);
+
+      expect(await h.scanner.scan(), scanDone(added: 0));
+
+      await h.settings.update(
+        (s) => s.copyWith(watchedFolders: ['DCIM/Camera']),
+      );
+      bridge.put([video(3, 3)]);
+
+      expect(await h.scanner.scan(), scanDone(added: 1));
+      expect([for (final c in await h.toTag()) c.mediaStoreId], [3]);
+    });
+
+    test(
       'empty watched folders: no rows, the baseline still advances',
       () async {
         await h.settings.save(const AppSettings(watchedFolders: []));

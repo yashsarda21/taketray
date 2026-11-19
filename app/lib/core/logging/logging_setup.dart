@@ -215,9 +215,8 @@ int get bufferedRecordCount => _state.early.length;
 /// The returned future completes once the sink is ready or logging has been
 /// disabled; do not wait for it before starting the app.
 ///
-/// [onSinkReady] receives the live sink as soon as it exists. Phase 10's
-/// Settings "share log" action uses it to keep a handle for
-/// [LogFileSink.exportFile]; tests use it to read the log back.
+/// [onSinkReady] receives the live sink as soon as it exists; tests use it to
+/// read the log back.
 Future<void> runAppWithLogging(
   FutureOr<void> Function() body, {
   required Future<Directory> Function() logDir,

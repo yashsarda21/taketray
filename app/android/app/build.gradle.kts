@@ -98,6 +98,11 @@ dependencies {
     // (a still icon); Android 12+ animates it.
     implementation("androidx.core:core-splashscreen:1.0.1")
 
+    // The files provider (D-147): androidx.core's FileProvider. It already
+    // arrives through the Flutter embedding at this version; declared so the
+    // bridge never depends on that by accident.
+    implementation("androidx.core:core:1.13.1")
+
     androidTestUtil("androidx.test:orchestrator:1.5.1")
 
     // Android unit tests on the JVM (tool/test_android, D-67). The SDK levels

@@ -3,16 +3,23 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/domain/models/app_settings.dart';
+import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/features/editors/view_models/copies_storage_controller.dart';
+import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/notifications/view_models/notification_access_controller.dart';
 import 'package:taketray/features/notifications/views/notifications_help_screen.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
+import 'package:taketray/features/settings/view_models/settings_controller.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/platform/background_bridge.dart';
+import 'package:taketray/platform/files_bridge.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
 import '../../../support/fake_background_bridge.dart';
+import '../../../support/fake_files_bridge.dart';
 import '../../../support/fake_media_bridge.dart';
+import '../../../support/fake_settings.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/test_app.dart';
 import '../../../support/view_model_fakes.dart';
@@ -97,9 +104,20 @@ Future<void> _settings(
           const CopiesSummary(bytes: 1800 * 1000 * 1000, reels: 3),
         ),
       ),
+      // The full Settings screen (Phase 10B, D-148) reads these too.
+      settingsControllerProvider.overrideWith(
+        () => FakeSettings(const AppSettings()),
+      ),
+      mediaAccessControllerProvider.overrideWith(
+        () => FakeAccess(MediaAccessLevel.full),
+      ),
+      lastExportProvider.overrideWith((ref) async => null),
+      filesBridgeProvider.overrideWithValue(FakeFilesBridge()),
     ],
     textScale: scale,
     brightness: brightness,
+    // Tall enough for every row.
+    size: Size(360, scale > 1 ? 3350 : 1420),
   );
 }
 

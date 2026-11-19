@@ -44,6 +44,15 @@ abstract final class Routes {
   /// Settings.
   static const copiesStorage = '/settings/vn-copies';
 
+  /// The Watched folders screen (Phase 10B, D-148), a child of Settings, full
+  /// screen above the shell like the help screen. Back returns to Settings.
+  static const watchedFolders = '/settings/watched-folders';
+
+  /// The Export and import screen (Phase 10B, D-148), a child of Settings,
+  /// full screen above the shell like the help screen. Back returns to
+  /// Settings.
+  static const backup = '/settings/backup';
+
   /// The Skipped clips (D-98, D-99), inside the To tag tab
   /// so the nav pill stays; Back returns to To tag.
   static const skipped = '/to-tag/skipped';

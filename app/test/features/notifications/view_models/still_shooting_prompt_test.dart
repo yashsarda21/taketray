@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/phone_state_repository.dart';
+import 'package:taketray/data/repositories/settings_repository.dart';
+import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/rules/still_shooting.dart';
 import 'package:taketray/features/notifications/view_models/still_shooting_prompt.dart';
 import 'package:taketray/platform/background_bridge.dart';
@@ -89,6 +91,84 @@ void main() {
 
       expect(await prompt.claim(), since);
     });
+  });
+
+  group('the Still shooting? reminder switch (D-145)', () {
+    Future<void> setSwitch({required bool on}) async =>
+        await h.media.settings.save(
+          (await h.media.settings.load()).copyWith(stillReminderEnabled: on),
+        );
+
+    test('due, but the switch is off: no prompt', () async {
+      daysLater(20);
+      await setSwitch(on: false);
+
+      expect(await prompt.claim(), isNull);
+    });
+
+    test('the switch off does not use up the claim: on again, the prompt '
+        'comes', () async {
+      daysLater(20);
+      await setSwitch(on: false);
+      expect(await prompt.claim(), isNull);
+
+      await setSwitch(on: true);
+
+      expect(await prompt.claim(), since);
+    });
+
+    test('due, switch on (the default): the prompt as before', () async {
+      daysLater(14);
+      await setSwitch(on: true);
+
+      expect(await prompt.claim(), since);
+    });
+
+    test('the settings cannot be read: no prompt, no throw, the type is '
+        'logged, and no claim is used', () async {
+      daysLater(20);
+      final failing = _FailingSettings(h.media.db, h.media.clock);
+      final container = ProviderContainer.test(
+        overrides: [
+          ...h.overrides,
+          settingsRepositoryProvider.overrideWithValue(failing),
+        ],
+      );
+      final records = captureLogs();
+
+      // An error here would reach the dialog host's unawaited check.
+      expect(await container.read(stillShootingPromptProvider).claim(), isNull);
+
+      expect(logText(records), contains('StateError'));
+      expect(logText(records), isNot(contains('secret')));
+      failing.broken = false;
+      expect(
+        await container.read(stillShootingPromptProvider).claim(),
+        since,
+        reason: 'the next check tries again',
+      );
+    });
+
+    test('the switch off, not due: still nothing', () async {
+      daysLater(1);
+      await setSwitch(on: false);
+
+      expect(await prompt.claim(), isNull);
+    });
+
+    test(
+      'a switch off does not answer the session: it stays unanswered',
+      () async {
+        daysLater(20);
+        await setSwitch(on: false);
+        await prompt.claim();
+
+        expect(
+          (await h.media.phoneState.loadShooting()).stillAnswered,
+          isFalse,
+        );
+      },
+    );
   });
 
   group('answered in the shade first', () {
@@ -259,4 +339,18 @@ class _FailingOff extends PhoneStateRepository {
 
   @override
   Future<void> turnShootingOff() => Future.error(StateError('disk full'));
+}
+
+/// Settings whose read fails, with a message that holds a path, until
+/// [broken] is turned off.
+class _FailingSettings extends SettingsRepository {
+  // The super constructor's parameters are private.
+  // ignore: use_super_parameters
+  _FailingSettings(AppDatabase db, Clock clock) : super(db, clock);
+
+  bool broken = true;
+
+  @override
+  Future<AppSettings> load() =>
+      broken ? Future.error(StateError('/secret/path')) : super.load();
 }
