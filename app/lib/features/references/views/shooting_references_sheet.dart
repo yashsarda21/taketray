@@ -123,12 +123,18 @@ class _ShootingReferencesSheetState
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
-    final groups = ref.watch(shootingReferencesProvider).value;
+    final loaded = ref.watch(shootingReferencesProvider);
+    final groups = loaded.value;
     final cache = ref.watch(thumbnailCacheProvider).value;
 
     return TtSheet(
       title: l10n.shootingReferencesTitle,
-      footer: _openFailed
+      // The sheet's own failure line (D-85): the references could not be
+      // read (the empty line would say "none", which is not known), or the
+      // last open found nothing on the phone.
+      footer: loaded.hasError
+          ? SheetFailure(message: l10n.shootingReferencesLoadFailed)
+          : _openFailed
           ? SheetFailure(message: l10n.referenceOpenFailed)
           : null,
       child: ListView(

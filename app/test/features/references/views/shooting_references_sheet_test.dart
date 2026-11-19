@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -11,6 +14,8 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
+import 'package:taketray/features/reels/views/sheet_failure.dart';
+import 'package:taketray/features/references/view_models/shooting_references.dart';
 import 'package:taketray/features/references/views/shooting_references_sheet.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -32,6 +37,7 @@ const _subtitle =
 const _empty = 'No references in your Collecting or Ready to edit reels.';
 const _noShots = 'No shot ideas yet.';
 const _writeShots = 'Write the shots you need';
+const _loadFailed = "Couldn't load your references.";
 const _noApp = 'No app on this phone can open this link.';
 
 void main() {
@@ -89,6 +95,7 @@ void main() {
     WidgetTester tester, {
     double textScale = 1,
     Brightness brightness = Brightness.light,
+    List<Override> overrides = const [],
   }) async {
     await pumpScreen(
       tester,
@@ -100,7 +107,7 @@ void main() {
           ),
         ),
       ),
-      overrides: h.appOverrides,
+      overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
     );
@@ -475,6 +482,80 @@ void main() {
       );
       // It is London's form.
       expect(find.text('London'), findsOneWidget);
+    });
+  });
+
+  group('when the references cannot be read', () {
+    testApp('the sheet says so, in its failure line, with no groups', (
+      tester,
+    ) async {
+      await twoReels(tester);
+      await pumpHost(
+        tester,
+        overrides: [
+          shootingReferencesProvider.overrideWith(
+            (ref) => Stream<List<ReferenceGroup>>.error(StateError('boom')),
+          ),
+        ],
+      );
+
+      expect(find.text(_loadFailed), findsOneWidget);
+      expect(find.byType(SheetFailure), findsOneWidget);
+      expect(find.text('References'), findsOneWidget);
+      expect(find.text(_subtitle), findsOneWidget);
+      expect(cards(), findsNothing);
+      // Not "nothing saved": that would be a lie.
+      expect(find.text(_empty), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testApp('an error after the groups were shown keeps them and says so', (
+      tester,
+    ) async {
+      await twoReels(tester);
+      final changes = StreamController<List<ReferenceGroup>>();
+      addTearDown(changes.close);
+      final first = await real(tester, () async {
+        final summaries = await reels.watchReelSummaries().first;
+        final references = await refs.watchAll().first;
+        return groupShootingReferences(summaries, references);
+      });
+      await pumpHost(
+        tester,
+        overrides: [
+          shootingReferencesProvider.overrideWith((ref) => changes.stream),
+        ],
+      );
+      changes.add(first);
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Goa'), findsOneWidget);
+      expect(find.text(_loadFailed), findsNothing);
+
+      changes.addError(StateError('boom'));
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text(_loadFailed), findsOneWidget);
+      expect(find.text('Goa'), findsOneWidget);
+    });
+
+    testApp('it passes the accessibility check, light and dark', (
+      tester,
+    ) async {
+      for (final brightness in Brightness.values) {
+        await pumpHost(
+          tester,
+          brightness: brightness,
+          overrides: [
+            shootingReferencesProvider.overrideWith(
+              (ref) => Stream<List<ReferenceGroup>>.error(StateError('boom')),
+            ),
+          ],
+        );
+        expect(find.text(_loadFailed), findsOneWidget);
+        await expectTtAccessible(tester);
+      }
     });
   });
 

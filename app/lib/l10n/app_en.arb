@@ -4386,5 +4386,9 @@
   "shootingReferencesEmpty": "No references in your Collecting or Ready to edit reels.",
   "@shootingReferencesEmpty": {
     "description": "Shown in the Shooting mode References sheet when no Collecting or Ready to edit reel has a reference (for instance after the last one was removed while the sheet was open)."
+  },
+  "shootingReferencesLoadFailed": "Couldn't load your references.",
+  "@shootingReferencesLoadFailed": {
+    "description": "The failure line of the Shooting mode References sheet when the references could not be read from the database while the sheet was open."
   }
 }
