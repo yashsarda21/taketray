@@ -64,6 +64,7 @@ Future<Pumped> pump(
   bool midnightTick = false,
   List<ReferenceGroup> references = const [],
   Stream<List<ReferenceGroup>>? referencesStream,
+  void Function()? onReferencesListened,
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
@@ -81,9 +82,11 @@ Future<Pumped> pump(
       onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
-      shootingReferencesProvider.overrideWith(
-        (ref) => referencesStream ?? Stream.value(references),
-      ),
+      shootingReferencesProvider.overrideWith((ref) {
+        // The body runs when something starts listening to the provider.
+        onReferencesListened?.call();
+        return referencesStream ?? Stream.value(references);
+      }),
     ],
     brightness: brightness,
     textScale: textScale,
@@ -940,6 +943,34 @@ void main() {
         [for (final r in card(tester).rows) r.title],
         ['Add earlier videos'],
       );
+    });
+
+    testWidgets('Shooting mode off: the references are not even listened to', (
+      tester,
+    ) async {
+      var listened = 0;
+      await pump(
+        tester,
+        references: two,
+        onReferencesListened: () => listened++,
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(listened, 0);
+    });
+
+    testWidgets('Shooting mode on: they are listened to (the counter works)', (
+      tester,
+    ) async {
+      var listened = 0;
+      await pump(
+        tester,
+        shooting: on(),
+        references: two,
+        onReferencesListened: () => listened++,
+      );
+
+      expect(listened, 1);
     });
 
     testWidgets('on with no references: no row', (tester) async {
