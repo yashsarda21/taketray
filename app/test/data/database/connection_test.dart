@@ -110,15 +110,51 @@ void main() {
     expect(File('${docs.path}/taketray.sqlite').existsSync(), isTrue);
   });
 
-  test('each engine opens its connection in WAL mode with a 5 s busy '
-      'timeout', () async {
+  test("each engine opens its connection in WAL mode, with the app's own "
+      "busy wait instead of SQLite's busy_timeout", () async {
     final app = open();
     final share = open();
 
     for (final db in [app, share]) {
       expect(await _pragma(db, 'journal_mode'), 'wal');
-      expect(await _pragma(db, 'busy_timeout'), 5000);
+      // SQLite's own wait counts the sleeps it meant to take, and signals cut
+      // them short on Linux and Android (D-164). Installing a busy handler
+      // clears it; a later `PRAGMA busy_timeout` would replace the handler.
+      expect(await _pragma(db, 'busy_timeout'), 0);
     }
+  });
+
+  test('a write blocked for good gives up after 5 s of real time, not '
+      'sooner, with "database is locked"', () async {
+    final app = open();
+    expect(await _count(app), 0);
+    final holder = NativeDatabase(
+      File('${docs.path}/taketray.sqlite'),
+      setup: appDatabaseOptions.setup,
+      enableMigrations: false,
+    );
+    await holder.ensureOpen(_RawUser());
+    await holder.runCustom('BEGIN IMMEDIATE');
+    addTearDown(() async {
+      await holder.runCustom('ROLLBACK');
+      await holder.close();
+    });
+
+    final waited = Stopwatch()..start();
+    await expectLater(
+      app.into(app.reels).insert(_reel('blocked')),
+      throwsA(
+        isA<Object>().having(
+          (e) => '$e',
+          'error',
+          contains('SqliteException(5)'),
+        ),
+      ),
+    );
+    waited.stop();
+
+    expect(waited.elapsed, greaterThanOrEqualTo(const Duration(seconds: 5)));
+    expect(waited.elapsed, lessThan(const Duration(seconds: 8)));
   });
 
   test("a write in one engine is in the other's next query", () async {
