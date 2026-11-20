@@ -428,3 +428,107 @@ Then break one thing on purpose. In `reels_step_controller.dart` change `if (ree
 ### Decisions
 
 - D-168: the existing rows and their counts, the sort, the wait for both reads, the always-shown tip, and no remove button.
+
+## 8. Patrol flows
+
+### What we built
+
+Four on-device flows for sharing, in `app/patrol_test/share_test.dart`, and the three small pieces they stand on: a debug-only way to start the share screen, a driver that can touch the share screen, and the safety rules of Phase 9A carried over. The flows are written and checked on a computer; they are **not run yet**, because the phone comes last.
+
+- **Existing reel.** A reel exists. The test shares `Look https://www.instagram.com/reel/TTTEST1/?igsh=x`. The sheet opens, the test taps the reel's row, presses **Save**, sees "Saved to TakeTray Test Share A", presses **Done**, and then checks, from the app's side, that the reel holds that one reference.
+- **New reel.** There are no reels, so the sheet opens on **New reel**. The test types a name, presses **Save**, then **Open reel**, and checks that the app opens that reel at its References with the link on a card.
+- **Not a link.** A caption with no link is shared. The sheet says "This isn't a link" and has no **Save**; **Close** ends it, and nothing was added.
+- **Before onboarding.** Onboarding is undone, the app sits on its welcome, and a share makes a new reel. The saved screen carries the welcome note. **Open reel** leaves the welcome showing (the reel is held). The test goes through onboarding's steps, where the reels step lists the shared reel, and when onboarding ends the reel's References open.
+
+### Why TakeTray needs it
+
+A share crosses two Flutter engines, an Android task and another app. A widget test draws one screen; only a phone shows that the sheet really opens, that its write reaches the app's database, and that Open reel survives onboarding.
+
+### Key ideas
+
+**1. A hook to start a share without another app.** Starting the real Instagram would need an account and the network, and would load a real page. Instead the debug build has a small channel that starts the share screen with a text, as Instagram's Share does:
+
+```kotlin
+val intent =
+    Intent(Intent.ACTION_SEND)
+        .setClassName(context, ShareActivity::class.java.name)
+        .setType("text/plain")
+        .putExtra(Intent.EXTRA_TEXT, text)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+context.startActivity(intent)
+```
+
+The one difference from a real share: an app's own context may only start an activity as a **new task**. So in the test the share screen sits in a task of its own over TakeTray, while a real one sits in Instagram's task over Instagram. What a real share returns to is a hand check. The release build has none of this code, and `tool/check_release_permissions` fails if its names (`DebugShareHooks`, `test_share`) show up in the release dex.
+
+**2. The share screen is invisible to Patrol's finders.** Patrol's `$(...)` looks inside the app's own Flutter engine, and the share screen is another one. What can see it is Android's accessibility tree, which Flutter fills with each widget's words. So `share_screen.dart` finds a node by its words, trying both places Flutter may put them:
+
+```dart
+List<AndroidSelector> selectorsFor(String words, {bool contains = false, bool enabled = false}) {
+  final only = enabled ? true : null;
+  if (contains) {
+    return [
+      AndroidSelector(textContains: words, isEnabled: only),
+      AndroidSelector(contentDescriptionContains: words, isEnabled: only),
+    ];
+  }
+  return [
+    AndroidSelector(text: words, isEnabled: only),
+    AndroidSelector(contentDescription: words, isEnabled: only),
+  ];
+}
+```
+
+Only an **enabled** node counts for **Save**, because a disabled Save has the same words and a tap on it does nothing. Every wait fails with a sentence saying what it waited for and which resource ids are on the screen (never any text), because the first run on the phone may need these selectors adjusted.
+
+**3. Words that are not unique are a trap.** Behind the sheet, Home is still on screen, and it has a "New reel" button and a card with the reel's name. So the flows tap the row by its full words, "TakeTray Test Share A, No references" (Home's card reads differently), and flow 2 starts with no reels so there is no "New reel" switch to confuse with Home's button.
+
+**4. Back is dangerous here.** Patrol normally closes the keyboard after typing by pressing Back. With no keyboard up, Back reaches the share screen and closes it. So typing into the sheet uses `KeyboardBehavior.alternative`, which leaves the keyboard alone, and a unit test fails if `showAndDismiss`, `pressBack` or a tap at a point ever appears.
+
+**5. A tear-down that can close a forgotten sheet.** If a flow fails with the sheet open, the next flow would start under it. The tear-down first closes it, but only when one of the sheet's own titles is on the screen, so it never taps an app button that happens to be called Done:
+
+```dart
+if (open == null) return closed;
+await tap(open.button, what: 'the button that closes a share screen left open', timeout: buttonTimeout);
+```
+
+**6. Onboarding is put back.** Flow 4 needs onboarding undone, so it deletes the three first-launch flags. Every flow's tear-down marks onboarding done again, even when the flow failed, so after any flow the app is onboarded. Shooting mode is never switched; the tear-down only reads it before and after and fails if it changed.
+
+### Where it lives
+
+- `app/android/app/src/debug/kotlin/app/taketray/DebugShareHooks.kt` and its one line in `DebugHooks.kt`; `app/android/app/src/test/kotlin/app/taketray/DebugShareHooksTest.kt`.
+- `app/patrol_test/share_test.dart` (the flows), `support/test_share.dart` (the channel's Dart side), `support/share_screen.dart` (the driver).
+- `app/test/patrol_support/test_share_test.dart`, `share_screen_test.dart` (the driver against a fake phone) and `share_source_test.dart` (the safety rules, read from the source).
+- `docs/dev-setup.md` ("Phase 9B check"), D-169.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+tool/test_android --tests 'app.taketray.DebugShareHooksTest'
+cd app && ../tool/flutter test test/patrol_support/test_share_test.dart \
+  test/patrol_support/share_screen_test.dart test/patrol_support/share_source_test.dart
+```
+
+Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`: "it is started as a new task, which a non-activity context needs" fails. In `share_screen.dart` replace `if (open == null) return closed;` with `open ??= states.last;`: "taps nothing when no share screen is up (the app has a Done)" fails, which is exactly the mistake that would press the app's own Done. In `share_test.dart` delete the line `linksBridgeProvider.overrideWithValue(env.links),`: "every app that is pumped has the fake links bridge" fails. (Put them all back.)
+
+### Decisions
+
+- D-169: the hook and how it differs from a real share, the driver, the four flows, the safety rules, and the eighteen hand checks.
+
+## 9. On the S24
+
+**What we built:** the phone run and the hand checks for sharing. The test is `app/patrol_test/share_test.dart`; the list is "Phase 9B check" in `docs/dev-setup.md`. 9A's references flows and these run together at the very end, once, after the review of the whole phase.
+
+**Phone results.** To be filled in by the controller after the run on the S24, with the owner's answers to the eighteen hand checks.
+
+**What this teaches:** to be written once the phone has run (what the accessibility tree really showed for the second engine, which selectors needed changing, and what the owner found in the hand checks).
+
+## What the phase leaves you with
+
+- **One door for a share.** Any app that shares text can open one see-through screen of TakeTray's, and that screen takes nothing from the intent but the text. Back, the scrim, Done, Cancel and Close all leave through one path that waits for a save to finish.
+- **Two engines, one database.** The share screen and the app are separate Flutter engines in one process, each with its own connection to the same file. A write on one is read by the other, and a re-read when TakeTray comes back to the front keeps Home from showing old data.
+- **A link is a plain, tested rule.** The sheet finds the first usable link in whatever was shared, shows what it is, and saves it through the same rules as 9A's references: a reel is picked or made, and nothing is half saved when two shares race.
+- **A share can come before the app has ever been opened.** It saves, tells a new user what comes next, and Open reel is held in memory until onboarding is done. Onboarding's reels step then lists the reel, so it is not made twice.
+- **The phone test cannot open a real link or touch another app.** A debug-only hook starts the share screen with a text, a fake stands in for the links bridge, and the tear-down closes a sheet left open and puts onboarding back to done.
+- **What only a person can judge is a numbered list.** A real Instagram, YouTube and TikTok share, where Done returns to, Recents, TalkBack, large text, dark mode, the keyboard and the release build over the real app are on "Phase 9B check", to be answered by number.

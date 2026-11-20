@@ -40,7 +40,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
-| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A built, phone check pending (S24 run and CI package goldens), **Next: Phase 9B Sharing in** |
+| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A and 9B built, phone check pending (one S24 run for both, and CI package goldens), **Next: the joint phone check, then Phase 11** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -228,8 +228,15 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **The phone's own icons**: a card shows the real icon of the Instagram, YouTube or TikTok app when it is installed, and a plain link symbol otherwise. TakeTray never draws a logo of its own.
 - **Under the hood**: a new Links bridge (one Pigeon file, no permission; the app declares the few `<queries>` it needs to read icons) opens links, and the link rules (finding the first link in a caption, cleaning one so the same page is not saved twice, short forms for display) are plain tested functions. The database is unchanged (still schema 2) and a backup already held references.
 - **Phone tests**: four on-device flows are written (a typed link, Paste with the Home badge, the reel form's link, and the Shooting mode sheet) with a fake that stands in for the links bridge, so no real link is ever opened; they run on the S24 last, together with the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9A check): real Instagram and YouTube, Android's paste message, TalkBack, 200 % text, dark mode, the Shooting mode sheet's colours, the keyboard on opening the New reel sheet, and an install over the release build with references kept.
-- **Still to come**: Phase 9B, **Sharing in**: sharing a reel from Instagram straight to TakeTray to save it as a reference.
+- **Sharing in** came next, in Phase 9B (below).
 - **Learning guide**: [docs/learn/phase-9a-references.md](docs/learn/phase-9a-references.md) explains the whole phase in plain English, with the real code.
+
+### Phase 9B: Sharing in (built; phone check pending)
+- **Share to TakeTray**: in Instagram (or YouTube, TikTok, or any app that shares text) tap **Share** › **TakeTray**. A see-through **Save reference** sheet opens over the app you shared from, so the reel stays visible behind it. It shows what the link is ("Instagram reel", the short link), takes an optional label, and saves into an **Existing reel** you pick or a **New reel** you name. **Saved to {reel}** has **Open reel** and **Done**; Done goes back to where you were. A caption with no link says **This isn't a link** and quotes it. TakeTray's own screen is never touched, and nothing is left in Recents.
+- **Before the app has been opened**: a share on a fresh install saves the reference, and the saved screen says "Welcome to TakeTray". **Open reel** brings TakeTray up on the welcome and keeps the reel until onboarding is done, then opens it at its References. Onboarding's last step now **lists the reels that already exist** (with how many references each holds, "Already created") and always shows the tip "share any Instagram reel to TakeTray to save it as a reference".
+- **Under the hood**: the share screen is its own small Flutter engine in the same process (one manifest entry, `text/plain` only, no new permission), and both engines write the one database through their own connection (WAL with a busy wait, and a re-read when the share comes back to the app). Neither logs a link, a caption or a reel name.
+- **Phone tests**: four on-device flows are written (an existing reel, a new reel, not a link, and a share before onboarding) with a debug-only hook that starts the share screen with a text, so no other app and no real link are involved. The share screen is another engine, so the flows drive it through Android's accessibility tree by its words. They run on the S24 last, together with 9A's, and with the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9B check): a real Instagram, YouTube and TikTok share, where Done returns to, Recents, a share while TakeTray is open, a fresh install, dark mode, large text, TalkBack, the keyboard, and the release build over the real app.
+- **Learning guide**: [docs/learn/phase-9b-sharing.md](docs/learn/phase-9b-sharing.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 
