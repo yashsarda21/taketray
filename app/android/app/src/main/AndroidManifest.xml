@@ -74,6 +74,35 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- The share screen (D-163): Share › TakeTray in another app. Exported
+             with exactly one filter, a text/plain SEND (no streams, images or
+             other types). It runs its own Flutter engine (shareMain) on a
+             see-through window over the sharing app: no taskAffinity and the
+             standard launch mode put it in the sharing app's task, so Back
+             and Done return there, and excludeFromRecents leaves nothing in
+             Recents. ShareTheme has no splash. Deep linking is off, as on
+             MainActivity, and ShareActivity ignores every Flutter setting an
+             intent could carry. -->
+        <activity
+            android:name=".share.ShareActivity"
+            android:exported="true"
+            android:label="${appLabel}"
+            android:launchMode="standard"
+            android:excludeFromRecents="true"
+            android:theme="@style/ShareTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.SEND"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <data android:mimeType="text/plain"/>
+            </intent-filter>
+        </activity>
         <!-- Records time-zone changes while the app is closed (spec §8.3a).
              ACTION_TIMEZONE_CHANGED is exempt from the implicit-broadcast
              limits; the system delivers it to a receiver that is not exported. -->

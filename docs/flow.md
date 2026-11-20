@@ -1290,6 +1290,7 @@ Run by `tool/check` (step 9c) and so by CI, or by hand: `tool/test_android`, wit
 4a. The editors bridge (Phase 8 Task 4, D-121): `android/app/src/test/kotlin/app/taketray/editors/` (`CopyFolderPathTest` plain JUnit; the others Robolectric on `CopyFolderProvider`, a real SQLite video table behind a strict query builder that also answers `createDeleteRequest`) and `DebugEditorHooksTest`; `ManifestTest` reads the merged manifest's `<queries>` (see "Editors bridge and the copy folder guard").
 4b. The launch splash (Phase 10A Task 4, D-137): `SplashTest.kt` (Robolectric, every SDK level, some in the night configuration) reads the resources as Android does: the theme the activity starts with (`LaunchTheme`, `windowSplashScreenAnimationDuration` 900, `postSplashScreenTheme`, the light and dark colours, the Android 12+ branding image), the vector's groups, pivot and the animator numbers parsed from `res/animator` and `res/interpolator` (the squash as two-value animators, no keyframes; a zero-length hold at 0 ms for each delayed clip animator; the vector's static values settled), the wordmark, `LaunchSplash.fadeOut` (200 ms, removes after the fade), `LaunchSplash.install` (no keep-on-screen condition; the exit listener on Android 11) and, by reading `MainActivity.kt`, that the install comes before `super.onCreate`.
 4c. The files bridge (Phase 10B Task 4, D-147): `android/app/src/test/kotlin/app/taketray/files/FilesHostApiImplTest.kt` (Robolectric, every SDK level, on a Robolectric `Activity` with `ShadowContentResolver`'s registered streams) and the provider tests in `ManifestTest` (see "Files bridge").
+4d. The share entry (Phase 9B Task 2, D-163): `android/app/src/test/kotlin/app/taketray/share/` (`ShareHostApiImplTest`, `ShareActivityTest`) and the share-screen tests in `ManifestTest` (see "Sharing into TakeTray").
 5. Gradle exits non-zero on any failing test; reports are in `app/build/app/reports/tests/testDebugUnitTest/` and `app/build/app/test-results/testDebugUnitTest/`.
 
 ### Token build (`design/tools/build_tokens.py`)
@@ -1672,6 +1673,32 @@ Paths are relative to `app/lib/features/references/`.
 
 **Tests:** `test/features/references/view_models/shooting_references_test.dart` (grouping, order, Published, live), `test/features/shooting_mode/views/shooting_mode_section_test.dart` ("the References row"), `test/features/references/views/shooting_references_sheet_test.dart` (content, taps, collapsing, live, large text; goldens, macOS only, not on CI).
 
+### Sharing into TakeTray (`android/.../share/`, `lib/share_main.dart`, `lib/features/share/`, `lib/platform/share_bridge.dart`, Phase 9B, D-163)
+
+Another app's **Share › TakeTray** opens a see-through share screen over that app, with a Flutter engine of its own. TakeTray's own screen, if it is open, is never touched. Paths are relative to `app/`; Kotlin files are in `android/app/src/main/kotlin/app/taketray/share/`. Task 2 builds the entry; the sheet itself comes in Tasks 5 and 6.
+
+**Making the contract:** `pigeons/share_api.dart` → `lib/platform/share_api.g.dart` and `share/ShareApi.g.kt` (package `app.taketray.share`, error class `ShareError`); `cd app && ../tool/dart run pigeon --input pigeons/share_api.dart` (`tool/check_generated` covers it). Three synchronous methods (main thread): `sharedText`, `finish`, `openReel`.
+
+**Opening the share screen:**
+1. Android's share sheet lists TakeTray for a `text/plain` `ACTION_SEND` (the manifest's one filter on `.share.ShareActivity`: `SEND`, `DEFAULT`, `mimeType="text/plain"`; nothing for streams, images or `SEND_MULTIPLE`). Its name there is the app's label.
+2. Android starts `ShareActivity` in the sharing app's task (standard launch mode, no `taskAffinity`; an app that shares with `FLAG_ACTIVITY_NEW_TASK` gets a new task whose root is the share screen). `excludeFromRecents` keeps it out of Recents. Its theme is `ShareTheme` (`res/values{,-night}/styles.xml`: translucent, transparent window background, no title, no dim, `windowDisablePreview`), so there is no splash and no starting window.
+3. `FlutterActivity.onCreate` starts an engine. `ShareActivity` fixes what it runs: `getDartEntrypointFunctionName()` = `shareMain`, `getDartEntrypointLibraryUri()` = `package:taketray/share_main.dart`, `getBackgroundMode()` = `transparent`; and ignores everything else an intent could set: `getInitialRoute()` null, `getCachedEngineId()` and `getCachedEngineGroupId()` null, `shouldDestroyEngineWithHost()` true, `getDartEntrypointArgs()` null, `getFlutterShellArgs()` empty, `shouldRestoreAndSaveState()` true. Deep linking is off in the manifest (`flutter_deeplinking_enabled` false).
+4. `configureFlutterEngine` → `ShareBridges.setUp(messenger)`: `ShareHostApiImpl`, `LinksHostApiImpl` and `EditorsHostApiImpl` (for the source icons), and nothing else (no media, background, copy or files bridge). `cleanUpFlutterEngine` → `ShareBridges.tearDown` (unregisters the three, `onHostGone`); `onDestroy` → `onHostGone`; `onActivityResult` goes to the editors bridge.
+5. Dart: `share_main.dart › shareMain` (`@pragma('vm:entry-point')`; `main.dart` exports it so the library is compiled in) → `runAppWithLogging(() => runApp(const ProviderScope(child: ShareApp())), logDir: getApplicationSupportDirectory, filePrefix: shareLogPrefix, maxLogBytes: 128 * 1024)`: the share engine's log is `share-0.log` / `share-1.log` (see "Error logging"). No background, media or onboarding provider is read; no splash, no onboarding redirect.
+6. `features/share/share_app.dart › ShareApp`: a `MaterialApp` with `TakeTrayTheme.light()` / `.dark()` (following the phone), `AppLocalizations` and `resolvePhoneLocale`; its body paints nothing. Back (`PopScope(canPop: false)`) → `shareBridgeProvider.finish()`. (Task 6 puts the Save reference sheet here.)
+
+**Reading the shared text:**
+1. Dart calls `shareBridgeProvider` (`share_bridge.dart › shareBridge`, kept alive, builds `PigeonShareBridge()`) `.sharedText()`. **[bridge]**
+2. `ShareHostApiImpl.sharedText` (inside `guardedWith("sharedText", ::shareFailure)`): no activity → `ShareError("no-activity")`. The activity's intent, when it is null or the one already answered for (`read`), → null ("nothing new"). Otherwise it is remembered and `textOf(intent)`: the action must be `ACTION_SEND` and `Intent.normalizeMimeType(type)` `text/plain` (any case, parameters dropped); `getCharSequenceExtra(EXTRA_TEXT)?.toString()` (a `String` or text with spans; any other type is null); longer than 20,000 characters → the first 20,000, or 19,999 when the 20,000th is the first half of an emoji. Logs the length only, under `TakeTrayShare`.
+3. A second share while the screen is open: `ShareActivity.onNewIntent` → `setIntent(intent)`, so the next `sharedText` answers the new text once.
+4. Back in Dart, `PigeonShareBridge.sharedText` logs `Shared text: N characters` or `Shared text: none` under `shareBridge`; a `PlatformException` is logged as `Reading the shared text failed: <code>` and answers null. Any other error passes through.
+
+**Closing:** `finish()` (and, until Task 4, `openReel(reelId)`): `isTaskRoot` → `finishAndRemoveTask()` (the task goes, nothing in Recents), else `finish()` (back to the sharing app's screen). No activity → `no-activity`. In Dart a `PlatformException` is logged by its code (`Closing the share screen failed: <code>`, `Opening the reel from a share failed: <code>`) and swallowed.
+
+**Errors and logs:** `shareFailure` keeps a `ShareError` thrown on purpose; anything else is `ShareError("native-error", "<method> failed: <ExceptionClass>")`, also logged at warning under `TakeTrayShare`. Neither side ever logs the shared text (D-10).
+
+**In tests:** Kotlin (Robolectric, `tool/test_android`): `share/ShareHostApiImplTest.kt` (on `RecordingActivity`, an `Activity` that records `finish` and `finishAndRemoveTask` and can fail `getIntent`), `share/ShareActivityTest.kt` (the activity built but never created: the entry point, a hostile intent's Flutter extras, `onNewIntent`, `ShareBridges` on a recording `BinaryMessenger`, `ShareTheme` in light and night) and `ManifestTest.kt` (the two exported activities, the one filter, Recents and the task, which intents reach it). Dart: `test/platform/share_bridge_test.dart`, `test/features/share/share_app_test.dart` (themes, l10n, Back, only `shareBridgeProvider` built), `test/share_main_test.dart` (the export, the pragma, the log call, no background, media or onboarding import).
+
 ### Error logging
 
 Installed once at start-up by `runAppWithLogging`; `main` calls it in Task 7 of phase 0 and runs the app inside `body`. It never waits for the log directory before starting the app.
@@ -1681,21 +1708,23 @@ Setup:
 2. Same function: sets `FlutterError.onError` (also `presentError` in debug mode; its record's message is the private `_frameworkErrorTag`, "Flutter framework error") and `PlatformDispatcher.instance.onError` to call `Logger('crash').severe(message, error, stack)`.
 3. Same function: enters `runZonedGuarded` (its error handler also calls `Logger('crash').severe`), calls `WidgetsFlutterBinding.ensureInitialized()` inside it, and starts `_attachSink` without awaiting it.
 4. Same function: runs `body` immediately, so start-up errors thrown by `body` land in the buffer through step 2/3.
-5. `_attachSink` (concurrently): awaits `logDir()` (`path_provider` application support directory, passed in by `main`) with a 5 s timeout. On success it creates the `LogFileSink`, writes the buffered lines in order, switches the subscription to write directly and calls `onSinkReady(sink)` (a throwing callback is ignored). If `logDir()` throws or times out it drops the buffer, disables buffering and prints one `debugPrint` line.
+5. `_attachSink` (concurrently): awaits `logDir()` (`path_provider` application support directory, passed in by `main` and `shareMain`) with a 5 s timeout. On success it creates the `LogFileSink(dir, prefix: filePrefix, maxBytes: maxLogBytes)`, writes the buffered lines in order, switches the subscription to write directly and calls `onSinkReady(sink)` (a throwing callback is ignored). If `logDir()` throws or times out it drops the buffer, disables buffering and prints one `debugPrint` line.
 
 A log record (any `Logger('x').info/warning/severe`):
 1. `package:logging › Logger.root.onRecord` delivers the `LogRecord` to the subscription from step 1 above.
 2. `core/logging/logging_setup.dart › formatRecord`: `2026-10-24T09:12:03.120Z LEVEL logger: message`, plus indented `error:` and `stack:` lines when present. Message and error text go through `_redact` (paths, URIs become `<path>`; a `FileSystemException` is rendered without its path). `_describeError` rebuilds database errors from their fields: `SqliteException(<code>): <message>` with no statement or values, a `DriftRemoteException` as its cause, an `InvalidDataException` as its failing columns, `CouldNotRollBackException` and `DriftWrappedException` by their causes; any other text containing `Causing statement` is cut there (`<statement removed>`), stack traces are kept as they are, and a record over 8 KiB is cut with `…[truncated]`.
 3. Same listener, debug builds only (`kDebugMode`): `debugPrint`s the formatted line to the console, unless the record is a framework error (its message object is `_frameworkErrorTag`; `presentError` already printed it). Release builds skip this step. The line then goes to the sink if it exists, otherwise to the buffer (or nowhere once logging is disabled).
 4. `core/logging/log_file_sink.dart › LogFileSink.write`: chains onto the previous write (writes never interleave), reads the current file size once, then:
-   1. if the line would push `taketray-0.log` past `maxBytes` (512 KiB), `_rotate` deletes `taketray-1.log` and renames `taketray-0.log` to `taketray-1.log`;
-   2. appends the line to `taketray-0.log` and flushes.
+   1. if the line would push `<prefix>-0.log` past `maxBytes`, `_rotate` deletes `<prefix>-1.log` and renames `<prefix>-0.log` to `<prefix>-1.log`;
+   2. appends the line to `<prefix>-0.log` and flushes.
+
+   The prefix and size come from `runAppWithLogging(filePrefix:, maxLogBytes:)`: the app's engine keeps the defaults, `taketray` (`appLogPrefix`) and 512 KiB; the share screen's engine (`shareMain`, D-163) passes `share` (`shareLogPrefix`) and 128 KiB. The two engines run in one process but in separate isolates, each with its own sink, and never touch each other's files.
 
 An uncaught error:
 1. Flutter framework error → `FlutterError.onError` (prints it to the console with `presentError` in debug); async error outside the framework → `PlatformDispatcher.onError` (returns `true`, handled); error escaping `body`'s zone → the `runZonedGuarded` handler.
 2. Each calls `Logger('crash').severe(...)`, which continues at "A log record" step 1; in debug builds the zone and platform errors reach the console at "A log record" step 3.
 
-Reading the log: `LogFileSink.readAll` returns `taketray-1.log` then `taketray-0.log` (oldest first); Send error log joins the files itself (`bundleLogs`, see "Error log").
+Reading the log: `LogFileSink.readAll` returns `<prefix>-1.log` then `<prefix>-0.log` (oldest first); Send error log joins both sets itself (`bundleLogs`, see "Error log").
 
 ### Error log (Send error log: `lib/core/logging/log_bundle.dart`, `lib/features/settings/view_models/send_log.dart`, `lib/features/settings/views/settings_rows/help_group.dart`, Phase 10B Task 8, D-151)
 
@@ -1705,7 +1734,7 @@ Settings › Help › "Send error log". The log files are in the support folder 
 2. `SendLog.send`: reads `logDirectoryProvider` (`getApplicationSupportDirectory()`) and `cacheDirectoryProvider` (`getTemporaryDirectory()`, which on Android is `context.cacheDir`), then calls `bundleLogs(logDir, cacheDir, clock.now())`.
 3. `bundleLogs`:
    1. deletes every `taketray-log-*.txt` in `<cacheDir>/shared/` (other files stay);
-   2. reads `taketray-1.log` then `taketray-0.log`, each whole in one `readAsBytes`; a missing or unreadable file counts as empty; a last line with no newline after it (a write in progress) is dropped;
+   2. reads `taketray-1.log`, `taketray-0.log`, then the share screen's `share-1.log` and `share-0.log` (D-163), each whole in one `readAsBytes`; a missing or unreadable file counts as empty; a last line with no newline after it (a write in progress) is dropped; nothing is added between the files;
    3. no bytes → returns null (step 4 of `send` answers `nothing`);
    4. creates `shared/`, writes the joined bytes to `taketray-log-<yyyy-MM-dd-HHmm>.txt` (local time) and returns the file.
 4. `send`, null bundle: logs "No log to send" and answers `SendLogOutcome.nothing`; the row shows "Nothing to send yet".

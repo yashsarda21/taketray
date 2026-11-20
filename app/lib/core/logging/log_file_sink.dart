@@ -1,20 +1,43 @@
 import 'dart:convert';
 import 'dart:io';
 
+/// The app's log files: `taketray-0.log` and `taketray-1.log`.
+const String appLogPrefix = 'taketray';
+
+/// The share screen's log files (D-163): `share-0.log` and `share-1.log`. The
+/// share screen runs its own Flutter engine, so it keeps its own files and
+/// never races the app's rotation.
+const String shareLogPrefix = 'share';
+
 /// Append-only text log that rotates by size.
 ///
-/// The current file is `taketray-0.log`; when a write would push it past
+/// The current file is `<prefix>-0.log`; when a write would push it past
 /// [maxBytes] the files shift up one slot (`-0` becomes `-1`, the oldest is
 /// dropped) and a fresh current file starts. At most [maxFiles] files exist,
 /// so the log never grows beyond `maxBytes * maxFiles`.
+///
+/// Two sinks may share [dir] only with different [prefix]es: each one
+/// rotates its own files and never touches the other's (the app and the
+/// share screen, D-163).
 class LogFileSink {
   /// Creates a sink that stores its files in [dir].
-  new(this.dir, {this.maxBytes = 512 * 1024, this.maxFiles = 2})
-    : assert(maxBytes > 0, 'maxBytes must be positive'),
-      assert(maxFiles >= 1, 'maxFiles must be at least 1');
+  new(
+    this.dir, {
+    this.prefix = appLogPrefix,
+    this.maxBytes = 512 * 1024,
+    this.maxFiles = 2,
+  }) : assert(
+         prefix.isNotEmpty && !prefix.contains('/'),
+         'prefix must be a plain file name part',
+       ),
+       assert(maxBytes > 0, 'maxBytes must be positive'),
+       assert(maxFiles >= 1, 'maxFiles must be at least 1');
 
   /// Directory holding the log files.
   final Directory dir;
+
+  /// The start of every file name: `<prefix>-0.log`, `<prefix>-1.log`, ...
+  final String prefix;
 
   /// Size threshold of a single log file.
   final int maxBytes;
@@ -29,7 +52,7 @@ class LogFileSink {
 
   int? _currentSize;
 
-  File _file(int index) => File('${dir.path}/taketray-$index.log');
+  File _file(int index) => File('${dir.path}/$prefix-$index.log');
 
   /// Appends [line] and a newline to the current file, rotating first when
   /// the file would otherwise exceed [maxBytes].

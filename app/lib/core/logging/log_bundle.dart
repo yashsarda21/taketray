@@ -1,9 +1,15 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-/// The log files, newest last: `taketray-1.log` is the previous one and
-/// `taketray-0.log` the current one (`LogFileSink`).
-const List<String> _logFileNames = ['taketray-1.log', 'taketray-0.log'];
+import 'package:taketray/core/logging/log_file_sink.dart';
+
+/// The log files in the order they are joined: the app's set, then the share
+/// screen's (D-163), each oldest first: `-1.log` is the previous file and
+/// `-0.log` the current one (`LogFileSink`).
+final List<String> _logFileNames = [
+  for (final prefix in [appLogPrefix, shareLogPrefix])
+    for (final index in [1, 0]) '$prefix-$index.log',
+];
 
 const String _bundlePrefix = 'taketray-log-';
 const String _bundleSuffix = '.txt';
@@ -19,7 +25,8 @@ const int _newline = 0x0A;
 /// - **Older bundles** (`taketray-log-*.txt`) in `shared/` are deleted
 ///   first, so at most one stays in the cache, and none stays when there is
 ///   nothing to send.
-/// - **Content:** the previous file, then the current one, byte for byte.
+/// - **Content:** the app's previous file, then its current one, then the
+///   share screen's previous and current files (D-163), byte for byte.
 ///   Nothing is added to them, so the bundle holds only what the logs hold
 ///   (their paths and values were redacted when they were written, D-28).
 ///   A file that is missing is skipped.

@@ -482,6 +482,68 @@ void main() {
     expect(content, contains('platform boom'));
   });
 
+  group('the file prefix (D-163)', () {
+    List<String> names() => [
+      for (final f in dir.listSync().whereType<File>()) f.uri.pathSegments.last,
+    ]..sort();
+
+    test('by default the app writes taketray-0.log, 512 KiB a file', () async {
+      final sinkReady = Completer<LogFileSink>();
+      await runAppWithLogging(
+        () {},
+        logDir: () async => dir,
+        onSinkReady: sinkReady.complete,
+      );
+      final sink = await sinkReady.future;
+      expect(sink.prefix, 'taketray');
+      expect(sink.maxBytes, 512 * 1024);
+
+      Logger('app').info('from the app');
+      await sink.readAll();
+
+      expect(names(), ['taketray-0.log']);
+    });
+
+    test("filePrefix 'share' writes share-0.log with its own size", () async {
+      final sinkReady = Completer<LogFileSink>();
+      await runAppWithLogging(
+        () {},
+        logDir: () async => dir,
+        onSinkReady: sinkReady.complete,
+        filePrefix: 'share',
+        maxLogBytes: 128 * 1024,
+      );
+      final sink = await sinkReady.future;
+      expect(sink.prefix, 'share');
+      expect(sink.maxBytes, 128 * 1024);
+
+      Logger('share').info('from the share screen');
+      final content = await sink.readAll();
+
+      expect(content, contains('from the share screen'));
+      expect(names(), ['share-0.log']);
+    });
+
+    test('records held before the sink go to the share file', () async {
+      final logDirGate = Completer<Directory>();
+      final sinkReady = Completer<LogFileSink>();
+      final running = runAppWithLogging(
+        () {},
+        logDir: () => logDirGate.future,
+        onSinkReady: sinkReady.complete,
+        filePrefix: 'share',
+      );
+      Logger('early').info('held early');
+
+      logDirGate.complete(dir);
+      await running;
+      final content = await (await sinkReady.future).readAll();
+
+      expect(content, contains('held early'));
+      expect(names(), ['share-0.log']);
+    });
+  });
+
   test(
     'records logged before the sink is ready are flushed in order',
     () async {

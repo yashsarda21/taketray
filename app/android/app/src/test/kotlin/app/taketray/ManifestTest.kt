@@ -11,11 +11,13 @@ import app.taketray.background.ReminderScheduler
 import app.taketray.background.ShadeActionReceiver
 import app.taketray.files.FilesHostApiImpl
 import app.taketray.media.TimeZoneChangedReceiver
+import app.taketray.share.ShareActivity
 import java.io.File
 import java.util.Properties
 import javax.xml.parsers.DocumentBuilderFactory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -28,7 +30,9 @@ import org.xmlpull.v1.XmlPullParser
  * manifest: no other app can send TakeTray's receivers anything, the
  * reminder and shade receivers take explicit broadcasts only, and no
  * exact-alarm or foreground-service permission is asked for. The files
- * provider (D-147) is not exported and hands out `cache/shared/` only.
+ * provider (D-147) is not exported and hands out `cache/shared/` only. The
+ * share screen (D-163) is the one other exported activity and takes
+ * `text/plain` shares only.
  */
 @RunWith(RobolectricTestRunner::class)
 class ManifestTest {
@@ -75,17 +79,22 @@ class ManifestTest {
         assertTrue("android.permission.POST_NOTIFICATIONS" in requested)
     }
 
-    /**
-     * The merged manifest as AGP hands it to Robolectric (`test_config.properties`),
-     * read as XML: Android has no API that lists an app's own `<queries>`.
-     */
-    private fun queriedPackages(): List<String> {
+    /** The merged manifest as AGP hands it to Robolectric (`test_config.properties`), read as XML. */
+    private fun mergedManifest(): org.w3c.dom.Document {
         val props = Properties()
         javaClass.classLoader!!.getResourceAsStream("com/android/tools/test_config.properties")!!.use { props.load(it) }
         val manifest = File(props.getProperty("android_merged_manifest"))
         assertTrue("merged manifest at $manifest", manifest.isFile)
         val factory = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
-        val doc = factory.newDocumentBuilder().parse(manifest)
+        return factory.newDocumentBuilder().parse(manifest)
+    }
+
+    /**
+     * The merged manifest's `<queries>` package names: Android has no API that
+     * lists an app's own `<queries>`.
+     */
+    private fun queriedPackages(): List<String> {
+        val doc = mergedManifest()
         val queries = doc.getElementsByTagName("queries")
         return buildList {
             for (q in 0 until queries.length) {
@@ -170,5 +179,103 @@ class ManifestTest {
             }
         }
         assertEquals(listOf(Triple("cache-path", "shared", "shared/")), paths)
+    }
+
+    // ------------------------------------------------------------ the share screen (D-163)
+
+    private fun Element.android(name: String): String? =
+        if (hasAttributeNS(ANDROID, name)) getAttributeNS(ANDROID, name) else null
+
+    private fun Element.children(tag: String): List<Element> =
+        buildList {
+            val nodes = childNodes
+            for (i in 0 until nodes.length) {
+                val node = nodes.item(i)
+                if (node is Element && node.tagName == tag) add(node)
+            }
+        }
+
+    /** TakeTray's own `<activity>` elements in the merged manifest (test tooling adds its own). */
+    private fun ownActivities(): List<Element> {
+        val nodes = mergedManifest().getElementsByTagName("activity")
+        return buildList {
+            for (i in 0 until nodes.length) {
+                val activity = nodes.item(i) as Element
+                if (activity.android("name").orEmpty().startsWith("app.taketray.")) add(activity)
+            }
+        }
+    }
+
+    @Test
+    fun `TakeTray exports exactly two activities, the launcher and the share screen`() {
+        val exported = ownActivities().filter { it.android("exported") == "true" }.mapNotNull { it.android("name") }
+        assertEquals(listOf("app.taketray.MainActivity", "app.taketray.share.ShareActivity"), exported.sorted())
+    }
+
+    @Test
+    fun `the share screen has exactly one filter, for a text plain SEND`() {
+        val shares = ownActivities().filter { it.android("name") == ShareActivity::class.java.name }
+        assertEquals(1, shares.size)
+        val filters = shares.single().children("intent-filter")
+        assertEquals(1, filters.size)
+        val filter = filters.single()
+        assertEquals(listOf("android.intent.action.SEND"), filter.children("action").map { it.android("name") })
+        assertEquals(listOf("android.intent.category.DEFAULT"), filter.children("category").map { it.android("name") })
+        val data = filter.children("data")
+        assertEquals(1, data.size)
+        val attributes = data.single().attributes
+        assertEquals("the data element has only mimeType", 1, attributes.length)
+        assertEquals("text/plain", data.single().android("mimeType"))
+    }
+
+    @Test
+    fun `the share screen leaves no trace in Recents and joins the sharing app's task`() {
+        val share = ownActivities().single { it.android("name") == ShareActivity::class.java.name }
+        assertEquals("true", share.android("exported"))
+        assertEquals("true", share.android("excludeFromRecents"))
+        assertNull("taskAffinity is set", share.android("taskAffinity"))
+        // Absent or "standard" (0): a new instance in the task of whoever started it.
+        assertTrue(share.android("launchMode") in listOf(null, "standard", "0"))
+        assertNull("documentLaunchMode is set", share.android("documentLaunchMode"))
+        assertNull("no permission is needed to share", share.android("permission"))
+        assertEquals("adjustResize", share.android("windowSoftInputMode")?.let(::softInputName))
+        // Flutter's own deep linking stays off, as on MainActivity.
+        val meta = share.children("meta-data").associate { it.android("name") to it.android("value") }
+        assertEquals("false", meta["flutter_deeplinking_enabled"])
+
+        val info = pm.getActivityInfo(ComponentName(app, ShareActivity::class.java), 0)
+        assertTrue(info.exported)
+        assertTrue("excludeFromRecents", info.flags and android.content.pm.ActivityInfo.FLAG_EXCLUDE_FROM_RECENTS != 0)
+        assertEquals(android.content.pm.ActivityInfo.LAUNCH_MULTIPLE, info.launchMode)
+        // Its name in Android's share list is the app's.
+        assertEquals(app.applicationInfo.loadLabel(pm).toString(), info.loadLabel(pm).toString())
+    }
+
+    /** `adjustResize` whether the merged manifest keeps the name or its number (0x10). */
+    private fun softInputName(value: String): String =
+        when (value) {
+            "adjustResize", "0x10", "16" -> "adjustResize"
+            else -> value
+        }
+
+    @Test
+    fun `a text plain share reaches the share screen and nothing else does`() {
+        fun handlers(intent: Intent): List<String> =
+            pm.queryIntentActivities(intent.setPackage(app.packageName), 0).map { it.activityInfo.name }
+
+        assertEquals(
+            listOf(ShareActivity::class.java.name),
+            handlers(Intent(Intent.ACTION_SEND).setType("text/plain")),
+        )
+        for (type in listOf("image/jpeg", "video/mp4", "text/html", "application/pdf")) {
+            assertEquals(type, emptyList<String>(), handlers(Intent(Intent.ACTION_SEND).setType(type)))
+        }
+        assertEquals(emptyList<String>(), handlers(Intent(Intent.ACTION_SEND_MULTIPLE).setType("text/plain")))
+        assertEquals(emptyList<String>(), handlers(Intent(Intent.ACTION_VIEW).setType("text/plain")))
+        assertEquals(emptyList<String>(), handlers(Intent(Intent.ACTION_PROCESS_TEXT).setType("text/plain")))
+    }
+
+    private companion object {
+        const val ANDROID = "http://schemas.android.com/apk/res/android"
     }
 }

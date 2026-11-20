@@ -74,4 +74,85 @@ void main() {
     await second.write('second');
     expect(await second.readAll(), 'first\nsecond\n');
   });
+
+  group('the file prefix', () {
+    List<String> names() => [
+      for (final f in dir.listSync().whereType<File>()) f.uri.pathSegments.last,
+    ]..sort();
+
+    test('the default prefix is taketray', () async {
+      final sink = LogFileSink(dir);
+      expect(sink.prefix, 'taketray');
+      expect(sink.maxBytes, 512 * 1024);
+      expect(sink.maxFiles, 2);
+
+      await sink.write('a');
+
+      expect(names(), ['taketray-0.log']);
+    });
+
+    test("prefix 'share' writes share-0.log", () async {
+      final sink = LogFileSink(dir, prefix: 'share');
+
+      await sink.write('hello');
+
+      expect(names(), ['share-0.log']);
+      expect(File('${dir.path}/share-0.log').readAsStringSync(), 'hello\n');
+    });
+
+    test("prefix 'share' rotates to share-1.log and keeps two files", () async {
+      final sink = LogFileSink(dir, prefix: 'share', maxBytes: 20);
+      await sink.write('aaaaaaaaa'); // 10 bytes
+      await sink.write('bbbbbbbbb'); // 20 bytes, fits
+      await sink.write('ccccccccc'); // would exceed, rotates
+      await sink.write('ddddddddd'); // 20 bytes, fits
+      await sink.write('eeeeeeeee'); // rotates again: the a and b lines go
+
+      expect(names(), ['share-0.log', 'share-1.log']);
+      expect(
+        File('${dir.path}/share-1.log').readAsStringSync(),
+        'ccccccccc\nddddddddd\n',
+      );
+      expect(File('${dir.path}/share-0.log').readAsStringSync(), 'eeeeeeeee\n');
+      expect(await sink.readAll(), 'ccccccccc\nddddddddd\neeeeeeeee\n');
+    });
+
+    test('two sinks with their own prefix in one folder never touch '
+        "each other's files", () async {
+      final app = LogFileSink(dir, maxBytes: 20);
+      final share = LogFileSink(dir, prefix: 'share', maxBytes: 20);
+      for (var i = 0; i < 5; i++) {
+        await app.write('app-$i-xxx'); // 10 bytes
+        await share.write('shr-$i-xxx');
+      }
+
+      expect(names(), [
+        'share-0.log',
+        'share-1.log',
+        'taketray-0.log',
+        'taketray-1.log',
+      ]);
+      expect(await app.readAll(), isNot(contains('shr-')));
+      expect(await share.readAll(), isNot(contains('app-')));
+      expect(await app.readAll(), endsWith('app-4-xxx\n'));
+      expect(await share.readAll(), endsWith('shr-4-xxx\n'));
+    });
+
+    test('the share log keeps its own size: 128 KiB each', () async {
+      final sink = LogFileSink(dir, prefix: 'share', maxBytes: 128 * 1024);
+      final line = 'x' * 1023; // 1 KiB with its newline
+      for (var i = 0; i < 129; i++) {
+        await sink.write(line);
+      }
+
+      expect(names(), ['share-0.log', 'share-1.log']);
+      expect(File('${dir.path}/share-1.log').lengthSync(), 128 * 1024);
+      expect(File('${dir.path}/share-0.log').lengthSync(), 1024);
+    });
+  });
+
+  test('the two prefixes are named once', () {
+    expect(appLogPrefix, 'taketray');
+    expect(shareLogPrefix, 'share');
+  });
 }
