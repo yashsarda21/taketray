@@ -104,3 +104,80 @@ Then break one thing on purpose. In `ShareHostApiImpl.kt`, delete the line that 
 ### Decisions
 
 - D-163: `ShareActivity` and its manifest entry, the fixed engine settings, `ShareTheme`, the share bridge (read once, the 20,000 cap, closing with the task), the three bridges the share engine has, `shareMain` and `ShareApp`, and the share log.
+
+## 3. Two engines, one database
+
+### What we built
+
+The app and the share screen each run their own Flutter engine (section 2), and both need TakeTray's database: the share saves a reel or a reference, and Home shows it. Each engine now opens its own connection to the one file, `taketray.sqlite`, set up so that the two never trip over each other. When an engine comes back to the front, it re-reads the reels and their references, so it shows what the other engine saved meanwhile.
+
+### Why TakeTray needs it
+
+You can share from Instagram while TakeTray is open behind it, or with TakeTray closed. Either way the reel must be saved once, never lost, and Home must show it when you go back. Two connections writing to one SQLite file at the same moment can fail with "database is locked", and a screen in one engine has no idea the other engine wrote anything.
+
+### Key ideas
+
+**1. Two engines are two separate worlds.** Each engine runs its own Dart code with its own memory. Riverpod's providers are built once per engine, so `appDatabaseProvider` makes one connection in the app and another in the share screen. Drift offers a way to share one connection between isolates (`shareAcrossIsolates`), but its own docs say it does not work across independent engines, and its connection would belong to whichever engine opened it first. We meant to test it on the emulator first; the emulator had no system image and the disk had no room for one, so we took the plan's fallback (D-164).
+
+**2. SQLite's own rules keep two connections safe.** Every connection, as it opens, sets two things:
+
+```dart
+final DriftNativeOptions appDatabaseOptions = DriftNativeOptions(
+  setup: (db) => db
+    ..execute('PRAGMA busy_timeout = 5000')
+    ..execute('PRAGMA journal_mode = WAL'),
+);
+```
+
+WAL (write-ahead logging) lets one engine read while the other writes. The busy timeout makes a write wait up to 5 seconds for the other engine's write to finish, instead of failing at once. Drift starts every transaction with `BEGIN IMMEDIATE`, so a transaction waits at its start and never fails half way through. The order matters: switching to WAL needs a moment alone with the file, so the timeout must already be set.
+
+**3. Streams only hear their own connection.** Home watches the reels with a drift `watch` stream. Drift re-runs it after a write on the same connection, but it never hears about the other engine's writes. So `DatabaseRefresh` tells the database, each time the engine comes back to the front, that the reels and references may have changed:
+
+```dart
+void _refresh() {
+  if (!ref.exists(appDatabaseProvider)) return;
+  final db = ref.read(appDatabaseProvider);
+  db.notifyUpdates({
+    TableUpdate.onTable(db.reels),
+    TableUpdate.onTable(db.reelReferences),
+  });
+}
+```
+
+Every stream on those tables runs its query again. Both apps have exactly one `DatabaseRefresh`, above their `MaterialApp`. The share screen covers the app while it is open, so "when the app comes back" is exactly when you could see the new reel.
+
+**4. Two engines can open the file at the same moment.** On a fresh install, both could find the file empty and both try to create the tables; the second would fail with "already exists", and drift would keep that error for the engine's whole life. So creating the schema now happens in a transaction that checks the version again and writes it inside:
+
+```dart
+onCreate: (m) => transaction(() async {
+  if (await _storedVersion() != 0) return;
+  await m.createAll();
+  await customStatement('PRAGMA user_version = $schemaVersion');
+}),
+```
+
+The second engine's transaction waits for the first, then sees version 2 and does nothing. Upgrades do the same: the steps run from the version read inside the transaction.
+
+### Where it lives
+
+- `app/lib/data/database/connection.dart`: `appDatabaseOptions` and `appDatabaseProvider`.
+- `app/lib/data/database/app_database.dart`: the migration strategy (`onCreate`, `onUpgrade`).
+- `app/lib/app/database_refresh.dart`: `DatabaseRefresh`; used in `app/lib/app.dart` and `app/lib/features/share/share_app.dart`.
+- Docs: `docs/flow.md` ("Database open and migrations", step 5), D-164.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/data/database/connection_test.dart \
+  test/app/database_refresh_test.dart test/drift
+```
+
+`connection_test.dart` uses two provider containers as two engines on one temporary file. One test holds the write lock from a third connection while both "engines" open, so both read the version before either can create the tables.
+
+Then break one thing on purpose. In `connection.dart`, delete the `busy_timeout` line and run `connection_test.dart` again: the test where both engines write 40 times at once fails with `database is locked`. Put it back.
+
+### Decisions
+
+- D-164: why there is no device proof, a connection per engine with WAL and a 5 s busy timeout, the re-read on resume, migrations that are safe on two connections, and the checks left for the S24.

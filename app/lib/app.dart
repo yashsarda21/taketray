@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/app/media_lifecycle.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/debug_evening.dart';
@@ -31,6 +32,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// `BackgroundSync` once, which writes the phone's copy of the background
 /// state now (re-arming the job and the alarms) and after every change
 /// (D-106).
+///
+/// [DatabaseRefresh] wraps it all: on resume it re-reads the reels and
+/// their references, which the share screen's engine may have written
+/// (D-164).
 ///
 /// The first frame is held until the onboarding flags are read (D-136): the
 /// system splash covers the read, so neither Reels nor the welcome shows
@@ -141,20 +146,22 @@ class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MediaLifecycle(
-      child: MaterialApp.router(
-        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-        routerConfig: ref.watch(appRouterProvider),
-        // The one root messenger, so a snack outlives its screen (D-85).
-        scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        localeListResolutionCallback: resolvePhoneLocale,
-        builder: (context, child) =>
-            LaunchActionsListener(child: CopyResultOpener(child: child!)),
-        theme: TakeTrayTheme.light(),
-        darkTheme: TakeTrayTheme.dark(),
-        debugShowCheckedModeBanner: false,
+    return DatabaseRefresh(
+      child: MediaLifecycle(
+        child: MaterialApp.router(
+          onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+          routerConfig: ref.watch(appRouterProvider),
+          // The one root messenger, so a snack outlives its screen (D-85).
+          scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localeListResolutionCallback: resolvePhoneLocale,
+          builder: (context, child) =>
+              LaunchActionsListener(child: CopyResultOpener(child: child!)),
+          theme: TakeTrayTheme.light(),
+          darkTheme: TakeTrayTheme.dark(),
+          debugShowCheckedModeBanner: false,
+        ),
       ),
     );
   }

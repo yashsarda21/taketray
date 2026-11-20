@@ -3,7 +3,10 @@
 // hand: make-migrations never rewrites this file once it exists, and
 // tool/check_generated keeps it (D-120). The schema helpers in generated/ are
 // regenerated.
+import 'dart:io';
+
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -50,6 +53,16 @@ class _DyingUser implements QueryExecutorUser {
     await _inner.beforeOpen(executor, details);
     throw StateError('killed before the version was written');
   }
+}
+
+/// Opens a raw connection: no migrations, no version.
+class _NoMigrations implements QueryExecutorUser {
+  @override
+  int get schemaVersion => 0;
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      Future.value();
 }
 
 Future<List<String>> _sortedRows(
@@ -505,4 +518,27 @@ void main() {
     expect(orphan.copiedAt.millisecondsSinceEpoch, 0);
     expect(await db.select(db.editCopies).get(), hasLength(4));
   });
+  test(
+    'a new file gets its version inside the transaction that made the '
+    'schema, so a second engine never sees tables without it (D-164)',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('taketray_new_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/taketray.sqlite');
+
+      final dying = AppDatabase(
+        NativeDatabase(file).interceptWith(_DieBeforeVersionWrite()),
+      );
+      await expectLater(dying.customSelect('SELECT 1').get(), throwsStateError);
+      await dying.close();
+
+      // Drift never wrote the version (the open "died" first): only onCreate
+      // can have, with the tables.
+      final raw = NativeDatabase(file, enableMigrations: false);
+      await raw.ensureOpen(_NoMigrations());
+      final rows = await raw.runSelect('PRAGMA user_version', []);
+      await raw.close();
+      expect(rows.single['user_version'], 2);
+    },
+  );
 }

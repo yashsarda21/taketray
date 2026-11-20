@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/onboarding/views/access_step_screen.dart';
 import 'package:taketray/features/onboarding/views/welcome_screen.dart';
@@ -85,6 +86,39 @@ void main() {
     expect(_inPill('To tag'), findsOneWidget);
     expect(_inPill('Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+  });
+
+  testApp('a resume re-reads the reels a share saved, with one listener '
+      '(D-164)', (tester) async {
+    final harness = await _pumpApp(tester);
+    expect(find.byType(DatabaseRefresh), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(MaterialApp),
+        matching: find.byType(DatabaseRefresh),
+      ),
+      findsOneWidget,
+    );
+    final notified = <Set<String>>[];
+    final sub = harness.media.db.tableUpdates().listen(
+      (u) => notified.add({for (final t in u) t.table}),
+    );
+    addTearDown(sub.cancel);
+
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+
+    expect(
+      notified.where((u) => u.containsAll({'reels', 'reel_references'})),
+      isNotEmpty,
+    );
   });
 
   testApp('a cold start with a failing volume counts one failure', (

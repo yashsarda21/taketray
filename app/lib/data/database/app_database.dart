@@ -37,7 +37,16 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    // The app and the share screen open the file on two connections, and
+    // both can find it empty at the same moment (D-164). The transaction
+    // makes the second wait; it then reads the version again and finds the
+    // schema made, instead of failing on "already exists". The version is
+    // written inside, so the second never sees tables without it.
+    onCreate: (m) => transaction(() async {
+      if (await _storedVersion() != 0) return;
+      await m.createAll();
+      await customStatement('PRAGMA user_version = $schemaVersion');
+    }),
     onUpgrade: (m, from, to) async {
       // A database written by a newer TakeTray (a downgrade): opening it
       // would stamp a newer schema as this version, so refuse. Drift writes
@@ -55,18 +64,34 @@ class AppDatabase extends _$AppDatabase {
       // twice on the next open, because the version was written inside the
       // transaction. The write Drift makes after `beforeOpen` is then a
       // second, equal one (D-120).
-      await transaction(
-        () => m.runMigrationSteps(
-          from: from,
+      //
+      // The steps run from the version read again inside the transaction:
+      // the other engine may have upgraded the file since this connection
+      // read `from` (D-164), and a step must not run twice.
+      await transaction(() async {
+        final stored = await _storedVersion();
+        if (stored > to) {
+          throw UnsupportedError(
+            'Cannot open a version $stored database with schema version $to',
+          );
+        }
+        // Already at `to`: no step runs.
+        await m.runMigrationSteps(
+          from: stored,
           to: to,
           steps: migrationSteps(from1To2: _from1To2),
-        ),
-      );
+        );
+      });
     },
     // SQLite leaves foreign keys off for every new connection; without this,
     // ON DELETE CASCADE would silently do nothing.
     beforeOpen: (details) => customStatement('PRAGMA foreign_keys = ON'),
   );
+
+  /// The schema version stored in the file now (`PRAGMA user_version`).
+  Future<int> _storedVersion() async => (await customSelect(
+    'PRAGMA user_version',
+  ).getSingle()).read<int>('user_version');
 
   /// v2 (D-120): which editor a session is in, when each copy was made, and
   /// which clips were sent. The SQL names `vn_sessions` and `vn_copies` stay.

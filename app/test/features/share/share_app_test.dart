@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart' show resolvePhoneLocale;
+import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/features/share/share_app.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/platform/share_bridge.dart';
@@ -116,6 +117,21 @@ void main() {
     await tester.pump();
 
     expect(bridge.finishes, 2);
+  });
+
+  testWidgets('it re-reads the database on resume, with one listener of '
+      'its own (D-164)', (tester) async {
+    await pump(tester);
+
+    expect(find.byType(DatabaseRefresh), findsOneWidget);
+    // Above the MaterialApp, so a screen change never drops it.
+    expect(
+      find.ancestor(
+        of: find.byType(MaterialApp),
+        matching: find.byType(DatabaseRefresh),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('it reads the share bridge and nothing else', (tester) async {
