@@ -132,6 +132,25 @@ void main() {
     expect(time.pauses.every((d) => d > Duration.zero), isTrue);
   });
 
+  test('every sleep is a whole number of ms, at least 1 ms: what is left is '
+      "rounded up, because Dart's sleep drops part of a ms and would spin", () {
+    final time = _Time();
+    final handler = busyWait(clock: time.clock, pause: time.fullPause);
+
+    expect(handler(0), isTrue);
+    // 0.3 ms left.
+    time.now = busyWaitLimit - const Duration(microseconds: 300);
+    expect(handler(1), isTrue);
+
+    // A new event; at the 12th try (a 100 ms step) 11.7 ms are left.
+    final start = time.now;
+    expect(handler(0), isTrue);
+    time.now = start + busyWaitLimit - const Duration(microseconds: 11700);
+    expect(handler(11), isTrue);
+
+    expect(time.pauses.map((d) => d.inMicroseconds), [1000, 1000, 1000, 12000]);
+  });
+
   test('a limit of zero never sleeps', () {
     final time = _Time();
     final handler = busyWait(

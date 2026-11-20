@@ -41,7 +41,10 @@ bool Function(int count) busyWait({
     final step = Duration(
       milliseconds: _steps[count < _steps.length ? count : _steps.length - 1],
     );
-    pause(step < left ? step : left);
+    final wait = step < left ? step : left;
+    // Dart's sleep drops part of a millisecond: 0.3 ms left would be
+    // sleep(0) and a spin until the limit. Round up instead.
+    pause(Duration(milliseconds: (wait.inMicroseconds + 999) ~/ 1000));
     return true;
   };
 }
