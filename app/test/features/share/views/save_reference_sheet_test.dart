@@ -743,7 +743,7 @@ void main() {
     testApp('a new reel that cannot be made shows the failure', (tester) async {
       await pumpSheet(tester);
       await type(tester, 'New reel name', 'Goa');
-      // Closing the database makes every write fail.
+      // Dropping the references table makes the write fail.
       await real(tester, () async {
         await h.media.db.customStatement('DROP TABLE reel_references');
       });
@@ -798,7 +798,7 @@ void main() {
     testApp('with no text there is no quote', (tester) async {
       await pumpSheet(tester, text: null);
       expect(find.text("This isn't a link"), findsOneWidget);
-      expect(find.byKey(const Key('shareQuote')), findsNothing);
+      expect(find.byKey(SaveReferenceSheet.quoteKey), findsNothing);
     });
 
     testApp('Close finishes the sheet', (tester) async {
@@ -937,7 +937,7 @@ void main() {
       await expectTtAccessible(tester);
     });
 
-    testApp('a failing, a large-text form does not overflow at 2x', (
+    testApp('a failing form at large text does not overflow at 2x', (
       tester,
     ) async {
       await makeReel(tester, 'Goa');

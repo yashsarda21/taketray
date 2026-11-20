@@ -108,9 +108,11 @@ class SaveReferenceState {
   /// With [SaveStep.saved]: the label that was saved, or null for none.
   final String? savedLabel;
 
-  /// A copy with the given fields replaced. The nullable fields are replaced
-  /// by what is passed, so pass them all or use [copyWith] only for the ones
-  /// that should change together (see the controller).
+  /// A copy with the given fields replaced; a field that is not passed is
+  /// kept. The nullable ones (`pickedReelId`, `nameError`, `clashingName`,
+  /// `alreadyIn` and the saved fields) take [_keep] as their default, so
+  /// passing `null` clears them. [text], [url] and [kind] never change in a
+  /// copy: a new share starts a new state.
   SaveReferenceState copyWith({
     SaveStep? step,
     SaveMode? mode,

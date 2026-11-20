@@ -42,8 +42,8 @@ object LaunchActions {
      * identifier, and a Done editing intent one per reel, so PendingIntents for
      * them never replace each other (PendingIntent compares intents without
      * their extras). [reelId] is used for [LaunchActionMsg.DONE_EDITING] and
-     * [LaunchActionMsg.OPEN_REEL] only, which need a valid one ([BackgroundState.MAX_REEL_ID]): otherwise
-     * [IllegalArgumentException].
+     * [LaunchActionMsg.OPEN_REEL] only, which need a valid one
+     * ([BackgroundState.MAX_REEL_ID]): otherwise [IllegalArgumentException].
      */
     fun intent(
         context: Context,
@@ -91,7 +91,10 @@ object LaunchActions {
         return LaunchMsg(action, reelId)
     }
 
-    /** Removes both extras, so the intent gives nothing a second time; extras that cannot be read are logged by class only. */
+    /**
+     * Removes both extras, so the intent gives nothing a second time; extras
+     * that cannot be read are logged by class only.
+     */
     private fun strip(intent: Intent) {
         try {
             intent.removeExtra(EXTRA_OPEN)
@@ -126,7 +129,10 @@ class LaunchActionRelay(
     private val onDoneEditing: (Long) -> Unit = {},
 ) {
     companion object {
-        /** MainActivity's relay: opening To tag removes the evening reminder, Done editing that reel's copies reminder. */
+        /**
+         * MainActivity's relay: opening To tag removes the evening reminder,
+         * Done editing that reel's copies reminder.
+         */
         fun forActivity(
             context: Context,
             send: suspend (LaunchMsg) -> Unit,

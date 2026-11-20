@@ -9,15 +9,14 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/domain/rules/reference_links.dart';
 import 'package:taketray/domain/rules/reference_url.dart';
-import 'package:taketray/domain/rules/shared_link_kind.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_picker.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
 import 'package:taketray/features/reels/views/sheet_failure.dart';
 import 'package:taketray/features/references/views/reference_source_icon.dart';
-import 'package:taketray/features/references/views/reference_text.dart';
 import 'package:taketray/features/share/view_models/save_reference_controller.dart';
+import 'package:taketray/features/share/views/save_reference_end_states.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -26,24 +25,7 @@ final Logger _log = Logger('saveReferenceSheet');
 
 // proto.css: .srcrow { margin: 0 24px 12px; padding: 10px 12px;
 // border-radius: 14px; gap: 12px }, .segbtn { margin: 0 24px 8px;
-// min-height: 40px }, .quote { padding: 10px 14px; border-left: 3px }
-
-/// The side margin of the source row, the switch and the fields (the
-/// prototype's 24 dp).
-const double _side = 24;
-
-/// The 3 dp bar at the quote's start.
-const double _quoteBar = 3;
-
-/// How many lines of the shared caption the "not a link" state quotes.
-const int _quoteLines = 4;
-
-/// How many characters of the shared text are laid out for the quote: a
-/// caption can be 20,000 long and only four lines of it show.
-const int _quoteCharacters = 600;
-
-/// The size of the check circle after saving (`.okc`).
-const double _okCircle = 64;
+// min-height: 40px }; the 24 dp side margin is `spacing.xl`.
 
 /// The Save reference sheet of the share screen (D-166): the form that saves
 /// a shared link to a reel (a new one or one the user has), the "not a link"
@@ -92,7 +74,7 @@ class SaveReferenceSheet extends ConsumerStatefulWidget {
 
   /// The key of the quoted caption, for tests.
   @visibleForTesting
-  static const Key quoteKey = ValueKey<String>('shareQuote');
+  static const Key quoteKey = saveReferenceQuoteKey;
 
   @override
   ConsumerState<SaveReferenceSheet> createState() => _SaveReferenceSheetState();
@@ -154,8 +136,11 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
   Widget build(BuildContext context) {
     final form = ref.watch(saveReferenceControllerProvider);
     return switch (form.step) {
-      SaveStep.notALink => _NotALink(text: form.text, onDone: widget.onDone),
-      SaveStep.saved => _Saved(
+      SaveStep.notALink => SaveReferenceNotALink(
+        text: form.text,
+        onDone: widget.onDone,
+      ),
+      SaveStep.saved => SaveReferenceSaved(
         form: form,
         showWelcome: _onboardingDone == false,
         onDone: widget.onDone,
@@ -184,7 +169,7 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
         : loaded.isNotEmpty;
     final mode = hasReels ? form.mode : SaveMode.newReel;
     final url = Uri.parse(form.url);
-    final kind = _kindText(l10n, form.kind, url);
+    final kind = saveReferenceKindText(l10n, form.kind, url);
     final canSave = _canSave(form, hasReels: hasReels);
 
     void typing(String _) => _controller.clearErrors();
@@ -266,9 +251,9 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
                 ),
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    _side,
+                    tt.spacing.xl,
                     tt.spacing.none,
-                    _side,
+                    tt.spacing.xl,
                     tt.spacing.xxs,
                   ),
                   child: TtTextField(
@@ -284,9 +269,9 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
                 ),
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                    _side,
+                    tt.spacing.xl,
                     tt.spacing.xxs,
-                    _side,
+                    tt.spacing.xl,
                     tt.spacing.xs,
                   ),
                   child: Semantics(
@@ -301,7 +286,7 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
                   _ModeSwitch(mode: mode, onChanged: _controller.setMode),
                 if (mode == SaveMode.newReel)
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: _side),
+                    padding: EdgeInsets.symmetric(horizontal: tt.spacing.xl),
                     child: TtTextField(
                       label: l10n.pickerNewReelName,
                       hint: l10n.reelNameHint,
@@ -340,21 +325,6 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
   }
 }
 
-/// What the shared link is, in words: "Instagram reel", "YouTube Short" ...
-/// For any other link, its host without a leading `www.` or `m.`
-/// ("example.com", a percent-encoded host decoded).
-String _kindText(AppLocalizations l10n, SharedLinkKind kind, Uri url) =>
-    switch (kind) {
-      SharedLinkKind.instagramReel => l10n.saveReferenceKindInstagramReel,
-      SharedLinkKind.instagramPost => l10n.saveReferenceKindInstagramPost,
-      SharedLinkKind.instagramVideo => l10n.saveReferenceKindInstagramVideo,
-      SharedLinkKind.instagramProfile => l10n.saveReferenceKindInstagramProfile,
-      SharedLinkKind.youtubeShort => l10n.saveReferenceKindYoutubeShort,
-      SharedLinkKind.youtubeVideo => l10n.saveReferenceKindYoutubeVideo,
-      SharedLinkKind.tiktokVideo => l10n.saveReferenceKindTiktokVideo,
-      SharedLinkKind.link => referenceKindText(l10n, url),
-    };
-
 /// The source row (`.srcrow`): the source app's icon, what the link is and
 /// the short link.
 class _SourceRow extends StatelessWidget {
@@ -376,7 +346,12 @@ class _SourceRow extends StatelessWidget {
     final large =
         MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     return Padding(
-      padding: EdgeInsets.fromLTRB(_side, tt.spacing.none, _side, tt.spacing.s),
+      padding: EdgeInsets.fromLTRB(
+        tt.spacing.xl,
+        tt.spacing.none,
+        tt.spacing.xl,
+        tt.spacing.s,
+      ),
       child: Semantics(
         container: true,
         label: '$kind, $link',
@@ -496,9 +471,9 @@ class _ModeSwitch extends StatelessWidget {
     final fresh = half(SaveMode.newReel, l10n.saveReferenceModeNew);
     return Padding(
       padding: EdgeInsets.fromLTRB(
-        _side,
+        tt.spacing.xl,
         tt.spacing.none,
-        _side,
+        tt.spacing.xl,
         tt.spacing.xs,
       ),
       child: Semantics(
@@ -537,210 +512,6 @@ class _ModeSwitch extends StatelessWidget {
                   ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// The state for text with no link in it: what to do instead, and the text
-/// quoted.
-class _NotALink extends StatelessWidget {
-  const _NotALink({required this.text, required this.onDone});
-
-  final String? text;
-  final VoidCallback onDone;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
-    final scheme = context.scheme;
-    final body = tt.text.material.bodyMedium!.copyWith(
-      color: scheme.onSurfaceVariant,
-    );
-    final shared = text?.trim() ?? '';
-    // A caption can be 20,000 characters and four lines of it show.
-    final quoted = String.fromCharCodes(shared.runes.take(_quoteCharacters));
-    return TtSheet(
-      footer: TtButtonRow(
-        children: [TtButton(label: l10n.saveReferenceClose, onPressed: onDone)],
-      ),
-      child: ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.fromLTRB(
-          _side,
-          tt.spacing.none,
-          _side,
-          tt.spacing.s,
-        ),
-        children: [
-          ExcludeSemantics(
-            child: Icon(
-              Symbols.link_off_rounded,
-              size: tt.sizes.iconLarge,
-              color: scheme.tertiary,
-            ),
-          ),
-          SizedBox(height: tt.spacing.s),
-          Semantics(
-            header: true,
-            child: Text(
-              l10n.saveReferenceNotALinkTitle,
-              style: tt.text.material.titleLarge,
-            ),
-          ),
-          SizedBox(height: tt.spacing.s),
-          Text(l10n.saveReferenceNotALinkBody, style: body),
-          if (quoted.isNotEmpty) ...[
-            SizedBox(height: tt.spacing.s),
-            _Quote(key: SaveReferenceSheet.quoteKey, text: quoted),
-          ],
-          SizedBox(height: tt.spacing.s),
-          Text(l10n.saveReferenceNotALinkHint, style: body),
-        ],
-      ),
-    );
-  }
-}
-
-/// The shared caption in a quote block (`.quote`): a 3 dp bar at the start,
-/// the high surface container, four lines at most.
-class _Quote extends StatelessWidget {
-  const _Quote({required this.text, super.key});
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = context.tt;
-    final scheme = context.scheme;
-    return ClipRRect(
-      borderRadius: BorderRadiusDirectional.horizontal(
-        end: Radius.circular(tt.radii.m),
-      ).resolve(Directionality.of(context)),
-      child: ColoredBox(
-        color: scheme.surfaceContainerHigh,
-        child: IntrinsicHeight(
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ColoredBox(
-                color: scheme.outline,
-                child: const SizedBox(width: _quoteBar),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: tt.spacing.m,
-                    vertical: tt.spacing.s,
-                  ),
-                  child: Text(
-                    text,
-                    maxLines: _quoteLines,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.text.material.bodyMedium!.copyWith(
-                      color: scheme.onSurface,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// The saved state: a check, where it went, what it is, and (before
-/// onboarding is done) the welcome note.
-class _Saved extends StatelessWidget {
-  const _Saved({
-    required this.form,
-    required this.showWelcome,
-    required this.onDone,
-    required this.onOpenReel,
-  });
-
-  final SaveReferenceState form;
-  final bool showWelcome;
-  final VoidCallback onDone;
-  final ValueChanged<int> onOpenReel;
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
-    final scheme = context.scheme;
-    final reelId = form.savedReelId;
-    final label = form.savedLabel;
-    final what = label != null && label.isNotEmpty
-        ? label
-        : _kindText(l10n, form.kind, Uri.parse(form.url));
-    return TtSheet(
-      footer: TtButtonRow(
-        children: [
-          TtButton(
-            label: l10n.saveReferenceOpenReel,
-            kind: TtButtonKind.tonal,
-            onPressed: reelId == null ? null : () => onOpenReel(reelId),
-          ),
-          TtButton(label: l10n.saveReferenceDone, onPressed: onDone),
-        ],
-      ),
-      child: ListView(
-        shrinkWrap: true,
-        padding: EdgeInsets.fromLTRB(
-          _side,
-          tt.spacing.none,
-          _side,
-          tt.spacing.s,
-        ),
-        children: [
-          Center(
-            child: ExcludeSemantics(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: tt.colors.successContainer,
-                  shape: BoxShape.circle,
-                ),
-                child: SizedBox.square(
-                  dimension: _okCircle,
-                  child: Icon(
-                    Symbols.check_rounded,
-                    size: tt.sizes.iconLarge,
-                    color: tt.colors.onSuccessContainer,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          SizedBox(height: tt.spacing.s),
-          Semantics(
-            header: true,
-            child: Text(
-              l10n.saveReferenceSavedTitle(form.savedReelName ?? ''),
-              textAlign: TextAlign.center,
-              style: tt.text.material.headlineSmall,
-            ),
-          ),
-          SizedBox(height: tt.spacing.xs),
-          Text(
-            what,
-            textAlign: TextAlign.center,
-            style: tt.text.material.bodyMedium!.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
-          if (showWelcome) ...[
-            SizedBox(height: tt.spacing.m),
-            TtCallout(
-              icon: Symbols.waving_hand_rounded,
-              title: l10n.saveReferenceWelcomeTitle,
-              body: l10n.saveReferenceWelcomeBody,
-            ),
-          ],
-        ],
       ),
     );
   }

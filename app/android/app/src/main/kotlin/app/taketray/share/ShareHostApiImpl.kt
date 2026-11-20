@@ -44,6 +44,7 @@ class ShareHostApiImpl(
                 Log.i(TAG, "sharedText: nothing new")
                 return@guardedWith null
             }
+            // Marked read before textOf: an intent that fails to parse is not retried.
             read = intent
             val text = textOf(intent)
             Log.i(TAG, "sharedText: ${text?.length ?: "no"} characters")

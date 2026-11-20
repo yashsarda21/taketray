@@ -29,10 +29,9 @@ enum TtBannerKind {
 /// It is inset by the screen gutter, with 4 dp above and 8 dp below as in the
 /// prototype's `.banner` (or by [margin], when given), 20 dp round and at
 /// least 56 dp high. Title and body wrap, so nothing is cut at large text;
-/// from a text scale of 1.5 the
-/// [action] moves under the text instead of squeezing it. A [TtBannerKind.vn]
-/// banner always puts its [action] (usually a `Wrap` of buttons) under the
-/// text, indented to line up with it.
+/// from a text scale of 1.5 the [action] moves under the text instead of
+/// squeezing it. A [TtBannerKind.vn] banner always puts its [action] (usually
+/// a `Wrap` of buttons) under the text, indented to line up with it.
 ///
 /// A text-style `TtButton` given as the [action] of a `warning`, `info` or
 /// `attention` banner takes the banner's text colour, as in the prototype
