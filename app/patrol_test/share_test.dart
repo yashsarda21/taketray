@@ -196,9 +196,8 @@ Future<void> _newReel(_Env env) async {
     index: _nameField,
     what: 'the "${_l10n.pickerNewReelName}" field',
   );
-  await screen.tap(
+  await screen.tapSave(
     _l10n.referenceSaveButton,
-    enabled: true,
     what: '"${_l10n.referenceSaveButton}"',
   );
   await screen.waitFor(
@@ -297,9 +296,8 @@ Future<void> _beforeOnboarding(_Env env) async {
     index: _nameField,
     what: 'the "${_l10n.pickerNewReelName}" field',
   );
-  await screen.tap(
+  await screen.tapSave(
     _l10n.referenceSaveButton,
-    enabled: true,
     what: '"${_l10n.referenceSaveButton}"',
   );
   await screen.waitFor(
