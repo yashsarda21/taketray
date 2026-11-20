@@ -2,6 +2,7 @@ package app.taketray.files
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
@@ -13,6 +14,7 @@ import androidx.core.content.FileProvider
 import app.taketray.bridge.failureMessage
 import app.taketray.bridge.guardedOnIo
 import app.taketray.bridge.guardedWith
+import app.taketray.share.ShareActivity
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -71,7 +73,11 @@ class FilesHostApiImpl(
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         // The constructor, not ClipData.newUri: that asks the provider for the type.
         send.clipData = ClipData(null, arrayOf(mimeType), ClipData.Item(uri))
-        host.startActivity(Intent.createChooser(send, null))
+        // TakeTray's own share screen takes any text/plain share (D-163); a log
+        // sent from the app must not offer the app to itself.
+        val own = ComponentName(context, ShareActivity::class.java)
+        val chooser = Intent.createChooser(send, null).putExtra(Intent.EXTRA_EXCLUDE_COMPONENTS, arrayOf(own))
+        host.startActivity(chooser)
         Log.i(TAG, "shareFile: share sheet opened")
     }
 

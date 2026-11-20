@@ -78,7 +78,7 @@ read = intent
 
 It is cut to 20,000 characters (a long caption is not a link anyway), never in the middle of an emoji.
 
-**6. Two engines, two log files.** Both engines run in the same app process, each in its own Dart isolate, and both write logs. If they shared one file, both would try to rotate it. So the share engine writes `share-0.log` and `share-1.log` (128 KiB each) beside the app's `taketray-*.log`, and Send error log joins all four. The shared text never reaches either log: only its length.
+**6. Two engines, two log files.** Both engines run in the same app process, each in its own Dart isolate, and both write logs. If they shared one file, both would try to rotate it. So the share engine writes `share-0.log` and `share-1.log` (128 KiB each) beside the app's `taketray-*.log`, and Send error log joins all four. The shared text never reaches either log: only its length. Two share screens open at once share one `share-0.log`, so the sink reads the file's size before every write instead of keeping its own count, which the other engine's writes would make wrong.
 
 ### Where it lives
 

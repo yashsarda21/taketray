@@ -768,6 +768,34 @@ void main() {
       );
     });
 
+    testApp('a close that a new share cancelled does not log "Closing '
+        'anyway" when its time limit runs out', (tester) async {
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final level = Logger.root.level;
+      Logger.root.level = Level.ALL;
+      addTearDown(() => Logger.root.level = level);
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      bridge.queue(_otherLink);
+      await resume(tester);
+
+      await tester.pump(const Duration(seconds: 11));
+      await tester.pump();
+
+      expect(bridge.finishes, 0, reason: 'the close was cancelled');
+      expect(
+        records.map((r) => r.message),
+        isNot(contains(contains('save still running'))),
+        reason: 'it did not close anyway',
+      );
+    });
+
     testApp('a save that ends in time cancels the 10 second limit (M19)', (
       tester,
     ) async {

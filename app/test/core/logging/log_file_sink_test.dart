@@ -151,6 +151,57 @@ void main() {
     });
   });
 
+  group('two sinks on the same files (two share engines, D-163)', () {
+    test('a file never grows past maxBytes, whoever wrote last', () async {
+      final a = LogFileSink(dir, maxBytes: 100);
+      final b = LogFileSink(dir, maxBytes: 100);
+      // 29 characters + newline = 30 bytes per line.
+      final line = List.filled(29, 'x').join();
+      // Each sink's own count of the file is behind the other's writes.
+      await a.write(line);
+      await b.write(line);
+      await a.write(line);
+      await b.write(line);
+      await a.write(line);
+      await b.write(line);
+
+      final files = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.endsWith('.log'))
+          .toList();
+      expect(files, isNotEmpty);
+      expect(files.length, lessThanOrEqualTo(2));
+      for (final file in files) {
+        expect(file.lengthSync(), lessThanOrEqualTo(100), reason: file.path);
+      }
+    });
+
+    test('the second sink rotates when the first filled the file', () async {
+      final a = LogFileSink(dir, maxBytes: 100);
+      final b = LogFileSink(dir, maxBytes: 100);
+      final line = List.filled(29, 'x').join();
+      await b.write(line); // b counts 30
+      await a.write(line);
+      await a.write(line); // the file holds 90 bytes
+
+      await b.write(line); // 120 would pass the limit
+
+      expect(File('${dir.path}/taketray-1.log').lengthSync(), 90);
+      expect(File('${dir.path}/taketray-0.log').lengthSync(), 30);
+    });
+
+    test('a file deleted under a sink starts again from zero', () async {
+      final a = LogFileSink(dir, maxBytes: 100);
+      await a.write('hello');
+      File('${dir.path}/taketray-0.log').deleteSync();
+
+      await a.write('again');
+
+      expect(await a.readAll(), 'again\n');
+    });
+  });
+
   test('the two prefixes are named once', () {
     expect(appLogPrefix, 'taketray');
     expect(shareLogPrefix, 'share');

@@ -214,7 +214,12 @@ class _ShareBodyState extends ConsumerState<_ShareBody>
     final round = ++_closeRound;
     await _whenIdle().timeout(
       _saveWaitLimit,
-      onTimeout: () => _log.warning('Closing anyway: save still running'),
+      onTimeout: () {
+        // A close that a new share cancelled does not go ahead.
+        if (round == _closeRound) {
+          _log.warning('Closing anyway: save still running');
+        }
+      },
     );
     if (round != _closeRound) return;
     _gone = true;

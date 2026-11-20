@@ -59,6 +59,12 @@ class _FakeScreen implements NativeScreen {
   }
 }
 
+/// Patrol 4.10's message for a native call that failed: the client's
+/// `wrapRequest` puts the call's name and the server's answer in it.
+String _failed(String call, String answer) =>
+    'MobileAutomatorClientException: $call() failed with '
+    'Invalid response: $answer';
+
 /// The app's own package, which the share screen's nodes carry.
 const _app = 'app.taketray.dev';
 
@@ -116,7 +122,11 @@ void main() {
       'a disabled button is not found, and waiting for it taps nothing',
       () async {
         // Only the disabled node matches the plain words.
-        phone.shown[const AndroidSelector(text: 'Save')] = 1;
+        phone.shown[const AndroidSelector(
+              text: 'Save',
+              applicationPackage: _app,
+            )] =
+            1;
         expect(await screen.isShown('Save', enabled: true), isFalse);
         await expectLater(
           screen.tap(
@@ -132,37 +142,64 @@ void main() {
     );
 
     test('an enabled button is tapped by its enabled selector', () async {
-      phone.shown[const AndroidSelector(text: 'Save', isEnabled: true)] = 1;
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            isEnabled: true,
+            applicationPackage: _app,
+          )] =
+          1;
       await screen.tap('Save', what: 'Save', enabled: true);
       expect(phone.taps, [
-        const AndroidSelector(text: 'Save', isEnabled: true),
+        const AndroidSelector(
+          text: 'Save',
+          isEnabled: true,
+          applicationPackage: _app,
+        ),
       ]);
     });
   });
 
   group('find', () {
     test('finds words that are in the text, and says which selector', () async {
-      phone.shown[const AndroidSelector(text: 'Save')] = 1;
-      expect(await screen.find('Save'), const AndroidSelector(text: 'Save'));
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            applicationPackage: _app,
+          )] =
+          1;
+      expect(
+        await screen.find('Save'),
+        const AndroidSelector(text: 'Save', applicationPackage: _app),
+      );
     });
 
     test('finds words that are only in the description', () async {
-      phone.shown[const AndroidSelector(contentDescription: 'Save')] = 1;
+      phone.shown[const AndroidSelector(
+            contentDescription: 'Save',
+            applicationPackage: _app,
+          )] =
+          1;
       expect(
         await screen.find('Save'),
-        const AndroidSelector(contentDescription: 'Save'),
+        const AndroidSelector(
+          contentDescription: 'Save',
+          applicationPackage: _app,
+        ),
       );
     });
 
     test('is null when neither has them, and looked at both', () async {
       expect(await screen.find('Save'), isNull);
-      expect(phone.looked, selectorsFor('Save'));
+      expect(phone.looked, selectorsFor('Save', package: _app));
     });
 
     test(
       'exact words never match a part (Save is not Save reference)',
       () async {
-        phone.shown[const AndroidSelector(textContains: 'Save')] = 2;
+        phone.shown[const AndroidSelector(
+              textContains: 'Save',
+              applicationPackage: _app,
+            )] =
+            2;
         expect(await screen.find('Save'), isNull);
         expect(await screen.isShown('Save'), isFalse);
         expect(await screen.isShown('Save', contains: true), isTrue);
@@ -173,10 +210,19 @@ void main() {
   group('waitFor', () {
     test('returns as soon as the words show, however late', () async {
       phone.onLook = (n) {
-        if (n == 6) phone.shown[const AndroidSelector(text: 'Done')] = 1;
+        if (n == 6) {
+          phone.shown[const AndroidSelector(
+                text: 'Done',
+                applicationPackage: _app,
+              )] =
+              1;
+        }
       };
       final found = await screen.waitFor('Done', what: 'Done');
-      expect(found, const AndroidSelector(text: 'Done'));
+      expect(
+        found,
+        const AndroidSelector(text: 'Done', applicationPackage: _app),
+      );
       expect(phone.looks, greaterThanOrEqualTo(6));
     });
 
@@ -223,7 +269,11 @@ void main() {
 
   group('waitGone', () {
     test('returns when the words have gone', () async {
-      phone.shown[const AndroidSelector(text: 'Done')] = 1;
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: _app,
+          )] =
+          1;
       phone.onLook = (n) {
         if (n == 5) phone.shown.clear();
       };
@@ -236,7 +286,11 @@ void main() {
     });
 
     test('fails when they stay, saying what', () async {
-      phone.shown[const AndroidSelector(contentDescription: 'Done')] = 1;
+      phone.shown[const AndroidSelector(
+            contentDescription: 'Done',
+            applicationPackage: _app,
+          )] =
+          1;
       await expectLater(
         screen.waitGone(
           'Done',
@@ -256,17 +310,34 @@ void main() {
 
   group('tap', () {
     test('taps the selector that matched, once', () async {
-      phone.shown[const AndroidSelector(contentDescription: 'Save')] = 1;
+      phone.shown[const AndroidSelector(
+            contentDescription: 'Save',
+            applicationPackage: _app,
+          )] =
+          1;
       await screen.tap('Save', what: 'Save');
-      expect(phone.taps, [const AndroidSelector(contentDescription: 'Save')]);
+      expect(phone.taps, [
+        const AndroidSelector(
+          contentDescription: 'Save',
+          applicationPackage: _app,
+        ),
+      ]);
     });
 
     test('waits for the words first', () async {
       phone.onLook = (n) {
-        if (n == 4) phone.shown[const AndroidSelector(text: 'Save')] = 1;
+        if (n == 4) {
+          phone.shown[const AndroidSelector(
+                text: 'Save',
+                applicationPackage: _app,
+              )] =
+              1;
+        }
       };
       await screen.tap('Save', what: 'Save');
-      expect(phone.taps, [const AndroidSelector(text: 'Save')]);
+      expect(phone.taps, [
+        const AndroidSelector(text: 'Save', applicationPackage: _app),
+      ]);
     });
 
     test('taps nothing when the words never show', () async {
@@ -284,12 +355,217 @@ void main() {
     test('a row is found by part of its words', () async {
       phone.shown[const AndroidSelector(
             textContains: 'TakeTray Test Share A',
+            applicationPackage: _app,
           )] =
           1;
       await screen.tap('TakeTray Test Share A', what: 'row', contains: true);
       expect(phone.taps, [
-        const AndroidSelector(textContains: 'TakeTray Test Share A'),
+        const AndroidSelector(
+          textContains: 'TakeTray Test Share A',
+          applicationPackage: _app,
+        ),
       ]);
+    });
+  });
+
+  group("every node the flows touch is the app's (the package default)", () {
+    const foreign = 'com.example.other';
+
+    test('tap: a foreign node with the same words is never tapped', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: foreign,
+          )] =
+          1;
+      phone.shown[const AndroidSelector(text: 'Done')] = 1;
+
+      await expectLater(
+        screen.tap(
+          'Done',
+          what: 'Done',
+          timeout: const Duration(milliseconds: 10),
+        ),
+        throwsA(isA<TestFailure>()),
+      );
+      expect(phone.taps, isEmpty);
+    });
+
+    test("tap: with both on screen, the app's own is the one tapped", () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: foreign,
+          )] =
+          1;
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: _app,
+          )] =
+          1;
+
+      await screen.tap('Done', what: 'Done');
+
+      expect(phone.taps, [
+        const AndroidSelector(text: 'Done', applicationPackage: _app),
+      ]);
+    });
+
+    test("tap: a row (part of its words) is the app's too", () async {
+      phone.shown[const AndroidSelector(
+            textContains: 'Goa',
+            applicationPackage: foreign,
+          )] =
+          1;
+
+      await expectLater(
+        screen.tap(
+          'Goa',
+          what: 'row',
+          contains: true,
+          timeout: const Duration(milliseconds: 10),
+        ),
+        throwsA(isA<TestFailure>()),
+      );
+      expect(phone.taps, isEmpty);
+    });
+
+    test('waitFor: a foreign node does not end the wait', () async {
+      phone.shown[const AndroidSelector(
+            contentDescription: 'Done',
+            applicationPackage: foreign,
+          )] =
+          1;
+
+      await expectLater(
+        screen.waitFor(
+          'Done',
+          what: 'Done',
+          timeout: const Duration(milliseconds: 10),
+        ),
+        throwsA(isA<TestFailure>()),
+      );
+    });
+
+    test("waitFor returns the app's selector", () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: _app,
+          )] =
+          1;
+
+      expect(
+        await screen.waitFor('Done', what: 'Done'),
+        const AndroidSelector(text: 'Done', applicationPackage: _app),
+      );
+    });
+
+    test('tapSave: a foreign enabled Save is never tapped', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            isEnabled: true,
+            applicationPackage: foreign,
+          )] =
+          1;
+      phone.shown[const AndroidSelector(text: 'Save', isEnabled: true)] = 1;
+
+      await expectLater(
+        screen.tapSave(
+          'Save',
+          what: 'Save',
+          timeout: const Duration(milliseconds: 10),
+        ),
+        throwsA(isA<TestFailure>()),
+      );
+      expect(phone.taps, isEmpty);
+    });
+
+    test("tapSave: the app's own enabled Save is tapped", () async {
+      const own = AndroidSelector(
+        text: 'Save',
+        isEnabled: true,
+        applicationPackage: _app,
+      );
+      phone.shown[own] = 1;
+
+      await screen.tapSave('Save', what: 'Save');
+
+      expect(phone.taps, [own]);
+    });
+
+    test('waitGone: a foreign node does not hold the wait', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: foreign,
+          )] =
+          1;
+
+      await screen.waitGone('Done', what: 'Done');
+    });
+
+    test('isShown and find: a foreign node is not shown', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            applicationPackage: foreign,
+          )] =
+          1;
+
+      expect(await screen.isShown('Save'), isFalse);
+      expect(await screen.find('Save'), isNull);
+    });
+
+    test('every look is scoped to the app package', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: _app,
+          )] =
+          1;
+      await screen.find('Done');
+      await screen.isShown('Done', contains: true);
+      await screen.waitFor('Done', what: 'Done');
+      await screen.waitGone('Nothing', what: 'x');
+      await screen.tap('Done', what: 'Done');
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            isEnabled: true,
+            applicationPackage: _app,
+          )] =
+          1;
+      await screen.tapSave('Save', what: 'Save');
+
+      expect(phone.looked, isNotEmpty);
+      for (final selector in phone.looked) {
+        expect(selector.applicationPackage, _app, reason: '$selector');
+      }
+    });
+
+    test("a release build's own package is the default there", () async {
+      final other = ShareScreen(
+        phone,
+        poll: const Duration(milliseconds: 1),
+        appPackage: 'app.taketray',
+      );
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: 'app.taketray',
+          )] =
+          1;
+
+      await other.tap('Done', what: 'Done');
+
+      expect(phone.taps, [
+        const AndroidSelector(text: 'Done', applicationPackage: 'app.taketray'),
+      ]);
+    });
+
+    test('a package can still be given', () async {
+      phone.shown[const AndroidSelector(
+            text: 'Done',
+            applicationPackage: foreign,
+          )] =
+          1;
+
+      await screen.tap('Done', what: 'Done', package: foreign);
+
+      expect(phone.taps, hasLength(1));
     });
   });
 
@@ -582,25 +858,73 @@ void main() {
       expect(phone.taps, isEmpty);
     });
 
-    test(
-      'countMatching: "nothing matches" is 0, whichever way Patrol says it',
-      () async {
-        for (final message in [
-          'getNativeViews() failed with UiObjectNotFoundException: x',
-          'No views matching the selector',
-          'Native view not found',
-          'no match for the selector',
-        ]) {
-          expect(
-            await countMatching(
-              () async => throw PatrolActionException(message),
-            ),
-            0,
-            reason: message,
-          );
-        }
-      },
-    );
+    test('countMatching: "nothing matches" is 0, in the words Patrol 4.10 '
+        'uses for a selector that found nothing', () async {
+      // PatrolServerFilters: 404 with "selector <it> found nothing", and
+      // the client's wrapRequest puts the call's name in front.
+      for (final message in [
+        _failed(
+          'getNativeViews',
+          "404 selector BySelector [TEXT='x'] found nothing",
+        ),
+        _failed('tap', '404 selector UiSelector[TEXT=Done] found nothing'),
+        _failed(
+          'getNativeViews',
+          '404 selector line one\nline two found nothing',
+        ),
+      ]) {
+        expect(
+          await countMatching(() async => throw PatrolActionException(message)),
+          0,
+          reason: message,
+        );
+        expect(isNoMatch(PatrolActionException(message)), isTrue);
+      }
+    });
+
+    test('countMatching: a missing package or instrumentation is not '
+        '"nothing matches" (it is rethrown, not 0)', () async {
+      for (final message in [
+        'Package not found: app.taketray.dev',
+        'package not found',
+        'Instrumentation not found',
+        'instrumentation not found for app.taketray.dev.test',
+        'Native view not found',
+        'UiObjectNotFoundException: x',
+        'No views matching the selector',
+        'no match for the selector',
+        'nothing matches',
+        // A different 404 (a wrong server), or a 500 whose stack names a
+        // selector that "found nothing".
+        _failed('getNativeViews', '404 not found'),
+        _failed(
+          'getNativeViews',
+          '500 java.lang.IllegalStateException: selector found nothing',
+        ),
+        _failed('getNativeViews', '404 package not found'),
+      ]) {
+        final error = PatrolActionException(message);
+        expect(isNoMatch(error), isFalse, reason: message);
+        await expectLater(
+          countMatching(
+            () async => Error.throwWithStackTrace(error, StackTrace.current),
+          ),
+          throwsA(same(error)),
+          reason: message,
+        );
+      }
+    });
+
+    test('isNoMatch: only a PatrolActionException can be a no-match', () {
+      expect(
+        isNoMatch(
+          StateError(
+            'Invalid response: 404 selector BySelector [] found nothing',
+          ),
+        ),
+        isFalse,
+      );
+    });
 
     test(
       'countMatching: anything else is rethrown, not counted as 0',
@@ -631,7 +955,11 @@ void main() {
   });
 
   group('tapSave (M25)', () {
-    const save = AndroidSelector(text: 'Save', isEnabled: true);
+    const save = AndroidSelector(
+      text: 'Save',
+      isEnabled: true,
+      applicationPackage: _app,
+    );
 
     test('with no keyboard it taps', () async {
       phone.shown[save] = 1;
@@ -710,7 +1038,11 @@ void main() {
     );
 
     test('a disabled Save is waited for, never tapped', () async {
-      phone.shown[const AndroidSelector(text: 'Save')] = 1;
+      phone.shown[const AndroidSelector(
+            text: 'Save',
+            applicationPackage: _app,
+          )] =
+          1;
 
       await expectLater(
         screen.tapSave(

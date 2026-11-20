@@ -138,14 +138,20 @@ Future<int> countMatching(Future<int> Function() read) async {
   }
 }
 
-/// Whether [error] is Patrol saying that no view matched: its action error
-/// carries the automator's message, which names `UiObjectNotFoundException`
-/// or says that nothing matched or was found.
+/// Whether [error] is Patrol saying that a selector found nothing, in the
+/// exact words of Patrol 4.10: its automator server answers a
+/// `UiObjectNotFoundException` with a 404 and the body
+/// `selector <it> found nothing` (`PatrolServerFilters.kt`), and the client
+/// puts the call's name and `Invalid response: 404 ` in front of it
+/// (`wrapRequest`). The exception's own name never reaches Dart. Nothing
+/// looser counts: a missing package, a missing instrumentation, another 404
+/// or a failure whose stack trace happens to say "found nothing" is an error,
+/// not an empty screen.
 bool isNoMatch(Object error) =>
     error is PatrolActionException &&
     RegExp(
-      'UiObjectNotFound|not found|no (views? )?match|nothing match',
-      caseSensitive: false,
+      r'^MobileAutomatorClientException: \w+\(\) failed with '
+      r'Invalid response: 404 selector [\s\S]* found nothing$',
     ).hasMatch(error.message);
 
 /// The top edge of the on-screen keyboard among [nodes] (every view of every
@@ -236,8 +242,8 @@ class ShareScreen {
 
   final NativeScreen _native;
 
-  /// The app that owns the share screen: [closeIfOpen] looks at and taps
-  /// only nodes of this package.
+  /// The app that owns the share screen: every lookup, wait and tap uses
+  /// only nodes of this package (unless a call names another).
   final String appPackage;
 
   /// The pause between two looks.
@@ -251,6 +257,11 @@ class ShareScreen {
 
   /// The selector (text first, then description) that finds [words] now, or
   /// null when neither does.
+  ///
+  /// Only nodes of [package] match, which is [appPackage] unless given: every
+  /// node the flows look at, wait for or tap is the share screen's own, and
+  /// another app's "Done" or "Save" has the same words. Every other lookup
+  /// ([isShown], [waitFor], [waitGone], [tap], [tapSave]) goes through here.
   Future<AndroidSelector?> find(
     String words, {
     bool contains = false,
@@ -261,7 +272,7 @@ class ShareScreen {
       words,
       contains: contains,
       enabled: enabled,
-      package: package,
+      package: package ?? appPackage,
     )) {
       if (await _native.count(selector) > 0) return selector;
     }

@@ -16,9 +16,11 @@ const String shareLogPrefix = 'share';
 /// dropped) and a fresh current file starts. At most [maxFiles] files exist,
 /// so the log never grows beyond `maxBytes * maxFiles`.
 ///
-/// Two sinks may share [dir] only with different [prefix]es: each one
-/// rotates its own files and never touches the other's (the app and the
-/// share screen, D-163).
+/// Two sinks with different [prefix]es in one [dir] never touch each other's
+/// files (the app and the share screen, D-163). Two sinks with the same prefix
+/// (two share engines at once) each read the file's size before every write,
+/// so neither lets it pass [maxBytes]; a rotation that both start at the same
+/// moment can still lose a line, which a log can bear.
 class LogFileSink {
   /// Creates a sink that stores its files in [dir].
   new(
@@ -50,8 +52,6 @@ class LogFileSink {
   /// ones (the failure is still reported to that write's caller).
   Future<void> _tail = Future<void>.value();
 
-  int? _currentSize;
-
   File _file(int index) => File('${dir.path}/$prefix-$index.log');
 
   /// Appends [line] and a newline to the current file, rotating first when
@@ -66,14 +66,12 @@ class LogFileSink {
     final bytes = utf8.encode('$line\n');
     await dir.create(recursive: true);
     final current = _file(0);
-    var size =
-        _currentSize ?? (current.existsSync() ? current.lengthSync() : 0);
-    if (size > 0 && size + bytes.length > maxBytes) {
-      await _rotate();
-      size = 0;
-    }
+    // The size is read from the file before every write, not counted: two
+    // sinks may write the same files (two share engines at once, D-163), and
+    // each one's own count would fall behind the other's writes.
+    final size = current.existsSync() ? current.lengthSync() : 0;
+    if (size > 0 && size + bytes.length > maxBytes) await _rotate();
     await current.writeAsBytes(bytes, mode: FileMode.append, flush: true);
-    _currentSize = size + bytes.length;
   }
 
   Future<void> _rotate() async {
