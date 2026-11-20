@@ -8,6 +8,7 @@ import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_steps.dart';
 
 part 'reels_step_controller.g.dart';
 
@@ -156,7 +157,10 @@ class ReelsStepState {
 ///   `ReferencesRepository.watchCounts` and shown oldest first with their
 ///   reference counts (D-168). Nothing shows until both have answered, so a
 ///   reel never appears with a count that is about to change; a count read
-///   that fails counts as none.
+///   that fails counts as none. A count read that has not answered within
+///   [stepReadLimit] is taken as none too (logged), so the rows, the duplicate
+///   check and "Continue" never wait for it for good; the counts that arrive
+///   later update the rows.
 /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
 ///   `finish()` and writes no reel.
 ///
@@ -170,10 +174,22 @@ class ReelsStepController extends _$ReelsStepController {
   List<Reel>? _reels;
   Map<int, int>? _counts;
 
+  /// Set when the counts did not answer within [stepReadLimit]: the reels
+  /// are published with no counts until they do.
+  bool _countsLate = false;
+  Timer? _countsLimit;
+
   @override
   ReelsStepState build() {
     _reels = null;
     _counts = null;
+    _countsLate = false;
+    _countsLimit = Timer(stepReadLimit, () {
+      if (!ref.mounted || _counts != null) return;
+      _log.warning('Reading the reference counts took too long');
+      _countsLate = true;
+      _publish();
+    });
     final reelsSubscription = ref
         .read(reelsRepositoryProvider)
         .watchAll()
@@ -193,6 +209,7 @@ class ReelsStepController extends _$ReelsStepController {
           (counts) {
             if (!ref.mounted) return;
             _counts = counts;
+            _countsLimit?.cancel();
             _publish();
           },
           onError: (Object error) {
@@ -202,10 +219,12 @@ class ReelsStepController extends _$ReelsStepController {
             );
             if (!ref.mounted) return;
             _counts = const {};
+            _countsLimit?.cancel();
             _publish();
           },
         );
     ref.onDispose(() {
+      _countsLimit?.cancel();
       unawaited(reelsSubscription.cancel());
       unawaited(countsSubscription.cancel());
     });
@@ -215,7 +234,7 @@ class ReelsStepController extends _$ReelsStepController {
   /// Puts the last reels and counts in the state, once both have been read.
   void _publish() {
     final reels = _reels;
-    final counts = _counts;
+    final counts = _counts ?? (_countsLate ? const <int, int>{} : null);
     if (reels == null || counts == null) return;
     state = state._with(existing: _existingFrom(reels, counts));
   }

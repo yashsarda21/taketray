@@ -261,58 +261,61 @@ class _ExistingRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(_rowRadius),
-      ),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: _rowMinHeight),
-        child: Padding(
-          padding: EdgeInsets.only(left: tt.spacing.m, right: _rowPaddingEnd),
-          child: Row(
-            spacing: tt.spacing.s,
-            children: [
-              ExcludeSemantics(
-                child: Icon(
-                  Symbols.link_rounded,
-                  size: tt.sizes.iconSmall,
-                  color: tt.colors.record,
-                ),
-              ),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      reel.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.text.material.bodyLarge,
-                    ),
-                    Text(
-                      countText,
-                      style: tt.text.material.bodySmall!.copyWith(
-                        color: scheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Semantics(
-                label: doneLabel,
-                excludeSemantics: true,
-                child: SizedBox.square(
-                  dimension: tt.sizes.touchTarget,
+    // One item for a screen reader: the name, the count, 'Already created'.
+    return MergeSemantics(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(_rowRadius),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: _rowMinHeight),
+          child: Padding(
+            padding: EdgeInsets.only(left: tt.spacing.m, right: _rowPaddingEnd),
+            child: Row(
+              spacing: tt.spacing.s,
+              children: [
+                ExcludeSemantics(
                   child: Icon(
-                    Symbols.check_rounded,
-                    size: tt.sizes.icon,
-                    color: scheme.primary,
+                    Symbols.link_rounded,
+                    size: tt.sizes.iconSmall,
+                    color: tt.colors.record,
                   ),
                 ),
-              ),
-            ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        reel.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.text.material.bodyLarge,
+                      ),
+                      Text(
+                        countText,
+                        style: tt.text.material.bodySmall!.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Semantics(
+                  label: doneLabel,
+                  excludeSemantics: true,
+                  child: SizedBox.square(
+                    dimension: tt.sizes.touchTarget,
+                    child: Icon(
+                      Symbols.check_rounded,
+                      size: tt.sizes.icon,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

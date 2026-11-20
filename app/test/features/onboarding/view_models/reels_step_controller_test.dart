@@ -1,14 +1,18 @@
 import 'dart:async';
 
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/data/repositories/references_repository.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/onboarding/view_models/onboarding_steps.dart';
 import 'package:taketray/features/onboarding/view_models/reels_step_controller.dart';
 
 import '../../../support/reels_step_spies.dart';
@@ -453,6 +457,140 @@ void main() {
     });
   });
 
+  group('counts that never answer (M21, D-168)', () {
+    final goa = Reel(
+      id: 7,
+      name: 'Goa',
+      status: ReelStatus.collecting,
+      createdAt: DateTime.utc(2026, 11, 20),
+      updatedAt: DateTime.utc(2026, 11, 20),
+    );
+
+    /// Runs [body] in fake time with the reels read at once and the counts
+    /// stream held open by [silent].
+    void run(
+      void Function(
+        FakeAsync async,
+        ProviderContainer c,
+        StreamController<Map<int, int>> silent,
+        List<String> logged,
+      )
+      body, {
+      bool reelsAnswer = true,
+    }) {
+      fakeAsync((async) {
+        final silent = StreamController<Map<int, int>>();
+        final logged = <String>[];
+        final previous = Logger.root.level;
+        Logger.root.level = Level.ALL;
+        final sub = Logger.root.onRecord.listen(
+          (r) => logged.add('${r.loggerName} ${r.message} ${r.error}'),
+        );
+        final c = ProviderContainer(
+          overrides: [
+            ...h.overrides,
+            reelsRepositoryProvider.overrideWithValue(
+              _FixedReels(h.media.db, h.media.clock, [
+                goa,
+              ], answer: reelsAnswer),
+            ),
+            referencesRepositoryProvider.overrideWithValue(
+              _SilentCounts(h.media.db, h.media.clock, silent.stream),
+            ),
+            onboardingControllerProvider.overrideWith(() => onboarding),
+          ],
+        )..listen(reelsStepControllerProvider, (_, _) {});
+        async.flushMicrotasks();
+        try {
+          body(async, c, silent, logged);
+        } finally {
+          c.dispose();
+          unawaited(silent.close());
+          unawaited(sub.cancel());
+          Logger.root.level = previous;
+          async.flushMicrotasks();
+        }
+      });
+    }
+
+    ReelsStepState stateIn(ProviderContainer c) =>
+        c.read(reelsStepControllerProvider);
+
+    test('the reels show with count 0 after the step-read limit, logged, '
+        'and the duplicate check and Continue work', () {
+      run((async, c, silent, logged) {
+        async.elapse(stepReadLimit - const Duration(milliseconds: 100));
+        expect(stateIn(c).existing, isEmpty, reason: 'still within the limit');
+        expect(stateIn(c).hasExistingReels, isFalse);
+
+        async
+          ..elapse(const Duration(milliseconds: 200))
+          ..flushMicrotasks();
+
+        expect(stateIn(c).existing, [(name: 'Goa', referenceCount: 0)]);
+        expect(stateIn(c).hasExistingReels, isTrue);
+        final notifier = c.read(reelsStepControllerProvider.notifier);
+        expect(notifier.add('goa'), isFalse);
+        expect(stateIn(c).error, ReelNameProblem.duplicate);
+        expect(stateIn(c).clashingName, 'Goa');
+        expect(
+          logged.where((l) => l.contains('reelsStep')),
+          hasLength(1),
+          reason: 'logged once',
+        );
+        expect(logged.join('\n'), isNot(contains('Goa')));
+      });
+    });
+
+    test('counts that arrive after the limit update the rows', () {
+      run((async, c, silent, logged) {
+        async.elapse(stepReadLimit + const Duration(seconds: 1));
+        expect(stateIn(c).existing.single.referenceCount, 0);
+
+        silent.add({7: 3});
+        async.flushMicrotasks();
+
+        expect(stateIn(c).existing, [(name: 'Goa', referenceCount: 3)]);
+      });
+    });
+
+    test('counts that answer in time show the reels at once, with no limit '
+        'left running, nothing logged', () {
+      run((async, c, silent, logged) {
+        async.elapse(const Duration(seconds: 1));
+        expect(stateIn(c).existing, isEmpty);
+
+        silent.add({7: 2});
+        async.flushMicrotasks();
+
+        expect(stateIn(c).existing, [(name: 'Goa', referenceCount: 2)]);
+        expect(async.pendingTimers, isEmpty, reason: 'the limit was cancelled');
+        async.elapse(stepReadLimit * 2);
+        expect(stateIn(c).existing.single.referenceCount, 2);
+        expect(logged.where((l) => l.contains('reelsStep')), isEmpty);
+      });
+    });
+
+    test('the limit does not outlive the step', () {
+      run((async, c, silent, logged) {
+        c.dispose();
+        async.flushMicrotasks();
+
+        expect(async.pendingTimers, isEmpty);
+        async.elapse(stepReadLimit * 2);
+        expect(logged.where((l) => l.contains('reelsStep')), isEmpty);
+      });
+    });
+
+    test('reels that never answer show nothing, limit or not', () {
+      run((async, c, silent, logged) {
+        async.elapse(stepReadLimit * 2);
+
+        expect(stateIn(c).existing, isEmpty);
+      }, reelsAnswer: false);
+    });
+  });
+
   group('create', () {
     test(
       'creates the names in order with one createAll, then finishes',
@@ -707,6 +845,31 @@ class _FailingWatch extends SpyReels {
 
   @override
   Stream<List<Reel>> watchAll() => Stream.error(StateError('no read'));
+}
+
+/// A reels repository whose `watchAll` answers [reels] at once (or never).
+class _FixedReels extends ReelsRepository {
+  // ignore: use_super_parameters, the same reason
+  _FixedReels(AppDatabase db, Clock clock, this.reels, {this.answer = true})
+    : super(db, clock);
+
+  final List<Reel> reels;
+  final bool answer;
+
+  @override
+  Stream<List<Reel>> watchAll() =>
+      answer ? Stream.value(reels) : const Stream<List<Reel>>.empty();
+}
+
+/// A references repository whose `watchCounts` is [counts], held by a test.
+class _SilentCounts extends ReferencesRepository {
+  // ignore: use_super_parameters, the same reason
+  _SilentCounts(AppDatabase db, Clock clock, this.counts) : super(db, clock);
+
+  final Stream<Map<int, int>> counts;
+
+  @override
+  Stream<Map<int, int>> watchCounts() => counts;
 }
 
 /// A references repository whose `watchCounts` always fails.

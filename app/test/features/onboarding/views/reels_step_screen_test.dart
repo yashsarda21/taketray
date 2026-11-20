@@ -305,16 +305,27 @@ void main() {
       expect(text.overflow, TextOverflow.ellipsis);
     });
 
-    testApp('each row says Already created to a screen reader', (tester) async {
+    testApp('each row reads as one item: name, count, Already created (M22)', (
+      tester,
+    ) async {
       final handle = tester.ensureSemantics();
-      await _pump(tester, existing: ['Goa'], references: {'Goa': 2});
-      expect(
-        find.descendant(
-          of: existingRow(0),
-          matching: find.bySemanticsLabel('Already created'),
-        ),
-        findsOneWidget,
+      await _pump(
+        tester,
+        existing: ['Goa', 'Paris'],
+        references: {'Goa': 2, 'Paris': 0},
       );
+      // One node for each row, the three parts in reading order.
+      expect(
+        tester.getSemantics(existingRow(0)).label,
+        'Goa\n2 references saved\nAlready created',
+      );
+      expect(
+        tester.getSemantics(existingRow(1)).label,
+        'Paris\nNo references\nAlready created',
+      );
+      // Nothing inside a row is a node of its own.
+      expect(find.bySemanticsLabel('Already created'), findsNothing);
+      expect(find.bySemanticsLabel('Goa'), findsNothing);
       expect(
         find.descendant(
           of: existingRow(0),
