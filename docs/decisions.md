@@ -2300,3 +2300,14 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - Flow 4 needs TakeTray Dev's data to hold no other reference. The clean-up after every run (build the debug app, `install -r`, `pm clear app.taketray.dev`) provides it.
   - Flow 2 overwrites the phone's clipboard with a caption and empties it at the end (the owner's earlier clipboard is not restored: it is not read).
   - After a run the usual three commands apply (build the debug app, `install -r`, `pm clear app.taketray.dev`).
+
+### D-162 · Phase 9B: sharing into TakeTray, stacked on 9A, with 9A and 9B checked on the phone together
+- Date: 2026-11-20 · Phase: 9B · Task: 1 · Builds on D-153 (the Phase 9 split and the share-screen choice), D-136 and D-141 (onboarding) · Spec: `docs/superpowers/specs/2026-11-19-phase-9-references-design.md` (9B part) · Plan: `docs/superpowers/plans/2026-11-20-phase-9b-sharing.md`
+- Decision:
+  1. **Scope:** the share entry (`ShareActivity`, a second Flutter entry point `shareMain`, `ShareHostApi`), one database for both engines, the `openReel` launch action held through onboarding, the Save reference sheet with every state, the share screen over the sharing app, onboarding's reels step listing existing reels with the Instagram tip, and the Patrol flows (written, run at the end).
+  2. **Stacked on 9A:** branch `phase-9b-sharing` from `phase-9a-references`; its PR goes to `main` after #9 merges.
+  3. **The owner approved this plan in advance** and asked to test 9A and 9B on the S24 together at the very end (2026-11-20). No phone is used before then.
+  4. **Proof first for the database (Task 3):** both engines open the database with drift's `shareAcrossIsolates`, proven on the emulator (`Pixel_3a_API_32_arm64-v8a`) before it is kept; if the proof fails, the spec's fallback (a connection per engine, WAL with a busy timeout, and the app re-reading reels and references when it returns to the front) is built instead.
+  5. D-numbers: Task 2 D-163, Task 3 D-164, Task 4 D-165, Task 5 D-166, Task 6 D-167, Task 7 D-168, Task 8 D-169.
+- Why: the share entry is what the build design's Phase 9 is "done when" ("Sharing an Instagram reel saves it"); the order puts the risky native and database work first, so the screens build on proven ground.
+- Consequences: two Flutter engines can run in one process; `app.taketray` exports a second activity for `text/plain` shares only.
