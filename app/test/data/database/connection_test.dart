@@ -308,7 +308,8 @@ void main() {
       await check.ensureOpen(_RawUser());
       final rows = await check.runSelect('PRAGMA user_version', []);
       final tables = await check.runSelect(
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reels'",
+        'SELECT name FROM sqlite_master '
+        "WHERE type = 'table' AND name = 'reels'",
         [],
       );
       await check.close();
