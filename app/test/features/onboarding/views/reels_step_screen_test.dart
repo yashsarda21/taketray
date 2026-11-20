@@ -833,6 +833,49 @@ void main() {
       handle.dispose();
     });
 
+    testApp('at 2x text an existing reel with a long name and a count keeps '
+        'one name line and a 48 dp check inside the screen', (tester) async {
+      final long = 'W' * 40;
+      await _pump(
+        tester,
+        existing: ['Go', long],
+        references: {long: 3},
+        textScale: 2,
+      );
+      final row = find.byKey(ReelsStepScreen.existingKey(1));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      Finder nameIn(Finder r, String name) =>
+          find.descendant(of: r, matching: find.text(name));
+      final shortLine = tester.getSize(
+        nameIn(find.byKey(ReelsStepScreen.existingKey(0)), 'Go'),
+      );
+      final longLine = tester.getSize(nameIn(row, long));
+      expect(longLine.height, shortLine.height, reason: 'one line, not two');
+      expect(
+        find.descendant(of: row, matching: find.text('3 references saved')),
+        findsOneWidget,
+      );
+      final check = tester.getRect(
+        find
+            .descendant(
+              of: row,
+              matching: find.ancestor(
+                of: find.byIcon(Symbols.check_rounded),
+                matching: find.byType(SizedBox),
+              ),
+            )
+            .first,
+      );
+      expect(check.size, const Size.square(48));
+      final rowRect = tester.getRect(row);
+      expect(rowRect.left, greaterThanOrEqualTo(0));
+      expect(rowRect.right, lessThanOrEqualTo(360));
+      expect(check.right, lessThanOrEqualTo(rowRect.right));
+      expect(tester.getRect(nameIn(row, long)).right, lessThan(check.left));
+    });
+
     testApp('at 2x text with the keyboard up both buttons stay on screen', (
       tester,
     ) async {

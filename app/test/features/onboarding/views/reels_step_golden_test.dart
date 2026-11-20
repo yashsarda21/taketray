@@ -34,9 +34,10 @@ Future<void> _pump(
   required Brightness brightness,
   double textScale = 1,
   double keyboard = 0,
+  double height = 800,
 }) async {
   tester.view
-    ..physicalSize = const Size(360, 800)
+    ..physicalSize = Size(360, height)
     ..devicePixelRatio = 1
     ..viewInsets = FakeViewPadding(bottom: keyboard);
   addTearDown(tester.view.reset);
@@ -160,6 +161,9 @@ void main() {
           look: _Look.existingAndTyped,
           brightness: brightness,
           textScale: 2,
+          // Tall enough that the rows and the tip are in frame: at 800 dp the
+          // 2x heading and field push them under the buttons.
+          height: 1800,
         );
         await expectLater(
           find.byType(MaterialApp),
