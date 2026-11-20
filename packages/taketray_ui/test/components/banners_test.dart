@@ -138,6 +138,64 @@ void main() {
       expect(title.fontWeight, FontWeight.w600);
     });
 
+    testWidgets('the default margin is 16 dp at the sides, 4 above, 8 below', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          Align(alignment: Alignment.topLeft, child: _banner(body: null)),
+        ),
+      );
+      final box = tester.getRect(_material(find.byType(TtBanner)));
+      expect(box.left, 16);
+      expect(box.right, 800 - 16);
+      expect(box.top, 4);
+      expect(tester.getSize(find.byType(TtBanner)).height, 4 + 56 + 8);
+    });
+
+    testWidgets('a given margin replaces the default', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: TtBanner(
+              kind: TtBannerKind.warning,
+              icon: Symbols.info_rounded,
+              title: 'Already saved in Goa',
+              margin: EdgeInsets.fromLTRB(24, 0, 12, 20),
+            ),
+          ),
+        ),
+      );
+      final box = tester.getRect(_material(find.byType(TtBanner)));
+      expect(box.left, 24);
+      expect(box.right, 800 - 12);
+      expect(box.top, 0);
+      expect(tester.getSize(find.byType(TtBanner)).height, 56 + 20);
+    });
+
+    testWidgets('a zero margin leaves no space around the banner', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: TtBanner(
+              kind: TtBannerKind.info,
+              icon: Symbols.info_rounded,
+              title: 'Title',
+              margin: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      );
+      final box = tester.getRect(_material(find.byType(TtBanner)));
+      expect(box.left, 0);
+      expect(box.right, 800);
+      expect(tester.getSize(find.byType(TtBanner)).height, 56);
+    });
+
     testWidgets('shows the action and calls it', (tester) async {
       var calls = 0;
       await tester.pumpWidget(

@@ -247,3 +247,70 @@ Then break one thing on purpose. In `app.dart`, change the held branch so `openR
 ### Decisions
 
 - D-165: the fourth launch action, how the share screen starts MainActivity, why an `openReel` is held in memory through onboarding (amending D-136 for this action only), and what a kill forgets.
+
+## 5. The Save reference sheet
+
+### What we built
+
+The sheet the share screen shows: **Save reference**. It has every state a share can end in. The form lets you add an optional label and choose where the link goes: an existing reel from a list, or a new reel you name. "Already saved in {reel}" warns you when the reel you picked has the link. If the shared text has no link ("Best breakfast"), a "This isn't a link" explanation says nothing was saved. After a save you see "Saved to {reel}" with **Open reel** and **Done**, and, if you have never opened TakeTray, a short welcome note.
+
+Along the way two small things changed elsewhere: a reference whose host holds accented letters now shows them (`café.fr`, not `caf%C3%A9.fr`), and `TtBanner` can take a margin.
+
+### Why TakeTray needs it
+
+A share is two taps in Instagram, so the sheet must be quick and must never lose or double a save. It also has to be honest about the odd cases: a caption with no link, a reel you already saved, a reel you deleted a moment ago, a database that another part of the app is writing to.
+
+### Key ideas
+
+**1. All the rules live in one controller, not in the widget.** `SaveReferenceController` holds a small immutable state (which step, the link, which reel is picked, any error), and the sheet only draws it. That way a plain test can drive every case with no screen:
+
+```dart
+await c.start('Title https://vm.tiktok.com/x/');
+expect(state().step, SaveStep.form);
+expect(state().kind, SharedLinkKind.tiktokVideo);
+```
+
+**2. The kind of link is read before cleaning.** TakeTray cleans a saved link so the same reel shared twice is one reference, and cleaning rewrites an Instagram `/reel/` link to `/p/`. After that a reel looks like a post. So the sheet asks `sharedLinkKindOf` about the link as it arrived:
+
+```dart
+kind: sharedLinkKindOf(Uri.parse(link)), // the raw link
+url: url.toString(),                      // the cleaned one
+```
+
+**3. A double tap is one save.** `save` is single-flight: while one save runs, a second call just gets the first call's future back.
+
+```dart
+final running = _inFlight;
+if (running != null) return running;
+```
+
+**4. Races end in a clear state, not a crash.** The name you typed can be taken by the time you press Save: the repository says "duplicate" and the sheet shows it under the field. The reel you picked can be deleted in the app first: the write fails and the sheet says "Couldn't save the reference." The other engine can hold the database past the 5 second wait (section 3): that is the same failure message, and the log gets the error's type (`SqliteException`) and nothing else, never a link or a name.
+
+**5. A slow answer for an old pick is ignored.** Picking a reel reads its references to find out whether it already has the link. If you pick another reel before the first read finishes, a counter tells the first one it is out of date.
+
+**6. A percent-encoded host is decoded for display only.** Dart keeps `café.fr` as `caf%C3%A9.fr` in a link. `displayHost` turns it back for the card and the sheet, and refuses anything odd (`%C3.com` is not valid text, `a%2Fb.com` would hide a slash), so what you read is never misleading. The stored link is not touched.
+
+**7. The welcome note is read, never written.** The share screen must not mark onboarding done. The sheet reads the flag once through `PhoneStateRepository.onboardingDone()` and shows the note when it is false.
+
+### Where it lives
+
+- `app/lib/features/share/view_models/save_reference_controller.dart` and `app/lib/features/share/views/save_reference_sheet.dart`.
+- `app/lib/domain/rules/shared_link_kind.dart`, `app/lib/domain/rules/reference_links.dart` (`displayHost`, `shortLink`), `app/lib/features/references/views/reference_text.dart`.
+- `packages/taketray_ui/lib/src/components/banners.dart` (`TtBanner.margin`) and `app/lib/l10n/app_en.arb` (the `saveReference...` strings).
+- Docs: `docs/flow.md` ("Sharing into TakeTray", the Save reference sheet), D-166.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/features/share test/domain/rules/shared_link_kind_test.dart \
+  test/domain/rules/reference_links_test.dart
+cd ../packages/taketray_ui && ../../tool/flutter test test/components/banners_test.dart
+```
+
+Then break one thing on purpose. In `save_reference_controller.dart`, change `kind: sharedLinkKindOf(Uri.parse(link))` to `sharedLinkKindOf(url)` and run the share tests: "the kind is read from the raw link" fails, because every Instagram reel is now a post. Put it back.
+
+### Decisions
+
+- D-166: the controller and its states, the raw-link kind, the decoded host for display, why the list shows no covers in the share engine, and `TtBanner.margin`.

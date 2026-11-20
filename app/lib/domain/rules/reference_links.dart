@@ -91,13 +91,46 @@ String? _withDottedHost(String link) {
   return link;
 }
 
+/// Characters a decoded host must not hold: they would change what the text
+/// means (a path, a query, a user name) or show as a gap.
+final _hostBreaks = RegExp(r'[/?#@\s\x00-\x1f\x7f]');
+
+/// A `%` not followed by two hex digits, which `Uri.decodeComponent` throws
+/// an `ArgumentError` for.
+final _strayPercent = RegExp('%(?![0-9A-Fa-f]{2})');
+
+/// [host] as it is shown: its `%XX` runs decoded (Dart keeps `café.fr` as
+/// `caf%C3%A9.fr`), so the user reads the name they know. For display only:
+/// what is stored and compared stays encoded.
+///
+/// A run that is not valid UTF-8 stays as it is (`%C3.com`), and so does a
+/// host whose decoded form would hold a `/`, `?`, `#`, `@`, a space or a
+/// control character (`a%2Fb.com`), which would read as something else.
+String displayHost(String host) {
+  if (!host.contains('%') || _strayPercent.hasMatch(host)) return host;
+  final String decoded;
+  try {
+    decoded = Uri.decodeComponent(host);
+  } on FormatException {
+    return host;
+  }
+  return decoded.contains(_hostBreaks) ? host : decoded;
+}
+
 /// A link for a card's subtitle or a missing title: [url] without its scheme,
 /// a leading `www.` or `m.`, the query, the fragment and trailing slashes, so
 /// `https://www.instagram.com/p/ABC/` is `instagram.com/p/ABC`.
+///
+/// A percent-encoded host is decoded for display (M32): the stored
+/// `https://caf%C3%A9.fr/x` is `café.fr/x`. Only the host is: the path keeps
+/// its `%XX`.
 String shortLink(String url) {
   var short = url.replaceFirst(_scheme, '');
   final cut = short.indexOf(RegExp('[?#]'));
   if (cut >= 0) short = short.substring(0, cut);
+  final slash = short.indexOf('/');
+  final end = slash < 0 ? short.length : slash;
+  short = displayHost(short.substring(0, end)) + short.substring(end);
   return short
       .replaceFirst(_leadingSubdomain, '')
       .replaceFirst(_trailingSlashes, '');

@@ -8,11 +8,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
-## Phase 9 (references)
-
-- The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it. (9A Task 2 adds `firstLinkIn`, 9A's M8 `pastedLink`; 9B Task 5 uses it.)
-- The banner margin is not configurable (`refs.js` overrides it). (9B Task 5: `TtBanner.margin`.)
-
 ## Phase 10 (onboarding and settings)
 
 - **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.

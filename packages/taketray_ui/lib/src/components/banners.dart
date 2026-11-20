@@ -27,8 +27,9 @@ enum TtBannerKind {
 /// banner is a button and shows a chevron).
 ///
 /// It is inset by the screen gutter, with 4 dp above and 8 dp below as in the
-/// prototype's `.banner`, 20 dp round and at least 56 dp high. Title and body
-/// wrap, so nothing is cut at large text; from a text scale of 1.5 the
+/// prototype's `.banner` (or by [margin], when given), 20 dp round and at
+/// least 56 dp high. Title and body wrap, so nothing is cut at large text;
+/// from a text scale of 1.5 the
 /// [action] moves under the text instead of squeezing it. A [TtBannerKind.vn]
 /// banner always puts its [action] (usually a `Wrap` of buttons) under the
 /// text, indented to line up with it.
@@ -46,6 +47,7 @@ class TtBanner extends StatelessWidget {
     this.action,
     this.onTap,
     this.iconFilled = true,
+    this.margin,
     super.key,
   }) : assert(
          onTap == null || action == null,
@@ -55,6 +57,14 @@ class TtBanner extends StatelessWidget {
 
   /// The look of the banner.
   final TtBannerKind kind;
+
+  /// The space around the banner, or null for the default: the screen gutter
+  /// at both sides, 4 dp above and 8 dp below (the prototype's `.banner`).
+  ///
+  /// A banner in a sheet that has its own side padding, or that sits tight
+  /// above its buttons, gives its own (the Save reference sheet's "Already
+  /// saved" banner, whose prototype sets `margin: 0 16px 8px`).
+  final EdgeInsetsGeometry? margin;
 
   /// The glyph before the text.
   final IconData icon;
@@ -214,12 +224,14 @@ class TtBanner extends StatelessWidget {
     // min-height: 56px }
     // tt-style.css: .style-tt .banner { border-radius: 20px }
     return Padding(
-      padding: EdgeInsets.fromLTRB(
-        tt.spacing.gutter,
-        TtMetrics.bannerMarginTop,
-        tt.spacing.gutter,
-        tt.spacing.xs,
-      ),
+      padding:
+          margin ??
+          EdgeInsets.fromLTRB(
+            tt.spacing.gutter,
+            TtMetrics.bannerMarginTop,
+            tt.spacing.gutter,
+            tt.spacing.xs,
+          ),
       child: Semantics(
         // A tappable banner is one node with its ink well.
         container: onTap == null,
