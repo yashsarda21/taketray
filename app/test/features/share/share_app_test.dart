@@ -703,7 +703,9 @@ void main() {
       Logger.root.level = Level.ALL;
       addTearDown(() => Logger.root.level = level);
       await pump(tester);
-      bridge.closeThrows = const FormatException('secret text https://x.example/a');
+      bridge.closeThrows = const FormatException(
+        'secret text https://x.example/a',
+      );
 
       await tester.binding.handlePopRoute();
       await tester.pump();

@@ -169,6 +169,12 @@ class _SaveReferenceSheetState extends ConsumerState<SaveReferenceSheet> {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final summaries = ref.watch(reelSummariesProvider);
+    // A picked reel that is deleted meanwhile is no longer picked (D-166).
+    ref.listen(reelSummariesProvider, (_, next) {
+      final reels = next.value;
+      if (reels == null) return;
+      _controller.dropPickIfGone({for (final r in reels) r.reel.id});
+    });
     final counts = ref.watch(referenceCountsProvider).value ?? const {};
     final loaded = summaries.value;
     // Until the reels are read, the switch follows what the controller

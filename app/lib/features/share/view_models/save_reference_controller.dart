@@ -257,14 +257,28 @@ class SaveReferenceController extends _$SaveReferenceController {
       final saved = await references.watchForReel(reelId).first;
       return saved.any((r) => r.url == url);
     });
-    if (has != true || mine != _pickCount || state.pickedReelId != reelId) {
-      return;
-    }
+    if (has != true || mine != _pickCount) return;
     final reel = await guarded(_log, 'Reading the reel', () {
       return reels.getById(reelId);
     });
     if (reel == null || mine != _pickCount) return;
     _set(state.copyWith(alreadyIn: reel.name));
+  }
+
+  /// Forgets the picked reel, and its "already saved" banner, when it is not
+  /// among [reelIds], the reels there are now (it was deleted while the sheet
+  /// was open). Save waits for a new pick. Does nothing once the form is left,
+  /// or when nothing is picked (D-166).
+  void dropPickIfGone(Set<int> reelIds) {
+    final picked = state.pickedReelId;
+    if (state.step != SaveStep.form ||
+        picked == null ||
+        reelIds.contains(picked)) {
+      return;
+    }
+    // A read for that pick still out must not answer for it.
+    _pickCount++;
+    _set(state.copyWith(pickedReelId: null, alreadyIn: null));
   }
 
   /// Forgets the name error and the failure (the user is typing again).

@@ -709,19 +709,35 @@ void main() {
       expect(find.text('Saved to Goa'), findsOneWidget);
     });
 
-    testApp('the picked reel deleted before Save: the failure, no row', (
-      tester,
-    ) async {
+    testApp('the picked reel deleted while open: nothing is picked, Save '
+        'waits (M13)', (tester) async {
       final goa = await makeReel(tester, 'Goa');
       await makeReel(tester, 'Lisbon');
-      await pumpSheet(tester);
+      final container = await pumpSheet(tester);
       await tapAndSettle(tester, rowOf('Goa'));
+      expect(enabled(tester, 'Save'), isTrue);
       await real(tester, () => reels.delete(goa));
       await settleApp(tester);
-      await tapAndSettle(tester, button('Save'));
 
-      expect(find.text(_failed), findsOneWidget);
+      expect(stateOf(container).pickedReelId, isNull);
+      expect(rowOf('Goa'), findsNothing);
+      expect(enabled(tester, 'Save'), isFalse);
+      expect(find.text(_failed), findsNothing);
       expect(await real(tester, () => refs.watchAll().first), isEmpty);
+    });
+
+    testApp('another reel deleted while open keeps the pick (M13)', (
+      tester,
+    ) async {
+      await makeReel(tester, 'Goa');
+      final lisbon = await makeReel(tester, 'Lisbon');
+      final container = await pumpSheet(tester);
+      await tapAndSettle(tester, rowOf('Goa'));
+      await real(tester, () => reels.delete(lisbon));
+      await settleApp(tester);
+
+      expect(stateOf(container).pickedReelId, isNotNull);
+      expect(enabled(tester, 'Save'), isTrue);
     });
 
     testApp('a new reel that cannot be made shows the failure', (tester) async {

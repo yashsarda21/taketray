@@ -371,6 +371,97 @@ void main() {
       },
     );
 
+    test('a picked reel that is no longer in the list is forgotten, with its '
+        'banner (M13)', () async {
+      final goa = await makeReel('Goa');
+      final lisbon = await makeReel('Lisbon');
+      await refs.add(goa, storedReelLink);
+      final c = controller();
+      await c.start(reelLink);
+      await c.pick(goa);
+      expect(state().alreadyIn, 'Goa');
+
+      c.dropPickIfGone({lisbon});
+
+      expect(state().pickedReelId, isNull);
+      expect(state().alreadyIn, isNull);
+      expect(state().step, SaveStep.form);
+      expect(state().url, storedReelLink);
+    });
+
+    test('a pick that is still in the list stays (M13)', () async {
+      final goa = await makeReel('Goa');
+      final lisbon = await makeReel('Lisbon');
+      final c = controller();
+      await c.start(reelLink);
+      await c.pick(goa);
+
+      c.dropPickIfGone({goa, lisbon});
+      expect(state().pickedReelId, goa);
+      // Another reel gone is no reason to forget this pick.
+      c.dropPickIfGone({goa});
+      expect(state().pickedReelId, goa);
+    });
+
+    test('with nothing picked, a changed list changes nothing (M13)', () async {
+      final goa = await makeReel('Goa');
+      final c = controller();
+      await c.start(reelLink);
+      final before = state();
+
+      c.dropPickIfGone({goa});
+      c.dropPickIfGone(const {});
+
+      expect(identical(state(), before), isTrue);
+    });
+
+    test('an empty list forgets the pick (M13)', () async {
+      final goa = await makeReel('Goa');
+      final c = controller();
+      await c.start(reelLink);
+      await c.pick(goa);
+
+      c.dropPickIfGone(const {});
+
+      expect(state().pickedReelId, isNull);
+    });
+
+    test(
+      'a slow answer for a pick that was forgotten is ignored (M13)',
+      () async {
+        final goa = await makeReel('Goa');
+        await refs.add(goa, storedReelLink);
+        refs.holdRead[goa] = Completer<void>();
+        final c = controller();
+        await c.start(reelLink);
+        final slow = c.pick(goa);
+        c.dropPickIfGone(const {});
+
+        refs.holdRead[goa]!.complete();
+        await slow;
+
+        expect(state().pickedReelId, isNull);
+        expect(state().alreadyIn, isNull);
+      },
+    );
+
+    test(
+      'once saved, a changed list leaves the saved state alone (M13)',
+      () async {
+        final goa = await makeReel('Goa');
+        final c = controller();
+        await c.start(reelLink);
+        await c.pick(goa);
+        await c.save(name: '', label: '');
+        expect(state().step, SaveStep.saved);
+
+        c.dropPickIfGone(const {});
+
+        expect(state().step, SaveStep.saved);
+        expect(state().savedReelId, goa);
+      },
+    );
+
     test(
       'setMode switches, and clears the name error and the failure',
       () async {
