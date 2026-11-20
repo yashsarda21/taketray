@@ -2,8 +2,10 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:taketray/app.dart' show resolvePhoneLocale;
 import 'package:taketray/app/database_refresh.dart';
+import 'package:taketray/core/locale.dart';
+import 'package:taketray/features/share/view_models/save_reference_controller.dart';
+import 'package:taketray/features/share/views/save_reference_sheet.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/platform/share_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -17,8 +19,8 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// [DatabaseRefresh] re-reads the reels when the share comes back to the
 /// front, in case the app saved one meanwhile (D-164).
 ///
-/// For now (Task 2) it is empty, and Back closes it. Task 6 puts the Save
-/// reference sheet over a dim background here.
+/// Its home is [_ShareBody]: a dimmed page (the theme's scrim at the app's
+/// sheet opacity) with the Save reference sheet at the bottom (D-167).
 class ShareApp extends StatelessWidget {
   /// Creates the share screen's app.
   const ShareApp({super.key});
@@ -26,6 +28,14 @@ class ShareApp extends StatelessWidget {
   /// The key of the screen's body, for tests.
   @visibleForTesting
   static const Key bodyKey = Key('shareBody');
+
+  /// The key of the sheet's slide, for tests.
+  @visibleForTesting
+  static const Key riseKey = Key('shareRise');
+
+  /// The key of the dimmed page behind the sheet, for tests.
+  @visibleForTesting
+  static const Key scrimKey = Key('shareScrim');
 
   @override
   Widget build(BuildContext context) => DatabaseRefresh(
@@ -42,17 +52,211 @@ class ShareApp extends StatelessWidget {
   );
 }
 
-/// Nothing yet; Back closes the share screen.
-class _ShareBody extends ConsumerWidget {
+/// The widest the sheet gets on a wide screen (Material's bottom sheet
+/// width, as the app's own sheets).
+const double _sheetMaxWidth = 640;
+
+/// The share screen: the scrim, the sheet, and everything that happens to
+/// them (D-167).
+///
+/// - **Start.** The shared text is read once ([ShareBridge.sharedText]) and
+///   handed to [SaveReferenceController.start].
+/// - **A second share.** A new instance of the screen (the usual case:
+///   `ShareActivity` is `standard`, so a second share opens a second
+///   activity with its own engine) needs nothing here. When the sender
+///   reuses this one (`FLAG_ACTIVITY_SINGLE_TOP`), Android brings it back to
+///   the front and the lifecycle says `resumed`; the text is read again, and
+///   a non-null answer (an empty text too, which is "not a link") starts the
+///   sheet afresh, a null one (the usual resume) leaves it alone. A new share
+///   waits for a running save to end first.
+/// - **Closing.** Done, Cancel, Close, Back and a tap on the scrim all come
+///   to `_leave`: once, and after a running save has ended, because the
+///   engine dies with the screen and must not take a database write with it.
+/// - **Open reel** goes through `_leave` too; Android finishes the screen
+///   itself then, so nothing here calls `finish`.
+class _ShareBody extends ConsumerStatefulWidget {
   const _ShareBody({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => PopScope<Object?>(
-    canPop: false,
-    onPopInvokedWithResult: (didPop, _) {
-      if (didPop) return;
-      unawaited(ref.read(shareBridgeProvider).finish());
-    },
-    child: const SizedBox.expand(),
-  );
+  ConsumerState<_ShareBody> createState() => _ShareBodyState();
+}
+
+class _ShareBodyState extends ConsumerState<_ShareBody>
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
+  /// 0 to 1 as the scrim fades in and the sheet comes up.
+  late final AnimationController _enter = AnimationController(vsync: this);
+
+  bool _entering = false;
+
+  /// Set when the screen is closing: nothing more is started or read.
+  bool _closing = false;
+
+  /// Whether a share has been handed to the sheet. A resume's read that
+  /// answers before the start's read has, wins, and the start's late answer
+  /// is then dropped.
+  bool _started = false;
+
+  /// Those waiting for a running save to end.
+  final List<Completer<void>> _idle = [];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Listened to for the screen's whole life: the controller disposes
+    // itself without a listener, and the save state decides when it may
+    // close.
+    ref.listenManual(saveReferenceControllerProvider, (previous, next) {
+      if (!next.saving) _wake();
+    });
+    unawaited(_readFirstShare());
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_entering) return;
+    _entering = true;
+    // proto.css: .sheet.fresh { animation: sheetIn medium4 emphasized-decel };
+    // "Remove animations" makes medium4 zero, and a zero-length animation
+    // jumps to its end with no ticker.
+    _enter.duration = context.tt.motion.medium4;
+    _enter.forward();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _enter.dispose();
+    _wake();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_readNewShare());
+  }
+
+  Future<void> _readFirstShare() async {
+    final text = await ref.read(shareBridgeProvider).sharedText();
+    if (!mounted || _closing || _started) return;
+    _started = true;
+    await _begin(text);
+  }
+
+  Future<void> _readNewShare() async {
+    if (_closing) return;
+    final text = await ref.read(shareBridgeProvider).sharedText();
+    // Null is the usual resume: no new share.
+    if (text == null || !mounted || _closing) return;
+    _started = true;
+    await _begin(text);
+  }
+
+  /// Hands [text] to the sheet, once no save of an earlier share is running.
+  Future<void> _begin(String? text) async {
+    await _whenIdle();
+    if (!mounted || _closing) return;
+    await ref.read(saveReferenceControllerProvider.notifier).start(text);
+  }
+
+  bool get _saving => ref.read(saveReferenceControllerProvider).saving;
+
+  Future<void> _whenIdle() {
+    if (!_saving) return Future<void>.value();
+    final waiting = Completer<void>();
+    _idle.add(waiting);
+    return waiting.future;
+  }
+
+  void _wake() {
+    final waiting = List.of(_idle);
+    _idle.clear();
+    for (final one in waiting) {
+      if (!one.isCompleted) one.complete();
+    }
+  }
+
+  /// Runs [go] (finish, or open a reel, which finishes by itself) once, after
+  /// a running save has ended. Every later call does nothing.
+  Future<void> _leave(Future<void> Function() go) async {
+    if (_closing) return;
+    _closing = true;
+    await _whenIdle();
+    await go();
+  }
+
+  void _close() {
+    final bridge = ref.read(shareBridgeProvider);
+    unawaited(_leave(bridge.finish));
+  }
+
+  void _openReel(int reelId) {
+    final bridge = ref.read(shareBridgeProvider);
+    unawaited(_leave(() => bridge.openReel(reelId)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    final scrim = context.scheme.scrim.withValues(
+      alpha: TtMetrics.scrimOpacity,
+    );
+    final rise = _enter.drive(
+      Tween(
+        begin: const Offset(0, 1),
+        end: Offset.zero,
+      ).chain(CurveTween(curve: context.tt.motion.emphasizedDecelerate)),
+    );
+    // One path for Back, the same as the scrim and the buttons.
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _close();
+      },
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Semantics(
+            key: ShareApp.scrimKey,
+            button: true,
+            label: localizations.scrimLabel,
+            onTapHint: localizations.scrimOnTapHint(
+              localizations.bottomSheetLabel,
+            ),
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: _close,
+              child: FadeTransition(
+                opacity: _enter,
+                child: ColoredBox(color: scrim, child: const SizedBox.expand()),
+              ),
+            ),
+          ),
+          SafeArea(
+            bottom: false,
+            child: Align(
+              alignment: Alignment.bottomCenter,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: _sheetMaxWidth),
+                child: SlideTransition(
+                  key: ShareApp.riseKey,
+                  position: rise,
+                  // A tap on the sheet's own space is not a tap on the scrim.
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: SaveReferenceSheet(
+                      onDone: _close,
+                      onOpenReel: _openReel,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

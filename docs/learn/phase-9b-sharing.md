@@ -314,3 +314,60 @@ Then break one thing on purpose. In `save_reference_controller.dart`, change `ki
 ### Decisions
 
 - D-166: the controller and its states, the raw-link kind, the decoded host for display, why the list shows no covers in the share engine, and `TtBanner.margin`.
+
+## 6. The share screen over the sharing app
+
+### What we built
+
+The screen that holds the sheet. When you share a reel from Instagram, Instagram stays on screen, dimmed, and the **Save reference** sheet comes up from the bottom. It follows the phone's light or dark setting, slides in like TakeTray's other sheets (and just appears if you have "Remove animations" on), and sits above the keyboard when you type. Back, a tap on the dimmed part, **Done**, **Cancel** and **Close** all close it and put you back in Instagram. **Open reel** closes it and opens TakeTray on that reel.
+
+### Why TakeTray needs it
+
+This screen runs in its own small engine that lives and dies with the Android screen. If it closed in the middle of a save, the database could be left locked for the app. And a second share can arrive in two different ways. So closing and "a new share" need care that an ordinary screen does not.
+
+### Key ideas
+
+**1. Every way out is one function.** Back, the scrim, Done, Cancel and Close all end in `_leave`. It does its work once: a second tap, or Back after a tap, does nothing.
+
+```dart
+Future<void> _leave(Future<void> Function() go) async {
+  if (_closing) return;
+  _closing = true;
+  await _whenIdle();   // a running save finishes first
+  await go();
+}
+```
+
+**2. A save is never cut off.** If you press Back while a save runs, the screen waits for the save, then closes. The engine then ends with nothing half-written, and the lock on the database is let go (section 3).
+
+**3. A second share, two ways.** Most of the time a second share opens a second share screen with a fresh engine, so nothing special is needed. But a sender can ask Android to reuse the open screen. Android then says the screen came back to the front, and the screen asks Kotlin for the text again. If there is new text (even an empty one, which shows "This isn't a link") the sheet starts over; if there is none, it stays as it was, with what you typed.
+
+```dart
+if (state == AppLifecycleState.resumed) unawaited(_readNewShare());
+```
+
+**4. The dim page is the app's.** The scrim uses the theme's `scrim` colour at the opacity `showTtSheet` uses (`TtMetrics.scrimOpacity`), so a share looks like TakeTray's other sheets, but without the blur: there is nothing of ours behind it to blur.
+
+**5. No onboarding changes.** This screen never writes an onboarding flag. A test gives it a phone state that throws on any call but the one the welcome note makes, and runs every path.
+
+**6. One small move.** `resolvePhoneLocale` now lives in `lib/core/locale.dart`, so the share engine does not import `app.dart` (which pulls in the background, media and router code).
+
+### Where it lives
+
+- `app/lib/features/share/share_app.dart` and `app/lib/core/locale.dart`.
+- `app/test/features/share/share_app_test.dart` and its goldens in `app/test/features/share/goldens/macos/`.
+- Docs: `docs/flow.md` ("Sharing into TakeTray", the share screen), D-167.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/features/share/share_app_test.dart
+```
+
+Then break one thing on purpose. In `share_app.dart` delete `if (_closing) return;` from `_leave` and run the tests: "every way twice is still one finish" fails, because the second tap finishes again. Put it back.
+
+### Decisions
+
+- D-167: the layout, the one close path, the second share both ways, the missing blur, and the controller's disposed-state guard.

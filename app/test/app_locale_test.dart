@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:taketray/app.dart';
+import 'package:taketray/core/locale.dart';
 
 void main() {
   const supported = [Locale('en')];

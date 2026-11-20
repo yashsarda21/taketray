@@ -68,6 +68,9 @@ class _Reels extends ReelsRepository {
   Future<void> Function()? beforeCreate;
   Object? failList;
 
+  /// Holds the list of reels until it completes.
+  Completer<void>? holdList;
+
   @override
   Future<Reel> createWithReference(
     String name, {
@@ -93,6 +96,11 @@ class _Reels extends ReelsRepository {
   Stream<List<Reel>> watchAll() {
     final failure = failList;
     if (failure != null) return Stream.error(failure);
+    final gate = holdList;
+    if (gate != null) {
+      return Stream.fromFuture(gate.future)
+          .asyncExpand((_) => super.watchAll());
+    }
     return super.watchAll();
   }
 }
@@ -264,6 +272,29 @@ void main() {
       expect(state().failed, isFalse);
       expect(state().saving, isFalse);
     });
+  });
+
+  group('start, when the sheet goes away mid-read', () {
+    test(
+      'a start whose sheet is gone does not touch the disposed state',
+      () async {
+        final gate = Completer<void>();
+        reels.holdList = gate;
+        final sub = container.listen(
+          saveReferenceControllerProvider,
+          (_, _) {},
+        );
+        final running = container
+            .read(saveReferenceControllerProvider.notifier)
+            .start(reelLink);
+        sub.close();
+        container.invalidate(saveReferenceControllerProvider);
+        await Future<void>.delayed(Duration.zero);
+        gate.complete();
+
+        await expectLater(running, completes);
+      },
+    );
   });
 
   group('pick and mode', () {

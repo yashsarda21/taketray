@@ -87,7 +87,7 @@ final class SaveReferenceControllerProvider
 }
 
 String _$saveReferenceControllerHash() =>
-    r'213af2aa7166df4303b1537e86a368a70af8adc3';
+    r'e8b4923d80943709f5082c7f909f1edb827ec776';
 
 /// The Save reference sheet of the share screen (D-166): the shared text
 /// becomes a link, a reel is picked or named, and one Save writes it.

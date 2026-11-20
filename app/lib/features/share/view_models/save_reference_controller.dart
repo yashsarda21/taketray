@@ -219,8 +219,10 @@ class SaveReferenceController extends _$SaveReferenceController {
       'Reading the reels',
       () => reels.watchAll().first,
     );
+    // The sheet may have gone while the reels were read (the engine ends).
     if (first != null &&
         first.isEmpty &&
+        ref.mounted &&
         share == _share &&
         state.step == SaveStep.form) {
       _set(state.copyWith(mode: SaveMode.newReel));
