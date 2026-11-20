@@ -57,6 +57,7 @@ class ShareApp extends StatelessWidget {
 final Logger _log = Logger('shareApp');
 
 /// How long a close waits for a running save before it goes ahead (D-167).
+// style-check: allow a time limit, not a motion duration
 const Duration _saveWaitLimit = Duration(seconds: 10);
 
 /// The widest the sheet gets on a wide screen (Material's bottom sheet
