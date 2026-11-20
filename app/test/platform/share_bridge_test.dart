@@ -136,15 +136,16 @@ void main() {
   });
 
   group('finish', () {
-    test('asks Kotlin to close the screen', () async {
-      await bridge.finish();
+    test('asks Kotlin to close the screen, and answers true', () async {
+      expect(await bridge.finish(), isTrue);
       expect(api.calls, ['finish']);
     });
 
-    test('a PlatformException is swallowed and logged by its code', () async {
+    test('a PlatformException is swallowed, logged by its code, and answers '
+        'false', () async {
       api.error = secretError('no-activity');
 
-      await bridge.finish();
+      expect(await bridge.finish(), isFalse);
 
       expect(logged().single, contains('no-activity'));
       expectNoSecret();
@@ -158,15 +159,16 @@ void main() {
   });
 
   group('openReel', () {
-    test("passes the reel's id", () async {
-      await bridge.openReel(42);
+    test("passes the reel's id, and answers true", () async {
+      expect(await bridge.openReel(42), isTrue);
       expect(api.calls, ['openReel(42)']);
     });
 
-    test('a PlatformException is swallowed and logged by its code', () async {
+    test('a PlatformException is swallowed, logged by its code, and answers '
+        'false', () async {
       api.error = secretError('native-error');
 
-      await bridge.openReel(42);
+      expect(await bridge.openReel(42), isFalse);
 
       expect(logged().single, contains('native-error'));
       expectNoSecret();

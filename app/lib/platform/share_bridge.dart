@@ -18,14 +18,15 @@ abstract interface class ShareBridge {
   /// its error code only).
   Future<String?> sharedText();
 
-  /// Closes the share screen, back to the app that shared. A failure is
-  /// logged by its code and swallowed.
-  Future<void> finish();
+  /// Closes the share screen, back to the app that shared. True when Android
+  /// took the request; a failure is logged by its code, swallowed, and
+  /// answers false (the screen is still there, D-167).
+  Future<bool> finish();
 
-  /// Closes the share screen and opens the reel [reelId] in TakeTray (Task 4
-  /// completes the opening; until then it only closes). A failure is logged
-  /// by its code and swallowed.
-  Future<void> openReel(int reelId);
+  /// Closes the share screen and opens the reel [reelId] in TakeTray. True
+  /// when Android took the request; a failure is logged by its code,
+  /// swallowed, and answers false (the screen is still there, D-167).
+  Future<bool> openReel(int reelId);
 }
 
 /// The [ShareBridge] that talks to Kotlin through the Pigeon-generated
@@ -53,20 +54,24 @@ class PigeonShareBridge implements ShareBridge {
   }
 
   @override
-  Future<void> finish() async {
+  Future<bool> finish() async {
     try {
       await _api.finish();
+      return true;
     } on PlatformException catch (e) {
       _log.warning('Closing the share screen failed: ${e.code}');
+      return false;
     }
   }
 
   @override
-  Future<void> openReel(int reelId) async {
+  Future<bool> openReel(int reelId) async {
     try {
       await _api.openReel(reelId);
+      return true;
     } on PlatformException catch (e) {
       _log.warning('Opening the reel from a share failed: ${e.code}');
+      return false;
     }
   }
 }

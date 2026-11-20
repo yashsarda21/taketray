@@ -2427,6 +2427,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - **Waiting on `AppLifecycleListener`:** the one-callback listener was enough in `DatabaseRefresh`; here a `WidgetsBindingObserver` sits beside the animation's `SingleTickerProviderStateMixin`, in one state.
 - Consequences:
   - A share that arrives while the screen is closing is lost (the screen is gone either way).
+  - **Minors M18, M19:** a share that arrives while a close waits for a running save cancels the close (a round counter, so the cancelled wait ends without closing) and shows once the save is done, rather than being dropped; once the close has gone to Android a share is still ignored. The save wait has a 10 s limit (then the close goes ahead, logging `save still running`). `ShareBridge.finish` and `openReel` answer true, or false when the bridge swallowed a `PlatformException`; a false or a throw resets the closing state (error type logged), so a failed close no longer leaves the screen dimmed and stuck.
   - The first share's save always finishes before a second share replaces it on the same instance.
   - The share screen has no drag-to-dismiss: Back, the scrim and the buttons close it.
 

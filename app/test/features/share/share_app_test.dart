@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/locale.dart';
@@ -45,6 +46,13 @@ class _FakeShareBridge implements ShareBridge {
   /// When set, [finish] and [openReel] wait for it.
   Completer<void>? finishGate;
 
+  /// What [finish] and [openReel] answer: false is a failed close, a failed
+  /// open (the bridge swallowed a PlatformException).
+  bool closeWorks = true;
+
+  /// When set, [finish] and [openReel] throw it.
+  Exception? closeThrows;
+
   /// Queues one read that answers [text] at once.
   void queue(String? text) => _reads.add(() async => text);
 
@@ -59,15 +67,21 @@ class _FakeShareBridge implements ShareBridge {
   }
 
   @override
-  Future<void> finish() async {
+  Future<bool> finish() async {
     finishes++;
     await finishGate?.future;
+    final error = closeThrows;
+    if (error != null) throw error;
+    return closeWorks;
   }
 
   @override
-  Future<void> openReel(int reelId) async {
+  Future<bool> openReel(int reelId) async {
     opened.add(reelId);
     await finishGate?.future;
+    final error = closeThrows;
+    if (error != null) throw error;
+    return closeWorks;
   }
 }
 
@@ -570,6 +584,205 @@ void main() {
       await settleApp(tester);
 
       expect(bridge.finishes, 1);
+    });
+
+    testApp('a share that arrives while Back waits for a save cancels the '
+        'close, then shows once the save is done (M18)', (tester) async {
+      final goa = await makeReel(tester, 'Goa');
+      await pump(tester);
+      final hold = refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(bridge.finishes, 0);
+      final reads = bridge.reads;
+      bridge.queue(_otherLink);
+
+      await resume(tester);
+      expect(bridge.reads, greaterThan(reads), reason: 'it did read');
+      expect(find.text(_otherShort), findsNothing, reason: 'the save holds');
+
+      await real(tester, () async => hold.complete());
+      await settleApp(tester);
+
+      expect(find.text(_otherShort), findsOneWidget);
+      expect(find.text(_reelShort), findsNothing);
+      expect(bridge.finishes, 0, reason: 'the close was cancelled');
+      expect(
+        await real(tester, () async => await refs.watchForReel(goa).first),
+        hasLength(1),
+        reason: 'the first share was saved to the end',
+      );
+    });
+
+    testApp('after a cancelled close, Back closes again, once (M18)', (
+      tester,
+    ) async {
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      final hold = refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      bridge.queue(_otherLink);
+      await resume(tester);
+      // The user leaves again while the save still runs.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      await real(tester, () async => hold.complete());
+      await settleApp(tester);
+
+      expect(
+        bridge.finishes,
+        1,
+        reason: 'the old close is gone, the new one runs once',
+      );
+    });
+
+    testApp('a resume with no new share does not cancel the waiting close '
+        '(M18)', (tester) async {
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      final hold = refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      await resume(tester);
+      await real(tester, () async => hold.complete());
+      await settleApp(tester);
+
+      expect(bridge.finishes, 1);
+    });
+
+    testApp('an empty text during the wait cancels the close too (M18)', (
+      tester,
+    ) async {
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      final hold = refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      bridge.queue('');
+
+      await resume(tester);
+      await real(tester, () async => hold.complete());
+      await settleApp(tester);
+
+      expect(find.text("This isn't a link"), findsOneWidget);
+      expect(bridge.finishes, 0);
+    });
+
+    testApp('a finish that fails lets Back and the buttons work again (M19)', (
+      tester,
+    ) async {
+      await pump(tester);
+      bridge.closeWorks = false;
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await settleApp(tester);
+      expect(bridge.finishes, 1);
+
+      bridge.closeWorks = true;
+      await tapAndSettle(tester, button('Cancel'));
+      expect(bridge.finishes, 2, reason: 'not stuck');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(bridge.finishes, 2, reason: 'closed for good now');
+    });
+
+    testApp('a finish that throws lets it close again, the type logged '
+        '(M19)', (tester) async {
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final level = Logger.root.level;
+      Logger.root.level = Level.ALL;
+      addTearDown(() => Logger.root.level = level);
+      await pump(tester);
+      bridge.closeThrows = const FormatException('secret text https://x.example/a');
+
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await settleApp(tester);
+      bridge.closeThrows = null;
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      expect(bridge.finishes, 2);
+      final shown = records.map((r) => '${r.message} ${r.error}').join('\n');
+      expect(shown, contains('FormatException'));
+      expect(shown, isNot(contains('secret')));
+      expect(shown, isNot(contains('example')));
+    });
+
+    testApp('an Open reel that fails lets the buttons work again (M19)', (
+      tester,
+    ) async {
+      final goa = await makeReel(tester, 'Goa');
+      await pump(tester);
+      await pickAndSave(tester, 'Goa');
+      await settleApp(tester);
+      bridge.closeWorks = false;
+
+      await tapAndSettle(tester, button('Open reel'));
+      expect(bridge.opened, [goa]);
+
+      bridge.closeWorks = true;
+      await tapAndSettle(tester, button('Open reel'));
+      expect(bridge.opened, [goa, goa], reason: 'not stuck');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      expect(bridge.finishes, 0, reason: 'it opened, so it is closing');
+    });
+
+    testApp('a save that never ends holds the close for 10 seconds, then it '
+        'goes ahead, logged without a secret (M19)', (tester) async {
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+      final level = Logger.root.level;
+      Logger.root.level = Level.ALL;
+      addTearDown(() => Logger.root.level = level);
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+
+      await tester.pump(const Duration(seconds: 9));
+      expect(bridge.finishes, 0, reason: 'still within the limit');
+      await tester.pump(const Duration(seconds: 1, milliseconds: 100));
+      await tester.pump();
+
+      expect(bridge.finishes, 1);
+      expect(
+        records.map((r) => r.message),
+        contains(contains('save still running')),
+      );
+    });
+
+    testApp('a save that ends in time cancels the 10 second limit (M19)', (
+      tester,
+    ) async {
+      await makeReel(tester, 'Goa');
+      await pump(tester);
+      final hold = refs.hold = Completer<void>();
+      await pickAndSave(tester, 'Goa');
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 3));
+      await real(tester, () async => hold.complete());
+      await settleApp(tester);
+      expect(bridge.finishes, 1);
+
+      await tester.pump(const Duration(seconds: 20));
+
+      expect(bridge.finishes, 1, reason: 'the limit does not close it again');
     });
   });
 

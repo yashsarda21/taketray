@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/core/locale.dart';
 import 'package:taketray/features/share/view_models/save_reference_controller.dart';
@@ -52,6 +53,12 @@ class ShareApp extends StatelessWidget {
   );
 }
 
+// Error types and plain words only, never the shared text (D-10).
+final Logger _log = Logger('shareApp');
+
+/// How long a close waits for a running save before it goes ahead (D-167).
+const Duration _saveWaitLimit = Duration(seconds: 10);
+
 /// The widest the sheet gets on a wide screen (Material's bottom sheet
 /// width, as the app's own sheets).
 const double _sheetMaxWidth = 640;
@@ -70,8 +77,12 @@ const double _sheetMaxWidth = 640;
 ///   sheet afresh, a null one (the usual resume) leaves it alone. A new share
 ///   waits for a running save to end first.
 /// - **Closing.** Done, Cancel, Close, Back and a tap on the scrim all come
-///   to `_leave`: once, and after a running save has ended, because the
-///   engine dies with the screen and must not take a database write with it.
+///   to `_leave`: once, and after a running save has ended (for 10 seconds
+///   at most), because the engine dies with the screen and must not take a
+///   database write with it. A new share that arrives while the close still
+///   waits for the save cancels the close and shows (the user came back to
+///   the screen); once the close has gone to Android, a new share is
+///   ignored. When Android fails the close, the screen is open again.
 /// - **Open reel** goes through `_leave` too; Android finishes the screen
 ///   itself then, so nothing here calls `finish`.
 class _ShareBody extends ConsumerStatefulWidget {
@@ -88,8 +99,17 @@ class _ShareBodyState extends ConsumerState<_ShareBody>
 
   bool _entering = false;
 
-  /// Set when the screen is closing: nothing more is started or read.
+  /// Set when the screen is closing: Back, the buttons and the scrim do
+  /// nothing more. Reset when a new share cancels the close, or Android
+  /// fails it.
   bool _closing = false;
+
+  /// Set once the close has gone to Android: nothing more is read or started.
+  bool _gone = false;
+
+  /// Counts the closes begun and cancelled, so a cancelled close that is
+  /// still waiting for the save ends without closing.
+  int _closeRound = 0;
 
   /// Whether a share has been handed to the sheet. A resume's read that
   /// answers before the start's read has, wins, and the start's late answer
@@ -145,10 +165,16 @@ class _ShareBodyState extends ConsumerState<_ShareBody>
   }
 
   Future<void> _readNewShare() async {
-    if (_closing) return;
+    if (_gone) return;
     final text = await ref.read(shareBridgeProvider).sharedText();
     // Null is the usual resume: no new share.
-    if (text == null || !mounted || _closing) return;
+    if (text == null || !mounted || _gone) return;
+    // A share while a close waits for a save: the user is back, the close
+    // is cancelled and the share shows once the save is done (D-167).
+    if (_closing) {
+      _closing = false;
+      _closeRound++;
+    }
     _started = true;
     await _begin(text);
   }
@@ -178,12 +204,30 @@ class _ShareBodyState extends ConsumerState<_ShareBody>
   }
 
   /// Runs [go] (finish, or open a reel, which finishes by itself) once, after
-  /// a running save has ended. Every later call does nothing.
-  Future<void> _leave(Future<void> Function() go) async {
+  /// a running save has ended, or after 10 seconds of waiting for it. Every
+  /// later call does nothing, unless a new share cancelled this close or
+  /// Android failed it.
+  Future<void> _leave(Future<bool> Function() go) async {
     if (_closing) return;
     _closing = true;
-    await _whenIdle();
-    await go();
+    final round = ++_closeRound;
+    await _whenIdle().timeout(
+      _saveWaitLimit,
+      onTimeout: () => _log.warning('Closing anyway: save still running'),
+    );
+    if (round != _closeRound) return;
+    _gone = true;
+    var closed = false;
+    try {
+      closed = await go();
+    } on Object catch (error) {
+      _log.warning('Closing the share screen failed: ${error.runtimeType}');
+    }
+    if (closed) return;
+    // Android did not close it: the screen works again.
+    _log.warning('The share screen is still open');
+    _gone = false;
+    _closing = false;
   }
 
   void _close() {
