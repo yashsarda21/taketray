@@ -3742,6 +3742,23 @@
   "@reelsStepIdeas": {
     "description": "Small heading over the suggested reel names on onboarding's last step."
   },
+  "reelsStepExistingCount": "{count, plural, =0{No references} =1{1 reference saved} other{{count} references saved}}",
+  "@reelsStepExistingCount": {
+    "description": "Second line of a row for a reel that already exists, on onboarding's last step (a reel a share made before onboarding): how many references it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelsStepExistingDone": "Already created",
+  "@reelsStepExistingDone": {
+    "description": "What a screen reader says for the check mark at the end of a row for a reel that already exists, on onboarding's last step."
+  },
+  "reelsStepShareTip": "Tip: share any Instagram reel to TakeTray to save it as a reference.",
+  "@reelsStepShareTip": {
+    "description": "Small tip under the reel list on onboarding's last step, always shown: sharing a reel from Instagram saves it as a reference."
+  },
   "reelsStepCreate": "Create {count, plural, one{1 reel} other{{count} reels}}",
   "@reelsStepCreate": {
     "description": "Main button of onboarding's last step while reel names are in the list: makes them all and opens Reels.",

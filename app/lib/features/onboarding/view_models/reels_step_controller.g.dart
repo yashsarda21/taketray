@@ -18,6 +18,11 @@ part of 'reels_step_controller.dart';
 ///   then calls `finish()`. A second call while it runs, or once it is done,
 ///   does nothing. A reel made elsewhere meanwhile is shown as a duplicate and
 ///   nothing is finished; any other failure is `failed`.
+/// - **existing reels** are read live from `ReelsRepository.watchAll` and
+///   `ReferencesRepository.watchCounts` and shown oldest first with their
+///   reference counts (D-168). Nothing shows until both have answered, so a
+///   reel never appears with a count that is about to change; a count read
+///   that fails counts as none.
 /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
 ///   `finish()` and writes no reel.
 ///
@@ -39,6 +44,11 @@ final reelsStepControllerProvider = ReelsStepControllerProvider._();
 ///   then calls `finish()`. A second call while it runs, or once it is done,
 ///   does nothing. A reel made elsewhere meanwhile is shown as a duplicate and
 ///   nothing is finished; any other failure is `failed`.
+/// - **existing reels** are read live from `ReelsRepository.watchAll` and
+///   `ReferencesRepository.watchCounts` and shown oldest first with their
+///   reference counts (D-168). Nothing shows until both have answered, so a
+///   reel never appears with a count that is about to change; a count read
+///   that fails counts as none.
 /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
 ///   `finish()` and writes no reel.
 ///
@@ -58,6 +68,11 @@ final class ReelsStepControllerProvider
   ///   then calls `finish()`. A second call while it runs, or once it is done,
   ///   does nothing. A reel made elsewhere meanwhile is shown as a duplicate and
   ///   nothing is finished; any other failure is `failed`.
+  /// - **existing reels** are read live from `ReelsRepository.watchAll` and
+  ///   `ReferencesRepository.watchCounts` and shown oldest first with their
+  ///   reference counts (D-168). Nothing shows until both have answered, so a
+  ///   reel never appears with a count that is about to change; a count read
+  ///   that fails counts as none.
   /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
   ///   `finish()` and writes no reel.
   ///
@@ -93,7 +108,7 @@ final class ReelsStepControllerProvider
 }
 
 String _$reelsStepControllerHash() =>
-    r'6ba339a67c3975b0334f007dbb05e02517fb0fe9';
+    r'09521e4d391cd204b9c3a30affb450a0db7775f4';
 
 /// The reels step of onboarding (D-141): the names the user plans, checked
 /// with the reel form's rules, then made in one go.
@@ -105,6 +120,11 @@ String _$reelsStepControllerHash() =>
 ///   then calls `finish()`. A second call while it runs, or once it is done,
 ///   does nothing. A reel made elsewhere meanwhile is shown as a duplicate and
 ///   nothing is finished; any other failure is `failed`.
+/// - **existing reels** are read live from `ReelsRepository.watchAll` and
+///   `ReferencesRepository.watchCounts` and shown oldest first with their
+///   reference counts (D-168). Nothing shows until both have answered, so a
+///   reel never appears with a count that is about to change; a count read
+///   that fails counts as none.
 /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
 ///   `finish()` and writes no reel.
 ///

@@ -4,6 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 
@@ -30,6 +32,10 @@ const int _ideasShown = 4;
 
 const Object _keep = Object();
 
+/// A reel the database already has, as the step lists it (D-168): its name and
+/// how many references it holds.
+typedef ExistingReel = ({String name, int referenceCount});
+
 /// What onboarding's reels step shows (D-141).
 @immutable
 class ReelsStepState {
@@ -37,7 +43,7 @@ class ReelsStepState {
     this.names = const [],
     this.error,
     this.clashingName,
-    this.existingNames = const [],
+    this.existing = const [],
     this.busy = false,
     this.failed = false,
     this.finished = false,
@@ -54,14 +60,18 @@ class ReelsStepState {
   /// the list or in the database, for "You already have a reel called {name}".
   final String? clashingName;
 
-  /// The names of the reels the database already has (a copy of the last
-  /// read; the repository's own check is the backstop).
-  final List<String> existingNames;
+  /// The reels the database already has, oldest first, each with its reference
+  /// count (a copy of the last read; the repository's own check is the
+  /// backstop). A reel a share made before onboarding is one of them (D-168).
+  final List<ExistingReel> existing;
+
+  /// The names of [existing], in the same order.
+  List<String> get existingNames => [for (final reel in existing) reel.name];
 
   /// Whether the database has any reel: the main button is then "Continue"
   /// when nothing is typed. (An app killed after Create but before onboarding
   /// was marked done comes back here.)
-  bool get hasExistingReels => existingNames.isNotEmpty;
+  bool get hasExistingReels => existing.isNotEmpty;
 
   /// Create, Continue or Skip is running: names cannot change and a second
   /// tap does nothing.
@@ -81,7 +91,7 @@ class ReelsStepState {
     if (names.length >= _ideasUntilNames) return const [];
     final taken = {
       for (final name in names) reelNameKey(name),
-      for (final name in existingNames) reelNameKey(name),
+      for (final reel in existing) reelNameKey(reel.name),
     };
     return [
       for (final idea in onboardingIdeas)
@@ -93,7 +103,7 @@ class ReelsStepState {
     List<String>? names,
     Object? error = _keep,
     Object? clashingName = _keep,
-    List<String>? existingNames,
+    List<ExistingReel>? existing,
     bool? busy,
     bool? failed,
     bool? finished,
@@ -103,7 +113,7 @@ class ReelsStepState {
     clashingName: identical(clashingName, _keep)
         ? this.clashingName
         : clashingName as String?,
-    existingNames: existingNames ?? this.existingNames,
+    existing: existing ?? this.existing,
     busy: busy ?? this.busy,
     failed: failed ?? this.failed,
     finished: finished ?? this.finished,
@@ -115,7 +125,7 @@ class ReelsStepState {
       listEquals(other.names, names) &&
       other.error == error &&
       other.clashingName == clashingName &&
-      listEquals(other.existingNames, existingNames) &&
+      listEquals(other.existing, existing) &&
       other.busy == busy &&
       other.failed == failed &&
       other.finished == finished;
@@ -125,7 +135,7 @@ class ReelsStepState {
     Object.hashAll(names),
     error,
     clashingName,
-    Object.hashAll(existingNames),
+    Object.hashAll(existing),
     busy,
     failed,
     finished,
@@ -142,6 +152,11 @@ class ReelsStepState {
 ///   then calls `finish()`. A second call while it runs, or once it is done,
 ///   does nothing. A reel made elsewhere meanwhile is shown as a duplicate and
 ///   nothing is finished; any other failure is `failed`.
+/// - **existing reels** are read live from `ReelsRepository.watchAll` and
+///   `ReferencesRepository.watchCounts` and shown oldest first with their
+///   reference counts (D-168). Nothing shows until both have answered, so a
+///   reel never appears with a count that is about to change; a count read
+///   that fails counts as none.
 /// - **[skip]** (also the "Continue" of a phone that already has reels) calls
 ///   `finish()` and writes no reel.
 ///
@@ -151,20 +166,72 @@ class ReelsStepState {
 /// Create never makes a second set.
 @riverpod
 class ReelsStepController extends _$ReelsStepController {
+  /// The last reels and counts read; null until each has answered once.
+  List<Reel>? _reels;
+  Map<int, int>? _counts;
+
   @override
   ReelsStepState build() {
-    final subscription = ref.read(reelsRepositoryProvider).watchAll().listen(
-      (reels) {
-        if (!ref.mounted) return;
-        state = state._with(
-          existingNames: [for (final reel in reels) reel.name],
+    _reels = null;
+    _counts = null;
+    final reelsSubscription = ref
+        .read(reelsRepositoryProvider)
+        .watchAll()
+        .listen(
+          (reels) {
+            if (!ref.mounted) return;
+            _reels = reels;
+            _publish();
+          },
+          onError: (Object error) =>
+              _log.warning('Reading the reels failed: ${error.runtimeType}'),
         );
-      },
-      onError: (Object error) =>
-          _log.warning('Reading the reels failed: ${error.runtimeType}'),
-    );
-    ref.onDispose(() => unawaited(subscription.cancel()));
+    final countsSubscription = ref
+        .read(referencesRepositoryProvider)
+        .watchCounts()
+        .listen(
+          (counts) {
+            if (!ref.mounted) return;
+            _counts = counts;
+            _publish();
+          },
+          onError: (Object error) {
+            // The counts are a hint: the reels show without them.
+            _log.warning(
+              'Reading the reference counts failed: ${error.runtimeType}',
+            );
+            if (!ref.mounted) return;
+            _counts = const {};
+            _publish();
+          },
+        );
+    ref.onDispose(() {
+      unawaited(reelsSubscription.cancel());
+      unawaited(countsSubscription.cancel());
+    });
     return const ReelsStepState();
+  }
+
+  /// Puts the last reels and counts in the state, once both have been read.
+  void _publish() {
+    final reels = _reels;
+    final counts = _counts;
+    if (reels == null || counts == null) return;
+    state = state._with(existing: _existingFrom(reels, counts));
+  }
+
+  /// [reels] oldest created first (ties: lowest id first), each with its
+  /// count from [counts].
+  List<ExistingReel> _existingFrom(List<Reel> reels, Map<int, int> counts) {
+    final oldestFirst = [...reels]
+      ..sort((a, b) {
+        final byTime = a.createdAt.compareTo(b.createdAt);
+        return byTime != 0 ? byTime : a.id.compareTo(b.id);
+      });
+    return [
+      for (final reel in oldestFirst)
+        (name: reel.name, referenceCount: counts[reel.id] ?? 0),
+    ];
   }
 
   /// Adds [typed] to the list; true when it was added, false when it was
@@ -282,13 +349,14 @@ class ReelsStepController extends _$ReelsStepController {
       _set((s) => s._with(busy: false, failed: true));
       return;
     }
-    List<String> existing;
+    List<Reel> reels;
     try {
-      existing = [for (final r in await repository.watchAll().first) r.name];
+      reels = await repository.watchAll().first;
     } on Object catch (error) {
       _log.warning('Reading the reels failed: ${error.runtimeType}');
-      existing = const [];
+      reels = const [];
     }
+    final existing = [for (final r in reels) r.name];
     String? clash;
     if (problem == ReelNameProblem.duplicate) {
       for (final name in names) {
@@ -301,7 +369,9 @@ class ReelsStepController extends _$ReelsStepController {
       (s) => s._with(
         error: problem,
         clashingName: clash,
-        existingNames: existing.isEmpty ? null : existing,
+        existing: reels.isEmpty
+            ? null
+            : _existingFrom(reels, _counts ?? const {}),
         busy: false,
       ),
     );

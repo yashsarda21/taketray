@@ -371,3 +371,60 @@ Then break one thing on purpose. In `share_app.dart` delete `if (_closing) retur
 ### Decisions
 
 - D-167: the layout, the one close path, the second share both ways, the missing blur, and the controller's disposed-state guard.
+
+## 7. Onboarding: reels made by a share
+
+### What we built
+
+Onboarding's last step, "What reels are you planning?", now lists the reels that already exist. That happens when you share an Instagram reel before ever opening the app: the share made a reel, and onboarding should show it. Each row has a link icon, the name, how many references it holds ("No references", "1 reference saved", "3 references saved") and a check mark that a screen reader calls "Already created". There is no remove button. Under the list, always, a small tip says: "Tip: share any Instagram reel to TakeTray to save it as a reference."
+
+The buttons follow the old rule: with existing reels and nothing typed, the main button is **Continue**.
+
+### Why TakeTray needs it
+
+Section 4 explained that a share can arrive before onboarding. If the step ignored that reel, a new user would see an empty list and might make a second reel with the same name. Showing it tells them nothing was lost, and the tip teaches the share path at the moment they choose reels.
+
+### Key ideas
+
+**1. One list from two streams.** The reels come from `watchAll` and the counts from `watchCounts`. The controller keeps the last answer of each and publishes only when both have arrived, so a row never shows "No references" and then jumps to "3 references saved".
+
+```dart
+void _publish() {
+  final reels = _reels;
+  final counts = _counts;
+  if (reels == null || counts == null) return;
+  state = state._with(existing: _existingFrom(reels, counts));
+}
+```
+
+**2. Oldest first needs its own sort.** The database orders reels by last change, and saving a reference counts as a change, so the oldest reel can come first or last. The controller sorts by creation time, then by id.
+
+```dart
+final byTime = a.createdAt.compareTo(b.createdAt);
+return byTime != 0 ? byTime : a.id.compareTo(b.id);
+```
+
+**3. Old names, new source.** `existingNames` is now computed from `existing`, so the duplicate check and the idea chips did not need to change.
+
+**4. A failed count is not a failed screen.** If the counts cannot be read, the reels still show, each with "No references".
+
+### Where it lives
+
+- `app/lib/features/onboarding/view_models/reels_step_controller.dart` (`ExistingReel`, `ReelsStepState.existing`) and `app/lib/features/onboarding/views/reels_step_screen.dart` (`_ExistingRow`, `_ShareTip`).
+- `app/lib/l10n/app_en.arb` (`reelsStepExistingCount`, `reelsStepExistingDone`, `reelsStepShareTip`).
+- Docs: `docs/flow.md` ("Onboarding steps", the reels step), D-168.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/features/onboarding/view_models/reels_step_controller_test.dart \
+  test/features/onboarding/views/reels_step_screen_test.dart
+```
+
+Then break one thing on purpose. In `reels_step_controller.dart` change `if (reels == null || counts == null) return;` to `if (reels == null) return;` (and read `_counts ?? const {}`): "a reel is never shown with a count that is not yet read" fails, because a row now shows 0 before the real count arrives. Put it back.
+
+### Decisions
+
+- D-168: the existing rows and their counts, the sort, the wait for both reads, the always-shown tip, and no remove button.
