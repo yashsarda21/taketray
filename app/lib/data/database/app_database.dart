@@ -42,10 +42,19 @@ class AppDatabase extends _$AppDatabase {
     // makes the second wait; it then reads the version again and finds the
     // schema made, instead of failing on "already exists". The version is
     // written inside, so the second never sees tables without it.
+    //
+    // What the second finds is normally this version, and nothing is done.
+    // A newer one is refused (D-54), as in onUpgrade; an older one (only a
+    // file written by an older TakeTray, which cannot be here at the same
+    // time) is upgraded from that version by the same steps onUpgrade runs,
+    // never stamped as this version without them (D-164).
     onCreate: (m) => transaction(() async {
-      if (await _storedVersion() != 0) return;
-      await m.createAll();
-      await customStatement('PRAGMA user_version = $schemaVersion');
+      if (await _storedVersion() == 0) {
+        await m.createAll();
+        await customStatement('PRAGMA user_version = $schemaVersion');
+        return;
+      }
+      await _runStepsFromStored(m, schemaVersion);
     }),
     onUpgrade: (m, from, to) async {
       // A database written by a newer TakeTray (a downgrade): opening it
@@ -68,25 +77,29 @@ class AppDatabase extends _$AppDatabase {
       // The steps run from the version read again inside the transaction:
       // the other engine may have upgraded the file since this connection
       // read `from` (D-164), and a step must not run twice.
-      await transaction(() async {
-        final stored = await _storedVersion();
-        if (stored > to) {
-          throw UnsupportedError(
-            'Cannot open a version $stored database with schema version $to',
-          );
-        }
-        // Already at `to`: no step runs.
-        await m.runMigrationSteps(
-          from: stored,
-          to: to,
-          steps: migrationSteps(from1To2: _from1To2),
-        );
-      });
+      await transaction(() => _runStepsFromStored(m, to));
     },
     // SQLite leaves foreign keys off for every new connection; without this,
     // ON DELETE CASCADE would silently do nothing.
     beforeOpen: (details) => customStatement('PRAGMA foreign_keys = ON'),
   );
+
+  /// Runs the migration steps from the version stored in the file now to
+  /// [to], inside the transaction the caller opened. A stored version above
+  /// [to] is refused (D-54); one equal to [to] runs no step.
+  Future<void> _runStepsFromStored(Migrator m, int to) async {
+    final stored = await _storedVersion();
+    if (stored > to) {
+      throw UnsupportedError(
+        'Cannot open a version $stored database with schema version $to',
+      );
+    }
+    await m.runMigrationSteps(
+      from: stored,
+      to: to,
+      steps: migrationSteps(from1To2: _from1To2),
+    );
+  }
 
   /// The schema version stored in the file now (`PRAGMA user_version`).
   Future<int> _storedVersion() async => (await customSelect(

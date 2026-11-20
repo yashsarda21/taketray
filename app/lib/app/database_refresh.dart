@@ -14,8 +14,10 @@ import 'package:taketray/data/database/connection.dart';
 /// and shows what the other engine saved meanwhile. A share can write
 /// nothing else.
 ///
-/// Nothing happens at start (the first queries read the file anyway), and
-/// nothing on a resume before this engine has opened the database. Each
+/// Nothing is done at start itself (the first queries read the file anyway;
+/// the `resumed` Android sends after the first frame can make one harmless
+/// re-read), and nothing on a resume before this engine has opened the
+/// database. Each
 /// engine has exactly one: `TakeTrayApp` and `ShareApp` put it above their
 /// `MaterialApp`.
 class DatabaseRefresh extends ConsumerStatefulWidget {

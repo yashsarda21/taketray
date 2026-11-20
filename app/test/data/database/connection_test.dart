@@ -55,6 +55,14 @@ void main() {
   late List<ProviderContainer> engines;
 
   setUp(() {
+    // Two engines are two AppDatabase objects in one test: drift's warning
+    // about that is the point of these tests, not a finding (as in
+    // migration_test.dart).
+    final warned = driftRuntimeOptions.dontWarnAboutMultipleDatabases;
+    driftRuntimeOptions.dontWarnAboutMultipleDatabases = true;
+    addTearDown(
+      () => driftRuntimeOptions.dontWarnAboutMultipleDatabases = warned,
+    );
     docs = Directory.systemTemp.createTempSync('taketray_docs_');
     temp = Directory.systemTemp.createTempSync('taketray_tmp_');
     engines = [];
@@ -68,12 +76,14 @@ void main() {
         });
   });
 
-  /// Closes an engine's database and waits until it really is closed.
+  /// Closes an engine's database and waits until it really is closed. The
+  /// close is awaited first; disposing the container then asks the provider
+  /// to close it once more, which does nothing.
   Future<void> close(ProviderContainer engine) async {
     if (!engines.remove(engine)) return;
     final db = engine.read(appDatabaseProvider);
-    engine.dispose();
     await db.close();
+    engine.dispose();
   }
 
   tearDown(() async {
@@ -231,6 +241,13 @@ void main() {
     expect(await _count(again), 2);
   });
   group('two engines opening the file at the same moment', () {
+    // These races rely on the 300 ms hold below: both engines must have read
+    // the version and be waiting on the lock before it is released. On a
+    // runner so slow that an engine has not read the version within 300 ms
+    // the test still passes, but it then proves less (the engine simply opens
+    // a file that is already made), so a pass here is not proof of the race
+    // on its own; the version-inside-the-transaction test in
+    // `test/drift/taketray/migration_test.dart` covers it without timing.
     // A third connection holds the write lock while both engines open: both
     // read the stored version before either can change the schema, the way
     // two engines starting together could. Then the lock goes.
@@ -263,6 +280,40 @@ void main() {
       await share.into(share.reels).insert(_reel('from the share'));
       expect(await _count(app), 1);
       expect(await _pragma(app, 'user_version'), 2);
+    });
+
+    test('a new file that another engine gave a newer version meanwhile is '
+        'refused, not stamped as this one (M3, D-54)', () async {
+      final holder = await holdWriteLock();
+      final app = open();
+      final count = _count(app);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await holder.runCustom('PRAGMA user_version = 3');
+      await release(holder);
+
+      await expectLater(
+        count,
+        throwsA(
+          isA<Object>().having(
+            (e) => '$e',
+            'cause',
+            contains('Cannot open a version 3 database with schema version 2'),
+          ),
+        ),
+      );
+      final check = NativeDatabase(
+        File('${docs.path}/taketray.sqlite'),
+        enableMigrations: false,
+      );
+      await check.ensureOpen(_RawUser());
+      final rows = await check.runSelect('PRAGMA user_version', []);
+      final tables = await check.runSelect(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'reels'",
+        [],
+      );
+      await check.close();
+      expect(rows.single['user_version'], 3);
+      expect(tables, isEmpty, reason: 'no schema was made over it');
     });
 
     test('a v1 file: it is upgraded once and both engines work', () async {
