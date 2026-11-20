@@ -510,7 +510,7 @@ cd app && ../tool/flutter test test/patrol_support/test_share_test.dart \
   test/patrol_support/share_screen_test.dart test/patrol_support/share_source_test.dart
 ```
 
-Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`: "it is started as a new task, which a non-activity context needs" fails. In `share_screen.dart` replace `if (open == null) return closed;` with `open ??= states.last;`: "taps nothing when no share screen is up (the app has a Done)" fails, which is exactly the mistake that would press the app's own Done. In `share_test.dart` delete the line `linksBridgeProvider.overrideWithValue(env.links),`: "every app that is pumped has the fake links bridge" fails. (Put them all back.)
+Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`: "it is started as a new task, which a non-activity context needs" fails. In `share_screen.dart` replace `if (open == null) return closed;` with `open ??= states.last;`: "taps nothing when no share screen is up (the app has a Done)" fails, which is exactly the mistake that would press the app's own Done. In `share_test.dart` delete the line `linksBridgeProvider.overrideWithValue(env.links),` from `_startApp`: the test "every app that is pumped has the fake links bridge" in `share_source_test.dart` fails, printing `Expected: contains 'linksBridgeProvider.overrideWithValue(env.links)'` followed by the text of `_startApp` it was looking in. That is exactly the mistake that would let a real link open during a flow, caught without a phone. (Put all three back.)
 
 ### Decisions
 
