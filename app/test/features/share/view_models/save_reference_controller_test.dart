@@ -409,8 +409,9 @@ void main() {
       await c.start(reelLink);
       final before = state();
 
-      c.dropPickIfGone({goa});
-      c.dropPickIfGone(const {});
+      c
+        ..dropPickIfGone({goa})
+        ..dropPickIfGone(const {});
 
       expect(identical(state(), before), isTrue);
     });
