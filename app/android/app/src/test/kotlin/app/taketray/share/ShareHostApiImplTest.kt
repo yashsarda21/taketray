@@ -1,11 +1,17 @@
 package app.taketray.share
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Typeface
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.StyleSpan
+import app.taketray.MainActivity
+import app.taketray.background.BackgroundState
+import app.taketray.background.LaunchActionMsg
+import app.taketray.background.LaunchActions
+import app.taketray.background.LaunchMsg
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -16,6 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.shadows.ShadowLog
 
 /**
  * An activity that records how it was finished, and can be made to fail
@@ -25,10 +32,16 @@ class RecordingActivity : Activity() {
     var removedTask = false
     var finishedOnly = false
     var intentError: RuntimeException? = null
+    var startError: RuntimeException? = null
 
     override fun getIntent(): Intent {
         intentError?.let { throw it }
         return super.getIntent()
+    }
+
+    override fun startActivity(intent: Intent) {
+        startError?.let { throw it }
+        super.startActivity(intent)
     }
 
     override fun finishAndRemoveTask() {
@@ -224,25 +237,76 @@ class ShareHostApiImplTest {
     }
 
     @Test
-    fun `openReel closes the screen, until Task 4 opens the reel`() {
+    fun `openReel starts MainActivity with the openReel launch action, then closes the screen`() {
         val activity = activityWith(send("x"))
         shadowOf(activity).setIsTaskRoot(false)
 
         ShareHostApiImpl(activity).openReel(7)
 
+        val started = shadowOf(activity).nextStartedActivity
+        assertEquals(ComponentName(activity, MainActivity::class.java), started.component)
+        assertEquals("openReel", started.getStringExtra(LaunchActions.EXTRA_OPEN))
+        assertEquals(7L, started.getLongExtra(LaunchActions.EXTRA_REEL_ID, -1))
+        assertEquals(LaunchMsg(LaunchActionMsg.OPEN_REEL, 7), LaunchActions.read(started))
+        assertNull("one start only", shadowOf(activity).nextStartedActivity)
         assertTrue(activity.isFinishing)
-        // Nothing is started yet (Task 4 starts MainActivity).
-        assertNull(shadowOf(activity).nextStartedActivity)
+        assertTrue(activity.finishedOnly)
+        assertFalse(activity.removedTask)
     }
 
     @Test
-    fun `openReel at the root of its task closes the task too`() {
+    fun `openReel at the root of its task starts MainActivity and closes the task too`() {
         val activity = activityWith(send("x"))
         shadowOf(activity).setIsTaskRoot(true)
 
         ShareHostApiImpl(activity).openReel(7)
 
+        assertEquals(ComponentName(activity, MainActivity::class.java), shadowOf(activity).nextStartedActivity.component)
         assertTrue(activity.removedTask)
+    }
+
+    @Test
+    fun `openReel with an id outside 1 to MAX_REEL_ID starts nothing, only finishes, and does not crash`() {
+        for (id in listOf(0L, -1L, Long.MIN_VALUE, BackgroundState.MAX_REEL_ID + 1, Long.MAX_VALUE)) {
+            val activity = activityWith(send("x"))
+            shadowOf(activity).setIsTaskRoot(false)
+            ShadowLog.clear()
+
+            ShareHostApiImpl(activity).openReel(id)
+
+            assertNull("$id", shadowOf(activity).nextStartedActivity)
+            assertTrue("$id", activity.isFinishing)
+            val logged = ShadowLog.getLogs().joinToString { it.msg }
+            assertTrue("$id: the reason is logged", logged.contains("unusable reel id"))
+            assertFalse("$id: refused before an intent is built", logged.contains("IllegalArgumentException"))
+            assertTrue("$id: no stack trace", ShadowLog.getLogs().none { it.throwable != null })
+        }
+    }
+
+    @Test
+    fun `openReel with the largest usable id starts MainActivity`() {
+        val activity = activityWith(send("x"))
+        ShareHostApiImpl(activity).openReel(BackgroundState.MAX_REEL_ID)
+        assertEquals(
+            BackgroundState.MAX_REEL_ID,
+            shadowOf(activity).nextStartedActivity.getLongExtra(LaunchActions.EXTRA_REEL_ID, -1),
+        )
+    }
+
+    @Test
+    fun `an openReel that cannot start MainActivity still finishes, and logs only the class`() {
+        val activity = activityWith(send("x"))
+        activity.startError = IllegalStateException("secret https://private.example.com")
+        ShadowLog.clear()
+
+        ShareHostApiImpl(activity).openReel(7)
+
+        assertTrue(activity.isFinishing)
+        assertNull(shadowOf(activity).nextStartedActivity)
+        val logged = ShadowLog.getLogs().joinToString { it.msg }
+        assertTrue(logged.contains("IllegalStateException"))
+        assertFalse(logged.contains("secret"))
+        assertTrue(ShadowLog.getLogs().none { it.throwable != null })
     }
 
     // ------------------------------------------------------------ errors

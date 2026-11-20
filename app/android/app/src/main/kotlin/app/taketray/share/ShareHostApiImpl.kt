@@ -3,6 +3,9 @@ package app.taketray.share
 import android.app.Activity
 import android.content.Intent
 import android.util.Log
+import app.taketray.background.BackgroundState
+import app.taketray.background.LaunchActionMsg
+import app.taketray.background.LaunchActions
 import app.taketray.bridge.failureMessage
 import app.taketray.bridge.guardedWith
 
@@ -53,12 +56,26 @@ class ShareHostApiImpl(
         }
 
     /**
-     * Closes the share screen. Task 4 makes it open the reel through the
-     * `openReel` launch action first; until then [reelId] is not used.
+     * Opens TakeTray on reel [reelId] through the `openReel` launch action
+     * (D-165), then closes the share screen as [finish] does. An id outside
+     * 1 to [BackgroundState.MAX_REEL_ID], or a start that fails, only closes
+     * the screen: the reason is logged (the exception's class, never a
+     * message), and nothing is thrown.
      */
     override fun openReel(reelId: Long) =
         guardedWith("openReel", ::shareFailure) {
-            close(host("openReel"))
+            val host = host("openReel")
+            if (reelId in 1..BackgroundState.MAX_REEL_ID) {
+                try {
+                    host.startActivity(LaunchActions.intent(host, LaunchActionMsg.OPEN_REEL, reelId))
+                    Log.i(TAG, "openReel: opening reel $reelId")
+                } catch (e: RuntimeException) {
+                    Log.w(TAG, "openReel: TakeTray not started: ${e.javaClass.simpleName}")
+                }
+            } else {
+                Log.w(TAG, "openReel: unusable reel id, only closing")
+            }
+            close(host)
         }
 
     /** The activity is being destroyed: every later call is `no-activity`. */

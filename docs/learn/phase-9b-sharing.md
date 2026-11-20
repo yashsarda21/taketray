@@ -181,3 +181,69 @@ Then break one thing on purpose. In `connection.dart`, delete the `busy_timeout`
 ### Decisions
 
 - D-164: why there is no device proof, a connection per engine with WAL and a 5 s busy timeout, the re-read on resume, migrations that are safe on two connections, and the checks left for the S24.
+
+## 4. Open reel, held through onboarding
+
+### What we built
+
+The share screen has an **Open reel** button. It now really opens TakeTray on the reel you just saved to, on that reel's References. If TakeTray has never been through onboarding, the reel waits in memory and opens the moment onboarding ends.
+
+### Why TakeTray needs it
+
+The share screen runs in its own engine and cannot show TakeTray's screens. It can only ask the app to open one. TakeTray already has one safe way for something outside the app to ask: a launch action, an allow-listed word plus, at most, a reel number (D-103). Open reel is a fourth word, `openReel`. The catch is onboarding: a first-time user sees the welcome and steps, and D-136 says a tap that arrives then is dropped so it cannot pull them off their step. For Open reel that would throw the user's one tap away, so this one action is held instead.
+
+### Key ideas
+
+**1. One more word on the allow-list.** Kotlin's `LaunchActions` knows `toTag`, `reels`, `doneEditing` and now `openReel`. Like `doneEditing` it carries a reel id, and only a number from 1 to `MAX_REEL_ID` counts:
+
+```kotlin
+val reelId = if (hasReel(action) && reel in 1..BackgroundState.MAX_REEL_ID) reel else null
+```
+
+Another app can start the exported `MainActivity` with anything, so a bad id still gives an `openReel` launch, just with no reel, and Dart opens the reels list.
+
+**2. The share screen starts MainActivity, then goes away.**
+
+```kotlin
+host.startActivity(LaunchActions.intent(host, LaunchActionMsg.OPEN_REEL, reelId))
+...
+close(host)
+```
+
+An id outside the range starts nothing and only closes the screen, with a log line that says why and nothing else. The screen closes the same way `finish()` does, so nothing is left in Recents.
+
+**3. Dart decides the screen.** `routeFor` turns the launch into a route and checks the reel still exists: `Routes.reelReferences(id)` if it does, `Routes.reels` if it was deleted or the id is unusable.
+
+**4. Held, not dropped.** In `LaunchActionsListener`, while onboarding is not done:
+
+```dart
+if (launch.action != LaunchAction.openReel) {
+  _log.info('A tap during onboarding was dropped');
+  return;
+}
+_held = launch; // the newest wins
+```
+
+The listener also listens to the onboarding gate. When it reports done, the held launch goes through the same queue as any tap, once, and is cleared. Nothing is written anywhere, so if Android kills the app during onboarding the held reel is forgotten (the reel itself was already saved by the share).
+
+### Where it lives
+
+- `app/pigeons/background_api.dart`, `app/lib/platform/background_api.g.dart`, `app/android/.../background/BackgroundApi.g.kt`: `openReel` in the launch enum.
+- `app/android/app/src/main/kotlin/app/taketray/background/LaunchActions.kt` and `.../share/ShareHostApiImpl.kt`.
+- `app/lib/platform/background_bridge.dart`, `app/lib/features/notifications/view_models/launch_actions.dart` (`routeFor`), `app/lib/app.dart` (`LaunchActionsListener`).
+- Docs: `docs/flow.md` ("Launch actions", items 7 and 8), D-165.
+
+### Try it yourself
+
+From the repository root:
+
+```sh
+cd app && ../tool/flutter test test/app_test.dart test/app/launch_actions_test.dart
+../tool/test_android --tests 'app.taketray.background.LaunchActionsTest' --tests 'app.taketray.share.ShareHostApiImplTest'
+```
+
+Then break one thing on purpose. In `app.dart`, change the held branch so `openReel` is dropped like the others (`if (true) {`) and run `app_test.dart`: the tests in "openReel held through onboarding" fail because nothing opens after onboarding. Put it back.
+
+### Decisions
+
+- D-165: the fourth launch action, how the share screen starts MainActivity, why an `openReel` is held in memory through onboarding (amending D-136 for this action only), and what a kill forgets.

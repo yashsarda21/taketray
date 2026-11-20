@@ -14,9 +14,10 @@ import kotlinx.coroutines.launch
  * Launch actions (D-103, D-124): what a notification tap asks the app to open.
  * Flutter's own deep linking is off, because MainActivity is exported for the
  * launcher and any app could otherwise open any route (D-101). Instead a
- * notification's intent carries [EXTRA_OPEN] with one of three allow-listed
- * values, and `doneEditing` also [EXTRA_REEL_ID], the reel it is for: the only
- * payload there is, checked here and again by Dart. Anything else is ignored.
+ * notification's intent carries [EXTRA_OPEN] with one of four allow-listed
+ * values, and `doneEditing` and `openReel` (the share screen's Open reel,
+ * D-165) also [EXTRA_REEL_ID], the reel they are for: the only payload there
+ * is, checked here and again by Dart. Anything else is ignored.
  */
 object LaunchActions {
     const val EXTRA_OPEN = "app.taketray.extra.OPEN"
@@ -27,7 +28,11 @@ object LaunchActions {
             "toTag" to LaunchActionMsg.TO_TAG,
             "reels" to LaunchActionMsg.REELS,
             "doneEditing" to LaunchActionMsg.DONE_EDITING,
+            "openReel" to LaunchActionMsg.OPEN_REEL,
         )
+
+    /** Whether [action] names a reel. */
+    private fun hasReel(action: LaunchActionMsg) = action == LaunchActionMsg.DONE_EDITING || action == LaunchActionMsg.OPEN_REEL
 
     /**
      * The explicit MainActivity intent a notification uses for [action]. It
@@ -36,8 +41,8 @@ object LaunchActions {
      * onNewIntent (CLEAR_TOP with SINGLE_TOP). Each action has its own
      * identifier, and a Done editing intent one per reel, so PendingIntents for
      * them never replace each other (PendingIntent compares intents without
-     * their extras). [reelId] is used for [LaunchActionMsg.DONE_EDITING] only,
-     * which needs a valid one ([BackgroundState.MAX_REEL_ID]): otherwise
+     * their extras). [reelId] is used for [LaunchActionMsg.DONE_EDITING] and
+     * [LaunchActionMsg.OPEN_REEL] only, which need a valid one ([BackgroundState.MAX_REEL_ID]): otherwise
      * [IllegalArgumentException].
      */
     fun intent(
@@ -50,8 +55,8 @@ object LaunchActions {
             Intent(context, MainActivity::class.java)
                 .putExtra(EXTRA_OPEN, value)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        if (action != LaunchActionMsg.DONE_EDITING) return intent.setIdentifier("taketray-open-$value")
-        require(reelId != null && reelId in 1..BackgroundState.MAX_REEL_ID) { "Done editing needs a usable reel id" }
+        if (!hasReel(action)) return intent.setIdentifier("taketray-open-$value")
+        require(reelId != null && reelId in 1..BackgroundState.MAX_REEL_ID) { "$value needs a usable reel id" }
         return intent.setIdentifier("taketray-open-$value-$reelId").putExtra(EXTRA_REEL_ID, reelId)
     }
 
@@ -59,12 +64,12 @@ object LaunchActions {
      * The launch in [intent], read once: both extras are removed whatever they
      * held, so the same intent (an activity re-created with it) gives nothing
      * the second time. Null when there is none, when the value is not exactly
-     * `toTag`, `reels` or `doneEditing` (another app can send anything), and
+     * `toTag`, `reels`, `doneEditing` or `openReel` (another app can send anything), and
      * when the activity was opened from Recents
      * (FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY: Android replays the first intent,
-     * extras and all). Only `doneEditing` has a reel, and only a valid reel id
-     * (a Long from 1 to [BackgroundState.MAX_REEL_ID]) counts; otherwise it is
-     * still a `doneEditing` launch, with no reel, and Dart opens Reels.
+     * extras and all). Only `doneEditing` and `openReel` have a reel, and only a valid
+     * reel id (a Long from 1 to [BackgroundState.MAX_REEL_ID]) counts; otherwise
+     * it is still that launch, with no reel, and Dart opens Reels.
      */
     fun read(intent: Intent?): LaunchMsg? {
         if (intent == null) return null
@@ -82,7 +87,7 @@ object LaunchActions {
         }
         if (intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0) return null
         val action = VALUES[value] ?: return null
-        val reelId = if (action == LaunchActionMsg.DONE_EDITING && reel in 1..BackgroundState.MAX_REEL_ID) reel else null
+        val reelId = if (hasReel(action) && reel in 1..BackgroundState.MAX_REEL_ID) reel else null
         return LaunchMsg(action, reelId)
     }
 

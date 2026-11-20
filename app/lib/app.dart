@@ -183,9 +183,11 @@ final Logger _log = Logger('launchActions');
 /// A tap goes to its screen with `GoRouter.go` (the allow-list is
 /// [routeFor]), after the current frame: the start action can arrive while
 /// the first frame is being built. A tap waits for the onboarding flags, and
-/// one that comes before onboarding is done is dropped (D-136). A stream
-/// error (the start action could not be read) is logged by type and the
-/// listener goes on.
+/// one that comes before onboarding is done is dropped (D-136), except
+/// [LaunchAction.openReel], the share screen's Open reel (D-165): the newest
+/// one is held in memory (never stored, so a kill forgets it) and opened once
+/// when `onboardingGateProvider` reports done. A stream error (the start
+/// action could not be read) is logged by type and the listener goes on.
 class LaunchActionsListener extends ConsumerStatefulWidget {
   const new({required this.child, super.key});
 
@@ -198,10 +200,16 @@ class LaunchActionsListener extends ConsumerStatefulWidget {
 
 class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
   StreamSubscription<Launch>? _subscription;
+  late final OnboardingGate _gate;
+
+  /// The newest `openReel` that came before onboarding was done (D-165):
+  /// memory only, used up when it is opened.
+  Launch? _held;
 
   @override
   void initState() {
     super.initState();
+    _gate = ref.read(onboardingGateProvider)..addListener(_releaseHeld);
     _subscription = ref
         .read(backgroundBridgeProvider)
         .launchActions
@@ -210,6 +218,8 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
 
   @override
   void dispose() {
+    _gate.removeListener(_releaseHeld);
+    _held = null;
     unawaited(_subscription?.cancel());
     super.dispose();
   }
@@ -230,7 +240,15 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     final flags = await ref.read(onboardingGateProvider).known();
     if (!mounted) return;
     if (!flags.done) {
-      _log.info('A tap during onboarding was dropped');
+      if (launch.action != LaunchAction.openReel) {
+        _log.info('A tap during onboarding was dropped');
+        return;
+      }
+      // The id only (D-10).
+      _log.info('An openReel during onboarding was held: ${launch.reelId}');
+      _held = launch;
+      // Done may have come while the flags were awaited.
+      _releaseHeld();
       return;
     }
     final reels = ref.read(reelsRepositoryProvider);
@@ -240,6 +258,15 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     );
     if (!mounted) return;
     ref.read(appRouterProvider).go(route);
+  }
+
+  /// Opens the held `openReel`, once, when onboarding is done: through the
+  /// queue, so it keeps its place among the taps.
+  void _releaseHeld() {
+    final held = _held;
+    if (held == null || _gate.value?.done != true) return;
+    _held = null;
+    _open(held);
   }
 
   void _failed(Object error) {
