@@ -124,12 +124,14 @@ You can share from Instagram while TakeTray is open behind it, or with TakeTray 
 ```dart
 final DriftNativeOptions appDatabaseOptions = DriftNativeOptions(
   setup: (db) => db
-    ..execute('PRAGMA busy_timeout = 5000')
+    ..busyHandler = busyWait()
     ..execute('PRAGMA journal_mode = WAL'),
 );
 ```
 
-WAL (write-ahead logging) lets one engine read while the other writes. The busy timeout makes a write wait up to 5 seconds for the other engine's write to finish, instead of failing at once. Drift starts every transaction with `BEGIN IMMEDIATE`, so a transaction waits at its start and never fails half way through. The order matters: switching to WAL needs a moment alone with the file, so the timeout must already be set.
+WAL (write-ahead logging) lets one engine read while the other writes. The busy wait makes a write wait up to 5 seconds for the other engine's write to finish, instead of failing at once. Drift starts every transaction with `BEGIN IMMEDIATE`, so a transaction waits at its start and never fails half way through. The order matters: switching to WAL needs a moment alone with the file, so the wait must already be in place.
+
+**Why not SQLite's own `PRAGMA busy_timeout = 5000`?** It was the first version, and it passed on a Mac but failed on GitHub's Linux runner with "database is locked" in about 60 ms. SQLite's wait never looks at a clock: it adds up the sleeps it *asked* for (1, 2, 5, 10 ms … then 100 ms) until they make 5 s. On Linux and Android the Dart VM's profiler, which `flutter test` and `flutter run` switch on, sends every thread a signal about every millisecond, and a signal ends SQLite's sleep early. So 60 "sleeps" of under a millisecond each counted as 5 seconds. `busyWait` (in `busy_wait.dart`) takes the same steps but asks a `Stopwatch` how long it has really waited, and sleeps with Dart's `sleep`, which carries on after a signal. A release build has no profiler, but the app should not depend on that.
 
 **3. Streams only hear their own connection.** Home watches the reels with a drift `watch` stream. Drift re-runs it after a write on the same connection, but it never hears about the other engine's writes. So `DatabaseRefresh` tells the database, each time the engine comes back to the front, that the reels and references may have changed:
 
@@ -161,6 +163,7 @@ The second engine's transaction waits for the first, then sees version 2 and doe
 ### Where it lives
 
 - `app/lib/data/database/connection.dart`: `appDatabaseOptions` and `appDatabaseProvider`.
+- `app/lib/data/database/busy_wait.dart`: `busyWait`, the 5 s wait on a real clock.
 - `app/lib/data/database/app_database.dart`: the migration strategy (`onCreate`, `onUpgrade`).
 - `app/lib/app/database_refresh.dart`: `DatabaseRefresh`; used in `app/lib/app.dart` and `app/lib/features/share/share_app.dart`.
 - Docs: `docs/flow.md` ("Database open and migrations", step 5), D-164.
@@ -176,11 +179,11 @@ cd app && ../tool/flutter test test/data/database/connection_test.dart \
 
 `connection_test.dart` uses two provider containers as two engines on one temporary file. One test holds the write lock from a third connection while both "engines" open, so both read the version before either can create the tables.
 
-Then break one thing on purpose. In `connection.dart`, delete the `busy_timeout` line and run `connection_test.dart` again: the test where both engines write 40 times at once fails with `database is locked`. Put it back.
+Then break one thing on purpose. In `connection.dart`, delete the `busyHandler` line and run `connection_test.dart` again: the test where both engines write 40 times at once fails with `database is locked`. Put it back. Then try `busy_wait_test.dart`: its "sleeps cut short by signals" test is the Linux runner's case on a fake clock; make `busyWait` add up its sleeps instead of reading the clock, and it fails.
 
 ### Decisions
 
-- D-164: why there is no device proof, a connection per engine with WAL and a 5 s busy timeout, the re-read on resume, migrations that are safe on two connections, and the checks left for the S24.
+- D-164: why there is no device proof, a connection per engine with WAL and a 5 s busy wait (point 7: why it is not SQLite's `busy_timeout`), the re-read on resume, migrations that are safe on two connections, and the checks left for the S24.
 
 ## 4. Open reel, held through onboarding
 
