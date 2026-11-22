@@ -165,12 +165,29 @@ void main() {
 
   test('flow 2: the Home badge tap lands on a visible References section', () {
     final flow = bodyOf('Future<void> _paste(');
-    final tap = flow.indexOf(r"card.$('1').tap()");
+    final tap = flow.indexOf(
+      r'$(referencesBadgeOf(_reelPaste, _l10n.reelCardReferences(1))).tap()',
+    );
+    expect(tap, greaterThanOrEqualTo(0), reason: "the badge's own button");
     final after = flow.substring(tap);
     expect(
       after,
       contains(r'section.$(_l10n.referencesHeader(1)).visible'),
       reason: 'on screen, not only in the tree',
+    );
+    expect(after, contains(r'$(reelPageOf(reel.id, _reelPaste)).exists'));
+  });
+
+  test('the S24 finders (D-161 item 9): no tap on the badge count, no page '
+      'by its name after an open at References', () {
+    // The count lies under the badge's ripple: never hit-testable.
+    expect(source, isNot(contains(r".$('1').tap()")));
+    // A page opened at References has scrolled its name off the screen.
+    expect(source, isNot(contains(r'$(ReelDetailScreen).$(_reelPaste)')));
+    expect(source, isNot(contains(r'$(ReelDetailScreen).$(_reelShootA)')));
+    expect(
+      bodyOf('Future<void> _shootingSheet('),
+      contains(r'$(reelPageOf(a.id, _reelShootA)).exists'),
     );
   });
 
