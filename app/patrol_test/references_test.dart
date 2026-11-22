@@ -25,6 +25,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'support/lifecycle.dart';
 import 'support/onboarded.dart';
 import 'support/patrol_links_bridge.dart';
+import 'support/reel_finders.dart';
 import 'support/test_media.dart' show testFolder;
 import 'support/waiting.dart';
 
@@ -337,12 +338,13 @@ Future<void> _paste(_Env env) async {
     () => $(ReelsScreen).exists && card.$('1').exists,
     what: 'Home with the reel card and its badge "1"',
   );
-  await card.$('1').tap();
+  // The badge's own button (its count lies under the ripple, D-161), and the
+  // page by the reel's id (opened at References, its name is off the screen).
+  await $(referencesBadgeOf(_reelPaste, _l10n.reelCardReferences(1))).tap();
   await waitFor(
     $,
     () =>
-        $(ReelDetailScreen).exists &&
-        $(ReelDetailScreen).$(_reelPaste).exists &&
+        $(reelPageOf(reel.id, _reelPaste)).exists &&
         section.$(_l10n.referencesHeader(1)).visible,
     what: 'the reel page with its References section on screen',
   );
@@ -521,7 +523,7 @@ Future<void> _shootingSheet(_Env env) async {
   await waitFor(
     $,
     () =>
-        $(ReelDetailScreen).$(_reelShootA).exists &&
+        $(reelPageOf(a.id, _reelShootA)).exists &&
         section.$(_l10n.referencesHeader(2)).exists,
     what: "the first reel's page at its References section",
   );
