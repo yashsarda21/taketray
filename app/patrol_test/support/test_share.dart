@@ -1,5 +1,13 @@
 import 'package:flutter/services.dart';
 
+// The share screen's Dart, in the Patrol build. A Patrol build's Dart is
+// `test_bundle.dart`, not `main.dart`, and a library nothing in it imports is
+// not in the build: ShareActivity's engine then logs "Could not resolve main
+// entrypoint function" and draws nothing (the S24, 2026-11-22, D-169). Every
+// flow that starts a share imports this file, so the entry point comes with
+// it, as `main.dart` brings it into the app's own build.
+export 'package:taketray/share_main.dart' show shareMain;
+
 /// The debug-only channel `app.taketray/test_share`
 /// (`DebugShareHooks.kt`, Phase 9B Task 8, D-169): it starts the share screen
 /// with a text, as another app's Share › TakeTray does, so a flow needs no

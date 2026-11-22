@@ -2,7 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/share_main.dart' as share_main;
 
+import '../../patrol_test/support/test_share.dart' as test_share;
 import '../../patrol_test/support/test_share.dart';
 
 /// The wrapper of the debug-only share hook (patrol_test/support, D-169): it
@@ -26,6 +28,13 @@ void main() {
     tearDown(() {
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, null);
+    });
+
+    test('the file brings the share entry point into the Patrol build', () {
+      // A Patrol build's Dart is test_bundle.dart, not main.dart: a library
+      // nothing in it imports is not in the build, and ShareActivity's
+      // engine then finds no `shareMain` and draws nothing (D-169).
+      expect(identical(test_share.shareMain, share_main.shareMain), isTrue);
     });
 
     test('the channel is the one Kotlin uses', () {
