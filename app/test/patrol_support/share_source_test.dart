@@ -225,4 +225,71 @@ void main() {
       expect(body, contains('waitGone('), reason: flow);
     }
   });
+
+  group('the four flows are skipped (D-169 item 8)', () {
+    // A Patrol build cannot start ShareActivity's shareMain: Flutter drops the
+    // library uri and looks it up in the root library, which in a Patrol build
+    // is test_bundle.dart. The flows stay written, but must not run, and must
+    // not silently start running or silently disappear.
+    test('one shared reason constant holds the reason', () {
+      expect(
+        RegExp('const String _skipReason =').allMatches(source),
+        hasLength(1),
+      );
+      final start = source.indexOf('const String _skipReason =');
+      final reason = source.substring(start, source.indexOf(';\n', start));
+      for (final phrase in [
+        'D-169 item 8',
+        'shareMain',
+        'root library',
+        'test_bundle.dart',
+        'Phase 9B hand checks',
+      ]) {
+        expect(reason, contains(phrase));
+      }
+    });
+
+    test('every flow goes through _flowTest, and there are exactly four', () {
+      final calls = RegExp(
+        r'^  _flowTest\(',
+        multiLine: true,
+      ).allMatches(bodyOf('void main() {')).toList();
+      expect(calls, hasLength(4));
+      // The only patrolTest in the file is the one _flowTest makes.
+      expect(RegExp(r'patrolTest\(').allMatches(source), hasLength(1));
+      expect(
+        RegExp(r'patrolTest\(').allMatches(bodyOf('void _flowTest(')),
+        hasLength(1),
+      );
+    });
+
+    test('_flowTest skips on the reason, with no way to run a flow', () {
+      final flow = bodyOf('void _flowTest(');
+      // Patrol 4.10 takes a bool: a non-empty reason means skipped.
+      expect(flow, contains('final skip = _skipReason.isNotEmpty;'));
+      expect(flow, contains('patrolTest(description, skip: skip,'));
+      expect(source, isNot(contains('skip: false')));
+      expect(source, isNot(contains('skip = false')));
+      // No flow can opt out of the skip.
+      expect(flow, isNot(contains('bool skip')));
+      expect(bodyOf('void main() {'), isNot(contains('skip')));
+    });
+
+    test(
+      'dev-setup says the flows are skipped and the hand checks prove it',
+      () {
+        final setup = File('../docs/dev-setup.md').readAsStringSync();
+        final start = setup.indexOf('### Running `share_test.dart`');
+        expect(start, greaterThanOrEqualTo(0));
+        final next = setup.indexOf('\n### ', start + 1);
+        final section = setup.substring(start, next < 0 ? setup.length : next);
+        expect(section, contains('skipped'));
+        expect(section, contains('D-169 item 8'));
+        expect(section, contains('test_bundle.dart'));
+        expect(section, contains('hand checks'));
+        // The old run instruction is gone: nothing tells anyone to run it.
+        expect(section, isNot(contains('tool/patrol test')));
+      },
+    );
+  });
 }

@@ -84,6 +84,16 @@ import 'support/waiting.dart';
 ///   reel is chosen when there are none, so the form opens in New reel with no
 ///   switch); they fail at their start, saying so, when it does.
 ///
+/// **All four flows are skipped (D-169 item 8, S24 run 1).** A Patrol build
+/// cannot start `ShareActivity`'s `shareMain`: Flutter's `FlutterEngineGroup`
+/// drops `getDartEntrypointLibraryUri` and looks `shareMain` up in the build's
+/// root library. The app's root (`main.dart`) re-exports it, but a Patrol
+/// build's root is the generated `test_bundle.dart`, so the share engine
+/// never runs. The owner decided not to change `ShareActivity` for this:
+/// sharing is proven by the "Phase 9B check" hand checks in
+/// `docs/dev-setup.md`. The flows stay written for a future fix, and
+/// `share_source_test.dart` pins that all four stay skipped.
+///
 /// **Flows** (each a `patrolTest`):
 /// 1. Existing reel: a reel exists, a share of an Instagram link, tap the reel,
 ///    Save, "Saved to {reel}", Done; the app sees the reference.
@@ -112,6 +122,15 @@ void main() {
     needsNoReels: true,
   );
 }
+
+/// Why every flow is skipped. Patrol 4.10's `skip` is a bool and takes no
+/// reason, so this is the one place the reason is written; a non-empty reason
+/// means skipped.
+const String _skipReason =
+    "A Patrol build cannot start ShareActivity's shareMain (D-169 item 8): "
+    'Flutter looks the entry point up in the root library, which in a Patrol '
+    'build is test_bundle.dart. '
+    'Sharing is proven by the Phase 9B hand checks.';
 
 // =============================================================== the flows
 
@@ -416,7 +435,9 @@ void _flowTest(
   bool onboarded = true,
   bool needsNoReels = false,
 }) {
-  patrolTest(description, config: _liveConfig, ($) async {
+  // Skipped (D-169 item 8): see [_skipReason].
+  final skip = _skipReason.isNotEmpty;
+  patrolTest(description, skip: skip, config: _liveConfig, ($) async {
     final prep = _Prep();
     final links = PatrolLinksBridge();
     final env = _Env($, links);

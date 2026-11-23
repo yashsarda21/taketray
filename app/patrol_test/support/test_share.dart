@@ -1,13 +1,5 @@
 import 'package:flutter/services.dart';
 
-// The share screen's Dart, in the Patrol build. A Patrol build's Dart is
-// `test_bundle.dart`, not `main.dart`, and a library nothing in it imports is
-// not in the build. Every flow that starts a share imports this file, so
-// `share_main.dart` comes with it. That is needed, but not enough on its own:
-// Flutter creates ShareActivity's engine without its library URI and looks
-// `shareMain` up in the root library (D-169 item 8, open).
-export 'package:taketray/share_main.dart' show shareMain;
-
 /// The debug-only channel `app.taketray/test_share`
 /// (`DebugShareHooks.kt`, Phase 9B Task 8, D-169): it starts the share screen
 /// with a text, as another app's Share › TakeTray does, so a flow needs no

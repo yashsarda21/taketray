@@ -436,7 +436,7 @@ Then break one thing on purpose. In `reels_step_controller.dart` change `if (ree
 
 ### What we built
 
-Four on-device flows for sharing, in `app/patrol_test/share_test.dart`, and the three small pieces they stand on: a debug-only way to start the share screen, a driver that can touch the share screen, and the safety rules of Phase 9A carried over. The flows are written and checked on a computer; they are **not run yet**, because the phone comes last.
+Four on-device flows for sharing, in `app/patrol_test/share_test.dart`, and the three small pieces they stand on: a debug-only way to start the share screen, a driver that can touch the share screen, and the safety rules of Phase 9A carried over. The flows are written and checked on a computer, but they are **skipped**: a Patrol build cannot start the share screen (section 8's last idea, and section 9). Sharing is proven by the hand checks instead.
 
 - **Existing reel.** A reel exists. The test shares `Look https://www.instagram.com/reel/TTTEST1/?igsh=x`. The sheet opens, the test taps the reel's row, presses **Save**, sees "Saved to TakeTray Test Share A", presses **Done**, and then checks, from the app's side, that the reel holds that one reference.
 - **New reel.** There are no reels, so the sheet opens on **New reel**. The test types a name, presses **Save**, then **Open reel**, and checks that the app opens that reel at its References with the link on a card.
@@ -496,6 +496,10 @@ await tap(open.button, what: 'the button that closes a share screen left open', 
 
 **6. Onboarding is put back.** Flow 4 needs onboarding undone, so it deletes the three first-launch flags. Every flow's tear-down marks onboarding done again, even when the flow failed, so after any flow the app is onboarded. Shooting mode is never switched; the tear-down only reads it before and after and fails if it changed.
 
+**7. The flows are skipped: a Patrol build cannot start the share screen.** On the S24 all four flows waited for a sheet that never came. By hand, the plain debug build drew the sheet, so the driver and the second engine were fine. The cause is in Flutter. `ShareActivity` says where its entry point lives (`getDartEntrypointLibraryUri`, `package:taketray/share_main.dart`), but Flutter's `FlutterEngineGroup` throws that away and looks `shareMain` up in the build's **root library**. The app gets away with it because its root, `main.dart`, re-exports `shareMain`. A Patrol build's root is a file Patrol generates (`test_bundle.dart`), which cannot re-export anything, so the share process logs "Could not resolve main entrypoint function" and draws nothing. The test's own proof: a build whose root re-exports `shareMain` works, and one whose root defines its own `shareMain` runs that one instead.
+
+The owner chose **not to change `ShareActivity` or any product code** just so a test can run. So the flows stay in the repository, all four skipped with one reason (`_skipReason`; Patrol 4.10's `skip` is only a yes or no, so a non-empty reason means skipped), and a test in `share_source_test.dart` pins that there are four, that they stay skipped, and that `docs/dev-setup.md` says so. They cannot quietly start running or quietly disappear. A future fix would be for `ShareActivity` to build its own engine and start it with the library address, which changes how the release app starts the share screen. That would need a release build proved on the phone before the skip comes out.
+
 ### Where it lives
 
 - `app/android/app/src/debug/kotlin/app/taketray/DebugShareHooks.kt` and its one line in `DebugHooks.kt`; `app/android/app/src/test/kotlin/app/taketray/DebugShareHooksTest.kt`.
@@ -513,7 +517,7 @@ cd app && ../tool/flutter test test/patrol_support/test_share_test.dart \
   test/patrol_support/share_screen_test.dart test/patrol_support/share_source_test.dart
 ```
 
-Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`: "it is started as a new task, which a non-activity context needs" fails. In `share_screen.dart` replace `if (open == null) return closed;` with `open ??= states.last;`: "taps nothing when no share screen is up (the app has a Done)" fails, which is exactly the mistake that would press the app's own Done. In `share_test.dart` delete the line `linksBridgeProvider.overrideWithValue(env.links),` from `_startApp`: the test "every app that is pumped has the fake links bridge" in `share_source_test.dart` fails, printing `Expected: contains 'linksBridgeProvider.overrideWithValue(env.links)'` followed by the text of `_startApp` it was looking in. That is exactly the mistake that would let a real link open during a flow, caught without a phone. (Put all three back.)
+Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)`: "it is started as a new task, which a non-activity context needs" fails. In `share_screen.dart` replace `if (open == null) return closed;` with `open ??= states.last;`: "taps nothing when no share screen is up (the app has a Done)" fails, which is exactly the mistake that would press the app's own Done. In `share_test.dart` delete the line `linksBridgeProvider.overrideWithValue(env.links),` from `_startApp`: the test "every app that is pumped has the fake links bridge" in `share_source_test.dart` fails, printing `Expected: contains 'linksBridgeProvider.overrideWithValue(env.links)'` followed by the text of `_startApp` it was looking in. That is exactly the mistake that would let a real link open during a flow, caught without a phone. Last, in `_flowTest` change `skip: skip` to `skip: false`: "_flowTest skips on the reason, with no way to run a flow" fails, so a flow cannot start running by accident. (Put all four back.)
 
 ### Decisions
 
@@ -521,11 +525,11 @@ Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.F
 
 ## 9. On the S24
 
-**What we built:** the phone run and the hand checks for sharing. The test is `app/patrol_test/share_test.dart`; the list is "Phase 9B check" in `docs/dev-setup.md`. 9A's references flows and these run together at the very end, once, after the review of the whole phase.
+**What we built:** the hand checks for sharing. The Patrol test `app/patrol_test/share_test.dart` is written but skipped (section 8, D-169 item 8), so the list "Phase 9B check" in `docs/dev-setup.md` is the proof that sharing works. 9A's references flows ran on the S24 (4 of 4 passed); the share flows ran once (0 of 4) and showed the cause in section 8.
 
-**Phone results.** To be filled in by the controller after the run on the S24, with the owner's answers to the eighteen hand checks.
+**Phone results.** None from the flows, and none can come until the share screen can start in a Patrol build. The owner's answers to the eighteen hand checks (and 12a and 12b) are still to come; they go here and in D-169.
 
-**What this teaches:** to be written once the phone has run (what the accessibility tree really showed for the second engine, which selectors needed changing, and what the owner found in the hand checks).
+**What this teaches:** a test that passes or fails tells you about the test's setup as much as the app. Here the app was right and the test build was the odd one out, and the way to see it was to start the real screen by hand, then change one thing at a time in the build until the failure moved. And when the only fix is in the product, not the test, the owner decides: that choice, and what it would take later, is written down where the next person will look (D-169 item 8).
 
 ## What the phase leaves you with
 
