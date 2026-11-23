@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/onboarding/views/reels_step_screen.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -14,8 +15,9 @@ import '../../../support/fixed_onboarding.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
 
-/// The reels step as screenshots (Task 8, D-141), light and dark: empty,
-/// three names, with reels that exist, an error, and 2x text with the
+/// The reels step as screenshots (Task 8, D-141; D-168), light and dark:
+/// empty, three names, with reels that exist, one existing and two typed, an
+/// error, and 2x text with the
 /// keyboard up.
 ///
 /// **macOS only, and not on CI** (D-61, D-97): see `welcome_golden_test.dart`.
@@ -24,7 +26,7 @@ import '../../../support/vm_harness.dart';
 final bool _goldens =
     Platform.isMacOS && !Platform.environment.containsKey('CI');
 
-enum _Look { empty, threeNames, existing, error }
+enum _Look { empty, threeNames, existing, existingAndTyped, error }
 
 Future<void> _pump(
   WidgetTester tester, {
@@ -32,15 +34,26 @@ Future<void> _pump(
   required Brightness brightness,
   double textScale = 1,
   double keyboard = 0,
+  double height = 800,
 }) async {
   tester.view
-    ..physicalSize = const Size(360, 800)
+    ..physicalSize = Size(360, height)
     ..devicePixelRatio = 1
     ..viewInsets = FakeViewPadding(bottom: keyboard);
   addTearDown(tester.view.reset);
   final h = VmHarness();
   if (look == _Look.existing) {
     await ReelsRepository(h.media.db, h.media.clock).create('London Food');
+  }
+  if (look == _Look.existingAndTyped) {
+    // A reel a share made before onboarding, with two references (D-168).
+    final reel = await ReelsRepository(
+      h.media.db,
+      h.media.clock,
+    ).create('Tokyo Street Food');
+    final refs = ReferencesRepository(h.media.db, h.media.clock);
+    await refs.add(reel.id, 'https://www.instagram.com/p/AAA/');
+    await refs.add(reel.id, 'https://www.instagram.com/p/BBB/');
   }
   final router = GoRouter(
     initialLocation: '/',
@@ -85,6 +98,9 @@ Future<void> _pump(
   switch (look) {
     case _Look.empty || _Look.existing:
       break;
+    case _Look.existingAndTyped:
+      await enter('London Food');
+      await enter('Day 1 Vlog');
     case _Look.threeNames:
       await enter('London Food');
       await enter('Day 1 Vlog');
@@ -129,6 +145,30 @@ void main() {
           find.byType(MaterialApp),
           matchesGoldenFile(
             'goldens/macos/reels_step_keyboard_2x_${brightness.name}.png',
+          ),
+        );
+      },
+    );
+  }
+
+  for (final brightness in Brightness.values) {
+    testApp(
+      'reels step, one existing and two typed, ${brightness.name}, text 2x',
+      skip: !_goldens,
+      (tester) async {
+        await _pump(
+          tester,
+          look: _Look.existingAndTyped,
+          brightness: brightness,
+          textScale: 2,
+          // Tall enough that the rows and the tip are in frame: at 800 dp the
+          // 2x heading and field push them under the buttons.
+          height: 1800,
+        );
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile(
+            'goldens/macos/reels_step_existingAndTyped_2x_${brightness.name}.png',
           ),
         );
       },

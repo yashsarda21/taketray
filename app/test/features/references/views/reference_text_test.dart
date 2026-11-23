@@ -47,6 +47,10 @@ void main() {
       ('https://www.example.com/a', 'example.com'),
       ('https://m.example.com/a', 'example.com'),
       ('https://blog.example.co.uk/a', 'blog.example.co.uk'),
+      // A percent-encoded host is shown decoded (M32).
+      ('https://caf%C3%A9.fr/a', 'café.fr'),
+      ('https://www.caf%C3%A9.fr/a', 'café.fr'),
+      ('https://%C3.com/a', '%C3.com'),
     ]) {
       test('$url is "$text"', () {
         expect(referenceKindText(l10n, Uri.parse(url)), text);
@@ -80,6 +84,19 @@ void main() {
       );
       expect(text.title, 'Look');
       expect(text.subtitle, 'example.com · example.com/a/b');
+    });
+
+    test('a percent-encoded host is shown decoded, the url is unchanged', () {
+      final text = referenceCardText(
+        l10n,
+        _ref('https://caf%C3%A9.fr/menu', label: 'Look'),
+      );
+      expect(text.title, 'Look');
+      expect(text.subtitle, 'café.fr · café.fr/menu');
+      expect(
+        referenceCardText(l10n, _ref('https://caf%C3%A9.fr/menu')).title,
+        'café.fr/menu',
+      );
     });
   });
 

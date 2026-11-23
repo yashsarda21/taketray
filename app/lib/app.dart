@@ -4,7 +4,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
+import 'package:taketray/app/database_refresh.dart';
 import 'package:taketray/app/media_lifecycle.dart';
+import 'package:taketray/core/locale.dart';
 import 'package:taketray/data/background/background_sync.dart';
 import 'package:taketray/data/background/debug_evening.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
@@ -31,6 +33,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// `BackgroundSync` once, which writes the phone's copy of the background
 /// state now (re-arming the job and the alarms) and after every change
 /// (D-106).
+///
+/// [DatabaseRefresh] wraps it all: on resume it re-reads the reels and
+/// their references, which the share screen's engine may have written
+/// (D-164).
 ///
 /// The first frame is held until the onboarding flags are read (D-136): the
 /// system splash covers the read, so neither Reels nor the welcome shows
@@ -141,20 +147,22 @@ class _TakeTrayAppState extends ConsumerState<TakeTrayApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MediaLifecycle(
-      child: MaterialApp.router(
-        onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
-        routerConfig: ref.watch(appRouterProvider),
-        // The one root messenger, so a snack outlives its screen (D-85).
-        scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        localeListResolutionCallback: resolvePhoneLocale,
-        builder: (context, child) =>
-            LaunchActionsListener(child: CopyResultOpener(child: child!)),
-        theme: TakeTrayTheme.light(),
-        darkTheme: TakeTrayTheme.dark(),
-        debugShowCheckedModeBanner: false,
+    return DatabaseRefresh(
+      child: MediaLifecycle(
+        child: MaterialApp.router(
+          onGenerateTitle: (context) => AppLocalizations.of(context).appTitle,
+          routerConfig: ref.watch(appRouterProvider),
+          // The one root messenger, so a snack outlives its screen (D-85).
+          scaffoldMessengerKey: ref.watch(rootMessengerKeyProvider),
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          localeListResolutionCallback: resolvePhoneLocale,
+          builder: (context, child) =>
+              LaunchActionsListener(child: CopyResultOpener(child: child!)),
+          theme: TakeTrayTheme.light(),
+          darkTheme: TakeTrayTheme.dark(),
+          debugShowCheckedModeBanner: false,
+        ),
       ),
     );
   }
@@ -176,9 +184,11 @@ final Logger _log = Logger('launchActions');
 /// A tap goes to its screen with `GoRouter.go` (the allow-list is
 /// [routeFor]), after the current frame: the start action can arrive while
 /// the first frame is being built. A tap waits for the onboarding flags, and
-/// one that comes before onboarding is done is dropped (D-136). A stream
-/// error (the start action could not be read) is logged by type and the
-/// listener goes on.
+/// one that comes before onboarding is done is dropped (D-136), except
+/// [LaunchAction.openReel], the share screen's Open reel (D-165): the newest
+/// one is held in memory (never stored, so a kill forgets it) and opened once
+/// when `onboardingGateProvider` reports done. A stream error (the start
+/// action could not be read) is logged by type and the listener goes on.
 class LaunchActionsListener extends ConsumerStatefulWidget {
   const new({required this.child, super.key});
 
@@ -191,10 +201,16 @@ class LaunchActionsListener extends ConsumerStatefulWidget {
 
 class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
   StreamSubscription<Launch>? _subscription;
+  late final OnboardingGate _gate;
+
+  /// The newest `openReel` that came before onboarding was done (D-165):
+  /// memory only, used up when it is opened.
+  Launch? _held;
 
   @override
   void initState() {
     super.initState();
+    _gate = ref.read(onboardingGateProvider)..addListener(_releaseHeld);
     _subscription = ref
         .read(backgroundBridgeProvider)
         .launchActions
@@ -203,6 +219,8 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
 
   @override
   void dispose() {
+    _gate.removeListener(_releaseHeld);
+    _held = null;
     unawaited(_subscription?.cancel());
     super.dispose();
   }
@@ -223,7 +241,15 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     final flags = await ref.read(onboardingGateProvider).known();
     if (!mounted) return;
     if (!flags.done) {
-      _log.info('A tap during onboarding was dropped');
+      if (launch.action != LaunchAction.openReel) {
+        _log.info('A tap during onboarding was dropped');
+        return;
+      }
+      // The id only (D-10).
+      _log.info('An openReel during onboarding was held: ${launch.reelId}');
+      _held = launch;
+      // Done may have come while the flags were awaited.
+      _releaseHeld();
       return;
     }
     final reels = ref.read(reelsRepositoryProvider);
@@ -235,26 +261,19 @@ class _LaunchActionsListenerState extends ConsumerState<LaunchActionsListener> {
     ref.read(appRouterProvider).go(route);
   }
 
+  /// Opens the held `openReel`, once, when onboarding is done: through the
+  /// queue, so it keeps its place among the taps.
+  void _releaseHeld() {
+    final held = _held;
+    if (held == null || _gate.value?.done != true) return;
+    _held = null;
+    _open(held);
+  }
+
   void _failed(Object error) {
     _log.warning('A launch action failed: ${error.runtimeType}');
   }
 
   @override
   Widget build(BuildContext context) => widget.child;
-}
-
-/// The phone's own locale when the app has its language, so dates follow the
-/// phone: an English (India) phone gets "8 Oct", an English (United States)
-/// phone "Oct 8" (D-79). Without it Flutter would pick the plain `en` the app
-/// lists, and every English phone would read "Oct 8".
-///
-/// The first of the phone's [preferred] locales whose language is in
-/// [supported], whole (region and all); if none is, the first supported one.
-Locale resolvePhoneLocale(List<Locale>? preferred, Iterable<Locale> supported) {
-  for (final locale in preferred ?? const <Locale>[]) {
-    if (supported.any((s) => s.languageCode == locale.languageCode)) {
-      return locale;
-    }
-  }
-  return supported.first;
 }

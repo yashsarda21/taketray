@@ -37,7 +37,25 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    // The app and the share screen open the file on two connections, and
+    // both can find it empty at the same moment (D-164). The transaction
+    // makes the second wait; it then reads the version again and finds the
+    // schema made, instead of failing on "already exists". The version is
+    // written inside, so the second never sees tables without it.
+    //
+    // What the second finds is normally this version, and nothing is done.
+    // A newer one is refused (D-54), as in onUpgrade; an older one (only a
+    // file written by an older TakeTray, which cannot be here at the same
+    // time) is upgraded from that version by the same steps onUpgrade runs,
+    // never stamped as this version without them (D-164).
+    onCreate: (m) => transaction(() async {
+      if (await _storedVersion() == 0) {
+        await m.createAll();
+        await customStatement('PRAGMA user_version = $schemaVersion');
+        return;
+      }
+      await _runStepsFromStored(m, schemaVersion);
+    }),
     onUpgrade: (m, from, to) async {
       // A database written by a newer TakeTray (a downgrade): opening it
       // would stamp a newer schema as this version, so refuse. Drift writes
@@ -55,18 +73,38 @@ class AppDatabase extends _$AppDatabase {
       // twice on the next open, because the version was written inside the
       // transaction. The write Drift makes after `beforeOpen` is then a
       // second, equal one (D-120).
-      await transaction(
-        () => m.runMigrationSteps(
-          from: from,
-          to: to,
-          steps: migrationSteps(from1To2: _from1To2),
-        ),
-      );
+      //
+      // The steps run from the version read again inside the transaction:
+      // the other engine may have upgraded the file since this connection
+      // read `from` (D-164), and a step must not run twice.
+      await transaction(() => _runStepsFromStored(m, to));
     },
     // SQLite leaves foreign keys off for every new connection; without this,
     // ON DELETE CASCADE would silently do nothing.
     beforeOpen: (details) => customStatement('PRAGMA foreign_keys = ON'),
   );
+
+  /// Runs the migration steps from the version stored in the file now to
+  /// [to], inside the transaction the caller opened. A stored version above
+  /// [to] is refused (D-54); one equal to [to] runs no step.
+  Future<void> _runStepsFromStored(Migrator m, int to) async {
+    final stored = await _storedVersion();
+    if (stored > to) {
+      throw UnsupportedError(
+        'Cannot open a version $stored database with schema version $to',
+      );
+    }
+    await m.runMigrationSteps(
+      from: stored,
+      to: to,
+      steps: migrationSteps(from1To2: _from1To2),
+    );
+  }
+
+  /// The schema version stored in the file now (`PRAGMA user_version`).
+  Future<int> _storedVersion() async => (await customSelect(
+    'PRAGMA user_version',
+  ).getSingle()).read<int>('user_version');
 
   /// v2 (D-120): which editor a session is in, when each copy was made, and
   /// which clips were sent. The SQL names `vn_sessions` and `vn_copies` stay.

@@ -3,7 +3,10 @@
 // hand: make-migrations never rewrites this file once it exists, and
 // tool/check_generated keeps it (D-120). The schema helpers in generated/ are
 // regenerated.
+import 'dart:io';
+
 import 'package:drift/drift.dart';
+import 'package:drift/native.dart';
 import 'package:drift_dev/api/migrations_native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
@@ -50,6 +53,38 @@ class _DyingUser implements QueryExecutorUser {
     await _inner.beforeOpen(executor, details);
     throw StateError('killed before the version was written');
   }
+}
+
+/// Makes drift's `beforeOpen` think the file was just created, though it
+/// already has a version: what `onCreate` finds when another engine made the
+/// file between this one's read of the version and its transaction (D-164).
+class _PretendNew extends QueryInterceptor {
+  @override
+  Future<bool> ensureOpen(QueryExecutor executor, QueryExecutorUser user) =>
+      executor.ensureOpen(_PretendNewUser(user));
+}
+
+class _PretendNewUser implements QueryExecutorUser {
+  _PretendNewUser(this._inner);
+
+  final QueryExecutorUser _inner;
+
+  @override
+  int get schemaVersion => _inner.schemaVersion;
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      _inner.beforeOpen(executor, OpeningDetails(null, details.versionNow));
+}
+
+/// Opens a raw connection: no migrations, no version.
+class _NoMigrations implements QueryExecutorUser {
+  @override
+  int get schemaVersion => 0;
+
+  @override
+  Future<void> beforeOpen(QueryExecutor executor, OpeningDetails details) =>
+      Future.value();
 }
 
 Future<List<String>> _sortedRows(
@@ -485,6 +520,125 @@ void main() {
     expect(await everyRow(db), before);
   });
 
+  group('onCreate finds the file already has a version (M3, D-164)', () {
+    test('a version above the schema is refused with the D-54 error and the '
+        'file is left as it was', () async {
+      final schema = await verifier.schemaAt(2);
+      schema.rawDatabase.execute('PRAGMA user_version = 3');
+      final tables = [
+        for (final row in schema.rawDatabase.select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        ))
+          row['name'] as String,
+      ];
+
+      final db = AppDatabase(
+        schema.newConnection().interceptWith(_PretendNew()),
+      );
+      await expectLater(
+        db.customSelect('SELECT 1').get(),
+        throwsA(
+          isA<UnsupportedError>().having(
+            (e) => e.message,
+            'message',
+            'Cannot open a version 3 database with schema version 2',
+          ),
+        ),
+      );
+      await db.close();
+
+      expect(schema.rawDatabase.userVersion, 3, reason: 'not stamped back');
+      expect([
+        for (final row in schema.rawDatabase.select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' "
+          'ORDER BY name',
+        ))
+          row['name'] as String,
+      ], tables);
+    });
+
+    test('a version below the schema is upgraded from that version, with the '
+        'data kept, as onUpgrade would', () async {
+      final viaCreate = await phoneAtV1();
+      final viaUpgrade = await phoneAtV1();
+
+      final db = AppDatabase(
+        viaCreate.newConnection().interceptWith(_PretendNew()),
+      );
+      addTearDown(db.close);
+      final expected = AppDatabase(viaUpgrade.newConnection());
+      addTearDown(expected.close);
+
+      await db.validateDatabaseSchema(
+        options: const ValidationOptions(validateDropped: true),
+      );
+      expect(viaCreate.rawDatabase.userVersion, 2);
+      expect(await everyRow(db), await everyRow(expected));
+      expect(await db.select(db.editSessions).get(), hasLength(2));
+      expect(await db.select(db.sentClips).get(), isEmpty);
+    });
+
+    test('a step that fails on that path rolls the file back to the version it '
+        'had, and the next open migrates it', () async {
+      final schema = await phoneAtV1();
+      schema.rawDatabase.execute(
+        'CREATE TRIGGER m3_fail BEFORE UPDATE ON vn_copies '
+        "BEGIN SELECT RAISE(ABORT, 'injected'); END",
+      );
+      final failing = AppDatabase(
+        schema.newConnection().interceptWith(_PretendNew()),
+      );
+      await expectLater(
+        failing.customSelect('SELECT 1').get(),
+        throwsA(anything),
+      );
+      await failing.close();
+
+      expect(schema.rawDatabase.userVersion, 1);
+      expect(
+        schema.rawDatabase.select(
+          "SELECT name FROM sqlite_master WHERE name LIKE 'sent_clips%'",
+        ),
+        isEmpty,
+      );
+
+      schema.rawDatabase.execute('DROP TRIGGER m3_fail');
+      final db = AppDatabase(schema.newConnection());
+      addTearDown(db.close);
+      await db.validateDatabaseSchema(
+        options: const ValidationOptions(validateDropped: true),
+      );
+      expect(await db.select(db.editCopies).get(), hasLength(3));
+    });
+
+    test('the same version as the schema changes nothing', () async {
+      final schema = await verifier.schemaAt(2);
+      final before = [
+        for (final row in schema.rawDatabase.select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        ))
+          row['name'] as String,
+      ];
+
+      final db = AppDatabase(
+        schema.newConnection().interceptWith(_PretendNew()),
+      );
+      addTearDown(db.close);
+      await db.validateDatabaseSchema(
+        options: const ValidationOptions(validateDropped: true),
+      );
+
+      expect(schema.rawDatabase.userVersion, 2);
+      expect([
+        for (final row in schema.rawDatabase.select(
+          "SELECT name FROM sqlite_master WHERE type = 'table' "
+          'ORDER BY name',
+        ))
+          row['name'] as String,
+      ], before);
+    });
+  });
+
   test('a v1 copy row whose session is gone (foreign keys were off) does not '
       'stop the upgrade: it keeps copied_at 0', () async {
     final schema = await phoneAtV1();
@@ -505,4 +659,27 @@ void main() {
     expect(orphan.copiedAt.millisecondsSinceEpoch, 0);
     expect(await db.select(db.editCopies).get(), hasLength(4));
   });
+  test(
+    'a new file gets its version inside the transaction that made the '
+    'schema, so a second engine never sees tables without it (D-164)',
+    () async {
+      final dir = Directory.systemTemp.createTempSync('taketray_new_');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/taketray.sqlite');
+
+      final dying = AppDatabase(
+        NativeDatabase(file).interceptWith(_DieBeforeVersionWrite()),
+      );
+      await expectLater(dying.customSelect('SELECT 1').get(), throwsStateError);
+      await dying.close();
+
+      // Drift never wrote the version (the open "died" first): only onCreate
+      // can have, with the tables.
+      final raw = NativeDatabase(file, enableMigrations: false);
+      await raw.ensureOpen(_NoMigrations());
+      final rows = await raw.runSelect('PRAGMA user_version', []);
+      await raw.close();
+      expect(rows.single['user_version'], 2);
+    },
+  );
 }

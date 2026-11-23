@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
-import 'package:taketray/app.dart' show resolvePhoneLocale;
+import 'package:taketray/core/locale.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';

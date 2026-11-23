@@ -214,12 +214,14 @@ enum class ShadeActionKindMsg(val raw: Int) {
 
 /**
  * The screen a notification tap opens: an allow-list, never a route.
- * [doneEditing] opens a reel's page, asking Done editing there.
+ * [doneEditing] opens a reel's page, asking Done editing there. [openReel]
+ * (D-165) is the share screen's Open reel: it opens the reel's References.
  */
 enum class LaunchActionMsg(val raw: Int) {
   TO_TAG(0),
   REELS(1),
-  DONE_EDITING(2);
+  DONE_EDITING(2),
+  OPEN_REEL(3);
 
   companion object {
     fun ofRaw(raw: Int): LaunchActionMsg? {
@@ -600,9 +602,10 @@ data class NotificationAccessMsg (
 }
 
 /**
- * A notification tap: the allow-listed [action] and, for `doneEditing` only,
- * the reel it is for. The reel id is the only payload there is (D-124); Dart
- * checks the reel still exists.
+ * A notification tap (or the share screen's Open reel): the allow-listed
+ * [action] and, for `doneEditing` and `openReel` only, the reel it is for.
+ * The reel id is the only payload there is (D-124); Dart checks the reel
+ * still exists.
  *
  * Generated class from Pigeon that represents data sent in messages.
  */

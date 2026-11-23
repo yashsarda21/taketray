@@ -24,6 +24,9 @@ void main() {
   void writeLog(int index, String text) =>
       File('${logDir.path}/taketray-$index.log').writeAsStringSync(text);
 
+  void writeShareLog(int index, String text) =>
+      File('${logDir.path}/share-$index.log').writeAsStringSync(text);
+
   Directory shared() => Directory('${cacheDir.path}/shared');
 
   List<String> sharedNames() => shared().existsSync()
@@ -264,6 +267,113 @@ void main() {
           );
         }
       }
+    });
+  });
+
+  group("the share screen's log (D-163)", () {
+    test('both sets: taketray oldest first, then share oldest first', () async {
+      writeLog(1, 'app old\n');
+      writeLog(0, 'app new\n');
+      writeShareLog(1, 'share old\n');
+      writeShareLog(0, 'share new\n');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(
+        file!.readAsStringSync(),
+        'app old\napp new\nshare old\nshare new\n',
+      );
+    });
+
+    test('both sets, byte for byte', () async {
+      final parts = [
+        ('taketray-1.log', utf8.encode('a é\n')),
+        ('taketray-0.log', utf8.encode('b ✓\n')),
+        ('share-1.log', utf8.encode('c\n  stack: x\n')),
+        ('share-0.log', utf8.encode('d\n')),
+      ];
+      for (final (name, bytes) in parts) {
+        File('${logDir.path}/$name').writeAsBytesSync(bytes);
+      }
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsBytesSync(), [for (final (_, b) in parts) ...b]);
+    });
+
+    test('no share log: only the taketray files', () async {
+      writeLog(1, 'app old\n');
+      writeLog(0, 'app new\n');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), 'app old\napp new\n');
+    });
+
+    test('only a share log: it is sent', () async {
+      writeShareLog(0, 'shared once\n');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), 'shared once\n');
+    });
+
+    test('only the current file of each set', () async {
+      writeLog(0, 'app\n');
+      writeShareLog(0, 'share\n');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), 'app\nshare\n');
+    });
+
+    test('a half line at the end of a share file is dropped', () async {
+      writeLog(0, 'app\n');
+      writeShareLog(1, 'share old\nhalf of');
+      writeShareLog(0, 'share new\nhal');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), 'app\nshare old\nshare new\n');
+    });
+
+    test('empty share files add nothing, and alone send nothing', () async {
+      writeShareLog(1, '');
+      writeShareLog(0, '');
+
+      expect(await bundleLogs(logDir, cacheDir, now), isNull);
+    });
+
+    test('other share-like files are not included', () async {
+      writeShareLog(0, 'mine\n');
+      File('${logDir.path}/share-2.log').writeAsStringSync('third\n');
+      File('${logDir.path}/share.log').writeAsStringSync('plain\n');
+      File('${logDir.path}/shared-0.log').writeAsStringSync('shared\n');
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), 'mine\n');
+    });
+
+    test('the share files themselves are left as they were', () async {
+      writeShareLog(1, 'old\n');
+      writeShareLog(0, 'new\n');
+
+      await bundleLogs(logDir, cacheDir, now);
+
+      expect(File('${logDir.path}/share-1.log').readAsStringSync(), 'old\n');
+      expect(File('${logDir.path}/share-0.log').readAsStringSync(), 'new\n');
+    });
+
+    test('a share sink and the bundle agree on the file names', () async {
+      final sink = LogFileSink(logDir, prefix: shareLogPrefix, maxBytes: 20);
+      await sink.write('aaaaaaaaa');
+      await sink.write('bbbbbbbbb');
+      await sink.write('ccccccccc'); // rotates
+
+      final file = await bundleLogs(logDir, cacheDir, now);
+
+      expect(file!.readAsStringSync(), await sink.readAll());
     });
   });
 }

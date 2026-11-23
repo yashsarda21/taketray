@@ -4,9 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/app.dart';
+import 'package:taketray/app/database_refresh.dart';
+import 'package:taketray/core/clock.dart';
+import 'package:taketray/data/database/app_database.dart';
+import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/onboarding/views/access_step_screen.dart';
 import 'package:taketray/features/onboarding/views/welcome_screen.dart';
+import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/settings/views/settings_screen.dart';
 import 'package:taketray/features/tagging/view_models/to_tag_controller.dart';
@@ -85,6 +91,39 @@ void main() {
     expect(_inPill('To tag'), findsOneWidget);
     expect(_inPill('Settings'), findsOneWidget);
     expect(tester.widget<TtNavPill>(find.byType(TtNavPill)).currentIndex, 0);
+  });
+
+  testApp('a resume re-reads the reels a share saved, with one listener '
+      '(D-164)', (tester) async {
+    final harness = await _pumpApp(tester);
+    expect(find.byType(DatabaseRefresh), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.byType(MaterialApp),
+        matching: find.byType(DatabaseRefresh),
+      ),
+      findsOneWidget,
+    );
+    final notified = <Set<String>>[];
+    final sub = harness.media.db.tableUpdates().listen(
+      (u) => notified.add({for (final t in u) t.table}),
+    );
+    addTearDown(sub.cancel);
+
+    tester.binding
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.paused)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.hidden)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.inactive)
+      ..handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pumpAndSettle();
+
+    expect(
+      notified.where((u) => u.containsAll({'reels', 'reel_references'})),
+      isNotEmpty,
+    );
   });
 
   testApp('a cold start with a failing volume counts one failure', (
@@ -555,6 +594,263 @@ void main() {
     });
   });
 
+  group('openReel held through onboarding (D-165)', () {
+    // The paths the router showed, one per navigation.
+    List<String> watch(ProviderContainer container) {
+      final visited = <String>[];
+      final router = container.read(appRouterProvider);
+      void record() => visited.add(router.state.uri.toString());
+      router.routerDelegate.addListener(record);
+      addTearDown(() => router.routerDelegate.removeListener(record));
+      return visited;
+    }
+
+    Future<int> makeReel(VmHarness harness, String name) async =>
+        (await ReelsRepository(
+          harness.media.db,
+          harness.media.clock,
+        ).create(name)).id;
+
+    Future<void> finishOnboarding(
+      WidgetTester tester,
+      ProviderContainer container,
+    ) async {
+      await container.read(onboardingControllerProvider.notifier).finish();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+    }
+
+    String location(ProviderContainer container) =>
+        container.read(appRouterProvider).state.uri.toString();
+
+    testApp('onboarding done: it opens the reel References at once', (
+      tester,
+    ) async {
+      final harness = VmHarness();
+      final id = await makeReel(harness, 'Goa');
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      harness.background.emit(LaunchAction.openReel, reelId: id);
+      await tester.pumpAndSettle();
+
+      expect(location(container), Routes.reelReferences(id));
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+    });
+
+    testApp('not done: nothing opens until done flips, then it opens once, '
+        'never twice', (tester) async {
+      final records = captureLogs();
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final repo = _CountingReels(harness.media.db, harness.media.clock);
+      final id = (await repo.create('Goa')).id;
+      final container = ProviderContainer(
+        overrides: [
+          ...harness.appOverrides,
+          reelsRepositoryProvider.overrideWithValue(repo),
+        ],
+      );
+      addTearDown(container.dispose);
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const TakeTrayApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final visited = watch(container);
+
+      harness.background.emit(LaunchAction.openReel, reelId: id);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+      expect(find.byType(ReelDetailScreen), findsNothing);
+      expect(visited, isNot(contains(Routes.reelReferences(id))));
+      expect(repo.lookups, 0, reason: 'nothing is looked up while it waits');
+      expect(logText(records), contains('held'));
+      expect(logText(records), contains('$id'));
+      expect(logText(records), isNot(contains('Goa')));
+
+      await finishOnboarding(tester, container);
+
+      expect(location(container), Routes.reelReferences(id));
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(
+        visited.where((v) => v == Routes.reelReferences(id)),
+        hasLength(1),
+      );
+      expect(repo.lookups, 1, reason: 'opened once, not twice');
+
+      // Away and back: the held reel is used up and is not opened again.
+      container.read(appRouterProvider).go(Routes.reels);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(location(container), Routes.reels);
+      expect(
+        visited.where((v) => v == Routes.reelReferences(id)),
+        hasLength(1),
+      );
+
+      // Even if the gate reports done again (it can be reset and set again),
+      // the used-up reel does not come back.
+      final gate = container.read(onboardingGateProvider)..value = _freshFlags;
+      await tester.pumpAndSettle();
+      gate.value = _doneFlags;
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pumpAndSettle();
+      expect(repo.lookups, 1);
+      expect(location(container), Routes.reels);
+    });
+
+    testApp('two openReels while not done: only the newest opens', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final one = await makeReel(harness, 'One');
+      final two = await makeReel(harness, 'Two');
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      final visited = watch(container);
+
+      harness.background.emit(LaunchAction.openReel, reelId: one);
+      harness.background.emit(LaunchAction.openReel, reelId: two);
+      await tester.pumpAndSettle();
+      await finishOnboarding(tester, container);
+
+      expect(location(container), Routes.reelReferences(two));
+      expect(visited, isNot(contains(Routes.reelReferences(one))));
+    });
+
+    testApp('toTag and Reels while not done are dropped even after done, '
+        'with or without a held reel', (tester) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final id = await makeReel(harness, 'Goa');
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      final visited = watch(container);
+
+      harness.background
+        ..emit(LaunchAction.toTag)
+        ..emit(LaunchAction.openReel, reelId: id)
+        ..emit(LaunchAction.reels)
+        ..emit(LaunchAction.toTag);
+      await tester.pumpAndSettle();
+      await finishOnboarding(tester, container);
+
+      expect(location(container), Routes.reelReferences(id));
+      expect(visited, isNot(contains(Routes.toTag)));
+      expect(find.byType(ToTagScreen), findsNothing);
+    });
+
+    testApp('toTag alone while not done is dropped even after done', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      final visited = watch(container);
+
+      harness.background.emit(LaunchAction.toTag);
+      await tester.pumpAndSettle();
+      await finishOnboarding(tester, container);
+
+      expect(visited, isNot(contains(Routes.toTag)));
+      expect(find.byType(ToTagScreen), findsNothing);
+      expect(location(container), Routes.reels);
+    });
+
+    testApp('the start action waits for the flags, is held when not done, '
+        'and opens after', (tester) async {
+      final read = Completer<OnboardingFlags>();
+      final harness = VmHarness(onboarding: () => _SlowOnboarding(read));
+      final id = await makeReel(harness, 'Goa');
+      harness.background
+        ..startAction = LaunchAction.openReel
+        ..startReelId = id;
+      final container = await _start(tester, harness);
+      await tester.pump();
+
+      read.complete(_freshFlags);
+      await tester.pumpAndSettle();
+      expect(find.byType(WelcomeScreen), findsOneWidget);
+
+      await finishOnboarding(tester, container);
+      expect(location(container), Routes.reelReferences(id));
+    });
+
+    testApp('the held reel is deleted before done: Reels opens', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final repo = ReelsRepository(harness.media.db, harness.media.clock);
+      final reel = await repo.create('Goa');
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      harness.background.emit(LaunchAction.openReel, reelId: reel.id);
+      await tester.pumpAndSettle();
+      await tester.runAsync(() => repo.delete(reel.id));
+      await finishOnboarding(tester, container);
+
+      expect(location(container), Routes.reels);
+      expect(find.byType(ReelDetailScreen), findsNothing);
+    });
+
+    testApp('an openReel with no usable reel id is held, and opens Reels', (
+      tester,
+    ) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+
+      harness.background.emit(LaunchAction.openReel);
+      await tester.pumpAndSettle();
+      await finishOnboarding(tester, container);
+
+      expect(location(container), Routes.reels);
+    });
+
+    testApp('a kill forgets the held reel: nothing is stored', (tester) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final id = await makeReel(harness, 'Goa');
+      final first = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      harness.background.emit(LaunchAction.openReel, reelId: id);
+      await tester.pumpAndSettle();
+
+      // The process dies: a new container, the same database.
+      await tester.pumpWidget(const SizedBox.shrink());
+      first.dispose();
+      final second = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      final visited = watch(second);
+      await finishOnboarding(tester, second);
+
+      expect(visited, isNot(contains(Routes.reelReferences(id))));
+      expect(location(second), Routes.reels);
+      expect(find.byType(ReelDetailScreen), findsNothing);
+    });
+
+    testApp('the app taken down while a reel is held: done later does '
+        'nothing and nothing throws', (tester) async {
+      final harness = VmHarness(onboarding: FixedOnboarding.fresh);
+      final id = await makeReel(harness, 'Goa');
+      final container = await _start(tester, harness);
+      await tester.pumpAndSettle();
+      harness.background.emit(LaunchAction.openReel, reelId: id);
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await container.read(onboardingControllerProvider.notifier).finish();
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(tester.takeException(), isNull);
+    });
+  });
+
   group('the real onboarding flags (D-135, D-136)', () {
     testApp('no rows in the database: the welcome', (tester) async {
       final harness = VmHarness(onboarding: OnboardingController.new);
@@ -604,4 +900,20 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(tester.binding.sendFramesToEngine, isTrue);
   });
+}
+
+/// A reels repository that counts how often a reel was looked up: each
+/// `openReel` that is opened looks its reel up once (D-165).
+class _CountingReels extends ReelsRepository {
+  // The base class's fields are private, so super parameters cannot be named.
+  // ignore: use_super_parameters
+  _CountingReels(AppDatabase db, Clock clock) : super(db, clock);
+
+  int lookups = 0;
+
+  @override
+  Future<Reel?> getById(int id) {
+    lookups++;
+    return super.getById(id);
+  }
 }

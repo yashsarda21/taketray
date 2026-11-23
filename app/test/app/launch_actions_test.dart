@@ -113,9 +113,9 @@ void main() {
         for (final id in <int?>[null, 0, -1, -997]) {
           expect(
             await routeFor(Launch(LaunchAction.doneEditing, reelId: id), (
-              asked_,
+              askedId,
             ) async {
-              asked.add(asked_);
+              asked.add(askedId);
               return true;
             }),
             Routes.reels,
@@ -145,6 +145,62 @@ void main() {
       );
       expect(other, Routes.reels);
       expect(logText(records), contains('ArgumentError'));
+      expect(logText(records), isNot(contains('Zq')));
+    });
+
+    test('openReel for a reel that exists opens its References', () async {
+      final asked = <int>[];
+      final route = await routeFor(
+        const Launch(LaunchAction.openReel, reelId: 7),
+        (id) async {
+          asked.add(id);
+          return true;
+        },
+      );
+      expect(route, Routes.reelReferences(7));
+      expect(route, '/reels/7?refs=1');
+      expect(asked, [7], reason: 'one check, for that reel only');
+    });
+
+    test('openReel for a reel that is gone opens Reels', () async {
+      expect(
+        await routeFor(
+          const Launch(LaunchAction.openReel, reelId: 7),
+          (id) async => false,
+        ),
+        Routes.reels,
+      );
+    });
+
+    test(
+      'openReel with no usable reel id opens Reels without asking',
+      () async {
+        final asked = <int>[];
+        for (final id in <int?>[null, 0, -1, -997]) {
+          expect(
+            await routeFor(Launch(LaunchAction.openReel, reelId: id), (
+              askedId,
+            ) async {
+              asked.add(askedId);
+              return true;
+            }),
+            Routes.reels,
+            reason: '$id',
+          );
+        }
+        expect(asked, isEmpty);
+      },
+    );
+
+    test('openReel when the reel check fails opens Reels, logs the type '
+        'only', () async {
+      final records = captureLogs();
+      final route = await routeFor(
+        const Launch(LaunchAction.openReel, reelId: 7),
+        (id) async => throw StateError('Zq secret reel name'),
+      );
+      expect(route, Routes.reels);
+      expect(logText(records), contains('StateError'));
       expect(logText(records), isNot(contains('Zq')));
     });
 

@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/app.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
@@ -28,6 +29,8 @@ import '../../../support/vm_harness.dart';
 
 const _title = 'What reels are you planning?';
 const _reelsMarker = 'the reels screen';
+const _tip =
+    'Tip: share any Instagram reel to TakeTray to save it as a reference.';
 
 /// What a pumped step gives a test.
 class _Env {
@@ -45,6 +48,7 @@ class _Env {
 Future<_Env> _pump(
   WidgetTester tester, {
   List<String> existing = const [],
+  Map<String, int> references = const {},
   Brightness brightness = Brightness.light,
   double textScale = 1,
   double keyboard = 0,
@@ -55,8 +59,13 @@ Future<_Env> _pump(
     ..viewInsets = FakeViewPadding(bottom: keyboard);
   addTearDown(tester.view.reset);
   final env = _Env(VmHarness(), []);
+  final refs = ReferencesRepository(env.h.media.db, env.h.media.clock);
   for (final name in existing) {
-    await env.reels.create(name);
+    final reel = await env.reels.create(name);
+    env.h.media.clock.advance(const Duration(minutes: 1));
+    for (var i = 0; i < (references[name] ?? 0); i++) {
+      await refs.add(reel.id, 'https://example.com/${reel.id}/$i');
+    }
   }
   env.router = GoRouter(
     initialLocation: Routes.onboardingReels,
@@ -170,8 +179,7 @@ void main() {
       expect(_chip('Get ready with me'), findsNothing);
       expect(_button('Create reels'), findsOneWidget);
       expect(_button('Skip for now'), findsOneWidget);
-      // The share tip is Phase 9's.
-      expect(find.textContaining('share any Instagram reel'), findsNothing);
+      expect(find.text(_tip), findsOneWidget);
     });
 
     testApp('Create reels is disabled with no names and no reels', (
@@ -213,6 +221,194 @@ void main() {
       // The body starts 28 dp below the top (no status bar in the test).
       expect(tester.getTopLeft(find.byType(StepDots)).dy, 28);
       expect(tester.getTopLeft(find.byType(StepDots)).dx, 24);
+    });
+  });
+
+  group('reels that exist and the Instagram tip (D-168)', () {
+    Finder existingRow(int i) => find.byKey(ReelsStepScreen.existingKey(i));
+
+    testApp('they show above the typed names, without a remove button', (
+      tester,
+    ) async {
+      await _pump(tester, existing: ['London Food']);
+      await _enter(tester, 'Goa');
+      await _enter(tester, 'Paris');
+      expect(existingRow(0), findsOneWidget);
+      expect(existingRow(1), findsNothing);
+      expect(
+        find.descendant(of: existingRow(0), matching: find.text('London Food')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: existingRow(0),
+          matching: find.byIcon(Symbols.link_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: existingRow(0),
+          matching: find.byType(TtIconButton),
+        ),
+        findsNothing,
+      );
+      expect(_remove('London Food'), findsNothing);
+      expect(
+        tester.getTopLeft(existingRow(0)).dy,
+        lessThan(tester.getTopLeft(find.byKey(ReelsStepScreen.rowKey(0))).dy),
+      );
+      // The typed names are still removable.
+      expect(_remove('Goa'), findsOneWidget);
+      expect(find.byKey(ReelsStepScreen.rowKey(1)), findsOneWidget);
+    });
+
+    testApp('the counts read 0, 1 and 3', (tester) async {
+      await _pump(
+        tester,
+        existing: ['Zero', 'One', 'Three'],
+        references: {'One': 1, 'Three': 3},
+      );
+      String countOf(int i) => tester
+          .widgetList<Text>(
+            find.descendant(of: existingRow(i), matching: find.byType(Text)),
+          )
+          .map((t) => t.data)
+          .whereType<String>()
+          .singleWhere((t) => t.contains('reference'));
+      expect(countOf(0), 'No references');
+      expect(countOf(1), '1 reference saved');
+      expect(countOf(2), '3 references saved');
+      expect(
+        find.descendant(of: existingRow(0), matching: find.text('Zero')),
+        findsOneWidget,
+      );
+    });
+
+    testApp('oldest first', (tester) async {
+      await _pump(tester, existing: ['First', 'Second', 'Third']);
+      for (final (i, name) in ['First', 'Second', 'Third'].indexed) {
+        expect(
+          find.descendant(of: existingRow(i), matching: find.text(name)),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testApp('a long name stays on one line', (tester) async {
+      final long = 'W' * 40;
+      await _pump(tester, existing: [long]);
+      final text = tester.widget<Text>(
+        find.descendant(of: existingRow(0), matching: find.text(long)),
+      );
+      expect(text.maxLines, 1);
+      expect(text.overflow, TextOverflow.ellipsis);
+    });
+
+    testApp('each row reads as one item: name, count, Already created (M22)', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await _pump(
+        tester,
+        existing: ['Goa', 'Paris'],
+        references: {'Goa': 2, 'Paris': 0},
+      );
+      // One node for each row, the three parts in reading order.
+      expect(
+        tester.getSemantics(existingRow(0)).label,
+        'Goa\n2 references saved\nAlready created',
+      );
+      expect(
+        tester.getSemantics(existingRow(1)).label,
+        'Paris\nNo references\nAlready created',
+      );
+      // Nothing inside a row is a node of its own.
+      expect(find.bySemanticsLabel('Already created'), findsNothing);
+      expect(find.bySemanticsLabel('Goa'), findsNothing);
+      expect(
+        find.descendant(
+          of: existingRow(0),
+          matching: find.byIcon(Symbols.check_rounded),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.getSize(existingRow(0)).height, greaterThanOrEqualTo(52));
+      handle.dispose();
+    });
+
+    testApp('with none there is no existing block', (tester) async {
+      await _pump(tester);
+      expect(existingRow(0), findsNothing);
+      expect(find.byIcon(Symbols.link_rounded), findsNothing);
+      expect(find.byIcon(Symbols.check_rounded), findsNothing);
+    });
+
+    testApp('the tip shows with no names and with names, with its icon', (
+      tester,
+    ) async {
+      await _pump(tester);
+      expect(find.text(_tip), findsOneWidget);
+      expect(find.byIcon(Symbols.ios_share_rounded), findsOneWidget);
+      await _enter(tester, 'Goa');
+      expect(find.text(_tip), findsOneWidget);
+      expect(find.byIcon(Symbols.ios_share_rounded), findsOneWidget);
+    });
+
+    testApp('the tip shows with existing reels too', (tester) async {
+      await _pump(tester, existing: ['Goa']);
+      expect(find.text(_tip), findsOneWidget);
+    });
+
+    testApp('with existing reels and nothing typed the button is Continue', (
+      tester,
+    ) async {
+      await _pump(tester, existing: ['Goa']);
+      expect(_button('Continue'), findsOneWidget);
+      expect(_button('Create reels'), findsNothing);
+      await _enter(tester, 'Paris');
+      expect(_button('Create 1 reel'), findsOneWidget);
+    });
+
+    testApp('Continue finishes onboarding, writes no reel and opens Reels', (
+      tester,
+    ) async {
+      final env = await _pump(tester, existing: ['Goa']);
+      await tester.tap(_button('Continue'));
+      await tester.pump();
+      await tester.runAsync(settle);
+      await tester.pumpAndSettle();
+      expect(env.reels.calls, isEmpty);
+      expect(env.onboarding.finishes, 1);
+      expect(find.text(_reelsMarker), findsOneWidget);
+    });
+
+    testApp('an idea an existing reel has is not offered', (tester) async {
+      await _pump(tester, existing: ['Food']);
+      expect(_chip('Food'), findsNothing);
+      expect(_chip('Get ready with me'), findsOneWidget);
+    });
+
+    testApp('a reel made while the step is open appears, with its count', (
+      tester,
+    ) async {
+      final env = await _pump(tester);
+      expect(existingRow(0), findsNothing);
+      expect(_button('Create reels'), findsOneWidget);
+      final goa = (await tester.runAsync(() => env.reels.create('Goa')))!;
+      await _settle(tester);
+      expect(existingRow(0), findsOneWidget);
+      expect(find.text('No references'), findsOneWidget);
+      expect(_button('Continue'), findsOneWidget);
+      await tester.runAsync(
+        () => ReferencesRepository(
+          env.h.media.db,
+          env.h.media.clock,
+        ).add(goa.id, 'https://example.com/a'),
+      );
+      await _settle(tester);
+      expect(find.text('1 reference saved'), findsOneWidget);
+      expect(find.text('No references'), findsNothing);
     });
   });
 
@@ -646,6 +842,49 @@ void main() {
         greaterThanOrEqualTo(48),
       );
       handle.dispose();
+    });
+
+    testApp('at 2x text an existing reel with a long name and a count keeps '
+        'one name line and a 48 dp check inside the screen', (tester) async {
+      final long = 'W' * 40;
+      await _pump(
+        tester,
+        existing: ['Go', long],
+        references: {long: 3},
+        textScale: 2,
+      );
+      final row = find.byKey(ReelsStepScreen.existingKey(1));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      Finder nameIn(Finder r, String name) =>
+          find.descendant(of: r, matching: find.text(name));
+      final shortLine = tester.getSize(
+        nameIn(find.byKey(ReelsStepScreen.existingKey(0)), 'Go'),
+      );
+      final longLine = tester.getSize(nameIn(row, long));
+      expect(longLine.height, shortLine.height, reason: 'one line, not two');
+      expect(
+        find.descendant(of: row, matching: find.text('3 references saved')),
+        findsOneWidget,
+      );
+      final check = tester.getRect(
+        find
+            .descendant(
+              of: row,
+              matching: find.ancestor(
+                of: find.byIcon(Symbols.check_rounded),
+                matching: find.byType(SizedBox),
+              ),
+            )
+            .first,
+      );
+      expect(check.size, const Size.square(48));
+      final rowRect = tester.getRect(row);
+      expect(rowRect.left, greaterThanOrEqualTo(0));
+      expect(rowRect.right, lessThanOrEqualTo(360));
+      expect(check.right, lessThanOrEqualTo(rowRect.right));
+      expect(tester.getRect(nameIn(row, long)).right, lessThan(check.left));
     });
 
     testApp('at 2x text with the keyboard up both buttons stay on screen', (

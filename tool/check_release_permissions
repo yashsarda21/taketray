@@ -178,11 +178,12 @@ done < <(awk '$1 == "permission" { print $2 }' <<<"$facts" | sort -u)
 # are Phase 8's editor hooks (src/debug: DebugEditorHooks, channel
 # test_editors, the intent recorder, D-121) and copy hooks (src/debug:
 # DebugCopyHooks, channel test_copy, Task 5; listed here by Task 4 so Task 5
-# never edits this script). The strings are looked for in every classes*.dex of the APK, and
+# never edits this script) and Phase 9B's share hook (src/debug:
+# DebugShareHooks, channel test_share, D-169). The strings are looked for in every classes*.dex of the APK, and
 # in R8's mapping file when there is one (the dex only holds the renamed class,
 # the mapping holds the real name). The scan itself is proved by finding a
 # class that must be there.
-FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background quiet-rule DebugEditorHooks test_editors DebugCopyHooks test_copy)
+FORBIDDEN_DEX_STRINGS=(TestMedia test_media DebugBackgroundHooks test_background quiet-rule DebugEditorHooks test_editors DebugCopyHooks test_copy DebugShareHooks test_share)
 MUST_FIND_IN_DEX="app/taketray/MainActivity"
 dex_dir="$(mktemp -d)"
 trap 'rm -rf "$dex_dir"' EXIT

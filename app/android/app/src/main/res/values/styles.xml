@@ -27,4 +27,17 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <!-- The share screen's theme (D-163): ShareActivity draws over the app
+         that shared, so its window is see-through, with no title, no dim of
+         its own (the Flutter sheet draws one) and no starting window: a share
+         shows no splash and no blank frame before Flutter's first one. The
+         same in values-night: nothing here has a colour of its own. -->
+    <style name="ShareTheme" parent="@android:style/Theme.Translucent.NoTitleBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowDisablePreview">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
 </resources>

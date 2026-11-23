@@ -277,6 +277,56 @@ void main() {
     });
   });
 
+  group('shortLink shows a percent-encoded host decoded (M32)', () {
+    test('caf%C3%A9.fr/x is café.fr/x', () {
+      expect(shortLink('https://caf%C3%A9.fr/x'), 'café.fr/x');
+    });
+
+    test('lower-case hex, a leading www. and the slash', () {
+      expect(shortLink('https://www.caf%c3%a9.fr/'), 'café.fr');
+    });
+
+    test('the port stays', () {
+      expect(shortLink('https://caf%C3%A9.fr:8080/x'), 'café.fr:8080/x');
+    });
+
+    test('a link as normalizeReferenceUrl stores it', () {
+      final stored = normalizeReferenceUrl('https://café.fr/menu?a=1')!;
+      expect(stored.toString(), contains('%C3%A9'));
+      expect(shortLink(stored.toString()), 'café.fr/menu');
+    });
+
+    test('a Cyrillic host', () {
+      final stored = normalizeReferenceUrl('https://пример.рф/a')!;
+      expect(shortLink(stored.toString()), 'пример.рф/a');
+    });
+
+    test('only the host is decoded: the path keeps its %XX', () {
+      expect(
+        shortLink('https://example.com/caf%C3%A9'),
+        'example.com/caf%C3%A9',
+      );
+      expect(shortLink('https://example.com/a%2Fb'), 'example.com/a%2Fb');
+    });
+
+    test('a run that is not valid UTF-8 stays as it is', () {
+      expect(shortLink('https://%C3.com/x'), '%C3.com/x');
+      expect(shortLink('https://%zz.com/x'), '%zz.com/x');
+    });
+
+    test('a decoded host never gains a slash, a query mark or a space', () {
+      expect(shortLink('https://a%2Fb.com/x'), 'a%2Fb.com/x');
+      expect(shortLink('https://a%3Fb.com/x'), 'a%3Fb.com/x');
+      expect(shortLink('https://a%20b.com/x'), 'a%20b.com/x');
+      expect(shortLink('https://a%23b.com/x'), 'a%23b.com/x');
+      expect(shortLink('https://a%40b.com/x'), 'a%40b.com/x');
+    });
+
+    test('an ordinary host is not touched', () {
+      expect(shortLink('https://example.com/a'), 'example.com/a');
+    });
+  });
+
   group('referenceKindOf', () {
     ReferenceKind kind(String raw) =>
         referenceKindOf(normalizeReferenceUrl(raw)!);

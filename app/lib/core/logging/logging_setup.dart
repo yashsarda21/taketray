@@ -217,11 +217,19 @@ int get bufferedRecordCount => _state.early.length;
 ///
 /// [onSinkReady] receives the live sink as soon as it exists; tests use it to
 /// read the log back.
+///
+/// The files are `<filePrefix>-0.log` and `-1.log` in [logDir], each up to
+/// [maxLogBytes]. The app keeps the defaults (`taketray`, 512 KiB); the
+/// share screen's engine, which runs beside the app's in the same process,
+/// writes its own `share` files of 128 KiB (D-163), so the two never rotate
+/// each other's files.
 Future<void> runAppWithLogging(
   FutureOr<void> Function() body, {
   required Future<Directory> Function() logDir,
   void Function(LogFileSink sink)? onSinkReady,
   Duration logDirTimeout = const Duration(seconds: 5),
+  String filePrefix = appLogPrefix,
+  int maxLogBytes = 512 * 1024,
 }) async {
   Logger.root.level = Level.INFO;
 
@@ -261,8 +269,11 @@ Future<void> runAppWithLogging(
     unawaited(
       _attachSink(
         state,
-        logDir,
-        logDirTimeout,
+        () async => LogFileSink(
+          await logDir().timeout(logDirTimeout),
+          prefix: filePrefix,
+          maxBytes: maxLogBytes,
+        ),
         onSinkReady,
       ).whenComplete(settled.complete),
     );
@@ -273,13 +284,12 @@ Future<void> runAppWithLogging(
 
 Future<void> _attachSink(
   _LogState state,
-  Future<Directory> Function() logDir,
-  Duration timeout,
+  Future<LogFileSink> Function() openSink,
   void Function(LogFileSink sink)? onSinkReady,
 ) async {
   final LogFileSink sink;
   try {
-    sink = LogFileSink(await logDir().timeout(timeout));
+    sink = await openSink();
   } on Object catch (error) {
     state
       ..disabled = true

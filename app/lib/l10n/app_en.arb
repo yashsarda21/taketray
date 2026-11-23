@@ -3742,6 +3742,23 @@
   "@reelsStepIdeas": {
     "description": "Small heading over the suggested reel names on onboarding's last step."
   },
+  "reelsStepExistingCount": "{count, plural, =0{No references} =1{1 reference saved} other{{count} references saved}}",
+  "@reelsStepExistingCount": {
+    "description": "Second line of a row for a reel that already exists, on onboarding's last step (a reel a share made before onboarding): how many references it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelsStepExistingDone": "Already created",
+  "@reelsStepExistingDone": {
+    "description": "What a screen reader says for the check mark at the end of a row for a reel that already exists, on onboarding's last step."
+  },
+  "reelsStepShareTip": "Tip: share any Instagram reel to TakeTray to save it as a reference.",
+  "@reelsStepShareTip": {
+    "description": "Small tip under the reel list on onboarding's last step, always shown: sharing a reel from Instagram saves it as a reference."
+  },
   "reelsStepCreate": "Create {count, plural, one{1 reel} other{{count} reels}}",
   "@reelsStepCreate": {
     "description": "Main button of onboarding's last step while reel names are in the list: makes them all and opens Reels.",
@@ -4390,5 +4407,107 @@
   "shootingReferencesLoadFailed": "Couldn't load your references.",
   "@shootingReferencesLoadFailed": {
     "description": "The failure line of the Shooting mode References sheet when the references could not be read from the database while the sheet was open."
+  },
+  "saveReferenceTitle": "Save reference",
+  "@saveReferenceTitle": {
+    "description": "Title of the Save reference sheet that the share screen shows over another app."
+  },
+  "saveReferenceSaveTo": "Save to",
+  "@saveReferenceSaveTo": {
+    "description": "Small heading over the Existing reel / New reel switch of the Save reference sheet."
+  },
+  "saveReferenceModeSemantics": "Where to save",
+  "@saveReferenceModeSemantics": {
+    "description": "What a screen reader says for the Existing reel / New reel switch of the Save reference sheet."
+  },
+  "saveReferenceModeExisting": "Existing reel",
+  "@saveReferenceModeExisting": {
+    "description": "First choice of the switch in the Save reference sheet: save to a reel the user already has."
+  },
+  "saveReferenceModeNew": "New reel",
+  "@saveReferenceModeNew": {
+    "description": "Second choice of the switch in the Save reference sheet: make a new reel for the link."
+  },
+  "saveReferenceReelReferences": "{count, plural, =0{No references} =1{1 reference} other{{count} references}}",
+  "@saveReferenceReelReferences": {
+    "description": "Line under a reel's name in the Save reference sheet's list: how many references the reel has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "saveReferenceAlreadyHint": "Pick another reel, or open this one.",
+  "@saveReferenceAlreadyHint": {
+    "description": "Line under \"Already saved in {reel}\" in the Save reference sheet."
+  },
+  "saveReferenceOpenReel": "Open reel",
+  "@saveReferenceOpenReel": {
+    "description": "Button in the Save reference sheet (on the Already saved banner, and after saving) that opens the reel in TakeTray."
+  },
+  "saveReferenceKindInstagramReel": "Instagram reel",
+  "@saveReferenceKindInstagramReel": {
+    "description": "What a shared Instagram reel link is called in the Save reference sheet."
+  },
+  "saveReferenceKindInstagramPost": "Instagram post",
+  "@saveReferenceKindInstagramPost": {
+    "description": "What a shared Instagram post link is called in the Save reference sheet."
+  },
+  "saveReferenceKindInstagramVideo": "Instagram video",
+  "@saveReferenceKindInstagramVideo": {
+    "description": "What a shared Instagram video (IGTV) link is called in the Save reference sheet."
+  },
+  "saveReferenceKindInstagramProfile": "Instagram profile",
+  "@saveReferenceKindInstagramProfile": {
+    "description": "What a shared Instagram profile link is called in the Save reference sheet."
+  },
+  "saveReferenceKindYoutubeShort": "YouTube Short",
+  "@saveReferenceKindYoutubeShort": {
+    "description": "What a shared YouTube Shorts link is called in the Save reference sheet."
+  },
+  "saveReferenceKindYoutubeVideo": "YouTube video",
+  "@saveReferenceKindYoutubeVideo": {
+    "description": "What any other shared YouTube link is called in the Save reference sheet."
+  },
+  "saveReferenceKindTiktokVideo": "TikTok video",
+  "@saveReferenceKindTiktokVideo": {
+    "description": "What a shared TikTok link is called in the Save reference sheet."
+  },
+  "saveReferenceNotALinkTitle": "This isn't a link",
+  "@saveReferenceNotALinkTitle": {
+    "description": "Heading of the Save reference sheet when the shared text has no link in it."
+  },
+  "saveReferenceNotALinkBody": "TakeTray saves links to reels and videos. This looks like a caption:",
+  "@saveReferenceNotALinkBody": {
+    "description": "Text under the heading \"This isn't a link\"; the shared text is quoted after it."
+  },
+  "saveReferenceNotALinkHint": "In Instagram, tap Share on the reel itself, then choose TakeTray. Nothing was saved.",
+  "@saveReferenceNotALinkHint": {
+    "description": "Text after the quoted caption in the Save reference sheet, saying how to share a reel."
+  },
+  "saveReferenceClose": "Close",
+  "@saveReferenceClose": {
+    "description": "Button that closes the Save reference sheet when the shared text was not a link."
+  },
+  "saveReferenceSavedTitle": "Saved to {reelName}",
+  "@saveReferenceSavedTitle": {
+    "description": "Heading of the Save reference sheet after the link was saved; the name is the reel's name.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "saveReferenceDone": "Done",
+  "@saveReferenceDone": {
+    "description": "Button that closes the Save reference sheet after the link was saved and returns to the app that shared it."
+  },
+  "saveReferenceWelcomeTitle": "Welcome to TakeTray",
+  "@saveReferenceWelcomeTitle": {
+    "description": "Title of the note in the Save reference sheet when the user shares before they have opened TakeTray for the first time."
+  },
+  "saveReferenceWelcomeBody": "Next time you open the app, it takes about a minute to set up the rest.",
+  "@saveReferenceWelcomeBody": {
+    "description": "Text of the note under \"Welcome to TakeTray\" in the Save reference sheet."
   }
 }

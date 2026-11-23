@@ -133,12 +133,14 @@ class NotificationAccessMsg {
 }
 
 /// The screen a notification tap opens: an allow-list, never a route.
-/// [doneEditing] opens a reel's page, asking Done editing there.
-enum LaunchActionMsg { toTag, reels, doneEditing }
+/// [doneEditing] opens a reel's page, asking Done editing there. [openReel]
+/// (D-165) is the share screen's Open reel: it opens the reel's References.
+enum LaunchActionMsg { toTag, reels, doneEditing, openReel }
 
-/// A notification tap: the allow-listed [action] and, for `doneEditing` only,
-/// the reel it is for. The reel id is the only payload there is (D-124); Dart
-/// checks the reel still exists.
+/// A notification tap (or the share screen's Open reel): the allow-listed
+/// [action] and, for `doneEditing` and `openReel` only, the reel it is for.
+/// The reel id is the only payload there is (D-124); Dart checks the reel
+/// still exists.
 class LaunchMsg {
   LaunchMsg({required this.action, this.reelId});
 

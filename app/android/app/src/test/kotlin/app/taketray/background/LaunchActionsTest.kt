@@ -349,6 +349,88 @@ class LaunchActionsTest {
         assertEquals(listOf(LaunchMsg(LaunchActionMsg.DONE_EDITING, 8)), sent)
     }
 
+    // ---- openReel (Phase 9B, D-165): the share screen's Open reel ----
+
+    @Test
+    fun `an openReel intent names its reel and reads back once`() {
+        val intent = LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 7)
+        assertEquals(ComponentName(context, MainActivity::class.java), intent.component)
+        assertEquals("openReel", intent.getStringExtra(LaunchActions.EXTRA_OPEN))
+        assertEquals(7L, intent.getLongExtra(LaunchActions.EXTRA_REEL_ID, -1))
+        assertEquals("taketray-open-openReel-7", intent.identifier)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP != 0)
+        assertTrue(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP != 0)
+        assertEquals(LaunchMsg(LaunchActionMsg.OPEN_REEL, 7), LaunchActions.read(intent))
+        assertFalse(intent.hasExtra(LaunchActions.EXTRA_OPEN))
+        assertFalse(intent.hasExtra(LaunchActions.EXTRA_REEL_ID))
+        assertNull("read once", LaunchActions.read(intent))
+    }
+
+    @Test
+    fun `openReel intents of two reels, or of openReel and Done editing, never replace each other`() {
+        val one = LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 1)
+        assertFalse(one.filterEquals(LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 2)))
+        assertFalse(one.filterEquals(LaunchActions.intent(context, LaunchActionMsg.DONE_EDITING, 1)))
+        assertTrue(one.filterEquals(LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 1)))
+    }
+
+    @Test
+    fun `an openReel intent without a usable reel id makes no intent`() {
+        for (id in listOf<Long?>(null, 0, -1, -997, BackgroundState.MAX_REEL_ID + 1, Long.MAX_VALUE)) {
+            try {
+                LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, id)
+                org.junit.Assert.fail("expected a refusal for $id")
+            } catch (e: IllegalArgumentException) {
+                // Refused, as expected.
+            }
+        }
+        val max = LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, BackgroundState.MAX_REEL_ID)
+        assertEquals(LaunchMsg(LaunchActionMsg.OPEN_REEL, BackgroundState.MAX_REEL_ID), LaunchActions.read(max))
+    }
+
+    @Test
+    fun `an openReel launch with a bad reel id still reads, with no reel`() {
+        val bad = listOf<Any?>(null, "7", 7, 7.0, 0L, -1L, -999L, BackgroundState.MAX_REEL_ID + 1, Long.MAX_VALUE, longArrayOf(7))
+        for (id in bad) {
+            val intent = Intent(context, MainActivity::class.java).putExtra(LaunchActions.EXTRA_OPEN, "openReel")
+            when (id) {
+                is String -> intent.putExtra(LaunchActions.EXTRA_REEL_ID, id)
+                is Int -> intent.putExtra(LaunchActions.EXTRA_REEL_ID, id)
+                is Double -> intent.putExtra(LaunchActions.EXTRA_REEL_ID, id)
+                is Long -> intent.putExtra(LaunchActions.EXTRA_REEL_ID, id)
+                is LongArray -> intent.putExtra(LaunchActions.EXTRA_REEL_ID, id)
+            }
+            assertEquals("$id", LaunchMsg(LaunchActionMsg.OPEN_REEL, null), LaunchActions.read(intent))
+            assertFalse("$id", intent.hasExtra(LaunchActions.EXTRA_REEL_ID))
+        }
+    }
+
+    @Test
+    fun `an openReel launch from history or a restored activity is dropped with its reel id`() {
+        val replay = LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 7).addFlags(Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY)
+        val relay = relay()
+        relay.onIntent(replay)
+        assertNull(relay.take())
+        assertFalse(replay.hasExtra(LaunchActions.EXTRA_REEL_ID))
+
+        val restored = LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 7)
+        relay.onIntent(restored, restored = true)
+        assertNull(relay.take())
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
+    fun `the relay hands openReel and its reel to Dart, and touches no reminder`() {
+        postCopies(7)
+        val relay = relay()
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 7))
+        assertEquals(LaunchMsg(LaunchActionMsg.OPEN_REEL, 7), relay.take())
+        relay.onIntent(LaunchActions.intent(context, LaunchActionMsg.OPEN_REEL, 8))
+        assertEquals(listOf(LaunchMsg(LaunchActionMsg.OPEN_REEL, 8)), sent)
+        assertTrue("opening a reel leaves its copies reminder", copiesShowing(7))
+    }
+
     private fun postCopies(
         reelId: Long,
         name: String = "Trip",

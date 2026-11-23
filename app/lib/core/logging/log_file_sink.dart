@@ -1,20 +1,45 @@
 import 'dart:convert';
 import 'dart:io';
 
+/// The app's log files: `taketray-0.log` and `taketray-1.log`.
+const String appLogPrefix = 'taketray';
+
+/// The share screen's log files (D-163): `share-0.log` and `share-1.log`. The
+/// share screen runs its own Flutter engine, so it keeps its own files and
+/// never races the app's rotation.
+const String shareLogPrefix = 'share';
+
 /// Append-only text log that rotates by size.
 ///
-/// The current file is `taketray-0.log`; when a write would push it past
+/// The current file is `<prefix>-0.log`; when a write would push it past
 /// [maxBytes] the files shift up one slot (`-0` becomes `-1`, the oldest is
 /// dropped) and a fresh current file starts. At most [maxFiles] files exist,
 /// so the log never grows beyond `maxBytes * maxFiles`.
+///
+/// Two sinks with different [prefix]es in one [dir] never touch each other's
+/// files (the app and the share screen, D-163). Two sinks with the same prefix
+/// (two share engines at once) each read the file's size before every write,
+/// so neither lets it pass [maxBytes]; a rotation that both start at the same
+/// moment can still lose a line, which a log can bear.
 class LogFileSink {
   /// Creates a sink that stores its files in [dir].
-  new(this.dir, {this.maxBytes = 512 * 1024, this.maxFiles = 2})
-    : assert(maxBytes > 0, 'maxBytes must be positive'),
-      assert(maxFiles >= 1, 'maxFiles must be at least 1');
+  new(
+    this.dir, {
+    this.prefix = appLogPrefix,
+    this.maxBytes = 512 * 1024,
+    this.maxFiles = 2,
+  }) : assert(
+         prefix.isNotEmpty && !prefix.contains('/'),
+         'prefix must be a plain file name part',
+       ),
+       assert(maxBytes > 0, 'maxBytes must be positive'),
+       assert(maxFiles >= 1, 'maxFiles must be at least 1');
 
   /// Directory holding the log files.
   final Directory dir;
+
+  /// The start of every file name: `<prefix>-0.log`, `<prefix>-1.log`, ...
+  final String prefix;
 
   /// Size threshold of a single log file.
   final int maxBytes;
@@ -27,9 +52,7 @@ class LogFileSink {
   /// ones (the failure is still reported to that write's caller).
   Future<void> _tail = Future<void>.value();
 
-  int? _currentSize;
-
-  File _file(int index) => File('${dir.path}/taketray-$index.log');
+  File _file(int index) => File('${dir.path}/$prefix-$index.log');
 
   /// Appends [line] and a newline to the current file, rotating first when
   /// the file would otherwise exceed [maxBytes].
@@ -43,14 +66,12 @@ class LogFileSink {
     final bytes = utf8.encode('$line\n');
     await dir.create(recursive: true);
     final current = _file(0);
-    var size =
-        _currentSize ?? (current.existsSync() ? current.lengthSync() : 0);
-    if (size > 0 && size + bytes.length > maxBytes) {
-      await _rotate();
-      size = 0;
-    }
+    // The size is read from the file before every write, not counted: two
+    // sinks may write the same files (two share engines at once, D-163), and
+    // each one's own count would fall behind the other's writes.
+    final size = current.existsSync() ? current.lengthSync() : 0;
+    if (size > 0 && size + bytes.length > maxBytes) await _rotate();
     await current.writeAsBytes(bytes, mode: FileMode.append, flush: true);
-    _currentSize = size + bytes.length;
   }
 
   Future<void> _rotate() async {

@@ -36,6 +36,10 @@ class ReelsStepScreen extends ConsumerStatefulWidget {
   /// The row of the [index]th name in the list, for tests.
   static Key rowKey(int index) => ValueKey('reels-step-row-$index');
 
+  /// The row of the [index]th reel that already exists (oldest first), for
+  /// tests.
+  static Key existingKey(int index) => ValueKey('reels-step-existing-$index');
+
   @override
   ConsumerState<ReelsStepScreen> createState() => _ReelsStepScreenState();
 }
@@ -127,11 +131,20 @@ class _ReelsStepScreenState extends ConsumerState<ReelsStepScreen> {
             onPressed: step.busy ? null : _add,
           ),
         ),
-        if (step.names.isNotEmpty)
+        if (step.existing.isNotEmpty || step.names.isNotEmpty)
           Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: tt.spacing.xs,
             children: [
+              for (var i = 0; i < step.existing.length; i++)
+                _ExistingRow(
+                  key: ReelsStepScreen.existingKey(i),
+                  reel: step.existing[i],
+                  countText: l10n.reelsStepExistingCount(
+                    step.existing[i].referenceCount,
+                  ),
+                  doneLabel: l10n.reelsStepExistingDone,
+                ),
               for (var i = 0; i < step.names.length; i++)
                 _NameRow(
                   key: ReelsStepScreen.rowKey(i),
@@ -141,6 +154,7 @@ class _ReelsStepScreenState extends ConsumerState<ReelsStepScreen> {
                 ),
             ],
           ),
+        _ShareTip(text: l10n.reelsStepShareTip),
         if (ideas.isNotEmpty)
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -223,6 +237,124 @@ class _AddButton extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// A reel that already exists (the prototype's `.reel-row` with `pre`): the
+/// link mark, the name on one line, how many references it has, and a check
+/// that a screen reader reads as "Already created". It has no remove button:
+/// the reel is real (D-168).
+class _ExistingRow extends StatelessWidget {
+  const new({
+    required this.reel,
+    required this.countText,
+    required this.doneLabel,
+    super.key,
+  });
+
+  final ExistingReel reel;
+  final String countText;
+  final String doneLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // One item for a screen reader: the name, the count, 'Already created'.
+    return MergeSemantics(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHigh,
+          borderRadius: BorderRadius.circular(_rowRadius),
+        ),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: _rowMinHeight),
+          child: Padding(
+            padding: EdgeInsets.only(left: tt.spacing.m, right: _rowPaddingEnd),
+            child: Row(
+              spacing: tt.spacing.s,
+              children: [
+                ExcludeSemantics(
+                  child: Icon(
+                    Symbols.link_rounded,
+                    size: tt.sizes.iconSmall,
+                    color: tt.colors.record,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        reel.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.text.material.bodyLarge,
+                      ),
+                      Text(
+                        countText,
+                        style: tt.text.material.bodySmall!.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Semantics(
+                  label: doneLabel,
+                  excludeSemantics: true,
+                  child: SizedBox.square(
+                    dimension: tt.sizes.touchTarget,
+                    child: Icon(
+                      Symbols.check_rounded,
+                      size: tt.sizes.icon,
+                      color: scheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The tip under the list (`.ob-tip`): the share icon and one line of
+/// body-small text in the variant colour, always shown (D-168).
+class _ShareTip extends StatelessWidget {
+  const new({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final colour = context.scheme.onSurfaceVariant;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: tt.spacing.xs,
+      children: [
+        Padding(
+          padding: EdgeInsets.only(top: tt.spacing.xxs),
+          child: ExcludeSemantics(
+            child: Icon(
+              Symbols.ios_share_rounded,
+              size: tt.sizes.iconSmall,
+              color: colour,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Text(
+            text,
+            style: tt.text.material.bodySmall!.copyWith(color: colour),
+          ),
+        ),
+      ],
     );
   }
 }

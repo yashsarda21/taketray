@@ -9,8 +9,9 @@ import io.flutter.plugin.common.MethodChannel
  * channel, with which the Patrol tests put test videos into the phone's media
  * library and remove them again (D-77), and `app.taketray/test_background`
  * ([DebugBackgroundHooks], Phase 6), `app.taketray/test_editors`
- * ([DebugEditorHooks], Phase 8) and `app.taketray/test_copy`
- * ([DebugCopyHooks], Phase 8). The release and profile copies of this
+ * ([DebugEditorHooks], Phase 8), `app.taketray/test_copy`
+ * ([DebugCopyHooks], Phase 8) and `app.taketray/test_share`
+ * ([DebugShareHooks], Phase 9B). The release and profile copies of this
  * object register nothing, and `tool/check_release_permissions` fails if the
  * release build holds any of this.
  */
@@ -27,5 +28,6 @@ object DebugHooks {
         DebugEditorHooks.register(engine, app)
         // MainActivity passes itself: the copy hooks read its window's screen-on flag.
         DebugCopyHooks.register(engine, context)
+        DebugShareHooks.register(engine, context)
     }
 }

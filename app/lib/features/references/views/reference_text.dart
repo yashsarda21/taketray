@@ -7,7 +7,8 @@ final _leadingSubdomain = RegExp(r'^(?:www|m)\.');
 /// What the link [url] is, in words, for a reference card and the Edit label
 /// sheet: "Instagram", "Instagram profile", "YouTube Short", "YouTube video"
 /// or "TikTok video"; for any other link, its host without a leading `www.`
-/// or `m.` ("example.com"). [url] should be a saved reference's own
+/// or `m.` ("example.com"), a percent-encoded host decoded for display
+/// (`café.fr`, M32). [url] should be a saved reference's own
 /// (`normalizeReferenceUrl`'s form).
 String referenceKindText(AppLocalizations l10n, Uri url) =>
     switch (referenceKindOf(url)) {
@@ -16,7 +17,9 @@ String referenceKindText(AppLocalizations l10n, Uri url) =>
       ReferenceKind.youtubeShort => l10n.referenceKindYoutubeShort,
       ReferenceKind.youtubeVideo => l10n.referenceKindYoutubeVideo,
       ReferenceKind.tiktok => l10n.referenceKindTiktok,
-      ReferenceKind.link => url.host.replaceFirst(_leadingSubdomain, ''),
+      ReferenceKind.link => displayHost(
+        url.host,
+      ).replaceFirst(_leadingSubdomain, ''),
     };
 
 /// The words of a reference card (D-157): the title is the label, or the

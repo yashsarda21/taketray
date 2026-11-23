@@ -8,11 +8,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
-## Phase 9 (references)
-
-- The share handler must take the first `http(s)` URL out of shared text before calling `ReferencesRepository.add`: TikTok and YouTube share text such as "Title https://vm.tiktok.com/…", and `normalizeReferenceUrl` rightly refuses anything with a space in it. (9A Task 2 adds `firstLinkIn`; 9B's share uses it.)
-- The banner margin is not configurable (`refs.js` overrides it). (9B: the Save reference sheet's "Already saved" banner.)
-
 ## Phase 10 (onboarding and settings)
 
 - **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.
@@ -27,6 +22,8 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - **A picked clip and its folder twin** (D-115, D-57). After full access comes back, a video added through the photo picker and the same video added from its folder are two clips (the address and the MediaStore number are different identities; the fingerprint is not one). The scan can make a twin too, with no second action by the user: Shooting mode on, access drops to limited, a camera video is picked into To tag, full access returns, and the next scan adds the same video past the baseline as a MediaStore clip (final review M-3). Both are undoable and removable. If it bites, offer to merge the two when a folder add finds a picked clip with the same fingerprint, asking the user first; never merge silently.
 
 ## Phase 11 (polish and release)
+
+- **ShareActivity's library uri points at a file that no longer declares `shareMain`** (Phase 9B release fix review, D-163 item 12). `ShareActivity.getDartEntrypointLibraryUri()` returns `package:taketray/share_main.dart`, which now holds `runShareScreen`; `shareMain` is declared in `main.dart`. Flutter 3.47.7 drops the uri (FlutterEngineGroup looks the name up in the root library), so nothing breaks today; a Flutter that honours the uri would fail with "Could not resolve main entrypoint function". Fix: point the uri at `package:taketray/main.dart` (and `ShareActivityTest`), then prove a release share on the phone. Also update two stale comments that still say `main.dart` re-exports `shareMain`: `ShareActivity.kt` line 28 and `app/patrol_test/share_test.dart` line 90. Check after every Flutter upgrade that a release share still opens the sheet.
 
 - **A backup save that fails while writing leaves its document behind** (D-147). `saveDocument` creates the document first, then writes it; a write that fails (the storage full, the provider gone) answers an error, and the user sees "Couldn't save the backup.", but the empty or partial file stays where they chose to save it. Importing it later is refused as not a TakeTray backup, so no data is at risk. Fix idea: on a failed write, `DocumentsContract.deleteDocument` the new document, best effort.
 - **Name an SD card and a USB drive apart in Add videos** (D-114). A volume's name cannot tell them apart, so every volume but the phone's is "Other storage" (numbered when there are two). Android's `StorageVolume.getDescription` would give "SD card" or the drive's name, for one more bridge call. Only seen when two folders with one name are on two storages.

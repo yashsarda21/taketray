@@ -1,12 +1,14 @@
 package app.taketray.files
 
 import android.app.Activity
+import android.content.ComponentName
 import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Looper
 import androidx.core.content.FileProvider
+import app.taketray.share.ShareActivity
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -111,6 +113,22 @@ class FilesHostApiImplTest {
             assertEquals(0, chooser.flags and Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
             // The address really reaches the file through the app's own provider.
             assertEquals("line one\nline two\n", resolver.openInputStream(stream)!!.use { String(it.readBytes(), Charsets.UTF_8) })
+        }
+
+    @Test
+    fun `shareFile keeps TakeTray's own share screen out of the chooser`() =
+        timed {
+            val file = sharedFile("taketray-log-2026-11-17-0930.txt", "line one\n")
+            impl.shareFile(file.path, "text/plain", "TakeTray error log", "TakeTray 1.0.0 on Android 15")
+
+            val chooser = shadowOf(activity).nextStartedActivity
+            @Suppress("DEPRECATION")
+            val excluded = chooser.getParcelableArrayExtra(Intent.EXTRA_EXCLUDE_COMPONENTS)
+            assertNotNull("no component is excluded", excluded)
+            assertEquals(
+                listOf(ComponentName(activity, ShareActivity::class.java)),
+                excluded!!.toList(),
+            )
         }
 
     @Test

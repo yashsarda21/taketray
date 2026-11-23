@@ -93,11 +93,13 @@ abstract class NotificationAccess with _$NotificationAccess {
 }
 
 /// The screen a notification tap opens. An allow-list: never a route.
-/// [doneEditing] opens a reel's page (Phase 8, D-124).
-enum LaunchAction { toTag, reels, doneEditing }
+/// [doneEditing] opens a reel's page (Phase 8, D-124). [openReel] is the share
+/// screen's Open reel: the reel's References (Phase 9B, D-165).
+enum LaunchAction { toTag, reels, doneEditing, openReel }
 
-/// A notification tap: its [action] and, for [LaunchAction.doneEditing] only,
-/// the reel it is for (null when Android could not name a usable one).
+/// A notification tap: its [action] and, for [LaunchAction.doneEditing] and
+/// [LaunchAction.openReel] only, the reel it is for (null when Android could
+/// not name a usable one).
 /// Android sends no other payload.
 @freezed
 abstract class Launch with _$Launch {
@@ -336,8 +338,8 @@ NotificationAccess _access(NotificationAccessMsg msg) => NotificationAccess(
   sdkInt: msg.sdkInt,
 );
 
-/// Only Done editing carries a reel: Android sends no payload with the
-/// others, and whatever arrives with them is dropped.
+/// Only Done editing and Open reel carry a reel: Android sends no payload
+/// with the others, and whatever arrives with them is dropped.
 Launch _launch(LaunchMsg msg) => switch (msg.action) {
   LaunchActionMsg.toTag => const Launch(LaunchAction.toTag),
   LaunchActionMsg.reels => const Launch(LaunchAction.reels),
@@ -345,6 +347,7 @@ Launch _launch(LaunchMsg msg) => switch (msg.action) {
     LaunchAction.doneEditing,
     reelId: msg.reelId,
   ),
+  LaunchActionMsg.openReel => Launch(LaunchAction.openReel, reelId: msg.reelId),
 };
 
 @Riverpod(keepAlive: true)
