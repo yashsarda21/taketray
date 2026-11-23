@@ -3,8 +3,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/domain/rules/reference_url.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 import 'package:taketray/features/reels/view_models/reel_form_controller.dart';
 
@@ -21,6 +24,7 @@ class _CountingReels extends ReelsRepository {
   int renames = 0;
   int descriptions = 0;
   int statuses = 0;
+  int createsWithReference = 0;
   Error? failWith;
 
   /// When set, the next [watchAll] shows this list (a reel made a moment
@@ -54,6 +58,22 @@ class _CountingReels extends ReelsRepository {
   }
 
   @override
+  Future<Reel> createWithReference(
+    String name, {
+    required String url,
+    String? description,
+    String? label,
+  }) async {
+    createsWithReference++;
+    return await super.createWithReference(
+      name,
+      url: url,
+      description: description,
+      label: label,
+    );
+  }
+
+  @override
   Future<void> rename(int id, String name) async {
     renames++;
     await super.rename(id, name);
@@ -72,18 +92,44 @@ class _CountingReels extends ReelsRepository {
   }
 }
 
+/// A references repository that counts its adds and can be made to fail.
+class _CountingReferences extends ReferencesRepository {
+  // The parameters of ReferencesRepository are private, so they cannot be
+  // super parameters.
+  // ignore: use_super_parameters, the same reason
+  _CountingReferences(AppDatabase db, Clock clock) : super(db, clock);
+
+  int adds = 0;
+  Error? failWith;
+
+  @override
+  Future<AddReferenceResult> add(
+    int reelId,
+    String rawUrl, {
+    String? label,
+  }) async {
+    adds++;
+    final failure = failWith;
+    if (failure != null) throw failure;
+    return await super.add(reelId, rawUrl, label: label);
+  }
+}
+
 void main() {
   late VmHarness h;
   late _CountingReels reels;
+  late _CountingReferences refs;
   late ProviderContainer container;
 
   setUp(() {
     h = VmHarness();
     reels = _CountingReels(h.media.db, h.media.clock);
+    refs = _CountingReferences(h.media.db, h.media.clock);
     container = ProviderContainer.test(
       overrides: [
         ...h.overrides,
         reelsRepositoryProvider.overrideWithValue(reels),
+        referencesRepositoryProvider.overrideWithValue(refs),
       ],
     );
   });
@@ -99,6 +145,9 @@ void main() {
       container.read(reelFormControllerProvider(reelId));
 
   Future<List<Reel>> allReels() => reels.watchAll().first;
+
+  Future<List<ReelReference>> savedLinks(int reelId) =>
+      refs.watchForReel(reelId).first;
 
   group('create', () {
     test('empty name error', () async {
@@ -375,6 +424,250 @@ void main() {
       await Future.wait([first, second]);
       expect(reels.renames, 1);
       expect(reels.statuses, 1);
+    });
+  });
+
+  group('create with a link (Phase 9A)', () {
+    const reelLink = 'https://www.instagram.com/reel/ABC123/?igsh=xyz';
+    const cleaned = 'https://www.instagram.com/p/ABC123/';
+
+    test('a link makes the reel and its reference in one save', () async {
+      final saved = await form(null)
+          .save(name: 'Goa', description: 'beaches', link: reelLink);
+      expect(saved, isNotNull);
+      expect(saved!.description, 'beaches');
+      expect(stateOf(null).hasErrors, isFalse);
+      expect(reels.createsWithReference, 1);
+      expect(reels.creates, 0);
+      final links = await savedLinks(saved.id);
+      expect(links.map((r) => r.url), [cleaned]);
+      expect(links.single.label, isNull);
+    });
+
+    test('a caption with a link in it gives the link', () async {
+      final saved = await form(null)
+          .save(name: 'Goa', link: 'Love this $reelLink so much!');
+      expect((await savedLinks(saved!.id)).single.url, cleaned);
+    });
+
+    test('a bare address is given its https://', () async {
+      final saved = await form(null)
+          .save(name: 'Goa', link: '  instagram.com/reel/ABC123/. ');
+      expect((await savedLinks(saved!.id)).single.url, cleaned);
+    });
+
+    test('"hello world" is the link error; no reel is made', () async {
+      final saved = await form(null).save(name: 'Goa', link: 'hello world');
+      expect(saved, isNull);
+      expect(stateOf(null).linkError, ReferenceUrlProblem.invalid);
+      expect(stateOf(null).nameError, isNull);
+      expect(stateOf(null).hasErrors, isTrue);
+      expect(await allReels(), isEmpty);
+      expect(reels.creates + reels.createsWithReference, 0);
+    });
+
+    for (final bad in [
+      'hello',
+      'https://hello',
+      'ftp://example.com/a',
+      'user@example.com',
+      '3.5',
+      'a..com',
+    ]) {
+      test('"$bad" is not a link', () async {
+        expect(await form(null).save(name: 'Goa', link: bad), isNull);
+        expect(stateOf(null).linkError, ReferenceUrlProblem.invalid);
+        expect(await allReels(), isEmpty);
+      });
+    }
+
+    test('an empty name and a bad link are both shown at once', () async {
+      final saved = await form(null).save(name: '', link: 'hello world');
+      expect(saved, isNull);
+      expect(stateOf(null).nameError, ReelNameProblem.empty);
+      expect(stateOf(null).linkError, ReferenceUrlProblem.invalid);
+    });
+
+    test('name, description and link are all found in one save', () async {
+      final saved = await form(null).save(
+        name: 'x' * 41,
+        description: 'y' * (reelDescriptionMaxLength + 1),
+        link: 'nope nope',
+      );
+      expect(saved, isNull);
+      expect(stateOf(null).nameError, ReelNameProblem.tooLong);
+      expect(stateOf(null).descriptionError, ReelDescriptionProblem.tooLong);
+      expect(stateOf(null).linkError, ReferenceUrlProblem.invalid);
+    });
+
+    test('a clashing name and a bad link are both shown', () async {
+      await reels.create('Goa');
+      final saved = await form(null).save(name: 'goa', link: 'hello world');
+      expect(saved, isNull);
+      expect(stateOf(null).nameError, ReelNameProblem.duplicate);
+      expect(stateOf(null).clashingName, 'Goa');
+      expect(stateOf(null).linkError, ReferenceUrlProblem.invalid);
+    });
+
+    test(
+      'a good link with a bad name saves nothing, with no link error',
+      () async {
+        final saved = await form(null).save(name: '  ', link: reelLink);
+        expect(saved, isNull);
+        expect(stateOf(null).nameError, ReelNameProblem.empty);
+        expect(stateOf(null).linkError, isNull);
+        expect(await allReels(), isEmpty);
+        expect(reels.createsWithReference, 0);
+      },
+    );
+
+    test('an empty or blank link is no link: a plain reel', () async {
+      for (final (i, blank) in <String?>[null, '', '   \n '].indexed) {
+        final saved = await form(null).save(name: 'Reel $i', link: blank);
+        expect(saved, isNotNull, reason: 'link $blank');
+        expect(await savedLinks(saved!.id), isEmpty);
+      }
+      expect(reels.createsWithReference, 0);
+      expect(reels.creates, 3);
+    });
+
+    test('the repository refusing the name after the form looked shows the '
+        'name error and makes no reel', () async {
+      await reels.create('Goa');
+      reels.staleOnce = [];
+      final saved = await form(null).save(name: 'goa', link: reelLink);
+      expect(saved, isNull);
+      expect(stateOf(null).nameError, ReelNameProblem.duplicate);
+      expect(await allReels(), hasLength(1));
+      expect(await refs.watchAll().first, isEmpty);
+    });
+
+    test('the link error goes when the user types again, and a fixed link '
+        'saves', () async {
+      final controller = form(null);
+      await controller.save(name: 'Goa', link: 'hello world');
+      expect(stateOf(null).hasErrors, isTrue);
+      controller.clearErrors();
+      expect(stateOf(null).linkError, isNull);
+      expect(stateOf(null).hasErrors, isFalse);
+      expect(await controller.save(name: 'Goa', link: reelLink), isNotNull);
+      expect(await savedLinks((await allReels()).single.id), hasLength(1));
+    });
+
+    test("the tag player's createWith makes the reel with no link", () async {
+      final saved = await form(null)
+          .save(name: 'Goa', createWith: (name) => reels.create(name));
+      expect(saved, isNotNull);
+      expect(reels.createsWithReference, 0);
+      expect(await refs.watchAll().first, isEmpty);
+    });
+  });
+
+  group('edit with a link (Phase 9A)', () {
+    const reelLink = 'https://www.instagram.com/reel/ABC123/';
+    const cleaned = 'https://www.instagram.com/p/ABC123/';
+    late Reel goa;
+
+    setUp(() async {
+      goa = await reels.create('Goa', description: 'beaches');
+    });
+
+    test("a new link is added with the reel's own changes", () async {
+      final saved = await form(goa.id).save(
+        name: 'Goa 2027',
+        description: 'beaches',
+        status: ReelStatus.ready,
+        link: reelLink,
+      );
+      expect(saved!.name, 'Goa 2027');
+      expect(saved.status, ReelStatus.ready);
+      expect((await savedLinks(goa.id)).map((r) => r.url), [cleaned]);
+      expect(refs.adds, 1);
+      // The reference touched the reel: the returned reel is the stored one.
+      expect(saved.updatedAt, (await reels.getById(goa.id))!.updatedAt);
+    });
+
+    test('an already saved link saves the reel with no error', () async {
+      await refs.add(goa.id, reelLink);
+      refs.adds = 0;
+      // The same page with tracking added: the same reference (D-58).
+      final saved = await form(
+        goa.id,
+      ).save(name: 'Goa 2', description: 'beaches', link: '$reelLink?igsh=abc');
+      expect(saved, isNotNull);
+      expect(stateOf(goa.id).hasErrors, isFalse);
+      expect(saved!.name, 'Goa 2');
+      expect(refs.adds, 1);
+      expect(await savedLinks(goa.id), hasLength(1));
+    });
+
+    test('an empty or blank link makes no reference call', () async {
+      for (final blank in <String?>[null, '', '  ']) {
+        await form(goa.id)
+            .save(name: 'Goa', description: 'beaches', link: blank);
+      }
+      expect(refs.adds, 0);
+      expect(await savedLinks(goa.id), isEmpty);
+    });
+
+    test('a bad link changes nothing, not even the name', () async {
+      final saved = await form(goa.id).save(
+        name: 'Goa 2027',
+        description: 'new',
+        status: ReelStatus.published,
+        link: 'hello world',
+      );
+      expect(saved, isNull);
+      expect(stateOf(goa.id).linkError, ReferenceUrlProblem.invalid);
+      expect(reels.renames + reels.descriptions + reels.statuses, 0);
+      expect(refs.adds, 0);
+      final stored = (await reels.getById(goa.id))!;
+      expect(stored.name, 'Goa');
+      expect(stored.description, 'beaches');
+      expect(stored.status, ReelStatus.collecting);
+    });
+
+    test('a clashing name and a bad link are both shown', () async {
+      await reels.create('Paris');
+      final saved = await form(goa.id).save(name: 'paris', link: 'nope nope');
+      expect(saved, isNull);
+      expect(stateOf(goa.id).nameError, ReelNameProblem.duplicate);
+      expect(stateOf(goa.id).linkError, ReferenceUrlProblem.invalid);
+    });
+
+    test('a good link with a refused name adds nothing', () async {
+      await reels.create('Paris');
+      await form(goa.id).save(name: 'paris', link: reelLink);
+      expect(refs.adds, 0);
+      expect(await savedLinks(goa.id), isEmpty);
+    });
+
+    test('a database error adding the link: the reel stays saved, the error '
+        'is rethrown and the form unblocks', () async {
+      refs.failWith = StateError('disk full');
+      final controller = form(goa.id);
+      await expectLater(
+        controller.save(
+          name: 'Goa 2027',
+          description: 'beaches',
+          link: reelLink,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      expect(stateOf(goa.id).saving, isFalse);
+      expect((await reels.getById(goa.id))!.name, 'Goa 2027');
+      expect(await savedLinks(goa.id), isEmpty);
+      // Saving again adds the link.
+      refs.failWith = null;
+      expect(
+        await controller.save(
+          name: 'Goa 2027',
+          description: 'beaches',
+          link: reelLink,
+        ),
+        isNotNull,
+      );
+      expect(await savedLinks(goa.id), hasLength(1));
     });
   });
 }

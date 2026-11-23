@@ -11,6 +11,7 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/domain/rules/reference_url.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
 part 'reels_repository.g.dart';
@@ -58,20 +59,54 @@ class ReelsRepository {
     _checkDescription(description);
     final row = await _db.transaction(() async {
       await _checkUnique(name);
-      final now = _clock.storedNow();
-      return await _db
-          .into(_db.reels)
-          .insertReturning(
-            ReelsCompanion.insert(
-              name: normalizeName(name),
-              description: Value(_cleanDescription(description)),
-              status: ReelStatus.collecting,
-              createdAt: now,
-              updatedAt: now,
-            ),
-          );
+      return await _insertReel(name, description, _clock.storedNow());
     });
     _log.info('Created reel ${row.id}');
+    return reelFromRow(row);
+  }
+
+  /// Saves a new reel, `collecting`, together with its first reference
+  /// (D-154): the "new reel from a link" path.
+  ///
+  /// [name] and [description] are checked as in [create]; [url] is cleaned
+  /// with `normalizeReferenceUrl` and must be an http(s) link
+  /// (`ReferenceUrlProblem.invalid` otherwise); [label] is checked and cleaned
+  /// as in `ReferencesRepository.add`. Any problem throws
+  /// [InvalidInputException] and saves nothing: the name check, the reel and
+  /// the reference are one transaction, so no reel is left without its link.
+  Future<Reel> createWithReference(
+    String name, {
+    required String url,
+    String? description,
+    String? label,
+  }) async {
+    _checkName(name);
+    _checkDescription(description);
+    final link = normalizeReferenceUrl(url);
+    if (link == null) {
+      throw const InvalidInputException(ReferenceUrlProblem.invalid);
+    }
+    final labelProblem = checkReferenceLabel(label);
+    if (labelProblem != null) throw InvalidInputException(labelProblem);
+
+    final row = await _db.transaction(() async {
+      await _checkUnique(name);
+      final now = _clock.storedNow();
+      final reel = await _insertReel(name, description, now);
+      await _db
+          .into(_db.reelReferences)
+          .insert(
+            ReelReferencesCompanion.insert(
+              reelId: reel.id,
+              url: link.toString(),
+              source: referenceSourceOf(link),
+              label: Value(cleanReferenceLabel(label)),
+              createdAt: now,
+            ),
+          );
+      return reel;
+    });
+    _log.info('Created reel ${row.id} with a reference');
     return reelFromRow(row);
   }
 
@@ -339,6 +374,21 @@ class ReelsRepository {
       }
     }
   }
+
+  /// Inserts a `collecting` reel created and updated at [now] and returns its
+  /// row. Run inside the write's transaction, after the checks.
+  Future<ReelRow> _insertReel(String name, String? description, DateTime now) =>
+      _db
+          .into(_db.reels)
+          .insertReturning(
+            ReelsCompanion.insert(
+              name: normalizeName(name),
+              description: Value(_cleanDescription(description)),
+              status: ReelStatus.collecting,
+              createdAt: now,
+              updatedAt: now,
+            ),
+          );
 
   String? _cleanDescription(String? description) {
     if (description == null) return null;

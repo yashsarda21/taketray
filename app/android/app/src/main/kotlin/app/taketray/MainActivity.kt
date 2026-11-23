@@ -15,6 +15,8 @@ import app.taketray.editors.CopyHostApi
 import app.taketray.editors.CopyHostApiImpl
 import app.taketray.files.FilesHostApi
 import app.taketray.files.FilesHostApiImpl
+import app.taketray.links.LinksHostApi
+import app.taketray.links.LinksHostApiImpl
 import app.taketray.media.MediaHostApi
 import app.taketray.media.MediaHostApiImpl
 import io.flutter.embedding.android.FlutterActivity
@@ -34,6 +36,9 @@ class MainActivity : FlutterActivity() {
 
     /** The files bridge of the current engine (D-147); null before configure and after clean-up. */
     private var files: FilesHostApiImpl? = null
+
+    /** The links bridge of the current engine (D-155); null before configure and after clean-up. */
+    private var links: LinksHostApiImpl? = null
 
     /**
      * True when Android re-created this activity from saved state (after the
@@ -82,6 +87,11 @@ class MainActivity : FlutterActivity() {
         files = filesApi
         FilesHostApi.setUp(messenger, filesApi)
 
+        // Links (D-155): a reference link opens in the app or browser the phone picks.
+        val linksApi = LinksHostApiImpl(this)
+        links = linksApi
+        LinksHostApi.setUp(messenger, linksApi)
+
         // The activity itself: the debug copy hooks read its window (the others use the application context).
         DebugHooks.register(flutterEngine, this)
     }
@@ -106,6 +116,9 @@ class MainActivity : FlutterActivity() {
         FilesHostApi.setUp(messenger, null)
         files?.onHostGone()
         files = null
+        LinksHostApi.setUp(messenger, null)
+        links?.onHostGone()
+        links = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
 
@@ -160,6 +173,7 @@ class MainActivity : FlutterActivity() {
         editors?.onHostGone()
         copy?.onHostGone()
         files?.onHostGone()
+        links?.onHostGone()
         super.onDestroy()
     }
 }

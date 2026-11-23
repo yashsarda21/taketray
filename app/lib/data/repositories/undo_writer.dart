@@ -164,6 +164,8 @@ class UndoWriter {
         await _undoInbox(record);
       case InboxRemoveUndo():
         await _undoInboxRemove(record);
+      case ReferenceRemoveUndo():
+        await _undoReferenceRemove(record);
     }
   }
 
@@ -310,6 +312,32 @@ class UndoWriter {
       'Undid a remove from the lists: $back of ${record.removed.length} '
       'rows back, ${ids.length} swept clips',
     );
+  }
+
+  Future<void> _undoReferenceRemove(ReferenceRemoveUndo record) async {
+    final reference = record.reference;
+    if (!await _reelExists(reference.reelId)) {
+      _log.warning('Undo reference remove: reel ${reference.reelId} is gone');
+      return;
+    }
+    final saved =
+        await (_db.select(_db.reelReferences)..where(
+              (r) =>
+                  r.reelId.equals(reference.reelId) &
+                  r.url.equals(reference.url),
+            ))
+            .getSingleOrNull();
+    if (saved != null) {
+      // The same link was saved again since: that row is the user's.
+      _log.info(
+        'Undo reference remove: reel ${reference.reelId} has the link '
+        'again, nothing restored',
+      );
+      return;
+    }
+    await _restoreReference(reference);
+    await _restoreTouch(record.touch);
+    _log.info('Undid a remove of reference ${reference.id}');
   }
 
   Future<void> _undoDelete(DeleteReelUndo record) async {

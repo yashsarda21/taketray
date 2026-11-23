@@ -5,8 +5,11 @@ import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
+import 'package:taketray/data/repositories/references_repository.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/rules/reference_links.dart';
+import 'package:taketray/domain/rules/reference_url.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
 part 'reel_form_controller.g.dart';
@@ -20,6 +23,7 @@ class ReelFormState {
   const new({
     this.nameError,
     this.descriptionError,
+    this.linkError,
     this.clashingName,
     this.saving = false,
   });
@@ -31,6 +35,9 @@ class ReelFormState {
   /// Why the description was not accepted, or null.
   final ReelDescriptionProblem? descriptionError;
 
+  /// Why the Reference link was not accepted, or null (D-159).
+  final ReferenceUrlProblem? linkError;
+
   /// With [ReelNameProblem.duplicate]: the other reel's name, as stored (the
   /// copy says "You already have a reel called {name}" with it, not with the
   /// typed text, so a different case is shown as it is saved).
@@ -39,18 +46,20 @@ class ReelFormState {
   /// A save is running; the sheet disables its buttons.
   final bool saving;
 
-  bool get hasErrors => nameError != null || descriptionError != null;
+  bool get hasErrors =>
+      nameError != null || descriptionError != null || linkError != null;
 }
 
 /// The create (null `reelId`) or edit sheet of one reel (D-85).
 ///
-/// [save] checks the name and the description, both at once, then writes. The
-/// name is checked against the reels as they are now (a reel made a moment
-/// ago counts; when editing, the reel's own name in any case is always
-/// fine, as in `ReelsRepository.rename`), and the repository's own
-/// `duplicate` is the backstop if another reel took the name between that
-/// check and the write. A problem is not thrown: [save] returns null and the
-/// state holds `nameError` / `descriptionError`, for the view to show.
+/// [save] checks the name, the description and the Reference link, all at
+/// once, then writes. The name is checked against the reels as they are now
+/// (a reel made a moment ago counts; when editing, the reel's own name in any
+/// case is always fine, as in `ReelsRepository.rename`), and the
+/// repository's own `duplicate` is the backstop if another reel took the name
+/// between that check and the write. A problem is not thrown: [save] returns
+/// null and the state holds `nameError` / `descriptionError` / `linkError`,
+/// for the view to show.
 /// Anything else that goes wrong (a database error, the reel being gone) is
 /// logged by type and rethrown, for the view to tell the user.
 ///
@@ -73,8 +82,18 @@ class ReelFormController extends _$ReelFormController {
 
   /// Creates the reel, or, when this form edits one, saves [name],
   /// [description] and [status] (null keeps it) in one go. Returns the saved
-  /// reel, or null when [name] or [description] was not acceptable (see the
-  /// class comment). Only what changed is written.
+  /// reel, or null when [name], [description] or [link] was not acceptable
+  /// (see the class comment). Only what changed is written.
+  ///
+  /// [link] is the optional Reference link as typed or pasted (D-159): empty
+  /// or blank means none; otherwise it must hold a link (`typedLink`: a
+  /// caption with a link in it, or a bare address), or it is
+  /// `ReferenceUrlProblem.invalid` and nothing is saved, not even the name.
+  /// A new reel is made with its reference in one go (one transaction); an
+  /// edit saves the reel's own fields, then adds the reference, and a link
+  /// the reel already has is fine, not an error. If that add fails with a
+  /// database error the reel's changes stay saved and the error is rethrown.
+  /// Not for [createWith] (the tag player's form has no link field).
   ///
   /// [createWith] (a new reel only) makes the reel itself, in place of the
   /// repository's `create`, after the same checks: the tag player's New reel
@@ -86,11 +105,16 @@ class ReelFormController extends _$ReelFormController {
     required String name,
     String? description,
     ReelStatus? status,
+    String? link,
     Future<Reel?> Function(String name)? createWith,
   }) {
+    assert(
+      link == null || createWith == null,
+      'the form for a clip has no link field',
+    );
     final running = _inFlight;
     if (running != null) return running;
-    final run = _save(name, description, status, createWith);
+    final run = _save(name, description, status, link, createWith);
     _inFlight = run;
     // Clear the slot whichever way it ends, without making a second,
     // unhandled copy of the error.
@@ -106,9 +130,12 @@ class ReelFormController extends _$ReelFormController {
     String name,
     String? description,
     ReelStatus? status,
+    String? link,
     Future<Reel?> Function(String name)? createWith,
   ) async {
+    // Both read now: a save that outlives the sheet cannot read later.
     final repository = ref.read(reelsRepositoryProvider);
+    final references = ref.read(referencesRepositoryProvider);
     final id = reelId;
     _set(const ReelFormState(saving: true));
     try {
@@ -118,11 +145,21 @@ class ReelFormController extends _$ReelFormController {
           checkReelName(name) ??
           (clash == null ? null : ReelNameProblem.duplicate);
       final descriptionProblem = checkReelDescription(description);
-      if (nameProblem != null || descriptionProblem != null) {
+      // Blank is no link; anything else must hold one. Found with the name
+      // and description problems, so one Save shows them all.
+      final hasLink = link != null && link.trim().isNotEmpty;
+      final typed = hasLink ? typedLink(link) : null;
+      final linkProblem = hasLink && typed == null
+          ? ReferenceUrlProblem.invalid
+          : null;
+      if (nameProblem != null ||
+          descriptionProblem != null ||
+          linkProblem != null) {
         _set(
           ReelFormState(
             nameError: nameProblem,
             descriptionError: descriptionProblem,
+            linkError: linkProblem,
             clashingName: clash?.name,
           ),
         );
@@ -136,10 +173,24 @@ class ReelFormController extends _$ReelFormController {
           return null;
         }
         saved = made;
+      } else if (id == null && typed != null) {
+        saved = await repository.createWithReference(
+          name,
+          url: typed,
+          description: description,
+        );
       } else if (id == null) {
         saved = await repository.create(name, description: description);
       } else {
-        saved = await _edit(repository, id, name, description, status);
+        saved = await _edit(
+          repository,
+          references,
+          id,
+          name,
+          description,
+          status,
+          typed,
+        );
       }
       _set(const ReelFormState());
       return saved;
@@ -154,6 +205,9 @@ class ReelFormController extends _$ReelFormController {
               : null,
           descriptionError: problem.problem is ReelDescriptionProblem
               ? problem.problem as ReelDescriptionProblem
+              : null,
+          linkError: problem.problem is ReferenceUrlProblem
+              ? problem.problem as ReferenceUrlProblem
               : null,
           clashingName: _clashWith(reels, name, editing: id)?.name,
         ),
@@ -172,10 +226,12 @@ class ReelFormController extends _$ReelFormController {
 
   Future<Reel> _edit(
     ReelsRepository repository,
+    ReferencesRepository references,
     int id,
     String name,
     String? description,
     ReelStatus? status,
+    String? link,
   ) async {
     final current = await repository.getById(id);
     if (current == null) throw StateError('No reel with id $id');
@@ -188,6 +244,11 @@ class ReelFormController extends _$ReelFormController {
     }
     if (status != null && status != current.status) {
       await repository.setStatus(id, status);
+    }
+    // The reel is saved; a failure here leaves it so (D-159). A link the
+    // reel already has is no error: the result is not looked at.
+    if (link != null) {
+      await references.add(id, link);
     }
     return (await repository.getById(id))!;
   }

@@ -57,7 +57,61 @@ final class ReelSummariesProvider
 
 String _$reelSummariesHash() => r'4cfa20decaa5c6fea18a677f86ddc39db8c7873f';
 
+/// How many references each reel has (reel id to count; a reel with none is
+/// not in the map), again after every change
+/// (`ReferencesRepository.watchCounts`, D-158).
+
+@ProviderFor(referenceCounts)
+final referenceCountsProvider = ReferenceCountsProvider._();
+
+/// How many references each reel has (reel id to count; a reel with none is
+/// not in the map), again after every change
+/// (`ReferencesRepository.watchCounts`, D-158).
+
+final class ReferenceCountsProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<Map<int, int>>,
+          Map<int, int>,
+          Stream<Map<int, int>>
+        >
+    with $FutureModifier<Map<int, int>>, $StreamProvider<Map<int, int>> {
+  /// How many references each reel has (reel id to count; a reel with none is
+  /// not in the map), again after every change
+  /// (`ReferencesRepository.watchCounts`, D-158).
+  ReferenceCountsProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'referenceCountsProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$referenceCountsHash();
+
+  @$internal
+  @override
+  $StreamProviderElement<Map<int, int>> $createElement(
+    $ProviderPointer pointer,
+  ) => $StreamProviderElement(pointer);
+
+  @override
+  Stream<Map<int, int>> create(Ref ref) {
+    return referenceCounts(ref);
+  }
+}
+
+String _$referenceCountsHash() => r'ac04d6a6bf20809fbcd9d28dd9080992491781da';
+
 /// The state of Home: the reels, the chosen filter and each card's cover.
+///
+/// Each reel's `referenceCount` is joined in here from [referenceCounts] by
+/// the reel's id (D-158), not in the summaries' query, so a new reference
+/// updates the badge without re-reading the clips.
 ///
 /// The filter lives here, not in the widget, so it survives the screen being
 /// rebuilt; it starts at All. It is not stored: a restart starts at All.
@@ -73,6 +127,10 @@ final homeControllerProvider = HomeControllerProvider._();
 
 /// The state of Home: the reels, the chosen filter and each card's cover.
 ///
+/// Each reel's `referenceCount` is joined in here from [referenceCounts] by
+/// the reel's id (D-158), not in the summaries' query, so a new reference
+/// updates the badge without re-reading the clips.
+///
 /// The filter lives here, not in the widget, so it survives the screen being
 /// rebuilt; it starts at All. It is not stored: a restart starts at All.
 ///
@@ -84,6 +142,10 @@ final homeControllerProvider = HomeControllerProvider._();
 final class HomeControllerProvider
     extends $AsyncNotifierProvider<HomeController, HomeState> {
   /// The state of Home: the reels, the chosen filter and each card's cover.
+  ///
+  /// Each reel's `referenceCount` is joined in here from [referenceCounts] by
+  /// the reel's id (D-158), not in the summaries' query, so a new reference
+  /// updates the badge without re-reading the clips.
   ///
   /// The filter lives here, not in the widget, so it survives the screen being
   /// rebuilt; it starts at All. It is not stored: a restart starts at All.
@@ -112,9 +174,13 @@ final class HomeControllerProvider
   HomeController create() => HomeController();
 }
 
-String _$homeControllerHash() => r'd8f8416bcbec674dae35e6bc27a5e7f2e9f83c61';
+String _$homeControllerHash() => r'e4725e53c7d7a307a0acf0e8d3680124b1c36b80';
 
 /// The state of Home: the reels, the chosen filter and each card's cover.
+///
+/// Each reel's `referenceCount` is joined in here from [referenceCounts] by
+/// the reel's id (D-158), not in the summaries' query, so a new reference
+/// updates the badge without re-reading the clips.
 ///
 /// The filter lives here, not in the widget, so it survives the screen being
 /// rebuilt; it starts at All. It is not stored: a restart starts at All.

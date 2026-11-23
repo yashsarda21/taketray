@@ -2,6 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 import 'package:widgetbook/widgetbook.dart';
 
+const _items = [
+  TtMenuItem<String>('edit', 'Edit label', icon: Symbols.edit_rounded),
+  TtMenuItem<String>(
+    'remove',
+    'Remove reference',
+    icon: Symbols.delete_rounded,
+    destructive: true,
+  ),
+];
+
 /// `TtReferenceCard`: a saved reference to a video to recreate.
 final WidgetbookComponent ttReferenceCardComponent = WidgetbookComponent(
   name: 'TtReferenceCard',
@@ -34,7 +44,7 @@ final WidgetbookComponent ttReferenceCardComponent = WidgetbookComponent(
             alignment: Alignment.topLeft,
             child: SizedBox(
               width: width,
-              child: TtReferenceCard(
+              child: TtReferenceCard<String>(
                 title: title,
                 subtitle: subtitle,
                 // A stand-in for the app icon the phone supplies.
@@ -67,7 +77,8 @@ final WidgetbookComponent ttReferenceCardComponent = WidgetbookComponent(
                 openSemanticLabel: 'Open reference: $title',
                 onOpen: () {},
                 moreSemanticLabel: more ? 'More options for $title' : null,
-                onMore: more ? () {} : null,
+                moreItems: more ? _items : null,
+                onMoreSelected: more ? (_) {} : null,
               ),
             ),
           ),

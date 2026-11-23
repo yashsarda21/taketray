@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -5,10 +7,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
+import 'package:taketray/features/references/view_models/shooting_references.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
@@ -20,6 +27,7 @@ import '../../../support/fake_media_bridge.dart';
 import '../../../support/fixed_clock.dart';
 import '../../../support/fixed_onboarding.dart';
 import '../../../support/pump_screen.dart';
+import '../../../support/test_app.dart';
 import '../../../support/view_model_fakes.dart';
 import '../../../support/vm_harness.dart';
 
@@ -54,6 +62,9 @@ Future<Pumped> pump(
   FixedClock? clock,
   bool cameraOpens = true,
   bool midnightTick = false,
+  List<ReferenceGroup> references = const [],
+  Stream<List<ReferenceGroup>>? referencesStream,
+  void Function()? onReferencesListened,
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   final fakeAccess = FakeAccess(access);
@@ -71,6 +82,11 @@ Future<Pumped> pump(
       onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
       // Pictures are not what these tests are about.
       thumbnailCacheForTests,
+      shootingReferencesProvider.overrideWith((ref) {
+        // The body runs when something starts listening to the provider.
+        onReferencesListened?.call();
+        return referencesStream ?? Stream.value(references);
+      }),
     ],
     brightness: brightness,
     textScale: textScale,
@@ -839,6 +855,195 @@ void main() {
     });
   });
 
+  group('the References row (D-160)', () {
+    ReferenceGroup group(int reelId, String name, int references) =>
+        ReferenceGroup(
+          reel: ReelSummary(
+            reel: Reel(
+              id: reelId,
+              name: name,
+              status: ReelStatus.collecting,
+              createdAt: DateTime.utc(2026),
+              updatedAt: DateTime.utc(2026),
+            ),
+            clipCount: 0,
+            missingCount: 0,
+            liveDurationMs: 0,
+          ),
+          references: [
+            for (var i = 0; i < references; i++)
+              ReelReference(
+                id: reelId * 100 + i,
+                reelId: reelId,
+                url: 'https://example.com/$reelId/$i',
+                source: ReferenceSource.link,
+                createdAt: DateTime.utc(2026),
+              ),
+          ],
+        );
+
+    final two = [group(1, 'Goa', 2)];
+
+    Finder row(String title) => find.byWidgetPredicate(
+      (w) => w is TtCardRow && w.title == title,
+      description: 'the "$title" row',
+    );
+
+    testWidgets('on, with 2 references: a link row "References · 2"', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on(), references: two);
+
+      expect(row('References · 2'), findsOneWidget);
+      final first = card(tester).rows.first;
+      expect(first.kind, TtCardRowKind.link);
+      expect(first.icon, Symbols.link_rounded);
+      expect(first.title, 'References · 2');
+    });
+
+    testWidgets('the count adds up every group', (tester) async {
+      await pump(
+        tester,
+        shooting: on(),
+        references: [group(1, 'Goa', 2), group(2, 'Lisbon', 3)],
+      );
+
+      expect(row('References · 5'), findsOneWidget);
+    });
+
+    testWidgets('it is first, before Add earlier videos', (tester) async {
+      await pump(tester, shooting: on(), references: two);
+
+      expect(
+        [for (final r in card(tester).rows) r.title],
+        ['References · 2', 'Add earlier videos'],
+      );
+      expect(
+        tester.getTopLeft(row('References · 2')).dy,
+        lessThan(tester.getTopLeft(row('Add earlier videos')).dy),
+      );
+    });
+
+    testWidgets('with limited access it is the only row', (tester) async {
+      await pump(
+        tester,
+        shooting: on(),
+        access: MediaAccessLevel.limited,
+        references: two,
+      );
+
+      expect([for (final r in card(tester).rows) r.title], ['References · 2']);
+    });
+
+    testWidgets('Shooting mode off: no References row', (tester) async {
+      await pump(tester, references: two);
+
+      expect(find.textContaining('References'), findsNothing);
+      expect(
+        [for (final r in card(tester).rows) r.title],
+        ['Add earlier videos'],
+      );
+    });
+
+    testWidgets('Shooting mode off: the references are not even listened to', (
+      tester,
+    ) async {
+      var listened = 0;
+      await pump(
+        tester,
+        references: two,
+        onReferencesListened: () => listened++,
+      );
+      await tester.pump(const Duration(seconds: 1));
+
+      expect(listened, 0);
+    });
+
+    testWidgets('Shooting mode on: they are listened to (the counter works)', (
+      tester,
+    ) async {
+      var listened = 0;
+      await pump(
+        tester,
+        shooting: on(),
+        references: two,
+        onReferencesListened: () => listened++,
+      );
+
+      expect(listened, 1);
+    });
+
+    testWidgets('on with no references: no row', (tester) async {
+      await pump(tester, shooting: on());
+
+      expect(find.textContaining('References'), findsNothing);
+      expect(
+        [for (final r in card(tester).rows) r.title],
+        ['Add earlier videos'],
+      );
+    });
+
+    testWidgets('the references cannot be read: no row, no error', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        shooting: on(),
+        referencesStream: Stream.error(StateError('disk')),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.textContaining('References'), findsNothing);
+      expect(find.text('Open camera'), findsOneWidget);
+    });
+
+    testWidgets('the row comes and goes as the references do', (tester) async {
+      final stream = StreamController<List<ReferenceGroup>>();
+      addTearDown(stream.close);
+      await pump(tester, shooting: on(), referencesStream: stream.stream);
+      expect(find.textContaining('References'), findsNothing);
+
+      stream.add(two);
+      await tester.pump();
+      await tester.pump();
+      expect(row('References · 2'), findsOneWidget);
+
+      stream.add([group(1, 'Goa', 1)]);
+      await tester.pump();
+      await tester.pump();
+      expect(row('References · 1'), findsOneWidget);
+
+      stream.add(const []);
+      await tester.pump();
+      await tester.pump();
+      expect(find.textContaining('References'), findsNothing);
+    });
+
+    testWidgets('a tap opens the References sheet', (tester) async {
+      await pump(tester, shooting: on(), references: two);
+
+      await tester.tap(row('References · 2'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('References'), findsOneWidget);
+      expect(
+        find.text(
+          'From your Collecting and Ready to edit reels, with their shot '
+          'ideas',
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the row passes the accessibility check at 200 %', (
+      tester,
+    ) async {
+      await pump(tester, shooting: on(), references: two, textScale: 2);
+
+      await expectTtAccessible(tester);
+    });
+  });
+
   group('looks', () {
     for (final brightness in Brightness.values) {
       for (final isOn in [false, true]) {
@@ -899,7 +1104,9 @@ void main() {
   });
 
   group('with the real view models', () {
-    testWidgets('toggling from the card while a scan runs gives no error', (
+    // `testApp`: the card now also watches the references, a database stream
+    // whose clean-up leaves a timer that `testWidgets` rejects.
+    testApp('toggling from the card while a scan runs gives no error', (
       tester,
     ) async {
       final h = VmHarness(now: _now.toUtc());

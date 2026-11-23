@@ -329,6 +329,35 @@ void main() {
     });
   });
 
+  group('watchAll', () {
+    test('lists every reference, newest first, ties by newest id', () async {
+      final a = await added(goa, 'https://example.com/a');
+      clock.advance(const Duration(minutes: 1));
+      final b = await added(paris, 'https://example.com/b');
+      final c = await added(goa, 'https://example.com/c'); // same instant as b
+
+      expect(await repo.watchAll().first, [c, b, a]);
+    });
+
+    test('is empty with no references', () async {
+      expect(await repo.watchAll().first, isEmpty);
+    });
+
+    test('emits again after an add and after a delete', () async {
+      final emitted = <int>[];
+      final sub = repo.watchAll().listen((refs) => emitted.add(refs.length));
+      addTearDown(sub.cancel);
+      await pumpEventQueue();
+
+      final ref = await added(goa, 'https://example.com/a');
+      await pumpEventQueue();
+      await repo.delete(ref.id);
+      await pumpEventQueue();
+
+      expect(emitted, [0, 1, 0]);
+    });
+  });
+
   group('watchCounts', () {
     test('maps reel id to how many references it has', () async {
       expect(await repo.watchCounts().first, isEmpty);

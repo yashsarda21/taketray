@@ -73,6 +73,14 @@ ReelDescriptionProblem? checkReelDescription(String? raw) {
   return null;
 }
 
+/// A reference label as it is saved: a blank label is no label (null),
+/// otherwise the trimmed text.
+String? cleanReferenceLabel(String? raw) {
+  if (raw == null) return null;
+  final trimmed = normalizeName(raw);
+  return trimmed.isEmpty ? null : trimmed;
+}
+
 /// Checks a reference label: null or empty means "no label" and is fine,
 /// otherwise at most [referenceLabelMaxLength] characters after trimming.
 ReferenceLabelProblem? checkReferenceLabel(String? raw) {

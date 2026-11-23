@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart' show Value, driftRuntimeOptions;
+import 'package:drift/native.dart' show SqliteException;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/housekeeping.dart';
@@ -13,6 +14,8 @@ import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
+import 'package:taketray/domain/models/reel_reference.dart';
+import 'package:taketray/domain/rules/reference_url.dart';
 import 'package:taketray/domain/rules/text_limits.dart';
 
 import '../../support/clip_setup.dart';
@@ -264,6 +267,143 @@ void main() {
       expect(results.whereType<Reel>(), hasLength(1));
       expect(results.whereType<InvalidInputException>(), hasLength(1));
       expect(await db.select(db.reels).get(), hasLength(1));
+    });
+  });
+
+  group('createWithReference (D-154)', () {
+    Future<List<ReelReference>> references() =>
+        ReferencesRepository(db, clock).watchAll().first;
+
+    test('saves a Collecting reel and its reference together', () async {
+      final reel = await repo.createWithReference(
+        '  Goa  ',
+        description: 'Beach trip',
+        url: 'https://www.instagram.com/reel/ABC/?igsh=x',
+        label: '  Slow pans  ',
+      );
+
+      expect(reel.name, 'Goa');
+      expect(reel.description, 'Beach trip');
+      expect(reel.status, ReelStatus.collecting);
+      expect(reel.createdAt, _t0);
+      expect(reel.updatedAt, _t0);
+      final saved = await references();
+      expect(saved, hasLength(1));
+      expect(saved.single.reelId, reel.id);
+      expect(saved.single.url, 'https://www.instagram.com/p/ABC/');
+      expect(saved.single.source, ReferenceSource.instagram);
+      expect(saved.single.label, 'Slow pans');
+      expect(saved.single.createdAt, _t0);
+      expect(await db.select(db.reels).get(), hasLength(1));
+    });
+
+    test('a missing or blank label is saved as no label', () async {
+      await repo.createWithReference('Goa', url: 'https://example.com/a');
+      await repo.createWithReference(
+        'Paris',
+        url: 'https://example.com/b',
+        label: '   ',
+      );
+
+      expect((await references()).map((r) => r.label), [null, null]);
+    });
+
+    test('a bad url saves no reel', () async {
+      for (final url in ['not a link', 'ftp://example.com/a', '', 'https://']) {
+        await expectLater(
+          repo.createWithReference('Goa', url: url),
+          throwsA(
+            isA<InvalidInputException>().having(
+              (e) => e.problem,
+              'problem',
+              ReferenceUrlProblem.invalid,
+            ),
+          ),
+          reason: url,
+        );
+      }
+
+      expect(await db.select(db.reels).get(), isEmpty);
+      expect(await references(), isEmpty);
+    });
+
+    test('a 61-character label saves no reel', () async {
+      await expectLater(
+        repo.createWithReference(
+          'Goa',
+          url: 'https://example.com/a',
+          label: 'a' * 61,
+        ),
+        throwsA(
+          isA<InvalidInputException>().having(
+            (e) => e.problem,
+            'problem',
+            ReferenceLabelProblem.tooLong,
+          ),
+        ),
+      );
+
+      expect(await db.select(db.reels).get(), isEmpty);
+      expect(await references(), isEmpty);
+    });
+
+    test('a 60-character label is accepted', () async {
+      await repo.createWithReference(
+        'Goa',
+        url: 'https://example.com/a',
+        label: 'a' * 60,
+      );
+
+      expect((await references()).single.label, 'a' * 60);
+    });
+
+    test('a duplicate name saves no reference', () async {
+      await repo.create('Goa');
+
+      await expectLater(
+        repo.createWithReference('  goa ', url: 'https://example.com/a'),
+        throwsA(
+          isA<InvalidInputException>().having(
+            (e) => e.problem,
+            'problem',
+            ReelNameProblem.duplicate,
+          ),
+        ),
+      );
+
+      expect(await db.select(db.reels).get(), hasLength(1));
+      expect(await references(), isEmpty);
+    });
+
+    test('a bad name or description saves no reference', () async {
+      await expectLater(
+        repo.createWithReference('  ', url: 'https://example.com/a'),
+        throwsA(isA<InvalidInputException>()),
+      );
+      await expectLater(
+        repo.createWithReference(
+          'Goa',
+          description: 'x' * 1001,
+          url: 'https://example.com/a',
+        ),
+        throwsA(isA<InvalidInputException>()),
+      );
+
+      expect(await db.select(db.reels).get(), isEmpty);
+      expect(await references(), isEmpty);
+    });
+
+    test('a failure after the reel insert rolls the reel back', () async {
+      // A trigger-free way to fail the reference insert after the reel row
+      // is in: drop the table the reference goes into.
+      await db.customStatement('DROP TABLE reel_references');
+
+      await expectLater(
+        repo.createWithReference('Goa', url: 'https://example.com/a'),
+        throwsA(isA<SqliteException>()),
+      );
+
+      expect(await db.select(db.reels).get(), isEmpty);
     });
   });
 

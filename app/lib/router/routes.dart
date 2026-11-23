@@ -82,6 +82,14 @@ abstract final class Routes {
   /// page asks Done editing once when the reel still has an editing session.
   static String reelDoneEditing(int id) => '${reel(id)}?done=1';
 
+  /// The name of the "show the References section" flag in a reel's
+  /// location.
+  static const reelReferencesParameter = 'refs';
+
+  /// Reel [id]'s page at its References section (Phase 9A, D-158): the Home
+  /// badge's tap. The page scrolls the section into view once and flashes it.
+  static String reelReferences(int id) => '${reel(id)}?refs=1';
+
   /// The name of the clip id in a clip's location.
   static const clipIdParameter = 'clipId';
 

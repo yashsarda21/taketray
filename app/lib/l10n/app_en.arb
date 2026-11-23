@@ -629,6 +629,27 @@
       }
     }
   },
+  "reelLinkLabel": "Reference link (optional)",
+  "@reelLinkLabel": {
+    "description": "Label of the optional Reference link field in the New reel and Reel details sheets."
+  },
+  "reelLinkHint": "Paste an Instagram reel link",
+  "@reelLinkHint": {
+    "description": "Hint inside the empty Reference link field of the reel sheet."
+  },
+  "reelLinkHelpNew": "A reel you want to recreate. You can add more later.",
+  "@reelLinkHelpNew": {
+    "description": "Help line under the Reference link field of the reel sheet: when creating a reel, and when editing one with no references."
+  },
+  "reelLinkHelpSaved": "{count, plural, =1{1 reference saved} other{{count} references saved}}. Add another, or manage them on the reel.",
+  "@reelLinkHelpSaved": {
+    "description": "Help line under the Reference link field when editing a reel that already has references.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "reelDescriptionLabel": "Shot ideas (optional)",
   "@reelDescriptionLabel": {
     "description": "Label of the field for a reel's concept, shots to get and songs to try."
@@ -4088,5 +4109,286 @@
   "backupResultOk": "OK",
   "@backupResultOk": {
     "description": "Button that closes the dialog shown after an import."
+  },
+  "referenceSheetTitleAdd": "Add reference",
+  "@referenceSheetTitleAdd": {
+    "description": "Title of the sheet that saves a link on a reel."
+  },
+  "referenceSheetTitleEdit": "Edit label",
+  "@referenceSheetTitleEdit": {
+    "description": "Title of the sheet that changes the label of a saved reference."
+  },
+  "referenceSheetSubtitleAdd": "to {reelName}",
+  "@referenceSheetSubtitleAdd": {
+    "description": "Line under the Add reference title: the reel the link is saved on.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceSheetSubtitleEdit": "{reelName}",
+  "@referenceSheetSubtitleEdit": {
+    "description": "Line under the Edit label title: the reel the reference is on.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceLinkLabel": "Link",
+  "@referenceLinkLabel": {
+    "description": "Label of the field for a reference's link."
+  },
+  "referenceLinkHelp": "Instagram, YouTube or any other link",
+  "@referenceLinkHelp": {
+    "description": "Help line under the link field."
+  },
+  "referenceLinkHint": "https://www.instagram.com/reel/…",
+  "@referenceLinkHint": {
+    "description": "Hint inside the empty link field."
+  },
+  "referenceLabelLabel": "Label (optional)",
+  "@referenceLabelLabel": {
+    "description": "Label of the field for a reference's own name for it."
+  },
+  "referenceLabelHint": "Fast cuts, food close-ups",
+  "@referenceLabelHint": {
+    "description": "Hint inside the empty reference label field."
+  },
+  "referencePasteButton": "Paste",
+  "@referencePasteButton": {
+    "description": "Button inside the link field that reads the clipboard once and takes the first link from it."
+  },
+  "referenceSaveButton": "Save",
+  "@referenceSaveButton": {
+    "description": "Button that saves the reference or its label."
+  },
+  "referenceNotALink": "That isn't a link. In Instagram: Share › Copy link, then paste it here.",
+  "@referenceNotALink": {
+    "description": "Error under the link field when what was typed has no link in it."
+  },
+  "referenceNoLinkOnClipboard": "There's no link on your clipboard.",
+  "@referenceNoLinkOnClipboard": {
+    "description": "Error under the link field when Paste found no link on the clipboard."
+  },
+  "referenceAlreadyIn": "Already saved in {reelName}",
+  "@referenceAlreadyIn": {
+    "description": "Error under the link field when the reel already has that link. The name is the reel's name as stored.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceSaveFailed": "Couldn't save the reference.",
+  "@referenceSaveFailed": {
+    "description": "Shown in the Add / edit reference sheet, above its buttons, when saving failed for a reason the user cannot fix (the reel is gone, the database failed)."
+  },
+  "referenceSavedSnack": "Reference saved",
+  "@referenceSavedSnack": {
+    "description": "Snack shown after a reference was saved; it has an Undo button."
+  },
+  "referenceLabelSavedSnack": "Label saved",
+  "@referenceLabelSavedSnack": {
+    "description": "Snack shown after the label of a reference was saved."
+  },
+  "referenceKindInstagram": "Instagram",
+  "@referenceKindInstagram": {
+    "description": "What an Instagram reel or post link is called on a reference card and in the Edit label sheet."
+  },
+  "referenceKindInstagramProfile": "Instagram profile",
+  "@referenceKindInstagramProfile": {
+    "description": "What an Instagram profile link is called on a reference card."
+  },
+  "referenceKindYoutubeShort": "YouTube Short",
+  "@referenceKindYoutubeShort": {
+    "description": "What a YouTube Shorts link is called on a reference card."
+  },
+  "referenceKindYoutubeVideo": "YouTube video",
+  "@referenceKindYoutubeVideo": {
+    "description": "What any other YouTube link is called on a reference card."
+  },
+  "referenceKindTiktok": "TikTok video",
+  "@referenceKindTiktok": {
+    "description": "What a TikTok link is called on a reference card."
+  },
+  "referenceCardSubtitle": "{kind} · {link}",
+  "@referenceCardSubtitle": {
+    "description": "Second line of a reference card that has a label: what the link is, and the link without its https://www. start.",
+    "placeholders": {
+      "kind": {
+        "type": "String"
+      },
+      "link": {
+        "type": "String"
+      }
+    }
+  },
+  "referencesAddRowTitle": "Add reference",
+  "@referencesAddRowTitle": {
+    "description": "Title of the dashed row on a reel page with no references; tapping it opens the Add reference sheet."
+  },
+  "referencesAddRowSubtitle": "Save a reel you want to recreate",
+  "@referencesAddRowSubtitle": {
+    "description": "Line under \"Add reference\" on a reel page with no references."
+  },
+  "referencesAddRowSemantics": "Add reference. Save a reel you want to recreate",
+  "@referencesAddRowSemantics": {
+    "description": "What a screen reader says for the Add reference row on a reel page."
+  },
+  "referencesHeader": "References · {count}",
+  "@referencesHeader": {
+    "description": "Heading of a reel page's References section, with how many there are.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "referencesAddButton": "Add",
+  "@referencesAddButton": {
+    "description": "Small button beside the References heading that opens the Add reference sheet."
+  },
+  "referencesAddButtonSemantics": "Add reference",
+  "@referencesAddButtonSemantics": {
+    "description": "What a screen reader says for the Add button beside the References heading."
+  },
+  "referencesPromptTitle": "Write the shots you need",
+  "@referencesPromptTitle": {
+    "description": "Title of the note under the references of a reel that has no shot ideas yet."
+  },
+  "referencesPromptBody": "Watch your references, then list the shots to get while you're out.",
+  "@referencesPromptBody": {
+    "description": "Text of the note under the references of a reel that has no shot ideas yet."
+  },
+  "referencesPromptAction": "Write shot ideas",
+  "@referencesPromptAction": {
+    "description": "Button in the note under the references; opens the reel's details with the shot ideas field ready to type in."
+  },
+  "referenceOpen": "Open",
+  "@referenceOpen": {
+    "description": "The word on a reference card that says tapping it opens the link."
+  },
+  "referenceOpenSemantics": "Open reference: {title}, {source}",
+  "@referenceOpenSemantics": {
+    "description": "What a screen reader says for a reference card: its title (its label, or its short link) and what the link is (\"Instagram\", \"YouTube Short\").",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      },
+      "source": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceMoreSemantics": "More options for {title}",
+  "@referenceMoreSemantics": {
+    "description": "What a screen reader says for a reference card's ⋮ button.",
+    "placeholders": {
+      "title": {
+        "type": "String"
+      }
+    }
+  },
+  "referenceMenuEditLabel": "Edit label",
+  "@referenceMenuEditLabel": {
+    "description": "Entry of a reference card's menu that opens the Edit label sheet."
+  },
+  "referenceMenuCopyLink": "Copy link",
+  "@referenceMenuCopyLink": {
+    "description": "Entry of a reference card's menu that puts the link on the clipboard."
+  },
+  "referenceMenuRemove": "Remove",
+  "@referenceMenuRemove": {
+    "description": "Entry of a reference card's menu that removes the reference at once (with Undo)."
+  },
+  "referenceRemovedSnack": "Reference removed",
+  "@referenceRemovedSnack": {
+    "description": "Snack shown after a reference was removed; it has an Undo button."
+  },
+  "referenceLinkCopiedSnack": "Link copied",
+  "@referenceLinkCopiedSnack": {
+    "description": "Snack shown after Copy link, only on Android 12 and older (newer Android shows its own)."
+  },
+  "referenceOpenFailed": "No app on this phone can open this link.",
+  "@referenceOpenFailed": {
+    "description": "Snack shown when a reference was tapped and no app or browser on the phone could open its link."
+  },
+  "reelCardReferences": "{count, plural, =1{1 reference} other{{count} references}}, open them",
+  "@reelCardReferences": {
+    "description": "What a screen reader says for the references badge on a Home reel card; tapping it opens the reel at its References section.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelEmptyShareHint": "You can also share a reel from Instagram to TakeTray to save it as a reference.",
+  "@reelEmptyShareHint": {
+    "description": "Second paragraph of the empty reel page's text."
+  },
+  "shootingReferencesTitle": "References",
+  "@shootingReferencesTitle": {
+    "description": "Title of the sheet, opened from the Shooting mode card, that lists the references of the Collecting and Ready to edit reels."
+  },
+  "shootingReferencesSubtitle": "From your Collecting and Ready to edit reels, with their shot ideas",
+  "@shootingReferencesSubtitle": {
+    "description": "Line under the title of the Shooting mode References sheet."
+  },
+  "shootingReferencesGroupCount": "{count, plural, =1{1 reference} other{{count} references}}",
+  "@shootingReferencesGroupCount": {
+    "description": "Under a reel's name in the Shooting mode References sheet: how many references it has.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingReferencesGroupSemantics": "{reelName}, {count, plural, =1{1 reference} other{{count} references}}. Open the reel at its references",
+  "@shootingReferencesGroupSemantics": {
+    "description": "What a screen reader says for a reel's header in the Shooting mode References sheet; tapping it opens the reel at its References section.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "shootingReferencesNoShots": "No shot ideas yet.",
+  "@shootingReferencesNoShots": {
+    "description": "In the Shooting mode References sheet, under a reel with references but no shot ideas."
+  },
+  "shootingReferencesWriteShots": "Write the shots you need",
+  "@shootingReferencesWriteShots": {
+    "description": "Small button beside the no-shot-ideas line in the Shooting mode References sheet; it opens the reel's form on its shot ideas."
+  },
+  "shootingReferencesHide": "Hide {reelName}'s references",
+  "@shootingReferencesHide": {
+    "description": "What a screen reader says for the button that collapses a reel's group in the Shooting mode References sheet.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "shootingReferencesShow": "Show {reelName}'s references",
+  "@shootingReferencesShow": {
+    "description": "What a screen reader says for the button that expands a collapsed reel group in the Shooting mode References sheet.",
+    "placeholders": {
+      "reelName": {
+        "type": "String"
+      }
+    }
+  },
+  "shootingReferencesEmpty": "No references in your Collecting or Ready to edit reels.",
+  "@shootingReferencesEmpty": {
+    "description": "Shown in the Shooting mode References sheet when no Collecting or Ready to edit reel has a reference (for instance after the last one was removed while the sheet was open)."
+  },
+  "shootingReferencesLoadFailed": "Couldn't load your references.",
+  "@shootingReferencesLoadFailed": {
+    "description": "The failure line of the Shooting mode References sheet when the references could not be read from the database while the sheet was open."
   }
 }
