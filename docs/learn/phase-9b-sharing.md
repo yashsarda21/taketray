@@ -50,7 +50,14 @@ Future<void> shareMain() => runAppWithLogging(
 );
 ```
 
-A Flutter build compiles only the files `main.dart` reaches, so `main.dart` exports `shareMain`, and `ShareActivity` says which file it is in (`package:taketray/share_main.dart`).
+That function is `runShareScreen` in `share_main.dart`. The name Android runs, `shareMain`, is declared in `main.dart` itself:
+
+```dart
+@pragma('vm:entry-point')
+Future<void> shareMain() => runShareScreen();
+```
+
+Why there? `ShareActivity` says which file its entry point is in (`package:taketray/share_main.dart`), but Flutter throws that away and looks the name up in the app's **root library**, `main.dart`. At first `main.dart` only re-exported `shareMain` from `share_main.dart`. That works in a debug build, which finds names a library re-exports, so every check on the emulator and in TakeTray Dev passed. A release build is compiled ahead of time and finds only what `main.dart` declares itself, so in the real TakeTray the share screen stayed empty and the log said "Could not resolve main entrypoint function" (D-163 item 12). The lesson: an entry point Android names must be a real function in the root library, and only a release build proves it.
 
 **2. An exported screen is a door for every app.** Any app on the phone can start `ShareActivity`, with any extras in the intent. `FlutterActivity` reads several settings from those extras: a route to open, a cached engine to use (an unknown one crashes the process), flags for the engine. `ShareActivity` fixes every one of them in code, so an intent can only bring text:
 
@@ -496,7 +503,7 @@ await tap(open.button, what: 'the button that closes a share screen left open', 
 
 **6. Onboarding is put back.** Flow 4 needs onboarding undone, so it deletes the three first-launch flags. Every flow's tear-down marks onboarding done again, even when the flow failed, so after any flow the app is onboarded. Shooting mode is never switched; the tear-down only reads it before and after and fails if it changed.
 
-**7. The flows are skipped: a Patrol build cannot start the share screen.** On the S24 all four flows waited for a sheet that never came. By hand, the plain debug build drew the sheet, so the driver and the second engine were fine. The cause is in Flutter. `ShareActivity` says where its entry point lives (`getDartEntrypointLibraryUri`, `package:taketray/share_main.dart`), but Flutter's `FlutterEngineGroup` throws that away and looks `shareMain` up in the build's **root library**. The app gets away with it because its root, `main.dart`, re-exports `shareMain`. A Patrol build's root is a file Patrol generates (`test_bundle.dart`), which cannot re-export anything, so the share process logs "Could not resolve main entrypoint function" and draws nothing. The test's own proof: a build whose root re-exports `shareMain` works, and one whose root defines its own `shareMain` runs that one instead.
+**7. The flows are skipped: a Patrol build cannot start the share screen.** On the S24 all four flows waited for a sheet that never came. By hand, the plain debug build drew the sheet, so the driver and the second engine were fine. The cause is in Flutter. `ShareActivity` says where its entry point lives (`getDartEntrypointLibraryUri`, `package:taketray/share_main.dart`), but Flutter's `FlutterEngineGroup` throws that away and looks `shareMain` up in the build's **root library**. The app gets away with it because its root, `main.dart`, declares `shareMain` (at first it only re-exported it, which worked in debug but not in the release build: section 2, D-163 item 12). A Patrol build's root is a file Patrol generates (`test_bundle.dart`), which cannot re-export anything, so the share process logs "Could not resolve main entrypoint function" and draws nothing. The test's own proof: a debug build whose root re-exports `shareMain` works, and one whose root defines its own `shareMain` runs that one instead.
 
 The owner chose **not to change `ShareActivity` or any product code** just so a test can run. So the flows stay in the repository, all four skipped with one reason (`_skipReason`; Patrol 4.10's `skip` is only a yes or no, so a non-empty reason means skipped), and a test in `share_source_test.dart` pins that there are four, that they stay skipped, and that `docs/dev-setup.md` says so. They cannot quietly start running or quietly disappear. A future fix would be for `ShareActivity` to build its own engine and start it with the library address, which changes how the release app starts the share screen. That would need a release build proved on the phone before the skip comes out.
 

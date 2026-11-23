@@ -2,26 +2,75 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/main.dart' as app_main;
-import 'package:taketray/share_main.dart' as share_main;
 
 /// The share screen's entry point (D-163). It cannot run here (it starts its
 /// own engine on Android), so what Android needs of it is checked in the
-/// source: the name `ShareActivity` runs, the pragma that keeps it in a
-/// release build, and its own log files.
+/// source: the name `ShareActivity` runs, declared in the root library, the
+/// pragma that keeps it in a release build, and its own log files.
 void main() {
   final source = File('lib/share_main.dart').readAsStringSync();
+  final mainSource = File('lib/main.dart').readAsStringSync();
 
-  test('main.dart exports shareMain, so the release build compiles it in', () {
-    // A library no import reaches from main.dart is not in the build at all.
-    expect(identical(app_main.shareMain, share_main.shareMain), isTrue);
+  group('main.dart declares shareMain (D-163 release fix)', () {
+    // Flutter's FlutterEngineGroup drops ShareActivity's library uri and looks
+    // `shareMain` up in the root library, main.dart. An AOT release build does
+    // not find a name main.dart only re-exports ("Could not resolve main
+    // entrypoint function"), so main.dart must declare it itself.
+    test('a top-level vm entry point shareMain runs the share screen', () {
+      expect(
+        RegExp(
+          r"^@pragma\('vm:entry-point'\)\n"
+          r'Future<void> shareMain\(\) => runShareScreen\(\);$',
+          multiLine: true,
+        ).allMatches(mainSource),
+        hasLength(1),
+      );
+      // Reachable as main.dart's own function, with the type Android runs.
+      expect(app_main.shareMain, isA<Future<void> Function()>());
+    });
+
+    test('nothing is re-exported: no export directive in main.dart', () {
+      expect(
+        RegExp(r'^\s*export\s', multiLine: true).hasMatch(mainSource),
+        isFalse,
+      );
+      expect(mainSource, contains("import 'package:taketray/share_main.dart'"));
+    });
+
+    test('share_main.dart declares no second shareMain', () {
+      expect(source, isNot(contains('shareMain(')));
+    });
+
+    test('main() is unchanged: the app with its own logging, nothing more', () {
+      expect(
+        mainSource,
+        contains(
+          'Future<void> main() => runAppWithLogging(\n'
+          '  () => runApp(const ProviderScope(child: TakeTrayApp())),\n'
+          '  logDir: getApplicationSupportDirectory,\n'
+          ');\n',
+        ),
+      );
+      // Every top-level line that is not an import: main and shareMain only.
+      final topLevel = RegExp(r'^[A-Za-z@].*$', multiLine: true)
+          .allMatches(mainSource)
+          .map((m) => m[0]!)
+          .where((line) => !line.startsWith('import '))
+          .toList();
+      expect(topLevel, [
+        'Future<void> main() => runAppWithLogging(',
+        "@pragma('vm:entry-point')",
+        'Future<void> shareMain() => runShareScreen();',
+      ]);
+    });
   });
 
-  test('shareMain is a vm entry point with the name ShareActivity runs', () {
+  test('runShareScreen is a vm entry point too', () {
     expect(
       source,
       contains(
         "@pragma('vm:entry-point')\n"
-        'Future<void> shareMain() =>',
+        'Future<void> runShareScreen() =>',
       ),
     );
   });
