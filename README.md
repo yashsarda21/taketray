@@ -40,7 +40,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
-| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B built, phone tests not runnable (D-169 item 8), owner's hand checks pending. **Next: the 9B hand checks, then Phase 11** |
+| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B hand checks passed (phone tests not runnable, D-169 item 8); release install pending. **Next: Phase 11** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -231,7 +231,7 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Sharing in** came next, in Phase 9B (below).
 - **Learning guide**: [docs/learn/phase-9a-references.md](docs/learn/phase-9a-references.md) explains the whole phase in plain English, with the real code.
 
-### Phase 9B: Sharing in (9B built; phone tests not runnable (see D-169); owner's hand checks pending)
+### Phase 9B: Sharing in (hand checks passed; release install pending)
 - **Share to TakeTray**: in Instagram (or YouTube, TikTok, or any app that shares text) tap **Share** › **TakeTray**. A see-through **Save reference** sheet opens over the app you shared from, so the reel stays visible behind it. It shows what the link is ("Instagram reel", the short link), takes an optional label, and saves into an **Existing reel** you pick or a **New reel** you name. **Saved to {reel}** has **Open reel** and **Done**; Done goes back to where you were. A caption with no link says **This isn't a link** and quotes it. TakeTray's own screen is never touched, and nothing is left in Recents.
 - **Before the app has been opened**: a share on a fresh install saves the reference, and the saved screen says "Welcome to TakeTray". **Open reel** brings TakeTray up on the welcome and keeps the reel until onboarding is done, then opens it at its References. Onboarding's last step now **lists the reels that already exist** (with how many references each holds, "Already created") and always shows the tip "share any Instagram reel to TakeTray to save it as a reference".
 - **Under the hood**: the share screen is its own small Flutter engine in the same process (one manifest entry, `text/plain` only, no new permission), and both engines write the one database through their own connection (WAL with a busy wait, and a re-read when the share comes back to the app). Neither logs a link, a caption or a reel name.
