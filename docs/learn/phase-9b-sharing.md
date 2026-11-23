@@ -533,7 +533,7 @@ Then break things on purpose. In `DebugShareHooks.kt` delete `.addFlags(Intent.F
 ## 9. On the S24
 
 
-**Hand checks (2026-11-23):** the owner made the Phase 9B hand checks on the S24 and all passed (1 to 10, 12, 12a, 12b, 13 to 18), including real shares from Instagram, YouTube and TikTok and the film icons in the reel rows. The release build over the real TakeTray (check 11) comes last.
+**Hand checks (2026-11-23):** the owner made the Phase 9B hand checks on the S24 and all passed (1 to 10, 12, 12a, 12b, 13 to 18), including real shares from Instagram, YouTube and TikTok and the film icons in the reel rows. The release build over the real TakeTray (check 11) then caught the one bug no debug build could: the share screen did not start in a release build, because Android looks the share screen's entry point up in the app's main file and a release build does not follow a re-export. With `shareMain` declared in `main.dart` (D-163 item 12) the release share worked end to end, from Instagram to a new reel to first-time setup.
 **What we built:** the hand checks for sharing. The Patrol test `app/patrol_test/share_test.dart` is written but skipped (section 8, D-169 item 8), so the list "Phase 9B check" in `docs/dev-setup.md` is the proof that sharing works. 9A's references flows ran on the S24 (4 of 4 passed); the share flows ran once (0 of 4) and showed the cause in section 8.
 
 **Phone results.** None from the flows, and none can come until the share screen can start in a Patrol build. The owner's answers to the eighteen hand checks (and 12a and 12b) are still to come; they go here and in D-169.
