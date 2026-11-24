@@ -477,6 +477,16 @@ void main() {
         expect(chosen.role, ui.SemanticsRole.menuItemRadio);
         expect(chosen.flagsCollection.isChecked, ui.CheckedState.isTrue);
 
+        // The route is named and scoped, so TalkBack announces the menu and
+        // moves into it (Flutter's own popup menu does the same).
+        final menu = tester
+            .getSemantics(find.bySemanticsLabel('Popup menu'))
+            .getSemanticsData();
+        expect(menu.label, 'Popup menu');
+        expect(menu.role, ui.SemanticsRole.menu);
+        expect(menu.flagsCollection.scopesRoute, isTrue);
+        expect(menu.flagsCollection.namesRoute, isTrue);
+
         final scrim = tester.getSemantics(
           find.bySemanticsLabel('Dismiss menu'),
         );
@@ -486,6 +496,81 @@ void main() {
         semantics.dispose();
       },
     );
+
+    testWidgets(
+      'a menu taller than the screen scrolls: 4 items at 2x in landscape',
+      (tester) async {
+        tester.view
+          ..physicalSize = const Size(800, 360)
+          ..devicePixelRatio = 1
+          ..padding = const FakeViewPadding(top: 24);
+        addTearDown(tester.view.reset);
+        final picked = <String>[];
+        const four = [
+          TtMenuItem<String>(
+            'a',
+            'Reel details',
+            icon: Symbols.edit_rounded,
+            subtitle: 'Name and notes',
+          ),
+          TtMenuItem<String>(
+            'b',
+            'Select clips',
+            icon: Symbols.checklist_rounded,
+            subtitle: 'Pick several to move',
+          ),
+          TtMenuItem<String>(
+            'c',
+            'Move clips',
+            icon: Symbols.drive_file_move_rounded,
+            subtitle: 'To another reel',
+          ),
+          TtMenuItem<String>(
+            'd',
+            'Delete reel',
+            icon: Symbols.delete_rounded,
+            destructive: true,
+            subtitle: 'The clips stay in To tag',
+          ),
+        ];
+        await tester.pumpWidget(
+          ttTestApp(_menu(items: four, onSelected: picked.add), textScale: 2),
+        );
+        await _open(tester);
+        // No "RenderFlex overflowed".
+        expect(tester.takeException(), isNull);
+        final panel = tester.getRect(find.byType(TtMenuPanel<String>));
+        expect(panel.top, greaterThanOrEqualTo(24));
+        expect(panel.bottom, lessThanOrEqualTo(360));
+        // It is one scrollable, and the last item can be reached and chosen.
+        final scrollable = find.descendant(
+          of: find.byType(TtMenuPanel<String>),
+          matching: find.byType(Scrollable),
+        );
+        expect(scrollable, findsOneWidget);
+        await tester.dragUntilVisible(
+          find.text('Delete reel'),
+          scrollable,
+          const Offset(0, -80),
+        );
+        await tester.tap(find.text('Delete reel'));
+        await tester.pumpAndSettle();
+        expect(picked, ['d']);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('a menu that fits does not scroll', (tester) async {
+      await tester.pumpWidget(ttTestApp(_menu()));
+      await _open(tester);
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(
+          of: find.byType(TtMenuPanel<String>),
+          matching: find.byType(Scrollable),
+        ),
+      );
+      expect(scrollable.position.maxScrollExtent, 0);
+    });
 
     testWidgets('the panel casts the menu shadow', (tester) async {
       await tester.pumpWidget(ttTestApp(_menu()));

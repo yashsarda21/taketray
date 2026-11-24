@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:taketray_ui/src/components/internal/blur_barrier.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -92,7 +93,17 @@ class TtMenuRoute<T> extends PopupRoute<({T value})> {
                     textDirection: textDirection,
                     mediaQuery: MediaQuery.of(context),
                   ),
-                  child: builder(context),
+                  // Named and scoped like Flutter's own popup menu, so TalkBack
+                  // announces the menu and moves into it: the barrier hides the
+                  // button it had focus on.
+                  child: Semantics(
+                    role: SemanticsRole.menu,
+                    scopesRoute: true,
+                    namesRoute: true,
+                    explicitChildNodes: true,
+                    label: MaterialLocalizations.of(context).popupMenuLabel,
+                    child: builder(context),
+                  ),
                 ),
               ),
             ),
@@ -166,9 +177,19 @@ class TtMenuLayout extends SingleChildLayoutDelegate {
   final MediaQueryData mediaQuery;
 
   @override
-  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
-      BoxConstraints.loose(constraints.biggest)
-          .deflate(const EdgeInsets.all(TtMetrics.menuEdgeInset));
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) {
+    final inset = BoxConstraints.loose(constraints.biggest)
+        .deflate(const EdgeInsets.all(TtMetrics.menuEdgeInset));
+    // A panel taller than the safe area (large text, a phone turned
+    // sideways) is as tall as the safe area, so it is on the screen all the
+    // way down and scrolls (`TtMenuPanel`).
+    final safe = mediaQuery.padding.deflateRect(
+      mediaQuery.viewInsets.deflateRect(Offset.zero & constraints.biggest),
+    );
+    return inset.copyWith(
+      maxHeight: inset.maxHeight < safe.height ? inset.maxHeight : safe.height,
+    );
+  }
 
   @override
   Offset getPositionForChild(Size size, Size childSize) {

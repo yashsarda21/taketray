@@ -36,7 +36,8 @@ How execution moves between files and functions in the TakeTray app. Updated by 
 2. System back → `GoRouterDelegate.popRoute` asks the current navigators for `maybePop`. While the menu is open the shell's page is not the root navigator's current route, so only the root navigator is asked, and its current route is the menu: `maybePop` pops it with no result. Nothing is selected, the page (or the sheet the menu was opened from) stays as it was, and the next back works on it as before. There is no `PopScope` and no open flag.
 3. A tap on the barrier (outside the panel) pops it the same way, and so does Escape (the `ModalRoute`'s `DismissIntent`). Choosing an item pops `(value: item.value)` (a record, so a nullable value of null is still a selection); `_open` then calls `onSelected` once, if the button is still mounted. An item tapped twice before the next frame pops only once (`route.isCurrent`).
 4. A change of the window's size closes the menu without a selection (`_CloseOnResize` in the route's page, after the frame), as `MenuAnchor` did. A button that leaves the tree while its menu is open (the page under it went away) removes the route after the frame in `dispose`.
-5. Because a menu is now a popup route, `PopupRouteTracker.isOpen` is true while it is open (see "Still shooting?").
+5. The route's page is a `Semantics` with `role: menu`, `scopesRoute`, `namesRoute`, `explicitChildNodes` and the label "Popup menu", so a screen reader announces the menu and moves into it. The panel's items scroll (`SingleChildScrollView`) when the panel is capped at the safe area's height.
+6. Because a menu is now a popup route, `PopupRouteTracker.isOpen` is true while it is open (see "Still shooting?").
 
 ### System bar icons
 

@@ -96,27 +96,32 @@ class TtMenuPanel<T> extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.all(TtMetrics.menuPadding),
-          child: IntrinsicWidth(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (index, item) in items.indexed)
-                  MenuItemButton(
-                    key: ValueKey('tt-menu-item-$index'),
-                    style: itemStyle(item),
-                    // Wrap a long label (what an open MenuAnchor sets too).
-                    overflowAxis: Axis.vertical,
-                    leadingIcon: item.icon == null
-                        ? null
-                        : Icon(item.icon, fill: item.iconFilled ? 1 : null),
-                    trailingIcon: item.checked ?? false
-                        ? const Icon(Symbols.check_rounded)
-                        : null,
-                    onPressed: () => onSelected(item.value),
-                    child: _ItemText(item: item),
-                  ),
-              ],
+          // A panel the layout caps at the screen's height (large text, a
+          // phone turned sideways) scrolls inside its Material, as the
+          // `MenuAnchor` it replaced did; the shadow stays outside the clip.
+          child: SingleChildScrollView(
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, item) in items.indexed)
+                    MenuItemButton(
+                      key: ValueKey('tt-menu-item-$index'),
+                      style: itemStyle(item),
+                      // Wrap a long label (what an open MenuAnchor sets too).
+                      overflowAxis: Axis.vertical,
+                      leadingIcon: item.icon == null
+                          ? null
+                          : Icon(item.icon, fill: item.iconFilled ? 1 : null),
+                      trailingIcon: item.checked ?? false
+                          ? const Icon(Symbols.check_rounded)
+                          : null,
+                      onPressed: () => onSelected(item.value),
+                      child: _ItemText(item: item),
+                    ),
+                ],
+              ),
             ),
           ),
         ),
