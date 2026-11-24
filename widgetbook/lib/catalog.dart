@@ -20,6 +20,7 @@ import 'package:taketray_widgetbook/components/nav_pill.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/player_chrome.dart';
 import 'package:taketray_widgetbook/components/progress.dart';
+import 'package:taketray_widgetbook/components/rail_button.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/reel_card.dart';
 import 'package:taketray_widgetbook/components/reel_chip.dart';
@@ -114,6 +115,7 @@ final List<WidgetbookNode> ttCatalog = [
       ttPlayerHeaderComponent,
       ttStageArrowComponent,
       ttScrubBarComponent,
+      ttRailButtonComponent,
       ttReelChipComponent,
       ttNewReelChipComponent,
       ttTagPanelComponent,

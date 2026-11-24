@@ -35,6 +35,10 @@ class TtColors {
     required this.videoScrimBottom,
     required this.onVideo,
     required this.onVideoVariant,
+    required this.railGlass,
+    required this.dockChipGlass,
+    required this.dockNewChipGlass,
+    required this.dockNewChipBorder,
   });
 
   /// The TakeTray colours for [scheme] (light or dark by its brightness).
@@ -92,6 +96,15 @@ class TtColors {
       videoScrimBottom: TtColorTokens.videoScrimBottom,
       onVideo: TtColorTokens.onVideo,
       onVideoVariant: TtColorTokens.onVideoVariant,
+      // player2.css:33: .p2-rb { background: rgba(18,19,22,.74) }
+      railGlass: const Color(0xBD121316),
+      // player2.css:44: .rchip.dk { background: rgba(30,32,36,.84) }
+      dockChipGlass: const Color(0xD61E2024),
+      // player2.css:50: .rchip.new.dk { background: rgba(30,32,36,.55) }
+      dockNewChipGlass: const Color(0x8C1E2024),
+      // player2.css:50: .rchip.new.dk { border: 1.5px dashed
+      // rgba(255,255,255,.55) }
+      dockNewChipBorder: const Color(0x8CFFFFFF),
     );
   }
 
@@ -178,6 +191,19 @@ class TtColors {
   /// Secondary text on video.
   final Color onVideoVariant;
 
+  /// Glass of a rail button (Skip, Same) over the clip: ink at 74 %. The
+  /// same in light and dark, as the player is always dark.
+  final Color railGlass;
+
+  /// Glass of an idle on-video reel chip: ink at 84 %.
+  final Color dockChipGlass;
+
+  /// Glass of the on-video New reel chip: ink at 55 %.
+  final Color dockNewChipGlass;
+
+  /// The dashed border of the on-video New reel chip: white at 55 %.
+  final Color dockNewChipBorder;
+
   /// Linearly interpolates every colour between this and [other].
   TtColors lerp(TtColors other, double t) {
     final a = this;
@@ -211,6 +237,10 @@ class TtColors {
       videoScrimBottom: mix(a.videoScrimBottom, b.videoScrimBottom),
       onVideo: mix(a.onVideo, b.onVideo),
       onVideoVariant: mix(a.onVideoVariant, b.onVideoVariant),
+      railGlass: mix(a.railGlass, b.railGlass),
+      dockChipGlass: mix(a.dockChipGlass, b.dockChipGlass),
+      dockNewChipGlass: mix(a.dockNewChipGlass, b.dockNewChipGlass),
+      dockNewChipBorder: mix(a.dockNewChipBorder, b.dockNewChipBorder),
     );
   }
 }

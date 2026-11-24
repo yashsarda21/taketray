@@ -168,11 +168,13 @@ Future<({double blurred, double sharp})> _measure(
   ImageProvider? picture,
   double minSharp = .95,
   double radius = 0,
+  Rect Function(WidgetTester tester)? strip,
 }) async {
   _phone(tester);
   await tester.pumpWidget(ttPixelApp(build(piece: true)));
   if (picture != null) await _decode(tester, picture, of);
-  final rect = _freeStrip(tester, glass(), radius: radius);
+  final rect =
+      strip?.call(tester) ?? _freeStrip(tester, glass(), radius: radius);
   final blurred = (await TtPixels.capture(tester)).edgeContrast(rect);
   await tester.pumpWidget(ttPixelApp(build(piece: false)));
   if (picture != null) await _decode(tester, picture, of);
@@ -282,6 +284,51 @@ Widget _shootingCard(ImageProvider backdrop) => Stack(
   ],
 );
 
+/// The rail button, with [detail] under its label, and off when [enabled] is
+/// false.
+Widget _railButton({bool enabled = true, String? detail}) => TtRailButton(
+  icon: Symbols.repeat_rounded,
+  label: 'Same',
+  detail: detail,
+  semanticLabel: 'Same as previous',
+  onPressed: enabled ? () {} : null,
+);
+
+/// An on-video chip, 164 dp wide as in the dock's two columns.
+Widget _videoChip({TtReelChipState state = TtReelChipState.idle}) => SizedBox(
+  width: 164,
+  child: TtReelChip(
+    name: 'Lisbon',
+    countText: '12 clips',
+    semanticLabel: 'Add to Lisbon, 12 clips',
+    state: state,
+    style: TtReelChipStyle.onVideo,
+    onTap: () {},
+  ),
+);
+
+/// An on-video New reel chip with no subtitle, so its right side is free.
+Widget _videoNewChip() => SizedBox(
+  width: 164,
+  child: TtNewReelChip(
+    title: 'New reel',
+    style: TtReelChipStyle.onVideo,
+    onTap: () {},
+  ),
+);
+
+/// The right end of a 164 dp chip, past its text: 28 dp wide and 12 dp in
+/// from the top and bottom (the 18 dp corners start 7 dp in).
+Rect _chipRightEnd(WidgetTester tester, Type chip) {
+  final box = tester.getRect(find.byType(chip));
+  return Rect.fromLTRB(
+    box.right - 32,
+    box.top + 12,
+    box.right - 4,
+    box.bottom - 12,
+  );
+}
+
 Widget _navPill() => Stack(
   fit: StackFit.expand,
   children: [
@@ -317,6 +364,12 @@ void main() {
         ),
       ),
       'TtNavPill': (_) => _navPill(),
+      'TtRailButton': (_) => _onStripes(_railButton(detail: 'London Food')),
+      'TtRailButton, off': (_) => _onStripes(_railButton(enabled: false)),
+      'TtReelChip onVideo': (_) => _onStripes(_videoChip()),
+      'TtReelChip onVideo, picked': (_) =>
+          _onStripes(_videoChip(state: TtReelChipState.picked)),
+      'TtNewReelChip onVideo': (_) => _onStripes(_videoNewChip()),
     };
     for (final MapEntry(:key, :value) in pieces.entries) {
       testWidgets(key, (tester) async {
@@ -453,6 +506,90 @@ void main() {
         fillOpacity: .25,
       );
       _expectSigma(row, 6);
+    });
+
+    // Phase 12, Task 7 (D-178): the tag player's glass pieces. At a stripe
+    // period of 8 a blur of 12 and of 14 look the same, so the sigma is
+    // pinned by `expectBlurFilter` and the pixels prove there is a blur.
+    testWidgets('rail button blurs by 12 under its .74 glass', (tester) async {
+      final c = await _measure(
+        tester,
+        build: ({required piece}) =>
+            _onStripes(piece ? _railButton() : const SizedBox.shrink()),
+        of: Scaffold,
+        glass: () => _glassIn(TtRailButton),
+        radius: 20,
+      );
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: 0xBD / 255);
+      _expectSigma(_glassIn(TtRailButton), 12);
+    });
+
+    testWidgets('rail button with a detail blurs the same', (tester) async {
+      final c = await _measure(
+        tester,
+        build: ({required piece}) => _onStripes(
+          piece ? _railButton(detail: 'Paris') : const SizedBox.shrink(),
+        ),
+        of: Scaffold,
+        glass: () => _glassIn(TtRailButton),
+        radius: 20,
+      );
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: 0xBD / 255);
+      _expectSigma(_glassIn(TtRailButton), 12);
+    });
+
+    testWidgets('rail button off (45 %) still blurs by 12 under its faded '
+        'glass', (tester) async {
+      final c = await _measure(
+        tester,
+        build: ({required piece}) => _onStripes(
+          piece ? _railButton(enabled: false) : const SizedBox.shrink(),
+        ),
+        of: Scaffold,
+        glass: () => _glassIn(TtRailButton),
+        radius: 20,
+      );
+      // The fill is .74 x .45 = .33; an Opacity round the filter would have
+      // dropped the blur on the phone (F8), so the off state fades the fill.
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: 0xBD / 255 * .45);
+      _expectSigma(_glassIn(TtRailButton), 12);
+      expect(
+        find.ancestor(
+          of: _glassIn(TtRailButton),
+          matching: find.byType(Opacity),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('on-video reel chip blurs by 14 under its .84 glass', (
+      tester,
+    ) async {
+      final c = await _measure(
+        tester,
+        build: ({required piece}) =>
+            _onStripes(piece ? _videoChip() : const SizedBox.shrink()),
+        of: Scaffold,
+        glass: () => _glassIn(TtReelChip),
+        strip: (tester) => _chipRightEnd(tester, TtReelChip),
+      );
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: 0xD6 / 255);
+      _expectSigma(_glassIn(TtReelChip), 14);
+    });
+
+    testWidgets('on-video New reel chip blurs by 14 under its .55 glass', (
+      tester,
+    ) async {
+      final c = await _measure(
+        tester,
+        build: ({required piece}) =>
+            _onStripes(piece ? _videoNewChip() : const SizedBox.shrink()),
+        of: Scaffold,
+        glass: () => _glassIn(TtNewReelChip),
+        strip: (tester) => _chipRightEnd(tester, TtNewReelChip),
+      );
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: 0x8C / 255);
+      _expectSigma(_glassIn(TtNewReelChip), 14);
     });
 
     testWidgets('nav pill blurs by 18 under its .78 glass', (tester) async {

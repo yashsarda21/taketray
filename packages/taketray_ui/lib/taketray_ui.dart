@@ -30,6 +30,7 @@ export 'src/components/nav_pill.dart';
 export 'src/components/pill_tabs.dart';
 export 'src/components/player_chrome.dart';
 export 'src/components/progress.dart';
+export 'src/components/rail_button.dart';
 export 'src/components/rec_dot.dart';
 export 'src/components/reel_card.dart';
 export 'src/components/reel_chip.dart';

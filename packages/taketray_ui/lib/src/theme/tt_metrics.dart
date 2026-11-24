@@ -1511,6 +1511,79 @@ abstract final class TtMetrics {
   // proto.css: .rchip .cv .ms { font-size: 20px }
   static const double newReelChipIconSize = 20;
 
+  // ---- Rail button (D-178) ----
+
+  /// Width and height of a rail button: its minimum, it grows with its text.
+  // player2.css:33: .p2-rb { width: 64px; min-height: 64px }
+  static const double railButtonSize = 64;
+
+  /// Corner radius of a rail button.
+  // player2.css:33: .p2-rb { border-radius: 20px }
+  static const double railButtonRadius = 20;
+
+  /// Standard deviation of the blur behind a rail button.
+  // player2.css:33: .p2-rb { backdrop-filter: blur(12px) }
+  static const double railButtonBlur = 12;
+
+  /// Padding above and below a rail button's content.
+  // player2.css:33: .p2-rb { padding: 8px 4px }
+  static const double railButtonPaddingVertical = 8;
+
+  /// Padding beside a rail button's content.
+  // player2.css:33: .p2-rb { padding: 8px 4px }
+  static const double railButtonPaddingHorizontal = 4;
+
+  /// Gap between a rail button's icon, label and detail.
+  // player2.css:33: .p2-rb { gap: 1px }
+  static const double railButtonLineGap = 1;
+
+  /// Size of a rail button's icon.
+  // player2.css:34: .p2-rb .ms { font-size: 24px }
+  static const double railButtonIconSize = 24;
+
+  /// Widest a rail button's second line is at a text scale of 1; at larger
+  /// text it grows with the scale, as the button does.
+  // player2.css:35: .p2-rb small { max-width: 56px }
+  static const double railButtonDetailMaxWidth = 56;
+
+  /// Opacity of a rail button's second line (white at this).
+  // player2.css:35: .p2-rb small { color: rgba(255,255,255,.85) }
+  static const double railButtonDetailOpacity = 0.85;
+
+  /// How much of its fill and content an off rail button keeps (Same with
+  /// nothing tagged yet). Faded in the colours, never with an `Opacity`
+  /// round the glass (F8: that can drop the blur).
+  // player2.css:36: .p2-rb.dis { opacity: .45 }
+  static const double railButtonDisabledOpacity = 0.45;
+
+  // ---- Reel chip on video (D-178) ----
+
+  /// Minimum height of an on-video chip (with its 30 x 40 cover it is 54).
+  // player2.css:44: .rchip.dk { min-height: 52px }
+  static const double reelChipOnVideoMinHeight = 52;
+
+  /// Standard deviation of the blur behind an on-video chip.
+  // player2.css:44: .rchip.dk { backdrop-filter: blur(14px) }
+  static const double reelChipOnVideoBlur = 14;
+
+  /// Opacity of the count under the name of an idle on-video chip, and of
+  /// the subtitle of the on-video New reel chip (white at this).
+  // player2.css:45: .rchip.dk .t span { color: rgba(255,255,255,.78) }
+  static const double reelChipOnVideoCountOpacity = 0.78;
+
+  /// Width of the cover of an on-video chip.
+  // player2.css:46: .rchip.dk .cv { width: 30px }
+  static const double reelChipOnVideoCoverWidth = 30;
+
+  /// Height of the cover of an on-video chip.
+  // player2.css:46: .rchip.dk .cv { height: 40px }
+  static const double reelChipOnVideoCoverHeight = 40;
+
+  /// Opacity of the count on a picked or tagged on-video chip.
+  // player2.css:49: .rchip.dk.done .t span, .rchip.dk.pick .t span
+  // { opacity: .85 }
+  static const double reelChipOnVideoStateCountOpacity = 0.85;
+
   // ---- Other reels toggle ----
 
   /// Height of the drawn row of the "Other reels" toggle. Its tap target is

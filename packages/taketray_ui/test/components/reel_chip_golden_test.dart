@@ -73,6 +73,77 @@ void main() {
     ],
   );
 
+  // The full-screen tag player's chips: glass over the clip (D-178). The
+  // player is always dark, so there is only a dark golden.
+  ttGoldenTest(
+    'Reel chip on video',
+    fileName: 'reel_chip_on_video',
+    brightnesses: const [Brightness.dark],
+    width: _cell,
+    scenarios: [
+      TtScenario(
+        'idle',
+        _onClip(_videoChip(cover: fixtureThumb(1))),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'idle, no cover',
+        _onClip(_videoChip()),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'picked, multi-select',
+        _onClip(
+          _videoChip(
+            cover: fixtureThumb(3),
+            multi: true,
+            state: TtReelChipState.picked,
+          ),
+        ),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'done',
+        _onClip(_videoChip(state: TtReelChipState.done)),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'long name',
+        _onClip(
+          _videoChip(
+            cover: fixtureThumb(5),
+            name: 'Saturday morning market walk with the whole family',
+            count: '1234 clips',
+          ),
+        ),
+        largeWidth: _largeCell,
+      ),
+      TtScenario(
+        'New reel',
+        _onClip(
+          const TtNewReelChip(
+            title: 'New reel',
+            subtitle: 'Add this clip to it',
+            style: TtReelChipStyle.onVideo,
+          ),
+        ),
+        largeWidth: _largeCell,
+      ),
+      // The no-reels dock: the chip takes the dock's whole row (336 dp).
+      TtScenario(
+        'New reel, no reels, full width',
+        _onClip(
+          const TtNewReelChip(
+            title: 'New reel',
+            fullWidth: true,
+            style: TtReelChipStyle.onVideo,
+          ),
+        ),
+        width: _largeCell + 184,
+      ),
+    ],
+  );
+
   ttGoldenTest(
     'New reel chip',
     fileName: 'new_reel_chip',
@@ -146,4 +217,52 @@ Widget _chipOnPanel({
       ),
     ),
   ),
+);
+
+/// [child] over a stand-in for the clip: a warm to cool gradient with a white
+/// and a black bar behind the chip, so the blur and the fill show.
+Widget _onClip(Widget child) => DecoratedBox(
+  decoration: const BoxDecoration(
+    gradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFFE8873A), Color(0xFF2F8F83), Color(0xFF3B4C9B)],
+    ),
+  ),
+  child: Stack(
+    children: [
+      const Positioned(
+        right: 40,
+        top: 0,
+        bottom: 0,
+        width: 12,
+        child: ColoredBox(color: Color(0xFFFFFFFF)),
+      ),
+      const Positioned(
+        right: 70,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        child: ColoredBox(color: Color(0xFF000000)),
+      ),
+      Padding(padding: const EdgeInsets.all(8), child: child),
+    ],
+  ),
+);
+
+Widget _videoChip({
+  ImageProvider? cover,
+  String name = 'Lisbon trip',
+  String count = '12 clips',
+  bool multi = false,
+  TtReelChipState state = TtReelChipState.idle,
+}) => TtReelChip(
+  name: name,
+  countText: count,
+  semanticLabel: 'Add to $name, $count',
+  cover: cover,
+  state: state,
+  multiSelect: multi,
+  style: TtReelChipStyle.onVideo,
+  onTap: () {},
 );
