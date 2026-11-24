@@ -575,6 +575,45 @@ All component paths are under `packages/taketray_ui/lib/src/`.
 
 ---
 
+### Task 6A: The To tag count on the nav pill (owner's request, 2026-11-24)
+
+**Model:** Sonnet. **D-184** (D-172 to D-183 are reserved by Tasks 1 to 12; this task takes the next free number).
+
+**Why:** The owner noticed that the design's bottom bar shows how many clips wait on the **To tag** tab (`design/prototype/assets/screens.js:157, 222, 467`: `h.navbar(tab, s.toTag.length)` on Reels, To tag and Settings), and the app never does. Cause, found by the controller: `app/lib/features/shell/views/app_shell.dart:8` is still the Phase 0 placeholder `int _clipsToTag() => 0;` ("A constant 0 (no badge) until the tagging feature supplies it in phase 5"). Phase 5 never wired it. `TtNavPill`/`TtNavItem` already draw the badge (`badgeCount`, hidden at 0, "99+" above 99, `TtCountBadge`) and the semantics (`badgeSemanticLabel`, `l10n.toTagBadgeSemantics(n)`), so this is wiring, not new UI.
+
+**Files:**
+- Modify: `app/lib/features/shell/views/app_shell.dart` (delete `_clipsToTag`; `AppShell` becomes a `ConsumerWidget`).
+- Modify (only if a count provider is cleaner than `.length` in the view): `app/lib/features/tagging/view_models/pending_clips.dart` (+ regenerate `.g.dart` with the repo's build_runner command).
+- Test: `app/test/features/shell/views/app_shell_test.dart` (create or extend the existing shell test; find it with `grep -rl AppShell app/test`).
+
+**Interfaces:**
+- Consumes: `pendingClipsProvider` (`Stream<List<Clip>>`, `pending_clips.dart:18`), the read-only source the Shooting mode card's "N clips to tag" strip already uses (D-76: reading it never scans or verifies, so it can't stand in for "To tag was opened"). Use this source so the badge and the card's strip always agree.
+- Produces: nothing for later tasks.
+
+**Rules:**
+- The badge count is the number of pending clips (`pendingClipsProvider`'s list length). While loading or on error: 0 (no badge), never a spinner or an error in the nav pill.
+- The badge is on the To tag item on every tab (Reels, To tag, Settings), as the design draws it.
+- Semantics: with n > 0 the To tag item reads `l10n.toTagBadgeSemantics(n)` (existing string); at 0 it reads "To tag".
+- No new strings, no new metrics, no change to `taketray_ui`.
+
+- [ ] **Step 1: Write the failing tests** (widget tests on the shell with the provider overridden by a `StreamController<List<Clip>>`, using the existing test fixtures for clips and the router setup other shell tests use):
+  - `'no clips waiting: no badge'` — emits `[]`: `find.byType(TtCountBadge)` shows nothing visible (match how `TtCountBadge` hides at 0 — assert its `count` is 0 or that no "0" text appears), semantics label of the To tag item is "To tag".
+  - `'7 clips waiting: the To tag tab shows 7'` — emits 7 clips: the badge text `7` is found inside the To tag nav item; semantics label equals `toTagBadgeSemantics(7)`.
+  - `'the badge follows the stream'` — 3 then 1 then 0: the text changes 3 → 1 → gone without rebuilding the shell from scratch.
+  - `'shown on every tab'` — with 2 clips, go to Reels, To tag and Settings: the badge `2` is visible on each.
+  - `'while loading or on error there is no badge'` — before the first event, and after `addError`: no badge, no error widget, nav pill still works (tap a tab).
+  - `'over 99 shows 99+'` — 120 clips: text `99+`.
+- [ ] **Step 2: Run** `cd app && ../tool/flutter test test/features/shell/views/app_shell_test.dart`. Expected: FAIL (the placeholder always gives 0, so every test that expects a badge fails; the "no badge" tests may already pass, record that).
+- [ ] **Step 3: Implement**: `AppShell extends ConsumerWidget`; `final toTagCount = ref.watch(pendingClipsProvider).value?.length ?? 0;` (or a small `pendingClipCount` provider if that reads better); delete `_clipsToTag` and its comment.
+- [ ] **Step 4: Run** the test file, then `tool/check` (must end `ALL CHECKS PASSED`). If an app golden that shows the nav pill changes because its fixture has pending clips, update it on macOS, look at it, and say so in the report.
+- [ ] **Step 5: Mutation checks:** put the constant 0 back (the 7-clips test fails); read `skippedCount` instead (the count test fails); use `ref.read` instead of `ref.watch` (the follows-the-stream test fails).
+- [ ] **Step 6: Docs and commit** `fix(shell): the To tag tab shows how many clips wait`.
+  - **D-184** in `docs/decisions.md`: the owner's report, the cause (the Phase 0 placeholder never wired in Phase 5), the source chosen (`pendingClipsProvider`, read-only, the same as the Shooting mode card, D-76), loading/error → no badge.
+  - `docs/flow.md`: the shell / nav pill section says where the count comes from.
+  - `docs/later.md`: nothing, unless you find another placeholder of the same kind (`grep -rn "until .* phase" app/lib`): list any you find in the report, don't fix them.
+
+---
+
 ### Task 7: `TtRailButton` and the `onVideo` reel chips
 
 **Model:** Sonnet. **D-178.**

@@ -2707,3 +2707,21 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - A device capability check of our own: Android already tells the listener (`isCrossWindowBlurEnabled` and battery saver), so there is no second source of truth.
 - Consequences:
   - The tests prove the flag, the radius, the fall-back, the re-enable and that Android 11 asks for nothing. Robolectric's `WindowManager` has no cross-window-blur state to flip and a `FlutterActivity` cannot be created without the native engine library, so the registration and removal in `ShareActivity` and the look of the radius are proved on the phone: hand checks 14.8 (Task 14). The owner checks the radius by eye.
+
+### D-184 · Phase 12: the To tag tab shows how many clips wait (the Phase 0 placeholder is wired to `pendingClipsProvider`)
+- Date: 2026-11-24 · Phase: 12 (UI refresh), Task 6A (the owner's request) · Code: `app/lib/features/shell/views/app_shell.dart` · Tests: `app/test/features/shell/views/app_shell_test.dart`
+- What the owner saw: the design's bottom bar shows how many clips wait on the To tag tab (`design/prototype/assets/screens.js:157, 222, 467`: `h.navbar(tab, s.toTag.length)` on Reels, To tag and Settings), and the app never did.
+- Cause: `AppShell` still called the Phase 0 placeholder `_clipsToTag()`, a constant 0 with the comment "until the tagging feature supplies it in phase 5". Phase 5 never wired it. `TtNavPill` and `TtNavItem` already drew the badge (hidden at 0, "99+" above 99, `TtCountBadge`) and its semantics (`badgeSemanticLabel`, `toTagBadgeSemantics`), so this is wiring, not new UI.
+- Decision:
+  1. **The count is the length of `pendingClipsProvider`'s list.** `AppShell` is now a `ConsumerWidget` and does `ref.watch(pendingClipsProvider).value?.length ?? 0`; `_clipsToTag` and its comment are gone.
+  2. **The source is the one the Shooting mode card's strip already uses.** It only reads (building it never scans or verifies, so it cannot stand in for "To tag was opened", D-76), and the badge and the card's "N clips to tag" always agree. Skipped clips are not counted.
+  3. **While the list loads, and when it fails, there is no badge** (0): never a spinner or an error in the nav pill.
+  4. **The badge is on the To tag item on every tab**, as the design draws it. With n above 0 the item reads `toTagBadgeSemantics(n)` ("To tag, 7 clips"); at 0 it reads "To tag".
+  5. No new string, no new metric, no change to `taketray_ui`.
+- Alternatives considered:
+  - A separate `pendingClipCount` provider: a second provider for one `.length`, and one more thing that could disagree with the card.
+  - Counting through `ToTagController`: building it scans and verifies, so the badge would act as "To tag was opened" on every tab (D-76).
+- Consequences:
+  - After a first answer, a later stream error leaves the last count in place (Riverpod keeps the previous value); only a stream that has never answered shows no badge.
+  - The shell now watches the database stream for as long as the app is open. It is the same stream the Reels tab already watches.
+  - The tests (`app_shell_test.dart`) prove no badge at 0, 7 and 1 and 99+, a count that follows the stream (3, 1, none) without rebuilding the shell, the badge on all three tabs, and no badge, no error widget and a working pill before the first event and after an error.
