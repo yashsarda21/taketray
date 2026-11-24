@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -19,9 +20,11 @@ import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/tagging/view_models/tag_session_controller.dart';
+import 'package:taketray/features/tagging/views/stage_fit.dart';
 import 'package:taketray/features/tagging/views/tag_player_screen.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
+import 'package:video_player/video_player.dart' show VideoPlayer;
 
 import '../../../support/accessibility.dart';
 import '../../../support/fake_hold.dart';
@@ -104,11 +107,13 @@ void main() {
   });
 
   /// Lets the database and the media jobs answer, redraws, and lets what the
-  /// redraw let go of (a player to dispose) finish.
-  Future<void> settleApp(WidgetTester tester) async {
+  /// redraw let go of (a player to dispose) finish. With [spinning] (a clip
+  /// still opening, whose spinner never settles) it does not wait for the
+  /// animations to end.
+  Future<void> settleApp(WidgetTester tester, {bool spinning = false}) async {
     await tester.runAsync(settle);
     await tester.pump();
-    await tester.pumpAndSettle();
+    if (!spinning) await tester.pumpAndSettle();
     // The clip ahead is opened a moment after the frame (D-97): let real time
     // pass (a released player goes) between steps of the test clock.
     for (var i = 0; i < 6; i++) {
@@ -151,6 +156,7 @@ void main() {
     List<Override> overrides = const [],
     Size size = const Size(360, 800),
     bool animations = false,
+    bool spinning = false,
   }) async {
     await pumpScreen(
       tester,
@@ -167,7 +173,7 @@ void main() {
       brightness: Brightness.dark,
       settle: false,
     );
-    await settleApp(tester);
+    await settleApp(tester, spinning: spinning);
   }
 
   /// The reels a clip is in.
@@ -396,25 +402,211 @@ void main() {
       expect(find.text('Skip'), findsOneWidget);
     });
 
-    testApp('a horizontal video is letterboxed 16:9', (tester) async {
+    // The stage (D-171, D-180): the clip covers it, or is shown whole on
+    // black when covering would cut more than 20 % of it; it is never
+    // blurred. In this layout the stage is between the header and the panel
+    // (Task 10 makes it the whole screen), so the tests that need a clip to
+    // cover use a tall screen and first check that 9:16 covers that stage.
+    const tall = Size(360, 1000);
+    final stage = find.byKey(const ValueKey('tag-stage'));
+    final video = find.descendant(
+      of: stage,
+      matching: find.byType(VideoPlayer),
+    );
+
+    /// [inner] lies inside [outer], to a hair.
+    void expectInside(Rect inner, Rect outer) {
+      expect(inner.left, greaterThanOrEqualTo(outer.left - 0.01));
+      expect(inner.top, greaterThanOrEqualTo(outer.top - 0.01));
+      expect(inner.right, lessThanOrEqualTo(outer.right + 0.01));
+      expect(inner.bottom, lessThanOrEqualTo(outer.bottom + 0.01));
+    }
+
+    void expectSameCentre(Rect a, Rect b) {
+      expect(a.center.dx, closeTo(b.center.dx, 0.01));
+      expect(a.center.dy, closeTo(b.center.dy, 0.01));
+    }
+
+    /// The stage is tall enough that a 9:16 clip covers it.
+    Rect coveringStage(WidgetTester tester) {
+      final box = tester.getRect(stage);
+      expect(
+        stageFit(area: box.size, clip: const Size(1080, 1920)),
+        BoxFit.cover,
+        reason: 'the stage $box must let a vertical clip cover it',
+      );
+      return box;
+    }
+
+    testApp('no blur anywhere on the stage', (tester) async {
+      await waiting(tester, 2);
+      void expectNoBlur() {
+        expect(stage, findsOneWidget);
+        expect(
+          find.descendant(of: stage, matching: find.byType(ImageFiltered)),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: stage, matching: find.byType(BackdropFilter)),
+          findsNothing,
+        );
+      }
+
+      // While the clip opens, over its picture,
+      platform.hold = true;
+      await open(tester, spinning: true);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expectNoBlur();
+
+      // and while it plays.
+      platform.hold = false;
+      await open(tester);
+      expect(video, findsOneWidget);
+      expectNoBlur();
+    });
+
+    testApp('a vertical clip covers the stage, centred', (tester) async {
       await waiting(tester, 1);
+
+      await open(tester, size: tall);
+
+      final box = coveringStage(tester);
+      final shown = tester.getRect(video);
+      expectInside(box, shown);
+      expectSameCentre(shown, box);
+      expect(shown.width / shown.height, closeTo(9 / 16, 0.001));
+      // Scaled just enough to cover: one side meets the stage's, the other
+      // is cut.
+      final scale = math.max(box.width / 1080, box.height / 1920);
+      expect(shown.width, closeTo(1080 * scale, 0.01));
+      expect(shown.height, closeTo(1920 * scale, 0.01));
+      // The picture is the video's, not a box of its own.
+      expect(tester.getRect(find.byKey(const ValueKey('fake-video-1'))), shown);
+    });
+
+    testApp('a horizontal clip is shown whole, centred, on black', (
+      tester,
+    ) async {
+      await real(tester, () => h.media.store([reelVideo(1, horizontal: true)]));
       platform.size = const Size(1920, 1080);
 
       await open(tester);
 
-      final box = tester.getSize(find.byKey(const ValueKey('fake-video-1')));
-      expect(box.width / box.height, closeTo(16 / 9, 0.01));
-      // Whole width less 8 dp each side.
-      expect(box.width, 360 - 16);
+      final box = tester.getRect(stage);
+      final shown = tester.getRect(video);
+      expectInside(shown, box);
+      expectSameCentre(shown, box);
+      expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
+      // Full bleed across: no margin at the sides.
+      expect(shown.width, closeTo(box.width, 0.01));
+      // On black, not on a picture of itself.
+      expect(tester.widget<ColoredBox>(stage).color, const Color(0xFF000000));
+      expect(
+        find.descendant(of: stage, matching: find.byType(Image)),
+        findsNothing,
+      );
     });
 
-    testApp('a vertical video is 9:16 and fits the stage', (tester) async {
+    testApp("the player's own shape wins once it starts", (tester) async {
+      // Stored as a portrait clip, but the player says 16:9 (a rotated file,
+      // or a size MediaStore got wrong).
       await waiting(tester, 1);
+      platform.size = const Size(1920, 1080);
 
+      await open(tester, size: tall);
+
+      final box = coveringStage(tester);
+      final shown = tester.getRect(video);
+      expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
+      expectInside(shown, box);
+      expect(shown.width, closeTo(box.width, 0.01));
+      expectSameCentre(shown, box);
+    });
+
+    testApp('while the clip opens, its picture has the same fit', (
+      tester,
+    ) async {
+      await waiting(tester, 1);
+      platform.hold = true;
+
+      await open(tester, size: tall, spinning: true);
+
+      final box = coveringStage(tester);
+      final picture = find.descendant(of: stage, matching: find.byType(Image));
+      expect(picture, findsOneWidget);
+      final shown = tester.getRect(picture);
+      expectInside(box, shown);
+      expectSameCentre(shown, box);
+      expect(shown.width / shown.height, closeTo(9 / 16, 0.001));
+      // Black at 35 % over it, and the spinner, not scaled with the clip.
+      expect(
+        find.descendant(
+          of: stage,
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is ColoredBox &&
+                w.color ==
+                    const Color(0xFF000000)
+                        .withValues(alpha: TtMetrics.tagStageLoadingOpacity),
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        tester.getRect(find.byType(CircularProgressIndicator)).size,
+        const Size.square(36),
+      );
+    });
+
+    testApp('a clip of unknown size opens as 9:16', (tester) async {
+      final ids = await waiting(tester, 1);
+      await real(
+        tester,
+        () => h.media.db.customStatement(
+          'UPDATE clips SET width = 0, height = 0 WHERE id = ${ids[0]}',
+        ),
+      );
+      platform.hold = true;
+
+      await open(tester, size: tall, spinning: true);
+
+      final box = coveringStage(tester);
+      final shown = tester.getRect(
+        find.descendant(of: stage, matching: find.byType(Image)),
+      );
+      expect(shown.width / shown.height, closeTo(9 / 16, 0.001));
+      expectInside(box, shown);
+    });
+
+    testApp('paused shows the 64 dp disc at 45 %', (tester) async {
+      await waiting(tester, 1);
       await open(tester);
+      final disc = find.descendant(
+        of: stage,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              w.decoration is BoxDecoration &&
+              (w.decoration as BoxDecoration).shape == BoxShape.circle,
+        ),
+      );
+      expect(disc, findsNothing);
 
-      final box = tester.getSize(find.byKey(const ValueKey('fake-video-1')));
-      expect(box.width / box.height, closeTo(9 / 16, 0.01));
+      await tester.tap(find.byKey(const ValueKey('fake-video-1')));
+      await settleApp(tester);
+
+      expect(platform.player(1).playing, isFalse);
+      expect(disc, findsOneWidget);
+      expect(tester.getRect(disc).size, const Size.square(64));
+      expect(
+        (tester.widget<DecoratedBox>(disc).decoration as BoxDecoration).color,
+        const Color(0xFF000000).withValues(alpha: 0.45),
+      );
+      expectSameCentre(tester.getRect(disc), tester.getRect(video));
+      final icon = find.descendant(of: disc, matching: find.byType(Icon));
+      expect(tester.widget<Icon>(icon).icon, Symbols.play_arrow_rounded);
+      expect(tester.widget<Icon>(icon).size, 36);
+      expect(tester.getRect(icon).size, const Size.square(36));
     });
 
     testApp('a long clip has the large scrub bar with the hint', (

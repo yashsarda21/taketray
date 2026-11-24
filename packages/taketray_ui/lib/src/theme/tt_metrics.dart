@@ -1204,32 +1204,23 @@ abstract final class TtMetrics {
 
   // ---- Tag player stage ----
 
-  /// Blur of the thumbnail behind the tag player's video.
-  // proto.css: .stage .blur { filter: blur(22px) brightness(.45) }
-  static const double tagStageBlur = 22;
+  /// The most of a clip the tag player's stage may cut off to cover the
+  /// screen: a clip that covering would cut more of is shown whole on black
+  /// (`BoxFit.contain`, D-171, D-180).
+  // design/handoff/tag-player-full-screen.md, "The clip": "If covering would
+  // trim more than 20 % of the clip, show it whole (BoxFit.contain) on black."
+  static const double tagStageMaxCoverCrop = 0.20;
 
-  /// Opacity of black over that blurred thumbnail (`brightness(.45)` leaves
-  /// 45 % of the light, so 55 % black).
-  static const double tagStageDimOpacity = 0.55;
+  /// Size of the play disc over a paused clip.
+  // player2.css:11: .p2-vid .ctr .ms { width: 64px; height: 64px;
+  // border-radius: 50%; background: rgba(0,0,0,.45); font-size: 36px }
+  static const double tagStagePlayDiscSize = 64;
 
-  /// How much that thumbnail is scaled up, so the blur's soft edge is off
-  /// the stage.
-  // proto.css: .stage .blur { transform: scale(1.1) }
-  static const double tagStageBlurScale = 1.1;
+  /// Opacity of the play disc's black.
+  static const double tagStagePlayDiscOpacity = 0.45;
 
-  /// Corner radius of the tag player's video.
-  // tt-style.css: .style-tt .stage .vid { border-radius: 18px }
-  static const double tagStageVideoRadius = 18;
-
-  /// Blur radius of the shadow under the tag player's video.
-  // proto.css: .stage .vid { box-shadow: 0 10px 30px rgba(0,0,0,.5) }
-  static const double tagStageVideoShadowBlur = 30;
-
-  /// How far down that shadow falls.
-  static const double tagStageVideoShadowOffset = 10;
-
-  /// Opacity of that shadow's black.
-  static const double tagStageVideoShadowOpacity = 0.5;
+  /// Size of the play icon in that disc.
+  static const double tagStagePlayIconSize = 36;
 
   /// How far a new clip slides in, as a share of its width.
   // proto.css: @keyframes clipIn { from { transform: translateX(70%)
@@ -1239,8 +1230,8 @@ abstract final class TtMetrics {
   /// The scale a new clip starts at while it slides in.
   static const double tagStageSlideScale = 0.9;
 
-  /// Opacity of black behind the spinner over a loading video.
-  // proto.css: .stage .vid .ld { background: rgba(0,0,0,.35) }
+  /// Opacity of black over a loading clip's picture, behind the spinner.
+  // player2.css:12: .p2-vid .ld { background: rgba(0,0,0,.35) }
   static const double tagStageLoadingOpacity = 0.35;
 
   // ---- Video surface ----

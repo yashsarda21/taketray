@@ -23,6 +23,7 @@ import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/view_models/last_tags.dart';
 import 'package:taketray/features/tagging/view_models/tag_player_muted.dart';
 import 'package:taketray/features/tagging/view_models/tag_session_controller.dart';
+import 'package:taketray/features/tagging/views/stage_fit.dart';
 import 'package:taketray/features/tagging/views/tag_done_view.dart';
 import 'package:taketray/features/tagging/views/tagging_snacks.dart';
 import 'package:taketray/features/tagging/views/time_range_text.dart';
@@ -51,8 +52,8 @@ const int _longClipMs = 120000;
 /// quick jitter of the thumb is not a swipe.
 const double _swipeMinDistance = kTouchSlop * 4;
 
-/// A clip's shape (width / height) until its own size is known: portrait.
-const double _portraitShape = 9 / 16;
+/// A clip's size until its own is known: portrait, 9:16.
+const Size _portraitSize = Size(9, 16);
 
 /// How often the clip ahead looks again whether the clip left behind has let
 /// go of its player (`_openAhead`): a wait between checks, not an animation.
@@ -68,13 +69,14 @@ const Duration _aheadPoll = Duration(milliseconds: 200);
 ///   live region) over "Scene {s} of {S} · {range}" (the time where the clips
 ///   were shot, D-83, in the locale), and Mute / Unmute.
 /// - **The stage:** the clip showing, from its stored identity only
-///   (`clipVideoUri`): 9:16 or 16:9 whole, on its own blurred thumbnail, with
-///   a spinner while it opens. A tap plays or pauses; a swipe, outside the
-///   system back-gesture edges, and the ‹ › arrows (disabled at the ends) go
-///   to the previous and next waiting clip. A new clip slides in (not under
-///   reduced motion). A clip with no usable identity, flagged missing, or that
-///   cannot be played shows "This video can't be played" and never another
-///   video.
+///   (`clipVideoUri`), never blurred (D-180): it covers the stage, as in
+///   Instagram Reels, unless that would cut more than 20 % of it; then it is
+///   shown whole on black. Its picture and a spinner show while it opens. A
+///   tap plays or pauses; a swipe, outside the system back-gesture edges, and
+///   the ‹ › arrows (disabled at the ends) go to the previous and next waiting
+///   clip. A new clip slides in (not under reduced motion). A clip with no
+///   usable identity, flagged missing, or that cannot be played shows "This
+///   video can't be played" and never another video.
 /// - **One clip ahead:** the next clip's player is opened (paused, never heard)
 ///   while this one is tagged, so it starts at once. Settled, at most two
 ///   controllers are alive (the clip showing and the one ahead); for a moment
@@ -321,6 +323,9 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                 hasNext: state.hasNext,
                 onPrevious: controller.previous,
                 onNext: controller.next,
+                // The panel is below the stage, not over it: nothing covers
+                // its bottom.
+                bottomInset: 0,
               ),
             ),
           ],
@@ -785,9 +790,10 @@ class _Waiting extends StatelessWidget {
 
 // ---------------------------------------------------------------- the stage
 
-/// The stage of one clip: the blurred thumbnail, the video, the arrows. A new
-/// instance for each clip (and each identity of it), so its player is the
-/// clip's own and never carries over.
+/// The stage of one clip, on black: the clip covering it or shown whole
+/// (`stageFit`, D-180), never blurred, and the arrows. A new instance for
+/// each clip (and each identity of it), so its player is the clip's own and
+/// never carries over.
 class _Stage extends ConsumerWidget {
   const new({
     required this.clip,
@@ -798,6 +804,7 @@ class _Stage extends ConsumerWidget {
     required this.hasNext,
     required this.onPrevious,
     required this.onNext,
+    required this.bottomInset,
     super.key,
   });
 
@@ -816,6 +823,12 @@ class _Stage extends ConsumerWidget {
   final bool hasNext;
   final VoidCallback onPrevious;
   final VoidCallback onNext;
+
+  /// How much of the stage's bottom is covered (0 for nothing): a contained
+  /// clip is centred in the room above it; a covering clip still fills the
+  /// whole stage. Required, not defaulted: the analyzer calls a default that
+  /// no caller changes an unused parameter, and a given 0 redundant.
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -844,7 +857,11 @@ class _Stage extends ConsumerWidget {
             ),
           )
           .when(
-            loading: () => _Loading(clip: clip, picture: picture),
+            loading: () => _Loading(
+              clip: clip,
+              picture: picture,
+              bottomInset: bottomInset,
+            ),
             error: (_, _) => const _CantPlay(),
             data: (controller) => _Playing(
               key: ValueKey(address),
@@ -852,86 +869,54 @@ class _Stage extends ConsumerWidget {
               clip: clip,
               time: time,
               fallback: picture,
+              bottomInset: bottomInset,
             ),
           );
     }
 
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        if (picture != null)
-          Positioned.fill(
-            // proto.css: .stage .blur { inset: -20px; blur(22px)
-            // brightness(.45); scale(1.1) }
-            child: ClipRect(
-              child: Transform.scale(
-                scale: TtMetrics.tagStageBlurScale,
-                child: ImageFiltered(
-                  imageFilter: ui.ImageFilter.blur(
-                    sigmaX: TtMetrics.tagStageBlur,
-                    sigmaY: TtMetrics.tagStageBlur,
+    return ColoredBox(
+      key: const ValueKey('tag-stage'),
+      color: tt.colors.videoBackground,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          _SlideIn(from: slide, child: video),
+          // A swipe changes the clip, except from the edges the system keeps
+          // for its back gesture: only this layer is inset, not the video.
+          // Taps go through it to the video.
+          Padding(
+            padding: EdgeInsets.only(
+              left: gestureInsets.left,
+              right: gestureInsets.right,
+            ),
+            child: _SwipeArea(
+              rtl: rtl,
+              onNext: hasNext ? onNext : null,
+              onPrevious: hasPrevious ? onPrevious : null,
+            ),
+          ),
+          Align(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  TtStageArrow(
+                    side: TtArrowSide.previous,
+                    semanticLabel: l10n.viewerPrevious,
+                    onPressed: hasPrevious ? onPrevious : null,
                   ),
-                  child: DecoratedBox(
-                    position: DecorationPosition.foreground,
-                    decoration: BoxDecoration(
-                      color: tt.colors.videoBackground.withValues(
-                        alpha: TtMetrics.tagStageDimOpacity,
-                      ),
-                    ),
-                    child: Image(
-                      image: picture,
-                      fit: BoxFit.cover,
-                      excludeFromSemantics: true,
-                      errorBuilder: (context, error, stack) =>
-                          const SizedBox.expand(),
-                    ),
+                  TtStageArrow(
+                    side: TtArrowSide.next,
+                    semanticLabel: l10n.viewerNext,
+                    onPressed: hasNext ? onNext : null,
                   ),
-                ),
+                ],
               ),
             ),
           ),
-        _SlideIn(
-          from: slide,
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
-            child: video,
-          ),
-        ),
-        // A swipe changes the clip, except from the edges the system keeps
-        // for its back gesture: only this layer is inset, not the video.
-        // Taps go through it to the video.
-        Padding(
-          padding: EdgeInsets.only(
-            left: gestureInsets.left,
-            right: gestureInsets.right,
-          ),
-          child: _SwipeArea(
-            rtl: rtl,
-            onNext: hasNext ? onNext : null,
-            onPrevious: hasPrevious ? onPrevious : null,
-          ),
-        ),
-        Align(
-          child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                TtStageArrow(
-                  side: TtArrowSide.previous,
-                  semanticLabel: l10n.viewerPrevious,
-                  onPressed: hasPrevious ? onPrevious : null,
-                ),
-                TtStageArrow(
-                  side: TtArrowSide.next,
-                  semanticLabel: l10n.viewerNext,
-                  onPressed: hasNext ? onNext : null,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -1050,62 +1035,75 @@ class _SlideInState extends State<_SlideIn>
   }
 }
 
-/// How wide the clip is: its own picture's shape until the player knows.
-double _shapeOf(Clip clip) => clip.width > 0 && clip.height > 0
-    ? clip.width / clip.height
-    : _portraitShape;
+/// The clip's own size, as stored, or 9:16 while it is not known.
+Size _storedSize(Clip clip) => clip.width > 0 && clip.height > 0
+    ? Size(clip.width.toDouble(), clip.height.toDouble())
+    : _portraitSize;
 
-/// The rounded video box with the shadow of the prototype.
-class _VideoBox extends StatelessWidget {
-  const new({required this.aspectRatio, required this.child});
+/// Where a clip of [size] shows on the stage (D-180): `stageFit` over the
+/// whole stage decides. A covering clip is centred on the whole stage and cut
+/// at its edges; a contained one is centred whole in the room above
+/// [bottomInset], on the stage's black. [builder] gets [picture] fitted so
+/// and builds what fills that room: anything it adds beside the picture
+/// (the spinner, the play disc) is centred on the clip and not scaled.
+class _ClipRoom extends StatelessWidget {
+  const new({
+    required this.size,
+    required this.bottomInset,
+    required this.picture,
+    required this.builder,
+  });
 
-  final double aspectRatio;
-  final Widget child;
+  final Size size;
+  final double bottomInset;
+  final Widget picture;
+  final Widget Function(Widget fitted) builder;
 
   @override
   Widget build(BuildContext context) {
-    final tt = context.tt;
-    final radius = BorderRadius.circular(TtMetrics.tagStageVideoRadius);
-    return Center(
-      child: AspectRatio(
-        aspectRatio: aspectRatio,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            boxShadow: [
-              BoxShadow(
-                color: tt.colors.videoBackground.withValues(
-                  alpha: TtMetrics.tagStageVideoShadowOpacity,
-                ),
-                blurRadius: TtMetrics.tagStageVideoShadowBlur,
-                offset: const Offset(0, TtMetrics.tagStageVideoShadowOffset),
-              ),
-            ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final fit = stageFit(area: constraints.biggest, clip: size);
+        final room = builder(
+          FittedBox(
+            fit: fit,
+            clipBehavior: ui.Clip.hardEdge,
+            child: SizedBox.fromSize(size: size, child: picture),
           ),
-          child: ClipRRect(
-            borderRadius: radius,
-            child: ColoredBox(color: tt.colors.videoBackground, child: child),
-          ),
-        ),
-      ),
+        );
+        if (fit == BoxFit.cover) return room;
+        return Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: room,
+        );
+      },
     );
   }
 }
 
-/// The video while its player is opening: the clip's picture and a spinner.
+/// The clip while its player is opening: its picture, fitted as the clip
+/// will be (from its stored size), under black at 35 %, and a spinner.
 class _Loading extends StatelessWidget {
-  const new({required this.clip, required this.picture});
+  const new({
+    required this.clip,
+    required this.picture,
+    required this.bottomInset,
+  });
 
   final Clip clip;
   final ImageProvider? picture;
+  final double bottomInset;
 
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final picture = this.picture;
-    return _VideoBox(
-      aspectRatio: _shapeOf(clip),
-      child: Stack(
+    return _ClipRoom(
+      size: _storedSize(clip),
+      bottomInset: bottomInset,
+      // player2.css:12: .p2-vid .ld { background: rgba(0,0,0,.35) }, over
+      // the clip only.
+      picture: Stack(
         fit: StackFit.expand,
         children: [
           if (picture != null)
@@ -1119,11 +1117,44 @@ class _Loading extends StatelessWidget {
             color: tt.colors.videoBackground.withValues(
               alpha: TtMetrics.tagStageLoadingOpacity,
             ),
-            child: Center(
-              child: CircularProgressIndicator(color: tt.colors.onVideo),
-            ),
           ),
         ],
+      ),
+      builder: (fitted) => Stack(
+        fit: StackFit.expand,
+        children: [
+          fitted,
+          Center(child: CircularProgressIndicator(color: tt.colors.onVideo)),
+        ],
+      ),
+    );
+  }
+}
+
+/// The play disc over a paused clip (`player2.css:11`): black at 45 %, 64 dp,
+/// with a 36 dp play icon.
+class _PlayDisc extends StatelessWidget {
+  const new();
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    return SizedBox.square(
+      dimension: TtMetrics.tagStagePlayDiscSize,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: tt.colors.videoBackground.withValues(
+            alpha: TtMetrics.tagStagePlayDiscOpacity,
+          ),
+        ),
+        child: Center(
+          child: Icon(
+            Symbols.play_arrow_rounded,
+            size: TtMetrics.tagStagePlayIconSize,
+            color: tt.colors.onVideo,
+          ),
+        ),
       ),
     );
   }
@@ -1138,6 +1169,7 @@ class _Playing extends StatefulWidget {
     required this.clip,
     required this.time,
     required this.fallback,
+    required this.bottomInset,
     super.key,
   });
 
@@ -1145,6 +1177,7 @@ class _Playing extends StatefulWidget {
   final Clip clip;
   final String time;
   final ImageProvider? fallback;
+  final double bottomInset;
 
   @override
   State<_Playing> createState() => _PlayingState();
@@ -1221,18 +1254,22 @@ class _PlayingState extends State<_Playing> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
     return ValueListenableBuilder<VideoPlayerValue>(
       valueListenable: widget.controller,
       builder: (context, value, _) {
         if (value.hasError) return const _CantPlay();
         final playing = value.isPlaying;
         final duration = formatClipDuration(widget.clip.fingerprint.durationMs);
-        return _VideoBox(
-          aspectRatio: value.isInitialized
-              ? value.aspectRatio
-              : _shapeOf(widget.clip),
-          child: Semantics(
+        // The player's own size wins once it is open: the stored one can be
+        // wrong (a rotated file), and the two may then differ in shape.
+        final size = value.isInitialized && !value.size.isEmpty
+            ? value.size
+            : _storedSize(widget.clip);
+        return _ClipRoom(
+          size: size,
+          bottomInset: widget.bottomInset,
+          picture: VideoPlayer(widget.controller),
+          builder: (fitted) => Semantics(
             container: true,
             button: true,
             label: playing
@@ -1245,29 +1282,11 @@ class _PlayingState extends State<_Playing> {
               onTap: _toggle,
               child: Stack(
                 fit: StackFit.expand,
-                alignment: Alignment.center,
                 children: [
-                  VideoPlayer(widget.controller),
+                  fitted,
                   if (!playing)
-                    ExcludeSemantics(
-                      child: IgnorePointer(
-                        child: Center(
-                          child: Material(
-                            color: tt.colors.videoBackground.withValues(
-                              alpha: TtMetrics.stageArrowFillOpacity,
-                            ),
-                            shape: const CircleBorder(),
-                            child: Padding(
-                              padding: EdgeInsets.all(tt.spacing.s),
-                              child: Icon(
-                                Symbols.play_arrow_rounded,
-                                size: tt.sizes.iconLarge,
-                                color: tt.colors.onVideo,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                    const ExcludeSemantics(
+                      child: IgnorePointer(child: Center(child: _PlayDisc())),
                     ),
                 ],
               ),
