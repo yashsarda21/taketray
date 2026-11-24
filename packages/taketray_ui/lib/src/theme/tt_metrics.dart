@@ -266,6 +266,10 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .snack { background: … inverse-surface 94% }
   static const double snackbarOpacity = 0.94;
 
+  /// Background blur behind the snackbar's 94 % fill (D-174, amending D-48).
+  // tt-style.css:130: .style-tt .snack { backdrop-filter: blur(12px) }
+  static const double snackbarBlur = 12;
+
   /// Gap between the snackbar and the screen's left and right edges.
   // tt-style.css: .style-tt .snack { left: 16px; right: 16px }
   static const double snackbarInsetSide = 16;

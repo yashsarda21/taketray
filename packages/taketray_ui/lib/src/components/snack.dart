@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/components/internal/snack_height.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -8,10 +9,11 @@ import 'package:taketray_ui/src/tokens/tokens.g.dart';
 /// The content of a snack bar: a [message] with an optional leading [icon]
 /// and an optional action button such as "Undo".
 ///
-/// It draws its own inverse-surface panel (18 dp corners, 94 % opaque; the
-/// prototype's 12 px blur behind it is left out, see D-48), announces its
-/// message as a live region, and is at least 48 dp high (56 dp with an
-/// action). A long message wraps; the action keeps its full label.
+/// It draws its own inverse-surface panel (18 dp corners, 94 % opaque, over a
+/// 12 px blur of what is behind it, clipped to its shape; D-48 left the blur
+/// out and D-174 put it in), announces its message as a live region, and is
+/// at least 48 dp high (56 dp with an action). A long message wraps; the
+/// action keeps its full label.
 /// [showTtSnack] puts it in a floating snack bar.
 class TtSnack extends StatelessWidget {
   /// A snack saying [message].
@@ -61,62 +63,67 @@ class TtSnack extends StatelessWidget {
       container: true,
       child: SnackHeightReporter(
         child: DecoratedBox(
-          // tt-style.css: .style-tt .snack
+          // proto.css: .snack { box-shadow: var(--elev-3) }; tt-style.css
+          // keeps it (it changes only the fill and the corners). The shadow
+          // sits outside the glass's clip, so it is not cut off.
           decoration: BoxDecoration(
-            color: scheme.inverseSurface.withValues(
-              alpha: TtMetrics.snackbarOpacity,
-            ),
             borderRadius: radius,
-            // proto.css: .snack { box-shadow: var(--elev-3) }; tt-style.css
-            // keeps it (it changes only the fill and the corners).
             boxShadow: TtElevationTokens.level3,
           ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(minHeight: minHeight),
-            child: Padding(
-              padding: EdgeInsetsDirectional.fromSTEB(
-                TtMetrics.snackPaddingStart,
-                vertical,
-                TtMetrics.snackPaddingEnd,
-                vertical,
-              ),
-              child: DefaultTextStyle.merge(
-                style: messageStyle,
-                child: Row(
-                  children: [
-                    if (icon != null) ...[
-                      Icon(
-                        icon,
-                        size: TtMetrics.snackIconSize,
-                        fill: 1,
-                        color: scheme.inversePrimary,
+          // tt-style.css:130: .style-tt .snack { backdrop-filter: blur(12px) }
+          child: TtGlassFill(
+            corners: radius,
+            blur: TtMetrics.snackbarBlur,
+            fill: scheme.inverseSurface.withValues(
+              alpha: TtMetrics.snackbarOpacity,
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: minHeight),
+              child: Padding(
+                padding: EdgeInsetsDirectional.fromSTEB(
+                  TtMetrics.snackPaddingStart,
+                  vertical,
+                  TtMetrics.snackPaddingEnd,
+                  vertical,
+                ),
+                child: DefaultTextStyle.merge(
+                  style: messageStyle,
+                  child: Row(
+                    children: [
+                      if (icon != null) ...[
+                        Icon(
+                          icon,
+                          size: TtMetrics.snackIconSize,
+                          fill: 1,
+                          color: scheme.inversePrimary,
+                        ),
+                        const SizedBox(width: TtMetrics.snackGap),
+                      ],
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: TtMetrics.snackMessagePadding,
+                          ),
+                          child: Text(message),
+                        ),
                       ),
-                      const SizedBox(width: TtMetrics.snackGap),
+                      if (actionLabel != null) ...[
+                        const SizedBox(width: TtMetrics.snackGap),
+                        // proto.css: .snack .btn.text (inverse-primary),
+                        // nudged for contrast over the translucent fill.
+                        Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: scheme.copyWith(primary: actionColor),
+                          ),
+                          child: TtButton(
+                            label: actionLabel!,
+                            kind: TtButtonKind.text,
+                            onPressed: onAction,
+                          ),
+                        ),
+                      ],
                     ],
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: TtMetrics.snackMessagePadding,
-                        ),
-                        child: Text(message),
-                      ),
-                    ),
-                    if (actionLabel != null) ...[
-                      const SizedBox(width: TtMetrics.snackGap),
-                      // proto.css: .snack .btn.text (inverse-primary), nudged
-                      // for contrast over the translucent fill.
-                      Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: scheme.copyWith(primary: actionColor),
-                        ),
-                        child: TtButton(
-                          label: actionLabel!,
-                          kind: TtButtonKind.text,
-                          onPressed: onAction,
-                        ),
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
               ),
             ),

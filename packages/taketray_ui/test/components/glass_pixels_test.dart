@@ -22,6 +22,11 @@ import '../support/tt_glass_pixels.dart';
 
 const _blur8 = 8.0;
 
+/// What the snack's elevation 3 shadow may take off the stripes' contrast
+/// just outside the panel's corner (measured: under .02; its alphas are .30
+/// and .15, and it fades out).
+const _snackShadow = .1;
+
 /// The corner radius of the pills (`tt.radii.s`).
 const _pillRadius = 8.0;
 
@@ -516,6 +521,170 @@ void main() {
         find.descendant(of: material, matching: find.byType(InkWell)),
         findsOneWidget,
       );
+    });
+  });
+
+  group('the snack (D-174)', () {
+    /// A 3 dp band just inside the panel's top edge, 24 dp in from each end:
+    /// away from the glyphs, the action and the rounded corners.
+    Rect topBand(Rect panel) => Rect.fromLTRB(
+      panel.left + 24,
+      panel.top,
+      panel.right - 24,
+      panel.top + 3,
+    );
+
+    Future<void> show(
+      WidgetTester tester, {
+      String message = 'Clip deleted',
+      double textScale = 1,
+    }) async {
+      _phone(tester);
+      await tester.pumpWidget(
+        ttPixelApp(Scaffold(body: ttStripes()), textScale: textScale),
+      );
+      showTtSnack(
+        tester.element(find.byType(Scaffold).last),
+        message: message,
+        actionLabel: 'Undo',
+        onAction: () {},
+      );
+      await tester.pumpAndSettle();
+    }
+
+    /// The same rect with no snack on screen: the bare stripes.
+    Future<double> bare(WidgetTester tester, Rect rect) async {
+      ScaffoldMessenger.of(tester.element(find.byType(Scaffold).last))
+          .hideCurrentSnackBar();
+      await tester.pumpAndSettle();
+      return (await TtPixels.capture(tester)).edgeContrast(rect);
+    }
+
+    testWidgets('the snack blurs by 12 under its 94 % fill, at rest', (
+      tester,
+    ) async {
+      await show(tester);
+      final panel = tester.getRect(find.byType(TtSnack));
+      final band = topBand(panel);
+      final blurred = (await TtPixels.capture(tester)).edgeContrast(band);
+      expectBlurFilter(tester, find.byType(TtSnack), 12);
+      expectGlassStructure(tester, find.byType(TtSnack));
+      final sharp = await bare(tester, band);
+      expect(sharp, greaterThan(.95), reason: 'sharp without the snack');
+      expectBlurred(blurred, sharp: sharp, fillOpacity: .94);
+    });
+
+    // The floating snack bar's own Material clips what it holds to the same
+    // 18 dp corners, which would hide a missing clip of the snack's own; so
+    // the snack is drawn on its own over the stripes, as in the catalogue.
+    Widget alone({required bool snack}) => Stack(
+      fit: StackFit.expand,
+      children: [
+        ttStripes(),
+        if (snack)
+          Positioned(
+            left: 16,
+            bottom: 12,
+            width: 328,
+            child: TtSnack(
+              message: 'Clip deleted',
+              actionLabel: 'Undo',
+              onAction: () {},
+            ),
+          ),
+      ],
+    );
+
+    testWidgets('the blur stays inside the 18 dp corners', (tester) async {
+      _phone(tester);
+      await tester.pumpWidget(ttPixelApp(alone(snack: true)));
+      final panel = tester.getRect(find.byType(TtSnack));
+      // A 4 x 4 rect whose nearest corner is 1 dp outside the top-left arc,
+      // on the diagonal (the arc's centre is 18 dp in from both edges).
+      const edge = 18 - 19 / math.sqrt2;
+      final corner = Rect.fromLTRB(
+        panel.left + edge - 4,
+        panel.top + edge - 4,
+        panel.left + edge,
+        panel.top + edge,
+      );
+      // And the 8 dp gap above the panel (a 3 dp band of it, 5 dp up).
+      final gap = Rect.fromLTRB(
+        panel.left + 24,
+        panel.top - 8,
+        panel.right - 24,
+        panel.top - 5,
+      );
+      final photo = await TtPixels.capture(tester);
+      final atCorner = photo.edgeContrast(corner);
+      final atGap = photo.edgeContrast(gap);
+      // The same rects with no snack: the bare stripes.
+      await tester.pumpWidget(ttPixelApp(alone(snack: false)));
+      final bareStripes = await TtPixels.capture(tester);
+      final bareCorner = bareStripes.edgeContrast(corner);
+      final bareGap = bareStripes.edgeContrast(gap);
+      expect(bareCorner, greaterThan(.95));
+      expect(bareGap, greaterThan(.95));
+      // The elevation 3 shadow darkens what is just outside the panel (its
+      // alphas are .30 and .15), which scales the stripes' contrast; a blur
+      // would take almost all of it.
+      expectSharp(atCorner, sharp: bareCorner, fillOpacity: _snackShadow);
+      expectSharp(atGap, sharp: bareGap, fillOpacity: _snackShadow);
+      // The panel itself is blurred (so the clip is what holds it back).
+      expectBlurred(
+        photo.edgeContrast(topBand(panel)),
+        sharp: bareStripes.edgeContrast(topBand(panel)),
+        fillOpacity: .94,
+      );
+    });
+
+    testWidgets('a long message at 2x: still one blurred panel, no overflow', (
+      tester,
+    ) async {
+      await show(
+        tester,
+        message: 'Removed 3 clips from "Autumn recipes and other long names"',
+        textScale: 2,
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('Undo'), findsOneWidget);
+      final panel = tester.getRect(find.byType(TtSnack));
+      expect(panel.height, greaterThan(56), reason: 'the message wrapped');
+      expect(
+        find.descendant(
+          of: find.byType(TtSnack),
+          matching: find.byType(BackdropFilter),
+        ),
+        findsOneWidget,
+      );
+      expectBlurFilter(tester, find.byType(TtSnack), 12);
+      expectGlassStructure(tester, find.byType(TtSnack));
+      final band = topBand(panel);
+      final blurred = (await TtPixels.capture(tester)).edgeContrast(band);
+      final sharp = await bare(tester, band);
+      expectBlurred(blurred, sharp: sharp, fillOpacity: .94);
+    });
+
+    testWidgets('a persistent snack (screen reader) is blurred too', (
+      tester,
+    ) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(accessibleNavigation: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await show(tester);
+      // Well past its 6 s: it stays, and still blurs.
+      await tester.pump(const Duration(seconds: 10));
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSnack), findsOneWidget);
+      final panel = tester.getRect(find.byType(TtSnack));
+      final band = topBand(panel);
+      final blurred = (await TtPixels.capture(tester)).edgeContrast(band);
+      expectBlurFilter(tester, find.byType(TtSnack), 12);
+      expectGlassStructure(tester, find.byType(TtSnack));
+      final sharp = await bare(tester, band);
+      expectBlurred(blurred, sharp: sharp, fillOpacity: .94);
     });
   });
 }
