@@ -368,14 +368,16 @@ Future<void> expectSteadyScrimBlur(
 }
 
 /// Draws [ttStripes] under [opener], opens it (the tap on the text "open"),
-/// and checks the page behind is blurred and dimmed by half (the scrim:
-/// black at 50 %).
+/// and checks the page behind is blurred and dimmed by [dim] (the dialog and
+/// sheet scrim: black at 50 %, the default; a menu's barrier does not dim, so
+/// it passes 0).
 ///
 /// The measured rectangle is 120 × 40 dp at (8, 8): on the scrim, outside any
 /// panel of a dialog or a sheet.
 Future<void> expectPageBlurredAndDimmed(
   WidgetTester tester, {
   required Widget opener,
+  double dim = .5,
 }) async {
   tester.view
     ..physicalSize = const Size(360, 800)
@@ -392,6 +394,6 @@ Future<void> expectPageBlurredAndDimmed(
   await tester.tap(find.text('open'));
   await tester.pumpAndSettle();
   final after = await TtPixels.capture(tester);
-  expectBlurred(after.edgeContrast(rect), sharp: sharp, fillOpacity: .5);
-  expect(after.meanLuma(rect), closeTo(luma0 * .5, .03));
+  expectBlurred(after.edgeContrast(rect), sharp: sharp, fillOpacity: dim);
+  expect(after.meanLuma(rect), closeTo(luma0 * (1 - dim), .03));
 }

@@ -8,8 +8,9 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// The drawn panel of an open `TtMenuButton`: [items] as 48 dp menu entries
 /// on a rounded, hairlined surface.
 ///
-/// Not exported: `TtMenuButton` shows it in its menu, and the golden test
-/// draws it directly (a menu's overlay cannot be captured in a golden).
+/// Not exported: `TtMenuButton` shows it in its menu route (`TtMenuRoute`),
+/// and the golden test draws it directly (a menu's route cannot be captured
+/// in a golden).
 class TtMenuPanel<T> extends StatelessWidget {
   /// A panel listing [items]; choosing one calls [onSelected] with its value.
   const new({required this.items, required this.onSelected, super.key});
@@ -76,8 +77,9 @@ class TtMenuPanel<T> extends StatelessWidget {
     );
 
     // tt-style.css: .style-tt .menu { border-radius: 20px; padding: 6px;
-    // inset 0 0 0 1px hair }. The shadow is the menu's elevation, drawn by
-    // `MenuAnchor` outside the panel (its scroll view clips the panel).
+    // inset 0 0 0 1px hair }. The panel casts the menu's shadow itself: its
+    // `Material`'s elevation (the shadow `MenuAnchor`'s surface used to cast).
+    // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … }
     return ConstrainedBox(
       constraints: const BoxConstraints(
         minWidth: TtMetrics.menuMinWidth,
@@ -85,6 +87,8 @@ class TtMenuPanel<T> extends StatelessWidget {
       ),
       child: Material(
         color: scheme.surfaceContainer,
+        elevation: TtMetrics.menuElevation,
+        shadowColor: scheme.shadow,
         shape: RoundedRectangleBorder(
           borderRadius: radius,
           side: BorderSide(color: tt.colors.hairline),

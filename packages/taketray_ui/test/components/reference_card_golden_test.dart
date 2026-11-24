@@ -43,7 +43,7 @@ void main() {
               'Instagram · instagram.com/reel/a-very-long-link-that-goes-on',
         ),
       ),
-      // An open MenuAnchor overlay cannot be painted by the CI variant (see
+      // An open menu route cannot be painted by the CI variant (see
       // menu_golden_test.dart), so the panel is drawn under the card.
       TtScenario('with the menu open', _Card(menuOpen: true)),
       TtScenario('add reference tile', _Add()),

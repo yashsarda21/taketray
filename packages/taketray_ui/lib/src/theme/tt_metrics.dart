@@ -484,6 +484,12 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … .4 }
   static const double menuElevation = 6;
 
+  /// How close to the edge of the screen's safe area a menu is placed: the
+  /// menu is at most this much smaller than the screen on each side.
+  // Flutter material/menu_anchor.dart: const double _kMenuViewPadding = 8;
+  // (what `MenuAnchor` used to place the menu with; D-176 keeps its numbers)
+  static const double menuEdgeInset = 8;
+
   // ---- Switch ----
 
   /// Width of the switch track.

@@ -17,8 +17,9 @@ import '../../../support/vm_harness.dart';
 import '../../editors/editors_support.dart';
 import '../edit_session_support.dart';
 
-/// A reel's page under a dialog, to see the scrim's blur over real content
-/// (Phase 12, D-172): the "Delete reel" dialog, light and dark, at text 1x.
+/// A reel's page under a dialog or a menu, to see the blur over real content
+/// (Phase 12, D-172, D-176): the "Delete reel" dialog and the reel's overflow
+/// menu, light and dark, at text 1x.
 ///
 /// **macOS only, and not on CI** (D-61, D-97), like the other app screens:
 /// make or update them with `tool/flutter test --update-goldens
@@ -137,6 +138,46 @@ void main() {
         find.byType(MaterialApp),
         matchesGoldenFile('goldens/macos/$name.png'),
       );
+    }, skip: !_goldens);
+  }
+
+  for (final (brightness, name) in [
+    (Brightness.light, 'reel_menu_light'),
+    (Brightness.dark, 'reel_menu_dark'),
+  ]) {
+    testApp("a reel's overflow menu open over its page ($name)", (
+      tester,
+    ) async {
+      // The test binding draws shadows sharp (`debugDisableShadows`), which
+      // would show the menu's as a hard dark rim; the phone blurs them.
+      final shadowsBefore = debugDisableShadows;
+      debugDisableShadows = false;
+      try {
+        final goa = await goaReel(tester);
+        await pumpScreen(
+          tester,
+          ReelDetailScreen(reelId: goa.id),
+          overrides: h.appOverrides,
+          brightness: brightness,
+          settle: false,
+        );
+        await settleApp(tester);
+        await showPictures(tester);
+        await tester.tap(
+          find.byWidgetPredicate(
+            (w) => w is TtIconButton && w.semanticLabel == 'More options',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Delete reel'), findsOneWidget);
+
+        await expectLater(
+          find.byType(MaterialApp),
+          matchesGoldenFile('goldens/macos/$name.png'),
+        );
+      } finally {
+        debugDisableShadows = shadowsBefore;
+      }
     }, skip: !_goldens);
   }
 }

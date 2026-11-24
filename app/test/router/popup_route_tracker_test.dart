@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/router/popup_route_tracker.dart';
+import 'package:taketray_ui/taketray_ui.dart';
 
 Future<(PopupRouteTracker, NavigatorState)> _pump(WidgetTester tester) async {
   final tracker = PopupRouteTracker();
@@ -149,6 +150,50 @@ void main() {
     inner.currentState!.pop();
     await tester.pumpAndSettle();
     expect(tracker.isOpen, isFalse);
+  });
+
+  testWidgets('an open TtMenuButton menu counts as a popup', (tester) async {
+    final tracker = PopupRouteTracker();
+    addTearDown(tracker.dispose);
+    final heard = <bool>[];
+    tracker.addListener(() => heard.add(tracker.isOpen));
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: TakeTrayTheme.light(),
+        navigatorObservers: [tracker.observerForNavigator()],
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topRight,
+            child: TtMenuButton<String>(
+              items: const [TtMenuItem('a', 'Option A')],
+              onSelected: (_) {},
+              builder: (context, open) =>
+                  TextButton(onPressed: open, child: const Text('menu')),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(tracker.isOpen, isFalse);
+
+    await tester.tap(find.text('menu'));
+    await tester.pumpAndSettle();
+    expect(find.text('Option A'), findsOneWidget);
+    expect(tracker.isOpen, isTrue);
+
+    // An outside tap closes it, and the tracker hears that too.
+    await tester.tapAt(const Offset(20, 500));
+    await tester.pumpAndSettle();
+    expect(tracker.isOpen, isFalse);
+
+    // Choosing an item closes it as well.
+    await tester.tap(find.text('menu'));
+    await tester.pumpAndSettle();
+    expect(tracker.isOpen, isTrue);
+    await tester.tap(find.text('Option A'));
+    await tester.pumpAndSettle();
+    expect(tracker.isOpen, isFalse);
+    expect(heard, [true, false, true, false]);
   });
 
   test('the provider gives one tracker for the app', () {
