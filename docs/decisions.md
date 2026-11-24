@@ -2606,3 +2606,31 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Consequences:
   - The `animation` parameter of `ttBlurredBarrier` is gone; Task 5 (the menu route) reuses it.
   - An app golden of the Delete reel dialog over a reel's page, light and dark (`reel_overlays_golden_test.dart`, macOS only), shows the blur over real content.
+
+### D-173 · Phase 12: a `BackdropFilter`'s first painting child is a plain fill, and the ink goes on a transparent `Material` inside it (found on the S24)
+- Date: 2026-11-24 · Phase: 12 (UI refresh), Task 2 · Fixes `TtStatusPill(onMedia: true)` (the status pill on a reel cover) · Evidence: the table "What the phone showed" in `docs/superpowers/specs/2026-11-24-phase-12-ui-refresh-design.md`, case F against K and T
+- What the owner saw: the status pill on a reel's cover was sharp, with no blur behind it, while the "Editing in VN" pill and the references badge on the same card blurred.
+- What the phone showed (the S24, Impeller on Vulkan, sharp stripes behind each piece): F, `TtStatusPill(onMedia: true)` at blur 8, was sharp. Its filter's child was `Material(color: fill)`. K (a plain `ClipRRect` + `BackdropFilter` 8 over a `Container` fill) and T (`TtGlassPill`, whose child is a `ColoredBox`) were soft with the same sigma and the same fill. So a `Material` that is the first thing the filter paints loses the blur on this phone; a plain fill does not. Why is not known.
+- Decision:
+  1. **The rule.** The first painting child of every `BackdropFilter` is a plain fill (a `ColoredBox`, or a coloured `DecoratedBox` when the glass has a border). Ink goes on a transparent `Material` (`MaterialType.transparency`) *inside* the fill, never as the fill. `TtStatusPill(onMedia: true)` is now `ClipRRect` → `BackdropFilter` (blur `glassPillBlur`, 8) → `ColoredBox(fill)` → `Material(transparency)` → `InkWell` or the body, like `TtGlassPill`. Its look, size and API are unchanged.
+  2. **One shared helper.** The block repeated across components, so it is written once: `TtGlassFill` (`packages/taketray_ui/lib/src/components/internal/glass_fill.dart`, not exported) builds `ClipRRect` → `BackdropFilter` → `ColoredBox` → transparent `Material` → child. `TtStatusPill`, `TtGlassPill`, the reel card's references badge (its `InkWell` no longer needs a `Material` of its own) and the Shooting mode card's frosted icon tile use it. The nav pill's `TtGlass` and the card rows keep their own structure because their fill is a `DecoratedBox` with a hairline border; they already satisfy the rule.
+  3. **The audit** (every `BackdropFilter` in `taketray_ui`, and what its first painting child is):
+
+     | Where | First painting child | Action |
+     |---|---|---|
+     | `glass.dart` `TtGlass` (the nav pill) | `DecoratedBox` | kept |
+     | `glass.dart` `TtGlassPill` | `ColoredBox` | now through `TtGlassFill` |
+     | `status_pill.dart` (on media) | `Material(color: fill)` | **fixed** (now `TtGlassFill`) |
+     | `shooting_mode_card.dart` icon tile | `ColoredBox` | now through `TtGlassFill` |
+     | `shooting_mode_card.dart` references row | `DecoratedBox`, then a transparent `Material` | kept |
+     | `reel_card.dart` references badge | `ColoredBox`, ink in a transparent `Material` on top | now through `TtGlassFill` |
+     | `tag_panel.dart` | not checked here | deleted in Task 10 |
+
+  4. **The proof.** `test/components/glass_pixels_test.dart` puts each glass piece over sharp stripes at 360 × 800, takes a photograph and checks the stripes keep under half of the contrast the fill lets through (a strip of the glass free of glyphs, between the rounded corners, against the same strip with the piece absent). It checks sigma 8 for the status pill on media, the "Editing in VN" pill, the references badge and the icon tile (white at 16 %), sigma 6 for the references row (black at 25 %) and sigma 18 for the nav pill (the glass at 78 %). `expectGlassStructure` checks every one of those pieces has a plain fill first. A press on the pressable status pill still paints its ink over the glass (the photograph changes while the finger is down) and still calls `onPressed`.
+  5. **As with D-172, the pixel tests are regression guards that were green before the fix:** the flutter_tester renderer drew the status pill's blur correctly with the `Material` too. The structure test is what failed (RED) and what pins what the phone proved. The phone decides at the end of the phase (Task 14).
+- Alternatives considered:
+  - Keep `Material(color: fill)` and add a `ColoredBox` over it: the first painting child would still be the `Material`.
+  - Draw the pill without ink on the media pill: the pill can be pressed (`onPressed`), so its ripple stays.
+- Consequences:
+  - Any new glass in a later task (the tag player's rail buttons and dock chips, Tasks 6 to 10) is built with `TtGlassFill`, or with the same order, and gets a structure check and a pixel check.
+  - Task 4 changes the nav pill's filter to a saturate-plus-blur composition and updates the nav pill's filter-equality check in `glass_pixels_test.dart`.

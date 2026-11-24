@@ -1831,6 +1831,20 @@ Called by component tests after pumping a widget (`packages/taketray_ui/test/sup
       4. No box pixel at all (the text is clipped away, or fully transparent) gives the background against itself, 1:1.
 3. Back in `evaluate`: each sample whose ratio is more than 0.01 under `MinimumTextContrastGuideline.targetContrastRatio(fontSize, bold:)` adds a failure naming the text, the ratio, the font size and both colours (`#rrggbb on #rrggbb`).
 
+### Glass pixel tests (`glass_pixels_test.dart`, `tt_glass_pixels.dart`)
+
+Run in `tool/check` with the package tests. They prove glass blurs what is behind it and has the structure the S24 needs (D-172, D-173). The renderer in `flutter test` is not the phone's Impeller on Vulkan, so a pass is not proof of what the phone draws: the structure checks pin what the phone showed, and the pixel checks pin that there is a blur.
+
+1. `test/components/glass_pixels_test.dart › _measure`: for a piece over `ttStripes()` (or, for a piece on a picture, a PNG of the same stripes as the reel cover or the Shooting mode card's backdrop), at 360 × 800 and a pixel ratio of 1:
+   1. Pumps the piece, and finds the strip of its `BackdropFilter` with no glyph (`_freeStrip`: left of the first icon or text, or right of the last when the left is under 5 dp; 2 dp inside the edge, and between the rounded corners, which start 2 dp in from the straight edge). A card row has no free side strip, so `_gapStrip` takes the gap between its last text and its arrow.
+   2. `TtPixels.capture` photographs the navigator; `edgeContrast` measures the mean per-line (max − min) luma of the strip.
+   3. Pumps the same screen without the piece (a status pill, a nav pill: stripes alone; the VN pill and the references badge: the reel card with no `vnLabel` or no references) and measures the same strip: the sharp contrast, which must be above a floor (0.95 on bare stripes, 0.2 under a card's scrim).
+   4. `expectBlurred(blurred, sharp:, fillOpacity:)` passes when the blurred contrast is under half of `(1 − fillOpacity) × sharp`. The Shooting mode card's tile and row have no "without" screen (they sit on the card's own picture), so the sharp reference is the picture beside the icon tile, in the same rows.
+   5. Checks every `BackdropFilter` of the piece is exactly `ImageFilter.blur` with the expected sigma (`_expectSigma`).
+2. Pieces and values: status pill on media sigma 8 and fill 58 %; "Editing in VN" pill 8 and 58 %; references badge 8 and 58 %; Shooting mode icon tile 8 and white 16 %; Shooting mode references row 6 and black 25 %; nav pill 18 and the glass at 78 %.
+3. `expectGlassStructure` (in `tt_glass_pixels.dart`): for every `BackdropFilter` under a finder, the first thing under it that paints (looking through layout-only widgets) is a `ColoredBox` or a coloured `DecoratedBox`, never a `Material`. Run for the status pill (plain and pressable), `TtGlassPill`, the nav pill, the reel card with a badge and a VN pill, and the Shooting mode card with a references row.
+4. The pressable status pill on media: a finger held on it for 400 ms changes the photograph of the pill (the ink is painted over the fill), a release calls `onPressed`, and the `InkWell` sits in a transparent `Material` inside the `ColoredBox`. The test uses `InkRipple` (the test renderer draws no sparkle shader) and pumps in 100 ms steps because the ripple only starts on the frame after the press registers.
+
 ### Catalogue coverage (`widgetbook/test/catalog_coverage_test.dart`)
 
 Runs inside `tool/check` (step "test widgetbook") and with `(cd widgetbook && ../tool/flutter test)`. It keeps the Widgetbook catalogue complete (D-42).

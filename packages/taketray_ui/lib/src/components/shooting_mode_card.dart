@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/components/rec_dot.dart';
 import 'package:taketray_ui/src/components/selection.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -240,20 +241,13 @@ class _IconTile extends StatelessWidget {
       color: on ? tt.colors.onMedia : scheme.onPrimaryContainer,
     );
     final tile = on
-        ? ClipRRect(
-            borderRadius: corners,
-            child: BackdropFilter(
-              filter: ui.ImageFilter.blur(
-                sigmaX: TtMetrics.shootingIconBlur,
-                sigmaY: TtMetrics.shootingIconBlur,
-              ),
-              child: ColoredBox(
-                color: tt.colors.onMedia.withValues(
-                  alpha: TtMetrics.shootingIconFillOpacity,
-                ),
-                child: Center(child: glyph),
-              ),
+        ? TtGlassFill(
+            corners: corners,
+            blur: TtMetrics.shootingIconBlur,
+            fill: tt.colors.onMedia.withValues(
+              alpha: TtMetrics.shootingIconFillOpacity,
             ),
+            child: Center(child: glyph),
           )
         : DecoratedBox(
             decoration: BoxDecoration(

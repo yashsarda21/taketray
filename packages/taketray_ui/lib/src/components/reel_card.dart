@@ -1,10 +1,10 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:material_symbols_icons/symbols.dart';
 import 'package:taketray_ui/src/components/glass.dart';
+import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/components/internal/scrim.dart';
 import 'package:taketray_ui/src/components/status_pill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -468,49 +468,37 @@ class _ReferencesBadge extends StatelessWidget {
     final tt = context.tt;
     // proto.css: .refbadge, tt-style.css: .style-tt .refbadge
     final corners = BorderRadius.circular(tt.radii.s);
-    final pill = ClipRRect(
-      borderRadius: corners,
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(
-          sigmaX: TtMetrics.glassPillBlur,
-          sigmaY: TtMetrics.glassPillBlur,
-        ),
-        child: ColoredBox(
-          color: tt.colors.glassOnMedia,
-          child: Stack(
-            children: [
-              ConstrainedBox(
-                constraints: const BoxConstraints(
-                  minHeight: TtMetrics.refBadgeHeight,
-                ),
-                child: Padding(
-                  padding: const EdgeInsetsDirectional.only(
-                    start: TtMetrics.refBadgePaddingStart,
-                    end: TtMetrics.refBadgePaddingEnd,
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    spacing: TtMetrics.refBadgeGap,
-                    children: [
-                      Icon(
-                        Symbols.link_rounded,
-                        size: TtMetrics.refBadgeIconSize,
-                        color: tt.colors.onMedia,
-                      ),
-                      Text('$count', maxLines: 1, style: _style(context)),
-                    ],
-                  ),
-                ),
+    final pill = TtGlassFill(
+      corners: corners,
+      blur: TtMetrics.glassPillBlur,
+      fill: tt.colors.glassOnMedia,
+      child: Stack(
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: TtMetrics.refBadgeHeight,
+            ),
+            child: Padding(
+              padding: const EdgeInsetsDirectional.only(
+                start: TtMetrics.refBadgePaddingStart,
+                end: TtMetrics.refBadgePaddingEnd,
               ),
-              Positioned.fill(
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: InkWell(onTap: onTap),
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: TtMetrics.refBadgeGap,
+                children: [
+                  Icon(
+                    Symbols.link_rounded,
+                    size: TtMetrics.refBadgeIconSize,
+                    color: tt.colors.onMedia,
+                  ),
+                  Text('$count', maxLines: 1, style: _style(context)),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          Positioned.fill(child: InkWell(onTap: onTap)),
+        ],
       ),
     );
 

@@ -1,7 +1,6 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -159,18 +158,13 @@ class TtStatusPill extends StatelessWidget {
 
     final Widget pill;
     if (onMedia) {
-      pill = ClipRRect(
-        borderRadius: corners,
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(
-            sigmaX: TtMetrics.glassPillBlur,
-            sigmaY: TtMetrics.glassPillBlur,
-          ),
-          child: Material(
-            color: fill,
-            child: pressable ? InkWell(onTap: onPressed, child: body) : body,
-          ),
-        ),
+      // The fill is outside the Material (D-173): the S24 lost the blur when
+      // the filter's first child was a Material.
+      pill = TtGlassFill(
+        corners: corners,
+        blur: TtMetrics.glassPillBlur,
+        fill: fill,
+        child: pressable ? InkWell(onTap: onPressed, child: body) : body,
       );
     } else {
       pill = Material(

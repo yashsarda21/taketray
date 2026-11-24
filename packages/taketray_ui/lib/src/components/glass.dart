@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -107,52 +108,43 @@ class TtGlassPill extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     final label = text;
-    final pill = ClipRRect(
-      borderRadius: BorderRadius.circular(tt.radii.s),
-      child: BackdropFilter(
-        filter: ui.ImageFilter.blur(
-          sigmaX: TtMetrics.glassPillBlur,
-          sigmaY: TtMetrics.glassPillBlur,
-        ),
-        child: ColoredBox(
-          color: tt.colors.glassOnMedia,
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(
-              minHeight: TtMetrics.glassPillHeight,
-            ),
-            child: Padding(
-              // proto.css: .pill { padding: 0 8px 0 6px }, 6 when icon-only.
-              padding: EdgeInsetsDirectional.only(
-                start: TtMetrics.glassPillPaddingStart,
-                end: label == null
-                    ? TtMetrics.glassPillPaddingStart
-                    : tt.spacing.xs,
+    final pill = TtGlassFill(
+      corners: BorderRadius.circular(tt.radii.s),
+      blur: TtMetrics.glassPillBlur,
+      fill: tt.colors.glassOnMedia,
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: TtMetrics.glassPillHeight),
+        child: Padding(
+          // proto.css: .pill { padding: 0 8px 0 6px }, 6 when icon-only.
+          padding: EdgeInsetsDirectional.only(
+            start: TtMetrics.glassPillPaddingStart,
+            end: label == null
+                ? TtMetrics.glassPillPaddingStart
+                : tt.spacing.xs,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: TtMetrics.glassPillIconSize,
+                color: iconColor ?? tt.colors.onMedia,
+                fill: 1,
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    size: TtMetrics.glassPillIconSize,
-                    color: iconColor ?? tt.colors.onMedia,
-                    fill: 1,
+              if (label != null) ...[
+                SizedBox(width: tt.spacing.xxs),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: tt.text
+                        .numeric(tt.text.material.labelMedium!)
+                        .copyWith(color: tt.colors.onMedia),
                   ),
-                  if (label != null) ...[
-                    SizedBox(width: tt.spacing.xxs),
-                    Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: tt.text
-                            .numeric(tt.text.material.labelMedium!)
-                            .copyWith(color: tt.colors.onMedia),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+                ),
+              ],
+            ],
           ),
         ),
       ),
