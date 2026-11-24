@@ -483,6 +483,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                   ? null
                   : state.clips[state.session[previousAt]],
               idle: !state.busy && state.confirmingReelId == null,
+              clipId: state.currentClipId,
               onGo: _swipe,
               bottomInset: _dockHeight,
               child: _ClipMotion(
@@ -701,10 +702,17 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
 
   /// A swipe that goes (`_VerticalSwipe`): the next or the previous clip,
   /// through the session's own moves. A clip that [travelled] with the
-  /// finger is in its place already, so its move has no slide.
-  void _swipe({required bool next, required bool travelled}) {
+  /// finger is in its place already, so its move has no slide. Dropped when
+  /// the session is no longer on the clip the swipe went [from]: another
+  /// move (Skip, ‹ ›, a tag, Undo) landed while the stage left.
+  void _swipe({
+    required bool next,
+    required bool travelled,
+    required int? from,
+  }) {
     final controller = ref.read(_provider.notifier);
     final before = ref.read(_provider).value?.currentClipId;
+    if (before != from) return;
     _swiped = travelled;
     if (next) {
       controller.next();
@@ -1232,6 +1240,14 @@ class _Stage extends ConsumerWidget {
 ///   [TtMetrics.tagSwipeVelocity] the same way: the stage leaves over
 ///   `short4` (emphasized accelerate) and then [onGo] moves the session.
 ///   Else it springs back over `short4` (standard).
+/// - **Another move while it leaves** (Skip, ‹ ›, a reel's tag, Undo land
+///   in those 200 ms): the session is no longer on [clipId], the swipe's
+///   clip, so the swipe is dropped. The stage is put in its place on the
+///   clip the session moved to (whose own slide then runs), at once, so no
+///   thumbnail of another clip comes in, and the swipe never moves the
+///   session a second time. The screen checks the session's clip again
+///   when the swipe ends ([onGo] gets the swipe's clip), for a move that
+///   lands before this widget is rebuilt.
 /// - **After it goes** the stage is in its place on the next build, whatever
 ///   the session did, so it is never left off the screen.
 /// - **Cancelled** (the gesture arena lost, or a route on top, such as a
@@ -1251,6 +1267,7 @@ class _VerticalSwipe extends StatefulWidget {
     required this.nextClip,
     required this.previousClip,
     required this.idle,
+    required this.clipId,
     required this.onGo,
     required this.bottomInset,
     required this.child,
@@ -1270,7 +1287,17 @@ class _VerticalSwipe extends StatefulWidget {
   /// A swipe goes: to the next clip (`next`, up) or the previous one
   /// (down). `travelled` is true when the clip came in with the finger,
   /// false under reduced motion.
-  final void Function({required bool next, required bool travelled}) onGo;
+  /// The clip showing: the one a swipe goes from.
+  final int? clipId;
+
+  /// `from` is the clip the swipe went from: the move is dropped if the
+  /// session has left it meanwhile.
+  final void Function({
+    required bool next,
+    required bool travelled,
+    required int? from,
+  })
+  onGo;
 
   /// The dock's height, for a contained thumbnail (as `_Stage`).
   final double bottomInset;
@@ -1297,6 +1324,10 @@ class _VerticalSwipeState extends State<_VerticalSwipe>
 
   /// The stage is leaving after a swipe that goes: a new drag waits.
   bool _going = false;
+
+  /// Counts the swipes that go, so a swipe that was dropped while its stage
+  /// left does not commit when that animation ends.
+  int _goes = 0;
 
   bool get _onTop => ModalRoute.isCurrentOf(context) ?? true;
 
@@ -1365,12 +1396,14 @@ class _VerticalSwipeState extends State<_VerticalSwipe>
     _travel = 0;
     // The stage's height: as far as it goes.
     final height = context.size?.height ?? 0;
+    final from = widget.clipId;
     if (_reduced || height == 0) {
       _offset.value = 0;
-      widget.onGo(next: next, travelled: false);
+      widget.onGo(next: next, travelled: false, from: from);
       return;
     }
     _going = true;
+    final go = ++_goes;
     final motion = context.tt.motion;
     _offset
         .animateTo(
@@ -1379,13 +1412,29 @@ class _VerticalSwipeState extends State<_VerticalSwipe>
           curve: motion.emphasizedAccelerate,
         )
         .whenCompleteOrCancel(() {
+          // Dropped meanwhile (another move came first): nothing to do.
+          if (!mounted || go != _goes || !_going) return;
           _going = false;
-          if (!mounted) return;
-          widget.onGo(next: next, travelled: true);
+          widget.onGo(next: next, travelled: true, from: from);
           // Whatever the session did, the stage is in its place on the next
           // build: the new clip's, or this one's if the move was refused.
           _offset.value = 0;
         });
+  }
+
+  @override
+  void didUpdateWidget(_VerticalSwipe old) {
+    super.didUpdateWidget(old);
+    // Another move landed while the stage left: the swipe is dropped and
+    // the stage is in its place on the clip the session moved to, in this
+    // frame, before anything else comes in with it.
+    if (_going && widget.clipId != old.clipId) {
+      _going = false;
+      _goes++;
+      _offset
+        ..stop()
+        ..value = 0;
+    }
   }
 
   @override

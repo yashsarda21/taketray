@@ -1538,6 +1538,157 @@ void main() {
       },
     );
 
+    // A move that lands while a swipe's stage is leaving (the 200 ms after
+    // the finger lifts): the session is no longer on the swipe's clip, so
+    // the swipe does not move it again (fix round 1).
+
+    /// From [from], swipes up and, [after] (50 ms) into the stage leaving,
+    /// does [action]. From the frame the session is on another clip, nothing
+    /// comes in with the finger any more (no thumbnail of the clip after
+    /// the swipe's), and the swipe no longer moves the stage (only the
+    /// move's own slide does). It ends on [to], with
+    /// the player of the clip with MediaStore number [toClip] playing.
+    Future<void> interruptedSwipe(
+      WidgetTester tester, {
+      required String from,
+      required String to,
+      required int toClip,
+      required Future<void> Function() action,
+      Duration after = const Duration(milliseconds: 50),
+    }) async {
+      expect(title(tester), from);
+      await flick(tester, -120, 2000);
+      await tester.pump();
+      await tester.pump(after);
+      // The stage is leaving: past where the finger let go.
+      expect(stageDy(tester), lessThan(-120));
+      expect(neighbour, findsOneWidget);
+
+      await action();
+      var moved = false;
+      for (var frame = 0; frame < 30; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        await tester.runAsync(settle);
+        moved = moved || title(tester) != from;
+        if (moved) {
+          expect(neighbour, findsNothing, reason: 'frame $frame');
+          // Only the move's own slide moves the stage, not the swipe.
+          expect(
+            stageDy(tester),
+            closeTo(slide(tester) * 800, 1e-6),
+            reason: 'frame $frame',
+          );
+        }
+      }
+      expect(moved, isTrue);
+      await settleApp(tester);
+      expect(title(tester), to);
+      expectAtRest(tester);
+      expect(platform.players.where((p) => p.playing).map((p) => p.uri), [
+        _uri(toClip),
+      ]);
+      final shown = platform.players.where((p) => p.uri == _uri(toClip)).last;
+      expect(
+        find.descendant(
+          of: stage,
+          matching: find.byKey(ValueKey('fake-video-${shown.id}')),
+        ),
+        findsOneWidget,
+      );
+    }
+
+    testApp('Skip while a swipe leaves: one clip on, none passed over', (
+      tester,
+    ) async {
+      final ids = await waiting(tester, 4);
+      await open(tester, animations: true);
+
+      await interruptedSwipe(
+        tester,
+        from: '1 of 4',
+        to: '2 of 4',
+        toClip: 2,
+        action: () => tester.tap(skip),
+      );
+      expect(await pendingIds(tester), {ids[1], ids[2], ids[3]});
+    });
+
+    testApp('› while a swipe leaves: one clip on, none passed over', (
+      tester,
+    ) async {
+      await waiting(tester, 4);
+      await open(tester, animations: true);
+
+      await interruptedSwipe(
+        tester,
+        from: '1 of 4',
+        to: '2 of 4',
+        toClip: 2,
+        action: () => tester.tap(iconButton('Next clip')),
+      );
+    });
+
+    testApp('› in the last frame of a swipe leaving: one clip on', (
+      tester,
+    ) async {
+      await waiting(tester, 4);
+      await open(tester, animations: true);
+
+      // The tap lands just before the frame the stage's 200 ms end in: the
+      // swipe ends before the player is built again with the new clip, so
+      // the screen itself must see the session has left the swipe's clip.
+      await interruptedSwipe(
+        tester,
+        from: '1 of 4',
+        to: '2 of 4',
+        toClip: 2,
+        after: const Duration(milliseconds: 190),
+        action: () => tester.tap(iconButton('Next clip')),
+      );
+    });
+
+    testApp('a reel tapped while a swipe leaves: tagged, one clip on', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 4);
+      await open(tester, animations: true);
+
+      await interruptedSwipe(
+        tester,
+        from: '1 of 4',
+        to: '2 of 4',
+        toClip: 2,
+        action: () async {
+          await tester.tap(chip('Goa'));
+          await tester.pump();
+          holds.fireAll();
+        },
+      );
+      expect(await reelsOf(tester, ids[0]), {goa.id});
+      expect(await pendingIds(tester), {ids[1], ids[2], ids[3]});
+    });
+
+    testApp('Undo while a swipe leaves: back to the clip, not on', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 4);
+      await open(tester, animations: true);
+      await tagInto(tester, 'Goa');
+
+      await interruptedSwipe(
+        tester,
+        from: '2 of 4',
+        to: '1 of 4',
+        toClip: 1,
+        action: () async =>
+            tester.widget<TtSnack>(find.byType(TtSnack)).onAction!(),
+      );
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(await pendingIds(tester), ids.toSet());
+    });
+
     testApp('a dialog opened during the slide: the slide ends, the new clip '
         'plays, the scrim blurs by 3', (tester) async {
       // A Ready reel, so the dock offers All reels.
