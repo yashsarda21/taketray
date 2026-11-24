@@ -6,7 +6,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 ## Next: free week and subscription (owner, 2026-11-22)
 
-- **Build D-150.**
+- **Build D-170.**
   - **Spec:** `design/handoff/subscription.md`.
   - **Reference:** hub screens 41–45 and the prototype flow "Free week and subscription".
   - **Includes:**

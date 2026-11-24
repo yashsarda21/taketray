@@ -1,6 +1,6 @@
 # Free week and subscription: handoff
 
-Owner-approved design change of 22 Nov 2026 (D-150). It replaces D-11 ("Version 1 is free, no payments").
+Owner-approved design change of 22 Nov 2026 (D-170). It replaces D-11 ("Version 1 is free, no payments").
 
 - **Hub:** screens 41–45, group "Subscription".
 - **Prototype:** Start from: "Free week and subscription". The panel's Simulate buttons "Free week ends tomorrow" and "Free week ends" step through the end of the week.
@@ -185,7 +185,7 @@ Changing plan, cancelling and fixing a payment happen in Google Play. Use the de
 - **Internet permission:**
   - I couldn't confirm whether Play Billing Library merges `android.permission.INTERNET` into the app. Billing itself runs through the Play Store app.
   - After adding the plugin, **check the merged manifest** (`app/build/intermediates/merged_manifests/`).
-  - If INTERNET appears, test whether billing still works with it removed (`tools:node="remove"`). Either way, record the result in D-150 and keep every privacy claim true.
+  - If INTERNET appears, test whether billing still works with it removed (`tools:node="remove"`). Either way, record the result in D-170 and keep every privacy claim true.
 - **Wording that must change when this ships:** "free / no in-app purchases" appears in
   - README.md ("v1 is free"),
   - the Play listing,

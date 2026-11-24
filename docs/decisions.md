@@ -84,7 +84,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 ### D-11 · Version 1 is free, no payments
 - Date: 2026-10-24 · Phase: build brainstorming
 - Decision: no Play Billing in v1; code must not make adding it later hard.
-- **Superseded by D-150** (2026-11-22): a free week, then a monthly or yearly subscription.
+- **Superseded by D-170** (2026-11-22): a free week, then a monthly or yearly subscription.
 
 ## Engineering
 
@@ -2510,7 +2510,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - Mutation checks, each killed by a named test: see the task report (`DebugShareHooksTest`, `test_share_test.dart`, `share_screen_test.dart`, `share_source_test.dart`).
   - **Minors M24 to M26 (driver rules, written without a phone):** `NativeScreen.count` swallows only Patrol's "no match" (`isNoMatch`: a `PatrolActionException` naming `UiObjectNotFound`, "not found" or "no match"; `countMatching`), so an absent check cannot pass because the screen could not be read; `ShareScreen.tapSave` (flows 2 and 4) fails, naming both edges, when Save's bottom edge is more than 2 px below the keyboard's top (`NativeScreen.keyboardTop`, `keyboardTopOf`: another app's window that does not start at the top of the screen), and taps nothing; `closeIfOpen` looks at and taps only nodes whose `applicationPackage` is the app's (`app.taketray.dev`), so another app's Done is never tapped. What the keyboard heuristic sees on One UI is first known on the S24.
 
-### D-150 · A free week, then a subscription: ₹149 a month or ₹1,199 a year with a first-year launch offer (₹129, ₹899); read-only without one (design, not built yet)
+### D-170 · A free week, then a subscription: ₹149 a month or ₹1,199 a year with a first-year launch offer (₹129, ₹899); read-only without one (design, not built yet)
 - Date: 2026-11-22 · Phase: design (to be built before release) · Replaces D-11 · Design: hub screens 41–45 (group "Subscription"), prototype flow "Free week and subscription", `design/prototype/assets/subs.js`, handoff `design/handoff/subscription.md`
 - What the owner asked:
   - Start with 1 week free, then charge monthly ₹129 or yearly ₹899.
@@ -2550,3 +2550,4 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - Check whether the merged manifest gains `INTERNET`, and keep every privacy claim true.
   - "Free / no in-app purchases" must change in README.md, the Play listing, the website design (FAQ and hero tags) and the privacy policy (payments are handled by Google Play).
   - `docs/flow.md` gets an entitlement flow when this is built.
+- Number: drafted as D-150 on 2026-11-22 and renumbered D-170 when committed (2026-11-24), because D-150 is Phase 10B's Export and import screen and D-151 to D-169 were taken by then.
