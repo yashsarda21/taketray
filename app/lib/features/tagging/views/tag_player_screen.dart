@@ -1,15 +1,17 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, kMinFlingVelocity, kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show OrdinalSortKey, RenderProxyBox;
+import 'package:flutter/scheduler.dart' show SchedulerBinding;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
-import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/domain/rules/tag_queue.dart';
 import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
@@ -23,6 +25,8 @@ import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/tagging/view_models/last_tags.dart';
 import 'package:taketray/features/tagging/view_models/tag_player_muted.dart';
 import 'package:taketray/features/tagging/view_models/tag_session_controller.dart';
+import 'package:taketray/features/tagging/views/all_reels_sheet.dart';
+import 'package:taketray/features/tagging/views/dock_reels.dart';
 import 'package:taketray/features/tagging/views/stage_fit.dart';
 import 'package:taketray/features/tagging/views/tag_done_view.dart';
 import 'package:taketray/features/tagging/views/tagging_snacks.dart';
@@ -34,16 +38,6 @@ import 'package:taketray/platform/media_bridge.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 import 'package:video_player/video_player.dart';
-
-/// How much of the screen's height the reel panel may take before it
-/// scrolls: the video keeps the rest, also at large text (the panel's own
-/// cap grows with the text, up to 520 dp).
-const double _panelMaxFraction = 0.45;
-
-/// [_panelMaxFraction] from `TtMetrics.largeTextScale` up, where the quick
-/// row and the header are taller: the panel scrolls sooner so the video keeps
-/// at least 200 dp on a 360 × 800 phone.
-const double _panelMaxFractionLarge = 0.4;
 
 /// A clip longer than this has the large scrub bar with "Drag to skim".
 const int _longClipMs = 120000;
@@ -60,39 +54,52 @@ const Size _portraitSize = Size(9, 16);
 // style-check: allow a polling interval, not a motion (D-97 point 4)
 const Duration _aheadPoll = Duration(milliseconds: 200);
 
-/// The tag player (`routes.player`, D-97): the screen the owner uses most.
-/// Opened from To tag on a clip ([startClipId], or the first one) over the
-/// tab shell, with no nav pill, always dark on black, with a `Scaffold` of its
-/// own for the snacks (as the clip viewer, D-89).
+/// The tag player (`routes.player`, D-97), full screen (D-171, D-181): the
+/// screen the owner uses most. Opened from To tag on a clip ([startClipId],
+/// or the first one) over the tab shell, with no nav pill, always dark on
+/// black, with a `Scaffold` of its own for the snacks (as the clip viewer,
+/// D-89). It is a `Stack`, back to front:
 ///
-/// - **Top:** the progress segments; Close tagging, "{i} of {N}" (a polite
-///   live region) over "Scene {s} of {S} · {range}" (the time where the clips
-///   were shot, D-83, in the locale), and Mute / Unmute.
-/// - **The stage:** the clip showing, from its stored identity only
-///   (`clipVideoUri`), never blurred (D-180): it covers the stage, as in
-///   Instagram Reels, unless that would cut more than 20 % of it; then it is
-///   shown whole on black. Its picture and a spinner show while it opens. A
-///   tap plays or pauses; a swipe, outside the system back-gesture edges, and
-///   the ‹ › arrows (disabled at the ends) go to the previous and next waiting
-///   clip. A new clip slides in (not under reduced motion). A clip with no
-///   usable identity, flagged missing, or that cannot be played shows "This
-///   video can't be played" and never another video.
+/// - **The stage:** the whole screen, under the status bar. The clip
+///   showing, from its stored identity only (`clipVideoUri`), never blurred
+///   (D-180): it covers the screen, as in Instagram Reels, unless that would
+///   cut more than 20 % of it; then it is shown whole on black, centred in
+///   the room above the dock. Its picture and a spinner show while it opens.
+///   A tap plays or pauses; a swipe, outside the system back-gesture edges,
+///   goes to the previous or next waiting clip. A new clip slides in (not
+///   under reduced motion). A clip with no usable identity, flagged missing,
+///   or that cannot be played shows "This video can't be played" and never
+///   another video.
+/// - **The top**, on its scrim: the progress segments; Close tagging, ‹
+///   (Previous clip), "{i} of {N}" (a polite live region) over "Scene {s} of
+///   {S} · {range}" (the time where the clips were shot, D-83, in the locale;
+///   it wraps, never cut), › (Next clip), and Mute / Unmute. ‹ and › are off
+///   at the ends of the session.
+/// - **The dock**, on its scrim: the scrub bar (large, with "Drag to skim",
+///   over two minutes), "Add to reel" with **Pick several** and **All
+///   reels** when they apply (`dockReels`), up to three Collecting reels,
+///   newest first, and **New reel**. Tapping a reel shows a check for 400 ms,
+///   tags the clip and goes on; a long press, or **Pick several**, turns on
+///   picking (sticky from clip to clip, owner ruling D-91): "Pick reels",
+///   All reels and Cancel, the reels picked in All reels join the grid, and
+///   "Add to {n} reels & next" under it. Its height is measured after layout
+///   and places the rest. A tap on its blank parts goes through to the clip
+///   (plays or pauses it) and never tags.
+/// - **The rail**, at the end, 4 dp above the dock (not while picking):
+///   **Skip** and **Same** (Same as previous, with the reel names; off until
+///   something is tagged).
 /// - **One clip ahead:** the next clip's player is opened (paused, never heard)
 ///   while this one is tagged, so it starts at once. Settled, at most two
 ///   controllers are alive (the clip showing and the one ahead); for a moment
 ///   there can be three, going back or during quick actions (see
 ///   `_preload`). The one left behind is disposed, and on "All done!" the
 ///   clip ahead is let go too.
-/// - **Bottom:** the scrub bar (large, with "Drag to skim", over two minutes),
-///   **Skip** and **Same as previous**, and the reel panel: Collecting reels
-///   newest first, **New reel**, then **Other reels** (Ready and Published,
-///   folded unless no reel is Collecting). Tapping a reel shows a check for
-///   400 ms, tags the clip and goes on; a long press, or **Pick several**,
-///   turns on picking (sticky from clip to clip, owner ruling D-91).
 /// - **Snacks:** "Added to {names}" / "Skipped" with **Undo**, which brings
 ///   the player back to the clip; only the latest offers it, and the last one
-///   stays on "All done!" (D-97).
+///   stays on "All done!" (D-97). They float 8 dp above the dock, clear of the
+///   rail.
 ///
+/// A screen reader goes through the top, the clip, the rail, then the dock.
 /// Back (also the predictive back gesture) and Close go back to To tag; a
 /// hold in progress is cancelled as the close starts
 /// (`TagSessionController.leave`), and nothing is tagged.
@@ -107,12 +114,36 @@ class TagPlayerScreen extends ConsumerStatefulWidget {
 }
 
 class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
-  /// A second tap on New reel while its sheet is arriving opens no second one.
+  /// A second tap on New reel or All reels while its sheet is arriving opens
+  /// no second one.
   final OpenOnce _openOnce = OpenOnce();
 
-  /// The user turned Other reels open or shut; null: the default (shut,
-  /// unless no reel is Collecting).
-  bool? _othersOpen;
+  /// The dock's height, measured after it is laid out (0 until then): the
+  /// stage's room above it, the rail's place and the snacks' all follow it.
+  double _dockHeight = 0;
+
+  /// The rail's size, measured the same way: it grows with its text, the
+  /// snacks keep clear of its width, and the dock leaves room for its
+  /// height.
+  Size _railSize = const Size.square(TtMetrics.railButtonSize);
+
+  /// The top's height, measured the same way: the dock leaves room for it.
+  double _topHeight = 0;
+
+  void _dockLaidOut(Size size) {
+    if (!mounted || size.height == _dockHeight) return;
+    setState(() => _dockHeight = size.height);
+  }
+
+  void _railLaidOut(Size size) {
+    if (!mounted || size == _railSize) return;
+    setState(() => _railSize = size);
+  }
+
+  void _topLaidOut(Size size) {
+    if (!mounted || size.height == _topHeight) return;
+    setState(() => _topHeight = size.height);
+  }
 
   /// Where the player was last built, to tell which way a new clip slides in.
   int? _shownClipId;
@@ -191,6 +222,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       // After the clip showing, so its player is the first one made.
       _preload(state);
     }
+    final playing = state != null && !state.done;
     // System Back and the predictive back gesture: the route pops, and the
     // hold must end now, not when the session goes after the transition.
     return PopScope<Object?>(
@@ -198,7 +230,9 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
         if (didPop) _leave();
       },
       child: Theme(
-        data: TakeTrayTheme.video(),
+        // The Scaffold builds the snacks under this theme: while the player
+        // shows, it places them over the dock.
+        data: playing ? _playerTheme(context, rail: !state.multi) : _video,
         child: Builder(
           builder: (context) {
             final tt = context.tt;
@@ -206,16 +240,6 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
               backgroundColor: tt.colors.videoBackground,
               // The sheet's keyboard must not squash the player behind it.
               resizeToAvoidBottomInset: false,
-              bottomNavigationBar: state == null || state.done
-                  ? null
-                  : _bottomBar(
-                      context,
-                      state,
-                      summaries,
-                      cache,
-                      lastTags,
-                      player,
-                    ),
               body: state == null
                   ? _Waiting(
                       failed: session.hasError,
@@ -233,7 +257,15 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                       onSeeReels: _seeReels,
                       onBack: _close,
                     )
-                  : _top(context, state, muted),
+                  : _player(
+                      context,
+                      state,
+                      summaries,
+                      cache,
+                      muted,
+                      lastTags,
+                      player,
+                    ),
             );
           },
         ),
@@ -241,14 +273,158 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     );
   }
 
+  static final ThemeData _video = TakeTrayTheme.video();
+
+  /// The last theme made by [_playerTheme], and what it was made for.
+  ThemeData? _theme;
+  Object? _themeFor;
+
+  /// The video theme, with the snacks placed for the player (D-181): a
+  /// floating snack's bottom edge [TtMetrics.playerSnackAboveDock] over the
+  /// dock's top, [TtMetrics.playerSnackInsetStart] from the start edge and,
+  /// at the end, clear of the [rail] by the same 12 dp: the handoff's 88 dp
+  /// for a 64 dp rail, more as the rail grows with its text (88 with no
+  /// rail, while picking). The inset is the theme's `EdgeInsets`, which a
+  /// snack reads as left and right, so it is mirrored here in right-to-left
+  /// text, like the rail. The `Scaffold` puts a floating snack's bottom at
+  /// the screen's bottom less the bottom view padding, which is taken off
+  /// the dock's height.
+  ThemeData _playerTheme(BuildContext context, {required bool rail}) {
+    const start = TtMetrics.playerSnackInsetStart;
+    final end = rail
+        ? TtMetrics.playerSnackInsetEnd +
+              _railSize.width -
+              TtMetrics.railButtonSize
+        : TtMetrics.playerSnackInsetEnd;
+    final bottom = math.max<double>(
+      0,
+      _dockHeight +
+          TtMetrics.playerSnackAboveDock -
+          MediaQuery.viewPaddingOf(context).bottom,
+    );
+    final rtl = Directionality.of(context) == TextDirection.rtl;
+    final inset = EdgeInsets.only(
+      left: rtl ? end : start,
+      right: rtl ? start : end,
+      bottom: bottom,
+    );
+    if (_theme != null && _themeFor == inset) return _theme!;
+    _themeFor = inset;
+    return _theme = _video.copyWith(
+      snackBarTheme: _video.snackBarTheme.copyWith(insetPadding: inset),
+    );
+  }
+
+  /// The player, loaded and not done (D-181): the stage over the whole
+  /// screen, the top, the dock, and the rail unless picking. A screen reader
+  /// takes them in the order top, stage, rail, dock.
+  Widget _player(
+    BuildContext context,
+    TagSessionState state,
+    List<ReelSummary>? summaries,
+    ThumbnailCache? cache,
+    bool muted,
+    List<int> lastTags,
+    VideoPlayerController? player,
+  ) {
+    final controller = ref.read(_provider.notifier);
+    final clip = state.currentClip;
+    final uri = clip == null ? null : clipVideoUri(clip);
+    Widget group(int order, Widget child) => Semantics(
+      container: true,
+      sortKey: OrdinalSortKey(order.toDouble()),
+      child: child,
+    );
+    return TtVideoSurface(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          group(
+            1,
+            _Stage(
+              // A new clip, or the same clip under a changed identity, is a
+              // new stage: a new player, and never the old video.
+              key: ValueKey((clip?.id, uri)),
+              clip: clip,
+              uri: uri,
+              slide: _slide,
+              time: _timeOf(context, state, clip),
+              hasPrevious: state.hasPrevious,
+              hasNext: state.hasNext,
+              onPrevious: controller.previous,
+              onNext: controller.next,
+              // A contained clip is centred in the room above the dock; the
+              // spinner and play disc over a covering clip, between the top
+              // and the dock.
+              topInset: _topHeight,
+              bottomInset: _dockHeight,
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: group(
+              0,
+              _ReportSize(
+                onSize: _topLaidOut,
+                child: _top(context, state, muted),
+              ),
+            ),
+          ),
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: group(
+              3,
+              _ReportSize(
+                onSize: _dockLaidOut,
+                child: ConstrainedBox(
+                  // On a short phone at large text the dock's grid gives way
+                  // (it scrolls in less) rather than push the rail over the
+                  // top (Review Focus 4).
+                  constraints: BoxConstraints(
+                    maxHeight: math.max<double>(
+                      0,
+                      MediaQuery.sizeOf(context).height -
+                          _topHeight -
+                          (state.multi
+                              ? 0
+                              : _railSize.height + TtMetrics.railAboveDock),
+                    ),
+                  ),
+                  child: _dock(context, state, summaries, cache, player),
+                ),
+              ),
+            ),
+          ),
+          if (!state.multi)
+            PositionedDirectional(
+              end: TtMetrics.railInsetEnd,
+              bottom: _dockHeight + TtMetrics.railAboveDock,
+              child: group(
+                2,
+                _ReportSize(
+                  onSize: _railLaidOut,
+                  child: _rail(context, summaries, lastTags),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   // ------------------------------------------------------------------- top
 
+  /// The top, on its scrim: under the status bar and 4 dp, the progress
+  /// segments, then Close, ‹, the title and scene line, ›, and Mute. The
+  /// scrim fades out over the last 24 dp, under the header.
   Widget _top(BuildContext context, TagSessionState state, bool muted) {
     final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final controller = ref.read(_provider.notifier);
-    final clip = state.currentClip;
-    final uri = clip == null ? null : clipVideoUri(clip);
 
     final scene = state.sceneOf(state.index);
     final locale = Localizations.localeOf(context).toString();
@@ -261,35 +437,28 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
             locale: locale,
             use24Hour: use24Hour,
           );
-    // At large text only the range, so it stays whole without taking the
-    // video's room (the header may still wrap it to two lines).
-    final large =
-        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
+    // The whole line at every text scale: it wraps, never cut (D-179).
     final subtitle = scene == null || range == null
         ? null
-        : large
-        ? range
         : l10n.tagPlayerScene(scene.$1, scene.$2, range);
 
-    // No `scrims:` (none by default): they belong to the viewer, whose
-    // controls sit over the video (proto.css `.viewer .vtop` / `.vbot`).
-    // Here the controls are above and below it, and a scrim would only
-    // darken the lower part of the clip.
-    return TtVideoSurface(
-      child: SafeArea(
-        bottom: false,
+    return TtPlayerTopScrim(
+      key: const ValueKey('tag-top'),
+      child: Padding(
+        padding: EdgeInsets.only(
+          top: MediaQuery.paddingOf(context).top + tt.spacing.xxs,
+          bottom: TtMetrics.playerTopScrimFade,
+        ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: EdgeInsets.only(top: tt.spacing.xxs),
-              child: TtSegmentBar(
-                total: state.session.length,
-                current: state.index,
-                done: {
-                  for (var i = 0; i < state.session.length; i++)
-                    if (!state.pending.contains(state.session[i])) i,
-                },
-              ),
+            TtSegmentBar(
+              total: state.session.length,
+              current: state.index,
+              done: {
+                for (var i = 0; i < state.session.length; i++)
+                  if (!state.pending.contains(state.session[i])) i,
+              },
             ),
             TtPlayerHeader(
               leading: TtIconButton(
@@ -298,9 +467,17 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                 style: TtIconButtonStyle.onVideo,
                 onPressed: _close,
               ),
+              previous: TtHeaderChevron(
+                semanticLabel: l10n.viewerPrevious,
+                onPressed: state.hasPrevious ? controller.previous : null,
+              ),
               title: l10n.tagPlayerTitle(state.index + 1, state.session.length),
               subtitle: subtitle,
               wrapSubtitle: true,
+              next: TtHeaderChevron(
+                semanticLabel: l10n.viewerNext,
+                onPressed: state.hasNext ? controller.next : null,
+              ),
               trailing: TtIconButton(
                 icon: muted
                     ? Symbols.volume_off_rounded
@@ -308,24 +485,6 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                 semanticLabel: muted ? l10n.viewerUnmute : l10n.viewerMute,
                 style: TtIconButtonStyle.onVideo,
                 onPressed: ref.read(tagPlayerMutedProvider.notifier).toggle,
-              ),
-            ),
-            Expanded(
-              child: _Stage(
-                // A new clip, or the same clip under a changed identity, is a
-                // new stage: a new player, and never the old video.
-                key: ValueKey((clip?.id, uri)),
-                clip: clip,
-                uri: uri,
-                slide: _slide,
-                time: _timeOf(context, state, clip),
-                hasPrevious: state.hasPrevious,
-                hasNext: state.hasNext,
-                onPrevious: controller.previous,
-                onNext: controller.next,
-                // The panel is below the stage, not over it: nothing covers
-                // its bottom.
-                bottomInset: 0,
               ),
             ),
           ],
@@ -459,110 +618,24 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     }
   }
 
-  // ---------------------------------------------------------------- bottom
+  // ------------------------------------------------------ the dock, the rail
 
-  Widget _bottomBar(
+  /// The dock (`TtReelDock`): the scrub bar, the header and its actions, the
+  /// reels of `dockReels` and, while picking, the confirm button.
+  Widget _dock(
     BuildContext context,
     TagSessionState state,
     List<ReelSummary>? summaries,
     ThumbnailCache? cache,
-    List<int> lastTags,
     VideoPlayerController? player,
   ) {
     final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
     final clip = state.currentClip;
     final controller = ref.read(_provider.notifier);
-    final repeat = [
-      for (final id in lastTags)
-        for (final summary in summaries ?? const <ReelSummary>[])
-          if (summary.reel.id == id) summary.reel.name,
-    ];
-    final names = repeat.join(', ');
-    final long = (clip?.fingerprint.durationMs ?? 0) > _longClipMs;
-
-    return ColoredBox(
-      color: tt.colors.videoBackground,
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (clip != null)
-              ClipScrubber(
-                controller: player,
-                clip: clip,
-                large: long,
-                hint: long ? l10n.tagPlayerDragToSkim : null,
-              ),
-            // proto.css: .qrow { padding: 12px 16px }
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: tt.spacing.m,
-                vertical: tt.spacing.s,
-              ),
-              child: Row(
-                spacing: tt.spacing.xs,
-                children: [
-                  TtButton(
-                    label: l10n.tagPlayerSkip,
-                    semanticLabel: l10n.tagPlayerSkipSemantics,
-                    icon: Symbols.redo_rounded,
-                    kind: TtButtonKind.ghost,
-                    onPressed: () => unawaited(_act(controller.skip)),
-                  ),
-                  Expanded(
-                    child: TtSameAsPreviousButton(
-                      label: l10n.tagPlayerSame,
-                      detail: repeat.isEmpty ? null : names,
-                      semanticLabel: repeat.isEmpty
-                          ? l10n.tagPlayerSame
-                          : l10n.tagPlayerSameSemantics(names),
-                      onPressed: repeat.isEmpty
-                          ? null
-                          : () => unawaited(_act(controller.sameAsPrevious)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight:
-                    MediaQuery.sizeOf(context).height *
-                    (MediaQuery.textScalerOf(context).scale(1) >=
-                            TtMetrics.largeTextScale
-                        ? _panelMaxFractionLarge
-                        : _panelMaxFraction),
-              ),
-              child: _panel(context, state, summaries, cache),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _panel(
-    BuildContext context,
-    TagSessionState state,
-    List<ReelSummary>? summaries,
-    ThumbnailCache? cache,
-  ) {
-    final l10n = AppLocalizations.of(context);
-    final controller = ref.read(_provider.notifier);
     final all = summaries ?? const <ReelSummary>[];
-    final collecting = [
-      for (final s in all)
-        if (s.reel.status == ReelStatus.collecting) s,
-    ];
-    final others = [
-      for (final s in all)
-        if (s.reel.status != ReelStatus.collecting) s,
-    ];
     final multi = state.multi;
-    // The default: shut, unless no reel is Collecting (owner ruling, D-91).
-    final othersOpen = _othersOpen ?? collecting.isEmpty;
+    final shown = dockReels(all, multi: multi, picked: state.picked);
+    final long = (clip?.fingerprint.durationMs ?? 0) > _longClipMs;
 
     Widget chip(ReelSummary summary) {
       final id = summary.reel.id;
@@ -591,6 +664,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
             ? TtReelChipState.picked
             : TtReelChipState.idle,
         multiSelect: multi,
+        style: TtReelChipStyle.onVideo,
         onTap: multi
             ? () => controller.togglePick(id)
             : () => unawaited(_tapReel(id)),
@@ -598,47 +672,61 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       );
     }
 
+    TtButton action(String label, IconData? icon, VoidCallback onPressed) =>
+        TtButton(
+          label: label,
+          icon: icon,
+          kind: TtButtonKind.text,
+          size: TtButtonSize.small,
+          onPressed: onPressed,
+        );
+    final allReels = action(
+      l10n.tagAllReels,
+      Symbols.apps_rounded,
+      () => _openOnce.open(_allReels),
+    );
+
+    // No reels at all: the prompt and a full-width New reel, also while
+    // picking (the reels were deleted meanwhile).
     final none = summaries != null && all.isEmpty;
-    final newChip = summaries == null
-        ? null
-        : TtNewReelChip(
+    return TtReelDock(
+      key: const ValueKey('tag-dock'),
+      title: multi ? l10n.tagDockPickTitle : l10n.tagPanelTitle,
+      semanticLabel: l10n.tagPanelLabel,
+      scrub: clip == null
+          ? null
+          : ClipScrubber(
+              controller: player,
+              clip: clip,
+              large: long,
+              hint: long ? l10n.tagPlayerDragToSkim : null,
+            ),
+      actions: multi
+          ? [
+              if (shown.allReels) allReels,
+              action(l10n.cancel, null, () => controller.setMulti(false)),
+            ]
+          : [
+              if (shown.pickSeveral)
+                action(
+                  l10n.tagPickSeveral,
+                  Symbols.library_add_check_rounded,
+                  () => controller.setMulti(true),
+                ),
+              if (shown.allReels) allReels,
+            ],
+      emptyText: none ? l10n.tagNoReels : null,
+      chips: [
+        for (final s in shown.grid) chip(s),
+        if (summaries != null && (shown.newReel || none))
+          TtNewReelChip(
             title: l10n.tagNewReel,
             subtitle: none ? null : l10n.tagNewReelSubtitle,
             fullWidth: none,
+            style: TtReelChipStyle.onVideo,
             onTap: () => _openOnce.open(_newReel),
-          );
-
-    return TtTagPanel(
-      title: multi ? l10n.tagPickTitle : l10n.tagPanelTitle,
-      semanticLabel: l10n.tagPanelLabel,
-      headerAction: multi
-          ? TtButton(
-              label: l10n.cancel,
-              kind: TtButtonKind.text,
-              size: TtButtonSize.small,
-              onPressed: () => controller.setMulti(false),
-            )
-          : all.length > 1
-          ? TtButton(
-              label: l10n.tagPickSeveral,
-              icon: Symbols.library_add_check_rounded,
-              kind: TtButtonKind.text,
-              size: TtButtonSize.small,
-              onPressed: () => controller.setMulti(true),
-            )
-          : null,
-      emptyText: none ? l10n.tagNoReels : null,
-      chips: [for (final s in collecting) chip(s), ?newChip],
-      toggle: others.isEmpty
-          ? null
-          : TtOtherReelsToggle(
-              label: othersOpen
-                  ? l10n.tagOtherReels
-                  : l10n.tagOtherReelsCount(others.length),
-              expanded: othersOpen,
-              onToggle: () => setState(() => _othersOpen = !othersOpen),
-            ),
-      foldedChips: [for (final s in others) chip(s)],
+          ),
+      ],
       footer: multi
           ? TtButton(
               label: state.picked.isEmpty
@@ -652,6 +740,61 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
           : null,
     );
   }
+
+  /// The rail (`player2.css:32`): **Skip** over **Same** (Same as previous),
+  /// 10 dp apart and as wide as the wider of them. Same names the reels of
+  /// the last tag, and is off (at 45 %) until something has been tagged.
+  Widget _rail(
+    BuildContext context,
+    List<ReelSummary>? summaries,
+    List<int> lastTags,
+  ) {
+    final l10n = AppLocalizations.of(context);
+    final controller = ref.read(_provider.notifier);
+    final repeat = [
+      for (final id in lastTags)
+        for (final summary in summaries ?? const <ReelSummary>[])
+          if (summary.reel.id == id) summary.reel.name,
+    ];
+    final names = repeat.join(', ');
+    return IntrinsicWidth(
+      key: const ValueKey('tag-rail'),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: TtMetrics.railGap,
+        children: [
+          TtRailButton(
+            icon: Symbols.redo_rounded,
+            label: l10n.tagPlayerSkip,
+            semanticLabel: l10n.tagPlayerSkipSemantics,
+            onPressed: () => unawaited(_act(controller.skip)),
+          ),
+          TtRailButton(
+            icon: Symbols.repeat_rounded,
+            label: l10n.tagRailSame,
+            detail: repeat.isEmpty ? null : names,
+            semanticLabel: repeat.isEmpty
+                ? l10n.tagRailSameNone
+                : l10n.tagPlayerSameSemantics(names),
+            onPressed: repeat.isEmpty
+                ? null
+                : () => unawaited(_act(controller.sameAsPrevious)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// **All reels**: the sheet with every reel (`showAllReelsSheet`). A reel
+  /// tapped there is tagged as a tap in the dock is; its New reel is this
+  /// screen's.
+  Future<void> _allReels() => showAllReelsSheet(
+    context,
+    startClipId: widget.startClipId,
+    onTag: (id) => unawaited(_tapReel(id)),
+    onNewReel: () => unawaited(_newReel()),
+  );
 
   // --------------------------------------------------------------- actions
 
@@ -791,7 +934,8 @@ class _Waiting extends StatelessWidget {
 // ---------------------------------------------------------------- the stage
 
 /// The stage of one clip, on black: the clip covering it or shown whole
-/// (`stageFit`, D-180), never blurred, and the arrows. A new instance for
+/// (`stageFit`, D-180), never blurred, and the swipe layer over it (the
+/// header's ‹ › do the same without a gesture, D-181). A new instance for
 /// each clip (and each identity of it), so its player is the clip's own and
 /// never carries over.
 class _Stage extends ConsumerWidget {
@@ -804,6 +948,7 @@ class _Stage extends ConsumerWidget {
     required this.hasNext,
     required this.onPrevious,
     required this.onNext,
+    required this.topInset,
     required this.bottomInset,
     super.key,
   });
@@ -824,15 +969,17 @@ class _Stage extends ConsumerWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
 
-  /// How much of the stage's bottom is covered (0 for nothing): a contained
-  /// clip is centred in the room above it; a covering clip still fills the
-  /// whole stage. Required, not defaulted: the analyzer calls a default that
-  /// no caller changes an unused parameter, and a given 0 redundant.
+  /// How much of the stage's top the top bar covers: the spinner and the
+  /// play disc over a covering clip are centred below it.
+  final double topInset;
+
+  /// How much of the stage's bottom the dock covers: a contained clip is
+  /// centred in the room above it; a covering clip still fills the whole
+  /// stage, and its spinner and play disc are centred above it.
   final double bottomInset;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final l10n = AppLocalizations.of(context);
     final tt = context.tt;
     final gestureInsets = MediaQuery.systemGestureInsetsOf(context);
     final rtl = Directionality.of(context) == TextDirection.rtl;
@@ -860,6 +1007,7 @@ class _Stage extends ConsumerWidget {
             loading: () => _Loading(
               clip: clip,
               picture: picture,
+              topInset: topInset,
               bottomInset: bottomInset,
             ),
             error: (_, _) => const _CantPlay(),
@@ -869,6 +1017,7 @@ class _Stage extends ConsumerWidget {
               clip: clip,
               time: time,
               fallback: picture,
+              topInset: topInset,
               bottomInset: bottomInset,
             ),
           );
@@ -893,26 +1042,6 @@ class _Stage extends ConsumerWidget {
               rtl: rtl,
               onNext: hasNext ? onNext : null,
               onPrevious: hasPrevious ? onPrevious : null,
-            ),
-          ),
-          Align(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: tt.spacing.xs),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  TtStageArrow(
-                    side: TtArrowSide.previous,
-                    semanticLabel: l10n.viewerPrevious,
-                    onPressed: hasPrevious ? onPrevious : null,
-                  ),
-                  TtStageArrow(
-                    side: TtArrowSide.next,
-                    semanticLabel: l10n.viewerNext,
-                    onPressed: hasNext ? onNext : null,
-                  ),
-                ],
-              ),
             ),
           ),
         ],
@@ -1045,19 +1174,24 @@ Size _storedSize(Clip clip) => clip.width > 0 && clip.height > 0
 /// at its edges; a contained one is centred whole in the room above
 /// [bottomInset], on the stage's black. [builder] gets [picture] fitted so
 /// and builds what fills that room: anything it adds beside the picture
-/// (the spinner, the play disc) is centred on the clip and not scaled.
+/// (the spinner, the play disc) is not scaled, and goes inside the insets it
+/// is given: for a covering clip, [topInset] and [bottomInset], so it is
+/// centred on the part of the clip the top and the dock leave showing
+/// (D-181); none for a contained clip, which shows whole.
 class _ClipRoom extends StatelessWidget {
   const new({
     required this.size,
+    required this.topInset,
     required this.bottomInset,
     required this.picture,
     required this.builder,
   });
 
   final Size size;
+  final double topInset;
   final double bottomInset;
   final Widget picture;
-  final Widget Function(Widget fitted) builder;
+  final Widget Function(Widget fitted, EdgeInsets covered) builder;
 
   @override
   Widget build(BuildContext context) {
@@ -1070,6 +1204,9 @@ class _ClipRoom extends StatelessWidget {
             clipBehavior: ui.Clip.hardEdge,
             child: SizedBox.fromSize(size: size, child: picture),
           ),
+          fit == BoxFit.cover
+              ? EdgeInsets.only(top: topInset, bottom: bottomInset)
+              : EdgeInsets.zero,
         );
         if (fit == BoxFit.cover) return room;
         return Padding(
@@ -1087,11 +1224,13 @@ class _Loading extends StatelessWidget {
   const new({
     required this.clip,
     required this.picture,
+    required this.topInset,
     required this.bottomInset,
   });
 
   final Clip clip;
   final ImageProvider? picture;
+  final double topInset;
   final double bottomInset;
 
   @override
@@ -1100,6 +1239,7 @@ class _Loading extends StatelessWidget {
     final picture = this.picture;
     return _ClipRoom(
       size: _storedSize(clip),
+      topInset: topInset,
       bottomInset: bottomInset,
       // player2.css:12: .p2-vid .ld { background: rgba(0,0,0,.35) }, over
       // the clip only.
@@ -1120,11 +1260,16 @@ class _Loading extends StatelessWidget {
           ),
         ],
       ),
-      builder: (fitted) => Stack(
+      builder: (fitted, covered) => Stack(
         fit: StackFit.expand,
         children: [
           fitted,
-          Center(child: CircularProgressIndicator(color: tt.colors.onVideo)),
+          Padding(
+            padding: covered,
+            child: Center(
+              child: CircularProgressIndicator(color: tt.colors.onVideo),
+            ),
+          ),
         ],
       ),
     );
@@ -1169,6 +1314,7 @@ class _Playing extends StatefulWidget {
     required this.clip,
     required this.time,
     required this.fallback,
+    required this.topInset,
     required this.bottomInset,
     super.key,
   });
@@ -1177,6 +1323,7 @@ class _Playing extends StatefulWidget {
   final Clip clip;
   final String time;
   final ImageProvider? fallback;
+  final double topInset;
   final double bottomInset;
 
   @override
@@ -1267,9 +1414,10 @@ class _PlayingState extends State<_Playing> {
             : _storedSize(widget.clip);
         return _ClipRoom(
           size: size,
+          topInset: widget.topInset,
           bottomInset: widget.bottomInset,
           picture: VideoPlayer(widget.controller),
-          builder: (fitted) => Semantics(
+          builder: (fitted, covered) => Semantics(
             container: true,
             button: true,
             label: playing
@@ -1285,8 +1433,13 @@ class _PlayingState extends State<_Playing> {
                 children: [
                   fitted,
                   if (!playing)
-                    const ExcludeSemantics(
-                      child: IgnorePointer(child: Center(child: _PlayDisc())),
+                    ExcludeSemantics(
+                      child: IgnorePointer(
+                        child: Padding(
+                          padding: covered,
+                          child: const Center(child: _PlayDisc()),
+                        ),
+                      ),
                     ),
                 ],
               ),
@@ -1299,7 +1452,8 @@ class _PlayingState extends State<_Playing> {
 }
 
 /// "This video can't be played": no usable identity, a missing clip, or a
-/// player error. Skip and the arrows still work; it never shows another video.
+/// player error. Skip and the chevrons still work; it never shows another
+/// video.
 class _CantPlay extends StatelessWidget {
   const new();
 
@@ -1336,5 +1490,43 @@ class _CantPlay extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Tells [onSize] the size [child] was laid out at, after the frame, each
+/// time it changes: the dock's height and the rail's width place the rest of
+/// the player (D-181).
+class _ReportSize extends SingleChildRenderObjectWidget {
+  const new({required this.onSize, required super.child});
+
+  final ValueChanged<Size> onSize;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderReportSize(onSize);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderReportSize renderObject,
+  ) {
+    renderObject.onSize = onSize;
+  }
+}
+
+class _RenderReportSize extends RenderProxyBox {
+  _RenderReportSize(this.onSize);
+
+  ValueChanged<Size> onSize;
+  Size? _told;
+
+  @override
+  void performLayout() {
+    super.performLayout();
+    final now = size;
+    if (now == _told) return;
+    _told = now;
+    // Not during layout: the owner rebuilds with it.
+    SchedulerBinding.instance.addPostFrameCallback((_) => onSize(now));
   }
 }

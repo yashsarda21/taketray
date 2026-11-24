@@ -4,7 +4,9 @@ import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderParagraph;
+import 'package:flutter/rendering.dart'
+    show OrdinalSortKey, RenderParagraph, SemanticsNode;
+import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -157,7 +159,11 @@ void main() {
     Size size = const Size(360, 800),
     bool animations = false,
     bool spinning = false,
+    double statusBar = 24,
   }) async {
+    // A phone's status bar: the player runs under it (D-181).
+    tester.view.padding = FakeViewPadding(top: statusBar);
+    tester.view.viewPadding = FakeViewPadding(top: statusBar);
     await pumpScreen(
       tester,
       TagPlayerScreen(startClipId: from),
@@ -200,13 +206,41 @@ void main() {
   TtReelChipState chipState(WidgetTester tester, String name) =>
       tester.widget<TtReelChip>(chip(name)).state;
 
-  Finder arrow(TtArrowSide side) => find.byWidgetPredicate(
-    (w) => w is TtStageArrow && w.side == side,
-    description: '$side arrow',
-  );
+  /// The header's chevrons (D-179): whether Previous and Next are on.
+  TtPlayerHeader header(WidgetTester tester) =>
+      tester.widget<TtPlayerHeader>(find.byType(TtPlayerHeader));
+  bool previousOn(WidgetTester tester) =>
+      header(tester).previous!.onPressed != null;
+  bool nextOn(WidgetTester tester) => header(tester).next!.onPressed != null;
 
-  bool enabled(WidgetTester tester, TtArrowSide side) =>
-      tester.widget<TtStageArrow>(arrow(side)).onPressed != null;
+  /// The layers of the full-screen player (D-181).
+  final stage = find.byKey(const ValueKey('tag-stage'));
+  final top = find.byKey(const ValueKey('tag-top'));
+  final dock = find.byKey(const ValueKey('tag-dock'));
+  final rail = find.byKey(const ValueKey('tag-rail'));
+  final sheet = find.byType(TtSheet);
+
+  Finder railButton(String label) => find.byWidgetPredicate(
+    (w) => w is TtRailButton && w.label == label,
+    description: 'the "$label" rail button',
+  );
+  final skip = railButton('Skip');
+  final same = railButton('Same');
+
+  TtRailButton sameButton(WidgetTester tester) =>
+      tester.widget<TtRailButton>(same);
+
+  /// [finder] inside the All reels sheet, or inside the dock.
+  Finder inSheet(Finder finder) => find.descendant(of: sheet, matching: finder);
+  Finder inDock(Finder finder) => find.descendant(of: dock, matching: finder);
+
+  /// The names of the reel chips in the dock, in order.
+  List<String> dockNames(WidgetTester tester) => [
+    for (final c in tester.widgetList<TtReelChip>(
+      inDock(find.byType(TtReelChip)),
+    ))
+      c.name,
+  ];
 
   Finder iconButton(String label) => find.byWidgetPredicate(
     (w) => w is TtIconButton && w.semanticLabel == label,
@@ -217,6 +251,15 @@ void main() {
     (w) => w is TtButton && w.label == label,
     description: 'the "$label" button',
   );
+
+  final allReels = button('All reels');
+
+  /// Opens All reels from the dock.
+  Future<void> openAllReels(WidgetTester tester) async {
+    await tester.tap(allReels);
+    await settleApp(tester);
+    expect(sheet, findsOneWidget);
+  }
 
   /// Taps the chip of reel [name], lets the hold end and the tag land.
   Future<void> tagInto(WidgetTester tester, String name) async {
@@ -347,7 +390,7 @@ void main() {
       );
       expect(platform.uris, isNot(contains(_uri(2))));
       // Skip still works, and the next clip plays its own video.
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
       expect(title(tester), '3 of 3');
       expect(platform.uris, contains(_uri(3)));
@@ -402,13 +445,10 @@ void main() {
       expect(find.text('Skip'), findsOneWidget);
     });
 
-    // The stage (D-171, D-180): the clip covers it, or is shown whole on
-    // black when covering would cut more than 20 % of it; it is never
-    // blurred. In this layout the stage is between the header and the panel
-    // (Task 10 makes it the whole screen), so the tests that need a clip to
-    // cover use a tall screen and first check that 9:16 covers that stage.
-    const tall = Size(360, 1000);
-    final stage = find.byKey(const ValueKey('tag-stage'));
+    // The stage (D-171, D-180, D-181): the whole screen, under the status
+    // bar and the dock. The clip covers it, or is shown whole on black, in
+    // the room above the dock, when covering would cut more than 20 % of it;
+    // it is never blurred.
     final video = find.descendant(
       of: stage,
       matching: find.byType(VideoPlayer),
@@ -427,9 +467,10 @@ void main() {
       expect(a.center.dy, closeTo(b.center.dy, 0.01));
     }
 
-    /// The stage is tall enough that a 9:16 clip covers it.
+    /// The stage is the whole screen, and a vertical clip covers it.
     Rect coveringStage(WidgetTester tester) {
       final box = tester.getRect(stage);
+      expect(box, const Rect.fromLTWH(0, 0, 360, 800));
       expect(
         stageFit(area: box.size, clip: const Size(1080, 1920)),
         BoxFit.cover,
@@ -437,6 +478,45 @@ void main() {
       );
       return box;
     }
+
+    /// The room above the dock, where a contained clip is centred (F5).
+    Rect aboveDock(WidgetTester tester) {
+      final dockTop = tester.getRect(dock).top;
+      expect(dockTop, lessThan(800));
+      return Rect.fromLTRB(0, 0, 360, dockTop);
+    }
+
+    /// The part of a covering clip the top and the dock leave showing.
+    Rect showing(WidgetTester tester) => Rect.fromLTRB(
+      0,
+      tester.getRect(top).bottom,
+      360,
+      tester.getRect(dock).top,
+    );
+
+    testApp('the clip fills the screen under the status bar', (tester) async {
+      await waiting(tester, 2);
+
+      await open(tester);
+
+      // The whole screen, from the top: no SafeArea, the 24 dp status bar
+      // over the top scrim.
+      expect(tester.getRect(stage), const Rect.fromLTWH(0, 0, 360, 800));
+      expect(tester.getRect(top).top, 0);
+      expect(tester.getRect(dock).bottom, 800);
+      // A vertical clip covers it all.
+      expectInside(tester.getRect(stage), tester.getRect(video));
+      // The status bar keeps its light icons on the black player (D-51).
+      final region = tester.widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+        find
+            .ancestor(
+              of: stage,
+              matching: find.byType(AnnotatedRegion<SystemUiOverlayStyle>),
+            )
+            .first,
+      );
+      expect(region.value.statusBarIconBrightness, Brightness.light);
+    });
 
     testApp('no blur anywhere on the stage', (tester) async {
       await waiting(tester, 2);
@@ -468,7 +548,7 @@ void main() {
     testApp('a vertical clip covers the stage, centred', (tester) async {
       await waiting(tester, 1);
 
-      await open(tester, size: tall);
+      await open(tester);
 
       final box = coveringStage(tester);
       final shown = tester.getRect(video);
@@ -484,18 +564,21 @@ void main() {
       expect(tester.getRect(find.byKey(const ValueKey('fake-video-1'))), shown);
     });
 
-    testApp('a horizontal clip is shown whole, centred, on black', (
-      tester,
-    ) async {
+    testApp('a contained clip is centred above the dock', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await newReel(tester, 'Sunsets');
       await real(tester, () => h.media.store([reelVideo(1, horizontal: true)]));
       platform.size = const Size(1920, 1080);
 
       await open(tester);
 
       final box = tester.getRect(stage);
-      final shown = tester.getRect(video);
-      expectInside(shown, box);
-      expectSameCentre(shown, box);
+      expect(box, const Rect.fromLTWH(0, 0, 360, 800));
+      var room = aboveDock(tester);
+      var shown = tester.getRect(video);
+      expectInside(shown, room);
+      expectSameCentre(shown, room);
       expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
       // Full bleed across: no margin at the sides.
       expect(shown.width, closeTo(box.width, 0.01));
@@ -505,6 +588,16 @@ void main() {
         find.descendant(of: stage, matching: find.byType(Image)),
         findsNothing,
       );
+
+      // The dock grows (Pick several adds its footer): the clip follows.
+      final before = room;
+      await tester.tap(button('Pick several'));
+      await settleApp(tester);
+      room = aboveDock(tester);
+      expect(room.bottom, lessThan(before.bottom));
+      shown = tester.getRect(video);
+      expectInside(shown, room);
+      expectSameCentre(shown, room);
     });
 
     testApp("the player's own shape wins once it starts", (tester) async {
@@ -513,14 +606,15 @@ void main() {
       await waiting(tester, 1);
       platform.size = const Size(1920, 1080);
 
-      await open(tester, size: tall);
+      await open(tester);
 
-      final box = coveringStage(tester);
+      coveringStage(tester);
+      final room = aboveDock(tester);
       final shown = tester.getRect(video);
       expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
-      expectInside(shown, box);
-      expect(shown.width, closeTo(box.width, 0.01));
-      expectSameCentre(shown, box);
+      expectInside(shown, room);
+      expect(shown.width, closeTo(room.width, 0.01));
+      expectSameCentre(shown, room);
     });
 
     testApp('while the clip opens, its picture has the same fit', (
@@ -529,7 +623,7 @@ void main() {
       await waiting(tester, 1);
       platform.hold = true;
 
-      await open(tester, size: tall, spinning: true);
+      await open(tester, spinning: true);
 
       final box = coveringStage(tester);
       final picture = find.descendant(of: stage, matching: find.byType(Image));
@@ -556,6 +650,11 @@ void main() {
         tester.getRect(find.byType(CircularProgressIndicator)).size,
         const Size.square(36),
       );
+      // The spinner is where the clip shows, between the top and the dock.
+      expectSameCentre(
+        tester.getRect(find.byType(CircularProgressIndicator)),
+        showing(tester),
+      );
     });
 
     testApp('a clip of unknown size opens as 9:16', (tester) async {
@@ -568,7 +667,7 @@ void main() {
       );
       platform.hold = true;
 
-      await open(tester, size: tall, spinning: true);
+      await open(tester, spinning: true);
 
       final box = coveringStage(tester);
       final shown = tester.getRect(
@@ -602,11 +701,34 @@ void main() {
         (tester.widget<DecoratedBox>(disc).decoration as BoxDecoration).color,
         const Color(0xFF000000).withValues(alpha: 0.45),
       );
-      expectSameCentre(tester.getRect(disc), tester.getRect(video));
+      // On the clip, in the part of it the top and the dock leave showing
+      // (D-181): at 2x the dock reaches past the screen's middle.
+      expectSameCentre(tester.getRect(disc), showing(tester));
       final icon = find.descendant(of: disc, matching: find.byType(Icon));
       expect(tester.widget<Icon>(icon).icon, Symbols.play_arrow_rounded);
       expect(tester.widget<Icon>(icon).size, 36);
       expect(tester.getRect(icon).size, const Size.square(36));
+    });
+
+    testApp('paused at 2x: the disc shows between the top and the dock', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await newReel(tester, 'Sunsets');
+      await waiting(tester, 2);
+      await open(tester, textScale: 2);
+
+      await tester.tapAt(const Offset(100, 250));
+      await settleApp(tester);
+
+      expect(platform.player(1).playing, isFalse);
+      final disc = tester.getRect(
+        find.descendant(of: stage, matching: find.byType(DecoratedBox)).last,
+      );
+      final room = aboveDock(tester);
+      expect(disc.bottom, lessThanOrEqualTo(room.bottom));
+      expect(disc.top, greaterThanOrEqualTo(tester.getRect(top).bottom));
     });
 
     testApp('a long clip has the large scrub bar with the hint', (
@@ -639,26 +761,65 @@ void main() {
   });
 
   group('moving between clips', () {
-    testApp('arrows disabled at the ends', (tester) async {
-      await waiting(tester, 3);
+    testApp('the top: segments, Close, ‹ title ›, Mute; ‹ off on the first '
+        'clip', (tester) async {
+      await waiting(tester, 3, zoneId: 'Europe/London');
       await open(tester);
 
-      expect(enabled(tester, TtArrowSide.previous), isFalse);
-      expect(enabled(tester, TtArrowSide.next), isTrue);
+      // On the top scrim, from the top of the screen: the status bar (24),
+      // 4 dp, the 3 dp segments 16 dp from the sides, the 56 dp header, and
+      // the scrim's 24 dp fade under it.
+      final scrim = tester.getRect(top);
+      expect(scrim.top, 0);
+      final bar = find.descendant(of: top, matching: find.byType(TtSegmentBar));
+      final head = find.descendant(
+        of: top,
+        matching: find.byType(TtPlayerHeader),
+      );
+      expect(bar, findsOneWidget);
+      expect(head, findsOneWidget);
+      expect(tester.getRect(bar).top, 24 + 4);
+      expect(tester.getRect(bar).height, 3);
+      final first = tester.getRect(
+        find.descendant(of: bar, matching: find.byType(DecoratedBox)).first,
+      );
+      expect(first.left, 16);
+      expect(tester.getRect(head).top, tester.getRect(bar).bottom);
+      expect(scrim.bottom, tester.getRect(head).bottom + 24);
 
-      await tester.tap(arrow(TtArrowSide.next));
+      // Close, ‹, the title, ›, Mute, left to right.
+      double x(Finder f) => tester.getCenter(f).dx;
+      final previous = find.descendant(
+        of: head,
+        matching: find.bySemanticsLabel('Previous clip'),
+      );
+      expect(x(iconButton('Close tagging')), lessThan(x(previous)));
+      expect(x(previous), lessThan(x(find.text('1 of 3'))));
+      expect(x(find.text('1 of 3')), lessThan(x(iconButton('Next clip'))));
+      expect(x(iconButton('Next clip')), lessThan(x(iconButton('Unmute'))));
+      // The whole scene line, which wraps rather than cuts.
+      expect(header(tester).wrapSubtitle, isTrue);
+      expect(subtitle(tester), 'Scene 1 of 1 · 9:01–9:03 AM');
+
+      // ‹ is off on the first clip, › on the last.
+      expect(header(tester).previous!.semanticLabel, 'Previous clip');
+      expect(header(tester).next!.semanticLabel, 'Next clip');
+      expect(previousOn(tester), isFalse);
+      expect(nextOn(tester), isTrue);
+
+      await tester.tap(iconButton('Next clip'));
       await settleApp(tester);
       expect(title(tester), '2 of 3');
-      expect(enabled(tester, TtArrowSide.previous), isTrue);
-      expect(enabled(tester, TtArrowSide.next), isTrue);
+      expect(previousOn(tester), isTrue);
+      expect(nextOn(tester), isTrue);
 
-      await tester.tap(arrow(TtArrowSide.next));
+      await tester.tap(iconButton('Next clip'));
       await settleApp(tester);
       expect(title(tester), '3 of 3');
-      expect(enabled(tester, TtArrowSide.next), isFalse);
-      expect(enabled(tester, TtArrowSide.previous), isTrue);
+      expect(nextOn(tester), isFalse);
+      expect(previousOn(tester), isTrue);
 
-      await tester.tap(arrow(TtArrowSide.previous));
+      await tester.tap(iconButton('Previous clip'));
       await settleApp(tester);
       expect(title(tester), '2 of 3');
     });
@@ -789,7 +950,7 @@ void main() {
       await waiting(tester, 3);
       await open(tester);
 
-      await tester.tap(arrow(TtArrowSide.next));
+      await tester.tap(iconButton('Next clip'));
       await settleApp(tester);
 
       expect(title(tester), '2 of 3');
@@ -821,11 +982,11 @@ void main() {
 
       // Next, and Previous again before the clip ahead has moved on: clip 2's
       // controller is still held (as the clip ahead) when its stage goes.
-      await tester.tap(arrow(TtArrowSide.next));
+      await tester.tap(iconButton('Next clip'));
       await quick(tester);
       expect(title(tester), '2 of 3');
       expect(playingUris(), [_uri(2)]);
-      await tester.tap(arrow(TtArrowSide.previous));
+      await tester.tap(iconButton('Previous clip'));
       await quick(tester);
 
       expect(title(tester), '1 of 3');
@@ -872,11 +1033,11 @@ void main() {
         await open(tester);
 
         for (var i = 0; i < 3; i++) {
-          await tester.tap(arrow(TtArrowSide.next));
+          await tester.tap(iconButton('Next clip'));
           await settleApp(tester);
         }
         for (var i = 0; i < 3; i++) {
-          await tester.tap(arrow(TtArrowSide.previous));
+          await tester.tap(iconButton('Previous clip'));
           await settleApp(tester);
           expect(playingUris(), hasLength(1));
           expect(platform.live.length, lessThanOrEqualTo(2));
@@ -989,7 +1150,7 @@ void main() {
       final ids = await waiting(tester, 3);
       await open(tester);
 
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       expect(title(tester), '2 of 3');
@@ -1025,7 +1186,7 @@ void main() {
     testApp('undo of a skip goes back to the clip', (tester) async {
       await waiting(tester, 3);
       await open(tester);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
       expect(title(tester), '2 of 3');
 
@@ -1081,7 +1242,7 @@ void main() {
 
       await tagInto(tester, 'Goa');
       expect(find.text('Added to Goa'), findsOneWidget);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       // The newest replaces the oldest: one snack, one Undo.
@@ -1320,7 +1481,7 @@ void main() {
     });
   });
 
-  group('the panel', () {
+  group('the dock, the rail and All reels', () {
     testApp('chips: Collecting reels newest first, then New reel', (
       tester,
     ) async {
@@ -1330,14 +1491,19 @@ void main() {
 
       await open(tester);
 
-      final names = [
-        for (final c in tester.widgetList<TtReelChip>(find.byType(TtReelChip)))
-          c.name,
-      ];
-      expect(names, ['Newer', 'Old']);
-      expect(find.byType(TtNewReelChip), findsOneWidget);
-      expect(find.text('Add this clip to it'), findsOneWidget);
-      expect(find.text('Add to reel'), findsOneWidget);
+      expect(dockNames(tester), ['Newer', 'Old']);
+      // On the clip: the glass chips (D-178).
+      for (final c in tester.widgetList<TtReelChip>(
+        inDock(find.byType(TtReelChip)),
+      )) {
+        expect(c.style, TtReelChipStyle.onVideo);
+      }
+      final fresh = tester.widget<TtNewReelChip>(
+        inDock(find.byType(TtNewReelChip)),
+      );
+      expect(fresh.style, TtReelChipStyle.onVideo);
+      expect(fresh.subtitle, 'Add this clip to it');
+      expect(inDock(find.text('Add to reel')), findsOneWidget);
     });
 
     testApp('chip semantics: the reel and its clip count', (tester) async {
@@ -1352,6 +1518,267 @@ void main() {
       semantics.dispose();
     });
 
+    testApp('the dock shows at most three Collecting reels plus New reel', (
+      tester,
+    ) async {
+      for (var i = 1; i <= 5; i++) {
+        await newReel(tester, 'Collecting $i');
+      }
+      for (var i = 1; i <= 2; i++) {
+        await newReel(tester, 'Ready $i', status: ReelStatus.ready);
+      }
+      await waiting(tester, 2);
+
+      await open(tester);
+
+      // The three newest Collecting reels (Home's order), then New reel.
+      expect(dockNames(tester), [
+        'Collecting 5',
+        'Collecting 4',
+        'Collecting 3',
+      ]);
+      expect(inDock(find.byType(TtNewReelChip)), findsOneWidget);
+      expect(chip('Collecting 2'), findsNothing);
+      expect(chip('Ready 1'), findsNothing);
+      // The rest are in All reels.
+      expect(inDock(allReels), findsOneWidget);
+    });
+
+    testApp('All reels only when needed', (tester) async {
+      final london = await newReel(tester, 'London Food');
+      await newReel(tester, 'Goa Trip');
+      await newReel(tester, 'Sunsets');
+      await waiting(tester, 2);
+      await open(tester);
+
+      // Three Collecting reels and nothing else: they are all in the dock.
+      expect(allReels, findsNothing);
+      expect(inDock(button('Pick several')), findsOneWidget);
+
+      // A reel that is Ready is not in the dock: All reels comes, after Pick
+      // several.
+      await real(tester, () => reels.setStatus(london.id, ReelStatus.ready));
+      await settleApp(tester);
+
+      expect(chip('London Food'), findsNothing);
+      expect(inDock(allReels), findsOneWidget);
+      expect(
+        tester.getCenter(button('Pick several')).dx,
+        lessThan(tester.getCenter(allReels).dx),
+      );
+      expect(tester.widget<TtButton>(allReels).icon, Symbols.apps_rounded);
+      expect(
+        tester.widget<TtButton>(button('Pick several')).icon,
+        Symbols.library_add_check_rounded,
+      );
+    });
+
+    testApp('the All reels sheet: Collecting, New reel, Other reels', (
+      tester,
+    ) async {
+      for (var i = 1; i <= 4; i++) {
+        await newReel(tester, 'Collecting $i');
+      }
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      await newReel(tester, 'Posted', status: ReelStatus.published);
+      await waiting(tester, 2);
+      await open(tester);
+
+      await openAllReels(tester);
+
+      expect(inSheet(find.text('Add to reel')), findsOneWidget);
+      final names = [
+        for (final c in tester.widgetList<TtReelChip>(
+          inSheet(find.byType(TtReelChip)),
+        ))
+          c.name,
+      ];
+      expect(names, [
+        'Collecting 4',
+        'Collecting 3',
+        'Collecting 2',
+        'Collecting 1',
+        // Home's order, newest first, whatever the status.
+        'Posted',
+        'Old shoot',
+      ]);
+      // The sheet's chips are the surface ones, not the glass.
+      for (final c in tester.widgetList<TtReelChip>(
+        inSheet(find.byType(TtReelChip)),
+      )) {
+        expect(c.style, TtReelChipStyle.surface);
+        expect(c.multiSelect, isFalse);
+      }
+      // "Collecting", its chips, New reel (with its line), then "Other
+      // reels" and the Ready and Published ones.
+      double y(Finder f) => tester.getTopLeft(f).dy;
+      final collecting = inSheet(find.text('Collecting'));
+      final others = inSheet(find.text('Other reels'));
+      final fresh = inSheet(find.byType(TtNewReelChip));
+      expect(
+        tester.widget<TtNewReelChip>(fresh).subtitle,
+        'Add this clip to it',
+      );
+      expect(y(collecting), lessThan(y(inSheet(chip('Collecting 4')))));
+      expect(y(inSheet(chip('Collecting 1'))), lessThanOrEqualTo(y(fresh)));
+      expect(y(fresh), lessThan(y(others)));
+      expect(y(others), lessThan(y(inSheet(chip('Old shoot')))));
+      // No Done outside Pick several.
+      expect(inSheet(button('Done')), findsNothing);
+
+      await expectTtAccessible(tester);
+    });
+
+    testApp('tagging from All reels closes it and tags', (tester) async {
+      await newReel(tester, 'London Food');
+      await newReel(tester, 'Goa Trip');
+      await newReel(tester, 'Sunsets');
+      final old = await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      await openAllReels(tester);
+
+      await tester.tap(inSheet(chip('Old shoot')));
+      await tester.pump();
+      // The sheet goes first, then the tap is the dock's: the hold.
+      expect(holds.made, hasLength(1));
+      await settleApp(tester);
+      expect(sheet, findsNothing);
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+
+      holds.fireAll();
+      await settleApp(tester);
+
+      expect(await reelsOf(tester, ids[0]), {old.id});
+      expect(title(tester), '2 of 3');
+      expect(find.text('Added to Old shoot'), findsOneWidget);
+      expect(holds.made, hasLength(1));
+    });
+
+    testApp('a double tap in All reels tags once', (tester) async {
+      await newReel(tester, 'London Food');
+      final old = await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      await openAllReels(tester);
+
+      // Two taps before the sheet has gone: the second must neither tag
+      // again nor pop a second route (the player itself).
+      final tapped = tester.widget<TtReelChip>(inSheet(chip('Old shoot')));
+      tapped.onTap!();
+      tapped.onTap!();
+      await tester.pump();
+      expect(holds.made, hasLength(1));
+      holds.fireAll();
+      await settleApp(tester);
+
+      expect(find.byType(TagPlayerScreen), findsOneWidget);
+      expect(sheet, findsNothing);
+      expect(await reelsOf(tester, ids[0]), {old.id});
+      expect(await reelsOf(tester, ids[1]), isEmpty);
+      expect(title(tester), '2 of 3');
+    });
+
+    testApp('New reel from All reels opens the reel form', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      await openAllReels(tester);
+
+      await tester.tap(inSheet(find.byType(TtNewReelChip)));
+      await settleApp(tester);
+
+      // All reels has gone; the reel form is the one sheet.
+      expect(sheet, findsOneWidget);
+      expect(find.text('This clip will be added to it.'), findsOneWidget);
+      expect(find.text('Other reels'), findsNothing);
+
+      await tester.enterText(find.byType(TextField), 'Tokyo');
+      await tester.pump();
+      await tester.tap(button('Create and add'));
+      await tester.pump();
+      await settleApp(tester);
+
+      final made = (await real(
+        tester,
+        () => reels.watchAll().first,
+      )).firstWhere((r) => r.name == 'Tokyo');
+      expect(await reelsOf(tester, ids[0]), {made.id});
+      expect(find.text('Added to Tokyo'), findsOneWidget);
+    });
+
+    testApp('Pick several: Pick reels, All reels, Cancel; no rail; a reel '
+        'picked in All reels joins the dock', (tester) async {
+      for (var i = 1; i <= 4; i++) {
+        await newReel(tester, 'Collecting $i');
+      }
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      expect(rail, findsOneWidget);
+
+      await tester.tap(button('Pick several'));
+      await settleApp(tester);
+
+      expect(inDock(find.text('Pick reels')), findsOneWidget);
+      expect(button('Pick several'), findsNothing);
+      expect(inDock(allReels), findsOneWidget);
+      expect(inDock(button('Cancel')), findsOneWidget);
+      expect(
+        tester.getCenter(allReels).dx,
+        lessThan(tester.getCenter(button('Cancel')).dx),
+      );
+      expect(rail, findsNothing);
+      expect(skip, findsNothing);
+      // No New reel in the dock while picking: it is in All reels.
+      expect(inDock(find.byType(TtNewReelChip)), findsNothing);
+      expect(dockNames(tester), [
+        'Collecting 4',
+        'Collecting 3',
+        'Collecting 2',
+      ]);
+
+      await openAllReels(tester);
+      expect(inSheet(find.text('Pick reels for this clip')), findsOneWidget);
+      expect(
+        tester.widget<TtReelChip>(inSheet(chip('Collecting 1'))).multiSelect,
+        isTrue,
+      );
+      await tester.tap(inSheet(chip('Collecting 1')));
+      await settleApp(tester);
+      // A pick, not a tag: the sheet stays, and the chip says so.
+      expect(sheet, findsOneWidget);
+      expect(holds.made, isEmpty);
+      expect(
+        tester.widget<TtReelChip>(inSheet(chip('Collecting 1'))).state,
+        TtReelChipState.picked,
+      );
+
+      await tester.tap(inSheet(button('Done')));
+      await settleApp(tester);
+
+      expect(sheet, findsNothing);
+      expect(dockNames(tester), [
+        'Collecting 4',
+        'Collecting 3',
+        'Collecting 2',
+        'Collecting 1',
+      ]);
+      expect(chipState(tester, 'Collecting 1'), TtReelChipState.picked);
+      expect(button('Add to 1 reel & next'), findsOneWidget);
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+
+      // Cancel: the rail and Pick several come back.
+      await tester.tap(button('Cancel'));
+      await settleApp(tester);
+      expect(rail, findsOneWidget);
+      expect(dockNames(tester), [
+        'Collecting 4',
+        'Collecting 3',
+        'Collecting 2',
+      ]);
+    });
+
     testApp('pick several footer counts and is disabled with none', (
       tester,
     ) async {
@@ -1362,11 +1789,12 @@ void main() {
 
       await tester.tap(button('Pick several'));
       await settleApp(tester);
-      expect(find.text('Pick reels for this clip'), findsOneWidget);
+      expect(find.text('Pick reels'), findsOneWidget);
       expect(button('Pick several'), findsNothing);
       expect(button('Cancel'), findsOneWidget);
       var footer = tester.widget<TtButton>(button('Pick one or more reels'));
       expect(footer.onPressed, isNull);
+      expect(footer.expand, isTrue);
 
       await tester.tap(chip('Goa'));
       await settleApp(tester);
@@ -1392,7 +1820,7 @@ void main() {
       expect(title(tester), '2 of 3');
       expect(find.text('Added to London and Goa'), findsOneWidget);
       // Sticky: still picking on the next clip, with the picks cleared.
-      expect(find.text('Pick reels for this clip'), findsOneWidget);
+      expect(find.text('Pick reels'), findsOneWidget);
       expect(button('Pick one or more reels'), findsOneWidget);
       expect(chipState(tester, 'Goa'), TtReelChipState.idle);
 
@@ -1411,6 +1839,7 @@ void main() {
       await open(tester);
 
       expect(button('Pick several'), findsNothing);
+      expect(allReels, findsNothing);
     });
 
     testApp('a long press on a chip starts Pick several with it', (
@@ -1424,24 +1853,53 @@ void main() {
       await tester.longPress(chip('Goa'));
       await settleApp(tester);
 
-      expect(find.text('Pick reels for this clip'), findsOneWidget);
+      expect(find.text('Pick reels'), findsOneWidget);
       expect(chipState(tester, 'Goa'), TtReelChipState.picked);
       expect(button('Add to 1 reel & next'), findsOneWidget);
       expect(holds.made, isEmpty);
     });
 
-    testApp('same as previous shows the names', (tester) async {
+    testApp('the rail sits 12 dp from the end, 4 dp above the dock, 10 dp '
+        'apart', (tester) async {
+      await newReel(tester, 'Goa');
+      await waiting(tester, 3);
+      await open(tester);
+
+      final box = tester.getRect(rail);
+      expect(box.right, 360 - 12);
+      expect(box.bottom, tester.getRect(dock).top - 4);
+      final skipBox = tester.getRect(skip);
+      final sameBox = tester.getRect(same);
+      expect(sameBox.top - skipBox.bottom, 10);
+      // Skip over Same, each 64 dp at 1x.
+      expect(skipBox.size, const Size.square(64));
+      expect(sameBox.size, const Size.square(64));
+      final skipButton = tester.widget<TtRailButton>(skip);
+      expect(skipButton.icon, Symbols.redo_rounded);
+      expect(skipButton.semanticLabel, 'Skip this clip');
+      expect(sameButton(tester).icon, Symbols.repeat_rounded);
+      // Over the clip, not in the dock.
+      expect(inDock(find.byType(TtRailButton)), findsNothing);
+    });
+
+    testApp('Same is off at 45 % until something is tagged, then names the '
+        'reels', (tester) async {
       final goa = await newReel(tester, 'Goa');
       final london = await newReel(tester, 'London');
       final ids = await waiting(tester, 3);
       await open(tester);
 
-      // Before any tag: disabled, with no names.
-      var same = tester.widget<TtSameAsPreviousButton>(
-        find.byType(TtSameAsPreviousButton),
+      // Before any tag: off, at 45 %, and named so.
+      expect(sameButton(tester).onPressed, isNull);
+      expect(sameButton(tester).detail, isNull);
+      expect(
+        sameButton(tester).semanticLabel,
+        'Same as previous: nothing tagged yet',
       );
-      expect(same.onPressed, isNull);
-      expect(same.detail, isNull);
+      final label = tester.widget<Text>(
+        find.descendant(of: same, matching: find.text('Same')),
+      );
+      expect(label.style!.color!.a, closeTo(0.45, 0.01));
 
       await tester.tap(button('Pick several'));
       await settleApp(tester);
@@ -1453,19 +1911,103 @@ void main() {
       await tester.tap(button('Cancel'));
       await settleApp(tester);
 
-      same = tester.widget<TtSameAsPreviousButton>(
-        find.byType(TtSameAsPreviousButton),
+      expect(sameButton(tester).detail, 'London, Goa');
+      expect(sameButton(tester).semanticLabel, 'Same as previous: London, Goa');
+      expect(sameButton(tester).onPressed, isNotNull);
+      expect(
+        tester
+            .widget<Text>(
+              find.descendant(of: same, matching: find.text('Same')),
+            )
+            .style!
+            .color!
+            .a,
+        1,
       );
-      expect(same.detail, 'London, Goa');
-      expect(same.semanticLabel, 'Same as previous: London, Goa');
-      expect(same.onPressed, isNotNull);
 
-      await tester.tap(find.byType(TtSameAsPreviousButton));
+      await tester.tap(same);
       await settleApp(tester);
 
       expect(await reelsOf(tester, ids[1]), {goa.id, london.id});
       expect(title(tester), '3 of 3');
       expect(find.text('Added to London and Goa'), findsOneWidget);
+    });
+
+    for (final scale in [1.0, 2.0]) {
+      testApp("the snack's right edge stays clear of the rail (${scale}x)", (
+        tester,
+      ) async {
+        await newReel(tester, 'Lisbon');
+        await waiting(tester, 3);
+        await open(tester, textScale: scale);
+
+        // A tag: the snack, and Same with the reel's name, which widens the
+        // rail at large text.
+        await tagInto(tester, 'Lisbon');
+
+        final snack = tester.getRect(find.byType(TtSnack));
+        final box = tester.getRect(rail);
+        final dockTop = tester.getRect(dock).top;
+        expect(snack.right, lessThanOrEqualTo(box.left));
+        expect(snack.left, 12);
+        expect(snack.bottom, closeTo(dockTop - 8, 0.5));
+        if (scale == 1) {
+          // The handoff's 88 dp: 12, the 64 dp rail, 12.
+          expect(box.width, 64);
+          expect(snack.right, 360 - 88);
+        } else {
+          // A fixed 88 would run under it.
+          expect(box.width, greaterThan(64));
+          expect(snack.right, closeTo(box.left - 12, 0.01));
+        }
+      });
+    }
+
+    testApp('the snack follows the dock when it grows (Pick several, 2x)', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await newReel(tester, 'Sunsets');
+      await waiting(tester, 3);
+      await open(tester, textScale: 2);
+      await tagInto(tester, 'Goa');
+      final before = tester.getRect(dock).top;
+      expect(
+        tester.getRect(find.byType(TtSnack)).bottom,
+        closeTo(before - 8, 0.5),
+      );
+
+      // Pick several adds the footer: the dock is taller.
+      await tester.tap(button('Pick several'));
+      await settleApp(tester);
+
+      final after = tester.getRect(dock).top;
+      expect(after, lessThan(before));
+      expect(find.byType(TtSnack), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(TtSnack)).bottom,
+        closeTo(after - 8, 0.5),
+      );
+    });
+
+    testApp('a tap on the dock above the reels plays or pauses, and never '
+        'tags', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await waiting(tester, 3);
+      await open(tester);
+      expect(platform.player(1).playing, isTrue);
+
+      // The dock's top, over the clip: its scrim takes no touch, so the tap
+      // is the clip's.
+      final box = tester.getRect(dock);
+      await tester.tapAt(Offset(box.center.dx, box.top + 10));
+      await settleApp(tester);
+
+      expect(platform.player(1).playing, isFalse);
+      expect(holds.made, isEmpty);
+      expect(title(tester), '1 of 3');
     });
 
     testApp('no reels shows the prompt and full-width new reel', (
@@ -1476,91 +2018,66 @@ void main() {
       await open(tester);
 
       expect(
-        find.text(
-          "You don't have any reels yet. "
-          'Create one and this clip goes into it.',
+        inDock(
+          find.text(
+            "You don't have any reels yet. "
+            'Create one and this clip goes into it.',
+          ),
         ),
         findsOneWidget,
       );
       final fresh = tester.widget<TtNewReelChip>(find.byType(TtNewReelChip));
       expect(fresh.fullWidth, isTrue);
       expect(fresh.subtitle, isNull);
+      expect(fresh.style, TtReelChipStyle.onVideo);
       expect(find.byType(TtReelChip), findsNothing);
-      expect(find.byType(TtOtherReelsToggle), findsNothing);
       expect(button('Pick several'), findsNothing);
-      // Full width: as wide as the panel's padded row.
+      expect(allReels, findsNothing);
+      // Full width: as wide as the dock's padded row.
       expect(tester.getSize(find.byType(TtNewReelChip)).width, 360 - 24);
     });
 
-    testApp('25 reels: only Collecting chips open', (tester) async {
-      for (var i = 0; i < 5; i++) {
-        await newReel(tester, 'Collecting $i');
-      }
-      for (var i = 0; i < 12; i++) {
-        await newReel(tester, 'Ready $i', status: ReelStatus.ready);
-      }
-      for (var i = 0; i < 8; i++) {
-        await newReel(tester, 'Published $i', status: ReelStatus.published);
-      }
-      await waiting(tester, 2);
-
-      await open(tester);
-
-      expect(find.byType(TtReelChip), findsNWidgets(5));
-      expect(find.text('Other reels (20)'), findsOneWidget);
-      expect(find.text('Ready 3'), findsNothing);
-      expect(
-        tester
-            .widget<TtOtherReelsToggle>(find.byType(TtOtherReelsToggle))
-            .expanded,
-        isFalse,
-      );
-    });
-
-    testApp('other reels toggle opens them', (tester) async {
-      await newReel(tester, 'Goa');
-      await newReel(tester, 'Done one', status: ReelStatus.ready);
-      await newReel(tester, 'Posted', status: ReelStatus.published);
-      await waiting(tester, 2);
-      await open(tester);
-      expect(find.byType(TtReelChip), findsNWidgets(1));
-
-      await tester.tap(find.byType(TtOtherReelsToggle));
-      await settleApp(tester);
-
-      expect(find.byType(TtReelChip), findsNWidgets(3));
-      expect(find.text('Other reels'), findsOneWidget);
-      expect(chip('Done one'), findsOneWidget);
-      expect(chip('Posted'), findsOneWidget);
-
-      await tester.tap(find.byType(TtOtherReelsToggle));
-      await settleApp(tester);
-      expect(find.byType(TtReelChip), findsNWidgets(1));
-      expect(find.text('Other reels (2)'), findsOneWidget);
-    });
-
-    testApp('other reels are open when no reel is Collecting', (tester) async {
-      await newReel(tester, 'Done one', status: ReelStatus.ready);
-      await newReel(tester, 'Posted', status: ReelStatus.published);
-      await waiting(tester, 2);
-
-      await open(tester);
-
-      expect(find.byType(TtReelChip), findsNWidgets(2));
-      expect(find.text('Other reels'), findsOneWidget);
-    });
-
-    testApp('a reel in Other reels tags like any other', (tester) async {
+    testApp('only Ready reels: New reel in the dock, the reels in All reels', (
+      tester,
+    ) async {
       final ready = await newReel(tester, 'Done one', status: ReelStatus.ready);
-      await newReel(tester, 'Goa');
+      await newReel(tester, 'Posted', status: ReelStatus.published);
       final ids = await waiting(tester, 2);
       await open(tester);
-      await tester.tap(find.byType(TtOtherReelsToggle));
+
+      expect(inDock(find.byType(TtReelChip)), findsNothing);
+      expect(inDock(find.byType(TtNewReelChip)), findsOneWidget);
+      expect(inDock(allReels), findsOneWidget);
+      expect(inDock(button('Pick several')), findsOneWidget);
+
+      await openAllReels(tester);
+      await tester.tap(inSheet(chip('Done one')));
+      await tester.pump();
+      holds.fireAll();
       await settleApp(tester);
 
-      await tagInto(tester, 'Done one');
-
       expect(await reelsOf(tester, ids[0]), {ready.id});
+    });
+
+    testApp('the old panel is gone', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      await waiting(tester, 3);
+      await open(tester);
+
+      bool named(Widget w, String type) => w.runtimeType.toString() == type;
+      for (final type in [
+        'TtTagPanel',
+        'TtSameAsPreviousButton',
+        'TtOtherReelsToggle',
+      ]) {
+        expect(
+          find.byWidgetPredicate((w) => named(w, type), description: type),
+          findsNothing,
+        );
+      }
+      expect(find.byType(TtStageArrow), findsNothing);
+      expect(find.text('Other reels'), findsNothing);
     });
   });
 
@@ -1666,12 +2183,17 @@ void main() {
     ) async {
       await newReel(tester, 'Goa');
       await newReel(tester, 'London');
+      // A Ready reel, so All reels is offered: in Pick several New reel is
+      // only there.
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
       final ids = await waiting(tester, 2);
       await open(tester);
       await tester.tap(button('Pick several'));
       await settleApp(tester);
+      expect(find.byType(TtNewReelChip), findsNothing);
+      await openAllReels(tester);
 
-      await tester.tap(find.byType(TtNewReelChip));
+      await tester.tap(inSheet(find.byType(TtNewReelChip)));
       await settleApp(tester);
       await tester.enterText(find.byType(TextField), 'Tokyo');
       await tester.pump();
@@ -1714,7 +2236,7 @@ void main() {
       await tagInto(tester, 'Goa');
       await tagInto(tester, 'Goa');
       await tagInto(tester, 'London');
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       expect(find.text('All done!'), findsOneWidget);
@@ -1736,14 +2258,15 @@ void main() {
       expect(find.text('Back to To tag'), findsOneWidget);
       // The player is gone.
       expect(find.byType(TtScrubBar), findsNothing);
-      expect(find.byType(TtTagPanel), findsNothing);
+      expect(dock, findsNothing);
+      expect(rail, findsNothing);
       expect(platform.live, isEmpty);
     });
 
     testApp('one clip says "1 clip sorted"', (tester) async {
       await waiting(tester, 1);
       await open(tester);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       expect(find.text('1 clip sorted. Nice work.'), findsOneWidget);
@@ -1752,7 +2275,7 @@ void main() {
     testApp('see your reels goes to Reels', (tester) async {
       await waiting(tester, 1);
       await open(tester);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       await tester.tap(find.text('See your reels'));
@@ -1764,7 +2287,7 @@ void main() {
     testApp('back to To tag goes to To tag', (tester) async {
       await waiting(tester, 1);
       await open(tester);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await settleApp(tester);
 
       await tester.tap(find.text('Back to To tag'));
@@ -1782,7 +2305,9 @@ void main() {
   });
 
   group('large text and accessibility', () {
-    testApp('2x text: chips one column and no overflow', (tester) async {
+    testApp('2x text: one column, the rail keeps its place, no overflow', (
+      tester,
+    ) async {
       await newReel(tester, 'London Food');
       await newReel(tester, 'Goa Trip');
       await newReel(tester, 'Sunsets');
@@ -1790,65 +2315,177 @@ void main() {
 
       await open(tester, textScale: 2);
 
+      expect(tester.takeException(), isNull);
       final lefts = {
-        for (final c in tester.widgetList(find.byType(TtReelChip)))
+        for (final c in tester.widgetList(inDock(find.byType(TtReelChip))))
           tester.getTopLeft(find.byWidget(c)).dx,
       };
       expect(lefts, hasLength(1));
-      expect(tester.takeException(), isNull);
-      // The video keeps room.
-      final video = tester.getSize(find.byKey(const ValueKey('fake-video-1')));
-      expect(video.height, greaterThan(120));
+      // The rail: 12 dp from the end, 4 dp above the dock, grown with its
+      // text, wholly on the screen.
+      final box = tester.getRect(rail);
+      expect(box.right, 360 - 12);
+      expect(box.bottom, tester.getRect(dock).top - 4);
+      expect(box.top, greaterThanOrEqualTo(0));
+      expect(tester.getSize(skip).height, greaterThan(64));
     });
 
-    testApp('2x text: the scene range and Same as previous are whole', (
-      tester,
-    ) async {
+    testApp('2x text: the whole scene line wraps, uncut', (tester) async {
       await newReel(tester, 'Goa');
       await newReel(tester, 'London');
-      await waiting(tester, 3);
+      await waiting(tester, 3, zoneId: 'Europe/London');
       await open(tester, textScale: 2);
-      // A tag first, so Same as previous shows the reel under its label.
+      // A tag first, so Same shows the reel under its label.
       await tagInto(tester, 'Goa');
 
       expect(tester.takeException(), isNull);
       bool cut(Finder text) =>
           tester.renderObject<RenderParagraph>(text).didExceedMaxLines;
-      // At large text the header gives the range alone, not "Scene 1 of 1".
-      expect(subtitle(tester), isNot(contains('Scene')));
-      expect(subtitle(tester), contains('–'));
-      final header = find.descendant(
+      // At every scale the scene and its range: the large-text range-only
+      // rule has gone (D-181).
+      expect(subtitle(tester), 'Scene 1 of 1 · 9:01–9:03 AM');
+      final line = find.descendant(
         of: find.byType(TtPlayerHeader),
-        matching: find.text(
-          tester.widget<TtPlayerHeader>(find.byType(TtPlayerHeader)).subtitle!,
-        ),
+        matching: find.text(header(tester).subtitle!),
       );
-      expect(header, findsOneWidget);
-      expect(cut(header), isFalse);
-      expect(cut(find.text('Same as previous')), isFalse);
-      // The video keeps at least 200 dp.
-      final video = tester.getSize(find.byKey(const ValueKey('fake-video-2')));
-      expect(video.height, greaterThanOrEqualTo(200));
+      expect(line, findsOneWidget);
+      expect(cut(line), isFalse);
+      expect(
+        cut(find.descendant(of: same, matching: find.text('Same'))),
+        isFalse,
+      );
     });
 
-    testApp('2x text on a small phone: no overflow, video keeps room', (
-      tester,
-    ) async {
+    testApp('2x on a small phone (360 × 640): no overflow, the grid scrolls, '
+        'the footer is reachable', (tester) async {
       for (var i = 0; i < 6; i++) {
         await newReel(tester, 'A reel with quite a long name $i');
       }
-      await waiting(tester, 3);
+      final ids = await waiting(tester, 3);
 
       await open(tester, textScale: 2, size: const Size(360, 640));
 
       expect(tester.takeException(), isNull);
-      final video = tester.getSize(find.byKey(const ValueKey('fake-video-1')));
-      expect(video.height, greaterThan(80));
+      // The rail keeps its place, on the screen.
+      var box = tester.getRect(rail);
+      expect(box.bottom, tester.getRect(dock).top - 4);
+      expect(box.right, 360 - 12);
+      expect(box.top, greaterThanOrEqualTo(0));
+      // The dock stays on the screen, and its grid scrolls.
+      expect(tester.getRect(dock).top, greaterThanOrEqualTo(0));
+      final grid = tester.state<ScrollableState>(
+        inDock(find.byType(Scrollable)),
+      );
+      expect(grid.position.maxScrollExtent, greaterThan(0));
+
+      // Pick several: the footer is on the screen and takes the tap.
+      await tester.tap(button('Pick several'));
+      await settleApp(tester);
+      expect(tester.takeException(), isNull);
+      await tester.tap(chip('A reel with quite a long name 5'));
+      await settleApp(tester);
+      final footer = button('Add to 1 reel & next');
+      box = tester.getRect(footer);
+      expect(box.bottom, lessThanOrEqualTo(640));
+      expect(box.top, greaterThanOrEqualTo(0));
+      await tester.tap(footer);
+      await settleApp(tester);
+
+      expect(await reelsOf(tester, ids[0]), hasLength(1));
+      expect(title(tester), '2 of 3');
+      expect(tester.takeException(), isNull);
+    });
+
+    // At 2x too: there the rail sits above the screen's middle, where the
+    // order the geometry gives would put Skip before the clip.
+    for (final scale in [1.0, 2.0]) {
+      testApp(
+        'focus order: Close, Previous, title, Next, Mute, the clip, Skip, '
+        'Same, Pick several, All reels, the reels, New reel (${scale}x)',
+        (tester) async {
+          final semantics = tester.ensureSemantics();
+          for (var i = 1; i <= 4; i++) {
+            await newReel(tester, 'Collecting $i');
+          }
+          await waiting(tester, 3);
+          await open(tester, textScale: scale);
+
+          final wanted = <Pattern>[
+            'Close tagging',
+            'Previous clip',
+            RegExp('^1 of 3'),
+            'Next clip',
+            'Unmute',
+            RegExp('^Pause clip, '),
+            'Skip this clip',
+            'Same as previous: nothing tagged yet',
+            'Pick several',
+            'All reels',
+            'Add to Collecting 4, 0 clips',
+            'Add to Collecting 3, 0 clips',
+            'Add to Collecting 2, 0 clips',
+            'New reel',
+          ];
+          bool matches(Pattern p, String label) =>
+              p is RegExp ? p.hasMatch(label) : label == p;
+          final order = [
+            for (final node
+                in tester.semantics.simulatedAccessibilityTraversal())
+              for (final p in wanted)
+                if (matches(p, node.label)) p,
+          ];
+          expect(order, wanted);
+
+          // The order is explicit, not the geometry's (which happens to agree
+          // here, and would not in every layout): each control is in a group
+          // with its sort key, top 0, the clip 1, the rail 2, the dock 3.
+          double? groupOf(SemanticsNode node) {
+            for (SemanticsNode? n = node; n != null; n = n.parent) {
+              final key = n.sortKey;
+              if (key is OrdinalSortKey) return key.order;
+            }
+            return null;
+          }
+
+          final groups = <double?>[
+            for (final node
+                in tester.semantics.simulatedAccessibilityTraversal())
+              for (final p in wanted)
+                if (matches(p, node.label)) groupOf(node),
+          ];
+          expect(groups, [0, 0, 0, 0, 0, 1, 2, 2, 3, 3, 3, 3, 3, 3]);
+          semantics.dispose();
+        },
+      );
+    }
+
+    testApp('text on the scrims and the glass is AA over a white clip', (
+      tester,
+    ) async {
+      // The worst case for text over the clip (handoff "Contrast").
+      platform.solid = const Color(0xFFFFFFFF);
+      await newReel(tester, 'London Food');
+      await newReel(tester, 'Goa Trip');
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      await waiting(tester, 3, zoneId: 'Europe/London');
+      await open(tester);
+      // Same's second line, the reel's name, is on its glass.
+      await tagInto(tester, 'London Food');
+      expect(sameButton(tester).detail, 'London Food');
+      expect(
+        find.descendant(of: stage, matching: find.byType(VideoPlayer)),
+        findsOneWidget,
+      );
+
+      final semantics = tester.ensureSemantics();
+      await expectLater(tester, meetsGuideline(ttTextContrastGuideline));
+      semantics.dispose();
     });
 
     testApp('meets the accessibility guidelines', (tester) async {
       await newReel(tester, 'Goa');
       await newReel(tester, 'London');
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
       await waiting(tester, 3);
       await open(tester);
 
@@ -1859,6 +2496,7 @@ void main() {
       final semantics = tester.ensureSemantics();
       await newReel(tester, 'Goa');
       await newReel(tester, 'London');
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
       await waiting(tester, 3);
       await open(tester);
 
@@ -1868,10 +2506,12 @@ void main() {
         'Previous clip',
         'Next clip',
         'Skip this clip',
-        'Same as previous',
+        'Same as previous: nothing tagged yet',
         'Playback position',
         'Reels',
         'Pick several',
+        'All reels',
+        'Add to Goa, 0 clips',
         'New reel',
       ]) {
         expect(find.bySemanticsLabel(label), findsWidgets, reason: label);
@@ -1924,7 +2564,7 @@ void main() {
     testApp('See your reels from All done! goes to Reels', (tester) async {
       await waiting(tester, 1);
       await openOverTheShell(tester);
-      await tester.tap(button('Skip'));
+      await tester.tap(skip);
       await frames(tester);
       expect(find.text('See your reels'), findsOneWidget);
 

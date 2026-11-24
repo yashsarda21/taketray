@@ -49,7 +49,6 @@ export 'src/components/status_pill.dart';
 export 'src/components/step_list.dart';
 export 'src/components/storage_bar.dart';
 export 'src/components/tag_done.dart';
-export 'src/components/tag_panel.dart';
 export 'src/components/text_field.dart';
 export 'src/components/video_surface.dart';
 export 'src/components/viewer_chrome.dart';

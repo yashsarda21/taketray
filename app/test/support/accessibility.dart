@@ -2,3 +2,7 @@
 // on every tappable node, WCAG text contrast), so a screen test can run the
 // same one (D-62).
 export '../../../packages/taketray_ui/test/support/tt_accessibility.dart';
+// The contrast guideline alone, for a screen test that checks text over the
+// clip (D-62).
+export '../../../packages/taketray_ui/test/support/tt_text_contrast.dart'
+    show ttTextContrastGuideline;

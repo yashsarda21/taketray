@@ -1372,10 +1372,6 @@
   "@tagPlayerSkipSemantics": {
     "description": "What a screen reader says for the tag player's Skip button."
   },
-  "tagPlayerSame": "Same as previous",
-  "@tagPlayerSame": {
-    "description": "The tag player's button that puts the clip in the reels of the last tag."
-  },
   "tagPlayerSameSemantics": "Same as previous: {names}",
   "@tagPlayerSameSemantics": {
     "description": "What a screen reader says for the Same as previous button when there are reels to repeat. {names} is the reel names, joined.",
@@ -1384,6 +1380,26 @@
         "type": "String"
       }
     }
+  },
+  "tagRailSame": "Same",
+  "@tagRailSame": {
+    "description": "The label of the tag player's rail button that puts the clip in the reels of the last tag (Same as previous), under its icon."
+  },
+  "tagRailSameNone": "Same as previous: nothing tagged yet",
+  "@tagRailSameNone": {
+    "description": "What a screen reader says for the tag player's Same button while nothing has been tagged yet (the button is off)."
+  },
+  "tagAllReels": "All reels",
+  "@tagAllReels": {
+    "description": "The button in the tag player's dock that opens a sheet with every reel."
+  },
+  "tagDockPickTitle": "Pick reels",
+  "@tagDockPickTitle": {
+    "description": "The heading of the tag player's dock while Pick several is on."
+  },
+  "tagAllReelsDone": "Done",
+  "@tagAllReelsDone": {
+    "description": "The button that closes the tag player's All reels sheet while Pick several is on (the picks are kept)."
   },
   "tagPanelLabel": "Reels",
   "@tagPanelLabel": {
@@ -1424,16 +1440,7 @@
   },
   "tagOtherReels": "Other reels",
   "@tagOtherReels": {
-    "description": "The tag panel's toggle label while the Ready and Published reels are shown."
-  },
-  "tagOtherReelsCount": "Other reels ({count})",
-  "@tagOtherReelsCount": {
-    "description": "The tag panel's toggle label while the Ready and Published reels are folded.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
+    "description": "The heading over the Ready and Published reels in the tag player's All reels sheet."
   },
   "tagNoReels": "You don't have any reels yet. Create one and this clip goes into it.",
   "@tagNoReels": {

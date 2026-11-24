@@ -21,7 +21,8 @@ enum TtReelChipState {
 
 /// Where a [TtReelChip] or [TtNewReelChip] sits.
 enum TtReelChipStyle {
-  /// On a panel surface (the tag panel of D-97): the theme's colours.
+  /// On a sheet's surface (the tag player's All reels sheet): the theme's
+  /// colours.
   surface,
 
   /// On the playing clip in the full-screen tag player (D-171, D-178): dark
@@ -30,14 +31,15 @@ enum TtReelChipStyle {
   onVideo,
 }
 
-/// A reel in the tag panel: tap it to put the current clip in that reel.
+/// A reel in the tag player's dock or All reels sheet: tap it to put the
+/// current clip in that reel.
 ///
 /// A small cover, the reel's [name] over its [countText], and in
 /// [multiSelect] mode a check mark at the end. At least 56 dp high (58 with
-/// the border), and a 164 dp wide cell in the panel's two columns. The name
+/// the border), and a 164 dp wide cell in a grid of two columns. The name
 /// and count are one line each with an ellipsis; at large text sizes the chip
 /// grows taller and the cover stays centred, so nothing overlaps. From a text
-/// scale of `TtMetrics.reelDockSingleColumnTextScale` the panel gives a chip
+/// scale of `TtMetrics.reelDockSingleColumnTextScale` the grid gives a chip
 /// the whole row, and the name may take two lines.
 ///
 /// Without a [cover], or when it fails to load, the cover shows a film icon.
@@ -146,7 +148,7 @@ class TtReelChip extends StatelessWidget {
     };
 
     final text = tt.text.material;
-    // At large text sizes the panel shows one chip per row, so there is room
+    // At large text sizes the grid shows one chip per row, so there is room
     // for a second line of the name (D-47).
     final large =
         MediaQuery.textScalerOf(context).scale(1) >=
@@ -325,7 +327,7 @@ class _Cover extends StatelessWidget {
   }
 }
 
-/// The dashed "New reel" chip in the tag panel: tap it to make a reel and put
+/// The dashed "New reel" chip in the tag player: tap it to make a reel and put
 /// the current clip in it.
 ///
 /// Drawn like a [TtReelChip] without a fill: the same size, padding and 34 x
@@ -335,8 +337,8 @@ class _Cover extends StatelessWidget {
 /// in a row; the outline is painted over the same 1 dp inset, which is half a
 /// dp less than the prototype's 1.5 dp border and does not move the cover.
 ///
-/// With [fullWidth] it is the one chip of the "no reels yet" panel: the panel
-/// gives it a whole row (see `TtTagPanel`) and the cover and title sit in the
+/// With [fullWidth] it is the one chip of the "no reels yet" dock: the dock
+/// gives it a whole row (see `TtReelDock`) and the cover and title sit in the
 /// middle of it. Leave the [subtitle] out there, as the prototype does. At
 /// large text the title may take two lines, as a reel chip's name does.
 ///
@@ -368,7 +370,7 @@ class TtNewReelChip extends StatelessWidget {
   /// What a screen reader says, or null to say [title].
   final String? semanticLabel;
 
-  /// Whether this is the only chip of the panel: it takes a whole row and
+  /// Whether this is the only chip of the dock: it takes a whole row and
   /// its content is centred.
   final bool fullWidth;
 

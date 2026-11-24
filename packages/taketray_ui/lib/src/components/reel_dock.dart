@@ -22,7 +22,10 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 ///
 /// The grid is at most 260 dp high at every text scale and scrolls past it
 /// (the header and the footer stay put). Pick several can hold many picked
-/// reels, and the clip keeps its room. From a text scale of
+/// reels, and the clip keeps its room. Given less height than it needs (a
+/// short phone at large text, where the player keeps room for its top and
+/// rail), the grid gives way and scrolls in what is left; the other rows
+/// keep their size. From a text scale of
 /// `TtMetrics.reelDockSingleColumnTextScale` (1.5) the grid is one column of
 /// full-width chips. The header is a `Wrap` at any text scale above 1 (not
 /// only from 1.5, as the handoff has it: with Pick several and All reels at
@@ -169,16 +172,20 @@ class TtReelDock extends StatelessWidget {
                 ),
               header,
               // player2.css:56: .fs2 .p2-grid { max-height: 260px;
-              // overflow-y: auto }, at every scale here (D-179).
-              ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxHeight: TtMetrics.reelDockGridMaxHeight,
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    spacing: TtMetrics.reelDockGridGap,
-                    children: rows,
+              // overflow-y: auto }, at every scale here (D-179). Loose, so
+              // under a smaller height the grid gives way (D-181); with no
+              // bound it is just its own height.
+              Flexible(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxHeight: TtMetrics.reelDockGridMaxHeight,
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      spacing: TtMetrics.reelDockGridGap,
+                      children: rows,
+                    ),
                   ),
                 ),
               ),

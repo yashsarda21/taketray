@@ -1364,67 +1364,17 @@ abstract final class TtMetrics {
   // No CSS source: the prototype has no adjustable slider semantics.
   static const double scrubSemanticStep = 0.05;
 
-  // ---- Same as previous ----
+  // ---- Reel grid at large text ----
 
-  /// Corner radius of the "Same as previous" button.
-  // tt-style.css: .style-tt .qrow .btn.same { border-radius: 24px }
-  static const double sameButtonRadius = 24;
-
-  /// Opacity of white in the button's fill.
-  // proto.css: .qrow .btn.same { background: rgba(255,255,255,.14) }
-  static const double sameButtonFillOpacity = 0.14;
-
-  /// Opacity of the detail line.
-  // proto.css: .qrow .btn.same .two small { opacity: .8 }
-  static const double sameButtonDetailOpacity = 0.8;
-
-  /// Line height of the label, as a multiple of its size.
-  // proto.css: .qrow .btn.same .two { line-height: 1.2 }
-  static const double sameButtonLabelHeight = 1.2;
-
-  // ---- Tag panel ----
-
-  /// Width of the highlight along the panel's top edge.
-  // tt-style.css: .style-tt .tagpanel { box-shadow: inset 0 1px 0 var(--hair) }
-  static const double tagPanelHairline = 1;
-
-  /// Opacity of the panel's surface container fill.
-  // tt-style.css: .style-tt .tagpanel { background: color-mix(…92%…) }
-  static const double tagPanelOpacity = 0.92;
-
-  /// Background blur behind the panel.
-  // tt-style.css: .style-tt .tagpanel { backdrop-filter: blur(20px) }
-  static const double tagPanelBlur = 20;
-
-  /// Padding under the panel's content.
-  // proto.css: .tagpanel { padding: 12px 12px 26px }
-  static const double tagPanelPaddingBottom = 26;
-
-  /// Tallest the panel gets before its chips scroll, at normal text size.
-  // proto.css: .tagpanel { max-height: 340px }
-  static const double tagPanelMaxHeight = 340;
-
-  /// The text scale from which the panel lays its chips out one per row and
-  /// a chip's name may take two lines. Below it: two columns, one line.
+  /// The text scale from which the dock and the All reels sheet lay their
+  /// chips out one per row and a chip's name may take two lines. Below it:
+  /// two columns, one line.
   // Not in the prototype: large-text layout (D-47). At 2x a 164 dp cell shows
   // about 5 letters of a name, so reel names that share a first word cannot
   // be told apart; one full-width chip shows about 12.
   /// The same threshold as [largeTextScale]: the dock (D-179) and the chips
   /// read it by this name.
   static const double reelDockSingleColumnTextScale = largeTextScale;
-
-  /// Tallest the panel gets at large text: the cap grows with the text scale
-  /// (340 dp at 1x, times the scale) up to this.
-  // Not in the prototype: large-text layout (D-47). At 2x, three one-column
-  // chips with two-line names are 3 x 126 dp, plus 12 padding, 48 header,
-  // 2 x 8 gaps, 4 and 26 under the grid = 484 dp, so 520 shows three whole
-  // chips under the header and leaves 260 dp of a 780 dp screen for the
-  // video and controls.
-  static const double tagPanelMaxHeightLarge = 520;
-
-  /// Minimum height of the panel's header row.
-  // proto.css: .tagpanel .ph-h { min-height: 40px }
-  static const double tagPanelHeaderHeight = 40;
 
   // ---- Reel chip ----
 
@@ -1547,6 +1497,40 @@ abstract final class TtMetrics {
   /// round the glass (F8: that can drop the blur).
   // player2.css:36: .p2-rb.dis { opacity: .45 }
   static const double railButtonDisabledOpacity = 0.45;
+
+  // ---- The full-screen tag player: rail, snack and All reels (D-181) ----
+
+  /// Distance from the screen's end edge to the rail of Skip and Same.
+  // player2.css:32: .p2-rail { right: 12px }
+  static const double railInsetEnd = 12;
+
+  /// Gap between the bottom of the rail and the top of the dock.
+  // player2.css:32: .p2-rail { bottom: calc(100% + 4px) }
+  static const double railAboveDock = 4;
+
+  /// Gap between the two rail buttons.
+  // player2.css:32: .p2-rail { gap: 10px }
+  static const double railGap = 10;
+
+  /// Distance from the screen's start edge to a snack in the tag player.
+  // design/handoff/tag-player-full-screen.md, "Snack": inset 12 on the left
+  // (player2.css:38 keeps the prototype's .snack left)
+  static const double playerSnackInsetStart = 12;
+
+  /// Distance from the screen's end edge to a snack in the tag player while
+  /// the rail is its 64 dp: 12, the rail, and 12. A rail that grows with its
+  /// text widens this by as much.
+  // player2.css:38: .p2-snack .snack { right: 88px }
+  static const double playerSnackInsetEnd = 88;
+
+  /// Gap between the bottom of a snack in the tag player and the dock's top.
+  // player2.css:38: .p2-snack .snack { bottom: 8px }
+  static const double playerSnackAboveDock = 8;
+
+  /// Padding above a section label ("Collecting", "Other reels") in the All
+  /// reels sheet.
+  // proto.css:726: .chipgrid .lbl { padding: 6px 8px 0 }
+  static const double allReelsLabelPaddingTop = 6;
 
   // ---- Reel chip on video (D-178) ----
 
@@ -1688,21 +1672,6 @@ abstract final class TtMetrics {
   /// Padding at each side of the title between the header's chevrons.
   // player2.css:25: .p2-where { padding: 0 2px }
   static const double playerChevronTitlePadding = 2;
-
-  // ---- Other reels toggle ----
-
-  /// Height of the drawn row of the "Other reels" toggle. Its tap target is
-  /// the touch target (48 dp), with this row centred in it.
-  // proto.css: the toggle's inline `min-height: 36px`
-  static const double otherReelsToggleHeight = 36;
-
-  /// Corner radius of the toggle's highlight.
-  // proto.css: the toggle's inline `border-radius: 8px`
-  static const double otherReelsToggleRadius = 8;
-
-  /// Gap between the toggle's label and its arrow.
-  // proto.css: the toggle's inline `gap: 4px`
-  static const double otherReelsToggleGap = 4;
 
   // ---- Tag done ----
 

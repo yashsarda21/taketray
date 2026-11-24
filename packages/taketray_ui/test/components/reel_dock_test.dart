@@ -545,6 +545,38 @@ void main() {
       expect(tester.getRect(find.text('Add to reel')).top, headerAt);
     });
 
+    testWidgets('under a smaller height the grid gives way and scrolls; the '
+        'header and the footer stay whole (D-181)', (tester) async {
+      _viewport(tester);
+      final dock = _dock(
+        chips: [for (var i = 1; i <= 14; i++) _chip(i)],
+        actions: [_action('Cancel')],
+        footer: const SizedBox(key: _footerKey, height: 48),
+      );
+      await tester.pumpWidget(
+        ttTestApp(
+          _atBottom(
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              child: dock,
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(tester.getSize(find.byType(TtReelDock)).height, 220);
+      final grid = tester.getSize(_grid).height;
+      expect(grid, greaterThan(0));
+      expect(grid, lessThan(260));
+      final scrollable = tester.state<ScrollableState>(
+        find.descendant(of: _grid, matching: find.byType(Scrollable)),
+      );
+      expect(scrollable.position.maxScrollExtent, greaterThan(0));
+      expect(tester.getSize(find.byKey(_footerKey)).height, 48);
+      expect(find.text('Add to reel'), findsOneWidget);
+    });
+
     testWidgets('at 1x four chips are two short rows: no cap shows', (
       tester,
     ) async {

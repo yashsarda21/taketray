@@ -479,7 +479,12 @@ Finder _chip(String name) => find.byWidgetPredicate(
   description: 'TtReelChip "$name"',
 );
 
-final Finder _sameAsPrevious = find.byType(TtSameAsPreviousButton);
+// The rail's Same button (D-181); Task 12 updates these flows for the
+// full-screen player.
+final Finder _sameAsPrevious = find.byWidgetPredicate(
+  (w) => w is TtRailButton && w.label == 'Same',
+  description: 'TtRailButton "Same"',
+);
 
 /// A raw tap, then one frame: for buttons whose timing does not matter.
 Future<void> _tap(PatrolIntegrationTester $, Finder finder) async {

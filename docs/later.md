@@ -4,14 +4,6 @@ Items that reviews found and parked for a later phase. When a phase is planned, 
 
 Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), the Phase 2 task reviews and its final whole-branch review (2026-10-27), and the Phase 3 learning guide (2026-10-29).
 
-## Next: the full-screen tag player (owner, 2026-11-24)
-
-- **Build D-171.**
-  - **Spec:** `design/handoff/tag-player-full-screen.md`.
-  - **Reference:** hub screen 12 (its last state is the old design).
-  - **Covers:** the full-screen stage (cover or contain, never blurred), the top and bottom scrims, the reel dock and the All reels sheet, `TtRailButton`, vertical swipes and slides, the large-text rules, and the goldens and widget tests listed in the handoff.
-  - **Logic:** the session logic (D-96) does not change.
-
 ## Next: free week and subscription (owner, 2026-11-22)
 
 - **Build D-170.**
