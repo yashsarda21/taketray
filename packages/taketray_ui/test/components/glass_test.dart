@@ -145,8 +145,8 @@ void main() {
   });
 
   group('OutsideShadowPainter', () {
-    // A 120 x 60 box with a black shadow, over white; the shadow
-    // is shifted down 10 dp, blurred by 30 and shrunk by 8 (the nav pill's).
+    // A 120 x 60 box over white, casting [shadows]. The first test's is the
+    // nav pill's: black, shifted down 10 dp, blurred by 30 and shrunk by 8.
     Future<TtPixels> shot(
       WidgetTester tester, {
       required List<BoxShadow> shadows,
@@ -221,6 +221,70 @@ void main() {
     testWidgets('no shadows paint nothing', (tester) async {
       final photo = await shot(tester, shadows: const []);
       expect(red(photo.colorAt(const Offset(180, 440))), 255);
+    });
+
+    test('builds its outside path once for a size, and again for another', () {
+      final painter = OutsideShadowPainter(
+        shadows: const [shadow],
+        borderRadius: BorderRadius.circular(30),
+      );
+      void paintAt(Size size) {
+        final recorder = ui.PictureRecorder();
+        painter.paint(Canvas(recorder), size);
+        recorder.endRecording().dispose();
+      }
+
+      expect(painter.outsidePathBuilds, 0);
+      paintAt(const Size(120, 60));
+      expect(painter.outsidePathBuilds, 1);
+      paintAt(const Size(120, 60));
+      paintAt(const Size(120, 60));
+      expect(painter.outsidePathBuilds, 1, reason: 'the same size is cached');
+      paintAt(const Size(130, 60));
+      expect(painter.outsidePathBuilds, 2, reason: 'a new size is rebuilt');
+      paintAt(const Size(130, 60));
+      expect(painter.outsidePathBuilds, 2);
+      paintAt(const Size(120, 60));
+      expect(painter.outsidePathBuilds, 3, reason: 'back to the first size');
+    });
+
+    test('a cached path still paints the same pixels as a fresh one', () async {
+      Future<List<int>> pixels(
+        OutsideShadowPainter painter,
+        List<Size> sizes,
+      ) async {
+        final recorder = ui.PictureRecorder();
+        final canvas = Canvas(recorder)
+          ..drawRect(
+            const Rect.fromLTWH(0, 0, 300, 200),
+            Paint()..color = const Color(0xFFFFFFFF),
+          )
+          ..translate(100, 70);
+        for (final size in sizes) {
+          painter.paint(canvas, size);
+        }
+        final picture = recorder.endRecording();
+        final image = await picture.toImage(300, 200);
+        final data = (await image.toByteData())!;
+        image.dispose();
+        picture.dispose();
+        return data.buffer.asUint8List().toList();
+      }
+
+      const shadows = [BoxShadow(blurRadius: 6, offset: Offset(0, 4))];
+      final corners = BorderRadius.circular(12);
+      // Sizes A, B, A: the cache must not leak the first path into B.
+      final cached = await pixels(
+        OutsideShadowPainter(shadows: shadows, borderRadius: corners),
+        const [Size(100, 40)],
+      );
+      final viaOther = OutsideShadowPainter(
+        shadows: shadows,
+        borderRadius: corners,
+      );
+      await pixels(viaOther, const [Size(60, 60)]);
+      final again = await pixels(viaOther, const [Size(100, 40)]);
+      expect(again, cached, reason: 'a stale path from another size leaked');
     });
 
     test('repaints when its shadows or corners change', () {

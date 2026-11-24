@@ -157,8 +157,10 @@ class _CloseOnResizeState extends State<_CloseOnResize> {
 ///   neither way it sits at the bottom of the safe area.
 /// - Sideways it is moved just far enough to be inside the safe area.
 /// - The safe area is the screen less the view padding (the status bar), the
-///   keyboard, and any display feature (a fold), and the panel is at most
-///   [TtMetrics.menuEdgeInset] smaller than it on each side.
+///   keyboard, and any display feature (a fold).
+/// - The panel is never larger than the whole overlay less
+///   [TtMetrics.menuEdgeInset] on each side (a limit on its size, not on where
+///   it is placed), and never taller than the safe area.
 class TtMenuLayout extends SingleChildLayoutDelegate {
   /// A layout for a panel next to [anchor].
   const new({

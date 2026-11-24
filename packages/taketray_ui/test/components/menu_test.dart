@@ -452,9 +452,94 @@ void main() {
       expect(picked, isEmpty);
     });
 
+    group('when its page is hidden by a tab switch (TickerMode off)', () {
+      // go_router's indexed stack hides a tab in `Offstage` and
+      // `TickerMode(enabled: false)`, and does not dispose its pages, so the
+      // button stays mounted: the menu, on the root navigator, must close.
+      Future<ValueNotifier<bool>> pumpTab(
+        WidgetTester tester,
+        List<String> picked,
+      ) async {
+        final active = ValueNotifier<bool>(true);
+        addTearDown(active.dispose);
+        await tester.pumpWidget(
+          ttTestApp(
+            ValueListenableBuilder<bool>(
+              valueListenable: active,
+              builder: (context, on, _) => TickerMode(
+                enabled: on,
+                child: _menu(onSelected: picked.add),
+              ),
+            ),
+          ),
+        );
+        return active;
+      }
+
+      testWidgets('an open menu closes, with no selection', (tester) async {
+        final picked = <String>[];
+        final active = await pumpTab(tester, picked);
+        final barriers = find.byType(ModalBarrier).evaluate().length;
+        await _open(tester);
+        expect(find.text('Reel details'), findsOneWidget);
+        active.value = false;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.text('Reel details'), findsNothing);
+        expect(find.byType(ModalBarrier), findsNWidgets(barriers));
+        expect(picked, isEmpty);
+        // Back to the tab: the menu is not reopened, and it opens again.
+        active.value = true;
+        await tester.pumpAndSettle();
+        expect(find.text('Reel details'), findsNothing);
+        await _open(tester);
+        expect(find.text('Reel details'), findsOneWidget);
+      });
+
+      testWidgets('a menu on an active tab stays open through rebuilds', (
+        tester,
+      ) async {
+        final active = await pumpTab(tester, []);
+        await _open(tester);
+        active.value = true; // a rebuild with the same TickerMode
+        await tester.pump();
+        await tester.pumpAndSettle();
+        expect(find.text('Reel details'), findsOneWidget);
+      });
+
+      testWidgets('a hidden tab with no menu open does nothing', (
+        tester,
+      ) async {
+        final active = await pumpTab(tester, []);
+        active.value = false;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        active.value = true;
+        await tester.pumpAndSettle();
+        await _open(tester);
+        expect(find.text('Reel details'), findsOneWidget);
+      });
+
+      testWidgets('a menu closed by choosing an item is not closed twice', (
+        tester,
+      ) async {
+        final picked = <String>[];
+        final active = await pumpTab(tester, picked);
+        await _open(tester);
+        await tester.tap(find.text('Select clips'));
+        await tester.pumpAndSettle();
+        expect(picked, ['select']);
+        active.value = false;
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(picked, ['select']);
+      });
+    });
+
     testWidgets(
-      'TalkBack: items are menu items, a checked one a radio menu item, and '
-      'the scrim says "Dismiss menu"',
+      'TalkBack: a plain item has its label and a tap, a checked one is a '
+      'radio menu item, the menu is a named route scope, and the scrim says '
+      '"Dismiss menu"',
       (tester) async {
         final semantics = tester.ensureSemantics();
         const choices = [

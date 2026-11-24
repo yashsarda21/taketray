@@ -53,6 +53,11 @@ internal class ShareWindowBlur(
          * Android's own rule, sigma = 0.57735 x radius + 0.5 (AOSP hwui
          * Blur::convertRadiusToSigma), inverted and rounded; 0 for sigma <= 0.5.
          */
-        fun radiusForSigma(sigmaPx: Float): Int = if (sigmaPx <= 0.5f) 0 else ((sigmaPx - 0.5f) / 0.57735f).roundToInt()
+        fun radiusForSigma(sigmaPx: Float): Int =
+            if (sigmaPx <= 0.5f) {
+                0
+            } else {
+                ((sigmaPx - 0.5f) / 0.57735f).roundToInt()
+            }
     }
 }

@@ -214,10 +214,14 @@ class TtReelChip extends StatelessWidget {
           // 1 dp, `TtMetrics.reelChipBorder`: the default width.
           border: Border.all(color: edge),
         ),
-        child: TtGlassFill(
-          corners: radius,
-          blur: TtMetrics.reelChipOnVideoBlur,
-          fill: fill,
+        // The fill fades between idle, picked and done over `short3`, as the
+        // surface chip's Material does; the glass keeps its order (the
+        // `ColoredBox` is still the filter's first child) and nothing is
+        // wrapped in an `Opacity`.
+        child: TweenAnimationBuilder<Color?>(
+          tween: ColorTween(end: fill),
+          duration: tt.motion.short3,
+          curve: tt.motion.standard,
           child: InkWell(
             onTap: onTap,
             onLongPress: onLongPress,
@@ -227,6 +231,12 @@ class TtReelChip extends StatelessWidget {
               ),
               child: row,
             ),
+          ),
+          builder: (context, color, child) => TtGlassFill(
+            corners: radius,
+            blur: TtMetrics.reelChipOnVideoBlur,
+            fill: color ?? fill,
+            child: child!,
           ),
         ),
       );

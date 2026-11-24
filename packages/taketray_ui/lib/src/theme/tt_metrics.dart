@@ -484,8 +484,11 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … .4 }
   static const double menuElevation = 6;
 
-  /// How close to the edge of the screen's safe area a menu is placed: the
-  /// menu is at most this much smaller than the screen on each side.
+  /// How much room a menu panel leaves at each edge of the overlay: its
+  /// largest size is the overlay's less this much on each side (a limit on the
+  /// panel's size, measured from the whole overlay and not the safe area). It
+  /// does not place the panel: the placement is the anchor's, moved in only as
+  /// far as the safe area needs.
   // Flutter material/menu_anchor.dart: const double _kMenuViewPadding = 8;
   // (what `MenuAnchor` used to place the menu with; D-176 keeps its numbers)
   static const double menuEdgeInset = 8;

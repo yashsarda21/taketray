@@ -9,6 +9,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../support/tt_glass_pixels.dart';
 import '../support/tt_test_app.dart';
 import '../support/tt_text_contrast.dart';
+import '../support/tt_text_lines.dart';
 
 // TtReelDock, the header chevrons and the two scrims (Phase 12, Task 8,
 // D-179): the bottom of the full-screen tag player. The values are
@@ -438,22 +439,33 @@ void main() {
       expect(blackShare(dock.bottom - 2), closeTo(0.90, 0.02));
     });
 
-    testWidgets('a short dock (under 52 dp) paints without error', (
-      tester,
-    ) async {
+    testWidgets('a dock 40 dp high (under 52) has its 26 dp stop clamped to '
+        'half way, and paints every stop over white', (tester) async {
+      // A real `TtReelDock` is never under about 90 dp, so the scrim is drawn
+      // on its own at 40 dp: the same painter, the same gradient.
       _viewport(tester);
       await tester.pumpWidget(
         ttPixelApp(
           _onWhite(
-            const TtReelDock(
-              title: 'Pick reels',
-              semanticLabel: 'Reels',
-              chips: [],
+            const SizedBox(
+              width: 360,
+              height: 40,
+              child: CustomPaint(painter: DockScrimPainter(_black)),
             ),
           ),
         ),
       );
-      await TtPixels.capture(tester);
+      final top = tester.getRect(find.byType(CustomPaint).last).top;
+      expect(tester.getSize(find.byType(CustomPaint).last).height, 40);
+      final pixels = await TtPixels.capture(tester);
+      double blackShare(double y) => 1 - pixels.colorAt(Offset(2, top + y)).r;
+      // Clear at the top, rising to .74 at half way (20 dp, not 26), then
+      // .90 for the rest.
+      expect(blackShare(1), closeTo(0.055, 0.03));
+      expect(blackShare(10), closeTo(0.37, 0.03));
+      expect(blackShare(19), closeTo(0.72, 0.04));
+      expect(blackShare(22), closeTo(0.90, 0.02));
+      expect(blackShare(38), closeTo(0.90, 0.02));
       expect(tester.takeException(), isNull);
     });
   });
@@ -942,7 +954,7 @@ void main() {
         final paragraph = tester.renderObject<RenderParagraph>(
           find.text(scene),
         );
-        expect(paragraph.didExceedMaxLines, isFalse);
+        expect(ttLineCount(paragraph), greaterThan(1), reason: 'at ${scale}x');
         // More than one line, and all of it is on screen (the header grew).
         expect(
           tester.getSize(find.text(scene)).height,

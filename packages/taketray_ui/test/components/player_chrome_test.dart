@@ -7,6 +7,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
 import '../support/tt_test_app.dart';
+import '../support/tt_text_lines.dart';
 
 Widget _onVideo(Widget child, {double width = 360}) => Align(
   alignment: Alignment.topLeft,
@@ -313,7 +314,8 @@ void main() {
         expect(text.maxLines, isNull, reason: 'at ${scale}x');
         expect(text.overflow, isNot(TextOverflow.ellipsis));
         final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
-        expect(paragraph.didExceedMaxLines, isFalse);
+        // It wraps (a line limit would cut it, an ellipsis would hide it).
+        expect(ttLineCount(paragraph), greaterThan(1), reason: 'at ${scale}x');
         // The title stays one line.
         expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
       }

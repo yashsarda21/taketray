@@ -293,4 +293,36 @@ void main() {
       expect(title(tester), '1 of 3');
     });
   });
+  group('playerLayout', () {
+    testApp('is the same on every read at rest, and as a list of rects of '
+        'the dock and the rail', (tester) async {
+      await newReel(tester, 'Goa');
+      await open(tester);
+
+      final first = playerLayout(tester);
+      expect(first, [
+        tester.getRect(find.byKey(const ValueKey('tag-dock'))),
+        tester.getRect(find.byKey(const ValueKey('tag-rail'))),
+      ]);
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(playerLayout(tester), first);
+    });
+
+    testApp('changes with the dock (Pick several adds its footer), and the '
+        'rail goes', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Lisbon');
+      await open(tester);
+      final before = playerLayout(tester);
+
+      await tester.tap(dockAction('Pick several'));
+      await settleApp(tester);
+      final picking = playerLayout(tester);
+
+      expect(picking, isNot(before));
+      // While picking there is no rail: its place is null.
+      expect(picking.last, isNull);
+      expect(before.last, isNotNull);
+    });
+  });
 }

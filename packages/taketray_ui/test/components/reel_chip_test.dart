@@ -677,6 +677,122 @@ void main() {
       expect(clip.borderRadius, BorderRadius.circular(18));
     });
 
+    group('the picked and done fills animate (D-178)', () {
+      Future<void> showState(
+        WidgetTester tester,
+        TtReelChipState state, {
+        bool disableAnimations = false,
+      }) => tester.pumpWidget(
+        ttTestApp(
+          _videoChip(state: state, multi: true),
+          disableAnimations: disableAnimations,
+        ),
+      );
+
+      /// [c] is neither [from] nor [to], and no channel is outside them.
+      bool strictlyBetween(Color c, Color from, Color to) {
+        bool within(double v, double a, double b) =>
+            v >= (a < b ? a : b) - .001 && v <= (a < b ? b : a) + .001;
+        return c != from &&
+            c != to &&
+            within(c.a, from.a, to.a) &&
+            within(c.r, from.r, to.r) &&
+            within(c.g, from.g, to.g) &&
+            within(c.b, from.b, to.b);
+      }
+
+      testWidgets('idle to picked: halfway through it is neither fill', (
+        tester,
+      ) async {
+        await showState(tester, TtReelChipState.idle);
+        final idle = _glassColor(tester);
+        await showState(tester, TtReelChipState.picked);
+        final picked = tester
+            .element(find.byType(TtReelChip))
+            .scheme
+            .primaryContainer;
+        expect(
+          _glassColor(tester),
+          idle,
+          reason: 'the first frame starts at idle',
+        );
+        await tester.pump(const Duration(milliseconds: 75));
+        final middle = _glassColor(tester);
+        expect(
+          strictlyBetween(middle, idle, picked),
+          isTrue,
+          reason: '$middle',
+        );
+        // The glass keeps its order mid-way: blur 14, a plain fill first, and
+        // no Opacity (D-173, F8).
+        expectBlurFilter(tester, find.byType(TtReelChip), 14);
+        expectGlassStructure(tester, find.byType(TtReelChip));
+        expect(
+          find.descendant(
+            of: find.byType(TtReelChip),
+            matching: find.byType(Opacity),
+          ),
+          findsNothing,
+        );
+        await tester.pumpAndSettle();
+        expect(_glassColor(tester), picked);
+      });
+
+      testWidgets('picked to done, and back to idle', (tester) async {
+        await showState(tester, TtReelChipState.picked);
+        final scheme = tester.element(find.byType(TtReelChip)).scheme;
+        await showState(tester, TtReelChipState.done);
+        await tester.pump(const Duration(milliseconds: 75));
+        expect(
+          strictlyBetween(
+            _glassColor(tester),
+            scheme.primaryContainer,
+            scheme.primary,
+          ),
+          isTrue,
+        );
+        await tester.pumpAndSettle();
+        expect(_glassColor(tester), scheme.primary);
+
+        await showState(tester, TtReelChipState.idle);
+        await tester.pump(const Duration(milliseconds: 75));
+        expect(
+          strictlyBetween(
+            _glassColor(tester),
+            scheme.primary,
+            const Color(0xD61E2024),
+          ),
+          isTrue,
+        );
+        await tester.pumpAndSettle();
+        expect(_glassColor(tester), const Color(0xD61E2024));
+      });
+
+      testWidgets('a chip first built picked or done does not animate in', (
+        tester,
+      ) async {
+        await showState(tester, TtReelChipState.done);
+        final scheme = tester.element(find.byType(TtReelChip)).scheme;
+        expect(_glassColor(tester), scheme.primary);
+        await tester.pump(const Duration(milliseconds: 75));
+        expect(_glassColor(tester), scheme.primary);
+      });
+
+      testWidgets('with reduced motion the new fill is there at once', (
+        tester,
+      ) async {
+        await showState(tester, TtReelChipState.idle, disableAnimations: true);
+        await showState(
+          tester,
+          TtReelChipState.picked,
+          disableAnimations: true,
+        );
+        await tester.pump();
+        final scheme = tester.element(find.byType(TtReelChip)).scheme;
+        expect(_glassColor(tester), scheme.primaryContainer);
+      });
+    });
+
     testWidgets('idle: a white name and a count at 78 %', (tester) async {
       await tester.pumpWidget(ttTestApp(_videoChip()));
       expect(TtMetrics.reelChipOnVideoCountOpacity, .78);

@@ -151,6 +151,32 @@ void main() {
     });
   }
 
+  testApp('an open menu on the Reels tab closes when another tab is shown '
+      '(a notification, goBranch)', (tester) async {
+    final h = VmHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final (container, router) = await _pumpApp(tester, harness: h);
+    final tracker = container.read(popupRouteTrackerProvider);
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Symbols.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Select clips'), findsOneWidget);
+    expect(tracker.isOpen, isTrue);
+
+    router.go(Routes.toTag);
+    await _settle(tester);
+
+    expect(find.byType(ToTagScreen), findsOneWidget);
+    expect(find.text('Select clips'), findsNothing);
+    expect(tracker.isOpen, isFalse);
+    // Back to Reels: the reel page is where it was, and the menu is not.
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(find.text('Select clips'), findsNothing);
+  });
+
   testApp('a reel location shows the reel page and back goes to Reels', (
     tester,
   ) async {

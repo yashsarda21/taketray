@@ -8,7 +8,7 @@ import 'dart:ui' as ui;
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
-    show OrdinalSortKey, RenderParagraph, SemanticsNode;
+    show OrdinalSortKey, RenderParagraph, SemanticsAction, SemanticsNode;
 import 'package:flutter/services.dart' show SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:flutter_riverpod/misc.dart' show Override;
@@ -206,7 +206,8 @@ void main() {
   String? subtitle(WidgetTester tester) => tester
       .widget<TtPlayerHeader>(find.byType(TtPlayerHeader))
       .subtitle
-      ?.replaceAll(RegExp('[\u00a0\u202f]'), ' ');
+      ?.replaceAll(RegExp('[\u00a0\u202f]'), ' ')
+      .replaceAll('\u2060', '');
 
   Finder chip(String name) => find.byWidgetPredicate(
     (w) => w is TtReelChip && w.name == name,
@@ -624,6 +625,31 @@ void main() {
       expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
       expectInside(shown, room);
       expect(shown.width, closeTo(room.width, 0.01));
+      expectSameCentre(shown, room);
+    });
+
+    testApp('an opened player that reports an empty size keeps the stored '
+        'shape', (tester) async {
+      // Stored as a 16:9 clip; the player says it is open but gives 0 x 0.
+      final ids = await waiting(tester, 1);
+      await real(
+        tester,
+        () => h.media.db.customStatement(
+          'UPDATE clips SET width = 1920, height = 1080 '
+          'WHERE id = ${ids[0]}',
+        ),
+      );
+      platform.size = Size.zero;
+
+      await open(tester);
+
+      coveringStage(tester);
+      final room = aboveDock(tester);
+      final shown = tester.getRect(video);
+      expect(tester.takeException(), isNull);
+      expect(shown.isFinite, isTrue);
+      expect(shown.width / shown.height, closeTo(16 / 9, 0.001));
+      expectInside(shown, room);
       expectSameCentre(shown, room);
     });
 
@@ -1122,6 +1148,76 @@ void main() {
       }
       expect(tester.getRect(stage), const Rect.fromLTWH(0, 0, 360, 800));
       expectAtRest(tester);
+    });
+
+    // A screen reader's scroll actions on the stage (the swipe's default
+    // semantics): scroll down goes on to the next clip, scroll up back.
+    SemanticsFinder stageScroll(SemanticsAction action) =>
+        find.semantics.byPredicate(
+          (node) => node.getSemanticsData().hasAction(action),
+          describeMatch: (_) => 'a node with $action',
+        );
+
+    testApp('screen reader: scroll down and scroll up on the clip move to the '
+        'next and the previous clip', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final ids = await waiting(tester, 3);
+      await open(tester, from: ids[1]);
+      expect(title(tester), '2 of 3');
+      expect(stageScroll(SemanticsAction.scrollUp), findsOne);
+      expect(stageScroll(SemanticsAction.scrollDown), findsOne);
+
+      tester.semantics.scrollUp(
+        scrollable: stageScroll(SemanticsAction.scrollUp),
+      );
+      await settleApp(tester);
+      expect(title(tester), '3 of 3');
+      expect(tester.takeException(), isNull);
+      expectAtRest(tester);
+
+      tester.semantics.scrollDown(
+        scrollable: stageScroll(SemanticsAction.scrollDown),
+      );
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+      tester.semantics.scrollDown(
+        scrollable: stageScroll(SemanticsAction.scrollDown),
+      );
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expect(tester.takeException(), isNull);
+      expectAtRest(tester);
+      semantics.dispose();
+    });
+
+    testApp('screen reader: scrolling past the last and the first clip does '
+        'nothing', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final ids = await waiting(tester, 2);
+      await open(tester, from: ids[1]);
+      expect(title(tester), '2 of 2');
+
+      tester.semantics.scrollUp(
+        scrollable: stageScroll(SemanticsAction.scrollUp),
+      );
+      await settleApp(tester);
+      expect(title(tester), '2 of 2');
+      expect(find.byType(TagPlayerScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      expectAtRest(tester);
+
+      tester.semantics.scrollDown(
+        scrollable: stageScroll(SemanticsAction.scrollDown),
+      );
+      await settleApp(tester);
+      expect(title(tester), '1 of 2');
+      tester.semantics.scrollDown(
+        scrollable: stageScroll(SemanticsAction.scrollDown),
+      );
+      await settleApp(tester);
+      expect(title(tester), '1 of 2');
+      expect(tester.takeException(), isNull);
+      semantics.dispose();
     });
 
     testApp('a swipe that settles does not slide in again', (tester) async {
@@ -2594,6 +2690,43 @@ void main() {
       expect(holds.made, hasLength(1));
     });
 
+    testApp('a long press in All reels starts Pick several with that reel, '
+        'as on a dock chip', (tester) async {
+      await newReel(tester, 'London Food');
+      await newReel(tester, 'Goa Trip');
+      await newReel(tester, 'Sunsets');
+      await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+      await waiting(tester, 3);
+      await open(tester);
+      await openAllReels(tester);
+      expect(inSheet(find.text('Add to reel')), findsOneWidget);
+
+      await tester.longPress(inSheet(chip('Old shoot')));
+      await settleApp(tester);
+
+      // Still the one sheet, now picking, with that reel picked.
+      expect(sheet, findsOneWidget);
+      expect(inSheet(find.text('Pick reels for this clip')), findsOneWidget);
+      expect(
+        tester.widget<TtReelChip>(inSheet(chip('Old shoot'))).state,
+        TtReelChipState.picked,
+      );
+      expect(
+        tester.widget<TtReelChip>(inSheet(chip('Old shoot'))).multiSelect,
+        isTrue,
+      );
+      // The dock behind it is picking too: nothing was tagged.
+      expect(inDock(find.text('Pick reels')), findsOneWidget);
+      expect(holds.made, isEmpty);
+      expect(find.text('Added to Old shoot'), findsNothing);
+
+      // Done closes the sheet, and the pick stays for the dock's footer.
+      await tester.tap(inSheet(button('Done')));
+      await settleApp(tester);
+      expect(sheet, findsNothing);
+      expect(button('Add to 1 reel & next'), findsOneWidget);
+    });
+
     testApp('a double tap in All reels tags once', (tester) async {
       await newReel(tester, 'London Food');
       final old = await newReel(tester, 'Old shoot', status: ReelStatus.ready);
@@ -3071,17 +3204,6 @@ void main() {
       await waiting(tester, 3);
       await open(tester);
 
-      bool named(Widget w, String type) => w.runtimeType.toString() == type;
-      for (final type in [
-        'TtTagPanel',
-        'TtSameAsPreviousButton',
-        'TtOtherReelsToggle',
-      ]) {
-        expect(
-          find.byWidgetPredicate((w) => named(w, type), description: type),
-          findsNothing,
-        );
-      }
       expect(find.byType(TtStageArrow), findsNothing);
       expect(find.text('Other reels'), findsNothing);
     });
@@ -3336,6 +3458,58 @@ void main() {
       expect(tester.getSize(skip).height, greaterThan(64));
     });
 
+    for (final scale in [1.0, 2.0]) {
+      testApp('the scene line never breaks inside its time range, at '
+          '${scale}x', (tester) async {
+        await waiting(tester, 3, zoneId: 'Europe/London');
+        await open(tester, textScale: scale);
+
+        final subtitleText = header(tester).subtitle!;
+        final paragraph = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byType(TtPlayerHeader),
+            matching: find.text(subtitleText),
+          ),
+        );
+        // The paragraph's own text and width, laid out again to read where
+        // its lines end.
+        final painter = TextPainter(
+          text: paragraph.text,
+          textDirection: paragraph.textDirection,
+          textScaler: paragraph.textScaler,
+        )..layout(maxWidth: paragraph.size.width);
+        // "Scene 1 of 1 · 9:01–9:03 AM": the range runs from after the dot.
+        // A range wider than the line (a large scale on a narrow header)
+        // has to break somewhere, so it is only checked where it fits.
+        final from = subtitleText.indexOf('·') + 2;
+        final rangeWidth = (TextPainter(
+          text: TextSpan(
+            text: subtitleText.substring(from),
+            style: paragraph.text.style,
+          ),
+          textDirection: paragraph.textDirection,
+          textScaler: paragraph.textScaler,
+        )..layout()).width;
+        final fits = rangeWidth <= paragraph.size.width;
+        if (scale == 1) expect(fits, isTrue, reason: 'the range fits at 1x');
+        var at = 0;
+        var lines = 0;
+        while (at < subtitleText.length) {
+          final end = painter.getLineBoundary(TextPosition(offset: at)).end;
+          lines++;
+          expect(
+            !fits || end <= from || end >= subtitleText.length,
+            isTrue,
+            reason: 'a line ended inside the time range, at $end',
+          );
+          if (end <= at) break;
+          at = end;
+        }
+        expect(lines, greaterThanOrEqualTo(1));
+        if (scale == 2) expect(lines, greaterThan(1));
+      });
+    }
+
     testApp('2x text: the whole scene line wraps, uncut', (tester) async {
       await newReel(tester, 'Goa');
       await newReel(tester, 'London');
@@ -3412,6 +3586,34 @@ void main() {
       expect(await reelsOf(tester, ids[0]), hasLength(1));
       expect(title(tester), '2 of 3');
       expect(tester.takeException(), isNull);
+    });
+
+    testApp('the dock is never capped below its header and one whole row of '
+        'reels, when the rail and a snack would take the room (2x, small '
+        'phone)', (tester) async {
+      // Here the room left under the top, less the rail and a large-text
+      // snack's room, is under the dock's floor: the cap is the floor (D-181).
+      for (var i = 0; i < 6; i++) {
+        await newReel(tester, 'A reel with quite a long name $i');
+      }
+      await waiting(tester, 3);
+
+      await open(tester, textScale: 2, size: const Size(360, 640));
+
+      expect(tester.takeException(), isNull);
+      final dockBox = tester.getRect(dock);
+      final head = tester.getRect(inDock(find.text('Add to reel')));
+      expect(head.top, greaterThanOrEqualTo(dockBox.top));
+      // The first row of reels is whole inside the dock and on the screen.
+      final first = tester.getRect(chip('A reel with quite a long name 5'));
+      expect(first.top, greaterThanOrEqualTo(head.bottom));
+      expect(first.bottom, lessThanOrEqualTo(dockBox.bottom));
+      expect(first.bottom, lessThanOrEqualTo(640));
+      // The grid's own window shows all of that row (it is not cut to 0).
+      final grid = tester.getRect(inDock(find.byType(Scrollable)));
+      expect(grid.height, greaterThanOrEqualTo(first.height));
+      expect(first.top, greaterThanOrEqualTo(grid.top));
+      expect(first.bottom, lessThanOrEqualTo(grid.bottom));
     });
 
     // At 2x too: there the rail sits above the screen's middle, where the

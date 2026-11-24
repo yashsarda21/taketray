@@ -164,13 +164,18 @@ Future<void> _tagADay(PatrolIntegrationTester $, _Env env) async {
   await _tap($, dockAction(_l10n.cancel));
   expect(player.state.multi, isFalse, reason: 'Cancel turns it off');
   // The rail is not there while picking: wait for it, and for the dock to
-  // shrink under it, before a tap on Same.
+  // shrink under it and the rail to stop moving (the same rects on two frames
+  // in a row), before a tap on Same, which is aimed at where it is.
   await waitFor(
     $,
     () => railButton(_l10n.tagRailSame).evaluate().isNotEmpty,
     what: 'the rail to come back after Cancel',
   );
-  await pumpFor($, const Duration(milliseconds: 300));
+  await waitForStill(
+    $,
+    () => playerLayout($.tester),
+    what: 'the dock and the rail to stop moving after Cancel',
+  );
 
   // 3. Three with Same as previous (the last tag was both reels).
   for (var i = 0; i < 3; i++) {
@@ -311,15 +316,12 @@ Future<void> _swipeAndAllReels(PatrolIntegrationTester $, _Env env) async {
       () => find.byType(TtSheet).evaluate().isEmpty,
       what: 'the All reels sheet to close',
     );
-    final deadline = DateTime.now().add(const Duration(seconds: 20));
-    while (!(await env.reelClipIds(env.b)).contains(first)) {
-      if (DateTime.now().isAfter(deadline)) {
-        throw TestFailure(
-          'Timed out after 20 s waiting for the clip to be in Patrol B',
-        );
-      }
-      await $.tester.pump(const Duration(milliseconds: 100));
-    }
+    await waitFor(
+      $,
+      () async => (await env.reelClipIds(env.b)).contains(first),
+      what: 'the clip to be in Patrol B',
+      timeout: const Duration(seconds: 20),
+    );
     expect(await env.reelClipIds(env.b), {first}, reason: 'only that clip');
     expect(await env.reelClipIds(env.a), isEmpty, reason: 'not in Patrol A');
     expect(player.state.pending, isNot(contains(first)));

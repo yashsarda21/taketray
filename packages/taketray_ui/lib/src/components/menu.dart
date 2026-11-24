@@ -55,9 +55,10 @@ class TtMenuItem<T> {
 /// a selection. The menu is a route on the root navigator (D-176), so the
 /// whole page behind it is blurred by 3 dp (not dimmed), Back closes it
 /// before the page, keyboard and screen-reader navigation work as in a
-/// dialog, and it counts as an open popup. The panel is 200 to 300 dp wide
-/// with 20 dp corners, and its 48 dp items have 14 dp corners; a long label
-/// wraps.
+/// dialog, and it counts as an open popup. It closes, with no selection,
+/// when its page goes away or is hidden by a tab switch. The panel is 200 to
+/// 300 dp wide with 20 dp corners, and its 48 dp items have 14 dp corners; a
+/// long label wraps.
 class TtMenuButton<T> extends StatefulWidget {
   /// A menu button showing [items].
   const new({
@@ -115,16 +116,30 @@ class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
     if (chosen != null && mounted) widget.onSelected(chosen.value);
   }
 
+  /// Closes the open menu, if any, without a selection, after this frame (a
+  /// navigator cannot change while the tree is being built or torn down).
+  void _closeAfterFrame() {
+    final route = _route;
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The page under the menu was hidden without being disposed (a tab
+    // switch, `goBranch`, keeps the tab mounted but off screen, with its
+    // tickers off): close the menu too. It is on the root navigator, so it
+    // would otherwise stay over the other tab.
+    if (!TickerMode.valuesOf(context).enabled) _closeAfterFrame();
+  }
+
   @override
   void dispose() {
-    // The page under the menu went away: close the menu too, after this
-    // frame (a navigator cannot change while the tree is being torn down).
-    final route = _route;
-    if (route != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (route.isActive) route.navigator?.removeRoute(route);
-      });
-    }
+    // The page under the menu went away: close the menu too.
+    _closeAfterFrame();
     super.dispose();
   }
 

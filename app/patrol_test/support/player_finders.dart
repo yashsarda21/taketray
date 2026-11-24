@@ -58,3 +58,12 @@ Offset stageCentre(WidgetTester tester) {
   final dock = tester.getRect(_dock);
   return Offset(top.center.dx, (top.bottom + dock.top) / 2);
 }
+
+/// Where the dock and the rail are now (the rail's is null while it is not
+/// there, as in Pick several), to wait until the layout has stopped moving:
+/// `waitForStill` with this as its reading. Asked of a player on the screen.
+List<Rect?> playerLayout(WidgetTester tester) {
+  Rect? of(Finder finder) =>
+      finder.evaluate().isEmpty ? null : tester.getRect(finder);
+  return [of(_dock), of(find.byKey(const ValueKey('tag-rail')))];
+}

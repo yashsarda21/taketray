@@ -92,7 +92,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  String toTagSemantics(WidgetTester tester) {
+  String toTagSemantics() {
     // The To tag item is the one whose label starts with "To tag".
     final nodes = find.semantics.byLabel(RegExp('^To tag'));
     return nodes.evaluate().single.label;
@@ -107,7 +107,7 @@ void main() {
 
     expect(badgeCounts(tester), everyElement(0));
     expect(inPill('0'), findsNothing);
-    expect(toTagSemantics(tester), 'To tag');
+    expect(toTagSemantics(), 'To tag');
     semantics.dispose();
   });
 
@@ -118,7 +118,7 @@ void main() {
 
     expect(inPill('7'), findsOneWidget);
     expect(badgeCounts(tester), [0, 7, 0]);
-    expect(toTagSemantics(tester), 'To tag, 7 clips');
+    expect(toTagSemantics(), 'To tag, 7 clips');
     semantics.dispose();
   });
 
@@ -130,7 +130,7 @@ void main() {
     await emit(tester, clips(1));
 
     expect(inPill('1'), findsOneWidget);
-    expect(toTagSemantics(tester), 'To tag, 1 clip');
+    expect(toTagSemantics(), 'To tag, 1 clip');
     semantics.dispose();
   });
 
@@ -145,12 +145,12 @@ void main() {
     await emit(tester, clips(1));
     expect(inPill('3'), findsNothing);
     expect(inPill('1'), findsOneWidget);
-    expect(toTagSemantics(tester), 'To tag, 1 clip');
+    expect(toTagSemantics(), 'To tag, 1 clip');
 
     await emit(tester, const []);
     expect(inPill('1'), findsNothing);
     expect(badgeCounts(tester), everyElement(0));
-    expect(toTagSemantics(tester), 'To tag');
+    expect(toTagSemantics(), 'To tag');
 
     // The same shell element all along: nothing was rebuilt from scratch.
     expect(tester.element(find.byType(AppShell)), same(shell));
@@ -206,6 +206,29 @@ void main() {
     await goTo(tester, 'To tag');
     expect(find.text('the To tag tab'), findsOneWidget);
     expect(badgeCounts(tester), everyElement(0));
+  });
+
+  testWidgets('an error after a first count keeps the last count (D-184)', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await pumpShell(tester);
+    await emit(tester, clips(4));
+    expect(badgeCounts(tester), [0, 4, 0]);
+
+    pending.addError(StateError('the database failed'));
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(badgeCounts(tester), [0, 4, 0]);
+    expect(inPill('4'), findsOneWidget);
+    expect(toTagSemantics(), 'To tag, 4 clips');
+    expect(find.textContaining('rror'), findsNothing);
+
+    // And the next answer replaces it as usual.
+    await emit(tester, clips(2));
+    expect(badgeCounts(tester), [0, 2, 0]);
+    semantics.dispose();
   });
 
   testWidgets('over 99 clips the badge says 99+', (tester) async {

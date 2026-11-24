@@ -3,6 +3,8 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:taketray_ui/src/components/internal/blur_barrier.dart';
+
 import '../support/tt_glass_pixels.dart';
 
 /// A 360 × 800 phone at pixel ratio 1, as the pixel tests need.
@@ -361,4 +363,70 @@ void main() {
       );
     });
   });
+
+  group('expectSteadyScrimBlur', () {
+    testWidgets('fails when the close tap misses (a scrim that stays open)', (
+      tester,
+    ) async {
+      // Awaited inside a try, not through `expectLater`: the helper drives
+      // the tester, which a matcher call must not overlap.
+      Object? failure;
+      try {
+        await expectSteadyScrimBlur(
+          tester,
+          opener: const _Opener(dismissible: false),
+        );
+      } on TestFailure catch (e) {
+        failure = e;
+      }
+      expect(failure, isA<TestFailure>());
+      expect('$failure', contains('did not close the route'));
+    });
+
+    testWidgets('passes when the tap on the scrim closes the route', (
+      tester,
+    ) async {
+      await expectSteadyScrimBlur(
+        tester,
+        opener: const _Opener(dismissible: true),
+      );
+    });
+  });
+}
+
+/// A page whose "open" button pushes a plain dialog route with the blurred
+/// scrim, one a tap on the scrim closes ([dismissible]) or leaves open.
+class _Opener extends StatelessWidget {
+  const new({required this.dismissible});
+
+  final bool dismissible;
+
+  @override
+  Widget build(BuildContext context) => Center(
+    child: TextButton(
+      onPressed: () => Navigator.of(context).push(
+        _Route(
+          context: context,
+          dismissible: dismissible,
+          builder: (_) => const Center(child: SizedBox.square(dimension: 100)),
+        ),
+      ),
+      child: const Text('open'),
+    ),
+  );
+}
+
+class _Route extends DialogRoute<void> {
+  new({
+    required super.context,
+    required super.builder,
+    required bool dismissible,
+  }) : super(
+         barrierDismissible: dismissible,
+         barrierColor: const Color(0x80000000),
+       );
+
+  @override
+  Widget buildModalBarrier() =>
+      ttBlurredBarrier(barrier: super.buildModalBarrier());
 }

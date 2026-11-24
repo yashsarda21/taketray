@@ -25,6 +25,9 @@ final WidgetbookComponent ttReelDockComponent = WidgetbookComponent(
           initialValue: 2,
           max: 14,
         );
+        final otherReels = context.knobs.boolean(
+          label: 'a reel that is not Collecting (shows All reels)',
+        );
         final scrub = context.knobs.boolean(
           label: 'scrub line',
           initialValue: true,
@@ -103,7 +106,9 @@ final WidgetbookComponent ttReelDockComponent = WidgetbookComponent(
                             'Pick several',
                             Symbols.library_add_check_rounded,
                           ),
-                        if (reels > 3)
+                        // The handoff's rule: more than three Collecting reels,
+                        // or any other reel.
+                        if (reels > 3 || otherReels)
                           action('All reels', Symbols.apps_rounded),
                       ],
                 emptyText: reels == 0

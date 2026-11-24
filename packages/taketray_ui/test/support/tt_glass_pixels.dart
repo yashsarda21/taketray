@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/painting.dart' as painting;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -90,12 +89,12 @@ Widget ttPixelApp(
 /// reach needs them back while it pumps and photographs. The binding insists
 /// the flag is back at the end of the test, so this restores it itself.
 Future<T> ttWithBlurredShadows<T>(Future<T> Function() body) async {
-  final before = painting.debugDisableShadows;
-  painting.debugDisableShadows = false;
+  final before = debugDisableShadows;
+  debugDisableShadows = false;
   try {
     return await body();
   } finally {
-    painting.debugDisableShadows = before;
+    debugDisableShadows = before;
   }
 }
 
@@ -333,7 +332,8 @@ void expectGlassStructure(WidgetTester tester, Finder of) {
 /// close, always the same widget, never a ramp (D-172).
 ///
 /// The close (a tap on the scrim) is checked only with animations on: with
-/// them off the route is gone at the first frame.
+/// them off the route is gone at the first frame. It must really happen: the
+/// scrim is gone at the end, so a tap that missed it fails.
 Future<void> expectSteadyScrimBlur(
   WidgetTester tester, {
   required Widget opener,
@@ -365,6 +365,13 @@ Future<void> expectSteadyScrimBlur(
   await tester.pump(const Duration(milliseconds: 100));
   expect(scrim().filter, steady, reason: '100 ms into the close');
   await tester.pumpAndSettle();
+  // A tap that missed the scrim leaves the route open, and every check above
+  // would pass without a close ever happening.
+  expect(
+    ttScrimFilter(),
+    findsNothing,
+    reason: 'the tap on the scrim did not close the route',
+  );
 }
 
 /// Draws [ttStripes] under [opener], opens it (the tap on the text "open"),
@@ -372,8 +379,10 @@ Future<void> expectSteadyScrimBlur(
 /// sheet scrim: black at 50 %, the default; a menu's barrier does not dim, so
 /// it passes 0).
 ///
-/// The measured rectangle is 120 × 40 dp at (8, 8): on the scrim, outside any
-/// panel of a dialog or a sheet.
+/// The measured rectangle is 120 × 40 dp at (8, 24): on the scrim, outside any
+/// panel of a dialog or a sheet, and 24 dp from the top edge (a blur reads
+/// past the edge of the view, so a rectangle closer than about 3 sigma of it
+/// would measure the edge).
 Future<void> expectPageBlurredAndDimmed(
   WidgetTester tester, {
   required Widget opener,
@@ -386,7 +395,7 @@ Future<void> expectPageBlurredAndDimmed(
   await tester.pumpWidget(
     ttPixelApp(Stack(fit: StackFit.expand, children: [ttStripes(), opener])),
   );
-  const rect = Rect.fromLTWH(8, 8, 120, 40);
+  const rect = Rect.fromLTWH(8, 24, 120, 40);
   final before = await TtPixels.capture(tester);
   final sharp = before.edgeContrast(rect);
   final luma0 = before.meanLuma(rect);

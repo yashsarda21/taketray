@@ -593,13 +593,17 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     final scene = state.sceneOf(state.index);
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
+    // The range is one piece: the line may wrap before it, never inside it
+    // ("9:01–" over "9:08 AM" at 1x, review of Task 10).
     final range = scene == null
         ? null
-        : timeRangeText(
-            scene.$3.start,
-            scene.$3.end,
-            locale: locale,
-            use24Hour: use24Hour,
+        : keepRangeTogether(
+            timeRangeText(
+              scene.$3.start,
+              scene.$3.end,
+              locale: locale,
+              use24Hour: use24Hour,
+            ),
           );
     // The whole line at every text scale: it wraps, never cut (D-179).
     final subtitle = scene == null || range == null
@@ -1207,7 +1211,6 @@ class _Stage extends ConsumerWidget {
               controller: controller,
               clip: clip,
               time: time,
-              fallback: picture,
               topInset: topInset,
               bottomInset: bottomInset,
             ),
@@ -1872,7 +1875,6 @@ class _Playing extends StatefulWidget {
     required this.controller,
     required this.clip,
     required this.time,
-    required this.fallback,
     required this.topInset,
     required this.bottomInset,
     super.key,
@@ -1881,7 +1883,6 @@ class _Playing extends StatefulWidget {
   final VideoPlayerController controller;
   final Clip clip;
   final String time;
-  final ImageProvider? fallback;
   final double topInset;
   final double bottomInset;
 
