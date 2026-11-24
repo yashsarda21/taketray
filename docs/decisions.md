@@ -2587,3 +2587,22 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - `tag_player_screen.dart` becomes a full-screen `Stack`, and swipes move to the vertical axis.
   - taketray_ui gains `TtRailButton`, `TtReelDock` and an `onVideo` style for `TtReelChip`, and loses the stage blur metrics.
   - `docs/flow.md` ("The tag player screen and All done") is updated when it is built.
+
+### D-172 · Phase 12: the scrim blur behind dialogs and sheets is steady, and glass is proved with pixels (found on the S24)
+- Date: 2026-11-24 · Phase: 12 (UI refresh), Task 1 · Fixes `ttBlurredBarrier` (D-48's scrim) · Evidence: the table "What the phone showed" in `docs/superpowers/specs/2026-11-24-phase-12-ui-refresh-design.md`
+- What the owner saw: the blur behind the dialogs was too faint to see: the page only went darker.
+- What the phone showed (2026-11-24, a throwaway test build of TakeTray Dev on the S24, Impeller on Vulkan, sharp black and white stripes behind each blur; the full table is in the spec):
+  - The renderer blurs correctly at 3: a plain `BackdropFilter` (D), a whole-screen one in a page route (H), a `DialogRoute` with a steady barrier blur and a plain card (S), Flutter's own route `filter:` (Q) and `showTtDialog` with the blur held steady (U) were all soft.
+  - `showTtDialog` with today's ramped blur 3 (A), also in a `ClipRect` (J), showed only a darker page. The same ramp with a plain `Card` dialog (V) was soft, and the barrier's sigma logged `3.0` at rest.
+- The cause found: the blur's sigma grew with the route's animation (`3 × animation.value`), and a value-0 frame returned the bare barrier with no `BackdropFilter` at all. That ramp, met by the TakeTray dialog, loses the blur on this phone. Why the two together fail is not known; the ramp ends at the right sigma.
+- Decision:
+  1. **A steady blur.** `ttBlurredBarrier({required Widget barrier})` is a `BackdropFilter` of blur 3 (`TtMetrics.scrimBlur`) around the barrier, with no `animation` and no `AnimatedBuilder`. The dim alone fades: Flutter's `AnimatedModalBarrier` keeps its `Curves.ease` colour ramp. Both route overrides (`_TtDialogRoute`, `_TtSheetRoute`) call it with `super.buildModalBarrier()`.
+  2. **The blur now leaves at once at the end of a close.** It stays at 3 for every frame of the close, and goes with the route when the route is removed, while the dim has already faded. This overrides call 6 of the spec ("the blur's ramp follows the dim"): the phone showed the ramp itself is what fails, so there is no ramp to follow.
+  3. **The pixel helper is the proof, and the frame tests pin the structure.** `test/support/tt_glass_pixels.dart` (shared with the app as `test/support/glass_pixels.dart`) draws stripes of period 8 dp behind the glass, photographs the whole navigator and measures the contrast that is left: a blurred area keeps under half (`ttBlurredShare`) of the contrast its fill lets through, so a blur of 3 (about a tenth is left) passes and a blur of 1 (about 0.87 of the contrast) fails. Its own tests pin the thresholds (sigma 0, 1, 3 and 12 under a half and a 94 % fill). Every later glass task uses it.
+  4. **The flutter_tester renderer does not reproduce the phone bug**: the pixel test passed on the old ramped code too (recorded in Task 1's report). So the regression guard for what the phone proved is structural: `expectSteadyScrimBlur` checks the scrim's `BackdropFilter` is present from the first frame, has blur 3 at every frame to the end of the close, and is the same element each time (no widget swap, no ramp); `expectGlassStructure` checks a glass's first painter is a `ColoredBox` or a coloured `DecoratedBox`, never a `Material` (the second bug found, the reel cover pill, fixed in the glass task). The phone itself decides at the end of the phase (Task 14).
+- Alternatives considered:
+  - Flutter's own route `filter:` (soft on the phone, Q), which changes the barrier's structure for no gain over a steady blur.
+  - A bigger ramped blur (6 and 12 were soft, G and B), which hides the problem and changes the design's strength.
+- Consequences:
+  - The `animation` parameter of `ttBlurredBarrier` is gone; Task 5 (the menu route) reuses it.
+  - An app golden of the Delete reel dialog over a reel's page, light and dark (`reel_overlays_golden_test.dart`, macOS only), shows the blur over real content.

@@ -229,8 +229,6 @@ class _TtSheetRoute<T> extends ModalBottomSheetRoute<T> {
   });
 
   @override
-  Widget buildModalBarrier() => ttBlurredBarrier(
-    animation: animation!,
-    barrier: super.buildModalBarrier(),
-  );
+  Widget buildModalBarrier() =>
+      ttBlurredBarrier(barrier: super.buildModalBarrier());
 }

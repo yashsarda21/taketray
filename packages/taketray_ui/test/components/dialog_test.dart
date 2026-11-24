@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
+import '../support/tt_glass_pixels.dart';
 import '../support/tt_test_app.dart';
 
 const _two = [
@@ -472,11 +473,34 @@ void main() {
       expect(find.text('Delete reel?'), findsNothing);
     });
 
-    testWidgets('dims and blurs the page behind it', (tester) async {
+    testWidgets('the scrim blurs by 3 from the first frame to the end of the '
+        'close', (tester) async {
+      await expectSteadyScrimBlur(tester, opener: _Opener(onResult: (_) {}));
+    });
+
+    testWidgets('reduced motion: blurred at the first frame', (tester) async {
+      await expectSteadyScrimBlur(
+        tester,
+        opener: _Opener(onResult: (_) {}),
+        disableAnimations: true,
+      );
+    });
+
+    testWidgets('the page behind is blurred and dimmed by half', (
+      tester,
+    ) async {
+      await expectPageBlurredAndDimmed(
+        tester,
+        opener: _Opener(onResult: (_) {}),
+      );
+    });
+
+    testWidgets('dims the page behind it with the scrim colour at 50 %', (
+      tester,
+    ) async {
       await tester.pumpWidget(ttTestApp(_Opener(onResult: (_) {})));
       await tester.tap(find.text('open'));
       await tester.pumpAndSettle();
-      expect(find.byType(BackdropFilter), findsWidgets);
       final barrier = tester.widget<AnimatedModalBarrier>(
         find.byType(AnimatedModalBarrier).last,
       );

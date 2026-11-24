@@ -317,8 +317,6 @@ class _TtDialogRoute<T> extends DialogRoute<T> {
   });
 
   @override
-  Widget buildModalBarrier() => ttBlurredBarrier(
-    animation: animation!,
-    barrier: super.buildModalBarrier(),
-  );
+  Widget buildModalBarrier() =>
+      ttBlurredBarrier(barrier: super.buildModalBarrier());
 }
