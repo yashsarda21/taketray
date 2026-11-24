@@ -130,6 +130,32 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   /// The top's height, measured the same way: the dock leaves room for it.
   double _topHeight = 0;
 
+  /// The two rail buttons' heights (Skip, Same), measured the same way:
+  /// what the rail needs as a column or as a row. Same is taller with the
+  /// reel names under it.
+  double _skipHeight = TtMetrics.railButtonSize;
+  double _sameHeight = TtMetrics.railButtonSize;
+
+  /// The dock's floor: its height with only one row of reels, measured from
+  /// an offstage copy. The dock is never capped below it, so its header and
+  /// a row of reels always show (a landscape phone, ruling M2).
+  double _dockFloor = 0;
+
+  void _skipLaidOut(Size size) {
+    if (!mounted || size.height == _skipHeight) return;
+    setState(() => _skipHeight = size.height);
+  }
+
+  void _sameLaidOut(Size size) {
+    if (!mounted || size.height == _sameHeight) return;
+    setState(() => _sameHeight = size.height);
+  }
+
+  void _floorLaidOut(Size size) {
+    if (!mounted || size.height == _dockFloor) return;
+    setState(() => _dockFloor = size.height);
+  }
+
   void _dockLaidOut(Size size) {
     if (!mounted || size.height == _dockHeight) return;
     setState(() => _dockHeight = size.height);
@@ -232,7 +258,9 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       child: Theme(
         // The Scaffold builds the snacks under this theme: while the player
         // shows, it places them over the dock.
-        data: playing ? _playerTheme(context, rail: !state.multi) : _video,
+        data: playing
+            ? _playerTheme(context, state, rail: !state.multi)
+            : _video,
         child: Builder(
           builder: (context) {
             final tt = context.tt;
@@ -279,26 +307,45 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   ThemeData? _theme;
   Object? _themeFor;
 
-  /// The video theme, with the snacks placed for the player (D-181): a
-  /// floating snack's bottom edge [TtMetrics.playerSnackAboveDock] over the
-  /// dock's top, [TtMetrics.playerSnackInsetStart] from the start edge and,
-  /// at the end, clear of the [rail] by the same 12 dp: the handoff's 88 dp
-  /// for a 64 dp rail, more as the rail grows with its text (88 with no
-  /// rail, while picking). The inset is the theme's `EdgeInsets`, which a
-  /// snack reads as left and right, so it is mirrored here in right-to-left
-  /// text, like the rail. The `Scaffold` puts a floating snack's bottom at
-  /// the screen's bottom less the bottom view padding, which is taken off
-  /// the dock's height.
-  ThemeData _playerTheme(BuildContext context, {required bool rail}) {
+  /// Whether the text is large enough for the one-column dock: the snack
+  /// then goes full width over the rail (ruling R2).
+  bool _largeText(BuildContext context) =>
+      MediaQuery.textScalerOf(context).scale(1) >=
+      TtMetrics.reelDockSingleColumnTextScale;
+
+  /// The video theme, with the snacks placed for the player (D-181). Below
+  /// 1.5x a floating snack's bottom edge is [TtMetrics.playerSnackAboveDock]
+  /// over the dock's top, [TtMetrics.playerSnackInsetStart] from the start
+  /// edge and, at the end, clear of the [rail] by the same 12 dp: the
+  /// handoff's 88 dp for a 64 dp rail, more as the rail grows (88 with no
+  /// rail, while picking). From 1.5x the rail is too wide to sit beside, so
+  /// the snack is full width, 12 dp from each edge, 8 dp over the rail (or
+  /// over the dock while picking; ruling R2). The inset is the theme's
+  /// `EdgeInsets`, which a snack reads as left and right, so it is mirrored
+  /// here in right-to-left text, like the rail. The `Scaffold` puts a
+  /// floating snack's bottom at the screen's bottom less the bottom view
+  /// padding, which is taken off.
+  ThemeData _playerTheme(
+    BuildContext context,
+    TagSessionState state, {
+    required bool rail,
+  }) {
+    final large = _largeText(context);
     const start = TtMetrics.playerSnackInsetStart;
-    final end = rail
+    final end = large
+        ? TtMetrics.playerSnackInsetStart
+        : rail
         ? TtMetrics.playerSnackInsetEnd +
               _railSize.width -
               TtMetrics.railButtonSize
         : TtMetrics.playerSnackInsetEnd;
+    final place = _bottomLayout(context, state).rail;
+    final over = large && rail
+        ? math.max(_dockHeight, _railBottom(context, place) + _railSize.height)
+        : _dockHeight;
     final bottom = math.max<double>(
       0,
-      _dockHeight +
+      over +
           TtMetrics.playerSnackAboveDock -
           MediaQuery.viewPaddingOf(context).bottom,
     );
@@ -314,6 +361,81 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       snackBarTheme: _video.snackBarTheme.copyWith(insetPadding: inset),
     );
   }
+
+  /// The room kept over the rail for a snack from 1.5x (ruling R2): a
+  /// two-line message in `bodyMedium` at this text scale, the snack's own
+  /// padding, and the 8 dp under it. It is kept whether a snack shows or
+  /// not, so nothing moves when one comes.
+  double _snackRoom(BuildContext context) {
+    final tt = context.tt;
+    final body = tt.text.material.bodyMedium!;
+    final line =
+        MediaQuery.textScalerOf(context).scale(body.fontSize!) *
+        (body.height ?? 1);
+    // TtSnack with an action: its 6 dp padding less the 2 dp its button's
+    // tap target reaches past the pill, and 8 dp round the message.
+    final padding =
+        TtMetrics.snackPaddingVertical -
+        (tt.sizes.touchTarget - TtMetrics.buttonMinHeight) / 2;
+    return 2 * line +
+        2 * TtMetrics.snackMessagePadding +
+        2 * padding +
+        TtMetrics.playerSnackAboveDock;
+  }
+
+  /// How the dock, the rail and the snack share the height under the top
+  /// (D-181). The dock's floor comes first, then the rail, then a large-text
+  /// snack's room (which may reach into the top's 24 dp fade, never the
+  /// header):
+  /// - the dock is capped at what is left under the top, less the rail and
+  ///   the snack's room, but never below its floor;
+  /// - the rail is a column over the dock when it and the snack's room fit
+  ///   between the top and the floor, else a row over the dock if that and
+  ///   the snack fit; without the snack's room, a column, then a row; and
+  ///   else (a phone held sideways) a column beside the dock, which then
+  ///   leaves the end of the screen to it.
+  ({double cap, _RailPlace rail}) _bottomLayout(
+    BuildContext context,
+    TagSessionState state,
+  ) {
+    final room = MediaQuery.sizeOf(context).height - _topHeight;
+    final snack = _largeText(context)
+        ? math.max<double>(
+            0,
+            _snackRoom(context) - TtMetrics.playerTopScrimFade,
+          )
+        : 0.0;
+    final column = _skipHeight + TtMetrics.railGap + _sameHeight;
+    final row = math.max(_skipHeight, _sameHeight);
+    final free = room - _dockFloor - TtMetrics.railAboveDock;
+    final rail = state.multi
+        ? _RailPlace.none
+        : free - snack >= column
+        ? _RailPlace.column
+        : free - snack >= row
+        ? _RailPlace.row
+        : free >= column
+        ? _RailPlace.column
+        : free >= row
+        ? _RailPlace.row
+        : _RailPlace.beside;
+    final over = switch (rail) {
+      _RailPlace.column => column + TtMetrics.railAboveDock,
+      _RailPlace.row => row + TtMetrics.railAboveDock,
+      _RailPlace.none || _RailPlace.beside => 0.0,
+    };
+    return (
+      cap: math.max(_dockFloor, math.max<double>(0, room - over - snack)),
+      rail: rail,
+    );
+  }
+
+  /// Where the rail's bottom is, from the screen's bottom: 4 dp over the
+  /// dock, or, beside it, level with the dock's last row.
+  double _railBottom(BuildContext context, _RailPlace place) =>
+      place == _RailPlace.beside
+      ? TtMetrics.reelDockPaddingBottom + MediaQuery.paddingOf(context).bottom
+      : _dockHeight + TtMetrics.railAboveDock;
 
   /// The player, loaded and not done (D-181): the stage over the whole
   /// screen, the top, the dock, and the rail unless picking. A screen reader
@@ -335,6 +457,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       sortKey: OrdinalSortKey(order.toDouble()),
       child: child,
     );
+    final layout = _bottomLayout(context, state);
     return TtVideoSurface(
       child: Stack(
         fit: StackFit.expand,
@@ -372,9 +495,12 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
               ),
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
+          PositionedDirectional(
+            start: 0,
+            // Beside the dock, the rail takes the end of the screen.
+            end: layout.rail == _RailPlace.beside
+                ? TtMetrics.railInsetEnd + _railSize.width
+                : 0,
             bottom: 0,
             child: group(
               3,
@@ -383,34 +509,50 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                 child: ConstrainedBox(
                   // On a short phone at large text the dock's grid gives way
                   // (it scrolls in less) rather than push the rail over the
-                  // top (Review Focus 4).
-                  constraints: BoxConstraints(
-                    maxHeight: math.max<double>(
-                      0,
-                      MediaQuery.sizeOf(context).height -
-                          _topHeight -
-                          (state.multi
-                              ? 0
-                              : _railSize.height + TtMetrics.railAboveDock),
-                    ),
-                  ),
+                  // top (Review Focus 4), but never below its floor.
+                  constraints: BoxConstraints(maxHeight: layout.cap),
                   child: _dock(context, state, summaries, cache, player),
                 ),
               ),
             ),
           ),
-          if (!state.multi)
+          if (layout.rail != _RailPlace.none)
             PositionedDirectional(
               end: TtMetrics.railInsetEnd,
-              bottom: _dockHeight + TtMetrics.railAboveDock,
+              bottom: _railBottom(context, layout.rail),
               child: group(
                 2,
                 _ReportSize(
                   onSize: _railLaidOut,
-                  child: _rail(context, summaries, lastTags),
+                  child: _rail(
+                    context,
+                    summaries,
+                    lastTags,
+                    row: layout.rail == _RailPlace.row,
+                  ),
                 ),
               ),
             ),
+          // The dock's floor, measured: the same dock with one row of
+          // reels, laid out but never painted, hit or announced.
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Offstage(
+              child: _ReportSize(
+                onSize: _floorLaidOut,
+                child: _dock(
+                  context,
+                  state,
+                  summaries,
+                  cache,
+                  player,
+                  oneRow: true,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -622,13 +764,17 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
 
   /// The dock (`TtReelDock`): the scrub bar, the header and its actions, the
   /// reels of `dockReels` and, while picking, the confirm button.
+  ///
+  /// With [oneRow] it is the measuring copy for the dock's floor: the first
+  /// row of reels only (one reel from 1.5x, two below), and no key.
   Widget _dock(
     BuildContext context,
     TagSessionState state,
     List<ReelSummary>? summaries,
     ThumbnailCache? cache,
-    VideoPlayerController? player,
-  ) {
+    VideoPlayerController? player, {
+    bool oneRow = false,
+  }) {
     final l10n = AppLocalizations.of(context);
     final clip = state.currentClip;
     final controller = ref.read(_provider.notifier);
@@ -689,8 +835,19 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     // No reels at all: the prompt and a full-width New reel, also while
     // picking (the reels were deleted meanwhile).
     final none = summaries != null && all.isEmpty;
+    final chips = <Widget>[
+      for (final s in shown.grid) chip(s),
+      if (summaries != null && (shown.newReel || none))
+        TtNewReelChip(
+          title: l10n.tagNewReel,
+          subtitle: none ? null : l10n.tagNewReelSubtitle,
+          fullWidth: none,
+          style: TtReelChipStyle.onVideo,
+          onTap: () => _openOnce.open(_newReel),
+        ),
+    ];
     return TtReelDock(
-      key: const ValueKey('tag-dock'),
+      key: oneRow ? null : const ValueKey('tag-dock'),
       title: multi ? l10n.tagDockPickTitle : l10n.tagPanelTitle,
       semanticLabel: l10n.tagPanelLabel,
       scrub: clip == null
@@ -716,17 +873,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
               if (shown.allReels) allReels,
             ],
       emptyText: none ? l10n.tagNoReels : null,
-      chips: [
-        for (final s in shown.grid) chip(s),
-        if (summaries != null && (shown.newReel || none))
-          TtNewReelChip(
-            title: l10n.tagNewReel,
-            subtitle: none ? null : l10n.tagNewReelSubtitle,
-            fullWidth: none,
-            style: TtReelChipStyle.onVideo,
-            onTap: () => _openOnce.open(_newReel),
-          ),
-      ],
+      chips: oneRow ? chips.take(_largeText(context) ? 1 : 2).toList() : chips,
       footer: multi
           ? TtButton(
               label: state.picked.isEmpty
@@ -744,11 +891,15 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   /// The rail (`player2.css:32`): **Skip** over **Same** (Same as previous),
   /// 10 dp apart and as wide as the wider of them. Same names the reels of
   /// the last tag, and is off (at 45 %) until something has been tagged.
+  ///
+  /// As a [row] (Skip, then Same, as tall as the taller) when a column does
+  /// not fit between the top and the dock's floor: a phone held sideways.
   Widget _rail(
     BuildContext context,
     List<ReelSummary>? summaries,
-    List<int> lastTags,
-  ) {
+    List<int> lastTags, {
+    required bool row,
+  }) {
     final l10n = AppLocalizations.of(context);
     final controller = ref.read(_provider.notifier);
     final repeat = [
@@ -757,20 +908,24 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
           if (summary.reel.id == id) summary.reel.name,
     ];
     final names = repeat.join(', ');
-    return IntrinsicWidth(
-      key: const ValueKey('tag-rail'),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: TtMetrics.railGap,
-        children: [
-          TtRailButton(
+    final buttons = Flex(
+      direction: row ? Axis.horizontal : Axis.vertical,
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: TtMetrics.railGap,
+      children: [
+        _ReportSize(
+          onSize: _skipLaidOut,
+          child: TtRailButton(
             icon: Symbols.redo_rounded,
             label: l10n.tagPlayerSkip,
             semanticLabel: l10n.tagPlayerSkipSemantics,
             onPressed: () => unawaited(_act(controller.skip)),
           ),
-          TtRailButton(
+        ),
+        _ReportSize(
+          onSize: _sameLaidOut,
+          child: TtRailButton(
             icon: Symbols.repeat_rounded,
             label: l10n.tagRailSame,
             detail: repeat.isEmpty ? null : names,
@@ -781,9 +936,12 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
                 ? null
                 : () => unawaited(_act(controller.sameAsPrevious)),
           ),
-        ],
-      ),
+        ),
+      ],
     );
+    return row
+        ? IntrinsicHeight(key: const ValueKey('tag-rail'), child: buttons)
+        : IntrinsicWidth(key: const ValueKey('tag-rail'), child: buttons);
   }
 
   /// **All reels**: the sheet with every reel (`showAllReelsSheet`). A reel
@@ -1529,4 +1687,20 @@ class _RenderReportSize extends RenderProxyBox {
     // Not during layout: the owner rebuilds with it.
     SchedulerBinding.instance.addPostFrameCallback((_) => onSize(now));
   }
+}
+
+/// Where the rail of Skip and Same goes (D-181).
+enum _RailPlace {
+  /// Picking: no rail.
+  none,
+
+  /// A column 4 dp over the dock: the design.
+  column,
+
+  /// A row 4 dp over the dock, when a column does not fit under the top.
+  row,
+
+  /// A column beside the dock, when not even a row fits (a phone held
+  /// sideways).
+  beside,
 }

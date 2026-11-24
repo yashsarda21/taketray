@@ -158,6 +158,9 @@ void main() {
   );
 
   Future<void> tagInto(WidgetTester tester, String name) async {
+    // At 2x the dock's grid can scroll: bring the chip into it first.
+    await tester.ensureVisible(chip(name));
+    await tester.pump();
     await tester.tap(chip(name));
     await tester.pump();
     holds.fireAll();
@@ -227,8 +230,9 @@ void main() {
     await fourReels(tester);
     await waiting(tester, 8);
     await open(tester, textScale: scale);
-    await tagInto(tester, 'Goa Trip');
-    await tagInto(tester, 'London Food');
+    // Sunsets is the newest reel: the first chip, on screen at 2x too.
+    await tagInto(tester, 'Sunsets');
+    await tagInto(tester, 'Sunsets');
     await showPictures(tester);
   });
 
@@ -239,7 +243,7 @@ void main() {
     await fourReels(tester);
     await waiting(tester, 8);
     await open(tester, textScale: scale);
-    await tester.tap(chip('Goa Trip'));
+    await tester.tap(chip('Sunsets'));
     await tester.pump();
     // The hold has not ended: nothing tagged yet.
     expect(holds.made.single.cancelled, isFalse);

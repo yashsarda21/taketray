@@ -160,10 +160,15 @@ void main() {
     bool animations = false,
     bool spinning = false,
     double statusBar = 24,
+    double gestureBar = 0,
   }) async {
-    // A phone's status bar: the player runs under it (D-181).
-    tester.view.padding = FakeViewPadding(top: statusBar);
-    tester.view.viewPadding = FakeViewPadding(top: statusBar);
+    // A phone's status bar (the player runs under it, D-181) and, when
+    // given, its gesture bar.
+    tester.view.padding = FakeViewPadding(top: statusBar, bottom: gestureBar);
+    tester.view.viewPadding = FakeViewPadding(
+      top: statusBar,
+      bottom: gestureBar,
+    );
     await pumpScreen(
       tester,
       TagPlayerScreen(startClipId: from),
@@ -1933,16 +1938,17 @@ void main() {
       expect(find.text('Added to London and Goa'), findsOneWidget);
     });
 
-    for (final scale in [1.0, 2.0]) {
-      testApp("the snack's right edge stays clear of the rail (${scale}x)", (
-        tester,
-      ) async {
+    // Below 1.5x the snack sits beside the rail, 8 dp above the dock; from
+    // 1.5x (where the dock is one column) it is full width above the rail
+    // (ruling R2). With and without a gesture bar, which the Scaffold adds
+    // under a floating snack.
+    for (final gestureBar in [0.0, 24.0]) {
+      testApp("1x: the snack's right edge stays clear of the rail "
+          '(gesture bar $gestureBar)', (tester) async {
         await newReel(tester, 'Lisbon');
         await waiting(tester, 3);
-        await open(tester, textScale: scale);
+        await open(tester, gestureBar: gestureBar);
 
-        // A tag: the snack, and Same with the reel's name, which widens the
-        // rail at large text.
         await tagInto(tester, 'Lisbon');
 
         final snack = tester.getRect(find.byType(TtSnack));
@@ -1951,44 +1957,110 @@ void main() {
         expect(snack.right, lessThanOrEqualTo(box.left));
         expect(snack.left, 12);
         expect(snack.bottom, closeTo(dockTop - 8, 0.5));
-        if (scale == 1) {
-          // The handoff's 88 dp: 12, the 64 dp rail, 12.
-          expect(box.width, 64);
-          expect(snack.right, 360 - 88);
-        } else {
-          // A fixed 88 would run under it.
-          expect(box.width, greaterThan(64));
-          expect(snack.right, closeTo(box.left - 12, 0.01));
-        }
+        // The handoff's 88 dp: 12, the 64 dp rail, 12.
+        expect(box.width, 64);
+        expect(snack.right, 360 - 88);
+        expect(tester.getRect(dock).bottom, 800);
+      });
+
+      testApp('2x: the snack is full width above the rail, under the header '
+          '(gesture bar $gestureBar)', (tester) async {
+        await newReel(tester, 'London Food');
+        await newReel(tester, 'Sunsets');
+        // A Ready reel: All reels joins Pick several, and the header wraps
+        // to three lines, so the dock's floor is at its tallest.
+        await newReel(tester, 'Old shoot', status: ReelStatus.ready);
+        // The newest Collecting: the first chip, on screen at 2x.
+        await newReel(tester, 'Goa Trip');
+        await waiting(tester, 3, zoneId: 'Europe/London');
+        await open(tester, textScale: 2, gestureBar: gestureBar);
+
+        await tagInto(tester, 'Goa Trip');
+
+        expect(tester.takeException(), isNull);
+        final snack = tester.getRect(find.byType(TtSnack));
+        final box = tester.getRect(rail);
+        final head = tester.getRect(find.byType(TtPlayerHeader));
+        expect(snack.left, 12);
+        expect(snack.right, 360 - 12);
+        expect(snack.bottom, closeTo(box.top - 8, 0.5));
+        expect(snack.top, greaterThanOrEqualTo(head.bottom));
+        expect(snack.overlaps(box), isFalse);
+        // "Added to Goa Trip" is not a word a line: two lines at most.
+        final message = tester.renderObject<RenderParagraph>(
+          find.descendant(
+            of: find.byType(TtSnack),
+            matching: find.text('Added to Goa Trip'),
+          ),
+        );
+        final line = message.getFullHeightForCaret(
+          const TextPosition(offset: 0),
+        );
+        expect(message.size.height, lessThanOrEqualTo(2 * line + 0.5));
+        // The rail keeps its place on the dock.
+        expect(box.bottom, tester.getRect(dock).top - 4);
       });
     }
 
     testApp('the snack follows the dock when it grows (Pick several, 2x)', (
       tester,
     ) async {
-      await newReel(tester, 'Goa');
       await newReel(tester, 'London');
       await newReel(tester, 'Sunsets');
+      // The newest: the first chip, on screen at 2x.
+      await newReel(tester, 'Goa');
       await waiting(tester, 3);
       await open(tester, textScale: 2);
       await tagInto(tester, 'Goa');
       final before = tester.getRect(dock).top;
+      // Over the rail at 2x.
       expect(
         tester.getRect(find.byType(TtSnack)).bottom,
-        closeTo(before - 8, 0.5),
+        closeTo(tester.getRect(rail).top - 8, 0.5),
       );
 
-      // Pick several adds the footer: the dock is taller.
+      // Pick several adds the footer and hides the rail: the snack is over
+      // the dock, full width.
       await tester.tap(button('Pick several'));
       await settleApp(tester);
 
       final after = tester.getRect(dock).top;
-      expect(after, lessThan(before));
+      expect(after, isNot(before));
       expect(find.byType(TtSnack), findsOneWidget);
-      expect(
-        tester.getRect(find.byType(TtSnack)).bottom,
-        closeTo(after - 8, 0.5),
-      );
+      final snack = tester.getRect(find.byType(TtSnack));
+      expect(snack.bottom, closeTo(after - 8, 0.5));
+      expect(snack.left, 12);
+      expect(snack.right, 360 - 12);
+    });
+
+    testApp('Pick several always offers All reels, and New reel in it', (
+      tester,
+    ) async {
+      // Two Collecting reels and nothing else: All reels is not needed
+      // outside Pick several, but it is New reel's only way in while picking
+      // (ruling I1, the handoff's "Pick reels, All reels and Cancel").
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'London');
+      final ids = await waiting(tester, 2);
+      await open(tester);
+      expect(allReels, findsNothing);
+
+      await tester.tap(button('Pick several'));
+      await settleApp(tester);
+      expect(inDock(allReels), findsOneWidget);
+
+      await openAllReels(tester);
+      await tester.tap(inSheet(find.byType(TtNewReelChip)));
+      await settleApp(tester);
+      await tester.enterText(find.byType(TextField), 'Tokyo');
+      await tester.pump();
+      await tester.tap(button('Create and add'));
+      await tester.pump();
+      await settleApp(tester);
+
+      expect(await reelsOf(tester, ids[0]), isEmpty);
+      expect(chipState(tester, 'Tokyo'), TtReelChipState.picked);
+      expect(button('Add to 1 reel & next'), findsOneWidget);
     });
 
     testApp('a tap on the dock above the reels plays or pauses, and never '
@@ -2366,11 +2438,23 @@ void main() {
       await open(tester, textScale: 2, size: const Size(360, 640));
 
       expect(tester.takeException(), isNull);
-      // The rail keeps its place, on the screen.
+      // The dock's header and a row of reels come first (its floor, ruling
+      // M2); a column of the rail does not fit over it here, so the rail
+      // moves, on the screen and over neither the header nor the dock.
       var box = tester.getRect(rail);
-      expect(box.bottom, tester.getRect(dock).top - 4);
       expect(box.right, 360 - 12);
-      expect(box.top, greaterThanOrEqualTo(0));
+      expect(
+        box.top,
+        greaterThanOrEqualTo(
+          tester.getRect(find.byType(TtPlayerHeader)).bottom,
+        ),
+      );
+      expect(box.bottom, lessThanOrEqualTo(640));
+      expect(box.overlaps(tester.getRect(dock)), isFalse);
+      expect(
+        tester.getRect(chip('A reel with quite a long name 5')).bottom,
+        lessThanOrEqualTo(640),
+      );
       // The dock stays on the screen, and its grid scrolls.
       expect(tester.getRect(dock).top, greaterThanOrEqualTo(0));
       final grid = tester.state<ScrollableState>(
@@ -2480,6 +2564,35 @@ void main() {
       final semantics = tester.ensureSemantics();
       await expectLater(tester, meetsGuideline(ttTextContrastGuideline));
       semantics.dispose();
+    });
+
+    testApp('landscape (800 × 360) at 1x: no overflow, a reel shows and '
+        'takes a tap, the rail clear of the header', (tester) async {
+      await newReel(tester, 'London Food');
+      await newReel(tester, 'Goa Trip');
+      await newReel(tester, 'Sunsets');
+      await waiting(tester, 3);
+
+      await open(tester, size: const Size(800, 360));
+
+      expect(tester.takeException(), isNull);
+      final screen = Offset.zero & const Size(800, 360);
+      // At least one reel chip, whole on the screen, under the header.
+      final first = tester.getRect(chip('Sunsets'));
+      expect(screen.intersect(first), first);
+      final head = tester.getRect(find.byType(TtPlayerHeader));
+      expect(first.top, greaterThanOrEqualTo(head.bottom));
+      // The rail: under the header, over neither the header nor the dock.
+      final box = tester.getRect(rail);
+      expect(box.top, greaterThanOrEqualTo(head.bottom));
+      expect(box.overlaps(tester.getRect(dock)), isFalse);
+      expect(box.right, 800 - 12);
+      expect(box.bottom, lessThanOrEqualTo(360));
+      // The chip takes the tap: the hold starts.
+      await tester.tap(chip('Sunsets'));
+      await tester.pump();
+      expect(holds.made, hasLength(1));
+      expect(tester.takeException(), isNull);
     });
 
     testApp('meets the accessibility guidelines', (tester) async {

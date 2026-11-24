@@ -28,7 +28,9 @@ typedef DockReels = ({
 ///   reel any more is left out;
 /// - New reel is in the dock unless picking (it is in All reels then);
 /// - All reels is offered when more than three reels are Collecting, or any
-///   reel is Ready or Published: when a reel is not in the dock;
+///   reel is Ready or Published: when a reel is not in the dock; and always
+///   while picking, where it is New reel's only way in (ruling I1, the
+///   handoff's "Pick reels, All reels and Cancel");
 /// - Pick several is offered with two reels or more.
 DockReels dockReels(
   List<ReelSummary> ordered, {
@@ -51,6 +53,7 @@ DockReels dockReels(
     ],
     newReel: !multi,
     allReels:
+        multi ||
         collecting.length > dockCollectingReels ||
         collecting.length < ordered.length,
     pickSeveral: ordered.length >= 2,

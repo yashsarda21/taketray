@@ -121,6 +121,15 @@ void main() {
     expect(dock.allReels, isTrue);
   });
 
+  test('picking with two Collecting reels and nothing else: All reels '
+      '(New reel is only there while picking)', () {
+    final dock = dockReels([reel(2), reel(1)], multi: true, picked: const []);
+
+    expect(ids(dock.grid), [2, 1]);
+    expect(dock.newReel, isFalse);
+    expect(dock.allReels, isTrue);
+  });
+
   test('not picking: picks are ignored', () {
     // A stale pick list (the controller clears it, but the rule stands alone).
     final dock = dockReels(
