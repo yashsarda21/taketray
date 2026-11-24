@@ -38,6 +38,40 @@ void main() {
           ),
         ),
       ),
+      TtScenario(
+        'header with chevrons',
+        _onVideo(
+          _header(
+            title: '5 of 12',
+            subtitle: 'Scene 2 of 4 · 0:12–0:48',
+            wrapSubtitle: true,
+            chevrons: _Chevrons.both,
+          ),
+        ),
+      ),
+      TtScenario(
+        'header with chevrons, first clip (Previous off)',
+        _onVideo(
+          _header(
+            title: '1 of 12',
+            subtitle: 'Scene 1 of 4 · 0:00–0:12',
+            wrapSubtitle: true,
+            chevrons: _Chevrons.firstClip,
+          ),
+        ),
+      ),
+      TtScenario(
+        'header with chevrons, a long scene line wraps',
+        _onVideo(
+          _header(
+            title: '12 of 12',
+            subtitle:
+                'Scene 12 of 40 · 12:34:56 PM–12:59:59 PM and a long tail',
+            wrapSubtitle: true,
+            chevrons: _Chevrons.lastClip,
+          ),
+        ),
+      ),
       TtScenario('arrows enabled', _onVideo(_arrows(enabled: true))),
       TtScenario('arrows disabled', _onVideo(_arrows(enabled: false))),
       TtScenario(
@@ -111,11 +145,26 @@ Widget _bar({required int total, required int current}) => _onVideo(
   ),
 );
 
+enum _Chevrons { none, both, firstClip, lastClip }
+
 Widget _header({
   required String title,
   required String subtitle,
   bool wrapSubtitle = false,
+  _Chevrons chevrons = _Chevrons.none,
 }) => TtPlayerHeader(
+  previous: switch (chevrons) {
+    _Chevrons.none => null,
+    _Chevrons.firstClip => const TtHeaderChevron(
+      semanticLabel: 'Previous clip',
+    ),
+    _ => TtHeaderChevron(semanticLabel: 'Previous clip', onPressed: () {}),
+  },
+  next: switch (chevrons) {
+    _Chevrons.none => null,
+    _Chevrons.lastClip => const TtHeaderChevron(semanticLabel: 'Next clip'),
+    _ => TtHeaderChevron(semanticLabel: 'Next clip', onPressed: () {}),
+  },
   leading: TtIconButton(
     icon: Symbols.close_rounded,
     semanticLabel: 'Close tagging',

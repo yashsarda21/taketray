@@ -3,7 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:taketray_ui/src/components/reel_chip.dart';
+import 'package:taketray_ui/src/components/internal/chip_grid.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -119,7 +119,7 @@ class TtTagPanel extends StatelessWidget {
     // At large text sizes a 164 dp cell shows too little of a name, so the
     // chips take a row each (D-47), and the panel may grow taller.
     final scale = MediaQuery.textScalerOf(context).scale(1);
-    final large = scale >= TtMetrics.tagPanelSingleColumnTextScale;
+    final large = scale >= TtMetrics.reelDockSingleColumnTextScale;
     final maxHeight = math.min(
       TtMetrics.tagPanelMaxHeight * math.max(1, scale),
       TtMetrics.tagPanelMaxHeightLarge,
@@ -144,10 +144,10 @@ class TtTagPanel extends StatelessWidget {
             ),
           ),
         ),
-      ..._gridRows(chips, large: large, gap: tt.spacing.xs),
+      ...chipGridRows(chips, large: large, gap: tt.spacing.xs),
       ?toggle,
       if (showFolded)
-        ..._gridRows(foldedChips, large: large, gap: tt.spacing.xs),
+        ...chipGridRows(foldedChips, large: large, gap: tt.spacing.xs),
     ];
 
     return Semantics(
@@ -212,40 +212,6 @@ class TtTagPanel extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Lays [chips] out two to a row, or one per row at [large] text. A
-/// full-width `TtNewReelChip` ends the row before it and takes its own.
-List<Widget> _gridRows(
-  List<Widget> chips, {
-  required bool large,
-  required double gap,
-}) {
-  if (large) return chips;
-  final rows = <Widget>[];
-  Widget? waiting;
-  Widget pair(Widget first, Widget? second) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: gap,
-    children: [
-      Expanded(child: first),
-      Expanded(child: second ?? const SizedBox.shrink()),
-    ],
-  );
-  for (final chip in chips) {
-    if (chip is TtNewReelChip && chip.fullWidth) {
-      if (waiting != null) rows.add(pair(waiting, null));
-      waiting = null;
-      rows.add(chip);
-    } else if (waiting == null) {
-      waiting = chip;
-    } else {
-      rows.add(pair(waiting, chip));
-      waiting = null;
-    }
-  }
-  if (waiting != null) rows.add(pair(waiting, null));
-  return rows;
 }
 
 /// The 1 dp highlight that follows the panel's rounded top edge: the panel's

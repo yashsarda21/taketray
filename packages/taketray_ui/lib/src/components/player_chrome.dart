@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/buttons.dart';
+import 'package:taketray_ui/src/components/internal/player_scrims.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_text_styles.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
@@ -95,17 +97,41 @@ class TtSegmentBar extends StatelessWidget {
   }
 }
 
+/// A Previous or Next control in the middle of a [TtPlayerHeader].
+///
+/// A null [onPressed] is a chevron at either end of the session: it is
+/// drawn at 35 % and announced as unavailable, not removed, so the title
+/// keeps its place.
+class TtHeaderChevron {
+  /// A chevron that a screen reader calls [semanticLabel], such as "Previous
+  /// clip".
+  const new({required this.semanticLabel, this.onPressed});
+
+  /// What a screen reader says for the chevron.
+  final String semanticLabel;
+
+  /// Called when the chevron is tapped; null dims and disables it.
+  final VoidCallback? onPressed;
+}
+
 /// The row above the video in the tag player: a [leading] control, a centred
 /// [title] over an optional [subtitle], and a [trailing] control.
 ///
 /// At least 56 dp high with 4 dp at the sides. The title is one line with an
-/// ellipsis; so is the subtitle, except with [wrapSubtitle] from
-/// [TtMetrics.largeTextScale] up, where it may wrap to two lines (the tag
-/// player's time range must not be cut; the viewer's header sits over the
-/// video, where a second line would leave its scrim). At large text sizes
-/// the header grows rather than clip. The text is a live region, so a
-/// screen reader says the new position each time the clip changes. Without
-/// a [trailing] control the title stays centred.
+/// ellipsis. The subtitle is one line with an ellipsis too, except with
+/// [wrapSubtitle]: then it wraps at every text scale, with no line limit and
+/// no ellipsis, so the scene and its time range are never cut (the tag
+/// player; the viewer's header sits over the video, where a second line
+/// would leave its scrim). The header grows rather than clip. The text is a
+/// live region, so a screen reader says the new position each time the clip
+/// changes. Without a [trailing] control the title stays centred.
+///
+/// With [previous] or [next] (D-179) a 48 dp chevron stands on each side of
+/// the title, between the title and the two outer controls, in the order
+/// close, previous, title, next, mute. A chevron at either end of the session
+/// is a [TtHeaderChevron] with no handler: dimmed to 35 % and announced
+/// disabled. Giving only one reserves the room of the other, so the title
+/// stays centred. Without either the header is as it was.
 class TtPlayerHeader extends StatelessWidget {
   /// A header showing [title] and [subtitle] between two controls.
   const new({
@@ -114,6 +140,8 @@ class TtPlayerHeader extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.wrapSubtitle = false,
+    this.previous,
+    this.next,
     super.key,
   });
 
@@ -130,18 +158,69 @@ class TtPlayerHeader extends StatelessWidget {
   /// centred.
   final Widget? trailing;
 
-  /// Whether the subtitle may wrap to two lines at large text (otherwise it
-  /// is one line with an ellipsis).
+  /// Whether the subtitle wraps (otherwise it is one line with an ellipsis).
   final bool wrapSubtitle;
+
+  /// The chevron before the title (Previous clip), or null for none.
+  final TtHeaderChevron? previous;
+
+  /// The chevron after the title (Next clip), or null for none.
+  final TtHeaderChevron? next;
 
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
     final sub = subtitle;
-    final wrap =
-        wrapSubtitle &&
-        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
-    // proto.css: .player .ptop, .ptop .mid b / span
+    // proto.css: .player .ptop, .ptop .mid b / span; player2.css:25-27
+    final text = Semantics(
+      container: true,
+      liveRegion: true,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+            style: tt.text.material.titleSmall!.copyWith(
+              color: tt.colors.onVideo,
+            ),
+          ),
+          if (sub != null)
+            Text(
+              sub,
+              maxLines: wrapSubtitle ? null : 1,
+              overflow: wrapSubtitle
+                  ? TextOverflow.clip
+                  : TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: tt.text.material.bodySmall!.copyWith(
+                color: tt.colors.onVideoVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+    final before = previous;
+    final after = next;
+    final Widget middle = before == null && after == null
+        ? text
+        : Row(
+            children: [
+              _Chevron(chevron: before, forward: false),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: TtMetrics.playerChevronTitlePadding,
+                  ),
+                  child: text,
+                ),
+              ),
+              _Chevron(chevron: after, forward: true),
+            ],
+          );
     return ConstrainedBox(
       constraints: const BoxConstraints(
         minHeight: TtMetrics.playerHeaderHeight,
@@ -152,43 +231,86 @@ class TtPlayerHeader extends StatelessWidget {
           spacing: tt.spacing.xxs,
           children: [
             leading,
-            Expanded(
-              child: Semantics(
-                container: true,
-                liveRegion: true,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: tt.text.material.titleSmall!.copyWith(
-                        color: tt.colors.onVideo,
-                      ),
-                    ),
-                    if (sub != null)
-                      Text(
-                        sub,
-                        maxLines: wrap ? 2 : 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: tt.text.material.bodySmall!.copyWith(
-                          color: tt.colors.onVideoVariant,
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            ),
+            Expanded(child: middle),
             trailing ?? SizedBox.square(dimension: tt.sizes.touchTarget),
           ],
         ),
       ),
     );
   }
+}
+
+/// One chevron of a [TtPlayerHeader]: a `TtIconButton` on video, or, with no
+/// handler, the same glyph at 35 % announced as a disabled button. With no
+/// [chevron] it is an empty 48 dp, so the title stays centred.
+class _Chevron extends StatelessWidget {
+  const new({required this.chevron, required this.forward});
+
+  final TtHeaderChevron? chevron;
+
+  /// Whether it points to the next clip (the end side).
+  final bool forward;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final target = tt.sizes.touchTarget;
+    final spec = chevron;
+    if (spec == null) return SizedBox.square(dimension: target);
+    // Both glyphs mirror themselves in right-to-left text.
+    final icon = forward
+        ? Symbols.chevron_right_rounded
+        : Symbols.chevron_left_rounded;
+    if (spec.onPressed != null) {
+      return TtIconButton(
+        icon: icon,
+        semanticLabel: spec.semanticLabel,
+        style: TtIconButtonStyle.onVideo,
+        onPressed: spec.onPressed,
+      );
+    }
+    // player2.css:6: .p2 .ib.off { opacity: .35 }. The dimming is in the
+    // glyph, not in a disabled TtIconButton, which would dim it twice.
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      enabled: false,
+      label: spec.semanticLabel,
+      child: Opacity(
+        opacity: TtMetrics.playerChevronDisabledOpacity,
+        child: SizedBox.square(
+          dimension: target,
+          child: Center(
+            child: Icon(icon, size: tt.sizes.icon, color: tt.colors.onVideo),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The scrim behind the tag player's top bar: black at 78 % at the top, 70 %
+/// until 24 dp above the bottom, then clear (D-179), painted behind [child].
+///
+/// The scrim is as tall as [child], so the child holds its own padding (the
+/// status bar above, and the 24 dp of fade below). It takes no touches and
+/// is not announced. The scene line over it reads AA (about 6.2:1) over a
+/// pure white frame.
+// player2.css:21: .p2-top { padding: 34px 0 24px; background: linear-gradient(
+// rgba(0,0,0,.78) 0, rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+class TtPlayerTopScrim extends StatelessWidget {
+  /// A top scrim behind [child].
+  const new({required this.child, super.key});
+
+  /// The top bar drawn over the scrim.
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => CustomPaint(
+    painter: TopScrimPainter(context.tt.colors.videoBackground),
+    child: child,
+  );
 }
 
 /// Which way a [TtStageArrow] points.

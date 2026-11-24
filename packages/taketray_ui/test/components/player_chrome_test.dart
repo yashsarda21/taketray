@@ -298,30 +298,36 @@ void main() {
       );
     });
 
-    testWidgets('at 2x a wrapping subtitle takes two lines instead of '
-        'clipping', (tester) async {
-      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM';
-      await tester.pumpWidget(
-        ttTestApp(_header(subtitle: sub, wrapSubtitle: true), textScale: 2),
-      );
-      expect(tester.takeException(), isNull);
-      final text = tester.widget<Text>(find.text(sub));
-      expect(text.maxLines, 2);
-      final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
-      expect(paragraph.didExceedMaxLines, isFalse);
-      // The title stays one line.
-      expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+    testWidgets('a wrapping subtitle wraps at 1x and 2x and is never cut '
+        '(D-179: no line limit, no ellipsis)', (tester) async {
+      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM and a long tail end';
+      for (final scale in [1.0, 1.3, 2.0]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _header(subtitle: sub, wrapSubtitle: true),
+            textScale: scale,
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'at ${scale}x');
+        final text = tester.widget<Text>(find.text(sub));
+        expect(text.maxLines, isNull, reason: 'at ${scale}x');
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
+        expect(paragraph.didExceedMaxLines, isFalse);
+        // The title stays one line.
+        expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+      }
     });
 
-    testWidgets('below large text, or without wrapping, the subtitle is one '
-        'line', (tester) async {
+    testWidgets('without wrapSubtitle the subtitle is one line with an '
+        'ellipsis at every scale', (tester) async {
       const sub = 'Scene 2 of 4 · 0:12–0:48';
-      await tester.pumpWidget(
-        ttTestApp(_header(wrapSubtitle: true), textScale: 1.3),
-      );
-      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
-      await tester.pumpWidget(ttTestApp(_header(), textScale: 2));
-      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(ttTestApp(_header(), textScale: scale));
+        final text = tester.widget<Text>(find.text(sub));
+        expect(text.maxLines, 1, reason: 'at ${scale}x');
+        expect(text.overflow, TextOverflow.ellipsis);
+      }
     });
 
     testWidgets('passes the accessibility guidelines', (tester) async {

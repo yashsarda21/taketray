@@ -1418,8 +1418,9 @@ abstract final class TtMetrics {
   // Not in the prototype: large-text layout (D-47). At 2x a 164 dp cell shows
   // about 5 letters of a name, so reel names that share a first word cannot
   // be told apart; one full-width chip shows about 12.
-  /// The same threshold as [largeTextScale], under its earlier name.
-  static const double tagPanelSingleColumnTextScale = largeTextScale;
+  /// The same threshold as [largeTextScale]: the dock (D-179) and the chips
+  /// read it by this name.
+  static const double reelDockSingleColumnTextScale = largeTextScale;
 
   /// Tallest the panel gets at large text: the cap grows with the text scale
   /// (340 dp at 1x, times the scale) up to this.
@@ -1584,6 +1585,114 @@ abstract final class TtMetrics {
   // { opacity: .85 }
   static const double reelChipOnVideoStateCountOpacity = 0.85;
 
+  // ---- Reel dock and the player's scrims (D-179) ----
+
+  /// Padding above the dock's first row.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingTop = 28;
+
+  /// Padding at each side of the dock.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingSide = 12;
+
+  /// Padding under the dock's last row, before the gesture inset.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingBottom = 22;
+
+  /// Gap between the dock's rows (scrub, header, grid, footer).
+  // player2.css:31: .p2-dock { display: flex; flex-direction: column;
+  // gap: 8px }
+  static const double reelDockGap = 8;
+
+  /// Alpha of the dock scrim's first colour stop after the clear top.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimMidOpacity = 0.74;
+
+  /// Where the dock scrim reaches [reelDockScrimMidOpacity], from the top
+  /// (the stop is clamped to [reelDockScrimEndStop] on a short dock).
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimMidAt = 26;
+
+  /// Alpha of the dock scrim from [reelDockScrimEndStop] to the bottom.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimEndOpacity = 0.90;
+
+  /// Where the dock scrim reaches [reelDockScrimEndOpacity], as a share of
+  /// its height.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimEndStop = 0.5;
+
+  /// Padding at each side of the dock's scrub line.
+  // player2.css:39: .p2-scrub { padding: 0 4px 2px }
+  static const double reelDockScrubPaddingSide = 4;
+
+  /// Padding under the dock's scrub line.
+  // player2.css:39: .p2-scrub { padding: 0 4px 2px }
+  static const double reelDockScrubPaddingBottom = 2;
+
+  /// Least height of the dock's header row.
+  // player2.css:40: .p2-dh { min-height: 40px }
+  static const double reelDockHeaderHeight = 40;
+
+  /// Padding before the dock header's title.
+  // player2.css:40: .p2-dh { padding-left: 4px }
+  static const double reelDockHeaderPaddingStart = 4;
+
+  /// Gap between the dock header's title and its actions.
+  // player2.css:40: .p2-dh { gap: 2px }
+  static const double reelDockHeaderGap = 2;
+
+  /// Gap between the chips of the dock's grid, both ways.
+  // player2.css:43: .p2-grid { gap: 8px }
+  static const double reelDockGridGap = 8;
+
+  /// Padding above the dock's footer (on top of the row gap).
+  // player2.css:51: .p2-foot { padding-top: 4px }
+  static const double reelDockFooterGap = 4;
+
+  /// Padding round the dock's empty text.
+  // player2.css:52: .p2-none { padding: 8px }
+  static const double reelDockEmptyPadding = 8;
+
+  /// Opacity of the dock's empty text (white at this).
+  // player2.css:52: .p2-none { color: rgba(255,255,255,.85) }
+  static const double reelDockEmptyTextOpacity = 0.85;
+
+  /// Tallest the dock's grid gets before it scrolls. The CSS caps it only at
+  /// large text; the dock caps it at every text scale, because in Pick
+  /// several the grid can hold many picked reels and the clip keeps its room
+  /// (D-179). At 1x the grid is two short rows, far under it.
+  // player2.css:56: .fs2 .p2-grid { max-height: 260px; overflow-y: auto }
+  static const double reelDockGridMaxHeight = 260;
+
+  /// Alpha of the top scrim at its top edge.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimStartOpacity = 0.78;
+
+  /// Alpha of the top scrim from its top to [playerTopScrimFade] above its
+  /// bottom.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimHoldOpacity = 0.70;
+
+  /// The length of the top scrim's fade to clear, at its bottom.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimFade = 24;
+
+  /// Opacity of a header chevron at either end of the session.
+  // player2.css:6: .p2 .ib.off { opacity: .35; pointer-events: none }
+  static const double playerChevronDisabledOpacity = 0.35;
+
+  /// Padding at each side of the title between the header's chevrons.
+  // player2.css:25: .p2-where { padding: 0 2px }
+  static const double playerChevronTitlePadding = 2;
+
   // ---- Other reels toggle ----
 
   /// Height of the drawn row of the "Other reels" toggle. Its tap target is
@@ -1721,7 +1830,7 @@ abstract final class TtMetrics {
   /// Text scale from which a list row's trailing value or button moves
   /// under the text, because beside it the title would break inside words.
   /// Not in the prototype (it has no text scaling); the same threshold as
-  /// [tagPanelSingleColumnTextScale].
+  /// [reelDockSingleColumnTextScale].
   static const double listRowStackTrailingTextScale = largeTextScale;
 
   /// Side of the box behind a boxed row icon.
@@ -1753,7 +1862,7 @@ abstract final class TtMetrics {
   /// Text scale from which a banner's action moves under its text, because
   /// beside it the action would squeeze the text to a few letters per line.
   /// Not in the prototype (it has no text scaling); the same threshold as
-  /// [tagPanelSingleColumnTextScale].
+  /// [reelDockSingleColumnTextScale].
   static const double bannerActionBelowTextScale = largeTextScale;
 
   /// Space before and after the content of a callout.

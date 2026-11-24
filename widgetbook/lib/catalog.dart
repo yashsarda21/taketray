@@ -24,6 +24,7 @@ import 'package:taketray_widgetbook/components/rail_button.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/reel_card.dart';
 import 'package:taketray_widgetbook/components/reel_chip.dart';
+import 'package:taketray_widgetbook/components/reel_dock.dart';
 import 'package:taketray_widgetbook/components/reel_header.dart';
 import 'package:taketray_widgetbook/components/reel_pick_row.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
@@ -113,11 +114,13 @@ final List<WidgetbookNode> ttCatalog = [
       ttVideoSurfaceComponent,
       ttSegmentBarComponent,
       ttPlayerHeaderComponent,
+      ttPlayerTopScrimComponent,
       ttStageArrowComponent,
       ttScrubBarComponent,
       ttRailButtonComponent,
       ttReelChipComponent,
       ttNewReelChipComponent,
+      ttReelDockComponent,
       ttTagPanelComponent,
       ttOtherReelsToggleComponent,
       ttTagDoneComponent,

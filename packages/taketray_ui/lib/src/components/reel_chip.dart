@@ -37,7 +37,7 @@ enum TtReelChipStyle {
 /// the border), and a 164 dp wide cell in the panel's two columns. The name
 /// and count are one line each with an ellipsis; at large text sizes the chip
 /// grows taller and the cover stays centred, so nothing overlaps. From a text
-/// scale of `TtMetrics.tagPanelSingleColumnTextScale` the panel gives a chip
+/// scale of `TtMetrics.reelDockSingleColumnTextScale` the panel gives a chip
 /// the whole row, and the name may take two lines.
 ///
 /// Without a [cover], or when it fails to load, the cover shows a film icon.
@@ -150,7 +150,7 @@ class TtReelChip extends StatelessWidget {
     // for a second line of the name (D-47).
     final large =
         MediaQuery.textScalerOf(context).scale(1) >=
-        TtMetrics.tagPanelSingleColumnTextScale;
+        TtMetrics.reelDockSingleColumnTextScale;
     const inset = TtMetrics.reelChipPaddingStart + TtMetrics.reelChipBorder;
     final radius = BorderRadius.circular(TtMetrics.reelChipRadius);
 
@@ -387,7 +387,7 @@ class TtNewReelChip extends StatelessWidget {
     final onVideo = style == TtReelChipStyle.onVideo;
     final large =
         MediaQuery.textScalerOf(context).scale(1) >=
-        TtMetrics.tagPanelSingleColumnTextScale;
+        TtMetrics.reelDockSingleColumnTextScale;
     const inset = TtMetrics.reelChipPaddingStart + TtMetrics.reelChipBorder;
     final radius = BorderRadius.circular(TtMetrics.reelChipRadius);
 

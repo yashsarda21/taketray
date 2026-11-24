@@ -34,6 +34,7 @@ export 'src/components/rail_button.dart';
 export 'src/components/rec_dot.dart';
 export 'src/components/reel_card.dart';
 export 'src/components/reel_chip.dart';
+export 'src/components/reel_dock.dart';
 export 'src/components/reel_header.dart';
 export 'src/components/reel_pick_row.dart';
 export 'src/components/reference_card.dart';
