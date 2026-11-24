@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray_ui/src/components/internal/saturation.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_glass_pixels.dart';
@@ -465,7 +466,133 @@ void main() {
         radius: TtMetrics.navPillRadius,
       );
       expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .78);
-      _expectSigma(_glassIn(TtNavPill), 18);
+      // Blur 18, then saturate 1.4, as the CSS `blur(18px) saturate(1.4)`
+      // (D-175; the stripes' period cannot tell 18 from 12, so the filter is
+      // pinned by equality).
+      final filters = _glassIn(TtNavPill).evaluate().toList();
+      expect(filters, hasLength(1));
+      expect(
+        (filters.single.widget as BackdropFilter).filter,
+        ui.ImageFilter.compose(
+          outer: ui.ColorFilter.matrix(ttSaturationMatrix(1.4)),
+          inner: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        ),
+      );
+    });
+
+    group('the nav pill over a flat colour (D-175)', () {
+      /// The point 3 dp inside the pill's left end, on its middle line: past
+      /// the hairline, left of the first item, and where the shadow's blurred
+      /// edge used to show through the glass.
+      Future<({TtPixels photo, Rect pill, Color fill})> pillOver(
+        WidgetTester tester,
+        Color background,
+      ) {
+        _phone(tester);
+        return ttWithBlurredShadows(() async {
+          await tester.pumpWidget(
+            ttPixelApp(
+              Stack(
+                fit: StackFit.expand,
+                children: [
+                  ColoredBox(color: background),
+                  Align(
+                    alignment: Alignment.bottomCenter,
+                    child: TtNavPill(
+                      currentIndex: 1,
+                      onSelected: (_) {},
+                      items: const [
+                        TtNavItem(
+                          icon: Symbols.video_library_rounded,
+                          label: 'Reels',
+                        ),
+                        TtNavItem(icon: Symbols.sell_rounded, label: 'To tag'),
+                        TtNavItem(
+                          icon: Symbols.settings_rounded,
+                          label: 'Settings',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+          final fill = tester.element(find.byType(TtNavPill)).tt.colors.glass;
+          return (
+            photo: await TtPixels.capture(tester),
+            pill: tester.getRect(find.byType(TtGlass)),
+            fill: fill,
+          );
+        });
+      }
+
+      int chroma(Color c) {
+        final channels = [c.r, c.g, c.b].map((v) => (v * 255).round());
+        return channels.reduce(math.max) - channels.reduce(math.min);
+      }
+
+      void expectClose(Color actual, Color expected, int tolerance) {
+        for (final (name, a, e) in [
+          ('r', actual.r, expected.r),
+          ('g', actual.g, expected.g),
+          ('b', actual.b, expected.b),
+        ]) {
+          expect(
+            (a * 255).round(),
+            closeTo((e * 255).round(), tolerance),
+            reason: 'channel $name of $actual vs $expected',
+          );
+        }
+      }
+
+      /// `saturate(1.4)` of an opaque [c], as the CSS filter computes it.
+      Color saturated(Color c) {
+        final m = ttSaturationMatrix(TtMetrics.navPillSaturation);
+        final rgb = [c.r * 255, c.g * 255, c.b * 255];
+        int channel(int row) {
+          final v =
+              m[row * 5] * rgb[0] +
+              m[row * 5 + 1] * rgb[1] +
+              m[row * 5 + 2] * rgb[2];
+          return v.round().clamp(0, 255);
+        }
+
+        return Color.fromARGB(255, channel(0), channel(1), channel(2));
+      }
+
+      testWidgets('the glass is more saturated than the plain blend', (
+        tester,
+      ) async {
+        const background = Color(0xFF8A5CC2);
+        final shot = await pillOver(tester, background);
+        final at = Offset(shot.pill.left + 3, shot.pill.center.dy);
+        final seen = shot.photo.colorAt(at);
+        expectClose(
+          seen,
+          Color.alphaBlend(shot.fill, saturated(background)),
+          3,
+        );
+        final plain = Color.alphaBlend(shot.fill, background);
+        expect(chroma(seen), greaterThan(chroma(plain) + 2));
+      });
+
+      testWidgets('the shadow is not under the glass', (tester) async {
+        const white = Color(0xFFFFFFFF);
+        final shot = await pillOver(tester, white);
+        final at = Offset(shot.pill.left + 3, shot.pill.center.dy);
+        // Saturating white leaves it white, so only the fill shows.
+        expectClose(
+          shot.photo.colorAt(at),
+          Color.alphaBlend(shot.fill, white),
+          2,
+        );
+        // Under the pill the shadow still falls: offset 10, blur 30, spread -8.
+        final below = shot.photo.colorAt(
+          Offset(shot.pill.center.dx, shot.pill.bottom + 6),
+        );
+        expect((below.r * 255).round(), lessThan(255 - 4));
+      });
     });
   });
 

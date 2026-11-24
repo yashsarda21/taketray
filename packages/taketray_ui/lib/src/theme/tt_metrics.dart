@@ -1774,6 +1774,12 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .navbar { height: 64px }
   static const double navPillHeight = 64;
 
+  /// How much the nav pill saturates what it blurs: the filter composes
+  /// `saturate(1.4)` after the blur (D-175).
+  // tt-style.css:33-37: .style-tt .navbar {
+  //   backdrop-filter: blur(18px) saturate(1.4) }
+  static const double navPillSaturation = 1.4;
+
   /// Corner radius of the pill.
   // tt-style.css: .style-tt .navbar { border-radius: 32px }
   static const double navPillRadius = 32;

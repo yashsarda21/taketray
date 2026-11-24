@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart' as painting;
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -81,6 +82,22 @@ Widget ttPixelApp(
   textScale: textScale,
   captureKey: ttCaptureKey,
 );
+
+/// Runs [body] with `BoxShadow`s blurring, as on a phone.
+///
+/// The test binding turns shadow blurs off (`debugDisableShadows`, so a
+/// shadow is a sharp copy of its shape); a test that measures a soft shadow's
+/// reach needs them back while it pumps and photographs. The binding insists
+/// the flag is back at the end of the test, so this restores it itself.
+Future<T> ttWithBlurredShadows<T>(Future<T> Function() body) async {
+  final before = painting.debugDisableShadows;
+  painting.debugDisableShadows = false;
+  try {
+    return await body();
+  } finally {
+    painting.debugDisableShadows = before;
+  }
+}
 
 /// A photograph of what [ttPixelApp] draws, to measure.
 class TtPixels {

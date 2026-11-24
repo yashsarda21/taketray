@@ -90,7 +90,6 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - `design/tools/build_tokens.py --check` scans only `design/tokens/colour-options/` and `design/handoff/compose/` for orphans. Add `packages/taketray_ui/lib/src/tokens/` (it holds only `tokens.g.dart`) to `GENERATED_DIRS`.
 - Release as an app bundle or split per ABI (the APK is 48.9 MB for 3 ABIs).
 - Build warnings: CupertinoIcons not bundled, and the Patrol plugin applies KGP.
-- `TtGlass`: the shadow bleeds through the translucent fill.
 - Wrapped two-line buttons need more vertical padding. The `TtSwitch` focus highlight is taller than the track.
 - `TtThemeData` value equality; badge `TextPainter` re-measures on every build.
 - Zone-id aliases after a tz data rename (D-83). `Europe/Kiev` and `Europe/Kyiv` are the same zone but compare unequal as strings. So a clip stored with the old id on a phone that now reports the new one gets `isPhoneZone` false, and the viewer would say "Kiev time". Fix it by canonicalising both ids on the native side in a batch like `zoneOffsetsMs` (`android.icu.util.TimeZone.getCanonicalID(id)`, which follows the tz data's links; `ZoneId.normalized()` only turns a fixed-offset id into a `ZoneOffset` and does not resolve aliases), or by comparing the zones' offset rules (`ZoneId.of(a).rules == ZoneId.of(b).rules`) instead of their ids.
