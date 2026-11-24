@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart'
-    show DragStartBehavior, kMinFlingVelocity, kTouchSlop;
+    show DragStartBehavior, VerticalDragGestureRecognizer;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart' show OrdinalSortKey, RenderProxyBox;
 import 'package:flutter/scheduler.dart' show SchedulerBinding;
@@ -42,10 +42,6 @@ import 'package:video_player/video_player.dart';
 /// A clip longer than this has the large scrub bar with "Drag to skim".
 const int _longClipMs = 120000;
 
-/// How far a swipe must travel, as well as how fast, to change the clip: a
-/// quick jitter of the thumb is not a swipe.
-const double _swipeMinDistance = kTouchSlop * 4;
-
 /// A clip's size until its own is known: portrait, 9:16.
 const Size _portraitSize = Size(9, 16);
 
@@ -65,11 +61,14 @@ const Duration _aheadPoll = Duration(milliseconds: 200);
 ///   (D-180): it covers the screen, as in Instagram Reels, unless that would
 ///   cut more than 20 % of it; then it is shown whole on black, centred in
 ///   the room above the dock. Its picture and a spinner show while it opens.
-///   A tap plays or pauses; a swipe, outside the system back-gesture edges,
-///   goes to the previous or next waiting clip. A new clip slides in (not
-///   under reduced motion). A clip with no usable identity, flagged missing,
-///   or that cannot be played shows "This video can't be played" and never
-///   another video.
+///   A tap plays or pauses. A swipe up goes to the next waiting clip and a
+///   swipe down to the previous one, as in Reels (D-182): the clip follows
+///   the finger, the clip coming in shows as its thumbnail, and at the ends
+///   the clip springs back. A move without a swipe (a tag, Skip, Same, ‹ ›,
+///   Undo) slides the clip out and the new one in; with animations removed
+///   it is a 150 ms crossfade. A clip with no usable identity, flagged
+///   missing, or that cannot be played shows "This video can't be played"
+///   and never another video.
 /// - **The top**, on its scrim: the progress segments; Close tagging, ‹
 ///   (Previous clip), "{i} of {N}" (a polite live region) over "Scene {s} of
 ///   {S} · {range}" (the time where the clips were shot, D-83, in the locale;
@@ -174,7 +173,14 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
   /// Where the player was last built, to tell which way a new clip slides in.
   int? _shownClipId;
   int? _shownIndex;
-  int _slide = 0;
+
+  /// How the clip now showing came in, for `_ClipMotion`: a new object at
+  /// each new clip that slides in, or null (the first clip, and a clip a
+  /// swipe brought, which already came in with the finger).
+  _ClipMove? _move;
+
+  /// The next new clip is a swipe's (`_swipe`): it gets no slide of its own.
+  bool _swiped = false;
 
   TagSessionControllerProvider get _provider =>
       tagSessionControllerProvider(widget.startClipId);
@@ -449,7 +455,6 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
     List<int> lastTags,
     VideoPlayerController? player,
   ) {
-    final controller = ref.read(_provider.notifier);
     final clip = state.currentClip;
     final uri = clip == null ? null : clipVideoUri(clip);
     Widget group(int order, Widget child) => Semantics(
@@ -458,29 +463,45 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       child: child,
     );
     final layout = _bottomLayout(context, state);
+    // The clips a swipe up or down brings, read only (D-182).
+    final queue = TagQueue(state.session);
+    final nextAt = queue.next(state.index, state.pending);
+    final previousAt = queue.previous(state.index, state.pending);
     return TtVideoSurface(
       child: Stack(
         fit: StackFit.expand,
         children: [
           group(
             1,
-            _Stage(
-              // A new clip, or the same clip under a changed identity, is a
-              // new stage: a new player, and never the old video.
-              key: ValueKey((clip?.id, uri)),
-              clip: clip,
-              uri: uri,
-              slide: _slide,
-              time: _timeOf(context, state, clip),
-              hasPrevious: state.hasPrevious,
-              hasNext: state.hasNext,
-              onPrevious: controller.previous,
-              onNext: controller.next,
-              // A contained clip is centred in the room above the dock; the
-              // spinner and play disc over a covering clip, between the top
-              // and the dock.
-              topInset: _topHeight,
+            _VerticalSwipe(
+              hasNext: nextAt != null,
+              hasPrevious: previousAt != null,
+              nextClip: nextAt == null
+                  ? null
+                  : state.clips[state.session[nextAt]],
+              previousClip: previousAt == null
+                  ? null
+                  : state.clips[state.session[previousAt]],
+              idle: !state.busy && state.confirmingReelId == null,
+              onGo: _swipe,
               bottomInset: _dockHeight,
+              child: _ClipMotion(
+                move: _move,
+                bottomInset: _dockHeight,
+                child: _Stage(
+                  // A new clip, or the same clip under a changed identity,
+                  // is a new stage: a new player, and never the old video.
+                  key: ValueKey((clip?.id, uri)),
+                  clip: clip,
+                  uri: uri,
+                  time: _timeOf(context, state, clip),
+                  // A contained clip is centred in the room above the dock;
+                  // the spinner and play disc over a covering clip, between
+                  // the top and the dock.
+                  topInset: _topHeight,
+                  bottomInset: _dockHeight,
+                ),
+              ),
             ),
           ),
           Positioned(
@@ -655,25 +676,44 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
           );
   }
 
-  /// Which way the clip now showing slides in: from the end when the player
-  /// moved on (a tag, a skip, Next), from the start when it went back
-  /// (Previous, Undo). Nothing for the first clip.
+  /// How the clip now showing comes in ([_move]): up from below when the
+  /// player moved on (a tag, a skip, Same, ›), down from above when it went
+  /// back (‹, Undo), with the clip left going out the same way. Nothing for
+  /// the first clip, nor for a clip a swipe brought ([_swiped]).
   void _noteClip(TagSessionState state) {
     final id = state.currentClipId;
     if (id == _shownClipId) return;
     final left = _shownClipId;
     final from = _shownIndex;
-    if (from == null || left == null) {
-      _slide = 0;
+    if (from == null || left == null || _swiped) {
+      _move = null;
     } else {
       // The clip left was dealt with, or the index went forward: on.
       final forward = state.lastActedClipId == left || state.index > from;
-      _slide = forward ? 1 : -1;
+      _move = _ClipMove(forward: forward, outgoing: state.clips[left]);
     }
+    _swiped = false;
     final gone = left == null ? null : state.clips[left];
     _leftUri = gone == null ? null : clipVideoUri(gone);
     _shownClipId = id;
     _shownIndex = state.index;
+  }
+
+  /// A swipe that goes (`_VerticalSwipe`): the next or the previous clip,
+  /// through the session's own moves. A clip that [travelled] with the
+  /// finger is in its place already, so its move has no slide.
+  void _swipe({required bool next, required bool travelled}) {
+    final controller = ref.read(_provider.notifier);
+    final before = ref.read(_provider).value?.currentClipId;
+    _swiped = travelled;
+    if (next) {
+      controller.next();
+    } else {
+      controller.previous();
+    }
+    // Refused (an action started meanwhile): the next new clip is not this
+    // swipe's.
+    if (ref.read(_provider).value?.currentClipId == before) _swiped = false;
   }
 
   /// The address of the clip that was showing before this one: its player is
@@ -1092,20 +1132,15 @@ class _Waiting extends StatelessWidget {
 // ---------------------------------------------------------------- the stage
 
 /// The stage of one clip, on black: the clip covering it or shown whole
-/// (`stageFit`, D-180), never blurred, and the swipe layer over it (the
-/// header's ‹ › do the same without a gesture, D-181). A new instance for
-/// each clip (and each identity of it), so its player is the clip's own and
-/// never carries over.
+/// (`stageFit`, D-180), never blurred. A new instance for each clip (and
+/// each identity of it), so its player is the clip's own and never carries
+/// over. The swipe (`_VerticalSwipe`) and the slides (`_ClipMotion`) are
+/// around it.
 class _Stage extends ConsumerWidget {
   const new({
     required this.clip,
     required this.uri,
-    required this.slide,
     required this.time,
-    required this.hasPrevious,
-    required this.hasNext,
-    required this.onPrevious,
-    required this.onNext,
     required this.topInset,
     required this.bottomInset,
     super.key,
@@ -1116,16 +1151,8 @@ class _Stage extends ConsumerWidget {
   /// Where the clip plays from; null when it has no usable identity.
   final Uri? uri;
 
-  /// Which side the video slides in from: 1 the end, -1 the start, 0 none.
-  final int slide;
-
   /// When the clip was shot, for the screen reader's name of the video.
   final String time;
-
-  final bool hasPrevious;
-  final bool hasNext;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
 
   /// How much of the stage's top the top bar covers: the spinner and the
   /// play disc over a covering clip are centred below it.
@@ -1139,8 +1166,6 @@ class _Stage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final tt = context.tt;
-    final gestureInsets = MediaQuery.systemGestureInsetsOf(context);
-    final rtl = Directionality.of(context) == TextDirection.rtl;
     final clip = this.clip;
     final cache = ref.watch(thumbnailCacheProvider).value;
     final picture = clip == null
@@ -1184,140 +1209,467 @@ class _Stage extends ConsumerWidget {
     return ColoredBox(
       key: const ValueKey('tag-stage'),
       color: tt.colors.videoBackground,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _SlideIn(from: slide, child: video),
-          // A swipe changes the clip, except from the edges the system keeps
-          // for its back gesture: only this layer is inset, not the video.
-          // Taps go through it to the video.
-          Padding(
-            padding: EdgeInsets.only(
-              left: gestureInsets.left,
-              right: gestureInsets.right,
+      child: video,
+    );
+  }
+}
+
+/// The stage's vertical swipe (D-182, the handoff's "Gestures"): up goes to
+/// the next clip, down to the previous one, as in Reels. Horizontal drags do
+/// nothing, so it never meets Android's side back gesture, and a tap still
+/// reaches the clip (the drag only wins once the finger has moved a touch
+/// slop up or down).
+///
+/// - **While dragging** the stage follows the finger, and the clip coming in
+///   (the next one under it when dragging up, the previous one over it when
+///   dragging down) is drawn one stage height away as its thumbnail
+///   (`_Thumbnail`), never as a video: its player (open ahead, or not yet
+///   open going back) takes over when the swipe settles (spec call 5). At an
+///   end of the session black comes in, and the drag still follows.
+/// - **On release** it goes when that way has a clip, the session is idle
+///   (no write, no hold), and the drag went more than
+///   [TtMetrics.tagSwipeDistance] or the fling is faster than
+///   [TtMetrics.tagSwipeVelocity] the same way: the stage leaves over
+///   `short4` (emphasized accelerate) and then [onGo] moves the session.
+///   Else it springs back over `short4` (standard).
+/// - **After it goes** the stage is in its place on the next build, whatever
+///   the session did, so it is never left off the screen.
+/// - **Cancelled** (the gesture arena lost, or a route on top, such as a
+///   dialog or a sheet, opened under the finger): it springs back, and the
+///   rest of that drag is not followed.
+/// - **Reduced motion:** the stage does not follow and nothing comes in; a
+///   drag past the same thresholds still goes, and the move crossfades
+///   (`_ClipMotion`).
+///
+/// Only this layer is rebuilt while the finger moves: the stage itself is
+/// its [child], behind a `RepaintBoundary`, and the two clips are moved by
+/// transforms.
+class _VerticalSwipe extends StatefulWidget {
+  const new({
+    required this.hasNext,
+    required this.hasPrevious,
+    required this.nextClip,
+    required this.previousClip,
+    required this.idle,
+    required this.onGo,
+    required this.bottomInset,
+    required this.child,
+  });
+
+  /// Whether a waiting clip comes after (before) the one showing.
+  final bool hasNext;
+  final bool hasPrevious;
+
+  /// That clip, for its thumbnail; null when there is none.
+  final Clip? nextClip;
+  final Clip? previousClip;
+
+  /// Nothing is being written and no reel's hold runs: a swipe may go.
+  final bool idle;
+
+  /// A swipe goes: to the next clip (`next`, up) or the previous one
+  /// (down). `travelled` is true when the clip came in with the finger,
+  /// false under reduced motion.
+  final void Function({required bool next, required bool travelled}) onGo;
+
+  /// The dock's height, for a contained thumbnail (as `_Stage`).
+  final double bottomInset;
+
+  final Widget child;
+
+  @override
+  State<_VerticalSwipe> createState() => _VerticalSwipeState();
+}
+
+class _VerticalSwipeState extends State<_VerticalSwipe>
+    with SingleTickerProviderStateMixin {
+  /// How far down the stage is drawn from its place, in dp.
+  late final AnimationController _offset = AnimationController.unbounded(
+    vsync: this,
+  );
+
+  /// How far down the finger has taken the stage in this drag.
+  double _travel = 0;
+
+  /// A finger is dragging the stage; false once it lifts or the drag is
+  /// cancelled.
+  bool _dragging = false;
+
+  /// The stage is leaving after a swipe that goes: a new drag waits.
+  bool _going = false;
+
+  bool get _onTop => ModalRoute.isCurrentOf(context) ?? true;
+
+  bool get _reduced => MediaQuery.disableAnimationsOf(context);
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // A dialog, a sheet or a menu came on top during the drag.
+    if (!_onTop) _cancel();
+  }
+
+  @override
+  void dispose() {
+    _offset.dispose();
+    super.dispose();
+  }
+
+  void _start(DragStartDetails details) {
+    if (_going || !_onTop) return;
+    // A drag during a spring back takes the stage from where it is.
+    _offset.stop();
+    _travel = _offset.value;
+    _dragging = true;
+  }
+
+  void _update(DragUpdateDetails details) {
+    if (!_dragging) return;
+    _travel += details.primaryDelta ?? 0;
+    if (!_reduced) _offset.value = _travel;
+  }
+
+  void _end(DragEndDetails details) {
+    if (!_dragging) return;
+    _dragging = false;
+    final dy = _travel;
+    final next = dy < 0;
+    final velocity = details.primaryVelocity ?? 0;
+    final far = dy.abs() > TtMetrics.tagSwipeDistance;
+    final fast =
+        velocity.abs() > TtMetrics.tagSwipeVelocity && velocity.sign == dy.sign;
+    final there = next ? widget.hasNext : widget.hasPrevious;
+    if (dy != 0 && there && widget.idle && (far || fast)) {
+      _go(next: next);
+    } else {
+      _springBack();
+    }
+  }
+
+  /// The arena was lost, or a route came on top: back, and the rest of this
+  /// drag is not followed.
+  void _cancel() {
+    if (!_dragging) return;
+    _dragging = false;
+    _springBack();
+  }
+
+  void _springBack() {
+    _travel = 0;
+    if (_offset.value == 0) return;
+    final motion = context.tt.motion;
+    _offset.animateTo(0, duration: motion.short4, curve: motion.standard);
+  }
+
+  void _go({required bool next}) {
+    _travel = 0;
+    // The stage's height: as far as it goes.
+    final height = context.size?.height ?? 0;
+    if (_reduced || height == 0) {
+      _offset.value = 0;
+      widget.onGo(next: next, travelled: false);
+      return;
+    }
+    _going = true;
+    final motion = context.tt.motion;
+    _offset
+        .animateTo(
+          next ? -height : height,
+          duration: motion.short4,
+          curve: motion.emphasizedAccelerate,
+        )
+        .whenCompleteOrCancel(() {
+          _going = false;
+          if (!mounted) return;
+          widget.onGo(next: next, travelled: true);
+          // Whatever the session did, the stage is in its place on the next
+          // build: the new clip's, or this one's if the move was refused.
+          _offset.value = 0;
+        });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget coming(Clip? clip) => RepaintBoundary(
+      child: _Thumbnail(
+        key: ValueKey(clip?.id),
+        clip: clip,
+        bottomInset: widget.bottomInset,
+      ),
+    );
+    // Black at an end of the session.
+    final below = coming(widget.hasNext ? widget.nextClip : null);
+    final above = coming(widget.hasPrevious ? widget.previousClip : null);
+    return RawGestureDetector(
+      behavior: HitTestBehavior.opaque,
+      gestures: {
+        VerticalDragGestureRecognizer:
+            GestureRecognizerFactoryWithHandlers<VerticalDragGestureRecognizer>(
+              () => VerticalDragGestureRecognizer(debugOwner: this),
+              (recognizer) => recognizer
+                // The distance counts from where the finger went down.
+                ..dragStartBehavior = DragStartBehavior.down
+                // Even with nothing else to win against (a clip opening or
+                // that cannot play), only a move up or down starts a drag.
+                ..onlyAcceptDragOnThreshold = true
+                ..gestureSettings = MediaQuery.maybeGestureSettingsOf(context)
+                ..onStart = _start
+                ..onUpdate = _update
+                ..onEnd = _end
+                ..onCancel = _cancel,
             ),
-            child: _SwipeArea(
-              rtl: rtl,
-              onNext: hasNext ? onNext : null,
-              onPrevious: hasPrevious ? onPrevious : null,
-            ),
-          ),
-        ],
+      },
+      // Not built in a LayoutBuilder: the stage is built in the screen's
+      // own build, where its player may notify the dock's scrub bar.
+      child: AnimatedBuilder(
+        animation: _offset,
+        child: RepaintBoundary(child: widget.child),
+        builder: (context, stage) {
+          final dy = _offset.value;
+          return Stack(
+            fit: StackFit.expand,
+            children: [
+              Transform.translate(offset: Offset(0, dy), child: stage),
+              // One stage height under the stage dragged up, over it
+              // dragged down.
+              if (dy != 0)
+                Transform.translate(
+                  key: const ValueKey('tag-swipe-neighbour'),
+                  offset: Offset(0, dy),
+                  child: FractionalTranslation(
+                    translation: Offset(0, dy < 0 ? 1 : -1),
+                    child: dy < 0 ? below : above,
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }
 }
 
-/// The layer over the stage that turns a horizontal swipe into Next or
-/// Previous: fast enough ([kMinFlingVelocity]) and far enough
-/// ([_swipeMinDistance], measured from where the finger went down). A swipe
-/// towards the end is Next; right-to-left text mirrors it. It takes no taps:
-/// they reach the video under it.
-class _SwipeArea extends StatefulWidget {
+/// How a new clip came in without a swipe (`_noteClip`): going on (a tag,
+/// Skip, Same, ›) or back (‹, Undo), and the clip that went out. Each new
+/// clip that slides in gets a new one: `_ClipMotion` starts its slides when
+/// it is given a different one.
+class _ClipMove {
+  _ClipMove({required this.forward, required this.outgoing});
+
+  final bool forward;
+
+  /// The clip that was showing; null if its row is not known.
+  final Clip? outgoing;
+}
+
+/// The slides of a move between clips without a swipe (D-182, the
+/// handoff's "Motion", `player2.css:17-20`):
+///
+/// - going on, the clip that was showing, drawn as its **thumbnail** (its
+///   player is let go at once, so at most two stay open), slides up and out
+///   by one stage height over `short4` (emphasized accelerate), and at the
+///   same time the new stage ([child]) comes up from
+///   [TtMetrics.tagStageSlideFrom] (16 %) below and fades in from
+///   [TtMetrics.tagStageSlideFromOpacity] (.3), over `medium2` (emphasized
+///   decelerate), in front of it;
+/// - going back is the mirror image: down, from 16 % above;
+/// - with animations removed, a crossfade over
+///   [TtMetrics.reducedMotionCrossfadeMillis] (150 ms) with no travel: the
+///   new stage fades in over the old clip's thumbnail. A fixed length,
+///   because the reduced `TtMotion` durations are all zero.
+///
+/// [move] null (the first clip, a clip a swipe brought) shows the stage in
+/// its place at once, and ends a slide that was running.
+class _ClipMotion extends StatefulWidget {
   const new({
-    required this.rtl,
-    required this.onNext,
-    required this.onPrevious,
+    required this.move,
+    required this.bottomInset,
+    required this.child,
   });
 
-  final bool rtl;
-  final VoidCallback? onNext;
-  final VoidCallback? onPrevious;
+  final _ClipMove? move;
 
-  @override
-  State<_SwipeArea> createState() => _SwipeAreaState();
-}
+  /// The dock's height, for a contained thumbnail (as `_Stage`).
+  final double bottomInset;
 
-class _SwipeAreaState extends State<_SwipeArea> {
-  /// How far the finger has moved since it went down, along the swipe.
-  double _travel = 0;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      // From the finger's first touch, so the distance includes the slop.
-      dragStartBehavior: DragStartBehavior.down,
-      onHorizontalDragStart: (_) => _travel = 0,
-      onHorizontalDragUpdate: (details) => _travel += details.primaryDelta ?? 0,
-      onHorizontalDragEnd: (details) {
-        final v = details.primaryVelocity ?? 0;
-        if (v.abs() < kMinFlingVelocity) return;
-        if (_travel.abs() < _swipeMinDistance) return;
-        // The travel and the speed must agree on the way.
-        if (_travel.sign != v.sign) return;
-        final towardsEnd = widget.rtl ? v > 0 : v < 0;
-        (towardsEnd ? widget.onNext : widget.onPrevious)?.call();
-      },
-      child: const SizedBox.expand(),
-    );
-  }
-}
-
-/// A new clip slides in (`clipIn`: 70 % over, a little small, faded out),
-/// from the end of the stage for [from] 1 and the start for -1. No motion for
-/// 0, and none when the phone removes animations.
-class _SlideIn extends StatefulWidget {
-  const new({required this.from, required this.child});
-
-  final int from;
+  /// The stage of the clip showing.
   final Widget child;
 
   @override
-  State<_SlideIn> createState() => _SlideInState();
+  State<_ClipMotion> createState() => _ClipMotionState();
 }
 
-class _SlideInState extends State<_SlideIn>
-    with SingleTickerProviderStateMixin {
-  AnimationController? _controller;
-  bool _started = false;
+class _ClipMotionState extends State<_ClipMotion>
+    with TickerProviderStateMixin {
+  static const Animation<Offset> _still = AlwaysStoppedAnimation(Offset.zero);
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_started) return;
-    _started = true;
-    final tt = context.tt;
-    if (widget.from == 0 || tt.motion.medium2 == Duration.zero) return;
-    _controller = AnimationController(vsync: this, duration: tt.motion.medium2)
-      ..forward();
-    _curve = CurvedAnimation(
-      parent: _controller!,
-      curve: tt.motion.emphasizedDecelerate,
-    );
-  }
+  /// The new stage coming in, and the old clip going out.
+  late final AnimationController _in = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  late final AnimationController _out = AnimationController(
+    vsync: this,
+    value: 1,
+  )..addStatusListener(_outEnded);
 
-  Animation<double>? _curve;
+  Animation<Offset> _inSlide = _still;
+  Animation<double> _inFade = kAlwaysCompleteAnimation;
+  Animation<Offset> _outSlide = _still;
+
+  /// Whether the clip going out is drawn, and which it is.
+  bool _going = false;
+  Clip? _outgoing;
 
   @override
   void dispose() {
-    _controller?.dispose();
+    _in.dispose();
+    _out.dispose();
     super.dispose();
   }
 
   @override
+  void didUpdateWidget(_ClipMotion old) {
+    super.didUpdateWidget(old);
+    if (identical(widget.move, old.move)) return;
+    final move = widget.move;
+    if (move == null) {
+      _rest();
+    } else {
+      _start(move);
+    }
+  }
+
+  void _outEnded(AnimationStatus status) {
+    if (!status.isCompleted || !_going || !mounted) return;
+    setState(() {
+      _going = false;
+      _outgoing = null;
+    });
+  }
+
+  /// Everything in its place, and nothing going out.
+  void _rest() {
+    _going = false;
+    _outgoing = null;
+    _in.value = 1;
+    _out.value = 1;
+    _inSlide = _still;
+    _inFade = kAlwaysCompleteAnimation;
+    _outSlide = _still;
+  }
+
+  void _start(_ClipMove move) {
+    final motion = context.tt.motion;
+    _going = true;
+    _outgoing = move.outgoing;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      final crossfade = Duration(
+        milliseconds: TtMetrics.reducedMotionCrossfadeMillis.round(),
+      );
+      // The old clip stays until the new stage is opaque over it.
+      _in.duration = crossfade;
+      _out.duration = crossfade;
+      _inSlide = _still;
+      _inFade = _in.drive(CurveTween(curve: motion.standard));
+      _outSlide = _still;
+    } else {
+      final way = move.forward ? 1.0 : -1.0;
+      _in.duration = motion.medium2;
+      _out.duration = motion.short4;
+      final coming = CurveTween(curve: motion.emphasizedDecelerate);
+      _inSlide = _in.drive(
+        Tween<Offset>(
+          begin: Offset(0, way * TtMetrics.tagStageSlideFrom),
+          end: Offset.zero,
+        ).chain(coming),
+      );
+      _inFade = _in.drive(
+        Tween<double>(
+          begin: TtMetrics.tagStageSlideFromOpacity,
+          end: 1,
+        ).chain(coming),
+      );
+      _outSlide = _out.drive(
+        Tween<Offset>(
+          begin: Offset.zero,
+          end: Offset(0, -way),
+        ).chain(CurveTween(curve: motion.emphasizedAccelerate)),
+      );
+    }
+    _in.forward(from: 0);
+    _out.forward(from: 0);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final curve = _curve;
-    if (curve == null) return widget.child;
-    final sign = Directionality.of(context) == TextDirection.rtl ? -1 : 1;
-    return AnimatedBuilder(
-      animation: curve,
-      child: widget.child,
-      builder: (context, child) {
-        final left = 1 - curve.value;
-        return FractionalTranslation(
-          translation: Offset(
-            widget.from * sign * TtMetrics.tagStageSlideDistance * left,
-            0,
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (_going)
+          SlideTransition(
+            key: const ValueKey('tag-stage-out'),
+            position: _outSlide,
+            child: IgnorePointer(
+              child: ExcludeSemantics(
+                child: RepaintBoundary(
+                  child: _Thumbnail(
+                    key: ValueKey(_outgoing?.id),
+                    clip: _outgoing,
+                    bottomInset: widget.bottomInset,
+                  ),
+                ),
+              ),
+            ),
           ),
-          child: Transform.scale(
-            scale:
-                TtMetrics.tagStageSlideScale +
-                (1 - TtMetrics.tagStageSlideScale) * curve.value,
-            child: Opacity(opacity: curve.value, child: child),
-          ),
-        );
-      },
+        SlideTransition(
+          key: const ValueKey('tag-stage-in'),
+          position: _inSlide,
+          child: FadeTransition(opacity: _inFade, child: widget.child),
+        ),
+      ],
+    );
+  }
+}
+
+/// A clip that is not the one showing, as its thumbnail (the frame the clip
+/// tiles use, at `homeCoverSize`) on black, fitted as its stage will show it
+/// (`stageFit` from its stored size): the clip coming in with the finger,
+/// and the clip going out of a move. Never a video. A clip with no
+/// thumbnail, or whose thumbnail fails, is black with nothing on it, and so
+/// is no clip (an end of the session).
+class _Thumbnail extends ConsumerWidget {
+  const new({required this.clip, required this.bottomInset, super.key});
+
+  final Clip? clip;
+  final double bottomInset;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final tt = context.tt;
+    final clip = this.clip;
+    final cache = ref.watch(thumbnailCacheProvider).value;
+    return ColoredBox(
+      color: tt.colors.videoBackground,
+      child: clip == null
+          ? const SizedBox.expand()
+          : _ClipRoom(
+              size: _storedSize(clip),
+              topInset: 0,
+              bottomInset: bottomInset,
+              picture: Image(
+                image: clipThumbnail(
+                  clip: clip,
+                  logicalSize: homeCoverSize,
+                  cache: cache,
+                ),
+                fit: BoxFit.cover,
+                excludeFromSemantics: true,
+                errorBuilder: (context, error, stack) =>
+                    const SizedBox.expand(),
+              ),
+              builder: (fitted, covered) => fitted,
+            ),
     );
   }
 }

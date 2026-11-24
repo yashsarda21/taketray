@@ -1222,13 +1222,34 @@ abstract final class TtMetrics {
   /// Size of the play icon in that disc.
   static const double tagStagePlayIconSize = 36;
 
-  /// How far a new clip slides in, as a share of its width.
-  // proto.css: @keyframes clipIn { from { transform: translateX(70%)
-  // scale(.9); opacity: 0 } }
-  static const double tagStageSlideDistance = 0.7;
+  /// How far the finger must drag the tag player's clip up or down for the
+  /// swipe to go to the next or previous clip, in dp.
+  // design/handoff/tag-player-full-screen.md, "Gestures": "A drag over
+  // 64 dp, or a fling over 800 dp/s, goes. Less springs back with the
+  // standard easing."
+  static const double tagSwipeDistance = 64;
 
-  /// The scale a new clip starts at while it slides in.
-  static const double tagStageSlideScale = 0.9;
+  /// How fast a fling must be, in dp per second, for a shorter swipe to go.
+  // design/handoff/tag-player-full-screen.md, "Gestures": "A drag over
+  // 64 dp, or a fling over 800 dp/s, goes."
+  static const double tagSwipeVelocity = 800;
+
+  /// Where a clip coming in without a drag starts, as a share of the stage's
+  /// height: below it going on, above it going back.
+  // player2.css:19: @keyframes p2Up { from { transform: translateY(16%);
+  // opacity: .3; } } (:20, p2Down, from translateY(-16%))
+  static const double tagStageSlideFrom = 0.16;
+
+  /// The opacity a clip coming in without a drag starts at.
+  // player2.css:19: @keyframes p2Up { from { … opacity: .3; } }
+  static const double tagStageSlideFromOpacity = 0.3;
+
+  /// How long a move between clips crossfades when the phone removes
+  /// animations, in milliseconds: a fixed length, because the reduced
+  /// `TtMotion` durations are all zero.
+  // design/handoff/tag-player-full-screen.md, "Motion": "Reduced motion | A
+  // 150 ms crossfade, no travel (as before)."
+  static const double reducedMotionCrossfadeMillis = 150;
 
   /// Opacity of black over a loading clip's picture, behind the spinner.
   // player2.css:12: .p2-vid .ld { background: rgba(0,0,0,.35) }

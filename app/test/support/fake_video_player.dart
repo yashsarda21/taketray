@@ -88,6 +88,16 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       player(id).events
           .addError(PlatformException(code: 'E', message: message));
 
+  /// Makes player [id], held by [hold], report that it is open now, with
+  /// [duration] and [size]: a slow open that ends.
+  void release(int id) => player(id).events.add(
+    VideoEvent(
+      eventType: VideoEventType.initialized,
+      duration: duration,
+      size: size,
+    ),
+  );
+
   /// Makes player [id] report that it reached the end.
   void complete(int id) =>
       player(id).events.add(VideoEvent(eventType: VideoEventType.completed));

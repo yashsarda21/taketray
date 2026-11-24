@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -19,6 +22,7 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/tagging/view_models/tag_session_controller.dart';
@@ -31,6 +35,7 @@ import 'package:video_player/video_player.dart' show VideoPlayer;
 import '../../../support/accessibility.dart';
 import '../../../support/fake_hold.dart';
 import '../../../support/fake_video_player.dart';
+import '../../../support/glass_pixels.dart';
 import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
@@ -829,78 +834,856 @@ void main() {
       expect(title(tester), '2 of 3');
     });
 
-    testApp('a swipe moves to the next and the previous clip', (tester) async {
-      await waiting(tester, 3);
-      await open(tester);
-      const middle = Offset(180, 300);
+    // Moving between clips (D-182): a vertical swipe on the stage, and the
+    // slides of a move without one (a tag, Skip, Same, ‹ ›, Undo).
+    const middle = Offset(180, 300);
 
-      await tester.flingFrom(middle, const Offset(-200, 0), 2000);
-      await settleApp(tester);
-      expect(title(tester), '2 of 3');
+    /// How far down the stage is from its place: the finger's dy.
+    double stageDy(WidgetTester tester) => tester.getRect(stage).top;
 
-      await tester.flingFrom(middle, const Offset(200, 0), 2000);
-      await settleApp(tester);
-      expect(title(tester), '1 of 3');
+    /// The thumbnail of clip [id], wherever it is drawn.
+    Finder thumbnailOf(int id) => find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image is ClipThumbnailImage &&
+          (w.image as ClipThumbnailImage).clip.id == id,
+      description: 'the thumbnail of clip $id',
+    );
 
-      // Past the start: it stays.
-      await tester.flingFrom(middle, const Offset(200, 0), 2000);
-      await settleApp(tester);
-      expect(title(tester), '1 of 3');
-    });
+    /// The clip coming in with the finger, the clip going out of a move
+    /// without a drag, and the stage coming in.
+    final neighbour = find.byKey(const ValueKey('tag-swipe-neighbour'));
+    final outgoing = find.byKey(const ValueKey('tag-stage-out'));
+    final incoming = find.byKey(const ValueKey('tag-stage-in'));
 
-    testApp('a swipe that starts in the system gesture edge does nothing', (
-      tester,
-    ) async {
-      await waiting(tester, 3);
-      await open(tester);
-      // The system keeps the left 24 dp for Back.
-      tester.view.systemGestureInsets = const FakeViewPadding(left: 24 * 1.0);
-      addTearDown(tester.view.resetSystemGestureInsets);
-      await tester.pump();
+    /// Where the clip going out, and the clip coming in with the finger,
+    /// are drawn (their black box: a transition's own box does not move).
+    Rect outgoingRect(WidgetTester tester) => tester.getRect(
+      find.descendant(of: outgoing, matching: find.byType(ColoredBox)).first,
+    );
+    Rect neighbourRect(WidgetTester tester) => tester.getRect(
+      find.descendant(of: neighbour, matching: find.byType(ColoredBox)).first,
+    );
 
-      await tester.flingFrom(const Offset(8, 300), const Offset(-200, 0), 2000);
-      await settleApp(tester);
-      expect(title(tester), '1 of 3');
+    /// How far down the incoming stage still is, as a share of its height.
+    double slide(WidgetTester tester) => tester
+        .widget<FractionalTranslation>(
+          find
+              .descendant(
+                of: incoming,
+                matching: find.byType(FractionalTranslation),
+              )
+              .first,
+        )
+        .translation
+        .dy;
 
-      await tester.flingFrom(
-        const Offset(200, 300),
-        const Offset(-200, 0),
-        2000,
+    /// The incoming stage's opacity.
+    double fade(WidgetTester tester) => tester
+        .widget<FadeTransition>(
+          find
+              .descendant(of: incoming, matching: find.byType(FadeTransition))
+              .first,
+        )
+        .opacity
+        .value;
+
+    /// Nothing moves and nothing extra is drawn.
+    void expectAtRest(WidgetTester tester) {
+      expect(stageDy(tester), 0);
+      expect(neighbour, findsNothing);
+      expect(outgoing, findsNothing);
+      expect(slide(tester), 0);
+      expect(fade(tester), 1);
+    }
+
+    /// A slow drag on the stage: [dy] dp in a second, far but not fast.
+    Future<void> slowDrag(WidgetTester tester, double dy) =>
+        tester.timedDragFrom(middle, Offset(0, dy), const Duration(seconds: 1));
+
+    /// A quick flick on the stage: [dy] dp at [speed] dp/s, a touch every
+    /// 8 ms as on a 120 Hz phone. (`flingFrom` sends 50 touches however
+    /// short the fling, so the recognizer's last 20, which it measures a
+    /// fling's distance over, cover under the touch slop of a 40 dp one.)
+    Future<void> flick(WidgetTester tester, double dy, double speed) async {
+      final gesture = await tester.createGesture();
+      await gesture.down(middle);
+      final touches = (dy.abs() / speed * 1000 / 8).ceil();
+      var at = Duration.zero;
+      for (var i = 0; i < touches; i++) {
+        at += const Duration(milliseconds: 8);
+        await gesture.moveBy(Offset(0, dy / touches), timeStamp: at);
+      }
+      await gesture.up(timeStamp: at);
+    }
+
+    /// A finger put on the stage and moved [dy] dp in 400 ms (slowly), still
+    /// down; the frame drawn.
+    Future<TestGesture> fingerDown(WidgetTester tester, double dy) async {
+      final gesture = await tester.createGesture();
+      await gesture.down(middle);
+      await gesture.moveBy(
+        Offset(0, dy),
+        timeStamp: const Duration(milliseconds: 400),
       );
-      await settleApp(tester);
-      expect(title(tester), '2 of 3');
-    });
+      await tester.pump();
+      return gesture;
+    }
 
-    testApp('a short quick flick does not change the clip', (tester) async {
-      await waiting(tester, 3);
-      await open(tester);
-      const middle = Offset(180, 300);
+    /// Lets the database answer, a frame at a time and without moving the
+    /// clock, until the title is [to]: the first frame of a move.
+    Future<void> untilTitle(WidgetTester tester, String to) async {
+      for (var i = 0; i < 20 && title(tester) != to; i++) {
+        await tester.runAsync(settle);
+        await tester.pump();
+      }
+      expect(title(tester), to);
+    }
 
-      // Fast, but only 60 dp: a jitter, not a swipe.
-      await tester.flingFrom(middle, const Offset(-60, 0), 1500);
+    /// The first frame of a move, as [untilTitle], then the frame its clock
+    /// starts on (a ticker started in a frame first ticks in the next).
+    Future<void> moveStarts(WidgetTester tester, String to) async {
+      await untilTitle(tester, to);
+      await tester.pump();
+    }
+
+    /// The scrim's blur: 3 dp, steady from its first frame (D-172).
+    void expectSteadyScrim(WidgetTester tester) => expect(
+      tester.widget<BackdropFilter>(ttScrimFilter()).filter,
+      ui.ImageFilter.blur(sigmaX: 3, sigmaY: 3),
+    );
+
+    testApp("a drag up follows the finger and brings the next clip's "
+        'thumbnail', (tester) async {
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      expect(platform.live, hasLength(2), reason: 'clip 2 is open ahead');
+
+      final gesture = await fingerDown(tester, -40);
+
+      expect(stageDy(tester), -40);
+      // The next clip, as its thumbnail, one stage height under the clip.
+      final next = find.descendant(
+        of: neighbour,
+        matching: thumbnailOf(ids[1]),
+      );
+      expect(next, findsOneWidget);
+      expect(tester.getRect(next).top, 800 - 40);
+      // Its player is open ahead, but only the clip showing is drawn as a
+      // video: nothing new is opened for the drag.
+      expect(
+        find.descendant(of: neighbour, matching: find.byType(VideoPlayer)),
+        findsNothing,
+      );
+      expect(find.byType(VideoPlayer), findsOneWidget);
+      expect(platform.players, hasLength(2));
+
+      // Further, and back down: it follows both ways.
+      await gesture.moveBy(
+        const Offset(0, -20),
+        timeStamp: const Duration(milliseconds: 600),
+      );
+      await tester.pump();
+      expect(stageDy(tester), -60);
+      expect(tester.getRect(next).top, 800 - 60);
+
+      // Not far enough, and slow: it springs back.
+      await gesture.moveBy(
+        const Offset(0, 30),
+        timeStamp: const Duration(milliseconds: 1000),
+      );
+      await gesture.up(timeStamp: const Duration(milliseconds: 1000));
       await settleApp(tester);
       expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+    });
 
-      // Far enough: it moves.
-      await tester.flingFrom(middle, const Offset(-120, 0), 1500);
+    testApp('a slow drag past 64 dp goes; 50 dp springs back', (tester) async {
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      await slowDrag(tester, -50);
+      await tester.pump();
+      // On its way back, not on to the next clip.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(stageDy(tester), inExclusiveRange(-50, 0));
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+
+      await slowDrag(tester, -70);
       await settleApp(tester);
       expect(title(tester), '2 of 3');
+      expectAtRest(tester);
     });
 
-    testApp('the gesture edges move the swipe area, not the video', (
+    testApp('a fast short fling (40 dp at 1000 dp/s) goes; 40 dp at 600 '
+        'springs back', (tester) async {
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      await flick(tester, -40, 600);
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+
+      await flick(tester, -40, 1000);
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+      expectAtRest(tester);
+    });
+
+    testApp('a drag down goes to the previous clip', (tester) async {
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+
+      // The previous clip comes down from above, as its thumbnail.
+      final gesture = await fingerDown(tester, 40);
+      expect(stageDy(tester), 40);
+      final previous = find.descendant(
+        of: neighbour,
+        matching: thumbnailOf(ids[0]),
+      );
+      expect(tester.getRect(previous).top, -800 + 40);
+      await gesture.moveBy(
+        const Offset(0, 60),
+        timeStamp: const Duration(milliseconds: 800),
+      );
+      await gesture.up(timeStamp: const Duration(milliseconds: 800));
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+
+      // A fling down from the next clip.
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      await flick(tester, 40, 1000);
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+    });
+
+    testApp('at the ends the clip springs back', (tester) async {
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      // The first clip: nothing above. The drag still follows, over black.
+      final gesture = await fingerDown(tester, 120);
+      expect(stageDy(tester), 120);
+      expect(neighbour, findsOneWidget);
+      expect(
+        find.descendant(of: neighbour, matching: find.byType(Image)),
+        findsNothing,
+      );
+      expect(neighbourRect(tester).bottom, 120);
+      await gesture.up(timeStamp: const Duration(milliseconds: 400));
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+      await tester.flingFrom(middle, const Offset(0, 300), 2000);
+      await settleApp(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+
+      // The last clip: nothing below.
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      expect(title(tester), '3 of 3');
+      await slowDrag(tester, -120);
+      await settleApp(tester);
+      expect(title(tester), '3 of 3');
+      expectAtRest(tester);
+      await tester.flingFrom(middle, const Offset(0, -300), 2000);
+      await settleApp(tester);
+      expect(title(tester), '3 of 3');
+      expectAtRest(tester);
+    });
+
+    testApp('a horizontal drag does nothing', (tester) async {
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+
+      // Both ways, fast and far, and a little slanted: Android's side back
+      // gesture is never met.
+      for (final dx in [-200.0, 200.0]) {
+        await tester.flingFrom(const Offset(180, 300), Offset(dx, 0), 2000);
+        await settleApp(tester);
+        expect(title(tester), '2 of 3');
+        await tester.flingFrom(const Offset(180, 300), Offset(dx, 10), 2000);
+        await settleApp(tester);
+        expect(title(tester), '2 of 3');
+      }
+      expect(tester.getRect(stage), const Rect.fromLTWH(0, 0, 360, 800));
+      expectAtRest(tester);
+    });
+
+    testApp('a swipe that settles does not slide in again', (tester) async {
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      await tester.flingFrom(middle, const Offset(0, -200), 2000);
+      for (var i = 0; i < 30 && title(tester) != '2 of 3'; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      // The frame the next clip is the clip showing: it is in its place
+      // already, with no slide or fade of its own, and nothing goes out.
+      expect(title(tester), '2 of 3');
+      expectAtRest(tester);
+      await tester.pump();
+      expectAtRest(tester);
+
+      // The same going back.
+      await tester.flingFrom(middle, const Offset(0, 200), 2000);
+      for (var i = 0; i < 30 && title(tester) != '1 of 3'; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+    });
+
+    testApp("the incoming clip's thumbnail shows until its player takes over", (
       tester,
     ) async {
-      await waiting(tester, 3);
-      await open(tester);
-      final video = find.byKey(const ValueKey('fake-video-1'));
-      final before = tester.getRect(video);
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      await tester.flingFrom(middle, const Offset(0, -200), 2000);
+      await settleApp(tester);
+      expect(title(tester), '2 of 3');
+      // The clip left behind was let go: going back opens it again.
+      expect(platform.player(1).disposed, isTrue);
+      platform.hold = true;
 
-      tester.view.systemGestureInsets = const FakeViewPadding(left: 24 * 1.0);
-      addTearDown(tester.view.resetSystemGestureInsets);
-      await tester.pump();
+      final gesture = await fingerDown(tester, 40);
+      final coming = find.descendant(
+        of: neighbour,
+        matching: thumbnailOf(ids[0]),
+      );
+      expect(tester.getRect(coming).top, -800 + 40);
+      await gesture.moveBy(
+        const Offset(0, 80),
+        timeStamp: const Duration(milliseconds: 800),
+      );
+      await gesture.up(timeStamp: const Duration(milliseconds: 800));
+      await settleApp(tester, spinning: true);
 
-      expect(tester.getRect(video), before);
+      // Arrived: its player opens, and meanwhile its thumbnail shows with
+      // the spinner, where the finger left it.
+      expect(title(tester), '1 of 3');
+      expect(stageDy(tester), 0);
+      expect(neighbour, findsNothing);
+      final opening = platform.players.where((p) => p.uri == _uri(1)).last;
+      expect(opening.disposed, isFalse);
+      expect(opening.id, greaterThan(1), reason: 'opened again');
+      expect(
+        find.descendant(of: stage, matching: thumbnailOf(ids[0])),
+        findsOneWidget,
+      );
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.descendant(of: stage, matching: find.byType(VideoPlayer)),
+        findsNothing,
+      );
+
+      platform.release(opening.id);
+      await settleApp(tester);
+      expect(
+        find.descendant(
+          of: stage,
+          matching: find.byKey(ValueKey('fake-video-${opening.id}')),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: stage, matching: thumbnailOf(ids[0])),
+        findsNothing,
+      );
+      expect(opening.playing, isTrue);
     });
+
+    testApp('a missing thumbnail comes in as black', (tester) async {
+      // Flutter's image cache outlives a test.
+      PaintingBinding.instance.imageCache.clear();
+      addTearDown(PaintingBinding.instance.imageCache.clear);
+      final ids = await waiting(tester, 4);
+      // Clip 2 has a picture; clip 3's does not decode; clip 4 has none.
+      h.media.bridge.thumbnails[('external_primary', 2)] = base64Decode(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk'
+        'YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+      );
+      h.media.bridge.thumbnails[('external_primary', 3)] = Uint8List.fromList([
+        1,
+        2,
+        3,
+      ]);
+      await open(tester, animations: true);
+
+      /// The pictures drawn in the clip coming in.
+      Iterable<RawImage> pictures() => tester.widgetList<RawImage>(
+        find.descendant(of: neighbour, matching: find.byType(RawImage)),
+      );
+
+      /// Holds the finger down while the thumbnail is asked for, read and
+      /// decoded (in real time; the cache's timeouts on the test's clock),
+      /// checking each frame with [eachFrame], until [done].
+      Future<void> wait(
+        bool Function() done, {
+        void Function()? eachFrame,
+      }) async {
+        for (var i = 0; i < 30 && !done(); i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 50)),
+          );
+          await tester.pump(const Duration(milliseconds: 100));
+          eachFrame?.call();
+        }
+      }
+
+      /// The clip coming in is [id], drawn black: no error widget, no text,
+      /// no video and no picture of any clip.
+      void expectBlack(int id) {
+        expect(
+          find.descendant(of: neighbour, matching: thumbnailOf(id)),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: neighbour, matching: find.byType(Image)),
+          findsOneWidget,
+        );
+        expect(pictures().where((p) => p.image != null), isEmpty);
+        for (final type in [ErrorWidget, Icon, Text, VideoPlayer]) {
+          expect(
+            find.descendant(of: neighbour, matching: find.byType(type)),
+            findsNothing,
+            reason: 'no $type in the clip coming in',
+          );
+        }
+        expect(
+          find.descendant(
+            of: neighbour,
+            matching: find.byWidgetPredicate(
+              (w) => w is ColoredBox && w.color == const Color(0xFF000000),
+            ),
+          ),
+          findsWidgets,
+        );
+      }
+
+      // Clip 2's picture comes in with the finger (the test's own proof
+      // that a picture can show here).
+      var gesture = await fingerDown(tester, -40);
+      await wait(() => pictures().any((p) => p.image != null));
+      expect(pictures().where((p) => p.image != null), hasLength(1));
+      await gesture.moveBy(
+        const Offset(0, -80),
+        timeStamp: const Duration(milliseconds: 800),
+      );
+      await gesture.up(timeStamp: const Duration(milliseconds: 800));
+      await settleApp(tester);
+      expect(title(tester), '2 of 4');
+
+      // Clip 3's picture fails: black, at every frame, never clip 2's.
+      gesture = await fingerDown(tester, -40);
+      expectBlack(ids[2]);
+      var failed = false;
+      await wait(
+        () => failed,
+        eachFrame: () {
+          expectBlack(ids[2]);
+          failed = find
+              .descendant(of: neighbour, matching: find.byType(RawImage))
+              .evaluate()
+              .isEmpty;
+        },
+      );
+      expect(failed, isTrue, reason: "clip 3's picture failed to decode");
+      await gesture.moveBy(
+        const Offset(0, -80),
+        timeStamp: const Duration(milliseconds: 800),
+      );
+      await gesture.up(timeStamp: const Duration(milliseconds: 800));
+      await settleApp(tester);
+      expect(title(tester), '3 of 4');
+
+      // Clip 4 has none at all: black too.
+      gesture = await fingerDown(tester, -40);
+      await wait(() => false, eachFrame: () => expectBlack(ids[3]));
+      expectBlack(ids[3]);
+      await gesture.up(timeStamp: const Duration(milliseconds: 400));
+      await settleApp(tester);
+      expect(title(tester), '3 of 4');
+      expect(find.text("This video can't be played"), findsNothing);
+    });
+
+    testApp('a tag slides the clip up and out; the next comes up from 16 % '
+        'and fades in from .3', (tester) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      expectAtRest(tester);
+
+      await tester.tap(chip('Goa'));
+      await tester.pump();
+      holds.fireAll();
+      await untilTitle(tester, '2 of 3');
+
+      // The first frame: the next stage 16 % down at 30 %, the clip that
+      // was showing still in its place, drawn as its thumbnail (its player
+      // is let go at once).
+      expect(slide(tester), closeTo(TtMetrics.tagStageSlideFrom, 1e-9));
+      expect(fade(tester), closeTo(TtMetrics.tagStageSlideFromOpacity, 1e-9));
+      expect(TtMetrics.tagStageSlideFrom, .16);
+      expect(TtMetrics.tagStageSlideFromOpacity, .3);
+      expect(outgoingRect(tester), const Rect.fromLTWH(0, 0, 360, 800));
+      expect(
+        find.descendant(of: outgoing, matching: thumbnailOf(ids[0])),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: outgoing, matching: find.byType(VideoPlayer)),
+        findsNothing,
+      );
+
+      // 100 ms in: the old clip goes up, the new one comes up.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(outgoingRect(tester).top, inExclusiveRange(-800, 0));
+      expect(slide(tester), inExclusiveRange(0, .16));
+      expect(fade(tester), inExclusiveRange(.3, 1));
+
+      // short4 (200 ms): the old clip is gone (a frame after), the new one
+      // still moving.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(outgoing, findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump();
+      expect(outgoing, findsNothing);
+      expect(slide(tester), greaterThan(0));
+      expect(fade(tester), lessThan(1));
+
+      // medium2 (300 ms): in its place.
+      await tester.pump(const Duration(milliseconds: 84));
+      expect(slide(tester), 0);
+      expect(fade(tester), 1);
+      await settleApp(tester);
+      expectAtRest(tester);
+    });
+
+    testApp('Undo and Previous slide the mirror way', (tester) async {
+      await newReel(tester, 'Goa');
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      await tagInto(tester, 'Goa');
+      expect(title(tester), '2 of 3');
+
+      // Undo: the clip comes back down from above, and the one showing
+      // goes down and out.
+      tester.widget<TtSnack>(find.byType(TtSnack)).onAction!();
+      await untilTitle(tester, '1 of 3');
+      expect(slide(tester), closeTo(-.16, 1e-9));
+      expect(fade(tester), closeTo(.3, 1e-9));
+      expect(
+        find.descendant(of: outgoing, matching: thumbnailOf(ids[1])),
+        findsOneWidget,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(outgoingRect(tester).top, inExclusiveRange(0, 800));
+      expect(slide(tester), inExclusiveRange(-.16, 0));
+      await settleApp(tester);
+      expectAtRest(tester);
+
+      // Previous: the same.
+      await tester.tap(iconButton('Next clip'));
+      await settleApp(tester);
+      await tester.tap(iconButton('Previous clip'));
+      await moveStarts(tester, '1 of 3');
+      expect(slide(tester), closeTo(-.16, 1e-9));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(outgoingRect(tester).top, greaterThan(0));
+      await settleApp(tester);
+      expectAtRest(tester);
+    });
+
+    testApp('‹ › move with the same slide; off at the ends', (tester) async {
+      final ids = await waiting(tester, 3);
+      await open(tester, animations: true);
+      expect(previousOn(tester), isFalse);
+
+      // ›: up from 16 % below, the clip showing up and out.
+      await tester.tap(iconButton('Next clip'));
+      await untilTitle(tester, '2 of 3');
+      expect(slide(tester), closeTo(.16, 1e-9));
+      expect(fade(tester), closeTo(.3, 1e-9));
+      expect(
+        find.descendant(of: outgoing, matching: thumbnailOf(ids[0])),
+        findsOneWidget,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(outgoingRect(tester).top, lessThan(0));
+      await settleApp(tester);
+      expectAtRest(tester);
+
+      // ‹: the mirror image.
+      await tester.tap(iconButton('Previous clip'));
+      await untilTitle(tester, '1 of 3');
+      expect(slide(tester), closeTo(-.16, 1e-9));
+      await settleApp(tester);
+      expectAtRest(tester);
+      expect(previousOn(tester), isFalse);
+
+      // Off at the ends.
+      for (var i = 0; i < 2; i++) {
+        await tester.tap(iconButton('Next clip'));
+        await settleApp(tester);
+      }
+      expect(title(tester), '3 of 3');
+      expect(nextOn(tester), isFalse);
+      expect(previousOn(tester), isTrue);
+      expectAtRest(tester);
+    });
+
+    testApp('reduced motion: a 150 ms crossfade, no travel, the drag does not '
+        'move the clip', (tester) async {
+      final ids = await waiting(tester, 3);
+      await open(tester);
+      expect(TtMetrics.reducedMotionCrossfadeMillis, 150);
+
+      await tester.tap(iconButton('Next clip'));
+      await tester.pump();
+      // The first frame: the new stage clear over the old clip's thumbnail,
+      // in place.
+      expect(title(tester), '2 of 3');
+      expect(fade(tester), 0);
+      expect(slide(tester), 0);
+      expect(outgoingRect(tester), const Rect.fromLTWH(0, 0, 360, 800));
+      expect(
+        find.descendant(of: outgoing, matching: thumbnailOf(ids[0])),
+        findsOneWidget,
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+      expect(fade(tester), inExclusiveRange(0, 1));
+      expect(slide(tester), 0);
+      expect(outgoingRect(tester).top, 0);
+      await tester.pump(const Duration(milliseconds: 75));
+      expect(fade(tester), 1);
+      // A frame after its end, the old clip is gone.
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.pump();
+      expect(outgoing, findsNothing);
+      await settleApp(tester);
+      expectAtRest(tester);
+
+      // A drag does not move the clip, and nothing comes in with it.
+      final gesture = await fingerDown(tester, -100);
+      expect(stageDy(tester), 0);
+      expect(neighbour, findsNothing);
+      // Past 64 dp it still moves on, with the same crossfade.
+      await gesture.up(timeStamp: const Duration(milliseconds: 400));
+      await tester.pump();
+      expect(title(tester), '3 of 3');
+      expect(fade(tester), 0);
+      expect(slide(tester), 0);
+      expect(stageDy(tester), 0);
+      await settleApp(tester);
+      expectAtRest(tester);
+      // Down, by a fling.
+      await flick(tester, 40, 1000);
+      await tester.pump();
+      expect(title(tester), '2 of 3');
+      expect(slide(tester), 0);
+      await settleApp(tester);
+      expectAtRest(tester);
+    });
+
+    testApp(
+      'a swipe during the hold springs back and the clip is tagged once',
+      (tester) async {
+        final goa = await newReel(tester, 'Goa');
+        final ids = await waiting(tester, 3);
+        await open(tester, animations: true);
+
+        await tester.tap(chip('Goa'));
+        await tester.pump();
+        expect(chipState(tester, 'Goa'), TtReelChipState.done);
+
+        final gesture = await fingerDown(tester, -100);
+        expect(stageDy(tester), -100);
+        await gesture.up(timeStamp: const Duration(milliseconds: 400));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        // On its way back, not on.
+        expect(stageDy(tester), inExclusiveRange(-100, 0));
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(stageDy(tester), 0);
+        expect(title(tester), '1 of 3');
+        expect(await reelsOf(tester, ids[0]), isEmpty);
+
+        holds.fireAll();
+        await settleApp(tester);
+        expect(title(tester), '2 of 3');
+        expect(await reelsOf(tester, ids[0]), {goa.id});
+        expect(await reelsOf(tester, ids[1]), isEmpty);
+        expect(await pendingIds(tester), {ids[1], ids[2]});
+        expectAtRest(tester);
+      },
+    );
+
+    testApp('a dialog opened during the slide: the slide ends, the new clip '
+        'plays, the scrim blurs by 3', (tester) async {
+      // A Ready reel, so the dock offers All reels.
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Paris', status: ReelStatus.ready);
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      await tester.tap(iconButton('Next clip'));
+      await moveStarts(tester, '2 of 3');
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(outgoing, findsOneWidget);
+
+      await tester.tap(allReels);
+      await tester.pump();
+      expect(sheet, findsOneWidget);
+      expectSteadyScrim(tester);
+      await tester.pump(const Duration(milliseconds: 100));
+      expectSteadyScrim(tester);
+      await settleApp(tester);
+
+      // The slide ended under the sheet: no thumbnail is left, and the new
+      // clip's own player shows and plays.
+      expectSteadyScrim(tester);
+      expectAtRest(tester);
+      expect(
+        find.descendant(of: stage, matching: find.byType(Image)),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: stage,
+          matching: find.byKey(const ValueKey('fake-video-2')),
+        ),
+        findsOneWidget,
+      );
+      expect(platform.player(2).playing, isTrue);
+    });
+
+    testApp('a dialog opened during a drag: the drag is cancelled and springs '
+        'back', (tester) async {
+      await newReel(tester, 'Paris', status: ReelStatus.ready);
+      await waiting(tester, 3);
+      await open(tester, animations: true);
+
+      final gesture = await fingerDown(tester, -40);
+      expect(stageDy(tester), -40);
+
+      // Another finger opens All reels.
+      await tester.tap(allReels);
+      await tester.pump();
+      expectSteadyScrim(tester);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(stageDy(tester), 0);
+      expect(neighbour, findsNothing);
+
+      // The rest of that drag is not followed, and does not move on.
+      await gesture.moveBy(
+        const Offset(0, -200),
+        timeStamp: const Duration(milliseconds: 600),
+      );
+      await tester.pump();
+      expect(stageDy(tester), 0);
+      await gesture.up(timeStamp: const Duration(milliseconds: 600));
+      await settleApp(tester);
+      expectSteadyScrim(tester);
+      expect(title(tester), '1 of 3');
+      expectAtRest(tester);
+    });
+
+    testApp('a tap still plays and pauses', (tester) async {
+      await waiting(tester, 2);
+      await open(tester, animations: true);
+      expect(platform.player(1).playing, isTrue);
+
+      await tester.tap(find.byKey(const ValueKey('fake-video-1')));
+      await settleApp(tester);
+      expect(platform.player(1).playing, isFalse);
+      expect(title(tester), '1 of 2');
+
+      await tester.tap(find.byKey(const ValueKey('fake-video-1')));
+      await settleApp(tester);
+      expect(platform.player(1).playing, isTrue);
+      expectAtRest(tester);
+    });
+
+    testApp(
+      'swiping through five clips never keeps more than two controllers',
+      (tester) async {
+        await newReel(tester, 'Goa');
+        await waiting(tester, 5);
+        await open(tester, animations: true);
+
+        /// [go] moves from the clip with MediaStore number [left] to the next;
+        /// every frame of the move has at most two players, and none of the
+        /// clip going out (drawn as its thumbnail: its player goes at once).
+        Future<void> move(int left, Future<void> Function() go) async {
+          await go();
+          var moved = false;
+          for (var frame = 0; frame < 25; frame++) {
+            await tester.pump(const Duration(milliseconds: 16));
+            // What the frame let go of is let go (the fake platform answers
+            // in real time).
+            await tester.runAsync(settle);
+            expect(platform.live.length, lessThanOrEqualTo(2));
+            expect(
+              find.descendant(of: outgoing, matching: find.byType(VideoPlayer)),
+              findsNothing,
+            );
+            // From the frame after the move (a tag's lands in a later
+            // frame than a tap's), while the clip still goes out.
+            if (moved && outgoing.evaluate().isNotEmpty) {
+              expect(
+                platform.players
+                    .where((p) => p.uri == _uri(left))
+                    .last
+                    .disposed,
+                isTrue,
+                reason: 'clip $left still has its player while it goes out',
+              );
+            }
+            moved = title(tester) != '$left of 5';
+          }
+          await settleApp(tester);
+          expect(title(tester), '${left + 1} of 5');
+          expect(platform.live.length, lessThanOrEqualTo(2));
+        }
+
+        await move(
+          1,
+          () => tester.flingFrom(middle, const Offset(0, -200), 2000),
+        );
+        await move(2, () => tester.tap(iconButton('Next clip')));
+        await move(3, () async {
+          await tester.tap(chip('Goa'));
+          await tester.pump();
+          holds.fireAll();
+        });
+        await move(4, () => slowDrag(tester, -100));
+        // Each clip came up as the player opened a clip ahead, never
+        // opened twice; on the last, the clip ahead is the first one still
+        // waiting (the tag's wrap), opened again.
+        expect(platform.uris, [for (var i = 1; i <= 5; i++) _uri(i), _uri(1)]);
+      },
+    );
 
     testApp('the clip one ahead is open, muted and never playing', (
       tester,
