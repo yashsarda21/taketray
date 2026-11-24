@@ -611,7 +611,7 @@ void main() {
       }
     });
 
-    testWidgets('at 1.4 the grid is still two columns and the header a row', (
+    testWidgets('at 1.4 the grid is still two columns, but the header wraps', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -621,7 +621,44 @@ void main() {
         ),
       );
       expect(tester.getSize(find.byType(TtReelChip).first).width, 164);
-      expect(_inDock(find.byType(Wrap)), findsNothing);
+      expect(_inDock(find.byType(Wrap)), findsOneWidget);
+    });
+
+    testWidgets('just under 1.5 (1.3 and 1.49) the header holds Pick several '
+        'and All reels at 360 dp without overflow', (tester) async {
+      _viewport(tester);
+      for (final scale in [1.3, 1.49]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            textScale: scale,
+            _atBottom(
+              _dock(
+                actions: [
+                  _action(
+                    'Pick several',
+                    icon: Symbols.library_add_check_rounded,
+                  ),
+                  _action('All reels', icon: Symbols.apps_rounded),
+                ],
+              ),
+            ),
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'at ${scale}x');
+        final dock = tester.getRect(find.byType(TtReelDock));
+        for (final label in ['Add to reel', 'Pick several', 'All reels']) {
+          final rect = tester.getRect(find.text(label));
+          expect(rect.left, greaterThanOrEqualTo(dock.left));
+          expect(rect.right, lessThanOrEqualTo(dock.right), reason: label);
+        }
+        // The title is not crushed to a few letters: its words fit on at
+        // most two lines.
+        expect(
+          tester.getSize(find.text('Add to reel')).height,
+          lessThan(2.5 * 14 * scale * 1.5),
+          reason: 'at ${scale}x',
+        );
+      }
     });
 
     testWidgets('from 1.5 the grid is one column and the header wraps', (
@@ -1036,7 +1073,8 @@ void main() {
       );
       final samples = await _contrast(tester);
       final scene = samples.singleWhere((s) => s.text.startsWith('Scene'));
-      expect(scene.ratio, greaterThanOrEqualTo(4.5));
+      // The handoff's figure (white at 82 % on the scrim): at least 6.4:1.
+      expect(scene.ratio, greaterThanOrEqualTo(6.4));
       final title = samples.singleWhere((s) => s.text == '5 of 12');
       expect(title.ratio, greaterThanOrEqualTo(4.5));
       final semantics = tester.ensureSemantics();

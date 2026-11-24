@@ -1689,6 +1689,11 @@ abstract final class TtMetrics {
   // player2.css:6: .p2 .ib.off { opacity: .35; pointer-events: none }
   static const double playerChevronDisabledOpacity = 0.35;
 
+  /// Opacity of the scene line under the player header's title (white at
+  /// this): the tag player's, not the clip viewer's 78 % token.
+  // player2.css:30: .p2-where span { color: rgba(255,255,255,.82) }
+  static const double playerSceneLineOpacity = 0.82;
+
   /// Padding at each side of the title between the header's chevrons.
   // player2.css:25: .p2-where { padding: 0 2px }
   static const double playerChevronTitlePadding = 2;

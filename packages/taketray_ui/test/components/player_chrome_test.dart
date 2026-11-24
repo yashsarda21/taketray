@@ -319,6 +319,19 @@ void main() {
       }
     });
 
+    testWidgets('a wrapping (tag player) scene line is white at 82 %, the '
+        "viewer's header keeps the 78 % token", (tester) async {
+      const sub = 'Scene 2 of 4 · 0:12–0:48';
+      await tester.pumpWidget(ttTestApp(_header(wrapSubtitle: true)));
+      final color = tester.widget<Text>(find.text(sub)).style!.color!;
+      expect(color.a, closeTo(0.82, 0.005));
+      expect([color.r, color.g, color.b], [1, 1, 1]);
+      expect(TtMetrics.playerSceneLineOpacity, 0.82);
+      await tester.pumpWidget(ttTestApp(_header()));
+      final plain = tester.widget<Text>(find.text(sub)).style!.color!;
+      expect(plain, tester.element(find.text(sub)).tt.colors.onVideoVariant);
+    });
+
     testWidgets('without wrapSubtitle the subtitle is one line with an '
         'ellipsis at every scale', (tester) async {
       const sub = 'Scene 2 of 4 · 0:12–0:48';

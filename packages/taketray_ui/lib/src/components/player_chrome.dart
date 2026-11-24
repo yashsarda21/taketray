@@ -120,8 +120,9 @@ class TtHeaderChevron {
 /// At least 56 dp high with 4 dp at the sides. The title is one line with an
 /// ellipsis. The subtitle is one line with an ellipsis too, except with
 /// [wrapSubtitle]: then it wraps at every text scale, with no line limit and
-/// no ellipsis, so the scene and its time range are never cut (the tag
-/// player; the viewer's header sits over the video, where a second line
+/// no ellipsis, so the scene and its time range are never cut, and it is
+/// white at 82 % rather than the 78 % token (the tag player; the viewer's
+/// header sits over the video, where a second line
 /// would leave its scrim). The header grows rather than clip. The text is a
 /// live region, so a screen reader says the new position each time the clip
 /// changes. Without a [trailing] control the title stays centred.
@@ -197,7 +198,14 @@ class TtPlayerHeader extends StatelessWidget {
                   : TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: tt.text.material.bodySmall!.copyWith(
-                color: tt.colors.onVideoVariant,
+                // The tag player's scene line is white at 82 % (the handoff,
+                // 6.4:1 on the top scrim); the clip viewer keeps the 78 %
+                // token.
+                color: wrapSubtitle
+                    ? tt.colors.onVideo.withValues(
+                        alpha: TtMetrics.playerSceneLineOpacity,
+                      )
+                    : tt.colors.onVideoVariant,
               ),
             ),
         ],
@@ -295,8 +303,8 @@ class _Chevron extends StatelessWidget {
 ///
 /// The scrim is as tall as [child], so the child holds its own padding (the
 /// status bar above, and the 24 dp of fade below). It takes no touches and
-/// is not announced. The scene line over it reads AA (about 6.2:1) over a
-/// pure white frame.
+/// is not announced. The scene line over it (white at 82 %) reads at least
+/// 6.4:1 over a pure white frame.
 // player2.css:21: .p2-top { padding: 34px 0 24px; background: linear-gradient(
 // rgba(0,0,0,.78) 0, rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
 class TtPlayerTopScrim extends StatelessWidget {

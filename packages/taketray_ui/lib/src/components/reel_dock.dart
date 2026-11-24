@@ -24,8 +24,10 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// (the header and the footer stay put). Pick several can hold many picked
 /// reels, and the clip keeps its room. From a text scale of
 /// `TtMetrics.reelDockSingleColumnTextScale` (1.5) the grid is one column of
-/// full-width chips and the header is a `Wrap`, so a long title and the
-/// actions fall onto a second line instead of being cut.
+/// full-width chips. The header is a `Wrap` at any text scale above 1 (not
+/// only from 1.5, as the handoff has it: with Pick several and All reels at
+/// 1.3 the title was left a letter a line), so a long title and the actions
+/// fall onto a second line instead of being cut.
 ///
 /// The chips are `TtReelChipStyle.onVideo` glass. They blur what is behind
 /// them, which is this dock's scrim, and the on-video New reel chip reaches
@@ -74,7 +76,9 @@ class TtReelDock extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     final scale = MediaQuery.textScalerOf(context).scale(1);
-    final large = scale >= TtMetrics.largeTextScale;
+    // A row only at 1x: with any larger text the title and two actions can
+    // not share it (at 1.3 the title was crushed to a letter a line).
+    final wrapHeader = scale > 1;
     final single = scale >= TtMetrics.reelDockSingleColumnTextScale;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final scrubLine = scrub;
@@ -101,7 +105,7 @@ class TtReelDock extends StatelessWidget {
         // player2.css:57: .fs2 .p2-dh { flex-wrap: wrap }
         // A Wrap gives each child at most its own width, so a long title
         // wraps its words rather than overflow.
-        child: large
+        child: wrapHeader
             ? Wrap(
                 crossAxisAlignment: WrapCrossAlignment.center,
                 spacing: TtMetrics.reelDockHeaderGap,
