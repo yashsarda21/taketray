@@ -161,18 +161,18 @@ The phone must be unlocked, on the home screen, with USB debugging allowed. It i
 
 ## Phase 5 check
 
-Phase 5 is tagging: To tag in scenes, the tag player (one clip at a time, with the reel chips, Pick several, Same as previous, Skip and Undo), Tag scene, Skip all and the Skipped list. The controller runs the on-device test `app/patrol_test/tagging_test.dart` on the phone (see below). It puts 40 short test videos into `Movies/TakeTray Test/` (3 or 4 for the smaller flows) and deletes them again, makes two reels ("Patrol A" and "Patrol B") and deletes them, and checks six flows: **tag a day** (40 clips: 30 one-tap tags alternating the two reels from the dock, 5 with Pick several into both, 3 with the rail's Same, 2 skipped with the rail's Skip; All done shows "40 clips sorted", "+23" twice and Skipped 2; To tag is empty; the reels hold exactly the clips that were tapped), **undo goes back** (the player returns to the clip and it is waiting again), **skip all and restore** (Cancel, Skip all with Undo, Skip all, Skipped, a tap restores one), **tag scene** (the scene goes into the reel and leaves To tag) **undo after switching tabs** (the Tag scene message is still there on the Reels tab and its Undo brings the clips back) and, since Phase 12 (D-183), **swipe and All reels** (4 clips: a fling up from the middle of the clip goes to the next clip, a fling down comes back, a fling sideways does nothing; then Patrol B is made Ready, All reels appears in the dock, and a tap on Patrol B in the sheet closes it and puts the clip in Patrol B; Patrol B is put back to Collecting at the end, also when the flow fails). It also times the player: how long from a tap on a reel to the next clip playing. The numbers are in D-100. Then the controller reinstalls the normal debug build. Check these yourself on the S24, in **TakeTray Dev** (the debug copy; your real TakeTray is not used for this check). You need some clips of your own in To tag, for example 8 to 12 short videos you filmed today, and two reels (make them on Reels):
+Phase 5 is tagging: To tag in scenes, the tag player (one clip at a time, with the reel chips, Pick several, Same, Skip and Undo), Tag scene, Skip all and the Skipped list. The controller runs the on-device test `app/patrol_test/tagging_test.dart` on the phone (see below). It puts 40 short test videos into `Movies/TakeTray Test/` (3 or 4 for the smaller flows) and deletes them again, makes two reels ("Patrol A" and "Patrol B") and deletes them, and checks six flows: **tag a day** (40 clips: 30 one-tap tags alternating the two reels from the dock, 5 with Pick several into both, 3 with the rail's Same, 2 skipped with the rail's Skip; All done shows "40 clips sorted", "+23" twice and Skipped 2; To tag is empty; the reels hold exactly the clips that were tapped), **undo goes back** (the player returns to the clip and it is waiting again), **skip all and restore** (Cancel, Skip all with Undo, Skip all, Skipped, a tap restores one), **tag scene** (the scene goes into the reel and leaves To tag), **undo after switching tabs** (the Tag scene message is still there on the Reels tab and its Undo brings the clips back) and, since Phase 12 (D-183), **swipe and All reels** (4 clips: a fling up from the middle of the clip goes to the next clip, a fling down comes back, a fling sideways does nothing; then Patrol B is made Ready, All reels appears in the dock, and a tap on Patrol B in the sheet closes it and puts the clip in Patrol B; Patrol B is put back to Collecting at the end, also when the flow fails). It also times the player: how long from a tap on a reel to the next clip playing. The numbers are in D-100. Then the controller reinstalls the normal debug build. Check these yourself on the S24, in **TakeTray Dev** (the debug copy; your real TakeTray is not used for this check). You need some clips of your own in To tag, for example 8 to 12 short videos you filmed today, and two reels (make them on Reels):
 
 1. **To tag in scenes.** Open To tag. Under the title, "{n} clips · {s} scenes · {time}". Each scene has a header with its times ("1:05–1:20 PM"), "{n} clips · {m:ss}" and a **Tag scene** button. Clips shot more than 10 minutes apart are in separate scenes; a new day starts a new scene and has its own day header.
-2. **Start tagging.** Tap **Start tagging** (the floating button), or tap a clip. The tag player opens on black: "1 of {N}" with "Scene 1 of {S} · {times}" at the top, the video playing (muted) and looping, the reel panel at the bottom. Tap the video: it pauses; tap again: it plays. Tap the speaker: it is heard. Swipe sideways, or use the ‹ › arrows: the previous and next clip.
+2. **Start tagging.** Tap **Start tagging** (the floating button), or tap a clip. The tag player opens on black: "1 of {N}" with "Scene 1 of {S} · {times}" at the top, the video playing (muted) and looping and filling the screen, the reel dock at the bottom. Tap the video: it pauses; tap again: it plays. Tap the speaker: it is heard. Swipe up for the next clip and down for the previous one, or use the ‹ › arrows at the top. (A sideways swipe does nothing, and the first and last clips spring back.)
 3. **Tag with one tap.** Tap a reel chip. The chip shows a check for a moment, "Added to {reel}" appears with **Undo**, and the next clip is already playing (it should start straight away, under a second). The Patrol test only proves this for its tiny 160 x 90 clips, so this step, on your own 1080p or 4K clips, is the real proof of how it feels: note it if a clip is slow to start or shows a black frame. Tap **Undo**: the player goes **back to that clip**, and it is in To tag again.
-4. **Pick several, Same as previous, Skip.** Tap **Pick several**: the panel says "Pick reels for this clip". Tap two reels, then "Add to 2 reels & next". The next clip is still picking (it stays on until you tap **Cancel**). Tap **Cancel**. Tap **Same as previous**: the clip goes into the same two reels (their names are under the button). Tap **Skip**: "Skipped" with **Undo**. Long press a chip: it turns on Pick several.
+4. **Pick several, Same, Skip.** Tap **Pick several**: the dock's header says "Pick reels". Tap two reels, then "Add to 2 reels & next". The next clip is still picking (it stays on until you tap **Cancel**). Tap **Cancel**. Tap **Same** (the glass button on the right): the clip goes into the same two reels (their names are under the button). Tap **Skip** (the other rail button): "Skipped" with **Undo**. Long press a chip: it turns on Pick several.
 5. **Closing cancels the tap.** Tap a reel chip and at once tap the close (X) button: no "Added to" message appears and the clip is still in To tag. Do it again with the back gesture: a quick swipe back right after the tap cancels it too. (A very slow back swipe, held longer than the tick, can still tag; that is a known item in `docs/later.md`.)
-6. **New reel.** In the panel tap **New reel**, type a name, **Create and add**: the clip goes into the new reel.
+6. **New reel.** In the dock tap **New reel**, type a name, **Create and add**: the clip goes into the new reel.
 7. **All done.** Tag or skip the last clip: "All done!", "{n} clips sorted. Nice work.", a row for each reel with "+{n}" and a "Skipped" row. **See your reels** opens Reels (the clips are in them); **Back to To tag** goes back.
 8. **Tag scene.** Back on To tag, tap **Tag scene** on one scene: "Tag {n} clips" opens with "Pick one or more reels."; pick a reel and tap **Tag {n} clips**. "{n} clips added to {reel}" appears with **Undo**, and the scene leaves To tag. Switch to Reels at once: the message is still there; **Undo** brings the clips back.
 9. **Select, Skip all, Skipped.** Three dots on To tag: **Select clips** (long press a tile does the same), choose a few, **Skip**: "{n} clips skipped", **Undo**. Three dots, **Skip all**: "Skip all {n} clips?", **Cancel** changes nothing; **Skip all** moves everything, "Your videos stay in your gallery" is true (open the Gallery app). Tap **Skipped ({n})**: the clips by day, newest first. Tap a clip: "Restored to To tag", **Undo**. **Select**, choose two, **Restore**.
-10. **Dark mode and large text.** Switch the phone to dark mode, then set the font size to the largest. Look at To tag, the player (the video keeps its room and the panel scrolls), All done and Skipped. Nothing should be cut off or overlap.
+10. **Dark mode and large text.** Switch the phone to dark mode, then set the font size to the largest. Look at To tag, the player (the dock is one column and scrolls, and the clip keeps its room), All done and Skipped. Nothing should be cut off or overlap.
 
 If a step does not behave like this, write down the step number and what you saw.
 
@@ -463,3 +463,82 @@ Do not run it for a result: every flow is **skipped** (`skip` in `_flowTest`, wi
 The owner decided on 2026-11-23 not to change `ShareActivity` or any product code. **The "Phase 9B check" hand checks above are the proof that sharing works**, answered by number on the S24. `share_source_test.dart` pins that all four flows stay skipped with that reason, so they cannot silently start running or silently disappear. A future fix would be a `ShareActivity` engine of its own started with the library uri, which changes how the release build starts the share engine and needs a release-build proof first.
 
 **After the run, reinstall the normal debug build and clear TakeTray Dev's data.** The three commands are in "After a Patrol run" above. Do them after **every** run, also when you start another run straight away.
+
+## Phase 12 check
+
+Phase 12 is the UI refresh: frosted glass everywhere the design has it (the blur behind dialogs, sheets, menus and the share screen; the snack; the nav pill; the reel cover pills) and the full-screen tag player (the clip fills the screen, the reel dock, the Skip and Same rail, swiping up and down), plus the To tag count on the nav pill. The decisions are D-172 to D-184. The computer can prove that each blur exists and has the design's strength, but not what the S24's own renderer draws, and on the S24 two blurs were lost that the computer drew correctly (D-172, D-173). So **you judge the glass with your eyes, next to the prototype**: open the prototype (`design/prototype/index.html`, the hub's screens by number) beside the phone, in TakeTray Dev, in light and dark. Write the number and what you saw for each; for glass, say "same as the prototype", "fainter" or "stronger".
+
+First the controller runs the Patrol flows (see "Running `tagging_test.dart`" below), each file once, `tagging_test.dart` first, then `reels_test.dart`, `references_test.dart` (menus, sheets, dialogs and snacks), `editors_test.dart`, `add_videos_test.dart`, `settings_test.dart`, `app_shell_test.dart`, `onboarding_test.dart`, `background_test.dart`, `media_access_test.dart`, `media_scan_test.dart` and `database_test.dart` (`share_test.dart` stays skipped, D-169), and does the reinstall after each. Then it installs the debug build for the hand checks, and `cd app && ../tool/check_release_permissions` ends `RELEASE PERMISSIONS OK`. Open TakeTray Dev and allow video access. A debug build is slower than a release build, so a stutter in check 14 is looked at again on a release build installed over `app.taketray`, with your go.
+
+**The glass** (checks 1 to 9; for each, the page behind is blurred, not only dimmed):
+
+1. **Screen 9, Delete reel.** Open a reel and tap **Delete reel**. The reel's page behind the dialog is **blurred and dimmed**, not only darker. This is the bug you found.
+2. **Screen 14, Skip all.** On To tag, three dots, **Skip all**. The same.
+3. **Sheets.** Screen 7 (the reel form), 13 (the reel picker), 16 (the viewer, **Add to reel**) and 12 (**All reels** in the player). The page is blurred behind each, and the sheet itself is solid.
+4. **Menus, screens 8 and 11.** A reel page's overflow and references menus, and To tag's menu. The whole page blurs by 3 dp and is **not dimmed**. Open the Shooting mode card's References sheet and a card's menu in it: both blur, stacked.
+5. **Screen 6, Home.**
+   1. The nav pill is saturated glass (more colourful than before) and has no dark cast inside it, while the content scrolls under it.
+   2. The reel cover's status pill and the "Editing in VN" pill blur the cover (the status pill was sharp before).
+   3. The references badge blurs.
+   4. The Shooting mode card's icon tile and its references row blur.
+6. **Snacks** (screens 8, 14, 16). At rest the snack blurs what is under it, and the blur stops at its rounded corners.
+7. **Strength.** After 1 to 4: is the blur as strong as the prototype's? If you want it stronger, the new value applies to the 3 dp group only (the scrim, menus and the share window) and goes back through Task 1's tests. Write your verdict (it goes into D-172).
+8. **Screen 35, the share over Instagram** (Android 12 and later).
+   1. Share a reel to TakeTray: the sheet **blurs and dims Instagram**.
+   2. With the sheet open, turn **battery saver** on: the blur goes at once and the dim stays.
+   3. Turn battery saver off: the blur comes back.
+   4. Tap **Done** and share a **second** time: the blur and dim are there again.
+9. **Screen 12, the player's glass.** The rail buttons (Skip, Same) and the dock's reel chips blur the **playing video** (the real video texture, not only a picture) and a clip while it is loading.
+
+**The tag player** (checks 10 to 17):
+
+10. **One-handed.** Tag a day's clips with one hand: swipe, tap a reel, Skip and Same are under the thumb.
+11. **Cover and contain.** A **horizontal clip** is shown whole, centred above the dock, on black; a vertical one covers the screen and is not blurred.
+12. **A very bright (white) clip.** The scene line, the dock's text and the rail's second line all read.
+13. **The back gesture from both edges** leaves the player and never changes the clip.
+14. **Swipes.**
+    1. Up and down follow your finger.
+    2. A short, slow drag springs back.
+    3. A quick flick goes.
+    4. The first and last clips spring back.
+    5. A sideways swipe does nothing.
+    6. By eye there is **no stutter while swiping** (60 frames a second).
+15. **2x text.** Set the font size to the largest: the dock is one column and scrolls, its header wraps, and the rail keeps its place.
+16. **TalkBack.** The focus order is: Close, Previous, the title, Next, Mute, the clip, Skip, Same, then the dock (the scrub bar, Pick several, All reels, the reels, New reel). ‹ and › at the ends of the session are announced as unavailable. Same reads "Same as previous: nothing tagged yet" before anything is tagged.
+17. **Remove animations** (Settings › Accessibility › Visibility enhancements): clips crossfade with no travel.
+
+**What only the phone can show** (checks 18 to 24; these were found during the build and are for you to judge):
+
+18. **TalkBack announces a menu.** With TalkBack on, open a three-dots menu: TalkBack says it is a menu (a popup) and moves into it; a tap outside, or Back, closes it and focus returns to the button.
+19. **Large text and sideways.**
+    1. At the largest text size, in the player with the snack showing (tag a clip): the **snack** sits above the Skip and Same buttons and is readable, the dock, the rail and the snack do not overlap, and the clip keeps room.
+    2. Turn the phone **sideways** and tag: the dock still shows the reels (at least its header and one row), and the rail is reachable.
+    3. Say whether you are happy with these layouts (they differ from the handoff, listed in `docs/later.md` under Phase 12).
+20. **Smoothness with the offstage dock.** The player measures the dock with an unseen copy of it. While swiping and tagging, is there any stutter that was not there in check 14, step 6? Try it with the dock holding three reels and with Pick several on.
+21. **A black flash while dragging.** Drag slowly up and down a few times: the clip coming in should show its picture at once. Say if you ever see a black frame on the first part of a drag (a neighbour's thumbnail not yet loaded).
+22. **The thumbnail against the video.** When you let go, the thumbnail gives way to the playing clip. The picture is a little softer than the video; say whether the change is noticeable or bothers you.
+23. **The dim while loading after a swipe down.** Swipe down to the previous clip: its picture shows under a 35 % dark layer and a spinner until it plays. Say whether that looks right and is not too long.
+24. **The To tag count.**
+    1. The To tag tab shows a number: it matches the **To tag** screen's own count and the Shooting mode card's "N clips to tag", and is on every tab, not only on To tag.
+    2. It goes down at once when you tag or skip a clip, and up when a new clip arrives; with nothing waiting there is no badge, and with more than 99 it says "99+".
+    3. TalkBack reads the tab as "To tag, N clips".
+
+Checks 8, 9 and 13 to 17 are the ones the decisions name by number (D-177, D-181, D-182). If a step does not behave like this, write down the step number and what you saw.
+
+### Running `tagging_test.dart` (the controller does this)
+
+The flows are described under "Phase 5 check" above (six flows since D-183: the five from Phase 5 on the full-screen player, and **swipe and All reels**). Phase 12 changed how they find things: the player's pieces are found through `patrol_test/support/player_finders.dart`, checked on the computer by `test/patrol_support/player_finders_test.dart`. The phone must be unlocked, on the home screen, with USB debugging allowed, and connected for the whole run. From the repo root:
+
+```
+tool/patrol test -d RZCY80PHWCZ -t patrol_test/tagging_test.dart
+```
+
+**Straight after the run** (and after every Patrol file), put the normal debug build back and wipe TakeTray Dev's data (the same three commands as "After a Patrol run"):
+
+```
+(cd app && ../tool/flutter build apk --debug)
+tool/adb -s RZCY80PHWCZ install -r app/build/app/outputs/flutter-apk/app-debug.apk
+tool/adb -s RZCY80PHWCZ shell pm clear app.taketray.dev
+```
+
+Run each file once per round. A failure is reported with its step; a test fault is fixed before the next round, and an app fault goes back to its task. Then open TakeTray Dev, allow video access and do the checks above. Only TakeTray Dev is touched (never `app.taketray`), the logcat is read with `--pid=`, no screenshots are taken and no other app's or folder's data is read.

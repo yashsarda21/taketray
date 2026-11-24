@@ -24,6 +24,15 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
+## Phase 12 (UI refresh)
+
+- **Restyle the reminder time picker.** `app/lib/features/settings/views/settings_rows/reminder_groups.dart:94` opens Material's `showTimePicker`. It is the one Material dialog left in the app that is not a TakeTray dialog: its barrier is Material's own black at 54 % with no blur, and its look is Material's, not the design's. It is not in the design (spec, Non-goals), so it is parked until the design has one; then build it as a `showTtDialog` so it gets the steady 3 dp blur (D-172).
+- **Small deviations from the handoff for the owner to confirm on the phone** (Phase 12 check, hand checks 18 to 24 in `docs/dev-setup.md`). Each is built and works; the owner's verdict decides whether it stays or is reworked:
+  - **The snack sits above the rail at large text.** From a text scale of 1.5 the snack is full width and 8 dp above the rail (D-181 fix round, ruling R2), where the handoff puts it beside the rail with an 88 dp right margin. Beside a rail up to about 120 dp wide, a 2x snack wrapped a word to a line over the scene line.
+  - **The rail is a row at large text, and can sit beside the dock** (at 2x on a short phone, and in landscape). The handoff draws a column of two buttons above the dock's right side.
+  - **The dock's header wraps from any text scale above 1x**, where the handoff says "from 1.5" (D-179 fix round). At 1.3x the title was a letter a line beside Pick several and All reels.
+  - **No orientation lock** (ruling R4). The app can turn sideways, and the tag player then floors the dock at its header and one row of reels so reels stay reachable. The alternative is to lock the player to portrait.
+
 ## Phase 10 (onboarding and settings)
 
 - **A device with a wrong clock puts its clips on the wrong day** (owner's call, D-111: no date fix in Phase 7). Revisit when it bites: a batch date shift on Add, stored as TakeTray's date only, never the file's.

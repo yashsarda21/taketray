@@ -40,7 +40,8 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 7 | Adding friends' videos (Add videos and Manual mode) | ✅ Done |
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
-| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B done on the S24 (hand checks passed; release share proven after the entry-point fix). **Next: Phase 11** |
+| 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B done on the S24 (hand checks passed; release share proven after the entry-point fix) |
+| 12 | UI refresh: glass everywhere and the full-screen tag player (ahead of Phase 11, as 10 came before 9) | Built; phone check pending. **Next: Phase 13** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -237,6 +238,24 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Under the hood**: the share screen is its own small Flutter engine in the same process (one manifest entry, `text/plain` only, no new permission), and both engines write the one database through their own connection (WAL with a busy wait, and a re-read when the share comes back to the app). Neither logs a link, a caption or a reel name.
 - **Phone tests**: four on-device flows are written (an existing reel, a new reel, not a link, and a share before onboarding) with a debug-only hook that starts the share screen with a text, and a driver that reads the share screen through Android's accessibility tree. **They are skipped**, because a Patrol build cannot start the share screen: Flutter looks its entry point up in the build's root library, which in a Patrol build is the generated test bundle (D-169 item 8). The owner decided not to change the app for this, so sharing is proven by the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9B check), answered on the S24: a real Instagram, YouTube and TikTok share, where Done returns to, Recents, a share while TakeTray is open, a fresh install, dark mode, large text, TalkBack, the keyboard, and the release build over the real app.
 - **Learning guide**: [docs/learn/phase-9b-sharing.md](docs/learn/phase-9b-sharing.md) explains the whole phase in plain English, with the real code.
+
+### Phase 12: UI refresh
+Phase 12 was put ahead of Phase 11 (as Phase 10 came before 9). The owner compared the app on the S24 with the design and found the frosted-glass look missing, and redesigned the tag player (D-171). It is UI only: tagging, Undo, Pick several and "All done!" work as before. What each task added:
+- **Task 1, the blur behind dialogs and sheets** (D-172): it was too faint to see (the page only went darker). A throwaway test build on the S24 showed why: a blur that grew as the dialog opened was lost on that phone, and the same blur held steady was soft. It is now a steady 3 dp from the first frame, and only the dim fades. CI now has a way to prove a blur by its pixels (sharp stripes behind the glass, the contrast left after the blur is measured).
+- **Task 2, the reel cover's status pill** (D-173): it was sharp on the S24 because its blur filter held a `Material` with its own colour. Every piece of glass is now built the same way (a plain fill first, the press ripple on a see-through layer on top), through one shared widget.
+- **Task 3, the snack** (D-174): the message bar is glass, with the design's 12 dp blur under its 94 % fill, inside its rounded corners.
+- **Task 4, the nav pill** (D-175): it saturates what it blurs (the design's `saturate(1.4)`), and its drop shadow is painted only outside the pill, so it no longer darkens the glass.
+- **Task 5, menus** (D-176): an open menu blurs the whole page behind it by 3 dp, with no dimming, as in the design. A menu is now a TakeTray route (with the same place, keyboard and Back as before, scrolling when it is taller than the screen, and announced by TalkBack).
+- **Task 6, the share screen** (D-177): on Android 12 and later the share sheet asks Android to blur the app behind it (Instagram) by 3 dp, and it takes the blur back at once when battery saver is on.
+- **Task 6A, the To tag count** (D-184, added at the owner's request): the To tag tab on the nav pill shows how many clips wait, as the design draws it. It was a placeholder that always said 0. The count is the same list the Shooting mode card reads, so the two agree, and it appears on every tab.
+- **Task 7, glass buttons for the player** (D-178): the Skip and Same rail buttons and the dark glass reel chips that sit over the playing clip.
+- **Task 8, the dock** (D-179): the panel at the bottom of the player (scrub line, "Add to reel", reel chips, New reel), the Previous and Next chevrons at the top, and the two dark fades that keep white text readable over any clip. At large text the dock is one column and its header wraps.
+- **Task 9, the stage** (D-180): the clip fills the screen like Reels, or is shown whole on black when filling would cut off more than a fifth of it (a horizontal clip). The clip is never blurred, and the old blurred background is gone.
+- **Task 10, the full-screen player** (D-181): the clip under the status bar, the top and the dock over it, Skip and Same on the right, up to three Collecting reels in the dock, and **All reels**, a sheet with every reel (it is always there while you pick several). The snack stays clear of the buttons, also at large text and with the phone held sideways.
+- **Task 11, swiping** (D-182): swipe up for the next clip and down for the previous one, like Reels. The clip follows your finger; a drag over 64 dp or a quick flick goes, less springs back. ‹ › and a tag slide the clip the same way, and "Remove animations" gives a short crossfade. Sideways swipes do nothing, so they never fight Android's back gesture.
+- **Task 12, phone tests** (D-183): the tagging flows are updated to the new player, with one new flow for the swipes and All reels.
+- **Phone tests: pending (Task 14).** The owner's side-by-side check of each glass element with the design, the Patrol runs and the hand checks are "Phase 12 check" in [docs/dev-setup.md](docs/dev-setup.md); the results are added here when they are in.
+- **Learning guide**: [docs/learn/phase-12-ui-refresh.md](docs/learn/phase-12-ui-refresh.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
 
