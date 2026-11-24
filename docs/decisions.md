@@ -84,6 +84,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 ### D-11 · Version 1 is free, no payments
 - Date: 2026-10-24 · Phase: build brainstorming
 - Decision: no Play Billing in v1; code must not make adding it later hard.
+- **Superseded by D-170** (2026-11-22): a free week, then a monthly or yearly subscription.
 
 ## Engineering
 
@@ -2508,3 +2509,81 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - `tool/check_release_permissions` still ends `RELEASE PERMISSIONS OK`; the hook is not in the release dex.
   - Mutation checks, each killed by a named test: see the task report (`DebugShareHooksTest`, `test_share_test.dart`, `share_screen_test.dart`, `share_source_test.dart`).
   - **Minors M24 to M26 (driver rules, written without a phone):** `NativeScreen.count` swallows only Patrol's "no match" (`isNoMatch`: a `PatrolActionException` naming `UiObjectNotFound`, "not found" or "no match"; `countMatching`), so an absent check cannot pass because the screen could not be read; `ShareScreen.tapSave` (flows 2 and 4) fails, naming both edges, when Save's bottom edge is more than 2 px below the keyboard's top (`NativeScreen.keyboardTop`, `keyboardTopOf`: another app's window that does not start at the top of the screen), and taps nothing; `closeIfOpen` looks at and taps only nodes whose `applicationPackage` is the app's (`app.taketray.dev`), so another app's Done is never tapped. What the keyboard heuristic sees on One UI is first known on the S24.
+
+### D-170 · A free week, then a subscription: ₹149 a month or ₹1,199 a year with a first-year launch offer (₹129, ₹899); read-only without one (design, not built yet)
+- Date: 2026-11-22 · Phase: design (to be built before release) · Replaces D-11 · Design: hub screens 41–45 (group "Subscription"), prototype flow "Free week and subscription", `design/prototype/assets/subs.js`, handoff `design/handoff/subscription.md`
+- What the owner asked:
+  - Start with 1 week free, then charge monthly ₹129 or yearly ₹899.
+  - Then (same day): show ₹149 crossed out to ₹129, and ₹1,199 crossed out to ₹899.
+  - Say "cancel anytime".
+- Owner's answers (2026-11-22):
+  - After the free week without a plan, TakeTray is **read-only**, not locked.
+  - The free week is **TakeTray's own, with no card**. A reinstall restarts it, which the owner accepts because the reels are lost with a reinstall anyway.
+  - The first mention comes **after the first tagging session**, not at onboarding.
+- Decision:
+  1. **Free week:** 7 days from the first launch, kept on the phone. The clock can't be moved back to extend it (`max(now, latestSeenAt)`).
+  2. **Products:** two Google Play subscription products, `taketray_monthly` (base plan P1M, ₹149) and `taketray_yearly` (base plan P1Y, ₹1,199).
+     - Each has a launch offer for new customers: ₹129 a month for the first 12 months, and ₹899 for the first year. No Play trial phase.
+     - The owner chose a **real first-year offer** over a permanent cross-out: a crossed-out price nobody ever pays would be a misleading reference price under Google Play's deceptive-behaviour rules and India's 2023 dark-pattern guidelines.
+     - Prices shown are Play's localized prices. Yearly is the default ("Best value").
+     - "Cancel anytime" sits above the Subscribe button and in the free-week sheet, the success dialog and the Subscription page.
+  3. **Read-only:**
+     - Still works: reels, watching clips, Shooting mode (keeps collecting), To tag as a list, references, status, Done editing, deleting, Settings, export and import.
+     - Needs a plan: tagging (Start tagging, the tag player, Tag scene, Skip all), Edit video, Add videos, Add earlier videos and New reel.
+     - A locked action opens one sheet with See plans.
+  4. **Moments:** a once-only sheet after the first tagging session; one notification and a Reels banner the day before the end; Plans once when the week ends; Settings › Subscription always.
+  5. **No server:**
+     - Entitlement comes from Play's purchases on the phone (active, won't renew, pending, lapsed).
+     - Renewal dates and payment problems are left to Google Play (its own in-app messages and subscription page).
+     - Purchases are acknowledged, and their signatures are checked on the phone. Without a server, client-side checks can be bypassed; that is accepted for v1.
+- Why:
+  - Read-only keeps people's work theirs, which matches TakeTray's privacy promise and earns trust.
+  - A no-card week lets everyone try it.
+  - Two products because, without a server, the app can't see which base plan was bought.
+- Alternatives considered:
+  - fully locked after the trial (feels like holding reels hostage);
+  - a free tier with limits (more to design, slower to convert);
+  - Play's own free trial with a card up front (fewer people would try it; the owner preferred no card);
+  - one product with two base plans (unreadable without a server).
+- Consequences:
+  - The app adds Play Billing (`in_app_purchase`).
+  - Check whether the merged manifest gains `INTERNET`, and keep every privacy claim true.
+  - "Free / no in-app purchases" must change in README.md, the Play listing, the website design (FAQ and hero tags) and the privacy policy (payments are handled by Google Play).
+  - `docs/flow.md` gets an entitlement flow when this is built.
+- Number: drafted as D-150 on 2026-11-22 and renumbered D-170 when committed (2026-11-24), because D-150 is Phase 10B's Export and import screen and D-151 to D-169 were taken by then.
+
+### D-171 · The tag player goes full screen: the clip fills the screen, reels in a dock, Skip and Same on the right, swipe up and down (design, not built yet)
+- Date: 2026-11-24 · Phase: design (to be built next) · Changes the layout of D-97; the session logic (D-96) and the one-tap rules stay · Design: hub screen 12 (all states, with the old design as the last state), `design/prototype/assets/player2.js` and `player2.css`, handoff `design/handoff/tag-player-full-screen.md`
+- What the owner said: the tag player "is not that good": for vertical videos the left and right are blurred, and using it felt a little awkward.
+- What was wrong: a vertical clip showed at 203 × 360 of a 360 × 800 screen (a quarter of it), between blurred copies of itself, over four stacked bands (scrub, Skip and Same, panel header, reels).
+- Options shown (all working in the prototype):
+  - **A · Full screen:** the clip fills the screen; reels in a dock; Skip and Same on a right-hand rail.
+  - **B · Clip card:** the whole clip in a card, with the previous and next clips peeking at the sides.
+  - **C · Trays:** A with the reels as marigold trays.
+- The owner chose **A** and dropped B and C.
+- Decision:
+  1. **The clip:**
+     - It fills the screen edge to edge, under the status bar. Vertical clips cover it, as in Instagram Reels (about 9–10 % of each side on a 20:9 phone).
+     - A clip that would lose more than 20 % that way is shown whole on black.
+     - Never blurred.
+  2. **Top scrim:** progress, Close, ‹ "3 of 23" and the scene line ›, Mute.
+  3. **Bottom scrim, the dock:**
+     - the scrub line;
+     - "Add to reel" with Pick several and All reels;
+     - up to three Collecting reels and New reel, in two columns;
+     - All reels opens a sheet with every reel.
+  4. **Skip and Same as previous:** 64 dp buttons on dark glass on the right, just above the dock. The snack stops short of them.
+  5. **Moving between clips:** next and previous by swiping up and down (horizontal swipes are left to Android's back gesture), or ‹ ›. Clips slide vertically.
+  6. **Contrast:** text on the scrims and glass is at least 4.5:1 even over a white frame (6.4:1, 10:1 and 7.8:1).
+- Why:
+  - The clip is what's being judged, so it gets the screen.
+  - Reels is where the owner's clips end up, so the gestures and look are already familiar.
+  - Skip and Same sit under the thumb.
+  - One dock replaces four bands.
+- Alternatives considered:
+  - B, which never trims the clip but is smaller (about 1.6× today);
+  - C, which is more playful, but its trays scroll sideways and hide reels past the fourth.
+- Consequences:
+  - `tag_player_screen.dart` becomes a full-screen `Stack`, and swipes move to the vertical axis.
+  - taketray_ui gains `TtRailButton`, `TtReelDock` and an `onVideo` style for `TtReelChip`, and loses the stage blur metrics.
+  - `docs/flow.md` ("The tag player screen and All done") is updated when it is built.

@@ -1,0 +1,2 @@
+Introducing TakeTray: an Android app that turns a messy gallery of raw clips into planned short-form reels. Clips are grouped into scenes by when you shot them, and one tap tags a clip to a reel (with Undo).
+Built with Flutter, Riverpod and Drift (SQLite), offline-first. A personal project, in development.

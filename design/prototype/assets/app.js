@@ -263,6 +263,7 @@
   /* Interactive prototype                                               */
   /* ================================================================== */
   const FLOWS = {
+    subscription: { label: 'Free week and subscription', steps: ['Day 4 of the free week. Tap Start tagging, tag a few clips, then close the player: the free-week sheet appears once.', 'Settings › Subscription shows the days left. See plans opens the plans.', 'Simulate "Free week ends tomorrow" for the Reels banner and the reminder.', 'Simulate "Free week ends": the plans screen shows once. Continue read-only, then try Start tagging or New reel.', 'Subscribe through the Google Play stand-in (or simulate pending, cancel or an error).'] },
     tagging: { label: "Tag a day's clips", steps: ['On To tag, tap Start tagging (or Tag scene on a group).', 'Tap a reel to tag the clip. It moves to the next clip by itself.', 'Try Pick several, Same as previous, Skip, and Undo on the snackbar.', 'Tag them all to reach "All done!".'] },
     vn: { label: 'Send a reel to VN', steps: ['On London Food, tap Edit video.', 'Pick some clips (or Select all), then Continue.', 'Choose VN, check the space, and tap Copy.', 'Read the steps, tap Done. The reel now shows "Editing in VN".', 'Tap Done editing, delete the copies, and mark it as Published.'] },
     onboarding: { label: 'First launch (onboarding)', steps: ['Get started, then Allow access. Try "Select photos and videos" to see Manual mode.', 'Allow notifications or tap Not now.', 'Add a few reels (press Enter after each), then Create.', 'Home shows a tip pointing at Shooting mode.'] },
@@ -1044,6 +1045,7 @@
   function simulate(k) {
     const A = App, s = A.s;
     if (!A.s) return;
+    if (RH.simExtra && RH.simExtra(k, A)) return;
     if (k === 'shoot') { A.shootClips(3); A.render(); }
     if (k === 'shade') { A.u.shade = A.u.shade ? null : {}; if (A.u.shade && !RH.activeNotifications(s).length) A.log('No notifications right now. Shoot some clips with Shooting mode on.'); A.render(); }
     if (k === 'evening') { if (!s.toTag.length) { A.log('No clips waiting, so the 9 pm reminder stays quiet.'); return; } s.notified.evening = true; A.u.shade = {}; A.log('9 pm: the evening reminder appears because clips are waiting.'); A.render(); }
