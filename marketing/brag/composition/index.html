@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=2400, height=768" />
+    <script src="assets/vendor/gsap.min.js"></script>
+    <style>
+      /* TakeTray, dark theme. Tokens from design/tokens/taketray.tokens.json (dark roles). */
+      @font-face {
+        font-family: "Plus Jakarta Sans";
+        src: url("assets/fonts/PlusJakartaSans-Variable.ttf") format("truetype");
+        font-weight: 200 800;
+        font-style: normal;
+      }
+      :root {
+        --ground: #121316; /* dark background */
+        --ink: #e0e3e6; /* dark onSurface */
+        --ink-2: #c1c7cf; /* dark onSurfaceVariant */
+        --ink-3: #8b9199; /* dark outline */
+        --graphite: #b8c8dd; /* dark primary */
+        --marigold: #ffb952; /* dark tertiary */
+        --bezel: #2a2e34;
+        --font: "Plus Jakarta Sans", sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 2400px; height: 768px; overflow: hidden; background: var(--ground); }
+      #root { position: absolute; left: 0; top: 0; width: 2400px; height: 768px; overflow: hidden; font-family: var(--font); color: var(--ink); background: var(--ground); }
+      .full { position: absolute; left: 0; top: 0; width: 2400px; height: 768px; }
+
+      #glow-i { position: absolute; left: 800px; top: -170px; width: 1400px; height: 1100px; background: radial-gradient(closest-side, rgba(255, 185, 82, 0.17), rgba(255, 185, 82, 0)); opacity: 0.8; }
+      #glow-g { position: absolute; left: 0; top: 0; width: 2400px; height: 768px; background: radial-gradient(closest-side at 18% 20%, rgba(184, 200, 221, 0.06), rgba(184, 200, 221, 0)); }
+
+      /* decorative clip tiles at the sides (the portfolio slot crops them on narrow screens) */
+      .tile { position: absolute; width: 300px; height: 309px; border-radius: 22px; overflow: hidden; opacity: 0.22; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5); }
+      .tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+      /* the phone: 540x1200 screen (3x capture at 1.5x), bezel 10px. Origin top-centre for scene zooms. */
+      #phone { position: absolute; left: 1220px; top: 0; width: 560px; height: 1220px; transform-origin: 50% 0; }
+      #phone-body { position: absolute; inset: 0; border-radius: 80px; background: var(--bezel); box-shadow: 0 50px 120px rgba(0, 0, 0, 0.65), inset 0 0 0 1.5px rgba(255, 255, 255, 0.1); }
+      #screen { position: absolute; left: 10px; top: 10px; width: 540px; height: 1200px; border-radius: 70px; overflow: hidden; background: #000; }
+      #screen img.scr { position: absolute; left: 0; top: 0; width: 540px; height: 1200px; opacity: 0; }
+      #screen img#im-welcome { opacity: 1; }
+      #press { position: absolute; border-radius: 26px; background: rgba(224, 227, 230, 0.34); opacity: 0; }
+      #callout { position: absolute; left: 12px; top: 322px; width: 516px; height: 514px; border-radius: 40px; border: 5px solid var(--marigold); box-shadow: 0 0 40px rgba(255, 185, 82, 0.35); opacity: 0; }
+
+      /* text blocks */
+      .txt { position: absolute; left: 640px; top: 0; width: 560px; height: 640px; display: flex; flex-direction: column; justify-content: center; gap: 24px; }
+      .eyebrow { font-weight: 700; font-size: 30px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--marigold); }
+      h1 { font-weight: 800; font-size: 78px; line-height: 1.04; letter-spacing: -0.03em; color: var(--ink); }
+      h1 .w { display: inline-block; }
+      .sub { font-weight: 500; font-size: 42px; line-height: 1.3; color: var(--ink-2); letter-spacing: -0.005em; }
+      .brandrow { display: flex; align-items: center; gap: 22px; }
+      .logo-s { width: 68px; height: 68px; border-radius: 18px; display: block; }
+      .wm { font-weight: 800; font-size: 44px; letter-spacing: -0.03em; color: var(--ink); }
+
+      #t5 { left: 600px; width: 1200px; align-items: center; text-align: center; gap: 26px; }
+      #t5 .brandrow { gap: 36px; }
+      #t5 .logo-l { width: 150px; height: 150px; border-radius: 40px; display: block; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+      #t5 .wm { font-size: 132px; letter-spacing: -0.045em; line-height: 1; }
+      #t5 h2 { font-weight: 700; font-size: 54px; line-height: 1.15; letter-spacing: -0.02em; color: var(--ink); max-width: 1100px; }
+      #t5 .stack { font-weight: 600; font-size: 36px; color: var(--graphite); letter-spacing: 0.005em; }
+      #t5 .status { font-weight: 700; font-size: 30px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--marigold); }
+      #t5 .credit { font-weight: 500; font-size: 26px; color: var(--ink-3); margin-top: 4px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="main" data-start="0" data-duration="23.5" data-width="2400" data-height="768">
+      <!-- ground -->
+      <div id="glow-g" class="clip full" data-start="0" data-duration="23.5" data-track-index="0"></div>
+      <div id="glow" class="clip full" data-start="0" data-duration="23.5" data-track-index="0"><div id="glow-i"></div></div>
+
+      <!-- decorative takes at the sides -->
+      <div id="tiles" class="clip full" data-start="0" data-duration="23.5" data-track-index="1">
+        <div class="tile" id="tile-a" style="left: 110px; top: 96px; transform: rotate(-7deg)"><img src="assets/img/tile1.png" alt="" /></div>
+        <div class="tile" id="tile-b" style="left: 270px; top: 372px; transform: rotate(5deg)"><img src="assets/img/tile2.png" alt="" /></div>
+        <div class="tile" id="tile-c" style="left: 1930px; top: 84px; transform: rotate(6deg)"><img src="assets/img/tile3.png" alt="" /></div>
+        <div class="tile" id="tile-d" style="left: 2050px; top: 360px; transform: rotate(-5deg)"><img src="assets/img/tile4.png" alt="" /></div>
+      </div>
+
+      <!-- the phone: real TakeTray screens (design prototype, dark theme) -->
+      <div id="phone" class="clip" data-layout-allow-overflow data-start="0" data-duration="23.5" data-track-index="2">
+        <div id="phone-body"></div>
+        <div id="screen">
+          <img class="scr" id="im-welcome" src="assets/img/welcome-dark.png" alt="" />
+          <img class="scr" id="im-home" src="assets/img/home.png" alt="" />
+          <img class="scr" id="im-totag" src="assets/img/totag.png" alt="" />
+          <img class="scr" id="im-p1" src="assets/img/player-1.png" alt="" />
+          <img class="scr" id="im-p2" src="assets/img/player-2-snack.png" alt="" />
+          <img class="scr" id="im-p3" src="assets/img/player-3-snack.png" alt="" />
+          <div id="callout"></div>
+          <div id="press"></div>
+        </div>
+      </div>
+
+      <!-- scene 1: hook -->
+      <div id="t1" class="clip txt" data-start="0" data-duration="4.7" data-track-index="3">
+        <div class="brandrow" id="t1-brand"><img class="logo-s" src="assets/img/taketray-logo.svg" alt="" /><span class="wm">TakeTray</span></div>
+        <h1 id="t1-h"><span class="w">One</span> <span class="w">tray</span> <span class="w">for</span><br /><span class="w">every</span> <span class="w">take.</span></h1>
+        <p class="sub" id="t1-sub">An Android app for<br />short-form creators.</p>
+      </div>
+
+      <!-- scene 2: shooting mode -->
+      <div id="t2" class="clip txt" data-start="4.39" data-duration="4.65" data-track-index="3">
+        <div class="eyebrow" id="t2-eb">01 · Shoot</div>
+        <h1 id="t2-h"><span class="w">Turn</span> <span class="w">on</span><br /><span class="w">Shooting</span> <span class="w">mode.</span></h1>
+        <p class="sub" id="t2-sub">New videos land in To tag.</p>
+      </div>
+
+      <!-- scene 3: scenes -->
+      <div id="t3" class="clip txt" data-start="8.74" data-duration="4.67" data-track-index="3">
+        <div class="eyebrow" id="t3-eb">02 · Scenes</div>
+        <h1 id="t3-h"><span class="w">Grouped</span><br /><span class="w">into</span> <span class="w">scenes.</span></h1>
+        <p class="sub" id="t3-sub">Shot less than 10 minutes apart? Same scene.</p>
+      </div>
+
+      <!-- scene 4: one tap -->
+      <div id="t4" class="clip txt" data-start="13.11" data-duration="5.75" data-track-index="3">
+        <div class="eyebrow" id="t4-eb">03 · Tag</div>
+        <h1 id="t4-h"><span class="w">One</span> <span class="w">tap</span> <span class="w">tags</span><br /><span class="w">a</span> <span class="w">clip.</span></h1>
+        <p class="sub" id="t4-sub">Wrong one? Undo.</p>
+      </div>
+
+      <!-- scene 5: outro -->
+      <div id="t5" class="clip txt" data-start="18.56" data-duration="4.94" data-track-index="3">
+        <div class="brandrow" id="t5-brand"><img class="logo-l" src="assets/img/taketray-logo.svg" alt="" /><span class="wm">TakeTray</span></div>
+        <h2 id="t5-h">Every clip you shoot,<br />sorted into the right reel.</h2>
+        <p class="stack" id="t5-stack">Flutter · Riverpod · Drift (SQLite) · Offline-first</p>
+        <p class="status" id="t5-status">Android app · Personal project · In development</p>
+        <p class="credit" id="t5-credit">Music: Sascha Ende, ende.app (CC BY 4.0)</p>
+      </div>
+
+      <!-- audio: music bed (vol-12), sparse SFX -->
+      <audio id="bg-music" data-start="0" data-duration="23.5" data-track-index="10" data-volume="0.3" data-fade-in="0.4" data-fade-out="1.8" src="assets/music/happy-beats-business-moves-vol-12-by-ende-dot-app.mp3"></audio>
+      <audio id="sfx-land" data-start="0.5" data-track-index="11" data-volume="0.6" src="assets/sfx/interface/drop_001.ogg"></audio>
+      <audio id="sfx-player" data-start="13.08" data-track-index="12" data-volume="0.5" src="assets/sfx/impact/impactSoft_medium_001.ogg"></audio>
+      <audio id="sfx-tap1" data-start="14.7" data-track-index="13" data-volume="0.75" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-tap2" data-start="16.35" data-track-index="14" data-volume="0.75" src="assets/sfx/interface/click_003.ogg"></audio>
+      <audio id="sfx-bell" data-start="18.75" data-track-index="15" data-volume="0.5" src="assets/sfx/interface/bong_001.ogg"></audio>
+    </div>
+
+    <script>
+      window.__timelines = window.__timelines || {};
+      // Music-derived per-frame bass energy (30 fps), from media-use extract-audio-data.py on the first 24 s of the track.
+      const BASS = [0.202,0.33,0.335,0.312,0.216,0.083,0.043,0.036,0.037,0.021,0.017,0.018,0.034,0.023,0.02,0.021,0.019,0.015,0.016,0.012,0.009,0.008,0.006,0.005,0.032,0.076,0.069,0.066,0.065,0.046,0.03,0.028,0.025,0.023,0.021,0.019,0.016,0.013,0.015,0.016,0.017,0.018,0.018,0.015,0.019,0.026,0.013,0.008,0.012,0.018,0.007,0.01,0.009,0.007,0.005,0.004,0.005,0.017,0.007,0.001,0.001,0.001,0.002,0.002,0.002,0.021,0.023,0.012,0.011,0.033,0.023,0.008,0.01,0.022,0.014,0.006,0.006,0.012,0.007,0.003,0.003,0.017,0.012,0.004,0.002,0.002,0.002,0.001,0.001,0.019,0.165,0.229,0.21,0.172,0.104,0.01,0.004,0.007,0.008,0.007,0.009,0.008,0.016,0.009,0.007,0.011,0.013,0.013,0.011,0.01,0.03,0.018,0.002,0.003,0.017,0.009,0.003,0.003,0.002,0.002,0.002,0.002,0.009,0.011,0.002,0.001,0.001,0.001,0.001,0.001,0.029,0.216,0.341,0.337,0.313,0.202,0.068,0.037,0.037,0.035,0.021,0.016,0.018,0.031,0.021,0.019,0.019,0.019,0.015,0.011,0.01,0.009,0.008,0.007,0.006,0.036,0.074,0.067,0.065,0.062,0.043,0.031,0.027,0.023,0.022,0.02,0.018,0.016,0.014,0.015,0.016,0.016,0.018,0.017,0.014,0.018,0.027,0.01,0.008,0.014,0.013,0.007,0.007,0.007,0.007,0.006,0.005,0.006,0.019,0.007,0.002,0.001,0.001,0.001,0.002,0.004,0.031,0.024,0.011,0.01,0.035,0.022,0.009,0.011,0.026,0.014,0.007,0.007,0.013,0.008,0.003,0.004,0.019,0.011,0.004,0.002,0.002,0.002,0.001,0.001,0.029,0.188,0.23,0.213,0.187,0.114,0.012,0.008,0.01,0.008,0.008,0.008,0.007,0.017,0.007,0.007,0.011,0.014,0.014,0.01,0.011,0.032,0.016,0.002,0.004,0.015,0.01,0.006,0.002,0.002,0.002,0.001,0.003,0.007,0.008,0.002,0.001,0.001,0.001,0.001,0.001,0.159,0.512,0.602,0.437,0.247,0.206,0.197,0.2,0.201,0.182,0.179,0.186,0.197,0.208,0.201,0.201,0.225,0.45,0.476,0.43,0.258,0.174,0.167,0.173,0.183,0.187,0.206,0.188,0.185,0.196,0.185,0.18,0.181,0.32,0.58,0.524,0.341,0.177,0.185,0.234,0.229,0.209,0.202,0.204,0.209,0.216,0.206,0.187,0.187,0.205,0.394,0.513,0.397,0.199,0.151,0.161,0.165,0.14,0.132,0.178,0.218,0.239,0.25,0.251,0.245,0.197,0.415,0.556,0.49,0.285,0.157,0.141,0.131,0.141,0.14,0.131,0.135,0.133,0.128,0.128,0.131,0.127,0.2,0.448,0.525,0.353,0.173,0.125,0.113,0.111,0.116,0.271,0.293,0.286,0.256,0.235,0.209,0.203,0.187,0.498,0.54,0.459,0.283,0.202,0.195,0.205,0.211,0.223,0.219,0.22,0.213,0.205,0.201,0.204,0.192,0.401,0.488,0.474,0.331,0.185,0.171,0.179,0.185,0.191,0.189,0.191,0.202,0.197,0.208,0.202,0.2,0.236,0.512,0.591,0.425,0.261,0.211,0.202,0.205,0.201,0.179,0.166,0.181,0.192,0.2,0.196,0.198,0.226,0.466,0.493,0.42,0.232,0.168,0.164,0.174,0.18,0.173,0.196,0.185,0.181,0.189,0.189,0.182,0.177,0.363,0.577,0.505,0.319,0.152,0.146,0.166,0.181,0.184,0.189,0.184,0.184,0.192,0.19,0.184,0.181,0.229,0.424,0.531,0.382,0.19,0.164,0.182,0.206,0.188,0.149,0.199,0.232,0.252,0.262,0.289,0.318,0.239,0.413,0.56,0.488,0.281,0.169,0.151,0.145,0.15,0.156,0.149,0.142,0.139,0.131,0.129,0.13,0.132,0.272,0.536,0.516,0.365,0.21,0.15,0.137,0.14,0.152,0.312,0.323,0.305,0.286,0.237,0.208,0.2,0.226,0.53,0.515,0.431,0.251,0.185,0.196,0.212,0.227,0.241,0.219,0.225,0.214,0.205,0.204,0.15,0.072,0.21,0.298,0.267,0.277,0.247,0.105,0.038,0.024,0.013,0.007,0.009,0.01,0.009,0.008,0.002,0.003,0.291,0.586,0.54,0.441,0.373,0.407,0.357,0.197,0.058,0.042,0.062,0.058,0.053,0.041,0.025,0.021,0.105,0.583,0.53,0.427,0.175,0.032,0.017,0.013,0.011,0.036,0.074,0.066,0.05,0.024,0.011,0.006,0.019,0.427,0.588,0.48,0.237,0.069,0.016,0.009,0.007,0.092,0.292,0.324,0.329,0.32,0.317,0.323,0.325,0.368,0.598,0.487,0.291,0.112,0.149,0.227,0.245,0.268,0.361,0.406,0.418,0.377,0.271,0.304,0.31,0.314,0.551,0.56,0.43,0.271,0.259,0.301,0.325,0.332,0.285,0.15,0.047,0.021,0.023,0.023,0.009,0.012,0.461,0.652,0.529,0.257,0.061,0.012,0.008,0.005,0.143,0.443,0.42,0.403,0.398,0.406,0.396,0.396,0.431,0.686,0.535,0.467,0.352,0.283,0.147,0.036,0.056,0.345,0.364,0.355,0.349,0.371,0.389,0.406,0.387,0.481,0.493,0.428,0.292,0.226,0.269,0.296,0.321,0.347,0.375,0.38,0.372,0.367,0.204,0.216,0.217,0.434,0.608,0.498,0.386,0.298,0.311,0.336,0.357,0.348,0.238,0.14,0.075,0.042,0.023,0.009,0.01,0.14,0.606,0.536,0.363,0.14,0.027,0.013,0.011,0.012,0.054,0.09,0.082,0.071,0.046,0.014,0.007,0.035,0.476,0.583,0.452,0.232,0.075,0.021,0.012,0.011,0.142,0.326,0.35,0.335,0.329,0.317,0.309,0.308,0.326,0.544,0.475,0.28,0.112,0.177,0.246,0.244,0.238,0.361,0.371,0.369,0.347,0.297,0.317,0.318,0.282];
+      const tl = gsap.timeline({ paused: true });
+
+      /* beats (vol-12, ~110 BPM): strong cues 8.74, 13.11, 18.56; grid taps 14.73, 16.38 */
+      const B1 = 4.39, B2 = 8.74, B3 = 13.11, B4 = 18.56;
+
+      const blurIn = (sel, t, d = 0.28) =>
+        tl.fromTo(sel, { opacity: 0, filter: "blur(8px)" }, { opacity: 1, filter: "blur(0px)", duration: d, ease: "power3.out" }, t);
+      const words = (id, t0, gap = 0.085) =>
+        document.querySelectorAll("#" + id + " .w").forEach((_, i) => blurIn("#" + id + " .w:nth-of-type(" + (i + 1) + ")", t0 + i * gap, 0.24));
+      const out = (sel, t, d = 0.32) =>
+        tl.to(sel, { opacity: 0, filter: "blur(8px)", duration: d, ease: "power2.in" }, t);
+
+      /* ---- ground ---- */
+      tl.fromTo("#tiles .tile", { opacity: 0 }, { opacity: 0.22, duration: 1.2, ease: "power2.out", stagger: 0.12 }, 0.3);
+
+      /* ---- scene 1: hook (0 - 4.39) ---- */
+      tl.fromTo("#phone", { y: 300, scale: 1 }, { y: 60, scale: 1, duration: 1.1, ease: "expo.out" }, 0.0);
+      blurIn("#t1-brand", 0.05);
+      words("t1-h", 0.15);
+      blurIn("#t1-sub", 1.05, 0.4);
+      out("#t1-brand", 4.1); out("#t1-h", 4.1); out("#t1-sub", 4.1);
+
+      /* ---- scene 2: Shooting mode (4.39 - 8.74): Home ---- */
+      tl.to("#phone", { y: 10, scale: 1, duration: 0.75, ease: "power2.inOut" }, B1);
+      tl.fromTo("#im-home", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, B1);
+      tl.to("#im-welcome", { opacity: 0, duration: 0.01 }, B1 + 0.45);
+      blurIn("#t2-eb", B1 + 0.12);
+      words("t2-h", B1 + 0.25);
+      blurIn("#t2-sub", B1 + 0.95, 0.4);
+      out("#t2-eb", B2 - 0.3); out("#t2-h", B2 - 0.3); out("#t2-sub", B2 - 0.3);
+
+      /* ---- scene 3: scenes (8.74 - 13.11): To tag ---- */
+      // beat-locked: 8.74s (strong cue) - phone swap and text start
+      tl.to("#phone", { y: -182, scale: 0.9, duration: 0.8, ease: "power2.inOut" }, B2);
+      tl.fromTo("#im-totag", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, B2);
+      tl.to("#im-home", { opacity: 0, duration: 0.01 }, B2 + 0.45);
+      blurIn("#t3-eb", B2 + 0.12);
+      words("t3-h", B2 + 0.25);
+      blurIn("#t3-sub", B2 + 0.95, 0.4);
+      tl.fromTo("#callout", { opacity: 0, scale: 0.985 }, { opacity: 1, scale: 1, duration: 0.5, ease: "power3.out" }, B2 + 1.1);
+      tl.to("#callout", { opacity: 0, duration: 0.3, ease: "power2.in" }, B3 - 0.4);
+      out("#t3-eb", B3 - 0.3); out("#t3-h", B3 - 0.3); out("#t3-sub", B3 - 0.3);
+
+      /* ---- scene 4: one tap (13.11 - 18.56): tag player ---- */
+      // beat-locked: 13.11s (strong cue)
+      tl.to("#phone", { y: -158, scale: 0.8, duration: 0.85, ease: "power2.inOut" }, B3);
+      tl.fromTo("#im-p1", { opacity: 0 }, { opacity: 1, duration: 0.4, ease: "power2.out" }, B3);
+      tl.to("#im-totag", { opacity: 0, duration: 0.01 }, B3 + 0.45);
+      blurIn("#t4-eb", B3 + 0.12);
+      words("t4-h", B3 + 0.25);
+      blurIn("#t4-sub", B3 + 0.95, 0.4);
+      // beat-grid: tap 1 at 14.73s ("London Food"), tap 2 at 16.38s ("London Cinematic"), 3 beats apart
+      const press = (x, y, w, h, t) => {
+        tl.set("#press", { left: x, top: y, width: w, height: h }, t - 0.2);
+        tl.fromTo("#press", { opacity: 0, scale: 1 }, { opacity: 1, scale: 0.97, duration: 0.14, ease: "power2.out" }, t - 0.14);
+        tl.to("#press", { opacity: 0, scale: 1, duration: 0.28, ease: "power2.out" }, t + 0.06);
+      };
+      press(276, 903, 246, 87, 14.73);
+      tl.fromTo("#im-p2", { opacity: 0 }, { opacity: 1, duration: 0.16, ease: "power1.out" }, 14.73);
+      tl.to("#im-p1", { opacity: 0, duration: 0.01 }, 14.95);
+      press(18, 1002, 246, 87, 16.38);
+      tl.fromTo("#im-p3", { opacity: 0 }, { opacity: 1, duration: 0.16, ease: "power1.out" }, 16.38);
+      tl.to("#im-p2", { opacity: 0, duration: 0.01 }, 16.6);
+      out("#t4-eb", B4 - 0.3); out("#t4-h", B4 - 0.3); out("#t4-sub", B4 - 0.3);
+
+      /* ---- scene 5: outro (18.56 - 23.5) ---- */
+      // beat-locked: 18.56s (strong cue) - the phone leaves
+      tl.to("#phone", { y: 900, opacity: 0, duration: 0.6, ease: "power3.in" }, B4);
+      tl.to("#glow-i", { x: -300, duration: 0.9, ease: "power2.inOut" }, B4);
+      tl.fromTo("#t5-brand", { opacity: 0, filter: "blur(10px)", scale: 0.96 }, { opacity: 1, filter: "blur(0px)", scale: 1, duration: 0.5, ease: "power3.out" }, B4 + 0.2);
+      blurIn("#t5-h", B4 + 0.7, 0.4);
+      blurIn("#t5-stack", B4 + 1.35, 0.4);
+      blurIn("#t5-status", B4 + 1.75, 0.4);
+      blurIn("#t5-credit", B4 + 2.2, 0.5);
+
+      /* ---- audio-reactive: bass gently breathes the warm glow and the side tiles (no bars, no waveform) ---- */
+      const drv = { t: 0 };
+      tl.to(drv, {
+        t: 23.5, duration: 23.5, ease: "none",
+        onUpdate() {
+          const i = Math.max(0, Math.min(BASS.length - 1, Math.round(drv.t * 30)));
+          const b = BASS[i] || 0;
+          document.getElementById("glow-i").style.opacity = (0.68 + 0.32 * b).toFixed(3);
+          document.getElementById("tiles").style.opacity = (0.86 + 0.14 * b).toFixed(3);
+        },
+      }, 0);
+
+      window.__timelines["main"] = tl;
+    </script>
+  </body>
+</html>
