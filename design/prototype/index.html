@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="assets/tokens.css">
 <link rel="stylesheet" href="assets/proto.css">
 <link rel="stylesheet" href="assets/tt-style.css">
+<link rel="stylesheet" href="assets/player2.css">
 </head>
 <body>
 <div class="hub">
@@ -266,9 +267,9 @@
           <tr><td class="num">0 ms</td><td>Finger down: chip state layer (14%) appears with no delay.</td><td>—</td></tr>
           <tr><td class="num">0–150 ms</td><td>On tap: chip fills with the brand colour, its cover turns into a tick, chip scales to 97%. Haptic <code>CONFIRM</code>.</td><td>short3, standard</td></tr>
           <tr><td class="num">150–400 ms</td><td>Hold, so the user sees which reel they hit.</td><td>medium1</td></tr>
-          <tr><td class="num">400–600 ms</td><td>Current clip slides out to the left and fades.</td><td>short4, emphasizedAccelerate</td></tr>
-          <tr><td class="num">400–700 ms</td><td>Next clip slides in from the right (70% → 0, scale .9 → 1); progress segment turns marigold; snackbar "Added to London Food · Undo" rises in the video area.</td><td>medium2, emphasizedDecelerate</td></tr>
-          <tr><td class="num">+6 s</td><td>Snackbar leaves unless Undo was tapped. Undo slides the previous clip back in from the left.</td><td>—</td></tr>
+          <tr><td class="num">400–600 ms</td><td>Current clip slides up and out, and fades.</td><td>short4, emphasizedAccelerate</td></tr>
+          <tr><td class="num">400–700 ms</td><td>Next clip slides up from below (16 % → 0), as in Reels; progress segment turns marigold; snackbar "Added to London Food · Undo" rises in the video area.</td><td>medium2, emphasizedDecelerate</td></tr>
+          <tr><td class="num">+6 s</td><td>Snackbar leaves unless Undo was tapped. Undo slides the previous clip back down from above.</td><td>—</td></tr>
         </tbody></table></div>
         <p class="muted">Taps during the 400 ms hold are ignored on the chips, so a double tap can't tag two clips. Skip uses the same exit and enter with haptic <code>REJECT</code>.</p>
         <h2>Scene tagging</h2>
@@ -295,7 +296,7 @@
         <h1>Accessibility</h1>
         <p class="lede">Built for one-handed use in sunlight, in a moving vehicle, often with the sound off. These rules hold on every screen.</p>
         <h2>Touch targets: at least 48 dp</h2>
-        <ul class="notes"><li>Buttons are 40 dp tall with the touch area extended to 48 dp. Filter chips are 32 dp with a 48 dp touch area.</li><li>Reel chips in the tag player are 56 dp tall and half the screen wide: the most-tapped target in the app is the largest.</li><li>Clip tiles are about 109 × 145 dp at 360 dp width. Icon buttons are 48 × 48 dp. Adjacent targets keep at least 8 dp between them, except grid tiles (4 dp gap, but each tile is far larger than 48 dp).</li></ul>
+        <ul class="notes"><li>Buttons are 40 dp tall with the touch area extended to 48 dp. Filter chips are 32 dp with a 48 dp touch area.</li><li>Reel chips in the tag player dock are 52 dp tall and half the screen wide; Skip and Same as previous are 64 × 64 dp: the most-tapped targets in the app are the largest.</li><li>Clip tiles are about 109 × 145 dp at 360 dp width. Icon buttons are 48 × 48 dp. Adjacent targets keep at least 8 dp between them, except grid tiles (4 dp gap, but each tile is far larger than 48 dp).</li></ul>
         <h2>Contrast: AA in both themes</h2>
         <ul class="notes"><li>The token build fails if any text pair drops below 4.5:1 or any meaningful icon or border below 3:1. The lowest text pair is inversePrimary on inverseSurface in dark (5.0:1).</li><li>Text over video always sits on a scrim (55–70% black) or a solid pill.</li><li>Light-theme on-container text uses tone 10 rather than 30, for sunlight.</li></ul>
         <h2>Never colour alone</h2>
@@ -318,7 +319,7 @@
           <tr><td>Reel card reference badge</td><td>"2 references in London Food"</td><td>—</td></tr>
         </tbody></table></div>
         <h2>Font scaling to 200%</h2>
-        <ul class="notes"><li>No fixed heights on anything that holds text; rows grow.</li><li>At font scale 1.5 and above: reel grid goes to one column; tag player chips go to one column; clip tiles keep only the duration (the time moves to the scene header); bottom bars stack their summary above the button.</li><li>Navigation labels never truncate; at 2.0 they wrap to two lines.</li><li>Numbers use tabular figures, so counters don't jitter as they change.</li></ul>
+        <ul class="notes"><li>No fixed heights on anything that holds text; rows grow.</li><li>At font scale 1.5 and above: reel grid goes to one column; the tag player dock goes to one column and scrolls inside (at most 260 dp tall), with the rest under All reels; clip tiles keep only the duration (the time moves to the scene header); bottom bars stack their summary above the button.</li><li>Navigation labels never truncate; at 2.0 they wrap to two lines.</li><li>Numbers use tabular figures, so counters don't jitter as they change.</li></ul>
         <h2>Gestures always have a button</h2>
         <ul class="notes"><li>Swipe between clips → arrow buttons. Long-press to select → "Select clips" in the menu. Long-press a reel chip → "Pick several" button.</li><li>No swipe-to-delete anywhere.</li><li>Horizontal swipes in the player exclude the system back-gesture edges.</li></ul>
         <h2>Announcements and focus</h2>
@@ -350,7 +351,7 @@
           <tr><td>Bottom sheet</td><td class="num">Top corners 28; handle 32 × 4; max 92% of height</td></tr>
           <tr><td>Dialog</td><td class="num">Width 312, corner 28, padding 24</td></tr>
           <tr><td>Snackbar</td><td class="num">Min 48 tall, 12 from the edges, corner 12; above the nav bar (bottom 92)</td></tr>
-          <tr><td>Tag player</td><td>Top bar 56 · video fills the remaining height at 9:16 (16:9 letterboxed for horizontal) · scrubber · quick row 56 (Skip, Same as previous) · reel panel max 340, corner 24 top, chips 2 columns, 56 tall, 8 gap.</td></tr>
+          <tr><td>Tag player</td><td>Full screen (D-171): the clip covers the screen under the status bar (shown whole on black when covering would trim more than 20 %) · top scrim: progress, Close, ‹ "3 of 23" ›, Mute · bottom scrim: scrub line, then the dock (header 40, up to three Collecting reels + New reel, 2 columns, chips 52 tall, 8 gap) · Skip and Same as previous: 64 × 64 on dark glass, 12 from the right, just above the dock.</td></tr>
         </tbody></table></div>
         <h2>Components</h2>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Component</th><th>Compose</th><th>Spec</th></tr></thead><tbody>
@@ -413,7 +414,7 @@
         <h2>Decisions I made</h2>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Decision</th><th>Why</th></tr></thead><tbody>
           <tr><td><b>Several reels per clip = "Pick several" mode</b>, with long-press on a chip as a shortcut. It goes back to one-tap after each clip.</td><td>Single-reel tagging stays one tap. A visible button is discoverable; long-press alone is not. "Same as previous" covers repeating a multi-reel choice.</td></tr>
-          <tr><td><b>Tag player shows Recording reels first</b>; other reels are folded under "Other reels (4)".</td><td>Keeps the video big with 2–20+ reels. You rarely tag new clips into a published reel.</td></tr>
+          <tr><td><b>Tag player shows Collecting reels first</b>: three in the dock, the rest under All reels.</td><td>Keeps the video big with 2–20+ reels. You rarely tag new clips into a published reel.</td></tr>
           <tr><td><b>"Start tagging" button</b> on To tag plays every clip from the first.</td><td>The fastest path: open To tag, one tap, then one tap per clip.</td></tr>
           <tr><td><b>Tag player and viewer always dark</b>, on black.</td><td>Video is the hero; it reads in sunlight and in the dark.</td></tr>
           <tr><td><b>"Edit video"</b> is the primary action; renaming lives in <b>"Reel details"</b>.</td><td>The brief had both "Edit" and "Edit reel". Two different "edits" next to each other would confuse.</td></tr>
@@ -500,6 +501,7 @@
 <script src="assets/earlier.js"></script>
 <script src="assets/intro.js"></script>
 <script src="assets/subs.js"></script>
+<script src="assets/player2.js"></script>
 <script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
 </body>
 </html>

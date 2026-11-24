@@ -2551,3 +2551,39 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - "Free / no in-app purchases" must change in README.md, the Play listing, the website design (FAQ and hero tags) and the privacy policy (payments are handled by Google Play).
   - `docs/flow.md` gets an entitlement flow when this is built.
 - Number: drafted as D-150 on 2026-11-22 and renumbered D-170 when committed (2026-11-24), because D-150 is Phase 10B's Export and import screen and D-151 to D-169 were taken by then.
+
+### D-171 · The tag player goes full screen: the clip fills the screen, reels in a dock, Skip and Same on the right, swipe up and down (design, not built yet)
+- Date: 2026-11-24 · Phase: design (to be built next) · Changes the layout of D-97; the session logic (D-96) and the one-tap rules stay · Design: hub screen 12 (all states, with the old design as the last state), `design/prototype/assets/player2.js` and `player2.css`, handoff `design/handoff/tag-player-full-screen.md`
+- What the owner said: the tag player "is not that good": for vertical videos the left and right are blurred, and using it felt a little awkward.
+- What was wrong: a vertical clip showed at 203 × 360 of a 360 × 800 screen (a quarter of it), between blurred copies of itself, over four stacked bands (scrub, Skip and Same, panel header, reels).
+- Options shown (all working in the prototype):
+  - **A · Full screen:** the clip fills the screen; reels in a dock; Skip and Same on a right-hand rail.
+  - **B · Clip card:** the whole clip in a card, with the previous and next clips peeking at the sides.
+  - **C · Trays:** A with the reels as marigold trays.
+- The owner chose **A** and dropped B and C.
+- Decision:
+  1. **The clip:**
+     - It fills the screen edge to edge, under the status bar. Vertical clips cover it, as in Instagram Reels (about 9–10 % of each side on a 20:9 phone).
+     - A clip that would lose more than 20 % that way is shown whole on black.
+     - Never blurred.
+  2. **Top scrim:** progress, Close, ‹ "3 of 23" and the scene line ›, Mute.
+  3. **Bottom scrim, the dock:**
+     - the scrub line;
+     - "Add to reel" with Pick several and All reels;
+     - up to three Collecting reels and New reel, in two columns;
+     - All reels opens a sheet with every reel.
+  4. **Skip and Same as previous:** 64 dp buttons on dark glass on the right, just above the dock. The snack stops short of them.
+  5. **Moving between clips:** next and previous by swiping up and down (horizontal swipes are left to Android's back gesture), or ‹ ›. Clips slide vertically.
+  6. **Contrast:** text on the scrims and glass is at least 4.5:1 even over a white frame (6.4:1, 10:1 and 7.8:1).
+- Why:
+  - The clip is what's being judged, so it gets the screen.
+  - Reels is where the owner's clips end up, so the gestures and look are already familiar.
+  - Skip and Same sit under the thumb.
+  - One dock replaces four bands.
+- Alternatives considered:
+  - B, which never trims the clip but is smaller (about 1.6× today);
+  - C, which is more playful, but its trays scroll sideways and hide reels past the fourth.
+- Consequences:
+  - `tag_player_screen.dart` becomes a full-screen `Stack`, and swipes move to the vertical axis.
+  - taketray_ui gains `TtRailButton`, `TtReelDock` and an `onVideo` style for `TtReelChip`, and loses the stage blur metrics.
+  - `docs/flow.md` ("The tag player screen and All done") is updated when it is built.
