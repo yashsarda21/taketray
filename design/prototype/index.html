@@ -29,11 +29,11 @@
       <section class="view" id="v-overview" hidden>
         <p class="eyebrow">TakeTray · Android · version 1</p>
         <h1>Every clip you shoot, sorted into the right reel</h1>
-        <p class="lede">The complete version 1 interface for TakeTray: all 40 screens with every state from the brief, add-on 1 and the Add earlier videos change, in light and dark at 360 dp, a clickable prototype of the key flows, and Material 3 design tokens that map straight onto a Jetpack Compose theme.</p>
+        <p class="lede">The complete version 1 interface for TakeTray: all 45 screens with every state from the brief, add-on 1, the Add earlier videos change and the free week and subscription, in light and dark at 360 dp, a clickable prototype of the key flows, and Material 3 design tokens that map straight onto a Jetpack Compose theme.</p>
         <div class="pair" id="ov-phones" style="margin:28px 0 8px"></div>
         <div class="cards">
           <a class="card link" href="#prototype"><span class="ms" style="color:var(--page-accent)">touch_app</span><span class="big">Try the prototype</span><span class="muted">Tag a day's clips, send a reel to VN, or run first launch. It all works, Undo included.</span></a>
-          <a class="card link" href="#screen-01"><span class="ms" style="color:var(--page-accent)">smartphone</span><span class="big">40 screens, every state</span><span class="muted">Each screen page shows its states side by side in light and dark, with notes and interactions.</span></a>
+          <a class="card link" href="#screen-01"><span class="ms" style="color:var(--page-accent)">smartphone</span><span class="big">45 screens, every state</span><span class="muted">Each screen page shows its states side by side in light and dark, with notes and interactions.</span></a>
           <a class="card link" href="#system"><span class="ms" style="color:var(--page-accent)">palette</span><span class="big">Design system</span><span class="muted">Colour roles with contrast ratios, type scale, shapes, elevation and the component library.</span></a>
           <a class="card link" href="#handoff"><span class="ms" style="color:var(--page-accent)">code</span><span class="big">Developer handoff</span><span class="muted">Specs in dp and sp, Compose mapping, assets, notification channels, TalkBack labels.</span></a>
         </div>
@@ -75,6 +75,7 @@
                   <option value="tagging">Tag a day's clips</option>
                   <option value="vn">Send a reel to VN</option>
                   <option value="onboarding">First launch (onboarding)</option>
+                  <option value="subscription">Free week and subscription</option>
                   <option value="reference">Save a reference from Instagram</option>
                   <option value="reference-first">Save a reference on first launch</option>
                   <option value="earlier">Add earlier videos</option>
@@ -91,6 +92,8 @@
                 <button class="pbtn" data-sim="evening"><span class="ms">bedtime</span>It's 9 pm</button>
                 <button class="pbtn" data-sim="vn3"><span class="ms">event</span>3 days later</button>
                 <button class="pbtn" data-sim="still14"><span class="ms">timer</span>14 days later</button>
+                <button class="pbtn" data-sim="trialTomorrow"><span class="ms">hourglass_top</span>Free week ends tomorrow</button>
+                <button class="pbtn" data-sim="trialEnd"><span class="ms">lock</span>Free week ends</button>
                 <button class="pbtn" data-sim="back"><span class="ms">arrow_back</span>Android back</button>
                 <button class="pbtn" data-sim="reset"><span class="ms">restart_alt</span>Reset</button>
               </div>
@@ -496,6 +499,7 @@
 <script src="assets/refs.js"></script>
 <script src="assets/earlier.js"></script>
 <script src="assets/intro.js"></script>
+<script src="assets/subs.js"></script>
 <script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
 </body>
 </html>

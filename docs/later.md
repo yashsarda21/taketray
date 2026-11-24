@@ -4,6 +4,22 @@ Items that reviews found and parked for a later phase. When a phase is planned, 
 
 Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26), the Phase 2 task reviews and its final whole-branch review (2026-10-27), and the Phase 3 learning guide (2026-10-29).
 
+## Next: free week and subscription (owner, 2026-11-22)
+
+- **Build D-150.**
+  - **Spec:** `design/handoff/subscription.md`.
+  - **Reference:** hub screens 41–45 and the prototype flow "Free week and subscription".
+  - **Includes:**
+    - Play Console products;
+    - the `in_app_purchase` setup;
+    - the entitlement state machine, with the clock and offline rules;
+    - the read-only gate on the listed actions;
+    - the five screens;
+    - the reminder notification;
+    - the Settings group;
+    - the merged-manifest INTERNET check;
+    - wording updates (README, Play listing, website, privacy policy).
+
 ## Phase 4
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.

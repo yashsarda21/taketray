@@ -84,6 +84,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 ### D-11 · Version 1 is free, no payments
 - Date: 2026-10-24 · Phase: build brainstorming
 - Decision: no Play Billing in v1; code must not make adding it later hard.
+- **Superseded by D-150** (2026-11-22): a free week, then a monthly or yearly subscription.
 
 ## Engineering
 
@@ -2508,3 +2509,44 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   - `tool/check_release_permissions` still ends `RELEASE PERMISSIONS OK`; the hook is not in the release dex.
   - Mutation checks, each killed by a named test: see the task report (`DebugShareHooksTest`, `test_share_test.dart`, `share_screen_test.dart`, `share_source_test.dart`).
   - **Minors M24 to M26 (driver rules, written without a phone):** `NativeScreen.count` swallows only Patrol's "no match" (`isNoMatch`: a `PatrolActionException` naming `UiObjectNotFound`, "not found" or "no match"; `countMatching`), so an absent check cannot pass because the screen could not be read; `ShareScreen.tapSave` (flows 2 and 4) fails, naming both edges, when Save's bottom edge is more than 2 px below the keyboard's top (`NativeScreen.keyboardTop`, `keyboardTopOf`: another app's window that does not start at the top of the screen), and taps nothing; `closeIfOpen` looks at and taps only nodes whose `applicationPackage` is the app's (`app.taketray.dev`), so another app's Done is never tapped. What the keyboard heuristic sees on One UI is first known on the S24.
+
+### D-150 · A free week, then a subscription: ₹149 a month or ₹1,199 a year with a first-year launch offer (₹129, ₹899); read-only without one (design, not built yet)
+- Date: 2026-11-22 · Phase: design (to be built before release) · Replaces D-11 · Design: hub screens 41–45 (group "Subscription"), prototype flow "Free week and subscription", `design/prototype/assets/subs.js`, handoff `design/handoff/subscription.md`
+- What the owner asked:
+  - Start with 1 week free, then charge monthly ₹129 or yearly ₹899.
+  - Then (same day): show ₹149 crossed out to ₹129, and ₹1,199 crossed out to ₹899.
+  - Say "cancel anytime".
+- Owner's answers (2026-11-22):
+  - After the free week without a plan, TakeTray is **read-only**, not locked.
+  - The free week is **TakeTray's own, with no card**. A reinstall restarts it, which the owner accepts because the reels are lost with a reinstall anyway.
+  - The first mention comes **after the first tagging session**, not at onboarding.
+- Decision:
+  1. **Free week:** 7 days from the first launch, kept on the phone. The clock can't be moved back to extend it (`max(now, latestSeenAt)`).
+  2. **Products:** two Google Play subscription products, `taketray_monthly` (base plan P1M, ₹149) and `taketray_yearly` (base plan P1Y, ₹1,199).
+     - Each has a launch offer for new customers: ₹129 a month for the first 12 months, and ₹899 for the first year. No Play trial phase.
+     - The owner chose a **real first-year offer** over a permanent cross-out: a crossed-out price nobody ever pays would be a misleading reference price under Google Play's deceptive-behaviour rules and India's 2023 dark-pattern guidelines.
+     - Prices shown are Play's localized prices. Yearly is the default ("Best value").
+     - "Cancel anytime" sits above the Subscribe button and in the free-week sheet, the success dialog and the Subscription page.
+  3. **Read-only:**
+     - Still works: reels, watching clips, Shooting mode (keeps collecting), To tag as a list, references, status, Done editing, deleting, Settings, export and import.
+     - Needs a plan: tagging (Start tagging, the tag player, Tag scene, Skip all), Edit video, Add videos, Add earlier videos and New reel.
+     - A locked action opens one sheet with See plans.
+  4. **Moments:** a once-only sheet after the first tagging session; one notification and a Reels banner the day before the end; Plans once when the week ends; Settings › Subscription always.
+  5. **No server:**
+     - Entitlement comes from Play's purchases on the phone (active, won't renew, pending, lapsed).
+     - Renewal dates and payment problems are left to Google Play (its own in-app messages and subscription page).
+     - Purchases are acknowledged, and their signatures are checked on the phone. Without a server, client-side checks can be bypassed; that is accepted for v1.
+- Why:
+  - Read-only keeps people's work theirs, which matches TakeTray's privacy promise and earns trust.
+  - A no-card week lets everyone try it.
+  - Two products because, without a server, the app can't see which base plan was bought.
+- Alternatives considered:
+  - fully locked after the trial (feels like holding reels hostage);
+  - a free tier with limits (more to design, slower to convert);
+  - Play's own free trial with a card up front (fewer people would try it; the owner preferred no card);
+  - one product with two base plans (unreadable without a server).
+- Consequences:
+  - The app adds Play Billing (`in_app_purchase`).
+  - Check whether the merged manifest gains `INTERNET`, and keep every privacy claim true.
+  - "Free / no in-app purchases" must change in README.md, the Play listing, the website design (FAQ and hero tags) and the privacy policy (payments are handled by Google Play).
+  - `docs/flow.md` gets an entitlement flow when this is built.
