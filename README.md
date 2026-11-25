@@ -41,7 +41,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
 | 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B done on the S24 (hand checks passed; release share proven after the entry-point fix) |
-| 12 | UI refresh: glass everywhere and the full-screen tag player (ahead of Phase 11, as 10 came before 9) | Built; phone check pending. **Next: Phase 13** |
+| 12 | UI refresh: glass everywhere and the full-screen tag player (ahead of Phase 11, as 10 came before 9) | Done on the S24 (Patrol 13/13 files; hand checks 24/24). **Next: Phase 13** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -239,7 +239,7 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Phone tests**: four on-device flows are written (an existing reel, a new reel, not a link, and a share before onboarding) with a debug-only hook that starts the share screen with a text, and a driver that reads the share screen through Android's accessibility tree. **They are skipped**, because a Patrol build cannot start the share screen: Flutter looks its entry point up in the build's root library, which in a Patrol build is the generated test bundle (D-169 item 8). The owner decided not to change the app for this, so sharing is proven by the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9B check), answered on the S24: a real Instagram, YouTube and TikTok share, where Done returns to, Recents, a share while TakeTray is open, a fresh install, dark mode, large text, TalkBack, the keyboard, and the release build over the real app.
 - **Learning guide**: [docs/learn/phase-9b-sharing.md](docs/learn/phase-9b-sharing.md) explains the whole phase in plain English, with the real code.
 
-### Phase 12: UI refresh
+### Phase 12: UI refresh (done)
 Phase 12 was put ahead of Phase 11 (as Phase 10 came before 9). The owner compared the app on the S24 with the design and found the frosted-glass look missing, and redesigned the tag player (D-171). It is UI only: tagging, Undo, Pick several and "All done!" work as before. What each task added:
 - **Task 1, the blur behind dialogs and sheets** (D-172): it was too faint to see (the page only went darker). A throwaway test build on the S24 showed why: a blur that grew as the dialog opened was lost on that phone, and the same blur held steady was soft. It is now a steady 3 dp from the first frame, and only the dim fades. CI now has a way to prove a blur by its pixels (sharp stripes behind the glass, the contrast left after the blur is measured).
 - **Task 2, the reel cover's status pill** (D-173): it was sharp on the S24 because its blur filter held a `Material` with its own colour. Every piece of glass is now built the same way (a plain fill first, the press ripple on a see-through layer on top), through one shared widget.
@@ -254,7 +254,7 @@ Phase 12 was put ahead of Phase 11 (as Phase 10 came before 9). The owner compar
 - **Task 10, the full-screen player** (D-181): the clip under the status bar, the top and the dock over it, Skip and Same on the right, up to three Collecting reels in the dock, and **All reels**, a sheet with every reel (it is always there while you pick several). The snack stays clear of the buttons, also at large text and with the phone held sideways.
 - **Task 11, swiping** (D-182): swipe up for the next clip and down for the previous one, like Reels. The clip follows your finger; a drag over 64 dp or a quick flick goes, less springs back. ‹ › and a tag slide the clip the same way, and "Remove animations" gives a short crossfade. Sideways swipes do nothing, so they never fight Android's back gesture.
 - **Task 12, phone tests** (D-183): the tagging flows are updated to the new player, with one new flow for the swipes and All reels.
-- **Phone tests: pending (Task 14).** The owner's side-by-side check of each glass element with the design, the Patrol runs and the hand checks are "Phase 12 check" in [docs/dev-setup.md](docs/dev-setup.md); the results are added here when they are in.
+- **Phone tests**: done on the Samsung S24 on 2026-11-25. All 13 Patrol files are green after two rounds: round 1 found one test fault (the new "swipe and All reels" flow tapped a chip while the All reels sheet was still sliding in, fixed in 51ce3f0 so the flows wait until their target is still) and could not reach the last files because `patrol_cli` could not reach pub.dev (a proxy error, not the app); round 2 ran everything else, and the sharing flows stay skipped (D-169). All 24 hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 12 check) passed, including the owner's side-by-side check of each glass element with the design and the share blur with battery saver. The owner kept the designed 3 dp blur (D-172), kept a reverse fling going to the next clip (D-182) and is happy with the large-text and sideways layouts (`docs/later.md`).
 - **Learning guide**: [docs/learn/phase-12-ui-refresh.md](docs/learn/phase-12-ui-refresh.md) explains the whole phase in plain English, with the real code.
 
 ## Running the checks
