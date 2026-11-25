@@ -2232,10 +2232,6 @@
   "@manualPickAllow": {
     "description": "Button of the Manual mode sheet that asks for full video access, so Add videos can show folders."
   },
-  "editSelectTitle": "Pick clips to edit",
-  "@editSelectTitle": {
-    "description": "Title of the screen where the clips to send to an editor are picked. The reel's name is under it."
-  },
   "editSelectClear": "Clear",
   "@editSelectClear": {
     "description": "Top bar button on the clip picking screen, and on a reel's page while choosing clips, that un-ticks every clip and keeps choosing. It replaces Select all while every clip is ticked."
@@ -2243,39 +2239,6 @@
   "editSelectInfo": "Clips go to your editor in the order you shot them.",
   "@editSelectInfo": {
     "description": "Note under the title of the clip picking screen."
-  },
-  "editBarNone": "No clips picked",
-  "@editBarNone": {
-    "description": "Bottom bar of the clip picking screen when nothing is ticked."
-  },
-  "editBarNoneHint": "Tap the clips you want to edit",
-  "@editBarNoneHint": {
-    "description": "Line under No clips picked."
-  },
-  "editBarPicked": "{count, plural, one{1 clip} other{{count} clips}} · {duration}",
-  "@editBarPicked": {
-    "description": "Bottom bar of the clip picking screen: how many clips are ticked and their total length, such as 12 clips · 1:18.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "duration": {
-        "type": "String"
-      }
-    }
-  },
-  "editBarPickedDetail": "{size} · in shooting order",
-  "@editBarPickedDetail": {
-    "description": "Line under the ticked count on the clip picking screen: their total size, such as 900 MB, and that they go in the order they were shot.",
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
-  "editContinue": "Continue",
-  "@editContinue": {
-    "description": "Button of the clip picking screen that opens the editor sheet. It is off while no clip is ticked."
   },
   "sizeMegabytes": "{number}\u00a0MB",
   "@sizeMegabytes": {

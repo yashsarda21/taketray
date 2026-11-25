@@ -121,7 +121,7 @@ enum _ReelAction { details, select, delete }
 /// and "In your edit", each with its own day headers. **Done editing** asks
 /// `showDoneEditingDialog`; **Add more clips**, **Copy to VN folder** and
 /// **Add to your CapCut project** / **Add to your Edits project** (D-129)
-/// open the picking screen in add mode (`Routes.editSelectOf(add: true)`).
+/// open the picking screen in add mode (`Routes.editAddOf`).
 /// While a copy job of the reel runs the banner shows its progress and
 /// **Show**, which opens the copying screen, and Done editing is not offered.
 /// Opening
@@ -217,9 +217,8 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
 
   /// **Add more clips** and **Copy to VN folder**: the picking screen in add
   /// mode.
-  void _openAdd() => _edit.open(
-    () => context.push(Routes.editSelectOf(widget.reelId, add: true)),
-  );
+  void _openAdd() =>
+      _edit.open(() => context.push(Routes.editAddOf(widget.reelId)));
 
   /// Opens the copying screen of the running job once however fast the taps.
   final OpenOnce _progress = OpenOnce();

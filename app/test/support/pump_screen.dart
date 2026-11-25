@@ -70,10 +70,10 @@ String clipRouteMarker(Object reelId, Object clipId) =>
     'the viewer of clip $clipId of reel $reelId';
 
 /// What the clip picking route shows in a test that only has one screen: the
-/// reel id (`?reel=`), the preselected clips (`&clips=`, "null" for none)
-/// and the add flag (`&add=`, "null" for none).
-String editSelectRouteMarker(Object? reel, Object? clips, Object? add) =>
-    'the picking screen of reel $reel, clips $clips, add $add';
+/// reel id (`?reel=`) and the add flag (`&add=`, "null" for none; the real
+/// route is add mode only, D-192).
+String editSelectRouteMarker(Object? reel, Object? add) =>
+    'the picking screen of reel $reel, add $add';
 
 /// What the VN space route shows in a test that only has one screen: the
 /// reel id, the editor and the clips, as in its location.
@@ -257,7 +257,6 @@ Future<ProviderContainer> pumpScreen(
             body: Text(
               editSelectRouteMarker(
                 query[Routes.editReelParameter],
-                query[Routes.editClipsParameter],
                 query[Routes.editAddParameter],
               ),
             ),

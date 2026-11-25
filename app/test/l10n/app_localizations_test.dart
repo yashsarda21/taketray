@@ -277,18 +277,11 @@ void main() {
       ),
     );
 
-    expect(l10n.editSelectTitle, 'Pick clips to edit');
     expect(l10n.editSelectClear, 'Clear');
     expect(
       l10n.editSelectInfo,
       'Clips go to your editor in the order you shot them.',
     );
-    expect(l10n.editBarNone, 'No clips picked');
-    expect(l10n.editBarNoneHint, 'Tap the clips you want to edit');
-    expect(l10n.editBarPicked(1, '0:04'), '1 clip · 0:04');
-    expect(l10n.editBarPicked(12, '1:18'), '12 clips · 1:18');
-    expect(l10n.editBarPickedDetail('900 MB'), '900 MB · in shooting order');
-    expect(l10n.editContinue, 'Continue');
     expect(l10n.sizeMegabytes('900'), '900\u00a0MB');
     expect(l10n.sizeGigabytes('1.2'), '1.2\u00a0GB');
     expect(l10n.editorSheetTitle(1), 'Edit 1 clip in…');

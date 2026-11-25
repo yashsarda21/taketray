@@ -181,7 +181,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(
-        find.text(editSelectRouteMarker('${goa.id}', null, '1')),
+        find.text(editSelectRouteMarker('${goa.id}', '1')),
         findsOneWidget,
       );
     });
@@ -328,7 +328,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(
-          find.text(editSelectRouteMarker('${goa.id}', null, '1')),
+          find.text(editSelectRouteMarker('${goa.id}', '1')),
           findsOneWidget,
         );
         tester.state<NavigatorState>(find.byType(Navigator).first).pop();

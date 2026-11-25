@@ -856,17 +856,11 @@ void main() {
   group('Picking clips for an editor (Phase 8, D-126)', () {
     test('the locations', () {
       expect(Routes.editSelect, '/edit');
-      expect(Routes.editSelectOf(7), '/edit?reel=7');
-      expect(
-        Routes.editSelectOf(7, clipIds: [3, 5, 9]),
-        '/edit?reel=7&clips=3%2C5%2C9',
-      );
-      expect(Routes.editSelectOf(7, add: true), '/edit?reel=7&add=1');
-      final both = Uri.parse(Routes.editSelectOf(7, clipIds: [4], add: true));
-      expect(both.path, '/edit');
-      expect(both.queryParameters, {
+      expect(Routes.editAddOf(7), '/edit?reel=7&add=1');
+      final add = Uri.parse(Routes.editAddOf(7));
+      expect(add.path, '/edit');
+      expect(add.queryParameters, {
         Routes.editReelParameter: '7',
-        Routes.editClipsParameter: '4',
         Routes.editAddParameter: '1',
       });
       expect(Routes.copySpace, '/edit/space');
@@ -898,6 +892,10 @@ void main() {
       });
     });
 
+    test('editAddOf(7) is /edit?reel=7&add=1', () {
+      expect(Routes.editAddOf(7), '/edit?reel=7&add=1');
+    });
+
     test('clipIdsIn keeps the positive whole numbers once, in order', () {
       expect(Routes.clipIdsIn('3,5,9'), [3, 5, 9]);
       expect(Routes.clipIdsIn('9,3,9,5,3'), [9, 3, 5]);
@@ -912,8 +910,8 @@ void main() {
       expect(Routes.clipIdsIn('99999999999999999999,4'), [4]);
     });
 
-    testApp('the picking screen is full screen, above the nav pill, with '
-        'the reel, the preselected clips and the add flag', (tester) async {
+    testApp('the picking screen is full screen, above the nav pill, for the '
+        'reel, in add mode only', (tester) async {
       final h = reelHarness();
       final goa = (await tester.runAsync(
         () => h.container.read(reelsRepositoryProvider).create('Goa'),
@@ -928,17 +926,13 @@ void main() {
       );
       final (_, router) = await _pumpApp(tester, harness: h);
 
-      unawaited(
-        router.push(Routes.editSelectOf(goa.id, clipIds: [4, 5], add: true)),
-      );
+      unawaited(router.push(Routes.editAddOf(goa.id)));
       await tester.pumpAndSettle();
 
       final screen = tester.widget<EditSelectScreen>(
         find.byType(EditSelectScreen),
       );
       expect(screen.reelId, goa.id);
-      expect(screen.clipIds, [4, 5]);
-      expect(screen.addMode, isTrue);
       expect(find.byType(TtNavPill).hitTestable(), findsNothing);
 
       router.pop();
@@ -946,42 +940,52 @@ void main() {
       expect(find.byType(EditSelectScreen), findsNothing);
     });
 
-    testApp('without clips or the flag: nothing preselected, no add mode', (
-      tester,
-    ) async {
+    // D-192: the normal mode is gone; an old location without add mode shows
+    // the reel's page instead.
+    for (final (suffix, name) in [
+      ('', '/edit?reel=7 without add=1 shows the reel page'),
+      ('&clips=1,2', '/edit?reel=7&clips=1,2 shows the reel page'),
+      ('&add=yes', '/edit?reel=7&add=yes (not 1) shows the reel page'),
+      ('&add=0', '/edit?reel=7&add=0 shows the reel page'),
+      ('&clips=1,2&add=0', '/edit?reel=7&clips=1,2&add=0 shows the reel page'),
+      ('&add=1&clips=1,2', '/edit?reel=7&add=1&clips=1,2 shows the reel page'),
+    ]) {
+      testApp('$name, and logs without the location', (tester) async {
+        final h = reelHarness();
+        final goa = (await tester.runAsync(
+          () => h.container.read(reelsRepositoryProvider).create('Goa'),
+        ))!;
+        final (_, router) = await _pumpApp(tester, harness: h);
+        final logged = <LogRecord>[];
+        final sub = Logger.root.onRecord.listen(logged.add);
+        addTearDown(sub.cancel);
+
+        router.go('/edit?reel=${goa.id}$suffix');
+        await _settle(tester);
+
+        expect(find.byType(EditSelectScreen), findsNothing);
+        expect(find.byType(ReelDetailScreen), findsOneWidget);
+        expect(
+          logged.map((r) => r.message),
+          contains('Picking screen without add mode; showing the reel'),
+        );
+        expect(logged.map((r) => r.message).join(), isNot(contains('/edit')));
+      });
+    }
+
+    testApp('a push of /edit?reel=7 without add=1 lands on the reel page '
+        'too, over what was open', (tester) async {
       final h = reelHarness();
       final goa = (await tester.runAsync(
         () => h.container.read(reelsRepositoryProvider).create('Goa'),
       ))!;
       final (_, router) = await _pumpApp(tester, harness: h);
 
-      unawaited(router.push(Routes.editSelectOf(goa.id)));
-      await tester.pumpAndSettle();
+      unawaited(router.push('/edit?reel=${goa.id}&clips=1,2'));
+      await _settle(tester);
 
-      final screen = tester.widget<EditSelectScreen>(
-        find.byType(EditSelectScreen),
-      );
-      expect(screen.clipIds, isEmpty);
-      expect(screen.addMode, isFalse);
-    });
-
-    testApp('bad clip ids are left out, a flag other than 1 is no add mode', (
-      tester,
-    ) async {
-      final h = reelHarness();
-      final goa = (await tester.runAsync(
-        () => h.container.read(reelsRepositoryProvider).create('Goa'),
-      ))!;
-      final (_, router) = await _pumpApp(tester, harness: h);
-
-      unawaited(router.push('/edit?reel=${goa.id}&clips=3,x,0,5&add=yes'));
-      await tester.pumpAndSettle();
-
-      final screen = tester.widget<EditSelectScreen>(
-        find.byType(EditSelectScreen),
-      );
-      expect(screen.clipIds, [3, 5]);
-      expect(screen.addMode, isFalse);
+      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
     });
 
     testApp('Edit video opens the editor sheet over the reel page', (
@@ -1375,7 +1379,7 @@ void main() {
       Routes.settings,
       Routes.copiesStorage,
       Routes.addVideos,
-      Routes.editSelectOf(5),
+      Routes.editAddOf(5),
       '/nope',
       '/welcomex',
       '/onboarding',

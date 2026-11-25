@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -12,7 +11,6 @@ import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/domain/rules/shooting_days.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/editors/view_models/edit_select_controller.dart';
-import 'package:taketray/features/editors/views/editor_sheet.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
@@ -26,61 +24,46 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// Columns of a day's clip grid (as on the reel's page).
 const int _columns = 3;
 
-/// The clip picking screen (prototype `edit-select`, D-126), full screen above
-/// the tab shell (`Routes.editSelect`), opened from a reel's page by **Edit
-/// video** or by the ⋮ menu's **Edit video** with the chosen clips ticked
-/// ([clipIds]).
+/// The clip picking screen (prototype `edit-select`, D-126), which since D-192
+/// is only for **adding clips to a reel's editing folder** (D-128, D-129), full
+/// screen above the tab shell (`Routes.editSelect`, `Routes.editAddOf`). It is
+/// opened from the editing banner's **Add more clips** and the reel page's
+/// **Copy to VN folder** / **Add to your CapCut project** / **Add to your Edits
+/// project**. (Choosing clips to edit is done on the reel page, with the
+/// selection dock, D-191.)
 ///
-/// From the top: an app bar with a close button, "Pick clips to edit", the
-/// reel's name, and **Select all** (**Clear** while every clip is ticked); a
-/// note, "Clips go to your editor in the order you shot them."; the reel's
-/// live clips under "Day {n} · {date}" headers, three to a row, each a
-/// `TtClipTile` (the time where it was shot, its length) that a tap ticks or
-/// un-ticks; and a bottom bar: "No clips picked" / "Tap the clips you want to
-/// edit", or "{n} clips · {length}" / "{size} · in shooting order", and
-/// **Continue**, off while nothing is ticked.
+/// From the top: an app bar with a close button, the title, the reel's name,
+/// and **Select all** (**Clear** while every clip is ticked); a note, "Clips go
+/// to your editor in the order you shot them."; the reel's live clips under
+/// "Day {n} · {date}" headers, three to a row, each a `TtClipTile` (the time
+/// where it was shot, its length) that a tap ticks or un-ticks; and a bottom
+/// bar.
 ///
 /// - **Only live clips are listed**, and a clip that goes missing while the
 ///   screen is open leaves the list and the choice.
-/// - **Continue** opens the editor sheet (`showEditorSheet`) with the ticked
-///   clips in shooting order, once however fast the taps.
 /// - A reel that is gone (an id that names none, or one deleted while the
 ///   screen is open) sends the app to Reels.
-///
-/// **Add mode** ([addMode], `&add=1`, D-128, D-129), from the editing banner's
-/// **Add more clips** and the reel page's **Copy to VN folder** / **Add to
-/// your CapCut project** / **Add to your Edits project**: over every live
-/// clip; the fresh ones start ticked, a clip whose copy is in the folder is
-/// ticked and locked, a clip sent before without a copy can be ticked. The
-/// bottom bar counts only the clips to copy and **Copy** opens the space check
-/// (`Routes.copySpaceOf`) with them, in shooting order, once however fast the
-/// taps. The words follow the session's editor:
-/// - **VN:** "Add clips to VN folder", the mark "In VN folder", "{n} new clips
-///   to copy" / "{size} · copies are added, never renamed", "Pick clips to
-///   add" / "{n} already in the VN folder", and the snack "Already in the VN
-///   folder. …".
-/// - **CapCut and Edits** (the user adds the copies from the folder's album):
-///   "Add clips to your CapCut project" (or "… Edits project"), the mark "In
-///   the folder", "{n} clips to copy" / "{size} · into Movies/TakeTray/{folder}",
-///   "Pick clips to add" / "{n} already in the folder", and "Already in the
-///   folder. Copies are deleted when you tap Done editing.".
-///
-/// A reel with no session (Done editing ran meanwhile) goes back to its page.
+/// - Over every live clip; the fresh ones start ticked, a clip whose copy is
+///   in the folder is ticked and locked, a clip sent before without a copy can
+///   be ticked. The bottom bar counts only the clips to copy and **Copy** opens
+///   the space check (`Routes.copySpaceOf`) with them, in shooting order, once
+///   however fast the taps. The words follow the session's editor:
+///   - **VN:** "Add clips to VN folder", the mark "In VN folder", "{n} new
+///     clips to copy" / "{size} · copies are added, never renamed", "Pick
+///     clips to add" / "{n} already in the VN folder", and the snack "Already
+///     in the VN folder. …".
+///   - **CapCut and Edits** (the user adds the copies from the folder's
+///     album): "Add clips to your CapCut project" (or "… Edits project"), the
+///     mark "In the folder", "{n} clips to copy" / "{size} · into
+///     Movies/TakeTray/{folder}", "Pick clips to add" / "{n} already in the
+///     folder", and "Already in the folder. Copies are deleted when you tap
+///     Done editing.".
+/// - A reel with no session (Done editing ran meanwhile) goes back to its
+///   page.
 class EditSelectScreen extends ConsumerStatefulWidget {
-  const new({
-    required this.reelId,
-    this.clipIds = const [],
-    this.addMode = false,
-    super.key,
-  });
+  const new({required this.reelId, super.key});
 
   final int reelId;
-
-  /// The clips to tick at first.
-  final List<int> clipIds;
-
-  /// Whether the screen was opened to add clips to a folder.
-  final bool addMode;
 
   @override
   ConsumerState<EditSelectScreen> createState() => _EditSelectScreenState();
@@ -90,16 +73,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
   /// Set once the screen has sent the app to Reels, so it does so once.
   bool _leaving = false;
 
-  /// The editor sheet is open (or opening): a second tap does nothing.
-  bool _sheetOpen = false;
-
-  late final EditSelectArgs _args = EditSelectArgs(
-    widget.reelId,
-    widget.clipIds,
-    addMode: widget.addMode,
-  );
-
-  /// Opens the space check once however fast the taps (add mode).
+  /// Opens the space check once however fast the taps.
   final OpenOnce _copy = OpenOnce();
 
   @override
@@ -109,7 +83,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
   }
 
   EditSelectControllerProvider get _provider =>
-      editSelectControllerProvider(_args);
+      editSelectControllerProvider(widget.reelId);
 
   void _leave() {
     if (_leaving) return;
@@ -122,8 +96,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
   void _close() =>
       context.canPop() ? context.pop() : context.go(Routes.reel(widget.reelId));
 
-  /// Add mode with no VN session to add to: back to the reel's page, once,
-  /// after this frame.
+  /// No session to add to: back to the reel's page, once, after this frame.
   void _leaveToReel() {
     if (_leaving) return;
     _leaving = true;
@@ -132,7 +105,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     });
   }
 
-  /// **Copy** (add mode): the space check for the clips to copy.
+  /// **Copy**: the space check for the clips to copy.
   void _copyPicked(EditSelectState state) {
     final editor = state.addEditor;
     if (editor == null || state.toCopyInOrder.isEmpty) return;
@@ -142,25 +115,6 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
   }
 
-  Future<void> _continue(EditSelectState state) async {
-    if (_sheetOpen || state.pickedInOrder.isEmpty) return;
-    _sheetOpen = true;
-    try {
-      final outcome = await showEditorSheet(
-        context,
-        reelId: widget.reelId,
-        clipIds: state.pickedInOrder,
-      );
-      // The sheet no longer leaves a route (D-189): after a send this screen
-      // goes back to the reel's page itself, until Task 5 removes it.
-      if (outcome == EditorSheetOutcome.sent && mounted && context.canPop()) {
-        context.pop();
-      }
-    } finally {
-      _sheetOpen = false;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -168,11 +122,8 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final select = ref.watch(_provider);
     final state = select.value;
     if (select.hasValue && state == null) _leave();
-    // Add mode needs the reel's editing session, of any editor.
-    if (state != null && state.addMode && state.addEditor == null) {
-      _leaveToReel();
-    }
-    final adding = state?.addMode ?? widget.addMode;
+    // Adding needs the reel's editing session, of any editor.
+    if (state != null && state.addEditor == null) _leaveToReel();
     final addEditor = state?.addEditor;
     final notifier = ref.read(_provider.notifier);
     final cache = ref.watch(thumbnailCacheProvider).value;
@@ -182,18 +133,14 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final locale = Localizations.localeOf(context).toString();
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
 
-    // A long title wraps and grows the bar rather than be cut ("Add clips to
-    // your CapCut project", or any title at large text). The
-    // `Scaffold.appBar` slot has a fixed height, so then the bar is the first
-    // child of the body (as on the notifications help screen). In add mode
-    // the bar is always in the body, from the first frame: the editor, so the
-    // title, is known only once the session is read, and the bar must not
-    // jump from the slot to the body then (T12-m3).
+    // A long title ("Add clips to your CapCut project") wraps and grows the
+    // bar rather than be cut. The `Scaffold.appBar` slot has a fixed height,
+    // so the bar is the first child of the body (as on the notifications help
+    // screen), from the first frame: the editor, so the title, is known only
+    // once the session is read, and the bar must not jump from the slot to
+    // the body then (T12-m3).
     final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 >= 1.5;
-    final wrapTitle =
-        (addEditor != null && addEditor != EditorApp.vn) ||
-        (!adding && largeText);
-    final barInBody = adding || wrapTitle;
+    final wrapTitle = addEditor != null && addEditor != EditorApp.vn;
     // At large text the long title and **Select all** do not fit side by
     // side (the title would break inside words), so the button goes under the
     // bar, at its end.
@@ -210,11 +157,9 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
           : notifier.selectAll,
     );
     final bar = TtAppBar(
-      // The words of add mode follow the session's editor, so they wait
-      // until it is known.
-      title: !adding
-          ? l10n.editSelectTitle
-          : addEditor == null
+      // The words follow the session's editor, so they wait until it is
+      // known.
+      title: addEditor == null
           ? ''
           : addEditor == EditorApp.vn
           ? l10n.editAddTitle(l10n.editorNameVn)
@@ -266,25 +211,22 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
 
     return Scaffold(
-      appBar: barInBody ? null : bar,
-      body: barInBody
-          ? Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                bar,
-                if (selectAllBelow)
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: Padding(
-                      padding: EdgeInsetsDirectional.only(end: tt.spacing.xxs),
-                      child: selectAll,
-                    ),
-                  ),
-                Expanded(child: scroll),
-              ],
-            )
-          : scroll,
-      bottomNavigationBar: _bottomBar(context, state),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          bar,
+          if (selectAllBelow)
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Padding(
+                padding: EdgeInsetsDirectional.only(end: tt.spacing.xxs),
+                child: selectAll,
+              ),
+            ),
+          Expanded(child: scroll),
+        ],
+      ),
+      bottomNavigationBar: _addBar(context, state),
     );
   }
 
@@ -333,7 +275,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                   );
             final length = formatClipDuration(clip.fingerprint.durationMs);
             final label = l10n.clipTileSemantics(time, length);
-            // Add mode: its copy is in the folder; ticked, locked, marked.
+            // Its copy is in the folder: ticked, locked, marked.
             final locked = state.inFolder.contains(clip.id);
             final vn = state.addEditor == EditorApp.vn;
             final editor = l10n.editorNameVn;
@@ -383,7 +325,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     );
   }
 
-  /// Add mode's bar: only the clips to copy count.
+  /// The bottom bar: only the clips to copy count.
   Widget _addBar(BuildContext context, EditSelectState? state) {
     final l10n = AppLocalizations.of(context);
     final count = state?.toCopyInOrder.length ?? 0;
@@ -410,29 +352,6 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
         key: const ValueKey<String>('edit-select-continue'),
         label: l10n.editAddCopy,
         onPressed: count == 0 ? null : () => _copyPicked(state!),
-      ),
-    );
-  }
-
-  Widget _bottomBar(BuildContext context, EditSelectState? state) {
-    if (state?.addMode ?? widget.addMode) return _addBar(context, state);
-    final l10n = AppLocalizations.of(context);
-    final picked = state?.selected.length ?? 0;
-    return TtBottomBar(
-      key: const ValueKey<String>('edit-select-bottom-bar'),
-      title: picked == 0
-          ? l10n.editBarNone
-          : l10n.editBarPicked(
-              picked,
-              formatClipDuration(state!.pickedDurationMs),
-            ),
-      subtitle: picked == 0
-          ? l10n.editBarNoneHint
-          : l10n.editBarPickedDetail(byteSizeText(l10n, state!.pickedBytes)),
-      action: TtButton(
-        key: const ValueKey<String>('edit-select-continue'),
-        label: l10n.editContinue,
-        onPressed: picked == 0 ? null : () => unawaited(_continue(state!)),
       ),
     );
   }

@@ -13,7 +13,6 @@ import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/editors/view_models/editor_choices.dart';
-import 'package:taketray/features/editors/views/edit_select_screen.dart';
 import 'package:taketray/features/editors/views/editor_missing_dialog.dart';
 import 'package:taketray/features/editors/views/editor_sheet.dart';
 import 'package:taketray/platform/editors_bridge.dart';
@@ -83,8 +82,8 @@ void main() {
   setUp(() => outcomes = []);
 
   /// Opens the editor sheet for [ids] from a plain host page (a button that
-  /// calls `showEditorSheet`, as the reel page does), not through the
-  /// picking screen. With [allClips] the sheet is the whole reel's.
+  /// calls `showEditorSheet`, as the reel page does). With [allClips] the
+  /// sheet is the whole reel's.
   Future<void> openSheet(
     WidgetTester tester,
     Reel reel,
@@ -123,24 +122,6 @@ void main() {
     );
     await settleApp(tester);
     await tester.tap(find.text('Open the sheet'));
-    await settleApp(tester);
-  }
-
-  /// Opens the picking screen with [ids] ticked and taps Continue: the
-  /// editor sheet is up.
-  Future<void> openViaPicking(
-    WidgetTester tester,
-    Reel reel,
-    List<int> ids,
-  ) async {
-    await pumpScreen(
-      tester,
-      EditSelectScreen(reelId: reel.id, clipIds: ids),
-      overrides: h.appOverrides,
-      settle: false,
-    );
-    await settleApp(tester);
-    await tester.tap(find.text('Continue'));
     await settleApp(tester);
   }
 
@@ -840,109 +821,6 @@ void main() {
       });
     },
   );
-
-  group('the picking screen under the sheet', () {
-    // A send asks for the folders already taken, then shares.
-    setUp(() => h.editors.allow({'sendTo', 'copyFolderNames'}));
-
-    testApp('a send pops the picking screen back to the page under it', (
-      tester,
-    ) async {
-      final (goa, ids) = await twoClips(tester);
-      await pumpScreen(
-        tester,
-        Builder(
-          builder: (context) => Scaffold(
-            body: Column(
-              children: [
-                const Text(_hostMarker),
-                TextButton(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) =>
-                          EditSelectScreen(reelId: goa.id, clipIds: ids),
-                    ),
-                  ),
-                  child: const Text('Open picking'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        overrides: h.appOverrides,
-        settle: false,
-      );
-      await settleApp(tester);
-      await tester.tap(find.text('Open picking'));
-      await settleApp(tester);
-      await tester.tap(find.text('Continue'));
-      await settleApp(tester);
-
-      await tapRow(tester, 'CapCut');
-
-      expect(find.byType(EditSelectScreen), findsNothing);
-      expect(find.text(_hostMarker), findsOneWidget);
-      expect(find.text('Sent 2 clips to CapCut'), findsOneWidget);
-      await flushOffer(tester);
-    });
-
-    testApp('Other app… leaves the picking screen where it is', (tester) async {
-      h.editors.allow({'shareWithChooser'});
-      final (goa, ids) = await twoClips(tester);
-      await openViaPicking(tester, goa, ids);
-
-      await tapRow(tester, 'Other app…');
-
-      expect(h.editors.chooserShares, hasLength(1));
-      expect(find.byType(EditSelectScreen), findsOneWidget);
-    });
-  });
-
-  group('Continue (T9-m5)', () {
-    testApp('two taps before the phone has answered open one sheet', (
-      tester,
-    ) async {
-      h.editors.hold('apps');
-      final (goa, ids) = await twoClips(tester);
-      await pumpScreen(
-        tester,
-        EditSelectScreen(reelId: goa.id, clipIds: ids),
-        overrides: h.appOverrides,
-        settle: false,
-      );
-      await settleApp(tester);
-
-      final button = find.widgetWithText(TtButton, 'Continue');
-      final onPressed = tester.widget<TtButton>(button).onPressed!;
-      // Two taps, back to back: the second arrives while the first is still
-      // opening the sheet.
-      onPressed();
-      onPressed();
-      await tester.pump();
-      h.editors.release('apps');
-      await settleApp(tester);
-
-      expect(find.byType(TtSheet), findsOneWidget);
-      // Closing it leaves the picking screen alone, with no second sheet.
-      await tester.tapAt(const Offset(180, 20));
-      await settleApp(tester);
-      expect(find.byType(TtSheet), findsNothing);
-      expect(find.byType(EditSelectScreen), findsOneWidget);
-    });
-
-    testApp('after the sheet closes, Continue opens it again', (tester) async {
-      final (goa, ids) = await twoClips(tester);
-      await openViaPicking(tester, goa, ids);
-      await tester.tapAt(const Offset(180, 20));
-      await settleApp(tester);
-      expect(find.byType(TtSheet), findsNothing);
-
-      await tester.tap(find.text('Continue'));
-      await settleApp(tester);
-
-      expect(find.byType(TtSheet), findsOneWidget);
-    });
-  });
 
   group('CapCut and Instagram Edits', () {
     // A send asks for the folders already taken, then shares.

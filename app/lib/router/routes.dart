@@ -142,12 +142,11 @@ abstract final class Routes {
     },
   ).toString();
 
-  /// Picking a reel's clips for an editor (Phase 8, D-126): full screen above
-  /// the tab shell, on the root navigator, opened from a reel's page. The reel
-  /// is in [editReelParameter] (`?reel=ID`); [editClipsParameter]
-  /// (`&clips=ID,ID,…`) preselects clips (the ⋮ menu's Edit video), and
-  /// [editAddParameter] (`&add=1`) is the add mode of Task 11. Back returns to
-  /// the reel's page.
+  /// Picking clips to add to a reel's editing folder (Phase 8, D-126, D-128;
+  /// add mode only since D-192): full screen above the tab shell, on the root
+  /// navigator, opened from a reel's page. The reel is in [editReelParameter]
+  /// (`?reel=ID`) and [editAddParameter] (`&add=1`) must be there. Back
+  /// returns to the reel's page.
   static const editSelect = '/edit';
 
   /// The name of the reel id in the picking screen's location, and in the
@@ -155,7 +154,8 @@ abstract final class Routes {
   static const editReelParameter = 'reel';
 
   /// The name of the clip ids (comma separated, in shooting order) in the
-  /// picking screen's, the space screen's and the ready screen's locations.
+  /// space screen's and the ready screen's locations (the picking screen's
+  /// location had it until D-192; one that still does shows the reel).
   static const editClipsParameter = 'clips';
 
   /// The name of the add-mode flag (`1`) in the picking screen's location.
@@ -168,19 +168,11 @@ abstract final class Routes {
   /// The name of the copy job's id in the progress screen's location.
   static const copyJobParameter = 'job';
 
-  /// The picking screen for reel [reelId], with [clipIds] ticked, or in add
-  /// mode when [add] is true.
-  static String editSelectOf(
-    int reelId, {
-    Iterable<int> clipIds = const [],
-    bool add = false,
-  }) => Uri(
+  /// The picking screen for reel [reelId], in add mode (D-128, D-129): the
+  /// only mode it has since D-192.
+  static String editAddOf(int reelId) => Uri(
     path: editSelect,
-    queryParameters: {
-      editReelParameter: '$reelId',
-      if (clipIds.isNotEmpty) editClipsParameter: clipIds.join(','),
-      if (add) editAddParameter: '1',
-    },
+    queryParameters: {editReelParameter: '$reelId', editAddParameter: '1'},
   ).toString();
 
   static final RegExp _plainDigits = RegExp(r'^[0-9]+$');
