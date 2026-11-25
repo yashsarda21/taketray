@@ -82,8 +82,9 @@ const Duration _aheadPoll = Duration(milliseconds: 200);
 ///   picking (sticky from clip to clip, owner ruling D-91): "Pick reels",
 ///   All reels and Cancel, the reels picked in All reels join the grid, and
 ///   "Add to {n} reels & next" under it. Its height is measured after layout
-///   and places the rest. A tap on its blank parts goes through to the clip
-///   (plays or pauses it) and never tags.
+///   and places the rest. A tap on its blank top (the scrim, the scrub row,
+///   the header) goes through to the clip (plays or pauses it) and never
+///   tags.
 /// - **The rail**, at the end, 4 dp above the dock (not while picking):
 ///   **Skip** and **Same** (Same as previous, with the reel names; off until
 ///   something is tagged).
@@ -556,21 +557,29 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
               ),
             ),
           // The dock's floor, measured: the same dock with one row of
-          // reels, laid out but never painted, hit or announced.
+          // reels, laid out but never painted, hit, announced, focused or
+          // animated (an Offstage child can still take keyboard focus), and
+          // with a scrubber that does not follow the clip, so a position
+          // update does not rebuild it.
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
             child: Offstage(
-              child: _ReportSize(
-                onSize: _floorLaidOut,
-                child: _dock(
-                  context,
-                  state,
-                  summaries,
-                  cache,
-                  player,
-                  oneRow: true,
+              child: ExcludeFocus(
+                child: TickerMode(
+                  enabled: false,
+                  child: _ReportSize(
+                    onSize: _floorLaidOut,
+                    child: _dock(
+                      context,
+                      state,
+                      summaries,
+                      cache,
+                      player,
+                      oneRow: true,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -905,7 +914,8 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       scrub: clip == null
           ? null
           : ClipScrubber(
-              controller: player,
+              // The measuring copy has the same height without a listener.
+              controller: oneRow ? null : player,
               clip: clip,
               large: long,
               hint: long ? l10n.tagPlayerDragToSkim : null,
@@ -968,6 +978,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
       children: [
         _ReportSize(
           onSize: _skipLaidOut,
+          natural: true,
           child: TtRailButton(
             icon: Symbols.redo_rounded,
             label: l10n.tagPlayerSkip,
@@ -977,6 +988,7 @@ class _TagPlayerScreenState extends ConsumerState<TagPlayerScreen> {
         ),
         _ReportSize(
           onSize: _sameLaidOut,
+          natural: true,
           child: TtRailButton(
             icon: Symbols.repeat_rounded,
             label: l10n.tagRailSame,
@@ -2056,34 +2068,45 @@ class _CantPlay extends StatelessWidget {
 /// Tells [onSize] the size [child] was laid out at, after the frame, each
 /// time it changes: the dock's height and the rail's width place the rest of
 /// the player (D-181).
+///
+/// With [natural] the height told is the child's own, whatever it was
+/// stretched to: the rail's buttons, which a row makes as tall as the
+/// taller, must still tell the heights a column would give them.
 class _ReportSize extends SingleChildRenderObjectWidget {
-  const new({required this.onSize, required super.child});
+  const new({required this.onSize, required super.child, this.natural = false});
 
   final ValueChanged<Size> onSize;
+  final bool natural;
 
   @override
   RenderObject createRenderObject(BuildContext context) =>
-      _RenderReportSize(onSize);
+      _RenderReportSize(onSize, natural: natural);
 
   @override
   void updateRenderObject(
     BuildContext context,
     _RenderReportSize renderObject,
   ) {
-    renderObject.onSize = onSize;
+    renderObject
+      ..onSize = onSize
+      ..natural = natural;
   }
 }
 
 class _RenderReportSize extends RenderProxyBox {
-  _RenderReportSize(this.onSize);
+  _RenderReportSize(this.onSize, {required this.natural});
 
   ValueChanged<Size> onSize;
+  bool natural;
   Size? _told;
 
   @override
   void performLayout() {
     super.performLayout();
-    final now = size;
+    final child = this.child;
+    final now = natural && child != null
+        ? Size(size.width, child.getMaxIntrinsicHeight(size.width))
+        : size;
     if (now == _told) return;
     _told = now;
     // Not during layout: the owner rebuilds with it.

@@ -503,6 +503,7 @@ First the controller runs the Patrol flows (see "Running `tagging_test.dart`" be
     4. The first and last clips spring back.
     5. A sideways swipe does nothing.
     6. By eye there is **no stutter while swiping** (60 frames a second).
+    7. **A reverse fling.** Drag up past a finger's width (64 dp), then flick back down before you lift: today it still goes on to the next clip (Instagram Reels cancels it). Keep or change?
 15. **2x text.** Set the font size to the largest: the dock is one column and scrolls, its header wraps, and the rail keeps its place.
 16. **TalkBack.** The focus order is: Close, Previous, the title, Next, Mute, the clip, Skip, Same, then the dock (the scrub bar, Pick several, All reels, the reels, New reel). ‹ and › at the ends of the session are announced as unavailable. Same reads "Same as previous: nothing tagged yet" before anything is tagged.
 17. **Remove animations** (Settings › Accessibility › Visibility enhancements): clips crossfade with no travel.

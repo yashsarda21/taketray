@@ -9,7 +9,8 @@ import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart'
     show OrdinalSortKey, RenderParagraph, SemanticsAction, SemanticsNode;
-import 'package:flutter/services.dart' show SystemUiOverlayStyle;
+import 'package:flutter/services.dart'
+    show LogicalKeyboardKey, SystemUiOverlayStyle;
 import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderScope;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
@@ -3206,6 +3207,156 @@ void main() {
 
       expect(find.byType(TtStageArrow), findsNothing);
       expect(find.text('Other reels'), findsNothing);
+    });
+
+    group('the offstage copy of the dock (its floor)', () {
+      /// The copy that measures the dock's floor: the dock with no key,
+      /// under an Offstage.
+      final copy = find.byWidgetPredicate(
+        (w) => w is TtReelDock && w.key == null,
+        skipOffstage: false,
+        description: 'the offstage dock copy',
+      );
+
+      bool inCopy(BuildContext? context) {
+        var found = false;
+        context?.visitAncestorElements((e) {
+          final w = e.widget;
+          if (w is Offstage && w.offstage) found = true;
+          return !found;
+        });
+        return found;
+      }
+
+      testApp('Tab never lands on the copy, only on the dock', (tester) async {
+        await newReel(tester, 'Goa');
+        await newReel(tester, 'London');
+        await newReel(tester, 'Sunsets');
+        await waiting(tester, 3);
+        await open(tester);
+        expect(copy, findsOneWidget);
+
+        var inRealDock = 0;
+        final seen = <FocusNode>{};
+        // More presses than there are stops: Tab goes round the screen.
+        for (var i = 0; i < 60; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+          final node = FocusManager.instance.primaryFocus;
+          if (node == null) continue;
+          expect(
+            inCopy(node.context),
+            isFalse,
+            reason: 'press $i landed on the offstage copy: ${node.context}',
+          );
+          if (seen.add(node) && !inCopy(node.context)) {
+            node.context?.visitAncestorElements((e) {
+              if (e.widget.key == const ValueKey('tag-dock')) {
+                inRealDock++;
+                return false;
+              }
+              return true;
+            });
+          }
+        }
+        // Not vacuous: the real dock's own stops were reached.
+        expect(inRealDock, greaterThan(3));
+      });
+
+      testApp("its tickers are off, the dock's are on", (tester) async {
+        await newReel(tester, 'Goa');
+        await newReel(tester, 'London');
+        await waiting(tester, 3);
+        await open(tester);
+
+        expect(TickerMode.valuesOf(tester.element(copy)).enabled, isFalse);
+        expect(TickerMode.valuesOf(tester.element(dock)).enabled, isTrue);
+      });
+
+      testApp('a position update of the playing clip rebuilds the dock and '
+          'its scrubber, never the copy', (tester) async {
+        await newReel(tester, 'Goa');
+        await newReel(tester, 'London');
+        await waiting(tester, 3);
+        await open(tester);
+
+        final controller = tester
+            .widget<VideoPlayer>(find.byType(VideoPlayer).first)
+            .controller;
+        var real = 0;
+        var inTheCopy = 0;
+        debugOnRebuildDirtyWidget = (element, _) {
+          if (inCopy(element)) {
+            inTheCopy++;
+          } else if (element.widget is TtScrubBar) {
+            real++;
+          }
+        };
+        addTearDown(() => debugOnRebuildDirtyWidget = null);
+
+        controller.value = controller.value.copyWith(
+          position: const Duration(seconds: 4),
+        );
+        await tester.pump();
+        controller.value = controller.value.copyWith(
+          position: const Duration(seconds: 5),
+        );
+        await tester.pump();
+        debugOnRebuildDirtyWidget = null;
+
+        expect(real, greaterThan(0), reason: 'the real scrubber follows');
+        expect(inTheCopy, 0, reason: 'the copy is not rebuilt');
+        // The copy still measures: its height is the dock's floor.
+        expect(tester.getSize(copy).height, greaterThan(0));
+      });
+    });
+
+    testApp('the rail goes back to a column when room returns after a row, '
+        'at the same height a fresh column would (no sticky heights)', (
+      tester,
+    ) async {
+      await newReel(tester, 'Goa');
+      await waiting(tester, 3);
+      await open(tester);
+      // Same names the reel of the last tag: taller than Skip.
+      await tagInto(tester, 'Goa');
+      final skipHeight = tester.getSize(skip).height;
+      final sameHeight = tester.getSize(same).height;
+      expect(sameHeight, greaterThan(skipHeight + 4));
+      final column = skipHeight + TtMetrics.railGap + sameHeight;
+      final floor = tester
+          .getSize(
+            find.byWidgetPredicate(
+              (w) => w is TtReelDock && w.key == null,
+              skipOffstage: false,
+            ),
+          )
+          .height;
+      final topHeight = tester.getSize(top).height;
+      // The height at which a column just fits between the top and the
+      // dock's floor, less the 4 dp over the dock (1x: no snack room).
+      final fits = column + topHeight + floor + TtMetrics.railAboveDock;
+
+      bool isRow() => tester.getRect(skip).top == tester.getRect(same).top;
+
+      Future<void> resize(double height) async {
+        tester.view.physicalSize = Size(360, height);
+        await settleApp(tester);
+        expect(tester.takeException(), isNull);
+      }
+
+      expect(isRow(), isFalse, reason: 'a column on the tall phone');
+      await resize(fits - 1);
+      expect(isRow(), isTrue, reason: 'a row where the column is 1 dp short');
+      // Room returns by 1 dp: the column fits, and the row's stretched
+      // heights must not hide that.
+      await resize(fits + 1);
+      expect(isRow(), isFalse, reason: 'a column again');
+      expect(tester.getSize(skip).height, skipHeight);
+      expect(tester.getSize(same).height, sameHeight);
+      // And down again: no hysteresis either way.
+      await resize(fits - 1);
+      expect(isRow(), isTrue);
     });
   });
 

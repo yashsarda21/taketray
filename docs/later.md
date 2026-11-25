@@ -45,6 +45,9 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
   - **T10:** the All reels sheet repeats the package's chip-grid layout (`chipGridRows`; export it or a `TtChipGrid` and use it in the sheet); the widgetbook knob for All reels hides a dock-header overflow under about 335 dp wide (outside the 360 dp floor, a component fix: a `Wrap` when the actions do not fit); the rail's first-frame size (`_railSize`) starts at 64 x 64 and is corrected one frame later (it is 138 tall).
   - **T11:** a reverse fling past 64 dp still goes on (the brief and the handoff say "distance, or a fling the same way"; Reels cancels it, so the owner judges on the phone); the completion-callback guard survives its mutant (the screen-level check backs it).
   - **T12:** the sideways-fling check of the Patrol flow also passes if the fling never reached the player (the host test proves the same gesture moves it vertically); the chevrons ‹ › are in no Patrol flow (hand checks on the S24 cover them).
+  - **T11 (dropped in the review, tracked in the final review):** a hold that finishes while a finger is dragging moves the session, and the release then goes on from the new clip, so the clip the tag brought flashes past (nothing is lost: a swipe is navigation only; `_start` in the tag player does not check that the stage is idle).
+  - **T11 (dropped in the review, tracked in the final review):** no test pins that a vertical drag that starts at the very left or right edge still swipes the stage.
+  - **T5 (not reproduced):** `reel_header` golden failed once in a first `tool/check` run and never again; if it returns in CI, look at the golden's fonts or timing first.
 
 ## Phase 10 (onboarding and settings)
 
