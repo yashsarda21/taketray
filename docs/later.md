@@ -20,6 +20,33 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
     - the merged-manifest INTERNET check;
     - wording updates (README, Play listing, website, privacy policy).
 
+## Next: sending clips to an editor in fewer taps (owner, 2026-11-25)
+
+- **Build D-185.**
+  - **Spec:** `design/handoff/edit-flow.md`.
+  - **Reference:** hub screens 8 (choosing states), 19 (editor sheet) and 18 (add mode only).
+  - **Covers:**
+    - Edit video straight to the editor sheet with every clip, and Choose clips instead;
+    - `TtSelectionDock` with Edit {n} clips;
+    - Select all / Clear in the top bar, with the ⋮ removed;
+    - the last-used editor first;
+    - the picking screen kept for add mode only.
+  - Independent of Phase 12's player work (no shared files).
+
+## Next: the calm Home (owner, 2026-11-25)
+
+- **Build D-186 and D-187 together.**
+  - **Spec:** `design/handoff/home-calm-grid.md`.
+  - **Reference:** hub screen 6 (its last state is the previous Home).
+  - **Covers:**
+    - the compact Shooting mode card (no strip, no separate To tag banner);
+    - "+ New" in the header instead of the FAB;
+    - quiet tabs;
+    - the calm reel card (no overlays, no reference badge button);
+    - the scroll and press motion;
+    - goldens and widget tests.
+  - **Phase 12:** its glass work (`TtGlassFill`) on `phase-12-ui-refresh` touches `TtShootingModeCard` and `TtReelCard`, so build this on top of Phase 12.
+
 ## Phase 4
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.

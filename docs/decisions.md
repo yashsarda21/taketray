@@ -2867,3 +2867,69 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Mutants killed: `dockChip` without the dock (the All reels test finds two), `sheetChip` without the sheet (the sheet test and the dock test), `dockAction` without the dock (the picking test finds the sheet's Done), `stageCentre` on the dock's top (both position tests).
 - First phone run, fixed: the flow "swipe and All reels" timed out waiting for the sheet to close, because the step waited only until the Ready reel's chip in the sheet existed (from the first frame of the sheet sliding in) and `tester.tap` on the phone, where frames run between the finger's down and up, missed a chip that was still moving (the app closes the sheet on that tap, `all_reels_sheet.dart` `_closeThen`; the host test passes because fake time hides the slide). The flows' `_tap` now waits until the target can be hit (`canBeTapped`) and its rectangle (`tapTarget`) is the same on two frames in a row (`waitForStill`) before it taps, for the sheet's chips and the dock's after Pick several alike; tested with the sheet's animation on and a mutant of each helper.
 - The run on the S24 (Task 14, `tool/patrol test -d RZCY80PHWCZ -t patrol_test/tagging_test.dart`, then the debug build, `install -r` and `pm clear app.taketray.dev`) is done: its results are the "Phone results" line under the Date above.
+
+### D-185 · Sending clips to an editor in fewer taps: Edit video sends every clip, holding a clip gives an "Edit {n} clips" bar, the last-used editor comes first (design, not built yet)
+- Date: 2026-11-25 · Phase: design (to be built next) · Changes the entry points of D-126 and the reel page's choosing (D-88); add mode (D-128, D-129) stays · Design: hub screens 8, 18 and 19, `design/prototype/assets/editflow.js` and `editflow.css`, handoff `design/handoff/edit-flow.md` · Numbered after Phase 12's D-172 to D-184 on `phase-12-ui-refresh`
+- What the owner said: editing clips and sending them to editing apps is annoying. You have to use the ⋮ menu, select the clips, then edit; it should be possible to hold clips to select them and then have an edit button.
+- What was wrong:
+  - Edit video opened a separate picking screen with nothing ticked (pick, Continue, then the editor).
+  - Holding a clip hid Edit in the selection bar's ⋮ menu, which opened the same picking screen again, so clips were picked twice.
+- Decision:
+  1. **Edit video** opens the editor sheet at once with every live clip of the reel ("Edit all {n} clips in…").
+     - **Choose clips instead** in the sheet starts choosing on the reel page, with nothing chosen and a hint.
+  2. **Choosing on the reel page** (hold a clip, or from the sheet):
+     - The top bar has Close, the count and Select all / Clear.
+     - A new bottom bar (`TtSelectionDock`) has Share, Add to, Move and Remove with labels, and a large **Edit {n} clips** (with the length) that opens the editor sheet.
+     - The ⋮ menu goes.
+     - During a VN editing session the bar says to tap Done editing first instead of offering Edit (R1).
+  3. **The editor sheet** puts the editor used last first, marked "Last used" (`lastEditor` stored in settings).
+  4. **The picking screen** remains only in add mode, for adding clips to a VN edit.
+- Why:
+  - The most common send, a whole reel to the usual editor, becomes two taps.
+  - Choosing some clips happens where the clips already are, once.
+  - The main action is a big labelled button, not a ⋮ item.
+- Alternatives considered:
+  - keeping the picking screen but starting it with every clip ticked (still an extra screen);
+  - putting Edit as an icon in the top bar (small and unlabelled, far from the thumb);
+  - sending straight to the last-used editor with no sheet (too easy to send to the wrong app, and it hides VN's copy cost).
+- Consequences:
+  - `reel_detail_screen.dart` (selection bar, new dock, Edit video), `reel_selection.dart` (`fromSheet`), `editor_sheet.dart` (title, Choose clips instead, last used) and `edit_select_screen.dart` (add mode only) change.
+  - taketray_ui gains `TtSelectionDock`.
+  - `docs/flow.md` is updated when it is built.
+
+### D-186 · Home: no "N clips to tag" strip on the Shooting mode card; the To tag tab's badge carries the count (design, not built yet)
+- Date: 2026-11-25 · Phase: design (small; build with the next Home work) · Changes D-90's card (the strip slot) · Design: hub screen 6; three cleaner Home options for the owner to compare are on screen 46 (`design/prototype/assets/home2.js`, not decided)
+- What the owner said: "we can remove the X clips to tag just below add earlier video."
+- Decision:
+  - `shooting_mode_section.dart` stops passing `toTagStrip` to `TtShootingModeCard`. The count of waiting clips is on the To tag tab's badge (wired in Phase 12, D-184 on `phase-12-ui-refresh`).
+  - When Shooting mode is off and clips are still waiting, the To tag banner on Home stays as it is.
+  - If nothing else uses `toTagStrip` / `TtCardRowKind.strip`, remove them with their goldens and the `toTagStrip*` strings.
+- Why: the strip repeated the tab's badge and made the card the tallest thing on Home.
+
+### D-187 · Home becomes the calm grid: a compact Shooting mode card, "+ New" in the header, quiet tabs, calm reel cards (design, not built yet)
+- Date: 2026-11-25 · Phase: design (to be built next, with D-186) · Changes the Reels tab's layout (D-90's card, the FAB and the reel card); amends D-186 (the To tag banner also goes) · Design: hub screen 6 (all states; the last is the previous Home), `design/prototype/assets/home2.js` and `home2.css`, handoff `design/handoff/home-calm-grid.md`
+- What the owner said: Home "is nice as of now", but asked for something "clean to use and smooth to feel"; if nothing was better, the current one would stay.
+- Options shown (all working in the prototype): **A · Calm grid**, **B · Shelves** (rows by status, swiped sideways) and **C · List** (rows grouped by status). The owner chose **A** and dropped B and C.
+- Decision:
+  1. **The Shooting mode card is compact.**
+     - On: one row (REC dot, "Shooting", "Since {time}", switch), then Open camera and quiet chips for References and Earlier videos.
+     - Off: one row whose line says how many clips are still to tag.
+     - The separate To tag banner goes too (amends D-186); the tab's badge carries the count.
+  2. **New reel** is a "+ New" tonal pill in the header; no FAB over the reels.
+  3. **Filters** become quiet tabs, with the chosen one filled.
+  4. **Reel cards** show the cover alone, then the name, one status mark (icon + word), the details, and a line only for In VN, missing clips or references. The reference badge button goes; the card's accessible name carries it.
+  5. **Smooth to feel:**
+     - the large title collapses as you scroll;
+     - cards press to 98 %;
+     - tabs crossfade;
+     - the card animates its height on the switch;
+     - covers have fixed sizes.
+- Why:
+  - The owner chose it.
+  - It keeps the familiar grid and the big covers while removing about half of what's on screen: the card's height, the strip and banner, the FAB, and the overlays on covers.
+- Alternatives considered:
+  - B, which is the most visual but hides reels off to the side;
+  - C, which shows the most at once but makes the covers small.
+- Consequences:
+  - `reels_screen.dart`, `shooting_mode_section.dart`, `TtShootingModeCard` and `TtReelCard` change, and tabs replace the chips.
+  - `docs/flow.md` is updated when it is built.

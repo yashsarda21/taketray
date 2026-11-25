@@ -25,9 +25,10 @@
     return `<div class="banner info">${icon('lock')}<div class="grow"><b>Manual mode</b><span>New clips aren't found automatically.</span></div>${h.btn({ label: 'Allow full access', kind: 'text', a: 'allowAccess' })}</div>`;
   }
 
+  RH.accessBanner = accessBanner;
+
   function shootingCard(s, u) {
     const on = s.shooting.on;
-    const n = s.toTag.length;
     if (!on) {
       return `<section class="shoot ${u.hint === 'shoot' ? 'hint' : ''}" aria-label="Shooting mode"><div class="top"><span class="ico">${icon('videocam', 'fill')}</span><div class="txt"><b>Shooting mode</b><span>Off. Turn on before you start filming, and new videos wait in To tag.</span></div>${h.sw(false, { a: 'toggleShoot', label: 'Shooting mode' })}</div></section>`;
     }
@@ -39,7 +40,7 @@
       <div class="acts">${h.btn({ label: 'Open camera', ic: 'videocam', kind: 'filled', cls: 'camb', a: 'openCamera' })}</div>
       ${refN ? `<button class="refrow tap" data-a="openRefsSheet" aria-label="References, ${refN}, from your Recording reels">${icon('link')}<span class="grow"><b>References · ${refN}</b><span>From ${RH.fmt.n(RH.recRefs(s).length, 'Recording reel')}</span></span>${icon('chevron_right')}</button>` : ''}
       ${s.access === 'full' && !s.earlierUsed ? `<button class="refrow tap" data-a="openEarlier" data-from="card" aria-label="Add earlier videos, shot before Shooting mode was on">${icon('history')}<span class="grow"><b>Add earlier videos</b><span>Shot before Shooting mode was on</span></span>${icon('chevron_right')}</button>` : ''}
-      ${n ? `<button class="strip tap" data-a="tab" data-tab="totag">${icon('sell', 'fill')}<span class="grow">${fmt.n(n, 'clip')} to tag</span><span>Tag now</span>${icon('arrow_forward')}</button>` : ''}</section>`;
+      </section>`; // No "N clips to tag" strip (owner, 25 Nov 2026, D-186): the To tag tab's badge carries the count.
   }
 
   /** Extended FAB; sits above the navigation bar on tab screens and lifts over a snackbar. */
