@@ -595,8 +595,22 @@ Finder _button(String label) => find.byWidgetPredicate(
   description: 'TtButton "$label"',
 );
 
-/// A raw tap, then one frame: for buttons whose timing does not matter.
+/// A raw tap, then one frame, on a target that is there, can be hit and has
+/// stopped moving. A sheet's chip exists from the first frame of the sheet
+/// sliding in, and on the phone the frames run between the finger's down and
+/// up, so a tap on a chip that is still moving is lost (the All reels sheet
+/// did not close). Waits on conditions, not on time.
 Future<void> _tap(PatrolIntegrationTester $, Finder finder) async {
+  await waitFor(
+    $,
+    () => canBeTapped(finder),
+    what: 'a tap target that can be hit: $finder',
+  );
+  await waitForStill(
+    $,
+    () => [tapTarget($.tester, finder)],
+    what: 'the tap target to stop moving: $finder',
+  );
   await $.tester.tap(finder.first);
   await $.tester.pump();
 }

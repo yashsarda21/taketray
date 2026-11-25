@@ -61,6 +61,7 @@ void main() {
     WidgetTester tester, {
     int clips = 3,
     double textScale = 1,
+    bool animations = false,
   }) async {
     tester.view.padding = const FakeViewPadding(top: 24);
     tester.view.viewPadding = const FakeViewPadding(top: 24);
@@ -75,6 +76,7 @@ void main() {
         holdTimerProvider.overrideWithValue(holds.call),
       ],
       textScale: textScale,
+      animations: animations,
       brightness: Brightness.dark,
       settle: false,
     );
@@ -293,6 +295,71 @@ void main() {
       expect(title(tester), '1 of 3');
     });
   });
+  group('tapTarget', () {
+    testApp('is null while nothing is found, then the rect of the first '
+        'match', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Rome', status: ReelStatus.ready);
+      await open(tester);
+
+      expect(tapTarget(tester, sheetChip('Rome')), isNull);
+      expect(canBeTapped(sheetChip('Rome')), isFalse);
+
+      await tester.tap(dockAction('All reels'));
+      await settleApp(tester);
+      expect(
+        tapTarget(tester, sheetChip('Rome')),
+        tester.getRect(sheetChip('Rome')),
+      );
+      expect(canBeTapped(sheetChip('Rome')), isTrue);
+      // The dock's own Goa chip is there, and under the sheet's scrim.
+      expect(dockChip('Goa'), findsOneWidget);
+      expect(canBeTapped(dockChip('Goa')), isFalse);
+      // More than one match: the first, as the tap takes.
+      final goa = find.byWidgetPredicate(
+        (w) => w is TtReelChip && w.name == 'Goa',
+      );
+      expect(goa, findsNWidgets(2));
+      expect(tapTarget(tester, goa), tester.getRect(goa.first));
+    });
+
+    testApp('moves while the All reels sheet slides in, and is still once '
+        'it has settled (a tap in between would miss)', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Rome', status: ReelStatus.ready);
+      await open(tester, animations: true);
+
+      await tester.tap(dockAction('All reels'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      final early = tapTarget(tester, sheetChip('Rome'));
+      expect(early, isNotNull, reason: 'the chip exists from the first frame');
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(
+        tapTarget(tester, sheetChip('Rome')),
+        isNot(early),
+        reason: 'it is still sliding: two frames, two places',
+      );
+
+      await settleApp(tester);
+      final rest = tapTarget(tester, sheetChip('Rome'));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(tapTarget(tester, sheetChip('Rome')), rest);
+    });
+
+    testApp('moves with the dock when Pick several grows it', (tester) async {
+      await newReel(tester, 'Goa');
+      await newReel(tester, 'Lisbon');
+      await open(tester);
+      final before = tapTarget(tester, dockChip('Goa'));
+
+      await tester.tap(dockAction('Pick several'));
+      await settleApp(tester);
+
+      expect(tapTarget(tester, dockChip('Goa')), isNot(before));
+    });
+  });
+
   group('playerLayout', () {
     testApp('is the same on every read at rest, and as a list of rects of '
         'the dock and the rail', (tester) async {

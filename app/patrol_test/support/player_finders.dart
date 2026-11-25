@@ -67,3 +67,16 @@ List<Rect?> playerLayout(WidgetTester tester) {
       finder.evaluate().isEmpty ? null : tester.getRect(finder);
   return [of(_dock), of(find.byKey(const ValueKey('tag-rail')))];
 }
+
+/// Where the first widget [finder] finds is now (null while there is none),
+/// to wait until it has stopped moving before a tap that is aimed at it:
+/// `waitForStill` with this in a list as its reading. A sheet's chip exists
+/// from the first frame of the sheet sliding in, and a tap on a live phone
+/// (frames run between the finger's down and up) misses a chip that is still
+/// moving. Asked of a screen that is up.
+Rect? tapTarget(WidgetTester tester, Finder finder) =>
+    finder.evaluate().isEmpty ? null : tester.getRect(finder.first);
+
+/// A touch at the middle of the first widget [finder] finds would reach it
+/// (nothing, a scrim or a sliding sheet is not over that spot).
+bool canBeTapped(Finder finder) => finder.hitTestable().evaluate().isNotEmpty;
