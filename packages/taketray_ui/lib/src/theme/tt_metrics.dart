@@ -1106,98 +1106,150 @@ abstract final class TtMetrics {
   // proto.css: .ref-add { border: 1.5px dashed … }
   static const double addReferenceDashGap = 3;
 
-  // ---- Shooting mode card ----
+  // ---- Shooting mode card (D-187, D-193) ----
+
+  /// Corner radius of the Shooting mode card (not `tt.radii.xxl`, which is 28).
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px;
+  // border-radius: 24px; overflow: hidden }
+  static const double shootingCardRadius = 24;
+
+  /// Padding at the start of the off card.
+  // home2.css:9: .h2-shoot.off { display: flex; align-items: center;
+  // gap: 12px; padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingStart = 12;
+
+  /// Padding at the top and the bottom of the off card.
+  // home2.css:9: .h2-shoot.off { … padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingVertical = 10;
+
+  /// Padding at the end of the off card (the switch has its own room).
+  // home2.css:9: .h2-shoot.off { … padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingEnd = 6;
+
+  /// Padding on every side of the on card.
+  // home2.css:10: .h2-shoot.on { display: flex; flex-direction: column;
+  // gap: 12px; padding: 12px; background: #000; color: #fff }
+  static const double shootingOnPadding = 12;
+
+  /// Gap between the rows of the on card (row 1, then Open camera and the
+  /// chips).
+  // home2.css:10: .h2-shoot.on { … gap: 12px; padding: 12px; … }
+  static const double shootingRowGap = 12;
+
+  /// Gap between the tile, the texts and the switch in row 1.
+  // home2.css:18: .h2-row { display: flex; align-items: center; gap: 12px }
+  // and :9 (the off card's own gap: 12px)
+  static const double shootingTopGap = 12;
 
   /// Side of the Shooting mode card's icon tile.
-  // proto.css: .shoot .ico { width: 48px; height: 48px }
-  static const double shootingIconSize = 48;
+  // home2.css:19: .h2-ico { position: relative; flex: none; width: 40px;
+  // height: 40px; border-radius: 14px; … }
+  static const double shootingIconSize = 40;
 
   /// Corner radius of the Shooting mode card's icon tile.
-  // proto.css: .shoot .ico { border-radius: 14px }
+  // home2.css:19: .h2-ico { … border-radius: 14px; … }
   static const double shootingIconRadius = 14;
 
-  /// Gap between the icon tile, the texts and the switch.
-  // proto.css: .shoot .top { gap: 14px }
-  static const double shootingTopGap = 14;
+  /// Size of the videocam glyph in the icon tile.
+  // home2.css:20: .h2-ico .ms { font-size: 22px }
+  static const double shootingIconGlyphSize = 22;
 
-  /// Gap between the title and the subtitle.
-  // proto.css: .shoot .txt span { margin-top: 2px }
-  static const double shootingSubtitleGap = 2;
-
-  /// Distance of the record dot from the icon tile's top and end edges.
-  // proto.css: .shoot .ico .recdot { right: 5px; top: 5px }
-  static const double shootingRecDotInset = 5;
+  /// How far the record dot sits outside the icon tile's top end corner.
+  // home2.css:21: .h2-ico .recdot { position: absolute; top: -2px;
+  // right: -2px; box-shadow: 0 0 0 2px #000 }
+  static const double shootingRecDotOutset = 2;
 
   /// Opacity of the backdrop picture on the "on" card.
-  // tt-style.css: .style-tt .shoot.on .shoot-media img { opacity: .62 }
-  static const double shootingBackdropOpacity = 0.62;
+  // home2.css:17: .h2-media img { width: 100%; height: 100%;
+  // object-fit: cover; opacity: .55 }
+  static const double shootingBackdropOpacity = 0.55;
 
   /// Opacity of white in the icon tile on the "on" card.
-  // tt-style.css: .shoot.on .ico { background: rgba(255,255,255,.16) } and
-  // proto.css: .shoot.on .ico { … fg 16 % }
+  // home2.css:13: .h2-shoot.on .h2-ico { background: rgba(255, 255, 255, .16);
+  // color: #fff }
   static const double shootingIconFillOpacity = 0.16;
 
-  /// Blur behind the icon tile on the "on" card.
+  /// Blur behind the icon tile on the "on" card (kept from Phase 12; the
+  /// prototype's `backdrop-filter: blur(8px)` is in tt-style.css).
   // tt-style.css: .style-tt .shoot.on .ico { backdrop-filter: blur(8px) }
   static const double shootingIconBlur = 8;
 
   /// Opacity of white in the subtitle on the "on" card.
-  // tt-style.css: .shoot.on .txt span { color: rgba(255,255,255,.85) }
+  // home2.css:15: .h2-shoot.on .h2-txt span { color: rgba(255, 255, 255, .85) }
   static const double shootingSubtitleOpacity = 0.85;
 
   /// Angle of the brand tint over the backdrop, in degrees.
-  // tt-style.css: .style-tt .shoot.on::before { linear-gradient(160deg, … }
+  // home2.css:11: .h2-shoot.on::before { … background:
+  // linear-gradient(160deg, rgba(36, 49, 66, .86),
+  // rgba(36, 49, 66, .4) 60%, rgba(0, 0, 0, .55)) }
   static const double shootingTintAngle = 160;
 
   /// Opacity of the brand colour at the start of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 78% 0% … }
-  static const double shootingTintStartOpacity = 0.78;
+  // home2.css:11: … linear-gradient(160deg, rgba(36, 49, 66, .86), …
+  static const double shootingTintStartOpacity = 0.86;
 
   /// Opacity of the brand colour in the middle of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
-  static const double shootingTintMiddleOpacity = 0.35;
+  // home2.css:11: … rgba(36, 49, 66, .4) 60%, …
+  static const double shootingTintMiddleOpacity = 0.40;
 
   /// Where the middle of the tint is.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
-  static const double shootingTintMiddleStop = 0.55;
+  // home2.css:11: … rgba(36, 49, 66, .4) 60%, …
+  static const double shootingTintMiddleStop = 0.60;
 
   /// Opacity of black at the end of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … rgba(0,0,0,.55) 100% }
+  // home2.css:11: … rgba(0, 0, 0, .55)) }
   static const double shootingTintEndOpacity = 0.55;
 
-  // ---- Card rows (references row, to-tag strip) ----
+  /// Gap between Open camera and the chips, across and down.
+  // home2.css:25: .h2-row2 { display: flex; flex-wrap: wrap; gap: 8px }
+  static const double shootingRow2Gap = 8;
 
-  /// Least height of a references row.
-  // proto.css: .refrow { min-height: 56px }
-  static const double cardRowMinHeight = 56;
+  /// Visible height of the Open camera pill and of a chip.
+  // home2.css:26: .h2-cam { … min-height: 40px; … } and :28 .h2-chip
+  // { … min-height: 40px; … }
+  static const double shootingPillHeight = 40;
 
-  /// Least height of a to-tag strip.
-  // proto.css: .shoot .strip { min-height: 52px }
-  static const double cardStripMinHeight = 52;
+  /// Padding before the icon of the Open camera pill.
+  // home2.css:26: .h2-cam { … padding: 0 16px 0 12px; … }
+  static const double shootingCameraPaddingStart = 12;
 
-  /// Gap between the parts of a references row.
-  // proto.css: .refrow { gap: 12px }
-  static const double cardRowGap = 12;
+  /// Padding after the text of the Open camera pill.
+  // home2.css:26: .h2-cam { … padding: 0 16px 0 12px; … }
+  static const double shootingCameraPaddingEnd = 16;
 
-  /// Gap between the parts of a to-tag strip.
-  // proto.css: .shoot .strip { gap: 10px }
-  static const double cardStripGap = 10;
+  /// Gap between the icon and the text of the Open camera pill.
+  // home2.css:26: .h2-cam { display: inline-flex; align-items: center;
+  // gap: 6px; … }
+  static const double shootingCameraGap = 6;
 
-  /// Opacity of white in the top border of a references row.
-  // tt-style.css: .shoot.on .refrow { border-top-color: rgba(255,255,255,.18) }
-  static const double cardRowBorderOpacity = 0.18;
+  /// Size of the icon in the Open camera pill.
+  // home2.css:27: .h2-cam .ms { font-size: 20px }
+  static const double shootingCameraIconSize = 20;
 
-  /// Opacity of black behind a references row.
-  // tt-style.css: .style-tt .shoot.on .refrow { background: rgba(0,0,0,.25) }
-  static const double cardRowFillOpacity = 0.25;
+  /// Padding before the icon of a chip.
+  // home2.css:28: .h2-chip { … padding: 0 14px 0 10px; … }
+  static const double shootingChipPaddingStart = 10;
 
-  /// Blur behind a references row.
-  // tt-style.css: .style-tt .shoot.on .refrow { backdrop-filter: blur(6px) }
-  static const double cardRowBlur = 6;
+  /// Padding after the text of a chip.
+  // home2.css:28: .h2-chip { … padding: 0 14px 0 10px; … }
+  static const double shootingChipPaddingEnd = 14;
 
-  /// Opacity of the subtitle in a references row.
-  // proto.css: .refrow .grow > span { opacity: .85 }
-  static const double cardRowSubtitleOpacity = 0.85;
+  /// Gap between the icon and the text of a chip.
+  // home2.css:28: .h2-chip { display: inline-flex; align-items: center;
+  // gap: 6px; … }
+  static const double shootingChipGap = 6;
+
+  /// Size of the icon in a chip.
+  // home2.css:29: .h2-chip .ms { font-size: 18px }
+  static const double shootingChipIconSize = 18;
+
+  /// Opacity of white in a chip's glass.
+  // home2.css:28: .h2-chip { … background: rgba(255, 255, 255, .14); … }
+  static const double shootingChipFillOpacity = 0.14;
+
+  /// Blur behind a chip.
+  // home2.css:28: .h2-chip { … backdrop-filter: blur(10px); … }
+  static const double shootingChipBlur = 10;
 
   // ---- Stat strip ----
 

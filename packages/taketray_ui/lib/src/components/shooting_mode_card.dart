@@ -3,23 +3,56 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:taketray_ui/src/components/buttons.dart';
 import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/components/rec_dot.dart';
 import 'package:taketray_ui/src/components/selection.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
+import 'package:taketray_ui/src/tokens/tokens.g.dart';
 
-/// The Shooting mode card at the top of Home.
+/// A quiet chip on the "on" [TtShootingModeCard], under Open camera: a glyph
+/// and a [label] on frosted glass (References, Earlier videos).
 ///
-/// Off, it is a quiet hairline card: a videocam tile, a [title] and
-/// [subtitle], a switch, and below them up to two [rows] in the same quiet
-/// look (a hairline above each, the surface's text colours). On, it is a
-/// black "media hero": the [backdrop] (the latest clip) at 62 % under a
-/// brand tint, the tile with a pulsing record dot, the same texts in white,
-/// the inverted switch, a white [cameraLabel] button, and below them up to
-/// two [rows] (frosted bands) and the optional [toTagStrip] (use
-/// [TtCardRow]).
+/// The whole chip is one button named [semanticLabel].
+class TtShootingCardChip {
+  /// A chip showing [icon] and [label] that calls [onPressed] when tapped; a
+  /// screen reader says [semanticLabel] for it.
+  const new({
+    required this.icon,
+    required this.label,
+    required this.semanticLabel,
+    required this.onPressed,
+  });
+
+  /// The glyph before the label.
+  final IconData icon;
+
+  /// The chip's text, such as "References · 4".
+  final String label;
+
+  /// What a screen reader says for the chip, such as "References, 4, from
+  /// your Collecting reels".
+  final String semanticLabel;
+
+  /// Called when the chip is tapped.
+  final VoidCallback onPressed;
+}
+
+/// The Shooting mode card at the top of Home (D-187, D-193).
+///
+/// Off, it is one quiet row on `surfaceContainerLow`: a [title] over a
+/// [subtitle] after a videocam tile, and a switch. On, the same row (the tile
+/// frosted, a record dot on its corner, the texts white) sits on a black
+/// card, over the [backdrop] (the latest clip) at 55 % under a brand tint,
+/// and under it comes a [cameraLabel] pill (white) and up to two [chips] on
+/// frosted glass.
+///
+/// One widget tree serves both, so the switch (and the screen reader's focus
+/// on it) survives a toggle. The card's height animates over `medium2`; the
+/// black layer, the pill and the chips fade in over the same time. A chip's
+/// blur is the same from its first frame and only its fill and its content
+/// fade (a growing blur was lost on the S24, D-172). With reduced motion the
+/// size change is instant and the fades remain, over `short4`.
 ///
 /// A [backdrop] that fails to load leaves the plain black card.
 class TtShootingModeCard extends StatelessWidget {
@@ -34,22 +67,21 @@ class TtShootingModeCard extends StatelessWidget {
     this.backdrop,
     this.cameraLabel,
     this.onOpenCamera,
-    this.rows = const [],
-    this.toTagStrip,
+    this.chips = const [],
     super.key,
-  }) : assert(rows.length <= 2, 'The card has room for two rows');
+  }) : assert(chips.length <= 2, 'The card has room for two chips');
 
   /// Whether shooting mode is on.
   final bool on;
 
-  /// The headline, such as "Shooting mode" or "Shooting mode on".
+  /// The headline, such as "Shooting mode" or "Shooting".
   final String title;
 
   /// The line under the title (any length; it wraps).
   final String subtitle;
 
   /// What a screen reader says for the card as a whole, such as "Shooting
-  /// mode, on". The switch, the camera button and the rows keep their own
+  /// mode, on". The switch, the camera pill and the chips keep their own
   /// nodes inside it.
   final String semanticLabel;
 
@@ -62,162 +94,202 @@ class TtShootingModeCard extends StatelessWidget {
   /// The picture behind the "on" card, or null for plain black.
   final ImageProvider? backdrop;
 
-  /// The camera button's text; with [on], null hides the button.
+  /// The camera pill's text; with [on], null hides the pill.
   final String? cameraLabel;
 
-  /// Called when the camera button is tapped.
+  /// Called when the camera pill is tapped.
   final VoidCallback? onOpenCamera;
 
-  /// Up to two [TtCardRow]s, top to bottom: References, then Add earlier
-  /// videos. On, each is a frosted band with a hairline above it, above the
-  /// to-tag strip; off, each is a plain band under a hairline (D-90).
-  final List<TtCardRow> rows;
-
-  /// A [TtCardRow] with a trailing text, for clips waiting to be tagged (on
-  /// only).
-  final Widget? toTagStrip;
+  /// Up to two chips after the camera pill, left to right. Shown only when
+  /// the card is [on].
+  final List<TtShootingCardChip> chips;
 
   @override
-  Widget build(BuildContext context) => Semantics(
-    container: true,
-    explicitChildNodes: true,
-    label: semanticLabel,
-    child: _card(context),
-  );
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    // With reduced motion every `tt.motion` duration is zero, but the fades
+    // still run over `short4` (only movement goes, F6, D-193).
+    final fade = tt.motion.isReduced
+        ? TtMotionTokens.short4
+        : tt.motion.medium2;
+    return Semantics(
+      container: true,
+      explicitChildNodes: true,
+      label: semanticLabel,
+      child: TweenAnimationBuilder<double>(
+        // No begin: the first build is already at its end, so a card that
+        // starts on is on, not fading in.
+        tween: Tween<double>(end: on ? 1 : 0),
+        duration: fade,
+        curve: tt.motion.standard,
+        builder: (context, progress, _) => _card(context, progress),
+      ),
+    );
+  }
 
-  Widget _card(BuildContext context) {
+  /// The card with the "on" look [progress] of the way (0 off, 1 on).
+  Widget _card(BuildContext context, double progress) {
     final tt = context.tt;
     final scheme = context.scheme;
-    final corners = BorderRadius.circular(tt.radii.xxl);
     final label = cameraLabel;
-    final strip = toTagStrip;
+    final corners = BorderRadius.circular(TtMetrics.shootingCardRadius);
+    final hasSecondRow = on && (label != null || chips.isNotEmpty);
+    // The pill and the chips are 40 dp high inside a 48 dp tap target, so the
+    // target takes 4 dp of the gaps above and below it.
+    final slack = (tt.sizes.touchTarget - TtMetrics.shootingPillHeight) / 2;
 
-    final top = Padding(
-      // proto.css: .shoot .top { padding: 16px 12px 16px 16px }
-      padding: EdgeInsetsDirectional.only(
-        start: tt.spacing.m,
-        end: tt.spacing.s,
-        top: tt.spacing.m,
-        bottom: tt.spacing.m,
+    // home2.css:9 (off) and :10 (on)
+    final padding = !on
+        ? const EdgeInsetsDirectional.fromSTEB(
+            TtMetrics.shootingOffPaddingStart,
+            TtMetrics.shootingOffPaddingVertical,
+            TtMetrics.shootingOffPaddingEnd,
+            TtMetrics.shootingOffPaddingVertical,
+          )
+        : EdgeInsetsDirectional.fromSTEB(
+            TtMetrics.shootingOnPadding,
+            TtMetrics.shootingOnPadding,
+            TtMetrics.shootingOnPadding,
+            TtMetrics.shootingOnPadding - (hasSecondRow ? slack : 0),
+          );
+
+    final titleStyle = TextStyle.lerp(
+      tt.text.material.titleMedium!.copyWith(color: scheme.onSurface),
+      // home2.css:14: .h2-shoot.on .h2-txt b { font-weight: 800 }
+      tt.text.material.titleMedium!.copyWith(
+        color: tt.colors.onMedia,
+        fontWeight: FontWeight.w800,
       ),
-      child: Row(
-        spacing: TtMetrics.shootingTopGap,
+      progress,
+    );
+    final subtitleStyle = tt.text.material.bodySmall!.copyWith(
+      color: Color.lerp(
+        scheme.onSurfaceVariant,
+        tt.colors.onMedia.withValues(alpha: TtMetrics.shootingSubtitleOpacity),
+        progress,
+      ),
+    );
+
+    final rowOne = Row(
+      spacing: TtMetrics.shootingTopGap,
+      children: [
+        _IconTile(on: on, progress: progress),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(title, style: titleStyle),
+              Text(subtitle, style: subtitleStyle),
+            ],
+          ),
+        ),
+        TtSwitch(
+          value: on,
+          onChanged: onChanged,
+          semanticLabel: switchSemanticLabel,
+          inverted: on,
+        ),
+      ],
+    );
+
+    final body = ColoredBox(
+      color: scheme.surfaceContainerLow,
+      child: Stack(
         children: [
-          _IconTile(on: on),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              spacing: TtMetrics.shootingSubtitleGap,
-              children: [
-                Text(
-                  title,
-                  style: on
-                      ? tt.text.shootTitle.copyWith(color: tt.colors.onMedia)
-                      : tt.text.material.titleMedium,
-                ),
-                Text(
-                  subtitle,
-                  style: tt.text.material.bodyMedium!.copyWith(
-                    color: on
-                        ? tt.colors.onMedia.withValues(
-                            alpha: TtMetrics.shootingSubtitleOpacity,
-                          )
-                        : scheme.onSurfaceVariant,
-                  ),
-                ),
-              ],
+          // Always here, so the tree is the same on and off: it is invisible
+          // (and paints nothing) at progress 0.
+          Positioned.fill(
+            child: Opacity(
+              opacity: progress,
+              child: _OnLayer(backdrop: on ? backdrop : null),
             ),
           ),
-          TtSwitch(
-            value: on,
-            onChanged: onChanged,
-            semanticLabel: switchSemanticLabel,
-            inverted: on,
+          AnimatedPadding(
+            duration: tt.motion.medium2,
+            curve: tt.motion.emphasizedDecelerate,
+            padding: padding,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              spacing: TtMetrics.shootingRowGap - slack,
+              children: [
+                rowOne,
+                if (hasSecondRow)
+                  Wrap(
+                    spacing: TtMetrics.shootingRow2Gap,
+                    runSpacing: TtMetrics.shootingRow2Gap - 2 * slack,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (label != null)
+                        _CameraPill(
+                          label: label,
+                          progress: progress,
+                          onPressed: onOpenCamera,
+                        ),
+                      for (final chip in chips)
+                        _Chip(chip: chip, progress: progress),
+                    ],
+                  ),
+              ],
+            ),
           ),
         ],
       ),
     );
-
-    if (!on) {
-      // proto.css: .shoot, tt-style.css: .shoot:not(.on) { inset hairline }
-      return DecoratedBox(
-        decoration: ShapeDecoration(
-          color: scheme.surfaceContainerHigh,
-          shape: RoundedRectangleBorder(
-            borderRadius: corners,
-            side: BorderSide(color: tt.colors.hairline),
-          ),
-        ),
-        child: ClipRRect(
-          borderRadius: corners,
-          child: rows.isEmpty
-              ? top
-              : _OffCardScope(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [top, ...rows],
-                  ),
-                ),
-        ),
-      );
-    }
-
-    // tt-style.css: .style-tt .shoot.on
-    final tint = scheme.brightness == Brightness.light
-        ? scheme.primary
-        : scheme.primaryContainer;
-    final picture = backdrop;
     return ClipRRect(
       borderRadius: corners,
-      child: ColoredBox(
-        color: tt.colors.videoBackground,
-        child: Stack(
-          children: [
-            if (picture != null)
-              Positioned.fill(
-                child: Opacity(
-                  opacity: TtMetrics.shootingBackdropOpacity,
-                  child: Image(
-                    image: picture,
-                    fit: BoxFit.cover,
-                    excludeFromSemantics: true,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const SizedBox.shrink(),
-                  ),
-                ),
-              ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _TintPainter(tint: tint, black: scheme.shadow),
+      // An `AnimatedSize` of no duration asserts in debug builds (its
+      // controller finishes inside layout), so with reduced motion the size
+      // change is simply instant.
+      child: tt.motion.isReduced
+          ? body
+          : AnimatedSize(
+              duration: tt.motion.medium2,
+              curve: tt.motion.emphasizedDecelerate,
+              alignment: AlignmentDirectional.topStart,
+              child: body,
+            ),
+    );
+  }
+}
+
+/// The black layer of the "on" card: black, the backdrop picture at 55 %, and
+/// the brand tint over it. It holds no glass, so the card fades it as a
+/// whole.
+class _OnLayer extends StatelessWidget {
+  const new({required this.backdrop});
+
+  final ImageProvider? backdrop;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // home2.css:11: rgba(36, 49, 66, …), the same in light and dark: the dark
+    // scheme's `onPrimary` (0xFF243142).
+    final tint = ttDarkScheme.onPrimary;
+    final picture = backdrop;
+    return ColoredBox(
+      color: tt.colors.videoBackground,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (picture != null)
+            Opacity(
+              opacity: TtMetrics.shootingBackdropOpacity,
+              child: Image(
+                image: picture,
+                fit: BoxFit.cover,
+                excludeFromSemantics: true,
+                errorBuilder: (context, error, stackTrace) =>
+                    const SizedBox.shrink(),
               ),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                top,
-                if (label != null)
-                  Padding(
-                    // proto.css: .shoot .acts { padding: 0 16px 16px }
-                    padding: EdgeInsetsDirectional.only(
-                      start: tt.spacing.m,
-                      end: tt.spacing.m,
-                      bottom: tt.spacing.m,
-                    ),
-                    child: Align(
-                      alignment: AlignmentDirectional.centerStart,
-                      child: _CameraButton(
-                        label: label,
-                        onPressed: onOpenCamera,
-                      ),
-                    ),
-                  ),
-                ...rows,
-                ?strip,
-              ],
-            ),
-          ],
-        ),
+          CustomPaint(
+            painter: _TintPainter(tint: tint, black: scheme.shadow),
+          ),
+        ],
       ),
     );
   }
@@ -226,9 +298,10 @@ class TtShootingModeCard extends StatelessWidget {
 /// The rounded icon tile with the videocam; on the "on" card it is frosted
 /// white and carries the record dot.
 class _IconTile extends StatelessWidget {
-  const new({required this.on});
+  const new({required this.on, required this.progress});
 
   final bool on;
+  final double progress;
 
   @override
   Widget build(BuildContext context) {
@@ -238,7 +311,13 @@ class _IconTile extends StatelessWidget {
     final glyph = Icon(
       Symbols.videocam_rounded,
       fill: 1,
-      color: on ? tt.colors.onMedia : scheme.onPrimaryContainer,
+      // home2.css:20: .h2-ico .ms { font-size: 22px }
+      size: TtMetrics.shootingIconGlyphSize,
+      color: Color.lerp(
+        scheme.onSecondaryContainer,
+        tt.colors.onMedia,
+        progress,
+      ),
     );
     final tile = on
         ? TtGlassFill(
@@ -251,7 +330,7 @@ class _IconTile extends StatelessWidget {
           )
         : DecoratedBox(
             decoration: BoxDecoration(
-              color: scheme.primaryContainer,
+              color: scheme.secondaryContainer,
               borderRadius: corners,
             ),
             child: Center(child: glyph),
@@ -264,8 +343,8 @@ class _IconTile extends StatelessWidget {
           Positioned.fill(child: tile),
           if (on)
             PositionedDirectional(
-              end: TtMetrics.shootingRecDotInset,
-              top: TtMetrics.shootingRecDotInset,
+              end: -TtMetrics.shootingRecDotOutset,
+              top: -TtMetrics.shootingRecDotOutset,
               child: TtRecDot(outline: tt.colors.videoBackground),
             ),
         ],
@@ -274,30 +353,180 @@ class _IconTile extends StatelessWidget {
   }
 }
 
-/// The white "Open camera" button of the "on" card.
-class _CameraButton extends StatelessWidget {
-  const new({required this.label, required this.onPressed});
+/// A 48 dp tap target around a smaller visible [child] (the pill and the
+/// chips are 40 dp), one button named [label]. As wide as the child (at least
+/// 48 dp), so the pill and the chips sit side by side in a `Wrap`.
+class _Target extends StatelessWidget {
+  const new({
+    required this.label,
+    required this.onPressed,
+    required this.child,
+  });
 
   final String label;
+  final VoidCallback? onPressed;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      button: true,
+      enabled: onPressed != null,
+      label: label,
+      onTap: onPressed,
+      // The visible part is shorter than the target: a tap in the margin
+      // above or below it counts.
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onPressed,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: context.tt.sizes.touchTarget,
+            minHeight: context.tt.sizes.touchTarget,
+          ),
+          // widthFactor 1 too: in a Wrap the child gets a loose width, and a
+          // Center without it would take all of it, one to a row.
+          child: Center(widthFactor: 1, heightFactor: 1, child: child),
+        ),
+      ),
+    );
+  }
+}
+
+/// The white "Open camera" pill of the "on" card; it fades in as the card
+/// turns on.
+class _CameraPill extends StatelessWidget {
+  const new({
+    required this.label,
+    required this.progress,
+    required this.onPressed,
+  });
+
+  final String label;
+  final double progress;
   final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final tt = context.tt;
-    // tt-style.css: .style-tt .shoot.on .camb { background: #fff; color: #111 }
-    // A filled button takes primary and onPrimary, so give it white and black.
-    return Theme(
-      data: theme.copyWith(
-        colorScheme: theme.colorScheme.copyWith(
-          primary: tt.colors.onMedia,
-          onPrimary: tt.colors.videoBackground,
+    // home2.css:26: .h2-cam { … background: #fff; color: #111; … }
+    final ink = tt.colors.videoBackground;
+    return _Target(
+      label: label,
+      onPressed: onPressed,
+      child: Opacity(
+        opacity: progress,
+        child: Material(
+          color: tt.colors.onMedia,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: TtMetrics.shootingPillHeight,
+              ),
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  start: TtMetrics.shootingCameraPaddingStart,
+                  end: TtMetrics.shootingCameraPaddingEnd,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: TtMetrics.shootingCameraGap,
+                    children: [
+                      Icon(
+                        Symbols.videocam_rounded,
+                        size: TtMetrics.shootingCameraIconSize,
+                        color: ink,
+                      ),
+                      Flexible(
+                        child: Text(
+                          label,
+                          style: tt.text.material.labelLarge!.copyWith(
+                            color: ink,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-      child: TtButton(
-        label: label,
-        icon: Symbols.videocam_rounded,
-        onPressed: onPressed,
+    );
+  }
+}
+
+/// A frosted chip under the pill.
+///
+/// The glass never sits under an `Opacity` or a `FadeTransition`: its blur is
+/// the same from the first frame (a growing blur was lost on the S24, D-172).
+/// Coming in, only the fill's alpha (0 to .14) and an `Opacity` on the content
+/// inside the fill change with [progress].
+class _Chip extends StatelessWidget {
+  const new({required this.chip, required this.progress});
+
+  final TtShootingCardChip chip;
+  final double progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    return _Target(
+      label: chip.semanticLabel,
+      onPressed: chip.onPressed,
+      child: TtGlassFill(
+        corners: BorderRadius.circular(tt.radii.full),
+        blur: TtMetrics.shootingChipBlur,
+        fill: tt.colors.onMedia.withValues(
+          alpha: TtMetrics.shootingChipFillOpacity * progress,
+        ),
+        child: InkWell(
+          onTap: chip.onPressed,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: TtMetrics.shootingPillHeight,
+            ),
+            child: Opacity(
+              opacity: progress,
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  start: TtMetrics.shootingChipPaddingStart,
+                  end: TtMetrics.shootingChipPaddingEnd,
+                ),
+                child: Center(
+                  widthFactor: 1,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: TtMetrics.shootingChipGap,
+                    children: [
+                      Icon(
+                        chip.icon,
+                        size: TtMetrics.shootingChipIconSize,
+                        color: tt.colors.onMedia,
+                      ),
+                      Flexible(
+                        child: Text(
+                          chip.label,
+                          style: tt.text.material.labelLarge!.copyWith(
+                            color: tt.colors.onMedia,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -336,215 +565,4 @@ class _TintPainter extends CustomPainter {
   @override
   bool shouldRepaint(_TintPainter oldDelegate) =>
       oldDelegate.tint != tint || oldDelegate.black != black;
-}
-
-/// Marks the rows of an "off" [TtShootingModeCard], so a link [TtCardRow]
-/// takes the off card's quiet look instead of the frosted dark band.
-class _OffCardScope extends InheritedWidget {
-  const new({required super.child});
-
-  static bool of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<_OffCardScope>() != null;
-
-  @override
-  bool updateShouldNotify(_OffCardScope oldWidget) => false;
-}
-
-/// The look of a [TtCardRow].
-enum TtCardRowKind {
-  /// A link to somewhere else, such as References or Add earlier videos: a
-  /// frosted dark band with white text and a chevron.
-  link,
-
-  /// A call to act on waiting work, such as the clips to tag: a tertiary
-  /// container band with an arrow.
-  strip,
-}
-
-/// A full-width row at the bottom of the Shooting mode card.
-///
-/// Two looks, chosen by [kind]:
-/// - [TtCardRowKind.link], a references row: a frosted dark band with white
-///   text, an optional [subtitle] and a chevron; in the rows of an "off"
-///   card, the same row on the card's surface instead: a hairline above, the
-///   title in `onSurface`, the subtitle and glyphs in `onSurfaceVariant`;
-/// - [TtCardRowKind.strip], a to-tag strip: a tertiary container band, the
-///   text, an optional [trailingText] and an arrow after the title.
-///
-/// The whole row is one button named [semanticLabel], or the title,
-/// subtitle and trailing text joined by commas.
-class TtCardRow extends StatelessWidget {
-  /// A row of look [kind] showing [icon] and [title] that calls [onPressed]
-  /// when tapped.
-  const new({
-    required this.kind,
-    required this.icon,
-    required this.title,
-    required this.onPressed,
-    this.subtitle,
-    this.trailingText,
-    this.semanticLabel,
-    super.key,
-  }) : assert(
-         kind == TtCardRowKind.strip || trailingText == null,
-         'Only a strip has a trailing text',
-       );
-
-  /// Which look the row has.
-  final TtCardRowKind kind;
-
-  /// The glyph before the title (drawn filled on a strip).
-  final IconData icon;
-
-  /// The headline; one line.
-  final String title;
-
-  /// A line under the title, or null for none.
-  final String? subtitle;
-
-  /// A word before the arrow, such as "Tag now". Only a
-  /// [TtCardRowKind.strip] has one.
-  final String? trailingText;
-
-  /// What a screen reader says instead of the texts, or null to read them.
-  final String? semanticLabel;
-
-  /// Called when the row is tapped.
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = context.tt;
-    final scheme = context.scheme;
-    final trailing = trailingText;
-    final subtitle = this.subtitle;
-    final strip = kind == TtCardRowKind.strip;
-    // A link in an off card sits on the card's surface (D-90).
-    final quiet = !strip && _OffCardScope.of(context);
-
-    // proto.css: .shoot .strip / .refrow, tt-style.css: .shoot.on .refrow
-    final color = strip
-        ? tt.colors.onWaitingContainer
-        : quiet
-        ? scheme.onSurface
-        : tt.colors.onMedia;
-    final secondary = quiet
-        ? scheme.onSurfaceVariant
-        : color.withValues(alpha: TtMetrics.cardRowSubtitleOpacity);
-    final text = tt.text.material;
-    final body = ConstrainedBox(
-      constraints: BoxConstraints(
-        minHeight: strip
-            ? TtMetrics.cardStripMinHeight
-            : TtMetrics.cardRowMinHeight,
-      ),
-      child: Padding(
-        padding: EdgeInsetsDirectional.only(
-          start: tt.spacing.m,
-          end: tt.spacing.s,
-        ),
-        child: IconTheme.merge(
-          data: IconThemeData(
-            color: quiet ? secondary : color,
-            size: tt.sizes.icon,
-          ),
-          child: Row(
-            spacing: strip ? TtMetrics.cardStripGap : TtMetrics.cardRowGap,
-            children: [
-              Icon(icon, fill: strip ? 1 : 0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: text.titleSmall!.copyWith(color: color),
-                    ),
-                    if (subtitle != null)
-                      Text(
-                        subtitle,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall!.copyWith(color: secondary),
-                      ),
-                  ],
-                ),
-              ),
-              if (trailing != null)
-                Text(
-                  trailing,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.labelLarge!.copyWith(color: color),
-                ),
-              Icon(
-                strip
-                    ? Symbols.arrow_forward_rounded
-                    : Symbols.chevron_right_rounded,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-
-    final Widget band;
-    if (strip) {
-      band = Material(
-        color: tt.colors.waitingContainer,
-        child: InkWell(onTap: onPressed, child: body),
-      );
-    } else if (quiet) {
-      // tt-style.css: .shoot:not(.on), its hairline between the parts.
-      band = DecoratedBox(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: tt.colors.hairline)),
-        ),
-        child: Material(
-          type: MaterialType.transparency,
-          child: InkWell(onTap: onPressed, child: body),
-        ),
-      );
-    } else {
-      band = ClipRect(
-        child: BackdropFilter(
-          filter: ui.ImageFilter.blur(
-            sigmaX: TtMetrics.cardRowBlur,
-            sigmaY: TtMetrics.cardRowBlur,
-          ),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: scheme.shadow.withValues(
-                alpha: TtMetrics.cardRowFillOpacity,
-              ),
-              border: Border(
-                top: BorderSide(
-                  color: tt.colors.onMedia.withValues(
-                    alpha: TtMetrics.cardRowBorderOpacity,
-                  ),
-                ),
-              ),
-            ),
-            child: Material(
-              type: MaterialType.transparency,
-              child: InkWell(onTap: onPressed, child: body),
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      button: true,
-      enabled: true,
-      label: semanticLabel ?? [title, ?subtitle, ?trailing].join(', '),
-      onTap: onPressed,
-      child: band,
-    );
-  }
 }

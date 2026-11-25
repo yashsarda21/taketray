@@ -5,10 +5,11 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtShootingModeCard`: off (quiet) or on (the black media hero). The rows
-/// show in both (D-90); the to-tag strip and the camera button only on.
+/// `TtShootingModeCard`: off (one quiet row) or on (the black card with Open
+/// camera and up to two glass chips). Toggle `on` to see the height and the
+/// chips animate.
 final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
-  name: 'TtShootingModeCard',
+  name: 'TtShootingModeCard / TtShootingCardChip',
   useCases: [
     WidgetbookUseCase(
       name: 'Playground',
@@ -17,9 +18,8 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
         final subtitle = context.knobs.string(
           label: 'subtitle',
           initialValue: on
-              ? 'On since 9:41 AM'
-              : 'Off. Turn on before you start filming, and new videos '
-                    'wait in To tag.',
+              ? 'Since 9:41 AM'
+              : 'Off · turn it on before you film',
         );
         final backdrop = context.knobs.int.slider(
           label: 'backdrop (0 = none, 13 = fails to load)',
@@ -27,26 +27,22 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
           max: 13,
         );
         final camera = context.knobs.boolean(
-          label: 'camera button',
+          label: 'Open camera',
           initialValue: true,
         );
         final references = context.knobs.boolean(
-          label: 'references row',
+          label: 'References chip',
           initialValue: true,
         );
         final earlier = context.knobs.boolean(
-          label: 'add earlier videos row (on and off)',
-          initialValue: true,
-        );
-        final toTag = context.knobs.boolean(
-          label: 'to-tag strip',
+          label: 'Earlier videos chip',
           initialValue: true,
         );
         return Padding(
           padding: EdgeInsets.all(context.tt.spacing.m),
           child: TtShootingModeCard(
             on: on,
-            title: on ? 'Shooting mode on' : 'Shooting mode',
+            title: on ? 'Shooting' : 'Shooting mode',
             subtitle: subtitle,
             semanticLabel: on ? 'Shooting mode, on' : 'Shooting mode, off',
             switchSemanticLabel: 'Shooting mode',
@@ -58,83 +54,23 @@ final WidgetbookComponent ttShootingModeCardComponent = WidgetbookComponent(
             },
             cameraLabel: camera ? 'Open camera' : null,
             onOpenCamera: () {},
-            rows: [
+            chips: [
               if (references)
-                TtCardRow(
-                  kind: TtCardRowKind.link,
+                TtShootingCardChip(
                   icon: Symbols.link_rounded,
-                  title: 'References · 4',
-                  subtitle: 'From 2 Recording reels',
-                  semanticLabel: 'References, 4, from your Recording reels',
+                  label: 'References · 4',
+                  semanticLabel: 'References, 4, from your Collecting reels',
                   onPressed: () {},
                 ),
               if (earlier)
-                TtCardRow(
-                  kind: TtCardRowKind.link,
+                TtShootingCardChip(
                   icon: Symbols.history_rounded,
-                  title: 'Add earlier videos',
-                  subtitle: on
-                      ? 'Shot before Shooting mode was on'
-                      : 'From your camera folder',
-                  semanticLabel: on
-                      ? 'Add earlier videos, shot before Shooting mode was on'
-                      : 'Add earlier videos, from your camera folder',
+                  label: 'Earlier videos',
+                  semanticLabel:
+                      'Add earlier videos, shot before Shooting mode was on',
                   onPressed: () {},
                 ),
             ],
-            toTagStrip: toTag
-                ? TtCardRow(
-                    kind: TtCardRowKind.strip,
-                    icon: Symbols.sell_rounded,
-                    title: '3 clips to tag',
-                    trailingText: 'Tag now',
-                    onPressed: () {},
-                  )
-                : null,
-          ),
-        );
-      },
-    ),
-  ],
-);
-
-/// `TtCardRow`: a link row (references) or a to-tag strip (with trailing
-/// text), as inside the "on" Shooting mode card.
-final WidgetbookComponent ttCardRowComponent = WidgetbookComponent(
-  name: 'TtCardRow',
-  useCases: [
-    WidgetbookUseCase(
-      name: 'Playground',
-      builder: (context) {
-        final title = context.knobs.string(
-          label: 'title',
-          initialValue: 'References · 4',
-        );
-        final subtitle = context.knobs.string(
-          label: 'subtitle',
-          initialValue: 'From 2 Recording reels',
-        );
-        final strip = context.knobs.boolean(
-          label: 'to-tag strip (trailing text)',
-        );
-        final trailing = context.knobs.string(
-          label: 'trailing text',
-          initialValue: 'Tag now',
-        );
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            image: DecorationImage(image: wbThumb(2), fit: BoxFit.cover),
-          ),
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: context.tt.spacing.xxl),
-            child: TtCardRow(
-              kind: strip ? TtCardRowKind.strip : TtCardRowKind.link,
-              icon: strip ? Symbols.sell_rounded : Symbols.link_rounded,
-              title: title,
-              subtitle: subtitle.isEmpty ? null : subtitle,
-              trailingText: strip ? trailing : null,
-              onPressed: () {},
-            ),
           ),
         );
       },

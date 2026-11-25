@@ -104,7 +104,6 @@ final List<WidgetbookNode> ttCatalog = [
       ttReferenceCardComponent,
       ttAddReferenceTileComponent,
       ttShootingModeCardComponent,
-      ttCardRowComponent,
       ttReelHeaderComponent,
     ],
   ),

@@ -12,21 +12,25 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
-import 'package:taketray/features/references/view_models/shooting_references.dart';
-import 'package:taketray/features/references/views/shooting_references_sheet.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/open_camera.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_time_text.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_tip.dart';
 import 'package:taketray/features/shooting_mode/views/waiting_duration_text.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
-import 'package:taketray/features/tagging/views/add_earlier_videos.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 /// The top of the Reels tab: the access banner, then the Shooting mode card
 /// (D-75, D-76).
+///
+/// **Stop-gap (Phase 12B, Task 6):** the package's card is now the compact
+/// one (D-193), which has no rows and no strip. Until Task 9 rebuilds this
+/// section around its chips and the off line, the card is given no chips, so
+/// References, Add earlier videos and the "N clips to tag" strip are not
+/// shown; the attention banner below an off card stays. The text below
+/// describes the card before this change.
 ///
 /// - **Off:** the hairline card with the switch, the **Add earlier videos**
 ///   row ("From your camera folder", D-90) while access is full, and, when
@@ -86,40 +90,6 @@ class ShootingModeSection extends ConsumerWidget {
     final showTip = tipDue && shooting != null && !shooting.on;
     // Shooting mode is on: the tip has done its job (`_MarkTipSeen`).
     final markTipSeen = tipDue && shooting != null && shooting.on;
-    // D-90: on and off alike, whenever access is full and the stored state
-    // was really read (not the "off" shown after a failed read).
-    final earlierRow = full && shootingState.hasValue && shooting != null
-        ? TtCardRow(
-            kind: TtCardRowKind.link,
-            icon: Symbols.history_rounded,
-            title: l10n.addEarlierVideos,
-            subtitle: shooting.on
-                ? l10n.earlierCardRowSubtitle
-                : l10n.earlierCardRowSubtitleOff,
-            semanticLabel: shooting.on
-                ? l10n.earlierCardRowLabel
-                : l10n.earlierCardRowLabelOff,
-            onPressed: () => showAddEarlierVideos(context),
-          )
-        : null;
-
-    // D-160: the References of the Collecting and Ready to edit reels, while
-    // Shooting mode is on. Not read while it is off, and a failed or pending
-    // read shows no row.
-    final referenceCount = shooting != null && shooting.on
-        ? shootingReferenceCount(
-            ref.watch(shootingReferencesProvider).value ?? const [],
-          )
-        : 0;
-    final referencesRow = referenceCount > 0
-        ? TtCardRow(
-            kind: TtCardRowKind.link,
-            icon: Symbols.link_rounded,
-            title: l10n.referencesHeader(referenceCount),
-            onPressed: () => unawaited(showShootingReferencesSheet(context)),
-          )
-        : null;
-
     final Widget card;
     if (shooting == null) {
       card = const SizedBox.shrink();
@@ -131,7 +101,6 @@ class ShootingModeSection extends ConsumerWidget {
         semanticLabel: l10n.shootingModeCardSemantics('off'),
         switchSemanticLabel: l10n.shootingSwitchLabel,
         onChanged: controller.setOn,
-        rows: [?earlierRow],
       );
     } else {
       final time = shootingTimeText(
@@ -165,16 +134,6 @@ class ShootingModeSection extends ConsumerWidget {
               ),
         cameraLabel: l10n.shootingOpenCamera,
         onOpenCamera: () => unawaited(openCameraOrSay(context, ref)),
-        rows: [?referencesRow, ?earlierRow],
-        toTagStrip: pending.isEmpty
-            ? null
-            : TtCardRow(
-                kind: TtCardRowKind.strip,
-                icon: Symbols.sell_rounded,
-                title: l10n.shootingStripTitle(pending.length),
-                trailingText: l10n.shootingStripAction,
-                onPressed: () => context.go(Routes.toTag),
-              ),
       );
     }
 

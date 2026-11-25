@@ -117,11 +117,9 @@ void main() {
       expect(card(tester).on, isFalse);
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
       expect(find.text('Open camera'), findsNothing);
-      // With full access the only row is Add earlier videos (D-90); no
-      // strip.
-      expect(find.byType(TtCardRow), findsOneWidget);
-      expect(card(tester).rows.single.title, 'Add earlier videos');
-      expect(card(tester).toTagStrip, isNull);
+      // The compact card (D-193) has no rows and no strip; the off card
+      // shows no chips. (Task 9 gives the off line its count.)
+      expect(card(tester).chips, isEmpty);
     });
 
     testWidgets('on: title, since today as a time, and Open camera', (
@@ -264,9 +262,8 @@ void main() {
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
       expect(find.textContaining('On since'), findsNothing);
       expect(find.textContaining('Oct'), findsNothing);
-      // Only the Add earlier videos row (D-90), unchanged.
-      expect(find.byType(TtCardRow), findsOneWidget);
-      expect(find.text('From your camera folder'), findsOneWidget);
+      // No rows on the compact card (D-193).
+      expect(card(tester).chips, isEmpty);
       expect(tester.takeException(), isNull);
     });
   });
@@ -452,7 +449,7 @@ void main() {
 
       expect(find.text(toTagRouteMarker), findsOneWidget);
     });
-  });
+  }, skip: 'Task 9');
 
   group('backdrop', () {
     testWidgets('is the latest pending clip, by date taken then id', (
@@ -544,8 +541,9 @@ void main() {
       await pump(tester, shooting: on(), pending: [testClip(1)]);
 
       expect(find.textContaining('of video waiting'), findsNothing);
-      // The card's own strip says it.
-      expect(find.text('1 clip to tag'), findsOneWidget);
+      // The compact card has no strip of its own (D-193); Task 9 removes the
+      // banner too (D-186).
+      expect(find.text('1 clip to tag'), findsNothing);
       expect(find.byType(TtBanner), findsNothing);
     });
 
@@ -554,22 +552,6 @@ void main() {
 
       expect(find.textContaining('of video waiting'), findsNothing);
       expect(find.byType(TtBanner), findsNothing);
-    });
-
-    testWidgets('the card never shows the strip and the banner together', (
-      tester,
-    ) async {
-      final off = await pump(tester, pending: [testClip(1)]);
-      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsNothing);
-      expect(card(tester).toTagStrip, isNull);
-      expect(waiting('1 clip to tag'), findsOneWidget);
-
-      off.shooting.states.add(on());
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.textContaining('of video waiting'), findsNothing);
-      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsOneWidget);
     });
 
     testWidgets('sits below the card; the access banner is above it', (
@@ -665,7 +647,7 @@ void main() {
     ) async {
       await pump(tester, shooting: on());
 
-      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
+      final row = find.text('Add earlier videos');
       expect(row, findsOneWidget);
       expect(
         find.descendant(
@@ -701,10 +683,9 @@ void main() {
     testWidgets('the off row says From your camera folder', (tester) async {
       await pump(tester);
 
-      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
+      final row = find.text('Add earlier videos');
       expect(row, findsOneWidget);
       expect(card(tester).on, isFalse);
-      expect(card(tester).rows.single.kind, TtCardRowKind.link);
       expect(
         find.descendant(
           of: row,
@@ -740,9 +721,8 @@ void main() {
     ) async {
       await pump(tester, shooting: on(), pending: [testClip(1)]);
 
-      expect(card(tester).rows, hasLength(1));
-      expect(card(tester).rows.single.title, 'Add earlier videos');
-      expect(card(tester).toTagStrip, isNotNull);
+      expect(card(tester).chips, hasLength(1));
+      expect(card(tester).chips.single.label, 'Earlier videos');
     });
 
     testWidgets('it stays when the session state changes (no one-use hide)', (
@@ -853,7 +833,7 @@ void main() {
 
       expect(find.text('Add earlier videos'), findsOneWidget);
     });
-  });
+  }, skip: 'Task 9');
 
   group('the References row (D-160)', () {
     ReferenceGroup group(int reelId, String name, int references) =>
@@ -884,10 +864,7 @@ void main() {
 
     final two = [group(1, 'Goa', 2)];
 
-    Finder row(String title) => find.byWidgetPredicate(
-      (w) => w is TtCardRow && w.title == title,
-      description: 'the "$title" row',
-    );
+    Finder row(String title) => find.text(title);
 
     testWidgets('on, with 2 references: a link row "References · 2"', (
       tester,
@@ -895,10 +872,9 @@ void main() {
       await pump(tester, shooting: on(), references: two);
 
       expect(row('References · 2'), findsOneWidget);
-      final first = card(tester).rows.first;
-      expect(first.kind, TtCardRowKind.link);
+      final first = card(tester).chips.first;
       expect(first.icon, Symbols.link_rounded);
-      expect(first.title, 'References · 2');
+      expect(first.label, 'References · 2');
     });
 
     testWidgets('the count adds up every group', (tester) async {
@@ -915,7 +891,7 @@ void main() {
       await pump(tester, shooting: on(), references: two);
 
       expect(
-        [for (final r in card(tester).rows) r.title],
+        [for (final c in card(tester).chips) c.label],
         ['References · 2', 'Add earlier videos'],
       );
       expect(
@@ -932,7 +908,7 @@ void main() {
         references: two,
       );
 
-      expect([for (final r in card(tester).rows) r.title], ['References · 2']);
+      expect([for (final c in card(tester).chips) c.label], ['References · 2']);
     });
 
     testWidgets('Shooting mode off: no References row', (tester) async {
@@ -940,7 +916,7 @@ void main() {
 
       expect(find.textContaining('References'), findsNothing);
       expect(
-        [for (final r in card(tester).rows) r.title],
+        [for (final c in card(tester).chips) c.label],
         ['Add earlier videos'],
       );
     });
@@ -978,7 +954,7 @@ void main() {
 
       expect(find.textContaining('References'), findsNothing);
       expect(
-        [for (final r in card(tester).rows) r.title],
+        [for (final c in card(tester).chips) c.label],
         ['Add earlier videos'],
       );
     });
@@ -1042,7 +1018,7 @@ void main() {
 
       await expectTtAccessible(tester);
     });
-  });
+  }, skip: 'Task 9');
 
   group('looks', () {
     for (final brightness in Brightness.values) {
@@ -1074,7 +1050,7 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      for (final type in [TtShootingModeCard, TtCardRow]) {
+      for (final type in [TtShootingModeCard]) {
         for (final e in find.byType(type).evaluate()) {
           final rect = tester.getRect(find.byElementPredicate((x) => x == e));
           expect(rect.left, greaterThanOrEqualTo(0));

@@ -140,6 +140,9 @@ void main() {
     // database, then let the time pass by hand.
     await tester.runAsync(settle);
     await tester.pump(const Duration(seconds: 1));
+    // The card grows over `medium2` from the frame that lays it out (D-193);
+    // Open camera is not under a finger until it has.
+    await tester.pump(const Duration(milliseconds: 400));
     expect(find.byType(TtFab), findsOneWidget);
 
     await tester.tap(find.text('Open camera'));

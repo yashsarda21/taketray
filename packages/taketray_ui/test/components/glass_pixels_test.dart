@@ -2,7 +2,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/src/components/internal/saturation.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -125,37 +124,6 @@ Rect _freeStrip(WidgetTester tester, Finder glass, {double radius = 0}) {
   return strip;
 }
 
-/// The strip of [glass] between its last text and its last icon (a card
-/// row's gap before the arrow), 2 dp inside its top and bottom edges. Far
-/// enough from the glass's edges that its blur cannot lean on the edge pixels.
-Rect _gapStrip(WidgetTester tester, Finder glass) {
-  final box = tester.getRect(glass);
-  final texts = find.descendant(of: glass, matching: find.byType(Text));
-  final icons = find.descendant(of: glass, matching: find.byType(Icon));
-  var from = box.left;
-  for (var i = 0; i < texts.evaluate().length; i++) {
-    // The paragraph's box can fill the room it is given: measure the glyphs.
-    final paragraph = tester.renderObject<RenderParagraph>(
-      find.descendant(of: texts.at(i), matching: find.byType(RichText)),
-    );
-    final text = paragraph.text.toPlainText();
-    final boxes = paragraph.getBoxesForSelection(
-      TextSelection(baseOffset: 0, extentOffset: text.length),
-    );
-    final left = paragraph.localToGlobal(Offset.zero).dx;
-    for (final box in boxes) {
-      from = math.max(from, left + box.right);
-    }
-  }
-  var to = box.left;
-  for (var i = 0; i < icons.evaluate().length; i++) {
-    to = math.max(to, tester.getRect(icons.at(i)).left);
-  }
-  final strip = Rect.fromLTRB(from + 2, box.top + 2, to - 2, box.bottom - 2);
-  expect(strip.width, greaterThanOrEqualTo(2 * ttStripePeriod));
-  return strip;
-}
-
 /// The glass's contrast over the stripes, and the same rect's contrast with
 /// the piece absent (`sharp`, which must be at least `minSharp`: a scrim over
 /// a picture takes some of the stripes' contrast). Ends with the piece on
@@ -248,7 +216,7 @@ Widget _reelCard(ImageProvider cover, {int references = 0, String? vnLabel}) =>
       ],
     );
 
-Widget _shootingCard(ImageProvider backdrop) => Stack(
+Widget _shootingCard(ImageProvider backdrop, {int chips = 2}) => Stack(
   children: [
     Positioned(
       left: 16,
@@ -256,29 +224,30 @@ Widget _shootingCard(ImageProvider backdrop) => Stack(
       width: 328,
       child: TtShootingModeCard(
         on: true,
-        title: 'Shooting mode on',
-        subtitle: 'On since 9:41 AM',
+        title: 'Shooting',
+        subtitle: 'Since 9:41 AM',
         semanticLabel: 'Shooting mode, on',
         switchSemanticLabel: 'Shooting mode',
         onChanged: (_) {},
         backdrop: backdrop,
-        rows: [
-          TtCardRow(
-            kind: TtCardRowKind.link,
-            icon: Symbols.link_rounded,
-            title: 'References · 4',
-            subtitle: 'From 2 Recording reels',
-            semanticLabel: 'References, 4, from your Recording reels',
-            onPressed: () {},
-          ),
+        cameraLabel: 'Open camera',
+        onOpenCamera: () {},
+        chips: [
+          if (chips > 0)
+            TtShootingCardChip(
+              icon: Symbols.link_rounded,
+              label: 'References · 4',
+              semanticLabel: 'References, 4, from your Collecting reels',
+              onPressed: () {},
+            ),
+          if (chips > 1)
+            TtShootingCardChip(
+              icon: Symbols.history_rounded,
+              label: 'Earlier videos',
+              semanticLabel: 'Add earlier videos',
+              onPressed: () {},
+            ),
         ],
-        toTagStrip: TtCardRow(
-          kind: TtCardRowKind.strip,
-          icon: Symbols.sell_rounded,
-          title: '3 clips to tag',
-          trailingText: 'Tag now',
-          onPressed: () {},
-        ),
       ),
     ),
   ],
@@ -391,13 +360,13 @@ void main() {
       expectGlassStructure(tester, find.byType(TtReelCard));
     });
 
-    testWidgets('TtShootingModeCard on, with a references row', (tester) async {
+    testWidgets('TtShootingModeCard on, with two chips', (tester) async {
       _phone(tester);
       final backdrop = await _stripesImage(tester, 328);
       await tester.pumpWidget(ttPixelApp(_shootingCard(backdrop)));
       await _decode(tester, backdrop, TtShootingModeCard);
-      // The icon tile and the references row: two filters.
-      expect(_glassIn(TtShootingModeCard), findsNWidgets(2));
+      // The icon tile and the two chips: three filters.
+      expect(_glassIn(TtShootingModeCard), findsNWidgets(3));
       expectGlassStructure(tester, find.byType(TtShootingModeCard));
     });
   });
@@ -471,41 +440,30 @@ void main() {
       );
       final photo = await TtPixels.capture(tester);
       final sharp = photo.edgeContrast(beside);
-      expect(sharp, greaterThan(.2), reason: 'the picture is sharp beside it');
+      // The picture at 55 % under a tint of .86 at the card's start keeps
+      // about .14 of the stripes' contrast beside the tile.
+      expect(sharp, greaterThan(.1), reason: 'the picture is sharp beside it');
       expectBlurred(photo.edgeContrast(strip), sharp: sharp, fillOpacity: .16);
       _expectSigma(tile, _blur8);
     });
 
-    testWidgets('Shooting mode references row blurs by 6', (tester) async {
-      _phone(tester);
+    testWidgets('a Shooting mode chip blurs by 10 under its .14 white', (
+      tester,
+    ) async {
       final backdrop = await _stripesImage(tester, 328);
-      await tester.pumpWidget(ttPixelApp(_shootingCard(backdrop)));
-      await _decode(tester, backdrop, TtShootingModeCard);
-      final row = _glassOver(Symbols.link_rounded);
-      final tile = _glassOver(Symbols.videocam_rounded);
-      final beside = _freeStrip(
+      final c = await _measure(
         tester,
-        tile,
-        radius: TtMetrics.shootingIconRadius,
+        build: ({required piece}) =>
+            _shootingCard(backdrop, chips: piece ? 1 : 0),
+        of: TtShootingModeCard,
+        glass: () => _glassOver(Symbols.link_rounded),
+        // A stadium 40 dp high.
+        radius: TtMetrics.shootingPillHeight / 2,
+        picture: backdrop,
+        minSharp: .2,
       );
-      final photo = await TtPixels.capture(tester);
-      // Sharp: the picture beside the icon tile, with the same left edge as
-      // the card's (the stripes change along x only).
-      final sharp = photo.edgeContrast(
-        Rect.fromLTRB(
-          tester.getRect(find.byType(TtShootingModeCard)).left + 2,
-          beside.top,
-          tester.getRect(tile).left - 2,
-          beside.bottom,
-        ),
-      );
-      expect(sharp, greaterThan(.2), reason: 'the picture is sharp beside it');
-      expectBlurred(
-        photo.edgeContrast(_gapStrip(tester, row)),
-        sharp: sharp,
-        fillOpacity: .25,
-      );
-      _expectSigma(row, 6);
+      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .14);
+      _expectSigma(_glassOver(Symbols.link_rounded), 10);
     });
 
     // Phase 12, Task 7 (D-178): the tag player's glass pieces. At a stripe
