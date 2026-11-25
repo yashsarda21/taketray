@@ -43,6 +43,7 @@ final WidgetbookComponent ttGroupedRowsComponent = WidgetbookComponent(
           initialValue: true,
         );
         final tappable = context.knobs.boolean(label: 'tappable');
+        final tag = context.knobs.boolean(label: 'title tag (first row)');
         final stack = context.knobs.boolean(
           label: 'stack trailing at large text',
         );
@@ -60,6 +61,7 @@ final WidgetbookComponent ttGroupedRowsComponent = WidgetbookComponent(
                   for (var i = 0; i < count; i++)
                     TtListRow(
                       title: '$title ${i + 1}',
+                      titleTag: tag && i == 0 ? 'Last used' : null,
                       subtitle: subtitle ? 'Only if clips are waiting' : null,
                       leading: withIcon
                           ? TtRowIcon(

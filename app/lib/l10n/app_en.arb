@@ -2238,6 +2238,32 @@
       }
     }
   },
+  "editorSheetTitleAll": "{count, plural, other{Edit all {count} clips in…}}",
+  "@editorSheetTitleAll": {
+    "description": "Title of the editor sheet when it holds every clip of the reel (and there is more than one): how many clips go to the editor chosen below.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editorChooseInstead": "Choose clips instead",
+  "@editorChooseInstead": {
+    "description": "Text button under the editor sheet's subtitle (only when the sheet holds every clip): closes the sheet and starts choosing clips on the reel page."
+  },
+  "editorLastUsed": "Last used",
+  "@editorLastUsed": {
+    "description": "Small pill after the name of the editor used last, in the editor sheet; that editor is listed first."
+  },
+  "editorLastUsedSemantics": "{name}, last used",
+  "@editorLastUsedSemantics": {
+    "description": "Screen-reader label of the editor row used last in the editor sheet.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
   "editorSheetSubtitle": "{duration} · in shooting order",
   "@editorSheetSubtitle": {
     "description": "Line under the editor sheet title: the clips' total length, such as 1:18, and that they go in the order they were shot.",

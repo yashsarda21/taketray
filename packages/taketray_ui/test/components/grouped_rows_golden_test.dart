@@ -135,6 +135,30 @@ void main() {
         ),
       ),
       TtScenario(
+        'title tag, last used',
+        TtGroupedRows(
+          children: [
+            TtListRow(
+              title: 'Instagram Edits',
+              titleTag: 'Last used',
+              subtitle: 'Gets your original clips',
+              tall: true,
+              leading: const TtRowIcon(icon: Symbols.movie_rounded),
+              trailing: _chevron(),
+              onTap: () {},
+            ),
+            TtListRow(
+              title: 'CapCut',
+              subtitle: 'Gets your original clips',
+              tall: true,
+              leading: const TtRowIcon(icon: Symbols.content_cut_rounded),
+              trailing: _chevron(),
+              onTap: () {},
+            ),
+          ],
+        ),
+      ),
+      TtScenario(
         'long text',
         Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,

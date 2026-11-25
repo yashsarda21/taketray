@@ -23,4 +23,27 @@ void main() {
     expect(EditorApp.edits.name, 'edits');
     expect(EditorApp.vn.name, 'vn');
   });
+
+  test('EditorPick names are capcut, edits, vn, other', () {
+    expect(EditorPick.values, [
+      EditorPick.capcut,
+      EditorPick.edits,
+      EditorPick.vn,
+      EditorPick.other,
+    ]);
+    // `lastEditor` stores the name: a rename would forget every phone's habit.
+    expect(
+      [for (final p in EditorPick.values) p.name],
+      ['capcut', 'edits', 'vn', 'other'],
+    );
+  });
+
+  test('editorPickOf and app round-trip', () {
+    for (final editor in EditorApp.values) {
+      expect(editorPickOf(editor).name, editor.name);
+      expect(editorPickOf(editor).app, editor);
+    }
+    expect(editorPickOf(null), EditorPick.other);
+    expect(EditorPick.other.app, isNull);
+  });
 }

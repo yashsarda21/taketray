@@ -459,6 +459,92 @@ void main() {
     });
   });
 
+  group('lastEditor (D-189)', () {
+    test('the key is the documented name', () {
+      expect(PhoneStateRepository.lastEditorKey, 'lastEditor');
+    });
+
+    test('lastEditor: none is null', () async {
+      expect(await repo.lastEditor(), isNull);
+    });
+
+    test(
+      'recordLastEditor then lastEditor reads it back, each value',
+      () async {
+        for (final pick in EditorPick.values) {
+          await repo.recordLastEditor(pick);
+
+          expect(await repo.lastEditor(), pick, reason: pick.name);
+          expect(await _raw('lastEditor'), jsonEncode(pick.name));
+        }
+      },
+    );
+
+    test('recording again replaces the pick, never adds a row', () async {
+      await repo.recordLastEditor(EditorPick.capcut);
+      await repo.recordLastEditor(EditorPick.vn);
+
+      expect(await repo.lastEditor(), EditorPick.vn);
+      final rows = await (db.select(
+        db.settings,
+      )..where((s) => s.key.equals('lastEditor'))).get();
+      expect(rows, hasLength(1));
+    });
+
+    for (final bad in [
+      'banana',
+      '3',
+      '"banana"',
+      '"Capcut"',
+      'null',
+      'true',
+      '["vn"]',
+      '{not json',
+    ]) {
+      test('a corrupt lastEditor ($bad) is none, and only the key is '
+          'logged', () async {
+        await _put('lastEditor', bad);
+        final records = _record();
+
+        expect(await repo.lastEditor(), isNull);
+
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('lastEditor'));
+        expect(lines, isNot(contains(bad)));
+      });
+    }
+
+    test('a corrupt value is replaced by a new record', () async {
+      await _put('lastEditor', 'banana');
+
+      await repo.recordLastEditor(EditorPick.edits);
+
+      expect(await repo.lastEditor(), EditorPick.edits);
+    });
+
+    test('recording logs no value', () async {
+      final records = _record();
+
+      await repo.recordLastEditor(EditorPick.capcut);
+
+      final lines = records.map((r) => r.message).join('\n');
+      expect(lines, isNot(contains('capcut')));
+    });
+
+    test('lastEditor is not an exported key', () async {
+      expect(
+        SettingsRepository.exportedKeys,
+        isNot(contains(PhoneStateRepository.lastEditorKey)),
+      );
+      await repo.recordLastEditor(EditorPick.vn);
+
+      expect(
+        await BackupService(db, clock).exportJson(),
+        isNot(contains('lastEditor')),
+      );
+    });
+  });
+
   group('onboarding flags (D-135)', () {
     final flags =
         <

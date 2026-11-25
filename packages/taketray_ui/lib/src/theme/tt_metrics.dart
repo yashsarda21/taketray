@@ -1799,6 +1799,18 @@ abstract final class TtMetrics {
   // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
   static const FontWeight listRowOffTitleWeight = FontWeight.w400;
 
+  /// Space between a list row's title and its tag pill ("Last used").
+  // editflow.css:18: .ed-last { margin-left: 8px; ... }
+  static const double listRowTagGap = 8;
+
+  /// Side padding of a list row's tag pill.
+  // editflow.css:18: .ed-last { padding: 1px 8px; border-radius: 999px; ... }
+  static const double listRowTagPaddingH = 8;
+
+  /// Top and bottom padding of a list row's tag pill.
+  // editflow.css:18: .ed-last { padding: 1px 8px; border-radius: 999px; ... }
+  static const double listRowTagPaddingV = 1;
+
   /// Minimum height of the count pill at the end of a list row.
   // proto.css: .ev-row .ev-trail .n { min-height: 28px }
   static const double rowCountMinHeight = 28;

@@ -5,10 +5,12 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/features/editors/views/edit_select_screen.dart';
+import 'package:taketray/features/editors/views/editor_sheet.dart';
 
 import '../../support/pump_screen.dart';
 import '../../support/reel_videos.dart';
@@ -17,8 +19,9 @@ import '../../support/vm_harness.dart';
 import 'editors_support.dart';
 
 /// The clip picking screen and the editor sheet (prototype screens 18 and 19,
-/// D-126): nothing picked, clips picked, and the sheet with and without an
-/// editor missing, at text 1x and 2x and in dark.
+/// D-126, D-189): nothing picked, clips picked, and the sheet with chosen
+/// clips and an editor missing, for every clip with Choose clips instead, and
+/// with the editor used last first, at text 1x and 2x and in dark.
 ///
 /// **macOS only, and not on CI** (D-61, D-97), like the other app screens: the
 /// images are made with real text on the owner's Mac (`goldens/macos/`). Make
@@ -181,6 +184,101 @@ void main() {
     }, skip: !_goldens);
   }
 
+  /// Opens the editor sheet from a plain page, as the reel page does, for
+  /// all of the reel's clips.
+  Future<void> openAllSheet(
+    WidgetTester tester,
+    Reel reel,
+    List<int> ids, {
+    required double scale,
+    required Brightness brightness,
+  }) async {
+    await pumpScreen(
+      tester,
+      Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () => showEditorSheet(
+                context,
+                reelId: reel.id,
+                clipIds: ids,
+                allClips: true,
+              ),
+              child: const Text('Edit video'),
+            ),
+          ),
+        ),
+      ),
+      overrides: h.appOverrides,
+      textScale: scale,
+      brightness: brightness,
+      settle: false,
+    );
+    await settleApp(tester);
+    await tester.tap(find.text('Edit video'));
+    await settleApp(tester);
+  }
+
+  for (final (scale, brightness, suffix) in [
+    (1.0, Brightness.light, '1x'),
+    (2.0, Brightness.light, '2x'),
+    (1.0, Brightness.dark, 'dark_1x'),
+  ]) {
+    testApp('the editor sheet, every clip ($suffix)', (tester) async {
+      h.editors
+        ..allow({'apps'})
+        ..installed = {
+          EditorApp.capcut.packageName: true,
+          EditorApp.edits.packageName: true,
+          EditorApp.vn.packageName: true,
+        };
+      final (goa, ids) = await goaReel(tester);
+      await openAllSheet(
+        tester,
+        goa,
+        ids,
+        scale: scale,
+        brightness: brightness,
+      );
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/macos/editor_sheet_all_$suffix.png'),
+      );
+    }, skip: !_goldens);
+
+    testApp('the editor sheet, Instagram Edits last used ($suffix)', (
+      tester,
+    ) async {
+      h.editors
+        ..allow({'apps'})
+        ..installed = {
+          EditorApp.capcut.packageName: true,
+          EditorApp.edits.packageName: true,
+          EditorApp.vn.packageName: true,
+        };
+      final (goa, ids) = await goaReel(tester);
+      await tester.runAsync(
+        () => h.container
+            .read(phoneStateRepositoryProvider)
+            .recordLastEditor(EditorPick.edits),
+      );
+      await openAllSheet(
+        tester,
+        goa,
+        ids,
+        scale: scale,
+        brightness: brightness,
+      );
+
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('goldens/macos/editor_sheet_last_used_$suffix.png'),
+      );
+    }, skip: !_goldens);
+  }
+
   testApp('the picking screen, nothing picked (1x)', (tester) async {
     final (goa, _) = await goaReel(tester);
     await openScreen(
@@ -194,25 +292,6 @@ void main() {
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('goldens/macos/edit_select_none_1x.png'),
-    );
-  }, skip: !_goldens);
-
-  testApp('the editor sheet, every editor installed (1x)', (tester) async {
-    h.editors
-      ..allow({'apps'})
-      ..installed = {
-        EditorApp.capcut.packageName: true,
-        EditorApp.edits.packageName: true,
-        EditorApp.vn.packageName: true,
-      };
-    final (goa, ids) = await goaReel(tester);
-    await openScreen(tester, goa, ids, scale: 1, brightness: Brightness.light);
-    await tester.tap(find.text('Continue'));
-    await settleApp(tester);
-
-    await expectLater(
-      find.byType(MaterialApp),
-      matchesGoldenFile('goldens/macos/editor_sheet_all_1x.png'),
     );
   }, skip: !_goldens);
 }

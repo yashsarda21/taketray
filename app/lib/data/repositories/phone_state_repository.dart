@@ -6,6 +6,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/database/connection.dart';
 import 'package:taketray/domain/models/copy_job_plan.dart';
+import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/rematch_window.dart';
 
@@ -18,16 +19,18 @@ final Logger _log = Logger('phoneState');
 /// What belongs to this phone, not to the user: whether Shooting mode is on,
 /// where each volume stood when it was switched on, whether the app ever had
 /// full access to the videos, whether it ever asked for the notification
-/// permission, which rebuilt volumes have clips to match again, and whether
-/// Add videos' folder tip was dismissed.
+/// permission, which rebuilt volumes have clips to match again, whether
+/// Add videos' folder tip was dismissed, and which row of the editor sheet
+/// was used last.
 ///
-/// It lives in the `settings` table under eleven keys, `shootingMode`,
+/// It lives in the `settings` table under twelve keys, `shootingMode`,
 /// `mediaAccessWasFull`, `mediaVolumeVersions`, `notificationsAsked`,
 /// `mediaRematchWindows`, `folderTipSeen`, `copyJobPlan` (the running copy
 /// job's plan, D-123), the three first-launch flags `onboardingDone`,
-/// `introPlayed` and `homeTipSeen` (D-135) and `lastExport` (when a backup
-/// file was last saved, D-145). None is in
-/// `SettingsRepository.exportedKeys`, so a backup never holds them. An import
+/// `introPlayed` and `homeTipSeen` (D-135), `lastExport` (when a backup
+/// file was last saved, D-145) and `lastEditor` (the editor sheet's last
+/// pick, D-189). None is in `SettingsRepository.exportedKeys`, so a backup
+/// never holds them. An import
 /// keeps them, except `shootingMode` and `copyJobPlan` (D-146): after a
 /// restore Shooting mode is off (its baselines belong to the old clips,
 /// D-71), and no copy job is saved (an import is refused while one is).
@@ -55,6 +58,7 @@ class PhoneStateRepository {
   static const homeTipSeenKey = 'homeTipSeen';
   static const copyJobPlanKey = 'copyJobPlan';
   static const lastExportKey = 'lastExport';
+  static const lastEditorKey = 'lastEditor';
 
   /// The MediaStore version last seen for each volume, by volume name: the
   /// version the stored clips' numbers belong to (D-72, Ruling V). Kept
@@ -384,6 +388,42 @@ class PhoneStateRepository {
           ),
         );
     _log.info('Recorded the last export');
+  }
+
+  /// The row of the editor sheet used last on this phone (D-189): an editor,
+  /// or **Other app…**. None, or an unreadable value (not JSON, not a string,
+  /// not the name of an [EditorPick]), is null; only the key's name is
+  /// logged, never the value. A phone habit, not a setting: a backup never
+  /// holds it.
+  Future<EditorPick?> lastEditor() async {
+    final text = await _rawValue(lastEditorKey);
+    if (text == null) return null;
+    try {
+      final value = jsonDecode(text);
+      if (value is String) {
+        for (final pick in EditorPick.values) {
+          if (pick.name == value) return pick;
+        }
+      }
+    } on FormatException {
+      // Not JSON: fall through to the log line.
+    }
+    _log.warning('Setting $lastEditorKey is corrupt, reading it as none');
+    return null;
+  }
+
+  /// Remembers that [pick] was used last, in place of an earlier pick or an
+  /// unreadable value. Nothing but the key is logged.
+  Future<void> recordLastEditor(EditorPick pick) async {
+    await _db
+        .into(_db.settings)
+        .insertOnConflictUpdate(
+          SettingsCompanion.insert(
+            key: lastEditorKey,
+            value: jsonEncode(pick.name),
+          ),
+        );
+    _log.info('Recorded the last editor');
   }
 
   /// A true/false flag stored as JSON; a missing row is false, an unreadable

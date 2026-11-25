@@ -146,11 +146,16 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     if (_sheetOpen || state.pickedInOrder.isEmpty) return;
     _sheetOpen = true;
     try {
-      await showEditorSheet(
+      final outcome = await showEditorSheet(
         context,
         reelId: widget.reelId,
         clipIds: state.pickedInOrder,
       );
+      // The sheet no longer leaves a route (D-189): after a send this screen
+      // goes back to the reel's page itself, until Task 5 removes it.
+      if (outcome == EditorSheetOutcome.sent && mounted && context.canPop()) {
+        context.pop();
+      }
     } finally {
       _sheetOpen = false;
     }

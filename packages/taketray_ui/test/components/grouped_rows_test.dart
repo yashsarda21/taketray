@@ -351,6 +351,182 @@ void main() {
       );
     });
 
+    testWidgets('titleTag: a pill after the title in tertiaryContainer, '
+        'labelSmall', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 360,
+              child: TtListRow(
+                title: 'CapCut',
+                titleTag: 'Last used',
+                subtitle: 'Gets your original clips',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final scheme = tester.element(find.byType(TtListRow)).scheme;
+      final tag = tester.widget<Text>(find.text('Last used'));
+      expect(tag.style!.fontSize, 12);
+      expect(tag.style!.color, scheme.onTertiaryContainer);
+      final pill = tester.widget<DecoratedBox>(
+        find.ancestor(
+          of: find.text('Last used'),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final shape = pill.decoration as ShapeDecoration;
+      expect(shape.color, scheme.tertiaryContainer);
+      expect(shape.shape, isA<StadiumBorder>());
+      // editflow.css:18 .ed-last: margin-left 8, padding 1px 8px.
+      final title = tester.getRect(find.text('CapCut'));
+      final pillBox = tester.getRect(
+        find.ancestor(
+          of: find.text('Last used'),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      final text = tester.getRect(find.text('Last used'));
+      expect(pillBox.left - title.right, 8);
+      expect(text.left - pillBox.left, 8);
+      expect(pillBox.right - text.right, 8);
+      expect(text.top - pillBox.top, 1);
+      expect(pillBox.bottom - text.bottom, 1);
+      // On the title's line, not under it.
+      expect(pillBox.center.dy, closeTo(title.center.dy, 4));
+      // The subtitle is still under the title.
+      expect(
+        tester.getRect(find.text('Gets your original clips')).top,
+        greaterThanOrEqualTo(title.bottom),
+      );
+    });
+
+    testWidgets('titleTag is a bit of the title, not a control: the row keeps '
+        'its one tap and its label', (tester) async {
+      final handle = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(
+        ttTestApp(
+          TtGroupedRows(
+            children: [
+              TtListRow(
+                title: 'Instagram Edits',
+                titleTag: 'Last used',
+                semanticLabel: 'Instagram Edits, last used',
+                onTap: () => taps++,
+              ),
+            ],
+          ),
+        ),
+      );
+
+      await tester.tap(find.text('Last used'));
+      expect(taps, 1);
+      expect(
+        find.bySemanticsLabel('Instagram Edits, last used'),
+        findsOneWidget,
+      );
+      expect(find.bySemanticsLabel('Last used'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('no titleTag: no pill', (tester) async {
+      await tester.pumpWidget(ttTestApp(_row('CapCut')));
+
+      expect(
+        find.ancestor(
+          of: find.text('CapCut'),
+          matching: find.byType(DecoratedBox),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('titleTag at 2x text wraps under the title, no overflow at '
+        '360', (tester) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 360,
+              child: TtGroupedRows(
+                children: [
+                  TtListRow(
+                    title: 'Instagram Edits',
+                    titleTag: 'Last used',
+                    subtitle: 'Gets your original clips',
+                    leading: TtRowIcon(icon: Symbols.apps_rounded),
+                    trailing: Icon(Symbols.chevron_right_rounded),
+                    tall: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          textScale: 2,
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      final title = tester.getRect(find.text('Instagram Edits'));
+      final pill = tester.getRect(
+        find.ancestor(
+          of: find.text('Last used'),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      // The pill moved under the title, in the title's column.
+      expect(pill.top, greaterThanOrEqualTo(title.bottom));
+      expect(pill.left, title.left);
+      // Both stay inside the row.
+      final row = tester.getRect(find.byType(TtListRow));
+      expect(title.right, lessThanOrEqualTo(row.right));
+      expect(pill.right, lessThanOrEqualTo(row.right));
+      for (final text in ['Instagram Edits', 'Last used']) {
+        expect(
+          tester
+              .renderObject<RenderParagraph>(find.text(text))
+              .didExceedMaxLines,
+          isFalse,
+          reason: text,
+        );
+      }
+    });
+
+    testWidgets('titleTag with a long title at 1x wraps the pill under it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        ttTestApp(
+          const Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: 360,
+              child: TtListRow(
+                title: 'A very long editor name that fills the whole line',
+                titleTag: 'Last used',
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      final row = tester.getRect(find.byType(TtListRow));
+      final pill = tester.getRect(
+        find.ancestor(
+          of: find.text('Last used'),
+          matching: find.byType(DecoratedBox),
+        ),
+      );
+      expect(pill.right, lessThanOrEqualTo(row.right));
+    });
+
     testWidgets('a wrapped trailing (value and chevron in a Row) stacks too', (
       tester,
     ) async {
