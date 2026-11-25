@@ -278,4 +278,248 @@ void main() {
       expect(stateOf(c, goa.id).selecting, isTrue);
     });
   });
+
+  group('choosing from the editor sheet, and Clear (D-188)', () {
+    test('begin from the sheet: choosing, nothing chosen, fromSheet', () async {
+      final goa = await reels.create('Goa');
+      await putInReel(h, goa.id, [reelVideo(1)]);
+      final c = await open(goa.id);
+
+      notifierOf(c, goa.id).begin(fromSheet: true);
+
+      expect(
+        stateOf(c, goa.id),
+        const ReelSelectionState(selecting: true, fromSheet: true),
+      );
+    });
+
+    test('begin without the flag is not from the sheet', () async {
+      final goa = await reels.create('Goa');
+      final c = await open(goa.id);
+
+      notifierOf(c, goa.id).begin();
+
+      expect(stateOf(c, goa.id).selecting, isTrue);
+      expect(stateOf(c, goa.id).fromSheet, isFalse);
+    });
+
+    test('the state compares and hashes fromSheet', () {
+      const a = ReelSelectionState(selecting: true, fromSheet: true);
+      const b = ReelSelectionState(selecting: true);
+
+      expect(a, isNot(b));
+      expect(a.hashCode, isNot(b.hashCode));
+      expect(a, const ReelSelectionState(selecting: true, fromSheet: true));
+    });
+
+    test('from the sheet, un-choosing the last clip keeps choosing', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..toggle(ids.first)
+        ..toggle(ids.first);
+
+      expect(stateOf(c, goa.id).selecting, isTrue);
+      expect(stateOf(c, goa.id).selected, isEmpty);
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+    });
+
+    test('from the sheet, a chosen clip keeps fromSheet while others '
+        'are chosen', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..toggle(ids.first)
+        ..toggle(ids.last)
+        ..toggle(ids.first);
+
+      expect(stateOf(c, goa.id).selected, {ids.last});
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+    });
+
+    test('from the sheet, the last chosen clip going missing keeps '
+        'choosing', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..toggle(ids.first);
+
+      await flagForTest(h, {ids.first}, missing: true);
+      await settle();
+
+      expect(stateOf(c, goa.id).selecting, isTrue);
+      expect(stateOf(c, goa.id).selected, isEmpty);
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+    });
+
+    test('from the sheet, some chosen clips going missing keeps the '
+        'rest and fromSheet', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..toggle(ids.first)
+        ..toggle(ids.last);
+
+      await flagForTest(h, {ids.last}, missing: true);
+      await settle();
+
+      expect(stateOf(c, goa.id).selected, {ids.first});
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+    });
+
+    test('held, the last chosen clip going missing ends choosing', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id).start(ids.first);
+
+      await flagForTest(h, {ids.first}, missing: true);
+      await settle();
+
+      expect(stateOf(c, goa.id), const ReelSelectionState());
+    });
+
+    test(
+      'begin from the sheet with nothing chosen survives a list change',
+      () async {
+        final goa = await reels.create('Goa');
+        await putInReel(h, goa.id, [reelVideo(1)]);
+        final c = await open(goa.id);
+        notifierOf(c, goa.id).begin(fromSheet: true);
+
+        await putInReel(h, goa.id, [reelVideo(2)]);
+        await settle();
+
+        expect(
+          stateOf(c, goa.id),
+          const ReelSelectionState(selecting: true, fromSheet: true),
+        );
+      },
+    );
+
+    test(
+      'clearChosen empties and keeps choosing, held or from the sheet',
+      () async {
+        final goa = await reels.create('Goa');
+        final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+        final c = await open(goa.id);
+        final selection = notifierOf(c, goa.id)
+          ..start(ids.first)
+          ..toggle(ids.last)
+          ..clearChosen();
+
+        expect(stateOf(c, goa.id), const ReelSelectionState(selecting: true));
+
+        selection
+          ..clear()
+          ..begin(fromSheet: true)
+          ..toggle(ids.first)
+          ..clearChosen();
+
+        expect(
+          stateOf(c, goa.id),
+          const ReelSelectionState(selecting: true, fromSheet: true),
+        );
+      },
+    );
+
+    test('clearChosen when not choosing changes nothing', () async {
+      final goa = await reels.create('Goa');
+      final c = await open(goa.id);
+
+      notifierOf(c, goa.id).clearChosen();
+
+      expect(stateOf(c, goa.id), const ReelSelectionState());
+    });
+
+    test('after clearChosen, held: choose one and un-choose it ends '
+        'choosing', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..start(ids.first)
+        ..clearChosen()
+        ..toggle(ids.last)
+        ..toggle(ids.last);
+
+      expect(stateOf(c, goa.id), const ReelSelectionState());
+    });
+
+    test('after clearChosen, from the sheet: choose one and un-choose it '
+        'stays', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..toggle(ids.first)
+        ..clearChosen()
+        ..toggle(ids.last)
+        ..toggle(ids.last);
+
+      expect(
+        stateOf(c, goa.id),
+        const ReelSelectionState(selecting: true, fromSheet: true),
+      );
+    });
+
+    test('selectAll keeps fromSheet; clear drops it', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      final selection = notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..selectAll();
+
+      expect(stateOf(c, goa.id).selected, ids.toSet());
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+
+      selection.clear();
+      expect(stateOf(c, goa.id), const ReelSelectionState());
+    });
+
+    test('selectAll held is not from the sheet', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..start(ids.single)
+        ..selectAll();
+
+      expect(stateOf(c, goa.id).fromSheet, isFalse);
+    });
+
+    test('begin from the sheet while choosing keeps the clips', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..start(ids.first)
+        ..begin(fromSheet: true);
+
+      expect(stateOf(c, goa.id).selected, {ids.first});
+      expect(stateOf(c, goa.id).selecting, isTrue);
+      expect(stateOf(c, goa.id).fromSheet, isTrue);
+    });
+
+    test('a long press (start) is never from the sheet', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1)]);
+      final c = await open(goa.id);
+      notifierOf(c, goa.id)
+        ..begin(fromSheet: true)
+        ..start(ids.single);
+
+      expect(stateOf(c, goa.id).fromSheet, isFalse);
+    });
+  });
 }

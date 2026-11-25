@@ -961,6 +961,7 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 
 ### D-88 · Multi-select on the reel page and the reel picker: what can be chosen, add and move, a new reel inline, the failure in the sheet, and the snack copy
 - Date: 2026-10-31 · Phase: 4 · Task: 9 · Plan: `docs/superpowers/plans/2026-10-30-phase-4-reels.md`
+- Amended by D-188 (Phase 12B): `ReelSelectionState` gains `fromSheet`, choosing that starts from the editor sheet stays on with nothing chosen, and `clearChosen()` keeps choosing on.
 - Amended by D-98: the reel picker has a third mode, **tag**: `excludeReelId` and `fromReelId` are `int?` (null for tag; add and move assert one), several reels can be picked, and a confirmed tag calls `LastTags.set`.
 - Amended by the Phase 4 final-review fix wave (2026-10-31): the snack's Undo for an add to several reels runs the records last to first in **one** transaction (`undoAll`, D-84 point 9): all of them come back or none, and the same list can be undone again after a failure. `ClipActionOutcome.clipCount`'s comment now says what it holds (an add: every clip asked for; a move or a remove: the links taken out of the source).
 - Decision:
@@ -2933,3 +2934,15 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Consequences:
   - `reels_screen.dart`, `shooting_mode_section.dart`, `TtShootingModeCard` and `TtReelCard` change, and tabs replace the chips.
   - `docs/flow.md` is updated when it is built.
+
+### D-188 · Phase 12B: choosing that starts from the editor sheet stays on when nothing is chosen, and Clear keeps choosing on (amends D-88)
+- Date: 2026-11-26 · Phase: 12B · Task: 1 · Amends D-88 · Builds on D-185 · Code: `app/lib/features/reels/view_models/reel_selection.dart`, `app/test/features/reels/view_models/reel_selection_test.dart`
+- Decision:
+  1. **`ReelSelectionState` gains `fromSheet`** (default false; part of `==` and `hashCode`). It is true when choosing was started by **Choose clips instead** on the editor sheet.
+  2. **From the sheet, choosing stays on with nothing chosen.** Un-choosing the last clip (`toggle`) and a prune that empties the choice (the last chosen clip goes missing or leaves the reel) keep `selecting: true, fromSheet: true` with an empty choice. The person came from a sheet that said "all clips", so an empty choice is a place to pick from, not a reason to leave.
+  3. **Held or ⋮ Select clips** (`fromSheet` false) keep the D-88 rules: un-choosing the last clip ends choosing, and so does a prune that empties a choice that had clips. A choice that was already empty (after Clear) is not pruned.
+  4. **`selectAll` keeps `fromSheet`; `clear` ends choosing and drops it** (Close, Back, a picked editor).
+  5. **`begin({bool fromSheet = false})`** takes the flag, not `start`: `begin` is the way into choosing with nothing chosen (the sheet and ⋮ **Select clips**), while `start(id)` is the long press, which is never from the sheet. `begin(fromSheet: true)` while already choosing keeps the chosen clips and sets `fromSheet`; `begin()` while choosing changes nothing.
+  6. **`clearChosen()`** is the top bar's **Clear**: it un-chooses every clip and keeps choosing on, with `fromSheet` kept (`editflow.js:88`, `selNone`, where Clear empties the choice and stays). It does nothing when not choosing. After it, a held choice still ends when one clip is chosen and un-chosen, and a sheet choice stays.
+- Why: the owner's design (D-185) has the sheet's **Choose clips instead** land on the reel page with nothing chosen and a hint, and its Clear leaves the bar in place. D-88's "the last un-chosen clip ends choosing" would have thrown the person out of choosing the moment they un-chose a clip.
+- Consequences: the reel page's top bar and dock (Task 4) read `fromSheet` and call `clearChosen`; `docs/flow.md` "Managing clips in a reel" lists the two ways choosing ends.
