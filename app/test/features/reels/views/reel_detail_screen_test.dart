@@ -932,7 +932,9 @@ void main() {
       await tester.tap(find.text('Select clips'));
       await tester.pumpAndSettle();
 
-      expect(find.text('0 selected'), findsOneWidget);
+      // The count reads "Choose clips" while nothing is chosen (D-191).
+      expect(find.text('Choose clips'), findsOneWidget);
+      expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).selection, isTrue);
     });
 
     testApp('Delete reel asks, deletes, shows Undo and goes to Reels', (
@@ -1277,7 +1279,8 @@ void main() {
     Finder fab() => find.byType(TtFab);
 
     testApp('shows with a live clip, no choice and no session; opens the '
-        'picking screen with nothing ticked', (tester) async {
+        'editor sheet with the clip (D-191)', (tester) async {
+      h.editors.allow({'apps'});
       final goa = await newReel(tester, 'Goa');
       await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
       await open(tester, goa.id);
@@ -1286,26 +1289,29 @@ void main() {
       expect(tester.widget<TtFab>(fab()).label, 'Edit video');
 
       await tester.tap(fab());
-      await tester.pumpAndSettle();
+      await settleApp(tester);
 
+      // One clip: the plain title, and no Choose clips instead.
       expect(
-        find.text(editSelectRouteMarker('${goa.id}', null, null)),
-        findsOneWidget,
+        tester.widget<TtSheet>(find.byType(TtSheet)).title,
+        'Edit 1 clip in…',
       );
+      expect(find.text('Choose clips instead'), findsNothing);
+      expect(find.textContaining('the picking screen'), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
     });
 
-    testApp('a double tap pushes the picking screen once', (tester) async {
+    testApp('a double tap opens the editor sheet once', (tester) async {
+      h.editors.allow({'apps'});
       final goa = await newReel(tester, 'Goa');
       await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
       await open(tester, goa.id);
 
       await tester.tap(fab());
       await tester.tap(fab(), warnIfMissed: false);
-      await tester.pumpAndSettle();
-      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
-      await tester.pumpAndSettle();
+      await settleApp(tester);
 
-      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.byType(TtSheet), findsOneWidget);
     });
 
     testApp('is not there for a reel with no clips', (tester) async {

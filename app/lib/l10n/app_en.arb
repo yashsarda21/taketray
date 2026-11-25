@@ -1007,19 +1007,85 @@
   },
   "selectionAddTo": "Add to another reel",
   "@selectionAddTo": {
-    "description": "Button of the selection bar on a reel's page that opens the sheet to also put the chosen clips in other reels."
+    "description": "What a screen reader says for Add to in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to also put them in other reels."
   },
   "selectionMoveTo": "Move to another reel",
   "@selectionMoveTo": {
-    "description": "Button of the selection bar on a reel's page that opens the sheet to move the chosen clips to another reel."
+    "description": "What a screen reader says for Move in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to move them to another reel."
   },
   "selectionRemove": "Remove from this reel",
   "@selectionRemove": {
-    "description": "Button of the selection bar on a reel's page that takes the chosen clips out of the reel."
+    "description": "What a screen reader says for Remove in the bar at the bottom of a reel's page while clips are chosen: takes them out of the reel."
   },
   "selectionSelectAll": "Select all",
   "@selectionSelectAll": {
-    "description": "Item of the menu of the selection bar that chooses every clip that is on the phone."
+    "description": "Button of the top bar on a reel's page while choosing clips (and of the clip picking screen) that chooses every clip that is on the phone."
+  },
+  "selectionChooseClips": "Choose clips",
+  "@selectionChooseClips": {
+    "description": "Title of the top bar on a reel's page while choosing clips and none is chosen yet."
+  },
+  "selectionDockLabel": "Chosen clips",
+  "@selectionDockLabel": {
+    "description": "What a screen reader says for the bar at the bottom of a reel's page while clips are chosen."
+  },
+  "selectionDockShare": "Share",
+  "@selectionDockShare": {
+    "description": "Word under the share icon in the bar at the bottom of a reel's page while clips are chosen: opens Android's share menu for them."
+  },
+  "selectionDockAddTo": "Add to",
+  "@selectionDockAddTo": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to also put them in other reels. Keep it short: four of these share one row."
+  },
+  "selectionDockMove": "Move",
+  "@selectionDockMove": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to move them to another reel. Keep it short."
+  },
+  "selectionDockRemove": "Remove",
+  "@selectionDockRemove": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: takes them out of this reel. Keep it short."
+  },
+  "selectionDockEdit": "{count, plural, one{Edit 1 clip} other{Edit {count} clips}}",
+  "@selectionDockEdit": {
+    "description": "Big button in the bar at the bottom of a reel's page: opens the editor sheet with the chosen clips.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectionDockEditSemantics": "{count, plural, one{Edit 1 clip, {duration}} other{Edit {count} clips, {duration}}}",
+  "@selectionDockEditSemantics": {
+    "description": "What a screen reader says for the Edit button in the bar at the bottom of a reel's page: how many clips and how long they are together, such as 1:38.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "selectionDockEditNoneSemantics": "Edit: choose clips first",
+  "@selectionDockEditNoneSemantics": {
+    "description": "What a screen reader says for the Edit button in the bar at the bottom of a reel's page while no clip is chosen (the button is off)."
+  },
+  "selectionDockEditingNote": "This reel is being edited in {editor}. Tap Done editing at the top before sending clips again.",
+  "@selectionDockEditingNote": {
+    "description": "Note in place of the Edit button in the bar at the bottom of a reel's page while the reel is being edited in an editor (its short name, such as VN or Edits).",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "chooseClipsHintTitle": "Tap the clips you want to edit",
+  "@chooseClipsHintTitle": {
+    "description": "Title of the hint at the top of a reel's page after Choose clips instead on the editor sheet, while no clip is chosen; also the words on the bar's Edit button while it is off."
+  },
+  "chooseClipsHintBody": "Next time, hold a clip to start choosing straight away.",
+  "@chooseClipsHintBody": {
+    "description": "Second line of the hint at the top of a reel's page after Choose clips instead on the editor sheet."
   },
   "pickerTitleAdd": "{count, plural, one{Add clip to reels} other{Add {count} clips to reels}}",
   "@pickerTitleAdd": {
@@ -2172,7 +2238,7 @@
   },
   "editSelectClear": "Clear",
   "@editSelectClear": {
-    "description": "Top bar button on the clip picking screen that un-ticks every clip. It replaces Select all while every clip is ticked."
+    "description": "Top bar button on the clip picking screen, and on a reel's page while choosing clips, that un-ticks every clip and keeps choosing. It replaces Select all while every clip is ticked."
   },
   "editSelectInfo": "Clips go to your editor in the order you shot them.",
   "@editSelectInfo": {
@@ -2405,11 +2471,11 @@
   },
   "reelEditVideo": "Edit video",
   "@reelEditVideo": {
-    "description": "Button on a reel's page, and its three-dot menu entry, that opens the clip picking screen for an editor."
+    "description": "Button on a reel's page that opens the editor sheet with every clip of the reel."
   },
   "reelMenuShare": "Share",
   "@reelMenuShare": {
-    "description": "Entry in the three-dot menu of a reel's page while clips are chosen: shares them through Android's share menu."
+    "description": "What a screen reader says for Share in the bar at the bottom of a reel's page while clips are chosen: shares them through Android's share menu."
   },
   "viewerShare": "Share",
   "@viewerShare": {

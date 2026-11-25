@@ -90,8 +90,10 @@ void main() {
     matching: find.widgetWithText(TtButton, label),
   );
 
-  Finder barButton(String label) => find.byWidgetPredicate(
-    (w) => w is TtIconButton && w.semanticLabel == label,
+  /// The action of the reel page's dock (D-191) whose word is [label].
+  Finder dockAction(String label) => find.descendant(
+    of: find.byType(TtSelectionDock),
+    matching: find.text(label),
   );
 
   Future<Set<int>> clipIdsOf(WidgetTester tester, int reelId) =>
@@ -417,7 +419,7 @@ void main() {
         () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0], ids[1]]),
       );
       h.editors.allow({'deleteCopies'});
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       // The first tile of "In your edit" is clip 1.
       final tile = find.byWidgetPredicate(
         (w) => w is TtClipTile && w.key == ValueKey(ids[0]),
@@ -425,7 +427,7 @@ void main() {
       await tester.longPress(tile);
       await tester.pumpAndSettle();
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(
@@ -457,7 +459,7 @@ void main() {
         () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0], ids[1]]),
       );
       h.editors.allow({'deleteCopies'});
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       await tester.longPress(
         find.byWidgetPredicate(
           (w) => w is TtClipTile && w.key == ValueKey(ids[0]),
@@ -471,7 +473,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(
@@ -543,7 +545,7 @@ void main() {
       h.editors
         ..allow({'deleteCopies'})
         ..failNext('deleteCopies');
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       await tester.longPress(
         find.byWidgetPredicate(
           (w) => w is TtClipTile && w.key == ValueKey(ids[0]),
@@ -551,7 +553,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(
@@ -571,7 +573,7 @@ void main() {
         tester,
         () => startEditing(h, goa.id, EditorApp.capcut, sent: [ids[0]]),
       );
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       await tester.longPress(
         find.byWidgetPredicate(
           (w) => w is TtClipTile && w.key == ValueKey(ids[0]),
@@ -579,7 +581,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
       // No copy, so no word about one.
       expect(
@@ -611,14 +613,14 @@ void main() {
       h.editors
         ..allow({'deleteCopies'})
         ..failNext('deleteCopies');
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       await tester.longPress(
         find.byWidgetPredicate(
           (w) => w is TtClipTile && w.key == ValueKey(ids[0]),
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -676,22 +678,20 @@ void main() {
         tester,
         () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[0]]),
       );
-      await openReelPage(tester, h, goa.id, size: _tall);
+      await openReelPage(tester, h, goa.id, size: _tall, inShell: true);
       await tester.longPress(find.byType(TtClipTile).first);
       await tester.pumpAndSettle();
 
-      await tester.tap(
-        find.byWidgetPredicate(
-          (w) => w is TtIconButton && w.semanticLabel == 'More options',
-        ),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Select all'));
+      await tester.tap(find.widgetWithText(TtButton, 'Select all'));
       await tester.pumpAndSettle();
 
       expect(find.text('5 selected'), findsOneWidget);
-      // Edit video is not offered during a session (R1).
+      // Edit is not offered during a session (R1): the dock has the note.
       expect(find.text('Edit video'), findsNothing);
+      expect(
+        tester.widget<TtSelectionDock>(find.byType(TtSelectionDock)).edit,
+        isNull,
+      );
     });
   });
 

@@ -5,6 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/reel_clip.dart';
+import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
+import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
+import 'package:taketray/features/reels/views/reel_choosing_dock.dart';
+import 'package:taketray/features/shell/view_models/choosing_reel.dart';
 import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -13,8 +18,13 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../../support/clips.dart';
 
+/// The reel whose page is choosing in these tests: its dock has no clips to
+/// show (its providers are fed by hand).
+const int _reel = 7;
+
 /// The shell on its own: three marker tabs behind the nav pill, with the
-/// pending clips fed by hand, for the badge on the To tag tab (D-184).
+/// pending clips fed by hand, for the badge on the To tag tab (D-184), and
+/// the reel page's dock in the nav pill's place while it chooses (D-191).
 void main() {
   late StreamController<List<Clip>> pending;
 
@@ -27,8 +37,10 @@ void main() {
 
   List<Clip> clips(int count) => [for (var i = 1; i <= count; i++) testClip(i)];
 
+  late GoRouter router;
+
   Future<void> pumpShell(WidgetTester tester) async {
-    final router = GoRouter(
+    router = GoRouter(
       initialLocation: Routes.reels,
       routes: [
         StatefulShellRoute.indexedStack(
@@ -54,7 +66,13 @@ void main() {
     addTearDown(router.dispose);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [pendingClipsProvider.overrideWith((ref) => pending.stream)],
+        overrides: [
+          pendingClipsProvider.overrideWith((ref) => pending.stream),
+          // The dock of reel [_reel]: no clips, no editing session.
+          reelClipsProvider(_reel)
+              .overrideWith((ref) => Stream.value(const <ReelClip>[])),
+          reelEditStateProvider(_reel).overrideWith((ref) async => null),
+        ],
         child: MaterialApp.router(
           routerConfig: router,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -91,6 +109,10 @@ void main() {
     await tester.tap(inPill(label));
     await tester.pumpAndSettle();
   }
+
+  ChoosingReel choosing(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(AppShell)))
+          .read(choosingReelProvider.notifier);
 
   String toTagSemantics() {
     // The To tag item is the one whose label starts with "To tag".
@@ -237,5 +259,122 @@ void main() {
 
     expect(inPill('99+'), findsOneWidget);
     expect(inPill('120'), findsNothing);
+  });
+
+  group('the dock of a choosing reel page (D-191)', () {
+    testWidgets('choosing on a reel page: the dock instead of the nav pill', (
+      tester,
+    ) async {
+      await pumpShell(tester);
+      await emit(tester, clips(2));
+
+      choosing(tester).show(_reel);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TtNavPill), findsNothing);
+      expect(find.byType(TtSelectionDock), findsOneWidget);
+      expect(
+        tester.widget<ReelChoosingDock>(find.byType(ReelChoosingDock)).reelId,
+        _reel,
+      );
+      // The tab itself stays.
+      expect(find.text('the Reels tab'), findsOneWidget);
+    });
+
+    testWidgets('the nav pill comes back with its badge when choosing ends', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await pumpShell(tester);
+      await emit(tester, clips(7));
+      choosing(tester).show(_reel);
+      await tester.pumpAndSettle();
+      // The To tag badge goes with the pill while choosing (amends D-184).
+      expect(find.byType(TtCountBadge), findsNothing);
+      expect(find.text('7'), findsNothing);
+
+      choosing(tester).hide(_reel);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TtSelectionDock), findsNothing);
+      expect(find.byType(TtNavPill), findsOneWidget);
+      expect(inPill('7'), findsOneWidget);
+      expect(badgeCounts(tester), [0, 7, 0]);
+      expect(toTagSemantics(), 'To tag, 7 clips');
+      semantics.dispose();
+    });
+
+    testWidgets(
+      'on another tab while a reel page is choosing: the nav pill, not the '
+      'dock',
+      (tester) async {
+        await pumpShell(tester);
+        await emit(tester, clips(3));
+        choosing(tester).show(_reel);
+        await tester.pumpAndSettle();
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+
+        router.go(Routes.toTag);
+        await tester.pumpAndSettle();
+        expect(find.text('the To tag tab'), findsOneWidget);
+        expect(find.byType(TtNavPill), findsOneWidget);
+        expect(inPill('3'), findsOneWidget);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        await goTo(tester, 'Settings');
+        expect(find.byType(TtNavPill), findsOneWidget);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        // Back on Reels the page is still choosing: the dock again.
+        await goTo(tester, 'Reels');
+        expect(find.text('the Reels tab'), findsOneWidget);
+        expect(find.byType(TtNavPill), findsNothing);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+      },
+    );
+
+    testWidgets('hide for another reel changes nothing', (tester) async {
+      await pumpShell(tester);
+      choosing(tester).show(_reel);
+      await tester.pumpAndSettle();
+
+      choosing(tester).hide(_reel + 1);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TtSelectionDock), findsOneWidget);
+      expect(find.byType(TtNavPill), findsNothing);
+      expect(
+        ProviderScope.containerOf(tester.element(find.byType(AppShell)))
+            .read(choosingReelProvider),
+        _reel,
+      );
+    });
+
+    testWidgets("the dock keeps the phone's gesture inset under its content "
+        '(the slot does not strip it)', (tester) async {
+      tester.view
+        ..physicalSize = const Size(360, 800)
+        ..devicePixelRatio = 1
+        ..padding = const FakeViewPadding(bottom: 24)
+        ..viewPadding = const FakeViewPadding(bottom: 24);
+      addTearDown(tester.view.reset);
+      await pumpShell(tester);
+      choosing(tester).show(_reel);
+      await tester.pumpAndSettle();
+
+      final dock = find.byType(TtSelectionDock);
+      expect(MediaQuery.viewPaddingOf(tester.element(dock)).bottom, 24);
+      // The panel (not the slide around it) reaches the bottom of the
+      // screen, and its Edit button ends 22 dp plus the inset above it.
+      final panel = find
+          .descendant(of: dock, matching: find.byType(DecoratedBox))
+          .first;
+      expect(tester.getBottomLeft(panel).dy, 800);
+      final edit = find.byKey(const ValueKey<String>('tt-selection-dock-edit'));
+      expect(
+        tester.getBottomLeft(edit).dy,
+        800 - TtMetrics.selectionDockPaddingBottom - 24,
+      );
+    });
   });
 }

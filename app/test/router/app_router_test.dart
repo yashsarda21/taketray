@@ -984,8 +984,7 @@ void main() {
       expect(screen.addMode, isFalse);
     });
 
-    testApp('from a reel: Edit video, pick, Continue, CapCut leaves the '
-        'picking screen for the reel page under it, with the snack', (
+    testApp('Edit video opens the editor sheet over the reel page', (
       tester,
     ) async {
       final h = reelHarness();
@@ -1004,21 +1003,24 @@ void main() {
 
       await tester.tap(find.byType(TtFab));
       await _settle(tester);
-      expect(find.byType(EditSelectScreen), findsOneWidget);
-      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
-      await tester.tap(find.text('Select all'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await _settle(tester);
+      // The sheet, straight away: no picking screen (D-191). The reel's page
+      // and its nav pill stay under it.
+      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(
+        tester.widget<TtSheet>(find.byType(TtSheet)).title,
+        'Edit all 2 clips in…',
+      );
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.byType(TtNavPill), findsOneWidget);
+
       await tester.tap(find.text('CapCut'));
       await _settle(tester);
 
-      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
       expect(find.byType(ReelDetailScreen), findsOneWidget);
       expect(find.text('Sent 2 clips to CapCut'), findsOneWidget);
       expect(h.editors.sent, hasLength(1));
-      // Back on the reel's page: Back goes to Reels, not to the picker.
-      expect(router.canPop(), isTrue);
+      expect(find.byType(TtNavPill).hitTestable(), findsOneWidget);
       // The offer of Ready to edit comes 1.3 s later.
       await tester.pump(const Duration(milliseconds: 1500));
       await _settle(tester);

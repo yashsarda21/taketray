@@ -14,9 +14,8 @@ import 'package:taketray/domain/rules/shooting_order.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/editors/view_models/copy_job_controller.dart';
 import 'package:taketray/features/editors/views/done_editing_dialog.dart';
-import 'package:taketray/features/editors/views/open_share.dart';
+import 'package:taketray/features/editors/views/editor_sheet.dart';
 import 'package:taketray/features/media_access/views/media_access_banner.dart';
-import 'package:taketray/features/reels/view_models/reel_clip_actions.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_selection.dart';
@@ -25,10 +24,10 @@ import 'package:taketray/features/reels/views/open_once.dart';
 import 'package:taketray/features/reels/views/reel_edit_banner.dart';
 import 'package:taketray/features/reels/views/reel_edit_sections.dart';
 import 'package:taketray/features/reels/views/reel_form_sheet.dart';
-import 'package:taketray/features/reels/views/reel_picker_sheet.dart';
 import 'package:taketray/features/reels/views/reel_status_menu.dart';
 import 'package:taketray/features/reels/views/undo_snacks.dart';
 import 'package:taketray/features/references/views/references_section.dart';
+import 'package:taketray/features/shell/view_models/choosing_reel.dart';
 import 'package:taketray/features/tagging/views/to_tag_screen.dart'
     show formatClipDuration;
 import 'package:taketray/l10n/gen/app_localizations.dart';
@@ -38,9 +37,6 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 /// What the ⋮ menu can do.
 enum _ReelAction { details, select, delete }
-
-/// What the ⋮ menu of the selection bar can do.
-enum _SelectionAction { edit, selectAll, share }
 
 /// A reel's page (`routes.reel`, D-87), inside the Reels tab so the nav pill
 /// stays. From the top:
@@ -90,27 +86,34 @@ enum _SelectionAction { edit, selectAll, share }
 /// to To tag** and **Add videos**. A reel that is gone (an id that names no
 /// reel, or a reel deleted while the page is open) sends the app to Reels.
 ///
-/// **Choosing clips** (D-88; `ReelSelection`). **Select clips** in the ⋮ menu
-/// or a long press on a tile starts it. The app bar becomes the selection bar
-/// (`TtAppBar(selection: true)`): a close button, "{n} selected", **Add to
-/// another reel**, **Move to another reel**, **Remove from this reel** and a
-/// ⋮ with **Select all**. A tap on a tile chooses or un-chooses it (it no
-/// longer opens the viewer); un-choosing the last one ends choosing. A
-/// missing tile cannot be chosen and Select all skips it. Close and Back end
-/// choosing instead of leaving the page. Add and Move open the reel picker;
-/// every action ends with a snack with **Undo** on the root messenger (the
-/// failure of a picker action is told in the picker, D-85).
+/// **Choosing clips** (D-88, D-188, D-191; `ReelSelection`). A long press on
+/// a tile, **Select clips** in the ⋮ menu, or **Choose clips instead** on the
+/// editor sheet starts it. The app bar becomes the selection bar
+/// (`TtAppBar(selection: true)`): a close button, "{n} selected" ("Choose
+/// clips" while nothing is chosen) and **Select all**, which reads **Clear**
+/// (un-choose all, keep choosing) while every live clip is chosen; from a
+/// text scale of 1.5 it is its icon alone, with the same name. A tap on a
+/// tile, or a long press, chooses or un-chooses it (it no longer opens the
+/// viewer); un-choosing the last one ends choosing, unless it started from
+/// the sheet, which shows the hint "Tap the clips you want to edit" at the
+/// top while nothing is chosen. A missing tile cannot be chosen and Select
+/// all skips it. Close and Back end choosing instead of leaving the page.
+///
+/// While choosing, the page tells `ChoosingReel`, and the shell puts the
+/// dock (`ReelChoosingDock`: Share, Add to, Move, Remove and Edit {n} clips)
+/// in the nav pill's place; the page's last row is padded clear of it. The
+/// page never tells it while building: from a listener on the selection, and
+/// after its first frame and its last.
 ///
 /// **Add videos** opens the folder browser for this reel (once however fast
 /// the taps); the videos it adds arrive here, with a snack and **Undo**.
 ///
-/// **Edit video** (Phase 8, D-126) is an extended button above the nav pill. It
-/// shows when the reel has a live clip, nothing is being chosen and the reel
-/// is **not in an editing session** (R1: Done editing comes first); it opens
-/// the clip picking screen with nothing ticked. In the selection bar's ⋮
-/// menu, **Edit video** (hidden during a session) opens it with the chosen
-/// clips ticked and ends choosing, **Select all** is as before, and **Share**
-/// opens Android's share menu for the chosen clips (the choice stays).
+/// **Edit video** (Phase 8, D-126, D-191) is an extended button above the nav
+/// pill. It shows when the reel has a live clip, nothing is being chosen and
+/// the reel is **not in an editing session** (R1: Done editing comes first);
+/// it opens the editor sheet with every live clip in shooting order ("Edit
+/// all {n} clips in…"), once however fast the taps. The sheet's **Choose
+/// clips instead** starts choosing here with nothing chosen.
 ///
 /// **While the reel is being edited** (D-128; `reelEditStateProvider`) the
 /// editing banner (`ReelEditBanner`) sits under the header, and the clips
@@ -154,12 +157,13 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// Set once the page has sent the app to Reels, so it does so once.
   bool _leaving = false;
 
-  /// A remove is running, so a second tap on its button does nothing.
-  bool _removing = false;
+  /// The editor sheet of Edit video is open, so a second tap does nothing.
+  bool _sheetOpen = false;
 
-  /// A reel picker is open (Add or Move), so a second tap on either button
-  /// does not open a second one.
-  bool _picking = false;
+  /// Where the page says that it is choosing, so that the shell shows the
+  /// dock (D-191). Kept from [initState]: the page's last word comes after
+  /// it has gone.
+  late final ChoosingReel _choosing;
 
   /// Opens the viewer once however fast the taps: a second tap on a tile,
   /// even in the same frame, does not open a second one (a short window, not
@@ -169,11 +173,8 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   void _openViewer(int clipId) =>
       _viewer.open(() => context.push(Routes.clip(widget.reelId, clipId)));
 
-  /// Opens the clip picking screen once however fast the taps.
+  /// Opens the clip picking screen (add mode) once however fast the taps.
   final OpenOnce _edit = OpenOnce();
-
-  /// A share is opening, so a second tap on Share does nothing.
-  bool _sharing = false;
 
   /// Opens Add videos once however fast the taps.
   final OpenOnce _addVideos = OpenOnce();
@@ -183,10 +184,36 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         openAddVideos(context, ref, AddToReel(widget.reelId), pushing: pushing),
   );
 
-  /// Opens the clip picking screen with [clipIds] ticked.
-  void _openEdit([List<int> clipIds = const []]) => _edit.open(
-    () => context.push(Routes.editSelectOf(widget.reelId, clipIds: clipIds)),
-  );
+  /// **Edit video**: the editor sheet with every live clip in shooting order,
+  /// once however fast the taps. **Choose clips instead** starts choosing
+  /// from the sheet (D-188): it stays on with nothing chosen.
+  Future<void> _openEditorSheet() async {
+    if (_sheetOpen) return;
+    final clips = ref.read(reelClipsProvider(widget.reelId)).value ?? const [];
+    final ids = [
+      for (final clip in inShootingOrder([
+        for (final c in clips)
+          if (!c.clip.missing) c.clip,
+      ]))
+        clip.id,
+    ];
+    if (ids.isEmpty) return;
+    final selection = ref.read(reelSelectionProvider(widget.reelId).notifier);
+    _sheetOpen = true;
+    try {
+      final outcome = await showEditorSheet(
+        context,
+        reelId: widget.reelId,
+        clipIds: ids,
+        allClips: true,
+      );
+      if (outcome == EditorSheetOutcome.chooseInstead && mounted) {
+        selection.begin(fromSheet: true);
+      }
+    } finally {
+      _sheetOpen = false;
+    }
+  }
 
   /// **Add more clips** and **Copy to VN folder**: the picking screen in add
   /// mode.
@@ -213,33 +240,35 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     });
   }
 
-  /// The chosen clips' ids in shooting order.
-  List<int> _chosenInOrder() {
-    final chosen = ref.read(reelSelectionProvider(widget.reelId)).selected;
-    final clips = ref.read(reelClipsProvider(widget.reelId)).value ?? const [];
-    return [
-      for (final clip in inShootingOrder([
-        for (final c in clips)
-          if (chosen.contains(c.clip.id)) c.clip,
-      ]))
-        clip.id,
-    ];
+  @override
+  void initState() {
+    super.initState();
+    _choosing = ref.read(choosingReelProvider.notifier);
+    // The shell is told when choosing starts or ends, never while a widget
+    // builds; a page that is built already choosing tells it after its first
+    // frame.
+    ref.listenManual(
+      reelSelectionProvider(widget.reelId),
+      (_, next) => _tellShell(choosing: next.selecting),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _tellShell(
+        choosing: ref.read(reelSelectionProvider(widget.reelId)).selecting,
+      );
+    });
   }
 
-  /// ⋮ **Share**: Android's share menu for the chosen clips, once however
-  /// fast the taps. The choice stays.
-  Future<void> _share() async {
-    if (_sharing) return;
-    _sharing = true;
-    try {
-      await openShare(context, ref, _chosenInOrder());
-    } finally {
-      _sharing = false;
-    }
-  }
+  void _tellShell({required bool choosing}) =>
+      choosing ? _choosing.show(widget.reelId) : _choosing.hide(widget.reelId);
 
   @override
   void dispose() {
+    // After this frame: a provider must not change while the tree is being
+    // taken down.
+    final choosing = _choosing;
+    final reelId = widget.reelId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => choosing.hide(reelId));
     _viewer.dispose();
     _edit.dispose();
     _progress.dispose();
@@ -277,8 +306,12 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     // The phone's 24-hour setting, read here so a change redraws the grid.
     final use24Hour = MediaQuery.alwaysUse24HourFormatOf(context);
 
-    final bottomSpace = TtNavPill.reservedHeight(context);
     final selection = ref.watch(reelSelectionProvider(widget.reelId));
+    // Room under the last row: the nav pill's, or while choosing the dock's,
+    // which the shell leaves in the bottom padding (D-191).
+    final bottomSpace = selection.selecting
+        ? MediaQuery.paddingOf(context).bottom + tt.spacing.m
+        : TtNavPill.reservedHeight(context);
     final selectionNotifier = ref.read(
       reelSelectionProvider(widget.reelId).notifier,
     );
@@ -327,7 +360,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       },
       child: Scaffold(
         appBar: selection.selecting
-            ? _selectionBar(context, selection, editHidden: !noSession)
+            ? _selectionBar(context, selection)
             : TtAppBar(
                 title: '',
                 leading: TtIconButton(
@@ -384,6 +417,19 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                 // took them back here when access was lost (D-111): as on To
                 // tag.
                 const SliverToBoxAdapter(child: MediaAccessBanner()),
+                // Choosing from the editor sheet, nothing chosen yet
+                // (editflow.js:37).
+                if (selection.fromSheet &&
+                    selection.selecting &&
+                    selection.selected.isEmpty)
+                  SliverToBoxAdapter(
+                    child: TtBanner(
+                      kind: TtBannerKind.info,
+                      icon: Symbols.touch_app_rounded,
+                      title: l10n.chooseClipsHintTitle,
+                      body: l10n.chooseClipsHintBody,
+                    ),
+                  ),
                 if (state == null)
                   ...reelLoadingSlivers(context)
                 else ...[
@@ -451,7 +497,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                     ),
                 ],
                 // Room to scroll the last row clear of the floating nav pill
-                // (and of the Edit video button above it).
+                // (and of the Edit video button above it), or of the dock.
                 SliverToBoxAdapter(
                   child: SizedBox(
                     height: showEdit
@@ -468,7 +514,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                 child: TtFab(
                   label: l10n.reelEditVideo,
                   icon: Symbols.movie_edit_rounded,
-                  onPressed: _openEdit,
+                  onPressed: () => unawaited(_openEditorSheet()),
                 ),
               ),
           ],
@@ -517,22 +563,37 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     );
   }
 
-  /// The selection bar (`routes.reel`, `sel`): close, "{n} selected", the
-  /// three actions, and a ⋮ with Edit video (not during an editing session),
-  /// Select all and Share.
+  /// The selection bar (`routes.reel`, `sel`; `editflow.js:24-27`): close,
+  /// "{n} selected" ("Choose clips" with nothing chosen), and **Select all**,
+  /// or **Clear** while every live clip is chosen. Off until the clips are
+  /// read. From a text scale of 1.5 it is its icon alone, with its name, so
+  /// it never runs into the count (`editflow.css:24-27`).
   PreferredSizeWidget _selectionBar(
     BuildContext context,
-    ReelSelectionState selection, {
-    required bool editHidden,
-  }) {
+    ReelSelectionState selection,
+  ) {
     final l10n = AppLocalizations.of(context);
     final notifier = ref.read(reelSelectionProvider(widget.reelId).notifier);
-    final any = selection.selected.isNotEmpty;
+    final clips = ref.watch(reelClipsProvider(widget.reelId)).value;
+    final count = selection.selected.length;
+    final liveCount = clips?.where((c) => !c.clip.missing).length ?? 0;
+    // The chosen clips are live ones, so as many means all of them.
+    final allChosen = count > 0 && count == liveCount;
+    final allLabel = allChosen ? l10n.editSelectClear : l10n.selectionSelectAll;
+    final onAll = clips == null
+        ? null
+        : allChosen
+        ? notifier.clearChosen
+        : notifier.selectAll;
+    final largeText =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale;
     return TtAppBar(
       selection: true,
       // The count is read out each time it changes.
       liveRegion: true,
-      title: l10n.selectionCount(selection.selected.length),
+      title: count == 0
+          ? l10n.selectionChooseClips
+          : l10n.selectionCount(count),
       leading: TtIconButton(
         icon: Symbols.close_rounded,
         semanticLabel: l10n.selectionClose,
@@ -540,145 +601,19 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         onPressed: notifier.clear,
       ),
       actions: [
-        TtIconButton(
-          icon: Symbols.library_add_rounded,
-          semanticLabel: l10n.selectionAddTo,
-          style: TtIconButtonStyle.circle,
-          onPressed: any
-              ? () => unawaited(_pickReels(ReelPickerMode.add))
-              : null,
-        ),
-        TtIconButton(
-          icon: Symbols.drive_file_move_rounded,
-          semanticLabel: l10n.selectionMoveTo,
-          style: TtIconButtonStyle.circle,
-          onPressed: any
-              ? () => unawaited(_pickReels(ReelPickerMode.move))
-              : null,
-        ),
-        TtIconButton(
-          icon: Symbols.playlist_remove_rounded,
-          semanticLabel: l10n.selectionRemove,
-          style: TtIconButtonStyle.circle,
-          onPressed: any ? () => unawaited(_removeChosen()) : null,
-        ),
-        TtMenuButton<_SelectionAction>(
-          items: [
-            // A reel that is being edited finishes that edit first (R1).
-            if (!editHidden)
-              TtMenuItem(
-                _SelectionAction.edit,
-                l10n.reelEditVideo,
-                icon: Symbols.movie_edit_rounded,
-              ),
-            TtMenuItem(
-              _SelectionAction.selectAll,
-              l10n.selectionSelectAll,
-              icon: Symbols.select_all_rounded,
-            ),
-            TtMenuItem(
-              _SelectionAction.share,
-              l10n.reelMenuShare,
-              icon: Symbols.share_rounded,
-            ),
-          ],
-          onSelected: (action) {
-            switch (action) {
-              case _SelectionAction.edit:
-                final ids = _chosenInOrder();
-                notifier.clear();
-                _openEdit(ids);
-              case _SelectionAction.selectAll:
-                notifier.selectAll();
-              case _SelectionAction.share:
-                unawaited(_share());
-            }
-          },
-          builder: (context, open) => TtIconButton(
-            icon: Symbols.more_vert_rounded,
-            semanticLabel: l10n.moreOptions,
+        if (largeText)
+          TtIconButton(
+            icon: allChosen
+                ? Symbols.deselect_rounded
+                : Symbols.select_all_rounded,
+            semanticLabel: allLabel,
             style: TtIconButtonStyle.circle,
-            onPressed: open,
-          ),
-        ),
+            onPressed: onAll,
+          )
+        else
+          TtButton(label: allLabel, kind: TtButtonKind.text, onPressed: onAll),
       ],
     );
-  }
-
-  /// **Add to another reel** / **Move to another reel**: opens the picker;
-  /// **confirm** does the work inside the sheet (a failure stays in the
-  /// sheet), and the snack with **Undo** is shown once the sheet has closed.
-  Future<void> _pickReels(ReelPickerMode mode) async {
-    if (_picking) return;
-    final reelId = widget.reelId;
-    final chosen = {...ref.read(reelSelectionProvider(reelId)).selected};
-    if (chosen.isEmpty) return;
-    final l10n = AppLocalizations.of(context);
-    final snacks = ReelSnacks.of(context);
-    final actions = ref.read(reelClipActionsProvider);
-    final notifier = ref.read(reelSelectionProvider(reelId).notifier);
-
-    _picking = true;
-    try {
-      await pickAndPerform(
-        context,
-        mode: mode,
-        clipIds: chosen,
-        fromReelId: reelId,
-        actions: actions,
-        snacks: snacks,
-        l10n: l10n,
-        onSnack: () {
-          if (mounted) notifier.clear();
-        },
-      );
-    } finally {
-      _picking = false;
-    }
-  }
-
-  /// **Remove from this reel**: takes the chosen clips out of the reel and
-  /// says so, with **Undo**. The videos stay in the gallery.
-  Future<void> _removeChosen() async {
-    if (_removing) return;
-    final reelId = widget.reelId;
-    final chosen = {...ref.read(reelSelectionProvider(reelId)).selected};
-    if (chosen.isEmpty) return;
-    final l10n = AppLocalizations.of(context);
-    final snacks = ReelSnacks.of(context);
-    final actions = ref.read(reelClipActionsProvider);
-    final notifier = ref.read(reelSelectionProvider(reelId).notifier);
-    _removing = true;
-    try {
-      final done = await actions.removeFromReel(
-        reelId: reelId,
-        clipIds: chosen,
-      );
-      if (!done.isEmpty) {
-        final removed = l10n.clipsRemovedSnack(
-          done.clipCount,
-          done.reelNames.single,
-        );
-        snacks.showUndoAll(
-          done.copiesDeleted > 0
-              ? l10n.removedWithCopies(
-                  removed,
-                  l10n.copiesDeletedSuffix(done.copiesDeleted),
-                )
-              : removed,
-          done.records,
-        );
-      }
-      if (mounted) notifier.clear();
-    } on CopiesNotDeleted {
-      // Nothing was removed (R8); the choice is kept to try again.
-      snacks.show(l10n.copiesNotDeleted, done: false);
-    } on Object {
-      // The actions logged the type; the choice is kept to try again.
-      snacks.show(l10n.reelActionFailed, done: false);
-    } finally {
-      _removing = false;
-    }
   }
 
   /// **Remove** on a missing tile: takes the clip out of the reel and says so,
