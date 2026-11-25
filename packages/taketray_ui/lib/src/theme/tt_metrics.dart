@@ -2330,4 +2330,111 @@ abstract final class TtMetrics {
   /// Weight of the letters of the placeholder icon.
   // proto.css: .appic-g { font: 800 14px }
   static const FontWeight appIconLetterWeight = FontWeight.w800;
+
+  // ---- Selection dock (Phase 12B, D-190) ----
+
+  /// Corner radius of the dock's top corners.
+  // editflow.css:5: .sel-dock { border-radius: 28px 28px 0 0 }
+  static const double selectionDockRadius = 28;
+
+  /// Padding above the rows.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingTop = 10;
+
+  /// Padding at each side.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingHorizontal = 16;
+
+  /// Padding under the rows, before the gesture inset is added.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingBottom = 22;
+
+  /// Gap between the actions row and the Edit button or the note.
+  // editflow.css:5: .sel-dock { flex-direction: column; gap: 8px }
+  static const double selectionDockRowGap = 8;
+
+  /// Vertical offset of the dock's shadow (negative: it falls upwards).
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowOffsetY = -8;
+
+  /// Blur radius of the dock's shadow.
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowBlur = 24;
+
+  /// Opacity of the black in the dock's shadow.
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowOpacity = 0.16;
+
+  /// How far below its place the dock starts, as a fraction of its own
+  /// height.
+  // editflow.css:6: @keyframes sdIn { from { transform: translateY(100%) } }
+  static const double selectionDockSlideFrom = 1;
+
+  /// Gap between the actions (and between their rows at large text).
+  // editflow.css:7: .sd-acts { gap: 4px }
+  static const double selectionDockActionGap = 4;
+
+  /// Height of an action, at least.
+  // editflow.css:8: .sd-act { min-height: 56px }
+  static const double selectionDockActionHeight = 56;
+
+  /// Corner radius of an action's tap area.
+  // editflow.css:8: .sd-act { border-radius: 16px }
+  static const double selectionDockActionRadius = 16;
+
+  /// Padding above and below an action's icon and label.
+  // editflow.css:8: .sd-act { padding: 4px 2px }
+  static const double selectionDockActionPaddingVertical = 4;
+
+  /// Padding at the sides of an action's icon and label.
+  // editflow.css:8: .sd-act { padding: 4px 2px }
+  static const double selectionDockActionPaddingHorizontal = 2;
+
+  /// Gap between an action's icon and its label.
+  // editflow.css:8: .sd-act { gap: 2px }
+  static const double selectionDockActionLineGap = 2;
+
+  /// Size of an action's icon.
+  // editflow.css:9: .sd-act .ms { font-size: 24px }
+  static const double selectionDockActionIconSize = 24;
+
+  /// Opacity of an action that is off.
+  // editflow.css:10: .sd-act[aria-disabled="true"] { opacity: .38 }
+  static const double selectionDockActionOffOpacity = 0.38;
+
+  /// Height of the Edit button, at least.
+  // editflow.css:11: .sd-edit { min-height: 56px }
+  static const double selectionDockEditHeight = 56;
+
+  /// Gap between the Edit button's icon, label and length.
+  // editflow.css:11: .sd-edit { gap: 8px }
+  static const double selectionDockEditGap = 8;
+
+  /// Weight of the length on the Edit button.
+  // editflow.css:12: .sd-edit .sd-len { font-weight: 500 }
+  static const FontWeight selectionDockEditDetailWeight = FontWeight.w500;
+
+  /// Opacity of the length on the Edit button.
+  // editflow.css:12: .sd-edit .sd-len { opacity: .8 }
+  static const double selectionDockEditDetailOpacity = 0.8;
+
+  /// Padding above the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingTop = 2;
+
+  /// Padding at the sides of the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingHorizontal = 4;
+
+  /// Padding under the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingBottom = 4;
+
+  /// Gap between the note's icon and its text.
+  // editflow.css:14: .sd-note { gap: 8px }
+  static const double selectionDockNoteGap = 8;
+
+  /// Size of the note's icon.
+  // editflow.css:15: .sd-note .ms { font-size: 18px }
+  static const double selectionDockNoteIconSize = 18;
 }

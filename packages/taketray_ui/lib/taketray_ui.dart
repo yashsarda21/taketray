@@ -39,6 +39,7 @@ export 'src/components/reel_header.dart';
 export 'src/components/reel_pick_row.dart';
 export 'src/components/reference_card.dart';
 export 'src/components/selection.dart';
+export 'src/components/selection_dock.dart';
 export 'src/components/sheet.dart';
 export 'src/components/shooting_mode_card.dart';
 export 'src/components/skeleton.dart';

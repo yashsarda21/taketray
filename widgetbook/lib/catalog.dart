@@ -29,6 +29,7 @@ import 'package:taketray_widgetbook/components/reel_header.dart';
 import 'package:taketray_widgetbook/components/reel_pick_row.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
+import 'package:taketray_widgetbook/components/selection_dock.dart';
 import 'package:taketray_widgetbook/components/sheet.dart';
 import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
@@ -164,6 +165,7 @@ final List<WidgetbookNode> ttCatalog = [
       ttMenuButtonComponent,
       ttReelPickRowComponent,
       ttReelPickNewRowComponent,
+      ttSelectionDockComponent,
     ],
   ),
 ];

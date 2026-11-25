@@ -2960,3 +2960,26 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
   7. **`TtListRow.titleTag`** is the pill: `tertiaryContainer` / `onTertiaryContainer`, `labelSmall`, 8 dp after the title (`listRowTagGap`), padding 1 dp by 8 dp, a stadium (`editflow.css:18`); a `Wrap`, so at large text it goes under the title.
 - Why: the owner's design (D-185) offers the sheet for the whole reel in two taps and Choose clips instead for some; the last editor first saves the habit a tap.
 - Consequences: Task 4 opens the sheet from the reel page with `allClips: true` and reacts to `chooseInstead`; Task 5 removes the picking screen and its `_continue`; `docs/flow.md` "Picking clips and the editor sheet" lists the title, the button, the order and the outcome.
+
+### D-190 · Phase 12B: `TtSelectionDock`, the bar for chosen clips
+- Date: 2026-11-26 · Phase: 12B · Task: 3 · Builds on D-185 · Spec: `design/handoff/edit-flow.md`, `design/prototype/assets/editflow.css` lines 5 to 15 and 21 to 22 · Code: `packages/taketray_ui/lib/src/components/selection_dock.dart`, `packages/taketray_ui/lib/src/theme/tt_metrics.dart` ("Selection dock"), `widgetbook/lib/components/selection_dock.dart`
+- Decision:
+  1. **The API.** `TtSelectionDock(semanticLabel, actions, edit | note)`. `actions` is **exactly four** `TtSelectionDockAction(icon, label, semanticLabel, onPressed?)` (an `assert`). The second row is **either** `edit`, a `TtSelectionDockEdit(label, semanticLabel, detail?, onPressed?)`, **or** a `note` (the R1 text while the reel has an editing session): an `assert` makes it exactly one of the two. The dock has no wording of its own; the reel page (Task 4) passes "Chosen clips", "Edit 3 clips", "1:38" and the rest through l10n. A null `onPressed` on an action or on Edit is the off state, which is how Task 4 keeps Edit off while an editing session loads.
+  2. **Values** (each a `TtMetrics.selectionDock*` constant that quotes its CSS line):
+     | What | Value | CSS |
+     |---|---|---|
+     | Panel | `surfaceContainer`, top corners 28, no bottom corners, shadow `0 -8px 24px` black 16 %; not glass | `editflow.css:5` |
+     | Padding | 10 above, 16 at the sides, 22 below plus `MediaQuery.viewPaddingOf(context).bottom` (the gesture inset); 8 between the rows | `editflow.css:5` |
+     | Slide in | from 100 % of its own height, `tt.motion.medium2`, `emphasizedDecelerate`, once on its first build; reduced motion (`tt.motion` durations zero) has it there at once | `editflow.css:6` |
+     | Actions row | four equal columns, 4 apart | `editflow.css:7` |
+     | An action | at least 56 tall, radius 16, padding 4 / 2, a 24 icon in `onSurfaceVariant` over a `labelMedium` label in `onSurface`, 2 apart | `editflow.css:8-9` |
+     | An off action | opacity .38, no tap action | `editflow.css:10` |
+     | Edit | a large filled button (the existing large-button metrics: 28 sides, 22 icon, `titleMedium`), at least 56 tall, full width; the `movie_edit` icon, the label, then `detail` at 80 % in `weight 500` and tabular figures, 8 apart | `editflow.css:11-12` |
+     | Edit off | `surfaceContainerHighest` fill, `onSurfaceVariant` content, no tap action | `editflow.css:13` |
+     | Note | `bodySmall` in `onSurfaceVariant`, an 18 `info` icon at the top, 8 apart, padding 2 / 4 / 4 | `editflow.css:14-15` |
+     | Large text | from `TtMetrics.largeTextScale` (1.5) the actions go two by two (rows 4 apart) and Edit's content is a `Wrap`, so the length drops under the label | `editflow.css:21-22` |
+  3. **Why an off action has no tap action.** The handoff says the off actions are "38 %, not focusable as actions": they are drawn at .38 and announced as disabled buttons with **no `SemanticsAction.tap`** (the `Semantics` gets a null `onTap` and the `InkWell` a null `onTap`), so TalkBack does not offer a double-tap that does nothing. The same holds for an off Edit. The label is still read, so the person hears what is there.
+  4. **Semantics.** The dock is a container named `semanticLabel` (the prototype's `role="toolbar"`, `aria-label="Chosen clips"`; Flutter has no toolbar role), with explicit child nodes so the label is not merged with the buttons'. Each action is one button named its own `semanticLabel`; Edit is one button named its `semanticLabel`; the words and the icon inside them are not nodes of their own.
+  5. **The slide moves the panel.** `SlideTransition` is the outermost widget, so the dock's own box stays where the caller put it and the panel is drawn lower until it arrives: the caller needs no `Stack` animation of its own. The tests measure the panel (the first `DecoratedBox`), not the widget's render object. The controller's duration is read from `context.tt.motion` in `didChangeDependencies`, so reduced motion is the existing mechanism and the dock does not slide again when it is rebuilt.
+- Why: the owner's design (D-185) shows one bar for the chosen clips whose Edit button says how many clips and how long, and which stays on screen with its actions off when nothing is chosen, so the layout does not jump.
+- Consequences: Task 4 puts the dock in the reel page's shell and passes the strings. `docs/flow.md` "Design-system pieces for editors" lists it; its CI goldens come from the "update goldens" workflow at the end of the phase.
