@@ -485,8 +485,15 @@ class _Chip extends StatelessWidget {
       child: TtGlassFill(
         corners: BorderRadius.circular(tt.radii.full),
         blur: TtMetrics.shootingChipBlur,
-        fill: tt.colors.onMedia.withValues(
-          alpha: TtMetrics.shootingChipFillOpacity * progress,
+        // home2.css:28: white .14, over a slight black (R12B-6, for AA): the
+        // chips sit where the tint is lightest, over a bright frame.
+        fill: Color.alphaBlend(
+          tt.colors.onMedia.withValues(
+            alpha: TtMetrics.shootingChipFillOpacity * progress,
+          ),
+          tt.colors.videoBackground.withValues(
+            alpha: TtMetrics.shootingChipShadeOpacity * progress,
+          ),
         ),
         child: InkWell(
           onTap: chip.onPressed,

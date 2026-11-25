@@ -1247,6 +1247,17 @@ abstract final class TtMetrics {
   // home2.css:28: .h2-chip { … background: rgba(255, 255, 255, .14); … }
   static const double shootingChipFillOpacity = 0.14;
 
+  /// Opacity of black laid under the white of a chip's glass.
+  ///
+  /// Not in home2.css: `:28` has only `background: rgba(255, 255, 255, .14)`.
+  /// Added for AA (R12B-6, D-193): the handoff's Accessibility line wins. The
+  /// chips sit where the tint is lightest, and over a pure white frame their
+  /// white text was 4.27:1 ("References · 4"), 4.14:1 ("Earlier videos") and
+  /// 3.29:1 at 2x with the white .14 alone; with this black under it the
+  /// worst is 4.56:1. At .22 the worst is 4.50:1, with no margin.
+  // home2.css:28: .h2-chip { … background: rgba(255, 255, 255, .14); … }
+  static const double shootingChipShadeOpacity = 0.23;
+
   /// Blur behind a chip.
   // home2.css:28: .h2-chip { … backdrop-filter: blur(10px); … }
   static const double shootingChipBlur = 10;

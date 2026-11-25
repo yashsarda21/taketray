@@ -447,7 +447,7 @@ void main() {
       _expectSigma(tile, _blur8);
     });
 
-    testWidgets('a Shooting mode chip blurs by 10 under its .14 white', (
+    testWidgets('a Shooting mode chip blurs by 10 under its white fill', (
       tester,
     ) async {
       final backdrop = await _stripesImage(tester, 328);
@@ -462,7 +462,11 @@ void main() {
         picture: backdrop,
         minSharp: .2,
       );
-      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .14);
+      expectBlurred(
+        c.blurred,
+        sharp: c.sharp,
+        fillOpacity: TtMetrics.shootingChipFillOpacity,
+      );
       _expectSigma(_glassOver(Symbols.link_rounded), 10);
     });
 

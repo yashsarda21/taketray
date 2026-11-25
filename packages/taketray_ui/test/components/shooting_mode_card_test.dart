@@ -92,6 +92,15 @@ Future<MemoryImage> _flatImage(WidgetTester tester, Color color) async {
   return MemoryImage(bytes!);
 }
 
+/// The chip's glass fill at fade [progress]: white .14 (home2.css:28) over a
+/// black .23 that is there for AA (R12B-6, D-193).
+Color _chipFill(double progress) => Color.alphaBlend(
+  const Color(0xFFFFFFFF)
+      .withValues(alpha: TtMetrics.shootingChipFillOpacity * progress),
+  const Color(0xFF000000)
+      .withValues(alpha: TtMetrics.shootingChipShadeOpacity * progress),
+);
+
 final Finder _theCard = find.byType(TtShootingModeCard);
 
 /// The 40 dp icon tile: the nearest 40 x 40 box around the videocam glyph.
@@ -366,8 +375,8 @@ void main() {
         tester.getRect(find.text('References · 4')).left - iconRect.right,
         6,
       );
-      // A stadium of white at 14 % over a blur of 10.
-      expect(_fillAlpha(tester, glass), closeTo(.14, 1e-9));
+      // A stadium of white .14 over black .23 (D-193), over a blur of 10.
+      expect(_fillAlpha(tester, glass), closeTo(_chipFill(1).a, 1e-9));
       expect(
         tester
             .widget<ColoredBox>(
@@ -376,7 +385,7 @@ void main() {
                   .first,
             )
             .color,
-        tt.colors.onMedia.withValues(alpha: .14),
+        _chipFill(1),
       );
       expect(
         tester
@@ -733,7 +742,11 @@ void main() {
         expect(alpha, greaterThanOrEqualTo(previous), reason: 'only grows');
         previous = alpha;
       }
-      expect(previous, closeTo(.14, 1e-9), reason: 'ends at white 14 %');
+      expect(
+        previous,
+        closeTo(_chipFill(1).a, 1e-9),
+        reason: 'ends at the chip fill',
+      );
     });
 
     testWidgets('the chips fade in by their fill and content, over medium2', (
@@ -746,14 +759,14 @@ void main() {
       expect(_fillAlpha(tester, glass), closeTo(0, 1e-9));
       await tester.pump(const Duration(milliseconds: 100));
       final mid = _fillAlpha(tester, glass);
-      expect(mid, inExclusiveRange(0, .14));
+      expect(mid, inExclusiveRange(0, _chipFill(1).a));
       // The content fades inside the fill.
       final content = tester.widget<Opacity>(
         find.descendant(of: glass, matching: find.byType(Opacity)).first,
       );
       expect(content.opacity, inExclusiveRange(0, 1));
       await tester.pump(const Duration(milliseconds: 250));
-      expect(_fillAlpha(tester, glass), closeTo(.14, 1e-9));
+      expect(_fillAlpha(tester, glass), closeTo(_chipFill(1).a, 1e-9));
     });
 
     testWidgets('reduced motion: no size animation, the fades still run '
@@ -772,9 +785,13 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(tester.getSize(_theCard).height, settled);
       final mid = _fillAlpha(tester, glass);
-      expect(mid, inExclusiveRange(0, .14), reason: 'the fade still runs');
+      expect(
+        mid,
+        inExclusiveRange(0, _chipFill(1).a),
+        reason: 'the fade still runs',
+      );
       await tester.pump(const Duration(milliseconds: 100));
-      expect(_fillAlpha(tester, glass), closeTo(.14, 1e-9));
+      expect(_fillAlpha(tester, glass), closeTo(_chipFill(1).a, 1e-9));
       expect(tester.getSize(_theCard).height, settled);
     });
 
@@ -822,26 +839,71 @@ void main() {
       }
     });
 
-    testWidgets('white chip text is AA over a white backdrop', (tester) async {
-      // The brightest flat backdrop the design clears: the chips sit where
-      // the tint is lightest (.40 at 60 %), and over a pure white one
-      // (0xFFFFFFFF) their text is 4.27:1 and 4.14:1 (4.5 needed), over
-      // 0xFFF0F0F0 4.38:1 (see the report, a concern for the owner).
-      final white = await _flatImage(tester, const Color(0xFFE0E0E0));
-      for (final brightness in Brightness.values) {
-        await tester.pumpWidget(
-          ttTestApp(
-            _card(backdrop: white, chips: 2),
-            brightness: brightness,
-            disableAnimations: true,
-          ),
-        );
-        await _decode(tester, white);
-        await expectLater(tester, meetsGuideline(ttTextContrastGuideline));
-        expect(
-          (await measureTtTextContrast(tester)).map((s) => s.text),
-          containsAll(['References · 4', 'Earlier videos', 'Open camera']),
-        );
+    // R12B-6: the handoff's AA line wins over home2.css's chip fill (white
+    // .14). Over a pure white frame (sky, snow) the chips sit where the tint
+    // is lightest, and at .14 their text was 4.27:1 ("References · 4") and
+    // 4.14:1 ("Earlier videos"); see D-193 for the fill that clears it.
+    for (final (name, chips, textScale) in [
+      ('both chips', 2, 1.0),
+      ('one chip', 1, 1.0),
+      ('both chips at 2x', 2, 2.0),
+    ]) {
+      testWidgets('white chip text is AA over a white backdrop ($name)', (
+        tester,
+      ) async {
+        final white = await _flatImage(tester, const Color(0xFFFFFFFF));
+        for (final brightness in Brightness.values) {
+          await tester.pumpWidget(
+            ttTestApp(
+              SingleChildScrollView(
+                child: _card(backdrop: white, chips: chips),
+              ),
+              brightness: brightness,
+              disableAnimations: true,
+              textScale: textScale,
+            ),
+          );
+          await _decode(tester, white);
+          await expectLater(tester, meetsGuideline(ttTextContrastGuideline));
+        }
+      });
+    }
+
+    testWidgets('the chips measure at least 4.5:1 over white, the ratio '
+        'pinned', (tester) async {
+      final white = await _flatImage(tester, const Color(0xFFFFFFFF));
+      for (final (chips, textScale) in [(2, 1.0), (1, 1.0), (2, 2.0)]) {
+        for (final brightness in Brightness.values) {
+          await tester.pumpWidget(
+            ttTestApp(
+              SingleChildScrollView(
+                child: _card(backdrop: white, chips: chips),
+              ),
+              brightness: brightness,
+              disableAnimations: true,
+              textScale: textScale,
+            ),
+          );
+          await _decode(tester, white);
+          final samples = await measureTtTextContrast(tester);
+          for (final sample in samples.where(
+            (s) => s.text == 'References · 4' || s.text == 'Earlier videos',
+          )) {
+            // Measured with white .14 over black .23: 5.70 and 5.53 (both
+            // chips), 5.88 (one chip), 4.56 and 5.68 at 2x (the worst, the
+            // first chip, where the tint is lightest). Without the black
+            // (white .14 alone) they were 4.27, 4.14, 4.44 and 3.29. A drop
+            // under 4.5 means the chips' fill got too light again.
+            expect(
+              sample.ratio,
+              greaterThanOrEqualTo(4.5),
+              reason:
+                  '${sample.text} ($chips chips, ${textScale}x, '
+                  '${brightness.name})',
+            );
+          }
+          expect(samples.map((s) => s.text), containsAll(['Open camera']));
+        }
       }
     });
 
