@@ -130,6 +130,7 @@ const Map<String, String> _notInCatalogue = {
   'TtTagDoneRow': 'data for TtTagDone.rows; shown in the TtTagDone use case',
   'TtViewerAction': 'data for TtViewerActions.actions; shown in its use case',
   'TtPillTab': 'data for TtPillTabs.tabs; shown in its use cases',
+  'TtQuietTab': 'data for TtQuietTabs.tabs; shown in its use cases',
 };
 
 /// The classes in [classesByFile] that are neither in [registered] nor in

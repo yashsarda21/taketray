@@ -1967,6 +1967,57 @@ abstract final class TtMetrics {
   // 1.5 is the largest scale at which both stay inside 64 dp.
   static const double appBarMaxTextScale = 1.5;
 
+  /// Height of the quiet tabs' pills and of the header pill (their tap
+  /// targets stay 48 dp).
+  // home2.css:52: .h2-tab { min-height: 40px }
+  // home2.css:4: .h2 .appbar .h2-new { min-height: 40px }
+  static const double quietPillHeight = 40;
+
+  /// Side padding of the quiet tabs' row.
+  // home2.css:50: .h2-tabs { padding: 0 12px 10px }
+  static const double quietTabsPaddingHorizontal = 12;
+
+  /// Space under the quiet tabs' row.
+  // home2.css:50: .h2-tabs { padding: 0 12px 10px }
+  static const double quietTabsPaddingBottom = 10;
+
+  /// Gap between two quiet tabs.
+  // home2.css:50: .h2-tabs { gap: 4px }
+  static const double quietTabsGap = 4;
+
+  /// Side padding inside a quiet tab.
+  // home2.css:52: .h2-tab { padding: 0 14px }
+  static const double quietTabPaddingHorizontal = 14;
+
+  /// Gap between a quiet tab's label and its count.
+  // home2.css:52: .h2-tab { gap: 6px }
+  static const double quietTabCountGap = 6;
+
+  /// Opacity of a quiet tab's count.
+  // home2.css:53: .h2-tab span { font-variant-numeric: tabular-nums;
+  //   opacity: .8 }
+  static const double quietTabCountOpacity = 0.8;
+
+  /// Padding before the header pill's icon.
+  // home2.css:4: .h2 .appbar .h2-new { padding: 0 16px 0 12px }
+  static const double headerPillPaddingStart = 12;
+
+  /// Padding after the header pill's label.
+  // home2.css:4: .h2 .appbar .h2-new { padding: 0 16px 0 12px }
+  static const double headerPillPaddingEnd = 16;
+
+  /// Gap between the header pill's icon and its label.
+  // home2.css:4: .h2 .appbar .h2-new { gap: 4px }
+  static const double headerPillGap = 4;
+
+  /// Size of the header pill's icon.
+  // home2.css:5: .h2 .appbar .h2-new .ms { font-size: 20px }
+  static const double headerPillIconSize = 20;
+
+  /// Space between the header pill and the edge of the screen.
+  // home2.css:4: .h2 .appbar .h2-new { margin-right: 12px }
+  static const double headerPillMarginEnd = 12;
+
   // ---- Floating nav pill ----
 
   /// Height of the floating navigation pill.
