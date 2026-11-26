@@ -587,8 +587,9 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   /// The selection bar (`routes.reel`, `sel`; `editflow.js:24-27`): close,
   /// "{n} selected" ("Choose clips" with nothing chosen), and **Select all**,
   /// or **Clear** while every live clip is chosen. Off until the clips are
-  /// read. From a text scale of 1.5 it is its icon alone, with its name, so
-  /// it never runs into the count (`editflow.css:24-27`).
+  /// read, and when no clip is on the phone. From a text scale of 1.5 it is
+  /// its icon alone, with its name, so it never runs into the count
+  /// (`editflow.css:24-27`).
   PreferredSizeWidget _selectionBar(
     BuildContext context,
     ReelSelectionState selection,
@@ -601,7 +602,8 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     // The chosen clips are live ones, so as many means all of them.
     final allChosen = count > 0 && count == liveCount;
     final allLabel = allChosen ? l10n.editSelectClear : l10n.selectionSelectAll;
-    final onAll = clips == null
+    // Off with nothing on the phone to choose: it would do nothing visible.
+    final onAll = clips == null || liveCount == 0
         ? null
         : allChosen
         ? notifier.clearChosen

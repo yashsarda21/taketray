@@ -2250,11 +2250,14 @@
   "@editorLastUsed": {
     "description": "Small pill after the name of the editor used last, in the editor sheet; that editor is listed first."
   },
-  "editorLastUsedSemantics": "{name}, last used",
+  "editorLastUsedSemantics": "{name}, last used. {subtitle}",
   "@editorLastUsedSemantics": {
-    "description": "Screen-reader label of the editor row used last in the editor sheet.",
+    "description": "Screen-reader label of the editor row used last in the editor sheet: its name, that it was used last, then the line under the name (a screen reader would otherwise lose that line, such as the size of VN's copies).",
     "placeholders": {
       "name": {
+        "type": "String"
+      },
+      "subtitle": {
         "type": "String"
       }
     }

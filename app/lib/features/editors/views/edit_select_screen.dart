@@ -107,7 +107,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
 
   /// **Copy**: the space check for the clips to copy.
   void _copyPicked(EditSelectState state) {
-    final editor = state.addEditor;
+    final editor = state.editor;
     if (editor == null || state.toCopyInOrder.isEmpty) return;
     final ids = state.toCopyInOrder;
     _copy.open(
@@ -123,8 +123,8 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final state = select.value;
     if (select.hasValue && state == null) _leave();
     // Adding needs the reel's editing session, of any editor.
-    if (state != null && state.addEditor == null) _leaveToReel();
-    final addEditor = state?.addEditor;
+    if (state != null && state.editor == null) _leaveToReel();
+    final sessionEditor = state?.editor;
     final notifier = ref.read(_provider.notifier);
     final cache = ref.watch(thumbnailCacheProvider).value;
     final today =
@@ -140,7 +140,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     // once the session is read, and the bar must not jump from the slot to
     // the body then (T12-m3).
     final largeText = MediaQuery.textScalerOf(context).scale(16) / 16 >= 1.5;
-    final wrapTitle = addEditor != null && addEditor != EditorApp.vn;
+    final wrapTitle = sessionEditor != null && sessionEditor != EditorApp.vn;
     // At large text the long title and **Select all** do not fit side by
     // side (the title would break inside words), so the button goes under the
     // bar, at its end.
@@ -159,11 +159,11 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
     final bar = TtAppBar(
       // The words follow the session's editor, so they wait until it is
       // known.
-      title: addEditor == null
+      title: sessionEditor == null
           ? ''
-          : addEditor == EditorApp.vn
+          : sessionEditor == EditorApp.vn
           ? l10n.editAddTitle(l10n.editorNameVn)
-          : l10n.editAddProjectTitle(editorShortName(l10n, addEditor)),
+          : l10n.editAddProjectTitle(editorShortName(l10n, sessionEditor)),
       subtitle: state?.reel.name,
       wrapTitle: wrapTitle,
       leading: TtIconButton(
@@ -226,7 +226,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
           Expanded(child: scroll),
         ],
       ),
-      bottomNavigationBar: _addBar(context, state),
+      bottomNavigationBar: _copyBar(context, state),
     );
   }
 
@@ -277,10 +277,10 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
             final label = l10n.clipTileSemantics(time, length);
             // Its copy is in the folder: ticked, locked, marked.
             final locked = state.inFolder.contains(clip.id);
-            final vn = state.addEditor == EditorApp.vn;
+            final vn = state.editor == EditorApp.vn;
             final editor = l10n.editorNameVn;
             void onTap() => locked
-                ? _alreadyInFolder(context, state.addEditor)
+                ? _alreadyInFolder(context, state.editor)
                 : notifier.toggle(clip.id);
             return TtClipTile(
               key: ValueKey<int>(clip.id),
@@ -326,12 +326,12 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
   }
 
   /// The bottom bar: only the clips to copy count.
-  Widget _addBar(BuildContext context, EditSelectState? state) {
+  Widget _copyBar(BuildContext context, EditSelectState? state) {
     final l10n = AppLocalizations.of(context);
     final count = state?.toCopyInOrder.length ?? 0;
     final inFolder = state?.inFolder.length ?? 0;
     // Until the session is known the bar has VN's words, like the old one.
-    final vn = (state?.addEditor ?? EditorApp.vn) == EditorApp.vn;
+    final vn = (state?.editor ?? EditorApp.vn) == EditorApp.vn;
     final editor = l10n.editorNameVn;
     final size = count == 0 ? '' : byteSizeText(l10n, state!.toCopyBytes);
     return TtBottomBar(
@@ -347,7 +347,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                 : l10n.editAddBarInTheFolder(inFolder)
           : vn
           ? l10n.editAddBarDetail(size)
-          : l10n.editAddFolderBarDetail(size, state?.addFolder ?? ''),
+          : l10n.editAddFolderBarDetail(size, state?.folder ?? ''),
       action: TtButton(
         key: const ValueKey<String>('edit-select-copy'),
         label: l10n.editAddCopy,

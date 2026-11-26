@@ -34,8 +34,9 @@ Future<List<EditorChoice>> editorChoices(Ref ref) async {
 
 /// The row of the editor sheet used last on this phone (`lastEditor`, D-189),
 /// or null when none was, or when it cannot be read: a failed read is logged
-/// by the error's type and the sheet shows its default order. Auto-disposes
-/// with the sheet, so each opening reads it again.
+/// by the error's type and the sheet shows its default order. The sheet is
+/// opened only after this is read (`showEditorSheet`), so its first frame has
+/// the order; the provider auto-disposes, so each opening reads it again.
 @riverpod
 Future<EditorPick?> lastEditor(Ref ref) async {
   final phone = ref.watch(phoneStateRepositoryProvider);

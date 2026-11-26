@@ -937,6 +937,47 @@ void main() {
       expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).selection, isTrue);
     });
 
+    testApp('Select clips on a reel with no clip on the phone: Select all is '
+        'off, so it does not look like it works (M-6)', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () =>
+            putInReel(h, goa.id, [reelVideo(1), reelVideo(2)], onPhone: false),
+      );
+      await open(tester, goa.id);
+      expect(find.byType(TtMissingClipTile), findsNWidgets(2));
+      await openMenu(tester);
+
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+
+      final selectAll = find.descendant(
+        of: find.byType(TtAppBar),
+        matching: find.widgetWithText(TtButton, 'Select all'),
+      );
+      expect(selectAll, findsOneWidget);
+      expect(tester.widget<TtButton>(selectAll).onPressed, isNull);
+      expect(find.text('Choose clips'), findsOneWidget);
+    });
+
+    testApp('Select clips on a reel with a clip on the phone: Select all is '
+        'on', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      await open(tester, goa.id);
+      await openMenu(tester);
+
+      await tester.tap(find.text('Select clips'));
+      await tester.pumpAndSettle();
+
+      final selectAll = find.descendant(
+        of: find.byType(TtAppBar),
+        matching: find.widgetWithText(TtButton, 'Select all'),
+      );
+      expect(tester.widget<TtButton>(selectAll).onPressed, isNotNull);
+    });
+
     testApp('Delete reel asks, deletes, shows Undo and goes to Reels', (
       tester,
     ) async {

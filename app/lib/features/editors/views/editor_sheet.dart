@@ -162,10 +162,19 @@ Future<EditorSheetOutcome> showEditorSheet(
   final snacks = ReelSnacks.of(context);
   final navigator = Navigator.of(context, rootNavigator: true);
 
+  // Read before the sheet shows, so its first frame already has the editor
+  // used last first and no row moves under a finger (a few milliseconds).
+  final last = await _readLastEditor(container);
+  if (!context.mounted) return EditorSheetOutcome.dismissed;
+
   final chosen = await showTtSheet<_Chosen>(
     context,
-    builder: (_) =>
-        _EditorSheet(reelId: reelId, clipIds: clipIds, allClips: allClips),
+    builder: (_) => _EditorSheet(
+      reelId: reelId,
+      clipIds: clipIds,
+      allClips: allClips,
+      lastEditor: last,
+    ),
   );
   if (chosen == null) return EditorSheetOutcome.dismissed;
   final pick = chosen.pick;
@@ -192,6 +201,17 @@ Future<EditorSheetOutcome> showEditorSheet(
       );
       unawaited(_offerReady(navigator, container, reelId));
       return EditorSheetOutcome.sent;
+  }
+}
+
+/// The editor used last, or null when none was or it cannot be read (logged
+/// by the error's type: the sheet then shows its default order).
+Future<EditorPick?> _readLastEditor(ProviderContainer container) async {
+  try {
+    return await container.read(lastEditorProvider.future);
+  } on Object catch (error) {
+    _log.warning('Reading the last editor failed: ${error.runtimeType}');
+    return null;
   }
 }
 
@@ -237,10 +257,14 @@ class _EditorSheet extends ConsumerStatefulWidget {
     required this.reelId,
     required this.clipIds,
     required this.allClips,
+    required this.lastEditor,
   });
 
   final int reelId;
   final List<int> clipIds;
+
+  /// The row used last, read before the sheet opened; null for none.
+  final EditorPick? lastEditor;
 
   /// Whether the clips are the reel's whole list (see [showEditorSheet]).
   final bool allClips;
@@ -372,8 +396,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
     final bytes = picked.fold(0, (s, c) => s + c.fingerprint.sizeBytes);
     final anyMissing = choices.any((c) => !c.installed);
     final failed = _failed;
-    // While the habit loads (or cannot be read) the default order shows.
-    final order = editorRows(ref.watch(lastEditorProvider).value, choices);
+    final order = editorRows(widget.lastEditor, choices);
 
     Widget row(EditorApp? editor) {
       final choice = editor == null
@@ -409,7 +432,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
         semanticLabel: !installed
             ? l10n.editorNotInstalledSemantics(name)
             : lastUsed
-            ? l10n.editorLastUsedSemantics(name)
+            ? l10n.editorLastUsedSemantics(name, subtitle)
             : null,
         onTap: installed ? () => unawaited(_choose(editor)) : null,
       );

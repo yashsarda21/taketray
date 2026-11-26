@@ -22,8 +22,8 @@ class EditSelectState {
     required this.times,
     required this.selected,
     required this.liveCount,
-    this.addEditor,
-    this.addFolder,
+    this.editor,
+    this.folder,
     this.inFolder = const {},
     this.toCopyInOrder = const [],
     this.toCopyBytes = 0,
@@ -47,11 +47,11 @@ class EditSelectState {
 
   /// The editor of the reel's session; null when the reel has no session
   /// (Done editing ran meanwhile): the screen then leaves.
-  final EditorApp? addEditor;
+  final EditorApp? editor;
 
   /// The session's folder under `Movies/TakeTray` (a renamed reel keeps it);
   /// null without a session.
-  final String? addFolder;
+  final String? folder;
 
   /// The live clips whose copy is in the folder already: ticked and locked,
   /// nothing to copy (`AddPick.inFolder`).
@@ -162,8 +162,8 @@ class EditSelectController extends _$EditSelectController {
       times: _times,
       selected: Set.unmodifiable(selected),
       liveCount: _live.length,
-      addEditor: _editor,
-      addFolder: _folder,
+      editor: _editor,
+      folder: _folder,
       inFolder: Set.unmodifiable(_inFolder),
       toCopyInOrder: [for (final c in toCopy) c.id],
       toCopyBytes: toCopy.fold(0, (s, c) => s + c.fingerprint.sizeBytes),

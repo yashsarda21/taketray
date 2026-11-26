@@ -92,6 +92,7 @@ void main() {
     double textScale = 1,
     Brightness brightness = Brightness.light,
     List<Override> extraOverrides = const [],
+    bool settleOpening = true,
   }) async {
     await pumpScreen(
       tester,
@@ -122,7 +123,7 @@ void main() {
     );
     await settleApp(tester);
     await tester.tap(find.text('Open the sheet'));
-    await settleApp(tester);
+    if (settleOpening) await settleApp(tester);
   }
 
   /// The rows of the open sheet, top to bottom, by editor name.
@@ -509,12 +510,12 @@ void main() {
         expect(rowOrder(tester), ['edits', 'capcut', 'vn', 'other']);
         final edits = tester.widget<TtListRow>(row('Instagram Edits'));
         expect(edits.titleTag, 'Last used');
-        expect(edits.semanticLabel, 'Instagram Edits, last used');
+        // The label keeps the row's line, which sighted users read too (M-3).
+        const editsLabel =
+            'Instagram Edits, last used. Gets your original clips';
+        expect(edits.semanticLabel, editsLabel);
         expect(find.text('Last used'), findsOneWidget);
-        expect(
-          find.bySemanticsLabel('Instagram Edits, last used'),
-          findsOneWidget,
-        );
+        expect(find.bySemanticsLabel(editsLabel), findsOneWidget);
         // The others have no pill and no label of their own.
         for (final title in ['CapCut', 'VN', 'Other app…']) {
           final r = tester.widget<TtListRow>(row(title));
@@ -536,7 +537,21 @@ void main() {
         expect(rowOrder(tester), ['other', 'capcut', 'edits', 'vn']);
         final other = tester.widget<TtListRow>(row('Other app…'));
         expect(other.titleTag, 'Last used');
-        expect(other.semanticLabel, 'Other app…, last used');
+        expect(
+          other.semanticLabel,
+          "Other app…, last used. Opens Android's share menu",
+        );
+      });
+
+      testApp('VN last used: its label keeps the size line', (tester) async {
+        final (goa, ids) = await manyClips(tester, 3);
+        await storeLastEditor(tester, EditorPick.vn);
+
+        await openSheet(tester, goa, ids, allClips: true);
+
+        final vn = tester.widget<TtListRow>(row('VN'));
+        expect(vn.semanticLabel, 'VN, last used. ${vn.subtitle}');
+        expect(vn.subtitle, startsWith('Makes temporary copies · '));
       });
 
       testApp('last used CapCut, now not installed: default order, no pill', (
@@ -579,8 +594,27 @@ void main() {
         expect(tester.widget<TtListRow>(row('VN')).titleTag, 'Last used');
       });
 
-      testApp('while lastEditor loads: the default order, no pill; then it '
-          'moves', (tester) async {
+      testApp('the first built frame already has the last used row first', (
+        tester,
+      ) async {
+        final (goa, ids) = await manyClips(tester, 3);
+        await storeLastEditor(tester, EditorPick.vn);
+
+        await openSheet(tester, goa, ids, settleOpening: false);
+        // The read of lastEditor is real async work; then ONE frame builds
+        // the sheet, and that frame is the one we look at (M-2).
+        await tester.runAsync(settle);
+        await tester.pump();
+
+        expect(rowOrder(tester), ['vn', 'capcut', 'edits', 'other']);
+        expect(tester.widget<TtListRow>(row('VN')).titleTag, 'Last used');
+        await settleApp(tester);
+        expect(rowOrder(tester), ['vn', 'capcut', 'edits', 'other']);
+      });
+
+      testApp('the sheet waits for lastEditor, then opens with it first', (
+        tester,
+      ) async {
         final pending = Completer<EditorPick?>();
         final (goa, ids) = await manyClips(tester, 3);
 
@@ -588,17 +622,44 @@ void main() {
           tester,
           goa,
           ids,
+          settleOpening: false,
           extraOverrides: [
             lastEditorProvider.overrideWith((ref) => pending.future),
+          ],
+        );
+        await tester.runAsync(settle);
+        await tester.pump();
+
+        // Still reading: no sheet, so no row can move later.
+        expect(find.byType(TtListRow), findsNothing);
+        pending.complete(EditorPick.vn);
+        await tester.runAsync(settle);
+        await tester.pump();
+        expect(rowOrder(tester), ['vn', 'capcut', 'edits', 'other']);
+        expect(find.text('Last used'), findsOneWidget);
+      });
+
+      testApp('a lastEditor read that throws still opens the sheet in the '
+          'default order; the log has the type only', (tester) async {
+        final records = record();
+        final (goa, ids) = await manyClips(tester, 3);
+
+        await openSheet(
+          tester,
+          goa,
+          ids,
+          extraOverrides: [
+            lastEditorProvider.overrideWith(
+              (ref) => throw StateError('secret-detail'),
+            ),
           ],
         );
 
         expect(rowOrder(tester), ['capcut', 'edits', 'vn', 'other']);
         expect(find.text('Last used'), findsNothing);
-        pending.complete(EditorPick.vn);
-        await settleApp(tester);
-        expect(rowOrder(tester), ['vn', 'capcut', 'edits', 'other']);
-        expect(find.text('Last used'), findsOneWidget);
+        final lines = records.map((r) => r.message).join('\n');
+        expect(lines, contains('StateError'));
+        expect(lines, isNot(contains('secret-detail')));
       });
 
       testApp('a lastEditor that cannot be read is none: the default order, '

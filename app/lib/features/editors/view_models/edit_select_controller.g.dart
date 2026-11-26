@@ -114,7 +114,7 @@ final class EditSelectControllerProvider
 }
 
 String _$editSelectControllerHash() =>
-    r'85b18a20f43e6172d1a4ac21da3a494c8155a0e4';
+    r'5bf7c0cc801757587b50f94610af1ce71a85e79f';
 
 /// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
 /// D-129), which since D-192 is only for adding clips to the reel's editing

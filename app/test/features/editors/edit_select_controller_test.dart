@@ -173,7 +173,7 @@ void main() {
 
       final state = (await load(goa))!;
 
-      expect(state.addEditor, EditorApp.vn);
+      expect(state.editor, EditorApp.vn);
       expect(state.liveCount, 4);
       expect(state.inFolder, {ids[0], ids[2]});
       expect(state.selected, {ids[0], ids[2], ids[4]});
@@ -290,7 +290,7 @@ void main() {
 
       final state = (await load(goa))!;
 
-      expect(state.addEditor, isNull);
+      expect(state.editor, isNull);
       expect(state.toCopyInOrder, isEmpty);
     });
   });
@@ -325,7 +325,7 @@ void main() {
 
           final state = (await load(goa))!;
 
-          expect(state.addEditor, editor);
+          expect(state.editor, editor);
           expect(state.liveCount, 4);
           expect(state.inFolder, {ids[0], ids[2]});
           expect(state.selected, {ids[0], ids[2], ids[4]});
@@ -352,7 +352,7 @@ void main() {
 
           final state = (await load(goa))!;
 
-          expect(state.addFolder, 'Goa');
+          expect(state.folder, 'Goa');
         });
 
         test('a copy gone outside TakeTray (forgotten) frees its clip, '
@@ -393,8 +393,8 @@ void main() {
 
       final state = (await load(goa))!;
 
-      expect(state.addFolder, isNull);
-      expect(state.addEditor, isNull);
+      expect(state.folder, isNull);
+      expect(state.editor, isNull);
     });
   });
 
