@@ -5,9 +5,9 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtReelCard`: a reel's full-bleed cover card on Home.
+/// `TtReelCard`: a reel on Home, the cover alone with its text under it.
 final WidgetbookComponent ttReelCardComponent = WidgetbookComponent(
-  name: 'TtReelCard',
+  name: 'TtReelCard / TtReelCardNote',
   useCases: [
     WidgetbookUseCase(
       name: 'Playground',
@@ -44,7 +44,7 @@ final WidgetbookComponent ttReelCardComponent = WidgetbookComponent(
           min: 100,
           max: 320,
         );
-        return Padding(
+        return SingleChildScrollView(
           padding: EdgeInsets.all(context.tt.spacing.m),
           child: Align(
             alignment: Alignment.topLeft,
@@ -56,18 +56,29 @@ final WidgetbookComponent ttReelCardComponent = WidgetbookComponent(
                 status: status,
                 statusLabel: statusLabel,
                 meta: meta,
-                emptyLabel: 'No clips yet',
                 cover: switch (cover) {
                   0 => null,
                   13 => MemoryImage(Uint8List(8)),
                   _ => wbThumb(cover),
                 },
-                missingText: missing > 0 ? '$missing missing' : null,
-                vnLabel: inVn ? 'Editing in VN' : null,
-                referenceCount: refs,
-                referencesSemanticLabel: '$refs references in $name',
+                notes: [
+                  if (inVn)
+                    const TtReelCardNote(
+                      TtReelCardNoteKind.editing,
+                      'Editing in VN',
+                    ),
+                  if (missing > 0)
+                    TtReelCardNote(
+                      TtReelCardNoteKind.missing,
+                      '$missing missing',
+                    ),
+                  if (refs > 0)
+                    TtReelCardNote(
+                      TtReelCardNoteKind.references,
+                      '$refs references',
+                    ),
+                ],
                 onTap: () {},
-                onReferencesTap: () {},
               ),
             ),
           ),

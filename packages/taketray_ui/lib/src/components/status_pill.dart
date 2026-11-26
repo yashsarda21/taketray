@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
-import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -18,18 +17,15 @@ enum TtStatusKind {
 
 /// A reel's status as a small rounded pill: an icon and a [label].
 ///
-/// On a surface it is filled with the status's container colour. With
-/// [onMedia] it is dark glass over a cover or video, with white text and the
-/// status's light icon colour. [large] makes it 32 dp tall (the reel detail
-/// header). Giving [onPressed] makes it a button that opens a menu: it gets a
-/// caret and a 48 dp tap target, and a screen reader says [semanticLabel]
-/// (or [label]) as a button.
+/// It is filled with the status's container colour. [large] makes it 32 dp
+/// tall (the reel detail header). Giving [onPressed] makes it a button that
+/// opens a menu: it gets a caret and a 48 dp tap target, and a screen reader
+/// says [semanticLabel] (or [label]) as a button.
 class TtStatusPill extends StatelessWidget {
   /// A pill for [kind] showing [label].
   const new({
     required this.kind,
     required this.label,
-    this.onMedia = false,
     this.large = false,
     this.onPressed,
     this.semanticLabel,
@@ -41,9 +37,6 @@ class TtStatusPill extends StatelessWidget {
 
   /// The status in words; one line, with an ellipsis if too long.
   final String label;
-
-  /// Whether the pill sits on a cover or video, as dark glass.
-  final bool onMedia;
 
   /// Whether the pill is the larger 32 dp version.
   final bool large;
@@ -61,38 +54,22 @@ class TtStatusPill extends StatelessWidget {
     final colors = tt.colors;
     final pressable = onPressed != null;
 
-    // proto.css: .pill.rec / .ready / .pub, and tt-style.css: the dark glass
-    // pill on media, whose icon takes a light status colour.
-    final (fill, content, icon) = switch ((kind, onMedia)) {
-      (TtStatusKind.collecting, false) => (
+    // proto.css: .pill.rec / .ready / .pub
+    final (fill, content, icon) = switch (kind) {
+      TtStatusKind.collecting => (
         colors.recordContainer,
         colors.onRecordContainer,
         colors.record,
       ),
-      (TtStatusKind.ready, false) => (
+      TtStatusKind.ready => (
         scheme.primaryContainer,
         scheme.onPrimaryContainer,
         scheme.onPrimaryContainer,
       ),
-      (TtStatusKind.published, false) => (
+      TtStatusKind.published => (
         colors.successContainer,
         colors.onSuccessContainer,
         colors.onSuccessContainer,
-      ),
-      (TtStatusKind.collecting, true) => (
-        colors.glassOnMedia,
-        colors.onMedia,
-        colors.recordOnMedia,
-      ),
-      (TtStatusKind.ready, true) => (
-        colors.glassOnMedia,
-        colors.onMedia,
-        colors.readyOnMedia,
-      ),
-      (TtStatusKind.published, true) => (
-        colors.glassOnMedia,
-        colors.onMedia,
-        colors.publishedOnMedia,
       ),
     };
     final glyph = switch (kind) {
@@ -156,24 +133,12 @@ class TtStatusPill extends StatelessWidget {
       ),
     );
 
-    final Widget pill;
-    if (onMedia) {
-      // The fill is outside the Material (D-173): the S24 lost the blur when
-      // the filter's first child was a Material.
-      pill = TtGlassFill(
-        corners: corners,
-        blur: TtMetrics.glassPillBlur,
-        fill: fill,
-        child: pressable ? InkWell(onTap: onPressed, child: body) : body,
-      );
-    } else {
-      pill = Material(
-        color: fill,
-        shape: RoundedRectangleBorder(borderRadius: corners),
-        clipBehavior: Clip.antiAlias,
-        child: pressable ? InkWell(onTap: onPressed, child: body) : body,
-      );
-    }
+    final pill = Material(
+      color: fill,
+      shape: RoundedRectangleBorder(borderRadius: corners),
+      clipBehavior: Clip.antiAlias,
+      child: pressable ? InkWell(onTap: onPressed, child: body) : body,
+    );
 
     return Semantics(
       container: true,

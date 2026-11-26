@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
-import 'package:taketray_ui/src/components/internal/glass_fill.dart';
 import 'package:taketray_ui/src/components/internal/outside_shadow.dart';
 import 'package:taketray_ui/src/components/internal/saturation.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
@@ -90,88 +89,6 @@ class TtGlass extends StatelessWidget {
         ],
       ),
       child: glass,
-    );
-  }
-}
-
-/// A small dark-glass badge on media: an [icon] and optional [text], as in
-/// the status and reference marks on a reel cover.
-///
-/// A screen reader says [semanticLabel] for the whole pill and nothing else:
-/// an icon-only pill has no words of its own, and one with [text] may need
-/// more than the text (for example "3 references" for a pill showing "3").
-class TtGlassPill extends StatelessWidget {
-  /// A pill showing [icon] and, when given, [text].
-  const new({
-    required this.icon,
-    required this.semanticLabel,
-    this.iconColor,
-    this.text,
-    super.key,
-  });
-
-  /// The glyph, drawn filled.
-  final IconData icon;
-
-  /// Colour of the glyph, or null for white.
-  final Color? iconColor;
-
-  /// Text after the icon, or null for an icon-only pill.
-  final String? text;
-
-  /// What a screen reader says for the pill.
-  final String semanticLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = context.tt;
-    final label = text;
-    final pill = TtGlassFill(
-      corners: BorderRadius.circular(tt.radii.s),
-      blur: TtMetrics.glassPillBlur,
-      fill: tt.colors.glassOnMedia,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: TtMetrics.glassPillHeight),
-        child: Padding(
-          // proto.css: .pill { padding: 0 8px 0 6px }, 6 when icon-only.
-          padding: EdgeInsetsDirectional.only(
-            start: TtMetrics.glassPillPaddingStart,
-            end: label == null
-                ? TtMetrics.glassPillPaddingStart
-                : tt.spacing.xs,
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: TtMetrics.glassPillIconSize,
-                color: iconColor ?? tt.colors.onMedia,
-                fill: 1,
-              ),
-              if (label != null) ...[
-                SizedBox(width: tt.spacing.xxs),
-                Flexible(
-                  child: Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: tt.text
-                        .numeric(tt.text.material.labelMedium!)
-                        .copyWith(color: tt.colors.onMedia),
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      label: semanticLabel,
-      child: pill,
     );
   }
 }

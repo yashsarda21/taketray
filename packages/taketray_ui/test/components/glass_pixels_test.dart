@@ -27,9 +27,6 @@ const _blur8 = 8.0;
 /// and .15, and it fades out).
 const _snackShadow = .1;
 
-/// The corner radius of the pills (`tt.radii.s`).
-const _pillRadius = 8.0;
-
 void _phone(WidgetTester tester) {
   tester.view
     ..physicalSize = const Size(360, 800)
@@ -184,38 +181,6 @@ Widget _onStripes(Widget piece) => Stack(
   ],
 );
 
-TtStatusPill _statusPill({VoidCallback? onPressed}) => TtStatusPill(
-  kind: TtStatusKind.ready,
-  label: 'Ready to edit',
-  onMedia: true,
-  onPressed: onPressed,
-);
-
-Widget _reelCard(ImageProvider cover, {int references = 0, String? vnLabel}) =>
-    Stack(
-      children: [
-        Positioned(
-          left: 16,
-          top: 96,
-          width: 158,
-          child: TtReelCard(
-            name: 'Lisbon trip',
-            semanticLabel: 'Lisbon trip. Collecting. 12 clips',
-            status: TtStatusKind.collecting,
-            statusLabel: 'Collecting',
-            meta: '12 clips · 1:03',
-            emptyLabel: 'No clips yet',
-            cover: cover,
-            vnLabel: vnLabel,
-            referenceCount: references,
-            referencesSemanticLabel: '$references references in Lisbon trip',
-            onTap: () {},
-            onReferencesTap: () {},
-          ),
-        ),
-      ],
-    );
-
 Widget _shootingCard(ImageProvider backdrop, {int chips = 2}) => Stack(
   children: [
     Positioned(
@@ -322,16 +287,6 @@ void main() {
     // A Material first lost the blur on the S24 (the reel cover pill);
     // a ColoredBox or a coloured DecoratedBox kept it.
     final pieces = <String, Widget Function(WidgetTester)>{
-      'TtStatusPill on media': (_) => _onStripes(_statusPill()),
-      'TtStatusPill on media, pressable': (_) =>
-          _onStripes(_statusPill(onPressed: () {})),
-      'TtGlassPill': (_) => _onStripes(
-        const TtGlassPill(
-          icon: Symbols.folder_copy_rounded,
-          text: 'Editing in VN',
-          semanticLabel: 'Editing in VN',
-        ),
-      ),
       'TtNavPill': (_) => _navPill(),
       'TtRailButton': (_) => _onStripes(_railButton(detail: 'London Food')),
       'TtRailButton, off': (_) => _onStripes(_railButton(enabled: false)),
@@ -348,18 +303,6 @@ void main() {
       });
     }
 
-    testWidgets('TtReelCard with 3 references and a VN pill', (tester) async {
-      _phone(tester);
-      final cover = await _stripesImage(tester, 158);
-      await tester.pumpWidget(
-        ttPixelApp(_reelCard(cover, references: 3, vnLabel: 'Editing in VN')),
-      );
-      await _decode(tester, cover, TtReelCard);
-      // The status pill, the VN pill and the badge: three filters.
-      expect(_glassIn(TtReelCard), findsNWidgets(3));
-      expectGlassStructure(tester, find.byType(TtReelCard));
-    });
-
     testWidgets('TtShootingModeCard on, with two chips', (tester) async {
       _phone(tester);
       final backdrop = await _stripesImage(tester, 328);
@@ -372,53 +315,6 @@ void main() {
   });
 
   group('the glass blurs what is behind it', () {
-    testWidgets('status pill on media blurs by 8 under its .58 fill', (
-      tester,
-    ) async {
-      final c = await _measure(
-        tester,
-        build: ({required piece}) =>
-            _onStripes(piece ? _statusPill() : const SizedBox.shrink()),
-        of: Scaffold,
-        glass: () => _glassIn(TtStatusPill),
-        radius: _pillRadius,
-      );
-      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .58);
-      _expectSigma(_glassIn(TtStatusPill), _blur8);
-    });
-
-    testWidgets('Editing in VN pill blurs by 8', (tester) async {
-      final cover = await _stripesImage(tester, 158);
-      final c = await _measure(
-        tester,
-        build: ({required piece}) =>
-            _reelCard(cover, vnLabel: piece ? 'Editing in VN' : null),
-        of: TtReelCard,
-        glass: () => _glassOver(Symbols.folder_copy_rounded),
-        radius: _pillRadius,
-        picture: cover,
-        minSharp: .2,
-      );
-      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .58);
-      _expectSigma(_glassIn(TtGlassPill), _blur8);
-    });
-
-    testWidgets('reel card references badge blurs by 8', (tester) async {
-      final cover = await _stripesImage(tester, 158);
-      final c = await _measure(
-        tester,
-        build: ({required piece}) =>
-            _reelCard(cover, references: piece ? 3 : 0),
-        of: TtReelCard,
-        glass: () => _glassOver(Symbols.link_rounded),
-        radius: _pillRadius,
-        picture: cover,
-        minSharp: .2,
-      );
-      expectBlurred(c.blurred, sharp: c.sharp, fillOpacity: .58);
-      _expectSigma(_glassOver(Symbols.link_rounded), _blur8);
-    });
-
     testWidgets('Shooting mode icon tile blurs by 8', (tester) async {
       _phone(tester);
       final backdrop = await _stripesImage(tester, 328);
@@ -692,61 +588,6 @@ void main() {
         );
         expect((below.r * 255).round(), lessThan(255 - 4));
       });
-    });
-  });
-
-  group('the pressable status pill on media', () {
-    testWidgets('a tap still ripples and calls onPressed', (tester) async {
-      _phone(tester);
-      var taps = 0;
-      await tester.pumpWidget(
-        ttPixelApp(
-          // The test renderer draws no sparkle shader; the ordinary ripple
-          // shows the same ink.
-          Builder(
-            builder: (context) => Theme(
-              data: Theme.of(context)
-                  .copyWith(splashFactory: InkRipple.splashFactory),
-              child: _onStripes(_statusPill(onPressed: () => taps++)),
-            ),
-          ),
-        ),
-      );
-      final pill = find.byType(TtStatusPill);
-      final glass = _glassIn(TtStatusPill);
-      final rect = tester.getRect(glass);
-      final at = tester.getCenter(glass);
-      final idle = await TtPixels.capture(tester);
-      // Hold a finger down: the ink paints its highlight over the fill.
-      final finger = await tester.startGesture(at);
-      // The press registers after 100 ms and the ripple grows over the next
-      // frames, so pump in steps.
-      for (var i = 0; i < 4; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
-      }
-      final pressed = await TtPixels.capture(tester);
-      expect(
-        (pressed.meanLuma(rect) - idle.meanLuma(rect)).abs(),
-        greaterThan(.02),
-        reason: 'the ink shows over the glass fill',
-      );
-      await finger.up();
-      await tester.pumpAndSettle();
-      expect(taps, 1);
-      // And an ordinary tap, as a user does it.
-      await tester.tap(pill);
-      expect(taps, 2);
-      // The ink is in a transparent Material inside the fill.
-      final material = find.descendant(
-        of: find.descendant(of: glass, matching: find.byType(ColoredBox)),
-        matching: find.byType(Material),
-      );
-      expect(material, findsOneWidget);
-      expect(tester.widget<Material>(material).type, MaterialType.transparency);
-      expect(
-        find.descendant(of: material, matching: find.byType(InkWell)),
-        findsOneWidget,
-      );
     });
   });
 

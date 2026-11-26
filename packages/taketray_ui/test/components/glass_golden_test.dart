@@ -6,7 +6,7 @@ import '../support/tt_golden.dart';
 
 void main() {
   ttGoldenTest(
-    'Glass panel and pill on a photo',
+    'Glass panel on a photo',
     fileName: 'glass',
     scenarios: [
       const TtScenario(
@@ -37,38 +37,6 @@ void main() {
                   padding: EdgeInsets.all(16),
                   child: Text('Tinted'),
                 ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      TtScenario(
-        'glass pill',
-        _OnPhoto(
-          children: [
-            const TtGlassPill(
-              icon: Symbols.link_rounded,
-              semanticLabel: 'Linked',
-            ),
-            const TtGlassPill(
-              icon: Symbols.link_rounded,
-              text: '3',
-              semanticLabel: '3 links',
-            ),
-            Builder(
-              builder: (context) => TtGlassPill(
-                icon: Symbols.fiber_manual_record_rounded,
-                iconColor: context.tt.colors.recordOnMedia,
-                text: 'Recording',
-                semanticLabel: 'Recording',
-              ),
-            ),
-            Builder(
-              builder: (context) => TtGlassPill(
-                icon: Symbols.check_circle_rounded,
-                iconColor: context.tt.colors.publishedOnMedia,
-                text: 'Published a very long status name that cannot fit',
-                semanticLabel: 'Published',
               ),
             ),
           ],

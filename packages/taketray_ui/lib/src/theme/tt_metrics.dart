@@ -168,24 +168,6 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .navbar { box-shadow: 0 10px 30px -8px … }
   static const double glassShadowOpacity = 0.35;
 
-  // ---- Glass pill (status badge on media) ----
-
-  /// Height of a glass pill.
-  // proto.css: .pill { height: 24px }
-  static const double glassPillHeight = 24;
-
-  /// Background blur behind a glass pill.
-  // tt-style.css: .style-tt .rcard .cover .pill { backdrop-filter: blur(8px) }
-  static const double glassPillBlur = 8;
-
-  /// Padding before the icon of a glass pill.
-  // proto.css: .pill { padding: 0 8px 0 6px }
-  static const double glassPillPaddingStart = 6;
-
-  /// Icon size in a glass pill.
-  // proto.css: .pill .ms { font-size: 16px }
-  static const double glassPillIconSize = 16;
-
   // ---- Count badge ----
 
   /// Minimum width of a count badge.
@@ -934,95 +916,60 @@ abstract final class TtMetrics {
 
   // ---- Reel card ----
 
-  /// Width over height of a reel card's cover.
-  // tt-style.css: .style-tt .rcard .cover { aspect-ratio: 4 / 5 }
-  static const double reelCardAspect = 0.8;
+  /// Width over height of a reel card's cover (3:4).
+  // home2.css:58: .h2-card .h2-cv { width: 100%; aspect-ratio: 3 / 4; … }
+  static const double reelCardAspect = 0.75;
 
-  /// Corner radius of a reel card.
-  // tt-style.css: .style-tt .rcard { border-radius: 22px }
-  static const double reelCardRadius = 22;
+  /// Corner radius of a reel card's cover.
+  // home2.css:58: .h2-card .h2-cv { …; border-radius: 20px }
+  static const double reelCardRadius = 20;
 
-  /// Where the bottom gradient starts, as a fraction of the cover's height.
-  // tt-style.css: .style-tt .rcard .cover::after { inset: 40% 0 0 }
-  static const double reelCardScrimStart = 0.4;
+  /// Gap between the cover and the caption under it.
+  // home2.css:56: .h2-card { display: flex; flex-direction: column; gap: 8px }
+  static const double reelCardGap = 8;
 
-  /// Distance of the status pill from the cover's top and start edges (the
-  /// "Editing in VN" pill sits under it, 8 dp down).
-  // proto.css: .rcard .cover .pill { left: 8px; top: 8px }
-  static const double reelCardPillInset = 8;
+  /// Size of the movie icon on a cover that has no picture.
+  // home2.css:59: .h2-card .h2-cv.empty .ms { font-size: 28px }
+  static const double reelCardEmptyIconSize = 28;
 
-  /// Largest text scale a reel card follows.
-  // Not in the prototype (it has no text scaling): the 4:5 tile has a fixed
-  // size. At 1.6 the 158 dp tile with a two-line name, an Editing in VN pill,
-  // a missing mark and a two-digit badge still has the name below both pills
-  // and the badge clear of the meta; at 1.7 the name starts 5 dp under the
-  // second pill. See D-46.
-  static const double reelCardMaxTextScale = 1.6;
+  /// How far a reel card shrinks while it is pressed (reduced motion: not at
+  /// all).
+  // home2.css:57: .h2-card:active { transform: scale(.98) }, and :56:
+  // transition: transform var(--dur-short3) var(--ease-standard)
+  static const double reelCardPressScale = 0.98;
 
-  /// Distance of the name and meta from the cover's bottom edge.
-  // tt-style.css: .style-tt .rcard .cap { bottom: 11px }
-  static const double reelCardCaptionBottom = 11;
+  /// Space at each side of the caption under the cover.
+  // home2.css:60: .h2-cap { …; padding: 0 4px; … }
+  static const double reelCardCaptionInset = 4;
 
-  /// Distance of the name and meta from the cover's end edge when the
-  /// references badge is shown (otherwise 12 dp).
-  // tt-style.css: .style-tt .rcard-wrap:has(.refbadge) .cap { right: 50px }
-  static const double reelCardCaptionInsetEndWithBadge = 50;
-
-  /// Gap between the name and the meta, between meta lines, and between the
-  /// missing-clips icon and its text.
-  // tt-style.css: .style-tt .rcard .cap { gap: 2px }, proto.css:
-  // .rcard .mt { gap: 2px 8px }, .rcard .mt .miss { gap: 2px }
+  /// Gap between the name, the status mark, the meta and the notes.
+  // home2.css:60: .h2-cap { display: flex; flex-direction: column; gap: 2px }
   static const double reelCardCaptionGap = 2;
 
-  /// Size of the error icon before the missing-clips text.
-  // proto.css: .rcard .mt .miss .ms { font-size: 14px }
-  static const double reelCardMissingIconSize = 14;
+  /// Size of the status mark's icon.
+  // home2.css:36: .h2-st .ms { font-size: 14px }
+  static const double reelCardStatusIconSize = 14;
 
-  /// Weight of the missing-clips text.
-  // proto.css: .rcard .mt .miss { font-weight: 600 }
-  static const FontWeight reelCardMissingWeight = FontWeight.w600;
+  /// Gap between the status mark's icon and its word.
+  // home2.css:35: .h2-st { display: inline-flex; align-items: center;
+  // gap: 4px }
+  static const double reelCardStatusGap = 4;
 
-  /// Gap between the empty art's icon and its label.
-  // proto.css: .rcard .ph-empty { gap: 6px }
-  static const double reelCardEmptyGap = 6;
+  /// Space between two notes on a line.
+  // home2.css:41: .h2-xs { display: flex; flex-wrap: wrap; gap: 4px 10px }
+  static const double reelCardNotesSpacing = 10;
 
-  /// Opacity of the empty art's icon.
-  // proto.css: .rcard .ph-empty .ms { opacity: .8 }
-  static const double reelCardEmptyIconOpacity = 0.8;
+  /// Space between two lines of notes.
+  // home2.css:41: .h2-xs { display: flex; flex-wrap: wrap; gap: 4px 10px }
+  static const double reelCardNotesRunSpacing = 4;
 
-  // ---- References badge (on a reel card) ----
+  /// Size of a note's icon.
+  // home2.css:43: .h2-x .ms { font-size: 14px }
+  static const double reelCardNoteIconSize = 14;
 
-  /// Height of the references badge.
-  // proto.css: .refbadge { height: 26px }
-  static const double refBadgeHeight = 26;
-
-  /// Distance of the badge from the cover's bottom and end edges.
-  // tt-style.css: .style-tt .refbadge { bottom: 10px; right: 10px }
-  static const double refBadgeInset = 10;
-
-  /// How far the badge's tap target reaches past it, sideways.
-  // proto.css: .refbadge::before { inset: -11px -8px }
-  static const double refBadgeHitInset = 8;
-
-  /// Padding before the badge's icon.
-  // proto.css: .refbadge { padding: 0 8px 0 6px }
-  static const double refBadgePaddingStart = 6;
-
-  /// Padding after the badge's count.
-  // proto.css: .refbadge { padding: 0 8px 0 6px }
-  static const double refBadgePaddingEnd = 8;
-
-  /// Gap between the badge's icon and its count.
-  // proto.css: .refbadge { gap: 3px }
-  static const double refBadgeGap = 3;
-
-  /// Size of the badge's icon.
-  // proto.css: .refbadge .ms { font-size: 16px }
-  static const double refBadgeIconSize = 16;
-
-  /// Weight of the badge's count.
-  // proto.css: .refbadge { font: 700 12px/1 var(--font) }
-  static const FontWeight refBadgeWeight = FontWeight.w700;
+  /// Gap between a note's icon and its text.
+  // home2.css:42: .h2-x { display: inline-flex; align-items: center; gap: 3px }
+  static const double reelCardNoteGap = 3;
 
   // ---- Reference card ----
 

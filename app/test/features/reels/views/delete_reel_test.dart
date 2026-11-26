@@ -99,10 +99,18 @@ void main() {
     reelsRepositoryProvider.overrideWithValue(reels),
   ];
 
+  /// A second of frames, not `pumpAndSettle`: a card whose cover is still
+  /// decoding shimmers for ever (D-194).
+  Future<void> pumpFrames(WidgetTester tester) async {
+    for (var i = 0; i < 10; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+  }
+
   Future<void> settleApp(WidgetTester tester) async {
     await tester.runAsync(settle);
     await tester.pump();
-    await tester.pumpAndSettle();
+    await pumpFrames(tester);
   }
 
   Future<List<Reel>> allReels(WidgetTester tester) async =>
@@ -506,11 +514,11 @@ void main() {
       await tester.pumpWidget(
         ProviderScope(overrides: overrides(), child: const TakeTrayApp()),
       );
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
       final context = tester.element(find.byType(ReelsScreen));
 
       unawaited(showDeleteReelDialog(context, goa));
-      await tester.pumpAndSettle();
+      await pumpFrames(tester);
       await confirm(tester);
 
       expect(await allReels(tester), isEmpty);

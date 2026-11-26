@@ -19,10 +19,16 @@ Future<T> real<T>(WidgetTester tester, Future<T> Function() job) async =>
     (await tester.runAsync(job)) as T;
 
 /// Lets the database, the bridges' streams and the redraw all catch up.
+///
+/// Two seconds of frames, not `pumpAndSettle`: a reel card whose cover is
+/// still decoding shimmers for ever (D-194), so a screen with Home behind it
+/// never settles.
 Future<void> settleApp(WidgetTester tester) async {
   await tester.runAsync(settle);
   await tester.pump();
-  await tester.pumpAndSettle();
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 /// A VN copy job started through the real `EditSessionService` on `h`'s

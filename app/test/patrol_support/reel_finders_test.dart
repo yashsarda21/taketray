@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -11,10 +10,8 @@ import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/references/views/references_section.dart';
 import 'package:taketray/router/routes.dart';
-import 'package:taketray_ui/taketray_ui.dart';
 
 import '../../patrol_test/support/reel_finders.dart';
-import '../support/pump_screen.dart';
 import '../support/test_app.dart';
 import '../support/vm_harness.dart';
 
@@ -22,64 +19,6 @@ import '../support/vm_harness.dart';
 /// here against the widgets they find on the phone: the S24 run of
 /// 2026-11-22 timed out on both of the flows' old finders.
 void main() {
-  group('referencesBadgeOf', () {
-    Future<void> card(
-      WidgetTester tester, {
-      required VoidCallback onTap,
-      required VoidCallback onRefs,
-    }) => pumpScreen(
-      tester,
-      Center(
-        child: SizedBox(
-          width: 180,
-          child: TtReelCard(
-            name: 'Lisbon',
-            semanticLabel: 'Lisbon. Collecting. 1 clip',
-            status: TtStatusKind.collecting,
-            statusLabel: 'Collecting',
-            meta: '1 clip',
-            emptyLabel: 'No clips yet',
-            referenceCount: 1,
-            referencesSemanticLabel: '1 reference, open them',
-            onTap: onTap,
-            onReferencesTap: onRefs,
-          ),
-        ),
-      ),
-    ).then((_) {});
-
-    testWidgets('is hit-testable, so a Patrol tap reaches it', (tester) async {
-      await card(tester, onTap: () {}, onRefs: () {});
-
-      // The badge's ripple lies over its count, so the count's text is never
-      // hit-testable and a Patrol tap on it waits until it times out.
-      expect(
-        referencesBadgeOf('Lisbon', '1 reference, open them').hitTestable(),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('a tap on it opens the references, not the reel', (
-      tester,
-    ) async {
-      var taps = 0;
-      var refs = 0;
-      await card(tester, onTap: () => taps++, onRefs: () => refs++);
-
-      await tester.tap(referencesBadgeOf('Lisbon', '1 reference, open them'));
-
-      expect(refs, 1);
-      expect(taps, 0);
-    });
-
-    testWidgets("finds only the named reel's badge", (tester) async {
-      await card(tester, onTap: () {}, onRefs: () {});
-
-      expect(referencesBadgeOf('Goa', '1 reference, open them'), findsNothing);
-      expect(referencesBadgeOf('Lisbon', '2 references'), findsNothing);
-    });
-  });
-
   group('reelPageOf', () {
     late VmHarness h;
 

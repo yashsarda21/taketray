@@ -61,15 +61,23 @@ Future<(ProviderContainer, GoRouter)> _pumpApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(container: container, child: const TakeTrayApp()),
   );
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
   return (container, container.read(appRouterProvider));
+}
+
+/// Pumps for a second of frames instead of `pumpAndSettle`: a reel's cover
+/// that is still decoding shimmers for ever (D-194), so Home never settles.
+Future<void> _pumpFrames(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 /// Lets the database and the media jobs answer, then redraws.
 Future<void> _settle(WidgetTester tester) async {
   await tester.runAsync(settle);
   await tester.pump();
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
   // What the redraw let go of (a player to dispose) finishes in real time.
   await tester.runAsync(settle);
   await tester.pump();
@@ -936,7 +944,7 @@ void main() {
       expect(find.byType(TtNavPill).hitTestable(), findsNothing);
 
       router.pop();
-      await tester.pumpAndSettle();
+      await _pumpFrames(tester);
       expect(find.byType(EditSelectScreen), findsNothing);
     });
 

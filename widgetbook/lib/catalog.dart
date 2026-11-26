@@ -157,7 +157,6 @@ final List<WidgetbookNode> ttCatalog = [
     name: 'Overlays',
     children: [
       ttGlassComponent,
-      ttGlassPillComponent,
       ttSheetComponent,
       ttDialogComponent,
       ttSnackComponent,

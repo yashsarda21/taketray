@@ -69,11 +69,6 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   void _openReel(int reelId) =>
       _reel.open(() => context.push(Routes.reel(reelId)));
 
-  /// The references badge: the reel's page at its References section, through
-  /// the same guard as the card.
-  void _openReferences(int reelId) =>
-      _reel.open(() => context.push(Routes.reelReferences(reelId)));
-
   @override
   void dispose() {
     _reel.dispose();
@@ -153,23 +148,42 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                     tt.spacing.gutter,
                     tt.spacing.none,
                   ),
-                  // A grid built on demand: 25 reels build a screenful of
-                  // cards, not 25.
-                  sliver: SliverGrid.builder(
-                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: _columns,
-                      mainAxisSpacing: tt.spacing.s,
-                      crossAxisSpacing: tt.spacing.s,
-                      childAspectRatio: TtMetrics.reelCardAspect,
-                    ),
-                    itemCount: home.reels.length,
-                    itemBuilder: (context, index) => _ReelCard(
-                      key: ValueKey(home.reels[index].reel.id),
-                      summary: home.reels[index],
-                      cover: home.covers[home.reels[index].reel.id],
-                      editor: editors[home.reels[index].reel.id],
-                      onOpen: _openReel,
-                      onOpenReferences: _openReferences,
+                  // Rows of two built on demand: 25 reels build a screenful of
+                  // cards, not 25. A card's height is its own now (the cover,
+                  // then the text), so this is a list of rows, not a grid.
+                  // Task 9 assembles the real grid.
+                  sliver: SliverList.builder(
+                    itemCount: (home.reels.length + _columns - 1) ~/ _columns,
+                    itemBuilder: (context, row) => Padding(
+                      padding: EdgeInsets.only(bottom: tt.spacing.m),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        spacing: tt.spacing.s,
+                        children: [
+                          for (var i = 0; i < _columns; i++)
+                            Expanded(
+                              child: row * _columns + i < home.reels.length
+                                  ? _ReelCard(
+                                      key: ValueKey(
+                                        home.reels[row * _columns + i].reel.id,
+                                      ),
+                                      summary: home.reels[row * _columns + i],
+                                      cover:
+                                          home.covers[home
+                                              .reels[row * _columns + i]
+                                              .reel
+                                              .id],
+                                      editor:
+                                          editors[home
+                                              .reels[row * _columns + i]
+                                              .reel
+                                              .id],
+                                      onOpen: _openReel,
+                                    )
+                                  : const SizedBox.shrink(),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -243,15 +257,14 @@ class _FilterChips extends StatelessWidget {
   }
 }
 
-/// One reel on Home (`h.reelCard` in the prototype), with the references
-/// badge when it has any.
+/// One reel on Home (`h.reelCard` in the prototype): the calm card, with its
+/// notes (In {editor}, missing, references) when they apply.
 class _ReelCard extends StatelessWidget {
   const new({
     required this.summary,
     required this.cover,
     required this.editor,
     required this.onOpen,
-    required this.onOpenReferences,
     super.key,
   });
 
@@ -263,9 +276,6 @@ class _ReelCard extends StatelessWidget {
 
   /// Opens the reel's page (once, however fast the taps).
   final ValueChanged<int> onOpen;
-
-  /// Opens the reel's page at its References section.
-  final ValueChanged<int> onOpenReferences;
 
   @override
   Widget build(BuildContext context) {
@@ -286,31 +296,45 @@ class _ReelCard extends StatelessWidget {
     final editor = this.editor;
     final editing = editor == null
         ? null
-        : l10n.reelEditingIn(editorShortName(l10n, editor));
+        : l10n.reelCardInEditor(editorShortName(l10n, editor));
+    var semanticLabel = label;
+    if (editor != null) {
+      semanticLabel = l10n.reelCardSemanticsEditing(
+        semanticLabel,
+        l10n.reelEditingIn(editorShortName(l10n, editor)),
+      );
+    }
+    if (references > 0) {
+      semanticLabel = l10n.reelCardSemanticsReferences(
+        semanticLabel,
+        references,
+      );
+    }
     return TtReelCard(
       name: reel.name,
       status: statusKindOf(reel.status),
       statusLabel: status,
       // The length counts only the clips that are still on the phone.
       meta: summary.clipCount == 0
-          ? clips
+          ? l10n.reelCardEmptyArt
           : l10n.reelCardMeta(
               clips,
               formatClipDuration(summary.liveDurationMs),
             ),
-      missingText: missing > 0 ? l10n.reelCardMissing(missing) : null,
-      emptyLabel: l10n.reelCardEmptyArt,
       cover: cover,
-      vnLabel: editing,
-      semanticLabel: editing == null
-          ? label
-          : l10n.reelCardSemanticsEditing(label, editing),
+      notes: [
+        if (editing != null)
+          TtReelCardNote(TtReelCardNoteKind.editing, editing),
+        if (missing > 0)
+          TtReelCardNote(
+            TtReelCardNoteKind.missing,
+            l10n.reelCardMissing(missing),
+          ),
+        if (references > 0)
+          TtReelCardNote(TtReelCardNoteKind.references, '$references'),
+      ],
+      semanticLabel: semanticLabel,
       onTap: () => onOpen(reel.id),
-      referenceCount: references,
-      referencesSemanticLabel: references > 0
-          ? l10n.reelCardReferences(references)
-          : null,
-      onReferencesTap: references > 0 ? () => onOpenReferences(reel.id) : null,
     );
   }
 }

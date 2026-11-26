@@ -3066,6 +3066,27 @@
       }
     }
   },
+  "reelCardInEditor": "In {editor}",
+  "@reelCardInEditor": {
+    "description": "The note under a Home reel card while the reel is being edited in {editor} (\"VN\", \"CapCut\", \"Edits\").",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsReferences": "{card}. {count, plural, =1{1 reference} other{{count} references}}",
+  "@reelCardSemanticsReferences": {
+    "description": "What a screen reader says for a Home reel card whose reel has references: the card's words so far, then how many references it has.",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "editAddTitle": "Add clips to {editor} folder",
   "@editAddTitle": {
     "description": "Title of the picker that copies more clips into a reel's editing folder.",
