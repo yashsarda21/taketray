@@ -167,7 +167,7 @@ void main() {
       );
       await pumpScreen(
         tester,
-        EditSelectScreen(reelId: goa.id, addMode: true),
+        EditSelectScreen(reelId: goa.id),
         overrides: h.appOverrides,
         textScale: scale,
         brightness: brightness,
@@ -219,7 +219,7 @@ void main() {
       );
       await pumpScreen(
         tester,
-        EditSelectScreen(reelId: goa.id, addMode: true),
+        EditSelectScreen(reelId: goa.id),
         overrides: h.appOverrides,
         textScale: scale,
         brightness: brightness,

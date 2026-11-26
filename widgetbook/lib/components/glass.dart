@@ -46,51 +46,6 @@ final WidgetbookComponent ttGlassComponent = WidgetbookComponent(
   ],
 );
 
-/// `TtGlassPill`: the dark-glass badge on media.
-final WidgetbookComponent ttGlassPillComponent = WidgetbookComponent(
-  name: 'TtGlassPill',
-  useCases: [
-    WidgetbookUseCase(
-      name: 'Playground',
-      builder: (context) {
-        final colors = context.tt.colors;
-        final icons = <String, IconData>{
-          'link': Symbols.link_rounded,
-          'record': Symbols.fiber_manual_record_rounded,
-          'ready': Symbols.check_circle_rounded,
-          'videocam': Symbols.videocam_rounded,
-        };
-        final icon = context.knobs.object.dropdown<String>(
-          label: 'icon',
-          options: icons.keys.toList(),
-        );
-        final withText = context.knobs.boolean(
-          label: 'text',
-          initialValue: true,
-        );
-        final text = context.knobs.string(label: 'label', initialValue: '3');
-        final tone = context.knobs.object.dropdown<String>(
-          label: 'icon colour',
-          options: const ['white', 'record', 'ready', 'published'],
-        );
-        return _Photo(
-          child: TtGlassPill(
-            icon: icons[icon]!,
-            iconColor: switch (tone) {
-              'record' => colors.recordOnMedia,
-              'ready' => colors.readyOnMedia,
-              'published' => colors.publishedOnMedia,
-              _ => null,
-            },
-            text: withText ? text : null,
-            semanticLabel: withText ? text : 'Linked',
-          ),
-        );
-      },
-    ),
-  ],
-);
-
 /// [child] on a sample photo.
 class _Photo extends StatelessWidget {
   const new({required this.child});

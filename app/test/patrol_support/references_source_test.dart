@@ -163,24 +163,62 @@ void main() {
     expect(mark, lessThan(firstWrite), reason: 'a failed write is cleaned up');
   });
 
-  test('flow 2: the Home badge tap lands on a visible References section', () {
+  test('flow 2: the Home card is read with its references, and the page is '
+      'scrolled to the References section (D-196, D-197)', () {
     final flow = bodyOf('Future<void> _paste(');
-    final tap = flow.indexOf(
-      r'$(referencesBadgeOf(_reelPaste, _l10n.reelCardReferences(1))).tap()',
-    );
-    expect(tap, greaterThanOrEqualTo(0), reason: "the badge's own button");
-    final after = flow.substring(tap);
+    // The card says it has the reference (it has no badge any more).
+    final read = flow.indexOf('reelCardSemanticsReferences(');
+    expect(read, greaterThanOrEqualTo(0), reason: 'the card is read');
     expect(
-      after,
-      contains(r'section.$(_l10n.referencesHeader(1)).visible'),
-      reason: 'on screen, not only in the tree',
+      flow.substring(read),
+      contains('.semanticLabel'),
+      reason: "the card's own semantic label is what is compared",
+    );
+    final tap = flow.indexOf(r'tapWhenStill($, reelCardOf(_reelPaste))');
+    expect(tap, greaterThanOrEqualTo(0), reason: 'the card, by its name');
+    expect(read, lessThan(tap), reason: 'read, then opened');
+    // Home no longer opens the page at its References: the flow scrolls.
+    final after = flow.substring(tap);
+    expect(after, contains('.scrollTo('));
+    expect(
+      after.indexOf('.scrollTo('),
+      lessThan(after.indexOf(r'section.$(_l10n.referencesHeader(1)).visible')),
+      reason: 'scrolled before it asks for the section on screen',
     );
     expect(after, contains(r'$(reelPageOf(reel.id, _reelPaste)).exists'));
+    expect(source, isNot(contains('referencesBadgeOf')));
+    expect(source, isNot(contains('reelCardReferences(')));
+    expect(
+      source,
+      isNot(contains('scrolled the References section into view')),
+    );
   });
 
-  test('the S24 finders (D-161 item 9): no tap on the badge count, no page '
-      'by its name after an open at References', () {
-    // The count lies under the badge's ripple: never hit-testable.
+  test('flow 3: the New reel form opens from the header pill, with reels on '
+      'Home (D-186)', () {
+    final flow = bodyOf('Future<void> _reelForm(');
+    expect(flow, contains(r'tapWhenStill($, newReelButton())'));
+    expect(flow, isNot(contains(r'home.$(_l10n.reelsNewReel)')));
+    // Flow 3's card is opened by its name too.
+    expect(flow, contains(r'tapWhenStill($, reelCardOf(_reelFormName))'));
+  });
+
+  test('flow 4: the References chip of the Shooting mode card is tapped by '
+      'its words, once it is still', () {
+    final flow = bodyOf('Future<void> _shootingSheet(');
+    expect(flow, contains('_referencesChip(_l10n.referencesHeader(3))'));
+    expect(flow, contains(r'tapWhenStill($, chip)'));
+    expect(flow, isNot(contains('await row.tap()')));
+    final start = source.indexOf('Finder _referencesChip(');
+    expect(start, greaterThanOrEqualTo(0));
+    final chip = source.substring(start, source.indexOf(';\n', start));
+    expect(chip, contains('find.byType(InkWell)'), reason: "the chip's button");
+    expect(chip, contains('find.byType(ShootingModeSection)'));
+  });
+
+  test('the S24 finders (D-161 item 9): no tap on a count, no page by its '
+      'name after an open at References', () {
+    // A count lies under a ripple: never hit-testable.
     expect(source, isNot(contains(r".$('1').tap()")));
     // A page opened at References has scrolled its name off the screen.
     expect(source, isNot(contains(r'$(ReelDetailScreen).$(_reelPaste)')));

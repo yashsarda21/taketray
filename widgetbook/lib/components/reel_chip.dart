@@ -32,6 +32,11 @@ final WidgetbookComponent ttReelChipComponent = WidgetbookComponent(
           labelBuilder: (v) => v.name,
         );
         final multi = context.knobs.boolean(label: 'multi-select');
+        final style = context.knobs.object.dropdown<TtReelChipStyle>(
+          label: 'style (onVideo: glass over a sample clip)',
+          options: TtReelChipStyle.values,
+          labelBuilder: (v) => v.name,
+        );
         final width = context.knobs.double.slider(
           label: 'width (164 in the panel)',
           initialValue: 164,
@@ -41,8 +46,8 @@ final WidgetbookComponent ttReelChipComponent = WidgetbookComponent(
         final countText = '$count clips';
         return TtVideoSurface(
           child: Builder(
-            builder: (context) => ColoredBox(
-              color: context.scheme.surfaceContainer,
+            builder: (context) => _Backdrop(
+              onVideo: style == TtReelChipStyle.onVideo,
               child: Padding(
                 padding: EdgeInsets.all(context.tt.spacing.m),
                 child: Align(
@@ -60,6 +65,7 @@ final WidgetbookComponent ttReelChipComponent = WidgetbookComponent(
                       },
                       state: state,
                       multiSelect: multi,
+                      style: style,
                       onTap: () {},
                       onLongPress: () {},
                     ),
@@ -90,6 +96,11 @@ final WidgetbookComponent ttNewReelChipComponent = WidgetbookComponent(
           initialValue: 'Add this clip to it',
         );
         final fullWidth = context.knobs.boolean(label: 'full width');
+        final style = context.knobs.object.dropdown<TtReelChipStyle>(
+          label: 'style (onVideo: glass over a sample clip)',
+          options: TtReelChipStyle.values,
+          labelBuilder: (v) => v.name,
+        );
         final width = context.knobs.double.slider(
           label: 'width (164 in the panel, 336 full width)',
           initialValue: 164,
@@ -98,8 +109,8 @@ final WidgetbookComponent ttNewReelChipComponent = WidgetbookComponent(
         );
         return TtVideoSurface(
           child: Builder(
-            builder: (context) => ColoredBox(
-              color: context.scheme.surfaceContainer,
+            builder: (context) => _Backdrop(
+              onVideo: style == TtReelChipStyle.onVideo,
               child: Padding(
                 padding: EdgeInsets.all(context.tt.spacing.m),
                 child: Align(
@@ -110,6 +121,7 @@ final WidgetbookComponent ttNewReelChipComponent = WidgetbookComponent(
                       title: title,
                       subtitle: subtitle.isEmpty ? null : subtitle,
                       fullWidth: fullWidth,
+                      style: style,
                       onTap: () {},
                     ),
                   ),
@@ -122,3 +134,25 @@ final WidgetbookComponent ttNewReelChipComponent = WidgetbookComponent(
     ),
   ],
 );
+
+/// What a chip sits on: the panel colour for the surface style, or a sample
+/// clip for the on-video glass.
+class _Backdrop extends StatelessWidget {
+  const new({required this.onVideo, required this.child});
+
+  final bool onVideo;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!onVideo) {
+      return ColoredBox(color: context.scheme.surfaceContainer, child: child);
+    }
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        image: DecorationImage(image: wbThumb(4), fit: BoxFit.cover),
+      ),
+      child: child,
+    );
+  }
+}

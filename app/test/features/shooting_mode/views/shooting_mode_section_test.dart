@@ -16,6 +16,7 @@ import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
 import 'package:taketray/features/onboarding/view_models/onboarding_controller.dart';
 import 'package:taketray/features/references/view_models/shooting_references.dart';
+import 'package:taketray/features/shooting_mode/view_models/earlier_added.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
@@ -55,6 +56,7 @@ Future<Pumped> pump(
   ShootingState shooting = ShootingState.off,
   MediaAccessLevel? access = MediaAccessLevel.full,
   List<Clip> pending = const [],
+  Stream<List<Clip>>? pendingStream,
   Clip? fallback,
   Brightness brightness = Brightness.light,
   double textScale = 1,
@@ -74,7 +76,9 @@ Future<Pumped> pump(
     overrides: <Override>[
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
       mediaAccessControllerProvider.overrideWith(() => fakeAccess),
-      pendingClipsProvider.overrideWith((ref) => Stream.value(pending)),
+      pendingClipsProvider.overrideWith(
+        (ref) => pendingStream ?? Stream.value(pending),
+      ),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(fallback)),
       clockProvider.overrideWithValue(clock ?? FixedClock(_now)),
       // An onboarded phone: the Home tip never shows here (its own tests are
@@ -99,40 +103,108 @@ Future<Pumped> pump(
 TtShootingModeCard card(WidgetTester tester) =>
     tester.widget<TtShootingModeCard>(find.byType(TtShootingModeCard));
 
+/// The labels of the card's chips, left to right.
+List<String> chipLabels(WidgetTester tester) => [
+  for (final c in card(tester).chips) c.label,
+];
+
+/// [count] waiting clips.
+List<Clip> waitingClips(int count) => [
+  for (var i = 1; i <= count; i++) testClip(i),
+];
+
+const String idleLine = 'Off · turn it on before you film';
+
 void main() {
   group('card off / on texts', () {
-    testWidgets('off: title, text, a switch that is off, nothing else', (
+    testWidgets('off: title, the idle line, a switch that is off, no chips', (
       tester,
     ) async {
       await pump(tester);
 
       expect(find.text('Shooting mode'), findsOneWidget);
-      expect(
-        find.text(
-          'Off. Turn on before you start filming, and new videos wait in '
-          'To tag.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.text(idleLine), findsOneWidget);
       expect(card(tester).on, isFalse);
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
       expect(find.text('Open camera'), findsNothing);
-      // With full access the only row is Add earlier videos (D-90); no
-      // strip.
-      expect(find.byType(TtCardRow), findsOneWidget);
-      expect(card(tester).rows.single.title, 'Add earlier videos');
-      expect(card(tester).toTagStrip, isNull);
+      expect(card(tester).chips, isEmpty);
     });
 
-    testWidgets('on: title, since today as a time, and Open camera', (
-      tester,
-    ) async {
-      await pump(tester, shooting: on());
+    testWidgets('off with 23 waiting: "Off · 23 clips still to tag"; 1: '
+        '"Off · 1 clip still to tag"', (tester) async {
+      final pending = StreamController<List<Clip>>();
+      // Not awaited: a failed test would wait on it for ever.
+      addTearDown(() => unawaited(pending.close()));
+      await pump(tester, pendingStream: pending.stream);
 
-      expect(find.text('Shooting mode on'), findsOneWidget);
-      expect(findPlain('On since 9:41 AM'), findsOneWidget);
+      pending.add(waitingClips(23));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Off · 23 clips still to tag'), findsOneWidget);
+      expect(card(tester).subtitle, 'Off · 23 clips still to tag');
+
+      pending.add(waitingClips(1));
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Off · 1 clip still to tag'), findsOneWidget);
+      expect(find.text('Off · 23 clips still to tag'), findsNothing);
+    });
+
+    for (final (state, stream) in [
+      ('with none', () => Stream.value(const <Clip>[])),
+      // The waiting clips are still being read.
+      ('while loading', () => const Stream<List<Clip>>.empty()),
+      // They could not be read.
+      ('after an error', () => Stream<List<Clip>>.error(StateError('disk'))),
+    ]) {
+      testWidgets('off with none, while loading, and after an error: "Off · '
+          'turn it on before you film" ($state)', (tester) async {
+        await pump(tester, pendingStream: stream());
+
+        expect(tester.takeException(), isNull);
+        expect(card(tester).subtitle, idleLine);
+        expect(find.text(idleLine), findsOneWidget);
+        expect(find.textContaining('still to tag'), findsNothing);
+      });
+    }
+
+    testWidgets(
+      'no strip and no To tag banner, on or off, with clips waiting',
+      (tester) async {
+        final p = await pump(tester, pending: waitingClips(3));
+
+        // Off: the count is in the card's own line, nothing below the card.
+        expect(card(tester).subtitle, 'Off · 3 clips still to tag');
+        expect(find.byType(TtBanner), findsNothing);
+        expect(find.textContaining('of video waiting'), findsNothing);
+        expect(find.text('3 clips to tag'), findsNothing);
+        expect(find.text('Tag now'), findsNothing);
+
+        // On: no strip on the card, no banner under it.
+        p.shooting.states.add(on());
+        await tester.pump();
+        await tester.pump();
+        expect(card(tester).on, isTrue);
+        expect(find.byType(TtBanner), findsNothing);
+        expect(find.textContaining('to tag'), findsNothing);
+        expect(find.text('Tag now'), findsNothing);
+        expect(chipLabels(tester), ['Earlier videos']);
+      },
+    );
+
+    testWidgets('on: "Shooting", "Since 9:41 AM"; Manual mode: "Since 9:41 AM '
+        '· Manual mode"', (tester) async {
+      final p = await pump(tester, shooting: on());
+
+      expect(find.text('Shooting'), findsOneWidget);
+      expect(find.text('Shooting mode on'), findsNothing);
+      expect(findPlain('Since 9:41 AM'), findsOneWidget);
       expect(find.text('Open camera'), findsOneWidget);
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isTrue);
+
+      p.access.show(MediaAccessLevel.limited);
+      await tester.pump();
+      expect(findPlain('Since 9:41 AM · Manual mode'), findsOneWidget);
     });
 
     testWidgets('on since yesterday: the subtitle has the date too', (
@@ -140,7 +212,7 @@ void main() {
     ) async {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 21, 41)));
 
-      expect(findPlain('On since Oct 27, 9:41 PM'), findsOneWidget);
+      expect(findPlain('Since Oct 27, 9:41 PM'), findsOneWidget);
     });
 
     testWidgets('on since exactly local midnight today: time only', (
@@ -148,42 +220,42 @@ void main() {
     ) async {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 28)));
 
-      expect(findPlain('On since 12:00 AM'), findsOneWidget);
+      expect(findPlain('Since 12:00 AM'), findsOneWidget);
     });
 
     testWidgets('on since 23:59 yesterday: with the date', (tester) async {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 23, 59)));
 
-      expect(findPlain('On since Oct 27, 11:59 PM'), findsOneWidget);
+      expect(findPlain('Since Oct 27, 11:59 PM'), findsOneWidget);
     });
   });
 
   group('the phone set to 24-hour time', () {
-    testWidgets('today: On since 09:41', (tester) async {
+    testWidgets('today: Since 09:41', (tester) async {
       await pump(tester, shooting: on(), use24Hour: true);
 
-      expect(findPlain('On since 09:41'), findsOneWidget);
-      expect(findPlain('On since 9:41 AM'), findsNothing);
+      expect(findPlain('Since 09:41'), findsOneWidget);
+      expect(findPlain('Since 9:41 AM'), findsNothing);
     });
 
-    testWidgets('an evening start today: On since 21:41', (tester) async {
+    testWidgets('an evening start today: Since 21:41', (tester) async {
       await pump(
         tester,
         shooting: on(since: DateTime(2026, 10, 28, 21, 41)),
         use24Hour: true,
       );
 
-      expect(findPlain('On since 21:41'), findsOneWidget);
+      expect(findPlain('Since 21:41'), findsOneWidget);
     });
 
-    testWidgets('not today: On since Oct 27, 21:41', (tester) async {
+    testWidgets('not today: Since Oct 27, 21:41', (tester) async {
       await pump(
         tester,
         shooting: on(since: DateTime(2026, 10, 27, 21, 41)),
         use24Hour: true,
       );
 
-      expect(findPlain('On since Oct 27, 21:41'), findsOneWidget);
+      expect(findPlain('Since Oct 27, 21:41'), findsOneWidget);
     });
 
     testWidgets('with the Manual mode suffix', (tester) async {
@@ -194,16 +266,13 @@ void main() {
         use24Hour: true,
       );
 
-      expect(
-        findPlain('On since 09:41 · Manual mode: add clips yourself'),
-        findsOneWidget,
-      );
+      expect(findPlain('Since 09:41 · Manual mode'), findsOneWidget);
     });
 
     testWidgets('12-hour phone: still 9:41 AM', (tester) async {
       await pump(tester, shooting: on());
 
-      expect(findPlain('On since 9:41 AM'), findsOneWidget);
+      expect(findPlain('Since 9:41 AM'), findsOneWidget);
     });
 
     testWidgets('12-hour phone, not today: still Oct 27, 9:41 PM', (
@@ -211,12 +280,12 @@ void main() {
     ) async {
       await pump(tester, shooting: on(since: DateTime(2026, 10, 27, 21, 41)));
 
-      expect(findPlain('On since Oct 27, 9:41 PM'), findsOneWidget);
+      expect(findPlain('Since Oct 27, 9:41 PM'), findsOneWidget);
     });
   });
 
   group('at midnight', () {
-    testWidgets('on-since text changes at midnight', (tester) async {
+    testWidgets('the Since text changes at midnight', (tester) async {
       final clock = FixedClock(DateTime(2026, 10, 28, 23, 50));
       await pump(
         tester,
@@ -224,33 +293,36 @@ void main() {
         clock: clock,
         midnightTick: true,
       );
-      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+      expect(findPlain('Since 10:00 PM'), findsOneWidget);
 
       // Nine minutes on, still the same day.
       clock.advance(const Duration(minutes: 9));
       await tester.pump(const Duration(minutes: 9));
-      expect(findPlain('On since 10:00 PM'), findsOneWidget);
+      expect(findPlain('Since 10:00 PM'), findsOneWidget);
 
       clock.advance(const Duration(minutes: 2));
       await tester.pump(const Duration(minutes: 2));
-      expect(findPlain('On since Oct 28, 10:00 PM'), findsOneWidget);
-      expect(findPlain('On since 10:00 PM'), findsNothing);
+      expect(findPlain('Since Oct 28, 10:00 PM'), findsOneWidget);
+      expect(findPlain('Since 10:00 PM'), findsNothing);
     });
 
     testWidgets('a card that is off is drawn the same after midnight', (
       tester,
     ) async {
       final clock = FixedClock(DateTime(2026, 10, 28, 23, 59));
-      final p = await pump(tester, clock: clock, midnightTick: true);
+      final p = await pump(
+        tester,
+        clock: clock,
+        midnightTick: true,
+        pending: waitingClips(2),
+      );
       // The card is subscribed to the tick; this listener only counts it.
       final days = <DateTime>[];
       p.container.listen<AsyncValue<DateTime>>(localDayProvider, (_, next) {
         final day = next.value;
         if (day != null) days.add(day);
       }, fireImmediately: true);
-      const offText =
-          'Off. Turn on before you start filming, and new videos wait in '
-          'To tag.';
+      const offText = 'Off · 2 clips still to tag';
       expect(find.text(offText), findsOneWidget);
 
       clock.advance(const Duration(minutes: 2));
@@ -262,11 +334,9 @@ void main() {
       expect(find.text(offText), findsOneWidget);
       expect(card(tester).on, isFalse);
       expect(tester.widget<TtSwitch>(find.byType(TtSwitch)).value, isFalse);
-      expect(find.textContaining('On since'), findsNothing);
+      expect(find.textContaining('Since'), findsNothing);
       expect(find.textContaining('Oct'), findsNothing);
-      // Only the Add earlier videos row (D-90), unchanged.
-      expect(find.byType(TtCardRow), findsOneWidget);
-      expect(find.text('From your camera folder'), findsOneWidget);
+      expect(card(tester).chips, isEmpty);
       expect(tester.takeException(), isNull);
     });
   });
@@ -276,17 +346,15 @@ void main() {
       testWidgets('${level.name}: suffix', (tester) async {
         await pump(tester, shooting: on(), access: level);
 
-        expect(
-          findPlain('On since 9:41 AM · Manual mode: add clips yourself'),
-          findsOneWidget,
-        );
+        expect(findPlain('Since 9:41 AM · Manual mode'), findsOneWidget);
       });
     }
 
     testWidgets('off: no suffix, whatever the access', (tester) async {
       await pump(tester, access: MediaAccessLevel.limited);
 
-      expect(find.textContaining('add clips yourself'), findsNothing);
+      expect(find.textContaining('· Manual mode'), findsNothing);
+      expect(card(tester).subtitle, idleLine);
     });
 
     testWidgets('full: no suffix', (tester) async {
@@ -300,7 +368,7 @@ void main() {
     ) async {
       await pump(tester, shooting: on(), access: null);
 
-      expect(findPlain('On since 9:41 AM'), findsOneWidget);
+      expect(findPlain('Since 9:41 AM'), findsOneWidget);
       expect(find.byType(TtBanner), findsNothing);
       expect(tester.takeException(), isNull);
     });
@@ -313,10 +381,7 @@ void main() {
       p.access.show(MediaAccessLevel.denied);
       await tester.pump();
 
-      expect(
-        findPlain('On since 9:41 AM · Manual mode: add clips yourself'),
-        findsOneWidget,
-      );
+      expect(findPlain('Since 9:41 AM · Manual mode'), findsOneWidget);
     });
   });
 
@@ -341,6 +406,19 @@ void main() {
       await pump(tester);
 
       expect(find.byType(TtBanner), findsNothing);
+    });
+  });
+
+  group('the margins (home2.css:8)', () {
+    testWidgets('4 above, 16 at the sides, 12 below the card', (tester) async {
+      await pump(tester);
+
+      final section = tester.getRect(find.byType(ShootingModeSection));
+      final cardRect = tester.getRect(find.byType(TtShootingModeCard));
+      expect(cardRect.top - section.top, 4);
+      expect(cardRect.left - section.left, 16);
+      expect(section.right - cardRect.right, 16);
+      expect(section.bottom - cardRect.bottom, 12);
     });
   });
 
@@ -388,12 +466,7 @@ void main() {
     testWidgets('the switch is named Shooting mode', (tester) async {
       await pump(tester);
 
-      expect(
-        tester
-            .widget<TtShootingModeCard>(find.byType(TtShootingModeCard))
-            .switchSemanticLabel,
-        'Shooting mode',
-      );
+      expect(card(tester).switchSemanticLabel, 'Shooting mode');
     });
 
     for (final (isOn, label) in [
@@ -402,56 +475,9 @@ void main() {
     ]) {
       testWidgets('the card is named "$label"', (tester) async {
         await pump(tester, shooting: isOn ? on() : ShootingState.off);
-        expect(
-          tester
-              .widget<TtShootingModeCard>(find.byType(TtShootingModeCard))
-              .semanticLabel,
-          label,
-        );
+        expect(card(tester).semanticLabel, label);
       });
     }
-  });
-
-  group('strip shows the count and opens To tag', () {
-    testWidgets('one clip', (tester) async {
-      await pump(tester, shooting: on(), pending: [testClip(1)]);
-
-      expect(find.text('1 clip to tag'), findsOneWidget);
-      expect(find.text('Tag now'), findsOneWidget);
-    });
-
-    testWidgets('three clips', (tester) async {
-      await pump(
-        tester,
-        shooting: on(),
-        pending: [testClip(1), testClip(2), testClip(3)],
-      );
-
-      expect(find.text('3 clips to tag'), findsOneWidget);
-    });
-
-    testWidgets('no pending clips: no strip', (tester) async {
-      await pump(tester, shooting: on());
-
-      expect(find.text('Tag now'), findsNothing);
-    });
-
-    testWidgets('off: the card has no strip even with clips waiting', (
-      tester,
-    ) async {
-      await pump(tester, pending: [testClip(1)]);
-
-      expect(find.text('Tag now'), findsNothing);
-    });
-
-    testWidgets('tapping it opens To tag', (tester) async {
-      await pump(tester, shooting: on(), pending: [testClip(1)]);
-
-      await tester.tap(find.text('Tag now'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(toTagRouteMarker), findsOneWidget);
-    });
   });
 
   group('backdrop', () {
@@ -508,138 +534,41 @@ void main() {
     });
   });
 
-  group('the Reels attention banner (clips waiting, Shooting mode off)', () {
-    Finder waiting(String title) => find.widgetWithText(TtBanner, title);
-
-    testWidgets('off with clips: count and minutes, attention style', (
+  group('the off line follows Shooting mode', () {
+    testWidgets('it counts again once Shooting mode is turned off', (
       tester,
     ) async {
-      await pump(tester, pending: [testClip(1), testClip(2), testClip(3)]);
-
-      // 3 x 32 s = 96 s, rounded to 2 min.
-      expect(waiting('3 clips to tag'), findsOneWidget);
-      expect(find.text('2 min of video waiting'), findsOneWidget);
-      final banner = tester.widget<TtBanner>(waiting('3 clips to tag'));
-      expect(banner.kind, TtBannerKind.attention);
-      expect(banner.icon, Symbols.sell_rounded);
-      expect(banner.iconFilled, isTrue);
-      expect(banner.onTap, isNotNull);
-      expect(banner.action, isNull);
-    });
-
-    testWidgets('one clip is singular', (tester) async {
-      await pump(tester, pending: [testClip(1, durationMs: 45000)]);
-
-      expect(waiting('1 clip to tag'), findsOneWidget);
-      expect(find.text('45 s of video waiting'), findsOneWidget);
-    });
-
-    testWidgets('an hour or more reads like 1 h 5 min', (tester) async {
-      await pump(tester, pending: [testClip(1, durationMs: 3900000)]);
-
-      expect(find.text('1 h 5 min of video waiting'), findsOneWidget);
-    });
-
-    testWidgets('hidden while Shooting mode is on', (tester) async {
-      await pump(tester, shooting: on(), pending: [testClip(1)]);
-
-      expect(find.textContaining('of video waiting'), findsNothing);
-      // The card's own strip says it.
-      expect(find.text('1 clip to tag'), findsOneWidget);
-      expect(find.byType(TtBanner), findsNothing);
-    });
-
-    testWidgets('hidden with no clips waiting', (tester) async {
-      await pump(tester);
-
-      expect(find.textContaining('of video waiting'), findsNothing);
-      expect(find.byType(TtBanner), findsNothing);
-    });
-
-    testWidgets('the card never shows the strip and the banner together', (
-      tester,
-    ) async {
-      final off = await pump(tester, pending: [testClip(1)]);
-      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsNothing);
-      expect(card(tester).toTagStrip, isNull);
-      expect(waiting('1 clip to tag'), findsOneWidget);
-
-      off.shooting.states.add(on());
-      await tester.pump();
-      await tester.pump();
-
-      expect(find.textContaining('of video waiting'), findsNothing);
-      expect(find.widgetWithText(TtCardRow, '1 clip to tag'), findsOneWidget);
-    });
-
-    testWidgets('sits below the card; the access banner is above it', (
-      tester,
-    ) async {
-      await pump(
-        tester,
-        access: MediaAccessLevel.limited,
-        pending: [testClip(1)],
-      );
-
-      final access = tester.getTopLeft(
-        find.widgetWithText(TtBanner, 'Manual mode'),
-      );
-      final cardTop = tester.getTopLeft(find.byType(TtShootingModeCard));
-      final attention = tester.getTopLeft(waiting('1 clip to tag'));
-      expect(access.dy, lessThan(cardTop.dy));
-      expect(cardTop.dy, lessThan(attention.dy));
-    });
-
-    testWidgets('tapping it opens To tag', (tester) async {
-      await pump(tester, pending: [testClip(1)]);
-
-      await tester.tap(waiting('1 clip to tag'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(toTagRouteMarker), findsOneWidget);
-    });
-
-    testWidgets('appears when Shooting mode is turned off', (tester) async {
       final p = await pump(tester, shooting: on(), pending: [testClip(1)]);
+      expect(find.textContaining('still to tag'), findsNothing);
 
       p.shooting.states.add(ShootingState.off);
       await tester.pump();
       await tester.pump();
 
-      expect(waiting('1 clip to tag'), findsOneWidget);
+      expect(find.text('Off · 1 clip still to tag'), findsOneWidget);
+      expect(find.byType(TtBanner), findsNothing);
     });
 
-    for (final brightness in Brightness.values) {
-      testWidgets('${brightness.name}: accessible', (tester) async {
-        await pump(tester, pending: [testClip(1)], brightness: brightness);
-
-        await expectTtAccessible(tester);
-      });
-    }
-
-    testWidgets('at 2x text it fits 360 dp', (tester) async {
+    testWidgets('off at 2x text with clips waiting: no overflow, in 360 dp, '
+        'accessible', (tester) async {
       await pump(
         tester,
         access: MediaAccessLevel.limited,
-        pending: [testClip(1), testClip(2)],
+        pending: waitingClips(23),
         textScale: 2,
       );
 
       expect(tester.takeException(), isNull);
-      expect(
-        tester.getRect(waiting('2 clips to tag')).right,
-        lessThanOrEqualTo(360),
-      );
-      expect(
-        tester.getRect(waiting('2 clips to tag')).left,
-        greaterThanOrEqualTo(0),
-      );
+      final rect = tester.getRect(find.byType(TtShootingModeCard));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(360));
+      expect(find.text('Off · 23 clips still to tag'), findsOneWidget);
       await expectTtAccessible(tester);
     });
   });
 
-  group('Add earlier videos link', () {
-    Future<void> expectLink(
+  group('the Earlier videos chip', () {
+    Future<void> expectChip(
       WidgetTester tester, {
       required bool shown,
       ShootingState? shooting,
@@ -647,116 +576,102 @@ void main() {
     }) async {
       await pump(tester, shooting: shooting ?? on(), access: access);
       expect(
-        find.text('Add earlier videos'),
+        chipLabels(tester).contains('Earlier videos'),
+        shown,
+        reason: 'the Earlier videos chip',
+      );
+      expect(
+        find.text('Earlier videos'),
         shown ? findsOneWidget : findsNothing,
       );
     }
 
     testWidgets('shows when on and access is full', (tester) async {
-      await expectLink(tester, shown: true);
+      await expectChip(tester, shown: true);
     });
 
-    testWidgets('shows when off and access is full (D-90)', (tester) async {
-      await expectLink(tester, shown: true, shooting: ShootingState.off);
-    });
-
-    testWidgets('the on row has the history icon, its line and a chevron', (
+    testWidgets('off: no Add earlier videos on the card (R12B-3)', (
       tester,
     ) async {
+      await pump(tester, pending: [testClip(1)]);
+
+      expect(card(tester).on, isFalse);
+      expect(card(tester).chips, isEmpty);
+      expect(find.text('Add earlier videos'), findsNothing);
+      expect(find.text('Earlier videos'), findsNothing);
+      expect(find.text('From your camera folder'), findsNothing);
+      expect(find.byIcon(Symbols.history_rounded), findsNothing);
+    });
+
+    testWidgets('its glyph, its words, and how it is read', (tester) async {
+      final handle = tester.ensureSemantics();
       await pump(tester, shooting: on());
 
-      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
-      expect(row, findsOneWidget);
+      final chip = card(tester).chips.single;
+      expect(chip.icon, Symbols.history_rounded);
+      expect(chip.label, 'Earlier videos');
       expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(Symbols.history_rounded),
-        ),
-        findsOneWidget,
+        chip.semanticLabel,
+        'Add earlier videos, shot before Shooting mode was on',
       );
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.text('Shot before Shooting mode was on'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(Symbols.chevron_right_rounded),
-        ),
-        findsOneWidget,
-      );
-      final semantics = tester.ensureSemantics();
       expect(
         find.bySemanticsLabel(
           'Add earlier videos, shot before Shooting mode was on',
         ),
         findsOneWidget,
       );
-      semantics.dispose();
+      handle.dispose();
     });
 
-    testWidgets('the off row says From your camera folder', (tester) async {
-      await pump(tester);
-
-      final row = find.widgetWithText(TtCardRow, 'Add earlier videos');
-      expect(row, findsOneWidget);
-      expect(card(tester).on, isFalse);
-      expect(card(tester).rows.single.kind, TtCardRowKind.link);
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(Symbols.history_rounded),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.text('From your camera folder'),
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Shot before Shooting mode was on'), findsNothing);
-      expect(
-        find.descendant(
-          of: row,
-          matching: find.byIcon(Symbols.chevron_right_rounded),
-        ),
-        findsOneWidget,
-      );
-      final semantics = tester.ensureSemantics();
-      expect(
-        find.bySemanticsLabel('Add earlier videos, from your camera folder'),
-        findsOneWidget,
-      );
-      semantics.dispose();
-    });
-
-    testWidgets('the card gets it in its rows slot, above the strip', (
-      tester,
-    ) async {
-      await pump(tester, shooting: on(), pending: [testClip(1)]);
-
-      expect(card(tester).rows, hasLength(1));
-      expect(card(tester).rows.single.title, 'Add earlier videos');
-      expect(card(tester).toTagStrip, isNotNull);
-    });
-
-    testWidgets('it stays when the session state changes (no one-use hide)', (
+    testWidgets('it stays when the session state changes (the same session)', (
       tester,
     ) async {
       final p = await pump(tester, shooting: on());
 
-      // What an add left behind before D-90 (a new state of the same
-      // session): the row is still there.
       p.shooting.states.add(on());
       await tester.pump();
       await tester.pump();
 
-      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(chipLabels(tester), ['Earlier videos']);
+    });
+
+    testWidgets('Earlier videos is hidden after an add this session (handoff '
+        ':46, R12B-2)', (tester) async {
+      final p = await pump(tester, shooting: on());
+      expect(chipLabels(tester), ['Earlier videos']);
+
+      p.container.read(earlierAddedThisSessionProvider.notifier).markAdded();
+      await tester.pump();
+      expect(chipLabels(tester), isEmpty);
+      expect(find.text('Earlier videos'), findsNothing);
+
+      // A new state of the same session keeps it hidden.
+      p.shooting.states.add(on());
+      await tester.pump();
+      await tester.pump();
+      expect(chipLabels(tester), isEmpty);
+
+      // Off, then on again: a new session, and the chip is back.
+      p.shooting.states.add(ShootingState.off);
+      await tester.pump();
+      await tester.pump();
+      p.shooting.states.add(on(since: DateTime(2026, 10, 28, 15)));
+      await tester.pump();
+      await tester.pump();
+      expect(chipLabels(tester), ['Earlier videos']);
+    });
+
+    testWidgets('an add while Shooting mode is off does not hide it once on', (
+      tester,
+    ) async {
+      final p = await pump(tester);
+
+      p.container.read(earlierAddedThisSessionProvider.notifier).markAdded();
+      p.shooting.states.add(on());
+      await tester.pump();
+      await tester.pump();
+
+      expect(chipLabels(tester), ['Earlier videos']);
     });
 
     for (final shooting in [ShootingState.off, on()]) {
@@ -765,7 +680,7 @@ void main() {
         testWidgets('$state: hidden in Manual mode (${level.name})', (
           tester,
         ) async {
-          await expectLink(
+          await expectChip(
             tester,
             shown: false,
             shooting: shooting,
@@ -777,7 +692,7 @@ void main() {
       testWidgets('$state: hidden while access is loading or unknown', (
         tester,
       ) async {
-        await expectLink(
+        await expectChip(
           tester,
           shown: false,
           shooting: shooting,
@@ -809,7 +724,7 @@ void main() {
       await tester.pump();
 
       expect(find.byType(TtShootingModeCard), findsNothing);
-      expect(find.text('Add earlier videos'), findsNothing);
+      expect(find.text('Earlier videos'), findsNothing);
     });
 
     testWidgets('hidden when the Shooting state could not be read', (
@@ -832,10 +747,10 @@ void main() {
         ],
       );
 
-      // The card says off (its switch still works) but nothing is known,
-      // so no row.
+      // The card says off (its switch still works), so no chip.
       expect(card(tester).on, isFalse);
-      expect(find.text('Add earlier videos'), findsNothing);
+      expect(card(tester).chips, isEmpty);
+      expect(find.text('Earlier videos'), findsNothing);
     });
 
     testWidgets('appears when access becomes full, without a restart', (
@@ -846,16 +761,16 @@ void main() {
         shooting: on(),
         access: MediaAccessLevel.limited,
       );
-      expect(find.text('Add earlier videos'), findsNothing);
+      expect(find.text('Earlier videos'), findsNothing);
 
       p.access.show(MediaAccessLevel.full);
       await tester.pump();
 
-      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(chipLabels(tester), ['Earlier videos']);
     });
   });
 
-  group('the References row (D-160)', () {
+  group('the References chip (D-160)', () {
     ReferenceGroup group(int reelId, String name, int references) =>
         ReferenceGroup(
           reel: ReelSummary(
@@ -882,23 +797,28 @@ void main() {
           ],
         );
 
-    final two = [group(1, 'Goa', 2)];
+    final three = [group(1, 'Goa', 3)];
 
-    Finder row(String title) => find.byWidgetPredicate(
-      (w) => w is TtCardRow && w.title == title,
-      description: 'the "$title" row',
-    );
+    testWidgets('chips: References · 3 while on with references; Earlier '
+        'videos with full access', (tester) async {
+      await pump(tester, shooting: on(), references: three);
 
-    testWidgets('on, with 2 references: a link row "References · 2"', (
-      tester,
-    ) async {
-      await pump(tester, shooting: on(), references: two);
-
-      expect(row('References · 2'), findsOneWidget);
-      final first = card(tester).rows.first;
-      expect(first.kind, TtCardRowKind.link);
+      expect(chipLabels(tester), ['References · 3', 'Earlier videos']);
+      final first = card(tester).chips.first;
       expect(first.icon, Symbols.link_rounded);
-      expect(first.title, 'References · 2');
+      expect(card(tester).chips.last.icon, Symbols.history_rounded);
+      expect(find.text('References · 3'), findsOneWidget);
+      expect(find.text('Earlier videos'), findsOneWidget);
+      // References first in reading order: before it on its line, or on a
+      // line above (the chips wrap after Open camera).
+      final references = tester.getTopLeft(find.text('References · 3'));
+      final earlier = tester.getTopLeft(find.text('Earlier videos'));
+      expect(
+        references.dy < earlier.dy ||
+            (references.dy == earlier.dy && references.dx < earlier.dx),
+        isTrue,
+        reason: 'References at $references, Earlier videos at $earlier',
+      );
     });
 
     testWidgets('the count adds up every group', (tester) async {
@@ -908,41 +828,32 @@ void main() {
         references: [group(1, 'Goa', 2), group(2, 'Lisbon', 3)],
       );
 
-      expect(row('References · 5'), findsOneWidget);
+      expect(find.text('References · 5'), findsOneWidget);
     });
 
-    testWidgets('it is first, before Add earlier videos', (tester) async {
-      await pump(tester, shooting: on(), references: two);
-
-      expect(
-        [for (final r in card(tester).rows) r.title],
-        ['References · 2', 'Add earlier videos'],
-      );
-      expect(
-        tester.getTopLeft(row('References · 2')).dy,
-        lessThan(tester.getTopLeft(row('Add earlier videos')).dy),
-      );
-    });
-
-    testWidgets('with limited access it is the only row', (tester) async {
+    testWidgets('with limited access it is the only chip', (tester) async {
       await pump(
         tester,
         shooting: on(),
         access: MediaAccessLevel.limited,
-        references: two,
+        references: three,
       );
 
-      expect([for (final r in card(tester).rows) r.title], ['References · 2']);
+      expect(chipLabels(tester), ['References · 3']);
     });
 
-    testWidgets('Shooting mode off: no References row', (tester) async {
-      await pump(tester, references: two);
+    testWidgets('no chips in Manual mode with no references', (tester) async {
+      await pump(tester, shooting: on(), access: MediaAccessLevel.limited);
+
+      expect(card(tester).chips, isEmpty);
+      expect(find.text('Open camera'), findsOneWidget);
+    });
+
+    testWidgets('Shooting mode off: no chips at all', (tester) async {
+      await pump(tester, references: three);
 
       expect(find.textContaining('References'), findsNothing);
-      expect(
-        [for (final r in card(tester).rows) r.title],
-        ['Add earlier videos'],
-      );
+      expect(card(tester).chips, isEmpty);
     });
 
     testWidgets('Shooting mode off: the references are not even listened to', (
@@ -951,7 +862,7 @@ void main() {
       var listened = 0;
       await pump(
         tester,
-        references: two,
+        references: three,
         onReferencesListened: () => listened++,
       );
       await tester.pump(const Duration(seconds: 1));
@@ -966,24 +877,21 @@ void main() {
       await pump(
         tester,
         shooting: on(),
-        references: two,
+        references: three,
         onReferencesListened: () => listened++,
       );
 
       expect(listened, 1);
     });
 
-    testWidgets('on with no references: no row', (tester) async {
+    testWidgets('on with no references: only Earlier videos', (tester) async {
       await pump(tester, shooting: on());
 
       expect(find.textContaining('References'), findsNothing);
-      expect(
-        [for (final r in card(tester).rows) r.title],
-        ['Add earlier videos'],
-      );
+      expect(chipLabels(tester), ['Earlier videos']);
     });
 
-    testWidgets('the references cannot be read: no row, no error', (
+    testWidgets('the references cannot be read: no chip, no error', (
       tester,
     ) async {
       await pump(
@@ -997,21 +905,21 @@ void main() {
       expect(find.text('Open camera'), findsOneWidget);
     });
 
-    testWidgets('the row comes and goes as the references do', (tester) async {
+    testWidgets('the chip comes and goes as the references do', (tester) async {
       final stream = StreamController<List<ReferenceGroup>>();
-      addTearDown(stream.close);
+      addTearDown(() => unawaited(stream.close()));
       await pump(tester, shooting: on(), referencesStream: stream.stream);
       expect(find.textContaining('References'), findsNothing);
 
-      stream.add(two);
+      stream.add(three);
       await tester.pump();
       await tester.pump();
-      expect(row('References · 2'), findsOneWidget);
+      expect(find.text('References · 3'), findsOneWidget);
 
       stream.add([group(1, 'Goa', 1)]);
       await tester.pump();
       await tester.pump();
-      expect(row('References · 1'), findsOneWidget);
+      expect(find.text('References · 1'), findsOneWidget);
 
       stream.add(const []);
       await tester.pump();
@@ -1019,10 +927,10 @@ void main() {
       expect(find.textContaining('References'), findsNothing);
     });
 
-    testWidgets('a tap opens the References sheet', (tester) async {
-      await pump(tester, shooting: on(), references: two);
+    testWidgets('the References chip opens the sheet', (tester) async {
+      await pump(tester, shooting: on(), references: three);
 
-      await tester.tap(row('References · 2'));
+      await tester.tap(find.text('References · 3'));
       await tester.pumpAndSettle();
 
       expect(find.text('References'), findsOneWidget);
@@ -1035,11 +943,24 @@ void main() {
       );
     });
 
-    testWidgets('the row passes the accessibility check at 200 %', (
+    testWidgets('the References chip is read "References, 3, from your '
+        'Collecting and Ready to edit reels"', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pump(tester, shooting: on(), references: three);
+
+      const read =
+          'References, 3, from your Collecting and Ready to edit reels';
+      expect(card(tester).chips.first.semanticLabel, read);
+      expect(find.bySemanticsLabel(read), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('the chips pass the accessibility check at 200 %', (
       tester,
     ) async {
-      await pump(tester, shooting: on(), references: two, textScale: 2);
+      await pump(tester, shooting: on(), references: three, textScale: 2);
 
+      expect(tester.takeException(), isNull);
       await expectTtAccessible(tester);
     });
   });
@@ -1063,7 +984,7 @@ void main() {
       }
     }
 
-    testWidgets('at 2x text the card, link and strip fit 360 dp', (
+    testWidgets('at 2x text the on card and its chip fit 360 dp', (
       tester,
     ) async {
       await pump(
@@ -1074,13 +995,10 @@ void main() {
       );
 
       expect(tester.takeException(), isNull);
-      for (final type in [TtShootingModeCard, TtCardRow]) {
-        for (final e in find.byType(type).evaluate()) {
-          final rect = tester.getRect(find.byElementPredicate((x) => x == e));
-          expect(rect.left, greaterThanOrEqualTo(0));
-          expect(rect.right, lessThanOrEqualTo(360));
-        }
-      }
+      final rect = tester.getRect(find.byType(TtShootingModeCard));
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(360));
+      expect(chipLabels(tester), ['Earlier videos']);
       await expectTtAccessible(tester);
     });
 
@@ -1124,7 +1042,7 @@ void main() {
       await tester.tap(find.byType(TtSwitch));
       await tester.runAsync(settle);
       await tester.pump();
-      expect(find.text('Shooting mode on'), findsOneWidget);
+      expect(find.text('Shooting'), findsOneWidget);
 
       // Off again while the scan is paused, then let it go.
       await tester.tap(find.byType(TtSwitch));

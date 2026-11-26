@@ -20,13 +20,17 @@ import 'package:taketray_widgetbook/components/nav_pill.dart';
 import 'package:taketray_widgetbook/components/pill_tabs.dart';
 import 'package:taketray_widgetbook/components/player_chrome.dart';
 import 'package:taketray_widgetbook/components/progress.dart';
+import 'package:taketray_widgetbook/components/quiet_tabs.dart';
+import 'package:taketray_widgetbook/components/rail_button.dart';
 import 'package:taketray_widgetbook/components/rec_dot.dart';
 import 'package:taketray_widgetbook/components/reel_card.dart';
 import 'package:taketray_widgetbook/components/reel_chip.dart';
+import 'package:taketray_widgetbook/components/reel_dock.dart';
 import 'package:taketray_widgetbook/components/reel_header.dart';
 import 'package:taketray_widgetbook/components/reel_pick_row.dart';
 import 'package:taketray_widgetbook/components/reference_card.dart';
 import 'package:taketray_widgetbook/components/selection.dart';
+import 'package:taketray_widgetbook/components/selection_dock.dart';
 import 'package:taketray_widgetbook/components/sheet.dart';
 import 'package:taketray_widgetbook/components/shooting_mode_card.dart';
 import 'package:taketray_widgetbook/components/skeleton.dart';
@@ -37,7 +41,6 @@ import 'package:taketray_widgetbook/components/status_pill.dart';
 import 'package:taketray_widgetbook/components/step_list.dart';
 import 'package:taketray_widgetbook/components/storage_bar.dart';
 import 'package:taketray_widgetbook/components/tag_done.dart';
-import 'package:taketray_widgetbook/components/tag_panel.dart';
 import 'package:taketray_widgetbook/components/text_field.dart';
 import 'package:taketray_widgetbook/components/theme.dart';
 import 'package:taketray_widgetbook/components/video_surface.dart';
@@ -69,8 +72,11 @@ final List<WidgetbookNode> ttCatalog = [
     name: 'Navigation',
     children: [
       ttAppBarComponent,
+      ttLargeSliverAppBarComponent,
+      ttHeaderPillComponent,
       ttNavPillComponent,
       ttPillTabsComponent,
+      ttQuietTabsComponent,
       ttBottomBarComponent,
     ],
   ),
@@ -102,7 +108,6 @@ final List<WidgetbookNode> ttCatalog = [
       ttReferenceCardComponent,
       ttAddReferenceTileComponent,
       ttShootingModeCardComponent,
-      ttCardRowComponent,
       ttReelHeaderComponent,
     ],
   ),
@@ -112,14 +117,14 @@ final List<WidgetbookNode> ttCatalog = [
       ttVideoSurfaceComponent,
       ttSegmentBarComponent,
       ttPlayerHeaderComponent,
+      ttPlayerTopScrimComponent,
       ttStageArrowComponent,
       ttScrubBarComponent,
+      ttRailButtonComponent,
       ttReelChipComponent,
       ttNewReelChipComponent,
-      ttTagPanelComponent,
-      ttOtherReelsToggleComponent,
+      ttReelDockComponent,
       ttTagDoneComponent,
-      ttSameAsPreviousButtonComponent,
       ttReelTagComponent,
       ttViewerActionsComponent,
     ],
@@ -156,13 +161,13 @@ final List<WidgetbookNode> ttCatalog = [
     name: 'Overlays',
     children: [
       ttGlassComponent,
-      ttGlassPillComponent,
       ttSheetComponent,
       ttDialogComponent,
       ttSnackComponent,
       ttMenuButtonComponent,
       ttReelPickRowComponent,
       ttReelPickNewRowComponent,
+      ttSelectionDockComponent,
     ],
   ),
 ];

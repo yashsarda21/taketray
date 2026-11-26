@@ -205,22 +205,25 @@ void main() {
     expect(Theme.of(context).extension<TtThemeData>(), isNotNull);
   });
 
-  testApp('the Reels tab has a large TtAppBar titled Reels', (tester) async {
+  testApp('the Reels tab has a large collapsing header titled Reels (D-196)', (
+    tester,
+  ) async {
     await _pumpApp(tester);
 
     final bar = find.descendant(
       of: find.byType(ReelsScreen),
-      matching: find.byType(TtAppBar),
+      matching: find.byType(TtLargeSliverAppBar),
     );
     expect(bar, findsOneWidget);
-    expect(tester.widget<TtAppBar>(bar).title, 'Reels');
-    expect(tester.widget<TtAppBar>(bar).large, isTrue);
+    expect(tester.widget<TtLargeSliverAppBar>(bar).title, 'Reels');
   });
 
   testApp('opens on Reels and switches tabs', (tester) async {
     await _pumpApp(tester);
 
-    expect(_inScreen(ReelsScreen, 'Reels'), findsOneWidget);
+    // Material builds the large header's title twice: the page title, and
+    // the bar's small one that shows once the page scrolls (D-195).
+    expect(_inScreen(ReelsScreen, 'Reels'), findsNWidgets(2));
 
     await tester.tap(_inPill('To tag'));
     await tester.pumpAndSettle();
@@ -278,6 +281,12 @@ void main() {
       isFalse,
     );
     expect(_inScreen(ReelsScreen, 'Shooting mode'), findsOneWidget);
+    // The compact off card (D-196): one row, its line, no chips.
+    final card = tester.widget<TtShootingModeCard>(
+      find.byType(TtShootingModeCard),
+    );
+    expect(card.subtitle, 'Off · turn it on before you film');
+    expect(card.chips, isEmpty);
   });
 
   testApp('the To tag tab shows the To tag screen, empty', (tester) async {
@@ -301,7 +310,13 @@ void main() {
     await tester.tap(find.byType(TtSwitch));
     await tester.runAsync(settle);
     await tester.pump();
-    expect(find.text('Shooting mode on'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(TtShootingModeCard),
+        matching: find.text('Shooting'),
+      ),
+      findsOneWidget,
+    );
     expect(
       (await tester.runAsync(harness.media.phoneState.loadShooting))!.on,
       isTrue,
@@ -369,7 +384,8 @@ void main() {
     await tester.runAsync(settle);
     await tester.pump();
 
-    await tester.tap(find.text('Add earlier videos'));
+    // The on card's Earlier videos chip (D-196).
+    await tester.tap(find.text('Earlier videos'));
     await tester.pump();
     await tester.runAsync(settle);
     await tester.pumpAndSettle();

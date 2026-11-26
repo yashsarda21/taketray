@@ -9,6 +9,9 @@ import 'package:taketray_ui/taketray_ui.dart';
 /// With a [locale] the app uses Flutter's real localizations for it (month
 /// names, the first day of the week, date formats); without one it has the
 /// English-only defaults.
+///
+/// With a [captureKey] the whole navigator (every route and barrier) sits in a
+/// `RepaintBoundary` with that key, for the pixel tests (`ttPixelApp`).
 Widget ttTestApp(
   Widget child, {
   Brightness brightness = Brightness.light,
@@ -16,6 +19,7 @@ Widget ttTestApp(
   bool disableAnimations = false,
   Locale? locale,
   GlobalKey<ScaffoldMessengerState>? messengerKey,
+  Key? captureKey,
 }) {
   return MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -33,7 +37,9 @@ Widget ttTestApp(
         textScaler: TextScaler.linear(textScale),
         disableAnimations: disableAnimations,
       ),
-      child: app!,
+      child: captureKey == null
+          ? app!
+          : RepaintBoundary(key: captureKey, child: app),
     ),
     home: Scaffold(body: child),
   );

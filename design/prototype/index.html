@@ -13,6 +13,8 @@
 <link rel="stylesheet" href="assets/proto.css">
 <link rel="stylesheet" href="assets/tt-style.css">
 <link rel="stylesheet" href="assets/player2.css">
+<link rel="stylesheet" href="assets/editflow.css">
+<link rel="stylesheet" href="assets/home2.css">
 </head>
 <body>
 <div class="hub">
@@ -316,7 +318,7 @@
           <tr><td>Add videos / More</td><td>"Add videos" / "More options"</td><td>—</td></tr>
           <tr><td>Reference card</td><td>"Open reference: Fast cuts, food close-ups, Instagram reel"</td><td>—</td></tr>
           <tr><td>Reference menu</td><td>"More options for Fast cuts, food close-ups"</td><td>has popup</td></tr>
-          <tr><td>Reel card reference badge</td><td>"2 references in London Food"</td><td>—</td></tr>
+          <tr><td>Reel card references</td><td>Part of the card's name: "London Food. Collecting. 14 clips. 2 references"</td><td>—</td></tr>
         </tbody></table></div>
         <h2>Font scaling to 200%</h2>
         <ul class="notes"><li>No fixed heights on anything that holds text; rows grow.</li><li>At font scale 1.5 and above: reel grid goes to one column; the tag player dock goes to one column and scrolls inside (at most 260 dp tall), with the rest under All reels; clip tiles keep only the duration (the time moves to the scene header); bottom bars stack their summary above the button.</li><li>Navigation labels never truncate; at 2.0 they wrap to two lines.</li><li>Numbers use tabular figures, so counters don't jitter as they change.</li></ul>
@@ -356,7 +358,8 @@
         <h2>Components</h2>
         <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Component</th><th>Compose</th><th>Spec</th></tr></thead><tbody>
           <tr><td>Shooting mode card</td><td>Custom <code>Card</code> + <code>Switch</code></td><td>Corner 24, padding 16. Off: surfaceContainerHigh, icon tile 48 on primaryContainer. On: primary / onPrimary, REC dot 10 dp (record.color) with a pulse; "Open camera" button inverted (onPrimary fill, primary text). Waiting strip: 52 tall, tertiaryContainer.</td></tr>
-          <tr><td>Reel card</td><td><code>Card(onClick)</code></td><td>Cover 3:4 corner 16; status pill overlay 8 dp in; VN pill bottom-left; name titleSmall (2 lines); meta bodySmall onSurfaceVariant.</td></tr>
+          <tr><td>Reel card</td><td><code>Card(onClick)</code></td><td>Calm grid (D-187): cover 3:4, corner 20, nothing on it; under it, 4 dp in: name titleSmall (2 lines), status mark (14 dp icon + labelMedium word), meta bodySmall onSurfaceVariant, then an optional line (In VN, N missing, references) in labelSmall. Gap 16 rows × 12 columns.</td></tr>
+          <tr><td>Home</td><td>—</td><td>Calm grid (D-187): header "Reels" + "+ New" tonal pill · compact Shooting mode card (off: one row, 64 tall; on: a row and a row of 40 dp pills) · quiet tabs 40 tall · two-column reel cards · no FAB, no clips-to-tag strip.</td></tr>
           <tr><td>Clip tile</td><td>Custom</td><td>Thumbnail from a video frame (Coil video decoder, 1 frame at 1 s, ~360 px). Bottom scrim 44% to 66% black; time bottom-left and duration bottom-right, 12 sp bold white. Badges 22 dp: layers + count, landscape. Selection: image scales to 0.86, corner 10, tick 24 dp.</td></tr>
           <tr><td>Status pill</td><td><code>AssistChip</code>-like</td><td>24 tall (32 on reel detail), corner 8, icon 16 filled. Recording: record container; Ready: primaryContainer; Published: success container.</td></tr>
           <tr><td>Reel chip</td><td>Custom <code>Surface(onClick)</code></td><td>56 tall, corner 16, surfaceContainerHighest; cover 34 × 44 corner 8; labelLarge name, bodySmall count. Tagged: primary fill + tick. Picked: primaryContainer + 1 dp primary border + checkbox.</td></tr>
@@ -502,6 +505,8 @@
 <script src="assets/intro.js"></script>
 <script src="assets/subs.js"></script>
 <script src="assets/player2.js"></script>
+<script src="assets/editflow.js"></script>
+<script src="assets/home2.js"></script>
 <script>document.getElementById('side-icon').innerHTML = RH.h.brandIcon(36, 'tray', 'circle');</script>
 </body>
 </html>

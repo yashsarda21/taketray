@@ -122,11 +122,15 @@ const Map<String, String> _notInCatalogue = {
       'words for TtDateRangePicker; set in its use cases',
   'TtDialogAction':
       'data for TtDialog.actions; shown in the TtDialog use cases',
+  'TtHeaderChevron':
+      'data for TtPlayerHeader.previous and next; shown in the TtPlayerHeader '
+      'use cases',
   'TtMenuItem': 'data for TtMenuButton.items; shown in its use cases',
   'TtNavItem': 'data for TtNavPill.items; shown in its use cases',
   'TtTagDoneRow': 'data for TtTagDone.rows; shown in the TtTagDone use case',
   'TtViewerAction': 'data for TtViewerActions.actions; shown in its use case',
   'TtPillTab': 'data for TtPillTabs.tabs; shown in its use cases',
+  'TtQuietTab': 'data for TtQuietTabs.tabs; shown in its use cases',
 };
 
 /// The classes in [classesByFile] that are neither in [registered] nor in

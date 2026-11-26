@@ -37,6 +37,14 @@ String timeRangeText(
   return '${formats.full.format(start)}–${formats.full.format(end)}';
 }
 
+/// [range] (from [timeRangeText]) as one unbreakable piece, for a line that
+/// wraps: every plain space becomes a no-break space (intl already writes a
+/// narrow one before am/pm), and each en dash is followed by a word joiner
+/// (U+2060), because a line may otherwise break after a dash: "9:01–" over
+/// "9:08 AM". Nothing is visible, and a screen reader reads the same.
+String keepRangeTogether(String range) =>
+    range.replaceAll(' ', '\u00a0').replaceAll('–', '–\u2060');
+
 bool _isPm(DateTime wallClock) => wallClock.hour >= 12;
 
 /// The period at the end of a 12-hour pattern, with the spaces around it.

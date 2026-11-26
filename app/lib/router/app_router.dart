@@ -302,29 +302,32 @@ GoRoute addVideosRoute() => GoRoute(
 
 /// The clip picking screen (Phase 8, D-126) at [Routes.editSelect]: full
 /// screen, on the root navigator (a top-level route), above the tab shell and
-/// its nav pill, so Back returns to the reel's page that opened it. A
-/// location with no reel (`?reel=` not a positive whole number) is as unknown
-/// as one no route matches: Reels. The location is not logged (D-10). The VN
-/// copy screens (`/edit/space`, `/edit/copying`, `/edit/ready`) are top-level
-/// routes of their own, registered with it.
+/// its nav pill, so Back returns to the reel's page that opened it. It has
+/// add mode only since D-192, so a location without `add=1`, or with `clips=`
+/// (the old normal mode), shows the reel's page instead, and logs that it did
+/// (no location, D-10). A location with no reel (`?reel=` not a positive whole
+/// number) is as unknown as one no route matches: Reels. The VN copy screens
+/// (`/edit/space`, `/edit/copying`, `/edit/ready`) are top-level routes of
+/// their own, registered with it.
 GoRoute editSelectRoute() => GoRoute(
   path: Routes.editSelect,
   redirect: (context, state) {
-    if (_positive(state.uri.queryParameters[Routes.editReelParameter]) !=
-        null) {
-      return null;
-    }
-    _log.warning('Unknown location; showing Reels');
-    return Routes.reels;
-  },
-  builder: (context, state) {
     final query = state.uri.queryParameters;
-    return EditSelectScreen(
-      reelId: _positive(query[Routes.editReelParameter])!,
-      clipIds: Routes.clipIdsIn(query[Routes.editClipsParameter]),
-      addMode: query[Routes.editAddParameter] == '1',
-    );
+    final reel = _positive(query[Routes.editReelParameter]);
+    if (reel == null) {
+      _log.warning('Unknown location; showing Reels');
+      return Routes.reels;
+    }
+    if (query[Routes.editAddParameter] != '1' ||
+        query.containsKey(Routes.editClipsParameter)) {
+      _log.warning('Picking screen without add mode; showing the reel');
+      return Routes.reel(reel);
+    }
+    return null;
   },
+  builder: (context, state) => EditSelectScreen(
+    reelId: _positive(state.uri.queryParameters[Routes.editReelParameter])!,
+  ),
 );
 
 /// The VN copy screens (Phase 8, D-127), top-level routes on the root

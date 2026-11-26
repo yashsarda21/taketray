@@ -8,8 +8,9 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// The drawn panel of an open `TtMenuButton`: [items] as 48 dp menu entries
 /// on a rounded, hairlined surface.
 ///
-/// Not exported: `TtMenuButton` shows it in its menu, and the golden test
-/// draws it directly (a menu's overlay cannot be captured in a golden).
+/// Not exported: `TtMenuButton` shows it in its menu route (`TtMenuRoute`),
+/// and the golden test draws it directly (a menu's route cannot be captured
+/// in a golden).
 class TtMenuPanel<T> extends StatelessWidget {
   /// A panel listing [items]; choosing one calls [onSelected] with its value.
   const new({required this.items, required this.onSelected, super.key});
@@ -76,8 +77,9 @@ class TtMenuPanel<T> extends StatelessWidget {
     );
 
     // tt-style.css: .style-tt .menu { border-radius: 20px; padding: 6px;
-    // inset 0 0 0 1px hair }. The shadow is the menu's elevation, drawn by
-    // `MenuAnchor` outside the panel (its scroll view clips the panel).
+    // inset 0 0 0 1px hair }. The panel casts the menu's shadow itself: its
+    // `Material`'s elevation (the shadow `MenuAnchor`'s surface used to cast).
+    // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … }
     return ConstrainedBox(
       constraints: const BoxConstraints(
         minWidth: TtMetrics.menuMinWidth,
@@ -85,6 +87,8 @@ class TtMenuPanel<T> extends StatelessWidget {
       ),
       child: Material(
         color: scheme.surfaceContainer,
+        elevation: TtMetrics.menuElevation,
+        shadowColor: scheme.shadow,
         shape: RoundedRectangleBorder(
           borderRadius: radius,
           side: BorderSide(color: tt.colors.hairline),
@@ -92,27 +96,32 @@ class TtMenuPanel<T> extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         child: Padding(
           padding: const EdgeInsets.all(TtMetrics.menuPadding),
-          child: IntrinsicWidth(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                for (final (index, item) in items.indexed)
-                  MenuItemButton(
-                    key: ValueKey('tt-menu-item-$index'),
-                    style: itemStyle(item),
-                    // Wrap a long label (what an open MenuAnchor sets too).
-                    overflowAxis: Axis.vertical,
-                    leadingIcon: item.icon == null
-                        ? null
-                        : Icon(item.icon, fill: item.iconFilled ? 1 : null),
-                    trailingIcon: item.checked ?? false
-                        ? const Icon(Symbols.check_rounded)
-                        : null,
-                    onPressed: () => onSelected(item.value),
-                    child: _ItemText(item: item),
-                  ),
-              ],
+          // A panel the layout caps at the screen's height (large text, a
+          // phone turned sideways) scrolls inside its Material, as the
+          // `MenuAnchor` it replaced did; the shadow stays outside the clip.
+          child: SingleChildScrollView(
+            child: IntrinsicWidth(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (final (index, item) in items.indexed)
+                    MenuItemButton(
+                      key: ValueKey('tt-menu-item-$index'),
+                      style: itemStyle(item),
+                      // Wrap a long label (what an open MenuAnchor sets too).
+                      overflowAxis: Axis.vertical,
+                      leadingIcon: item.icon == null
+                          ? null
+                          : Icon(item.icon, fill: item.iconFilled ? 1 : null),
+                      trailingIcon: item.checked ?? false
+                          ? const Icon(Symbols.check_rounded)
+                          : null,
+                      onPressed: () => onSelected(item.value),
+                      child: _ItemText(item: item),
+                    ),
+                ],
+              ),
             ),
           ),
         ),

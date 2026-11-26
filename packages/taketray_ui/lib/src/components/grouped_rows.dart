@@ -146,6 +146,8 @@ class TtRowIcon extends StatelessWidget {
 ///   disabled button named [semanticLabel], and is drawn with AA contrast, not
 ///   faded: the title is `onSurfaceVariant` at weight 400, and a [TtRowCount]
 ///   in it turns outlined.
+/// - [titleTag] is a small pill after the title ("Last used"): on the title's
+///   line when it fits, under the title when it does not.
 /// - [TtRowCount] and [TtRowSpinner] are the trailing parts of a row that
 ///   counts, or is busy.
 class TtListRow extends StatelessWidget {
@@ -153,6 +155,7 @@ class TtListRow extends StatelessWidget {
   const new({
     required this.title,
     this.subtitle,
+    this.titleTag,
     this.leading,
     this.trailing,
     this.onTap,
@@ -180,6 +183,11 @@ class TtListRow extends StatelessWidget {
 
   /// A quieter line under the title, or null.
   final String? subtitle;
+
+  /// A pill after the title in `tertiaryContainer` (`labelSmall`), such as
+  /// "Last used", or null for none. A tappable row's [semanticLabel] should
+  /// say it too, since that label replaces the row's text.
+  final String? titleTag;
 
   /// The widget before the text, or null.
   final Widget? leading;
@@ -210,6 +218,7 @@ class TtListRow extends StatelessWidget {
     final leading = this.leading;
     final trailing = this.trailing;
     final subtitle = this.subtitle;
+    final titleTag = this.titleTag;
     final quiet = scheme.onSurfaceVariant;
     // A wide trailing beside the text would squeeze it into broken words at
     // large text: from 1.5x it goes under the text instead, if asked.
@@ -230,6 +239,19 @@ class TtListRow extends StatelessWidget {
               ),
             ),
           );
+    final titleText = Text(
+      title,
+      // An off row: onSurfaceVariant at weight 400, no fade.
+      style: text.bodyLarge!
+          .merge(
+            TtTextStyles.weight(
+              off
+                  ? TtMetrics.listRowOffTitleWeight
+                  : TtMetrics.listRowTitleWeight,
+            ),
+          )
+          .copyWith(color: off ? quiet : scheme.onSurface),
+    );
     // proto.css: .li, .li .txt b / span, .li .trail
     final content = ConstrainedBox(
       constraints: BoxConstraints(
@@ -251,19 +273,15 @@ class TtListRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    title,
-                    // An off row: onSurfaceVariant at weight 400, no fade.
-                    style: text.bodyLarge!
-                        .merge(
-                          TtTextStyles.weight(
-                            off
-                                ? TtMetrics.listRowOffTitleWeight
-                                : TtMetrics.listRowTitleWeight,
-                          ),
-                        )
-                        .copyWith(color: off ? quiet : scheme.onSurface),
-                  ),
+                  if (titleTag == null)
+                    titleText
+                  else
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: TtMetrics.listRowTagGap,
+                      runSpacing: tt.spacing.xxs,
+                      children: [titleText, _TitleTag(titleTag)],
+                    ),
                   if (subtitle != null)
                     Text(
                       subtitle,
@@ -301,6 +319,39 @@ class TtListRow extends StatelessWidget {
       // The ink well supplies the tap action, unless it is excluded.
       onTap: semanticLabel == null ? null : onTap,
       child: InkWell(focusNode: focusNode, onTap: onTap, child: content),
+    );
+  }
+}
+
+/// The pill after a [TtListRow]'s title.
+class _TitleTag extends StatelessWidget {
+  const new(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    // editflow.css:18: .ed-last { padding: 1px 8px; border-radius: 999px;
+    // background: tertiary-container; color: on-tertiary-container;
+    // font: label-small }
+    return DecoratedBox(
+      decoration: ShapeDecoration(
+        color: scheme.tertiaryContainer,
+        shape: const StadiumBorder(),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: TtMetrics.listRowTagPaddingH,
+          vertical: TtMetrics.listRowTagPaddingV,
+        ),
+        child: Text(
+          text,
+          style: context.tt.text.material.labelSmall!.copyWith(
+            color: scheme.onTertiaryContainer,
+          ),
+        ),
+      ),
     );
   }
 }

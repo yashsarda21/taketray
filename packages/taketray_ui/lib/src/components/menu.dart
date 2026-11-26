@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:taketray_ui/src/components/internal/menu_panel.dart';
-import 'package:taketray_ui/src/theme/tt_metrics.dart';
-import 'package:taketray_ui/src/theme/tt_theme_data.dart';
+import 'package:taketray_ui/src/components/internal/menu_route.dart';
 
 /// One entry of a [TtMenuButton]: a [label] with an optional [icon] that
 /// selects [value].
@@ -51,16 +49,16 @@ class TtMenuItem<T> {
 /// A button that opens a menu of [items].
 ///
 /// [builder] draws the anchor (typically a `TtIconButton`) and receives an
-/// `open` callback that toggles the menu. Choosing an item calls
-/// [onSelected] with its value and closes the menu; tapping elsewhere closes
-/// it without a selection. Built on Material's `MenuAnchor`, so keyboard
-/// and screen-reader navigation come with it. The panel is 200 to 300 dp
-/// wide with 20 dp corners, and its 48 dp items have 14 dp corners; a long
-/// label wraps.
-///
-/// While the menu is open, Android back closes it instead of leaving the
-/// screen (a `PopScope` with `canPop: false`, so it works under any
-/// `Navigator` or `Router`).
+/// `open` callback that opens the menu (and does nothing while it is open).
+/// Choosing an item closes the menu and then calls [onSelected] with its
+/// value, once; tapping elsewhere, Android back or Escape closes it without
+/// a selection. The menu is a route on the root navigator (D-176), so the
+/// whole page behind it is blurred by 3 dp (not dimmed), Back closes it
+/// before the page, keyboard and screen-reader navigation work as in a
+/// dialog, and it counts as an open popup. It closes, with no selection,
+/// when its page goes away or is hidden by a tab switch. The panel is 200 to
+/// 300 dp wide with 20 dp corners, and its 48 dp items have 14 dp corners; a
+/// long label wraps.
 class TtMenuButton<T> extends StatefulWidget {
   /// A menu button showing [items].
   const new({
@@ -76,7 +74,7 @@ class TtMenuButton<T> extends StatefulWidget {
   /// Called with the value of the chosen item.
   final ValueChanged<T> onSelected;
 
-  /// Builds the anchor; call `open` to open (or close) the menu.
+  /// Builds the anchor; call `open` to open the menu.
   final Widget Function(BuildContext context, VoidCallback open) builder;
 
   @override
@@ -84,66 +82,67 @@ class TtMenuButton<T> extends StatefulWidget {
 }
 
 class _TtMenuButtonState<T> extends State<TtMenuButton<T>> {
-  final MenuController _controller = MenuController();
-  bool _open = false;
+  /// The open menu, or null.
+  TtMenuRoute<T>? _route;
 
-  void _setOpen({required bool open}) {
-    if (mounted && _open != open) setState(() => _open = open);
+  Future<void> _open() async {
+    // A second open while it is open does nothing.
+    if (_route != null) return;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    final overlay = navigator.context.findRenderObject();
+    final box = context.findRenderObject();
+    if (overlay is! RenderBox || box is! RenderBox || !box.hasSize) return;
+    final anchor = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
+
+    late final TtMenuRoute<T> route;
+    route = TtMenuRoute<T>(
+      anchor: anchor,
+      textDirection: Directionality.of(context),
+      themes: InheritedTheme.capture(from: context, to: navigator.context),
+      barrierLabel: MaterialLocalizations.of(context).menuDismissLabel,
+      builder: (menuContext) => TtMenuPanel<T>(
+        items: widget.items,
+        onSelected: (value) {
+          // A second tap before the frame that removes the menu does not
+          // pop the page under it.
+          if (route.isCurrent) Navigator.pop(menuContext, (value: value));
+        },
+      ),
+    );
+    _route = route;
+    final chosen = await navigator.push(route);
+    _route = null;
+    // Nothing is selected when the anchor went away meanwhile.
+    if (chosen != null && mounted) widget.onSelected(chosen.value);
   }
 
-  /// MenuAnchor closes an open menu from inside a build when the window
-  /// changes size, and `setState` is not allowed there (a debug-only assert).
-  /// In a build the change waits for the end of the frame.
-  void _setOpenSafely({required bool open}) {
-    if (SchedulerBinding.instance.schedulerPhase ==
-        SchedulerPhase.persistentCallbacks) {
-      SchedulerBinding.instance.addPostFrameCallback(
-        (_) => _setOpen(open: open),
-      );
-    } else {
-      _setOpen(open: open);
-    }
+  /// Closes the open menu, if any, without a selection, after this frame (a
+  /// navigator cannot change while the tree is being built or torn down).
+  void _closeAfterFrame() {
+    final route = _route;
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final scheme = context.scheme;
-    final clear = scheme.surfaceContainer.withValues(alpha: 0);
-    // The panel draws itself (TtMenuPanel); MenuAnchor's own surface only
-    // casts the shadow, in the panel's shape.
-    // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … }
-    final menuStyle = MenuStyle(
-      backgroundColor: WidgetStatePropertyAll(clear),
-      surfaceTintColor: WidgetStatePropertyAll(clear),
-      shadowColor: WidgetStatePropertyAll(scheme.shadow),
-      elevation: const WidgetStatePropertyAll(TtMetrics.menuElevation),
-      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-      shape: WidgetStatePropertyAll(
-        RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(TtMetrics.menuRadius),
-        ),
-      ),
-    );
-
-    return PopScope(
-      // Back closes an open menu first; the page underneath stays.
-      canPop: !_open,
-      onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) _controller.close();
-      },
-      child: MenuAnchor(
-        controller: _controller,
-        style: menuStyle,
-        onOpen: () => _setOpenSafely(open: true),
-        onClose: () => _setOpenSafely(open: false),
-        menuChildren: [
-          TtMenuPanel<T>(items: widget.items, onSelected: widget.onSelected),
-        ],
-        builder: (context, controller, _) => widget.builder(
-          context,
-          () => controller.isOpen ? controller.close() : controller.open(),
-        ),
-      ),
-    );
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // The page under the menu was hidden without being disposed (a tab
+    // switch, `goBranch`, keeps the tab mounted but off screen, with its
+    // tickers off): close the menu too. It is on the root navigator, so it
+    // would otherwise stay over the other tab.
+    if (!TickerMode.valuesOf(context).enabled) _closeAfterFrame();
   }
+
+  @override
+  void dispose() {
+    // The page under the menu went away: close the menu too.
+    _closeAfterFrame();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context, _open);
 }

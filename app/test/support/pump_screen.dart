@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/core/locale.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/media/thumbnail_cache.dart';
+import 'package:taketray/features/shell/views/app_shell.dart';
 import 'package:taketray/features/shell/views/root_messenger.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/app_router.dart'
@@ -35,6 +36,10 @@ String tagPlayerRouteMarker(Object? from) => 'the tag player from $from';
 
 /// What the Skipped route shows in a test that only has one screen.
 const skippedRouteMarker = 'the Skipped route';
+
+/// What the Settings tab shows in a test that puts its screen in the shell
+/// (`pumpScreen(…, inShell: true)`).
+const settingsRouteMarker = 'the Settings tab';
 
 /// What the notifications help route shows in a test that only has one
 /// screen.
@@ -65,10 +70,10 @@ String clipRouteMarker(Object reelId, Object clipId) =>
     'the viewer of clip $clipId of reel $reelId';
 
 /// What the clip picking route shows in a test that only has one screen: the
-/// reel id (`?reel=`), the preselected clips (`&clips=`, "null" for none)
-/// and the add flag (`&add=`, "null" for none).
-String editSelectRouteMarker(Object? reel, Object? clips, Object? add) =>
-    'the picking screen of reel $reel, clips $clips, add $add';
+/// reel id (`?reel=`) and the add flag (`&add=`, "null" for none; the real
+/// route is add mode only, D-192).
+String editSelectRouteMarker(Object? reel, Object? add) =>
+    'the picking screen of reel $reel, add $add';
 
 /// What the VN space route shows in a test that only has one screen: the
 /// reel id, the editor and the clips, as in its location.
@@ -109,6 +114,11 @@ GoRouter routerOf(WidgetTester tester) =>
 /// inside a `ProviderScope` with [overrides], the TakeTray
 /// theme and the app's localizations, on a phone-sized view.
 ///
+/// With [inShell], [screen] is the first tab of a `StatefulShellRoute` with
+/// the app's own `AppShell` and its nav pill (D-87, D-191), as a reel's page
+/// is in the app; the To tag tab (with its play and skipped routes) shows
+/// [toTagRouteMarker] and the Settings tab [settingsRouteMarker].
+///
 /// [textScale] and [brightness] are applied to the whole app; [size] is the
 /// logical size (the pixel ratio is 1). The phone's "remove animations" is on
 /// unless [animations] is true: the record dot of the Shooting mode card and
@@ -135,6 +145,7 @@ Future<ProviderContainer> pumpScreen(
   bool midnightTick = false,
   bool addVideos = false,
   bool copyScreens = false,
+  bool inShell = false,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
@@ -149,13 +160,54 @@ Future<ProviderContainer> pumpScreen(
     ],
   );
   addTearDown(container.dispose);
+  final toTagRoute = GoRoute(
+    path: Routes.toTag,
+    builder: (context, state) => const Scaffold(body: Text(toTagRouteMarker)),
+    routes: [
+      GoRoute(
+        path: 'play',
+        builder: (context, state) => Scaffold(
+          body: Text(
+            tagPlayerRouteMarker(
+              state.uri.queryParameters[Routes.tagFromParameter],
+            ),
+          ),
+        ),
+      ),
+      GoRoute(
+        path: 'skipped',
+        builder: (context, state) =>
+            const Scaffold(body: Text(skippedRouteMarker)),
+      ),
+    ],
+  );
   final router = GoRouter(
     // Sheets and dialogs are seen, as in the app (D-107).
     observers: [
       container.read(popupRouteTrackerProvider).observerForNavigator(),
     ],
     routes: [
-      GoRoute(path: '/', builder: (context, state) => screen),
+      if (inShell)
+        StatefulShellRoute.indexedStack(
+          builder: (context, state, shell) => AppShell(navigationShell: shell),
+          branches: [
+            StatefulShellBranch(
+              routes: [GoRoute(path: '/', builder: (context, state) => screen)],
+            ),
+            StatefulShellBranch(routes: [toTagRoute]),
+            StatefulShellBranch(
+              routes: [
+                GoRoute(
+                  path: Routes.settings,
+                  builder: (context, state) =>
+                      const Scaffold(body: Text(settingsRouteMarker)),
+                ),
+              ],
+            ),
+          ],
+        )
+      else
+        GoRoute(path: '/', builder: (context, state) => screen),
       GoRoute(
         path: Routes.reels,
         builder: (context, state) =>
@@ -205,7 +257,6 @@ Future<ProviderContainer> pumpScreen(
             body: Text(
               editSelectRouteMarker(
                 query[Routes.editReelParameter],
-                query[Routes.editClipsParameter],
                 query[Routes.editAddParameter],
               ),
             ),
@@ -271,28 +322,7 @@ Future<ProviderContainer> pumpScreen(
         builder: (context, state) =>
             const Scaffold(body: Text(backupRouteMarker)),
       ),
-      GoRoute(
-        path: Routes.toTag,
-        builder: (context, state) =>
-            const Scaffold(body: Text(toTagRouteMarker)),
-        routes: [
-          GoRoute(
-            path: 'play',
-            builder: (context, state) => Scaffold(
-              body: Text(
-                tagPlayerRouteMarker(
-                  state.uri.queryParameters[Routes.tagFromParameter],
-                ),
-              ),
-            ),
-          ),
-          GoRoute(
-            path: 'skipped',
-            builder: (context, state) =>
-                const Scaffold(body: Text(skippedRouteMarker)),
-          ),
-        ],
-      ),
+      if (!inShell) toTagRoute,
     ],
   );
   addTearDown(router.dispose);

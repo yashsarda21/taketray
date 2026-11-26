@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
+import '../support/tt_glass_pixels.dart';
 import '../support/tt_test_app.dart';
 
 Widget _snack({
@@ -23,6 +24,11 @@ Widget _snack({
     ),
   ),
 );
+
+/// The snack's outer box, the one that casts the shadow.
+Finder _shadowBox() => find
+    .descendant(of: find.byType(TtSnack), matching: find.byType(DecoratedBox))
+    .first;
 
 class _Opener extends StatelessWidget {
   const new({this.onAction, this.duration});
@@ -69,30 +75,51 @@ void main() {
     testWidgets('is at least 48 dp high with 18 dp corners', (tester) async {
       await tester.pumpWidget(ttTestApp(_snack()));
       expect(tester.getSize(find.byType(TtSnack)).height, 48);
-      final box = tester.widget<DecoratedBox>(
-        find
-            .descendant(
-              of: find.byType(TtSnack),
-              matching: find.byType(DecoratedBox),
-            )
-            .first,
+      final box = tester.widget<DecoratedBox>(_shadowBox());
+      expect(
+        (box.decoration as BoxDecoration).borderRadius,
+        BorderRadius.circular(18),
       );
-      final decoration = box.decoration as BoxDecoration;
-      expect(decoration.borderRadius, BorderRadius.circular(18));
-      final scheme = tester.element(find.byType(TtSnack)).scheme;
-      expect(decoration.color, scheme.inverseSurface.withValues(alpha: 0.94));
+      final clip = tester.widget<ClipRRect>(
+        find.descendant(
+          of: find.byType(TtSnack),
+          matching: find.byType(ClipRRect),
+        ),
+      );
+      expect(clip.borderRadius, BorderRadius.circular(18));
+    });
+
+    testWidgets('blurs by 12 under a 94 % inverse-surface fill, clipped to '
+        'its corners (D-174)', (tester) async {
+      await tester.pumpWidget(ttTestApp(_snack()));
+      final snack = find.byType(TtSnack);
+      expectBlurFilter(tester, snack, 12);
+      expectGlassStructure(tester, snack);
+      final filter = find.descendant(
+        of: snack,
+        matching: find.byType(BackdropFilter),
+      );
+      expect(filter, findsOneWidget);
+      // The order is shadow, clip, filter, fill: the filter is inside the
+      // clip, and the clip inside the shadow's box.
+      expect(
+        find.descendant(of: find.byType(ClipRRect), matching: filter),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: _shadowBox(), matching: find.byType(ClipRRect)),
+        findsOneWidget,
+      );
+      final fill = tester.widget<ColoredBox>(
+        find.descendant(of: filter, matching: find.byType(ColoredBox)).first,
+      );
+      final scheme = tester.element(snack).scheme;
+      expect(fill.color, scheme.inverseSurface.withValues(alpha: 0.94));
     });
 
     testWidgets('casts the elevation 3 shadow', (tester) async {
       await tester.pumpWidget(ttTestApp(_snack()));
-      final box = tester.widget<DecoratedBox>(
-        find
-            .descendant(
-              of: find.byType(TtSnack),
-              matching: find.byType(DecoratedBox),
-            )
-            .first,
-      );
+      final box = tester.widget<DecoratedBox>(_shadowBox());
       final shadows = (box.decoration as BoxDecoration).boxShadow;
       // proto.css: .snack { box-shadow: var(--elev-3) } =
       // 0 1px 3px rgba(0,0,0,.30), 0 4px 8px 3px rgba(0,0,0,.15)

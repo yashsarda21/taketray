@@ -71,3 +71,59 @@ final class EditorChoicesProvider
 }
 
 String _$editorChoicesHash() => r'85e507fd997a0ac8624a46cbe99bd88d8683dfb3';
+
+/// The row of the editor sheet used last on this phone (`lastEditor`, D-189),
+/// or null when none was, or when it cannot be read: a failed read is logged
+/// by the error's type and the sheet shows its default order. The sheet is
+/// opened only after this is read (`showEditorSheet`), so its first frame has
+/// the order; the provider auto-disposes, so each opening reads it again.
+
+@ProviderFor(lastEditor)
+final lastEditorProvider = LastEditorProvider._();
+
+/// The row of the editor sheet used last on this phone (`lastEditor`, D-189),
+/// or null when none was, or when it cannot be read: a failed read is logged
+/// by the error's type and the sheet shows its default order. The sheet is
+/// opened only after this is read (`showEditorSheet`), so its first frame has
+/// the order; the provider auto-disposes, so each opening reads it again.
+
+final class LastEditorProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<EditorPick?>,
+          EditorPick?,
+          FutureOr<EditorPick?>
+        >
+    with $FutureModifier<EditorPick?>, $FutureProvider<EditorPick?> {
+  /// The row of the editor sheet used last on this phone (`lastEditor`, D-189),
+  /// or null when none was, or when it cannot be read: a failed read is logged
+  /// by the error's type and the sheet shows its default order. The sheet is
+  /// opened only after this is read (`showEditorSheet`), so its first frame has
+  /// the order; the provider auto-disposes, so each opening reads it again.
+  LastEditorProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'lastEditorProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$lastEditorHash();
+
+  @$internal
+  @override
+  $FutureProviderElement<EditorPick?> $createElement(
+    $ProviderPointer pointer,
+  ) => $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<EditorPick?> create(Ref ref) {
+    return lastEditor(ref);
+  }
+}
+
+String _$lastEditorHash() => r'565aa47386b274995f091de2353247f387b9cbe9';

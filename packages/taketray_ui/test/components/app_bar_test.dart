@@ -8,6 +8,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
 import '../support/tt_test_app.dart';
+import '../support/tt_text_contrast.dart';
 
 /// A bar in a column, so it takes its own height.
 Widget _bar(
@@ -543,5 +544,348 @@ void main() {
         expect(tester.getSize(find.byType(TtAppBar)).height, 64);
       });
     });
+  });
+
+  group('TtHeaderPill', () {
+    Widget pill({
+      VoidCallback? onPressed,
+      double textScale = 1,
+      Brightness b = Brightness.light,
+    }) => ttTestApp(
+      Align(
+        alignment: AlignmentDirectional.topEnd,
+        child: TtHeaderPill(
+          icon: Symbols.add_rounded,
+          label: 'New',
+          semanticLabel: 'New reel',
+          onPressed: onPressed ?? () {},
+        ),
+      ),
+      textScale: textScale,
+      brightness: b,
+    );
+
+    Rect fill(WidgetTester tester) => tester.getRect(
+      find
+          .ancestor(of: find.text('New'), matching: find.byType(Material))
+          .first,
+    );
+
+    testWidgets('is 40 dp high with a 48 dp target, secondaryContainer with '
+        'onSecondaryContainer, and 12 dp from the edge', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(pill());
+      final scheme = tester.element(find.byType(TtHeaderPill)).scheme;
+
+      final rect = fill(tester);
+      expect(rect.height, 40);
+      expect(rect.right, 360 - 12);
+      final material = tester.widget<Material>(
+        find
+            .ancestor(of: find.text('New'), matching: find.byType(Material))
+            .first,
+      );
+      expect(material.color, scheme.secondaryContainer);
+      expect(material.shape, const StadiumBorder());
+      expect(
+        tester.widget<Text>(find.text('New')).style?.color,
+        scheme.onSecondaryContainer,
+      );
+      final icon = tester.widget<Icon>(find.byIcon(Symbols.add_rounded));
+      expect(icon.size, 20);
+      expect(icon.color, scheme.onSecondaryContainer);
+      // padding 0 16 0 12 and a 4 dp gap.
+      final iconRect = tester.getRect(find.byIcon(Symbols.add_rounded));
+      final label = tester.getRect(find.text('New'));
+      expect(iconRect.left - rect.left, 12);
+      expect(label.left - iconRect.right, 4);
+      expect(rect.right - label.right, 16);
+      expect(
+        tester.widget<Text>(find.text('New')).style?.fontSize,
+        tester
+            .element(find.byType(TtHeaderPill))
+            .tt
+            .text
+            .material
+            .labelLarge!
+            .fontSize,
+      );
+
+      final target = tester.getRect(find.byType(TtHeaderPill));
+      expect(target.height, greaterThanOrEqualTo(48));
+      final node = tester.getSemantics(find.bySemanticsLabel('New reel'));
+      expect(node.rect.height, greaterThanOrEqualTo(48));
+      semantics.dispose();
+    });
+
+    testWidgets('is one button read "New reel" and calls onPressed, also on '
+        'the 4 dp above the pill', (tester) async {
+      final semantics = tester.ensureSemantics();
+      var taps = 0;
+      await tester.pumpWidget(pill(onPressed: () => taps++));
+
+      final data = tester
+          .getSemantics(find.bySemanticsLabel('New reel'))
+          .getSemanticsData();
+      expect(data.flagsCollection.isButton, isTrue);
+      expect(data.label, 'New reel');
+      expect(find.bySemanticsLabel('New'), findsNothing, reason: 'no 2nd node');
+
+      await tester.tap(find.text('New'));
+      expect(taps, 1);
+      await tester.tapAt(fill(tester).topCenter - const Offset(0, 3));
+      expect(taps, 2);
+      tester.semantics.tap(find.semantics.byLabel('New reel'));
+      expect(taps, 3);
+      semantics.dispose();
+    });
+
+    testWidgets('at 2x it grows with its text without overflowing', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(pill(textScale: 2));
+      expect(tester.takeException(), isNull);
+      expect(fill(tester).height, greaterThanOrEqualTo(40));
+      expect(fill(tester).right, lessThanOrEqualTo(360 - 12));
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('${brightness.name}: accessible', (tester) async {
+        await tester.pumpWidget(pill(b: brightness));
+        await expectTtAccessible(tester);
+      });
+    }
+  });
+
+  group('TtLargeSliverAppBar', () {
+    Widget page({
+      double textScale = 1,
+      Brightness brightness = Brightness.light,
+      String title = 'Reels',
+      VoidCallback? onNew,
+      ScrollController? controller,
+    }) => ttTestApp(
+      CustomScrollView(
+        controller: controller,
+        slivers: [
+          TtLargeSliverAppBar(
+            title: title,
+            actions: [
+              TtHeaderPill(
+                icon: Symbols.add_rounded,
+                label: 'New',
+                semanticLabel: 'New reel',
+                onPressed: onNew ?? () {},
+              ),
+            ],
+          ),
+          SliverList.builder(
+            itemCount: 40,
+            itemBuilder: (context, i) =>
+                SizedBox(height: 88, child: Center(child: Text('Row $i'))),
+          ),
+        ],
+      ),
+      textScale: textScale,
+      brightness: brightness,
+    );
+
+    double extent(WidgetTester tester) => tester
+        .renderObject<RenderSliver>(find.byType(SliverAppBar))
+        .geometry!
+        .paintExtent;
+
+    testWidgets('is 152 dp with the page title expanded, and shrinks to a '
+        'pinned 64 dp bar on scroll', (tester) async {
+      await tester.pumpWidget(page());
+      final tt = tester.element(find.byType(TtLargeSliverAppBar)).tt;
+      expect(extent(tester), 152);
+      final sizes = {
+        for (final t in tester.widgetList<Text>(find.text('Reels')))
+          t.style?.fontSize,
+      };
+      expect(sizes, contains(tt.text.pageTitle.fontSize));
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Row 0').hitTestable(),
+        findsNothing,
+        reason: 'scrolled',
+      );
+      expect(extent(tester), 64);
+    });
+
+    testWidgets('the collapsed title is the screen title, on the bar', (
+      tester,
+    ) async {
+      await tester.pumpWidget(page());
+      final tt = tester.element(find.byType(TtLargeSliverAppBar)).tt;
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      final sizes = {
+        for (final t in tester.widgetList<Text>(find.text('Reels')))
+          t.style?.fontSize,
+      };
+      expect(sizes, contains(tt.text.screenTitle.fontSize));
+    });
+
+    testWidgets('collapses on scroll and its action stays hit-testable', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(page(onNew: () => taps++));
+      await tester.tap(find.text('New'));
+      expect(taps, 1);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -900));
+      await tester.pumpAndSettle();
+      expect(find.byType(TtHeaderPill).hitTestable(), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(TtHeaderPill)).bottom,
+        lessThanOrEqualTo(64),
+        reason: 'in the pinned bar',
+      );
+      await tester.tap(find.text('New'));
+      expect(taps, 2);
+    });
+
+    testWidgets('the action is 12 dp from the edge', (tester) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(page());
+      final fill = tester.getRect(
+        find
+            .ancestor(of: find.text('New'), matching: find.byType(Material))
+            .first,
+      );
+      expect(fill.right, 360 - 12);
+    });
+
+    testWidgets('is surface with no tint and takes the status bar style of '
+        'TtAppBar', (tester) async {
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(page(brightness: brightness));
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+        await tester.pumpAndSettle();
+        final scheme = tester.element(find.byType(TtLargeSliverAppBar)).scheme;
+        final material = tester.widget<Material>(
+          find
+              .descendant(
+                of: find.byType(AppBar),
+                matching: find.byType(Material),
+              )
+              .first,
+        );
+        expect(material.color, scheme.surface, reason: brightness.name);
+        expect(material.elevation, 0);
+        expect(material.surfaceTintColor?.a ?? 0, 0);
+        final style = tester
+            .widget<AnnotatedRegion<SystemUiOverlayStyle>>(
+              find
+                  .descendant(
+                    of: find.byType(AppBar),
+                    matching: find.byType(
+                      AnnotatedRegion<SystemUiOverlayStyle>,
+                    ),
+                  )
+                  .first,
+            )
+            .value;
+        final expected = brightness == Brightness.light
+            ? Brightness.dark
+            : Brightness.light;
+        expect(
+          style.statusBarIconBrightness,
+          expected,
+          reason: brightness.name,
+        );
+        expect(style.statusBarColor!.a, 0, reason: 'the surface shows through');
+      }
+    });
+
+    testWidgets('the title is announced as a heading', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(page());
+      expect(find.semantics.byLabel('Reels'), findsAtLeast(1));
+      final headers = [
+        for (final node in find.semantics.byLabel('Reels').evaluate())
+          node.getSemanticsData().flagsCollection.isHeader,
+      ];
+      expect(headers, contains(true));
+      semantics.dispose();
+    });
+
+    testWidgets('2x text: the collapsed title does not run into the action', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      const long = 'Trip to Lisbon and the long road home';
+      await tester.pumpWidget(page(textScale: 2, title: long));
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final tt = tester.element(find.byType(TtLargeSliverAppBar)).tt;
+      final collapsed = find.byWidgetPredicate(
+        (w) =>
+            w is Text &&
+            w.data == long &&
+            w.style?.fontSize == tt.text.screenTitle.fontSize,
+      );
+      expect(collapsed, findsOneWidget);
+      final title = tester.getRect(collapsed);
+      final action = tester.getRect(find.byType(TtHeaderPill));
+      expect(title.right, lessThanOrEqualTo(action.left));
+      expect(title.bottom, lessThanOrEqualTo(64));
+      expect(tester.widget<Text>(collapsed).overflow, TextOverflow.ellipsis);
+      expect(tester.widget<Text>(collapsed).maxLines, 1);
+      await tester.tap(find.text('New'));
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('${brightness.name}: accessible', (tester) async {
+        final controller = ScrollController();
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(
+          page(brightness: brightness, controller: controller),
+        );
+        await tester.pumpAndSettle();
+        // Expanded, Material also builds the small toolbar title at opacity
+        // 0 (text on its own colour, ratio 1): every text that can be seen
+        // is measured, and that invisible one is left out.
+        final semantics = tester.ensureSemantics();
+        await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+        await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+        final samples = await measureTtTextContrast(tester);
+        final seen = [
+          for (final s in samples)
+            if (s.ratio > 1) s,
+        ];
+        expect(seen.map((s) => s.text), containsAll(['Reels', 'New']));
+        for (final sample in seen) {
+          expect(
+            sample.ratio,
+            greaterThanOrEqualTo(sample.required),
+            reason: '$sample',
+          );
+        }
+        semantics.dispose();
+        // Just past collapsed (88 dp), where the small title shows; the first
+        // row's text is clear of the bar.
+        controller.jumpTo(100);
+        await tester.pumpAndSettle();
+        await expectTtAccessible(tester);
+      });
+    }
   });
 }

@@ -1,6 +1,7 @@
 package app.taketray.share
 
 import android.content.Intent
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.FlutterActivityLaunchConfigs.BackgroundMode
 import io.flutter.embedding.engine.FlutterEngine
@@ -22,6 +23,9 @@ import io.flutter.embedding.engine.FlutterShellArgs
  */
 class ShareActivity : FlutterActivity() {
     private val bridges = ShareBridges(this)
+
+    /** The window blur (D-177), asked of Android 12+ while the window is attached. */
+    private val blur by lazy { ShareWindowBlur(window, resources.displayMetrics.density) }
 
     override fun getDartEntrypointFunctionName(): String = "shareMain"
 
@@ -64,6 +68,21 @@ class ShareActivity : FlutterActivity() {
     public override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+    }
+
+    /** Android 12+: Android tells `blur` now, and again when cross-window blur turns off or on (battery saver). */
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            windowManager.addCrossWindowBlurEnabledListener(mainExecutor, blur.listener)
+        }
+    }
+
+    override fun onDetachedFromWindow() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            windowManager.removeCrossWindowBlurEnabledListener(blur.listener)
+        }
+        super.onDetachedFromWindow()
     }
 
     @Deprecated("Deprecated in Java")

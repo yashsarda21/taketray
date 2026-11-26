@@ -1184,6 +1184,7 @@ void main() {
       PhoneStateRepository.introPlayedKey: 'true',
       PhoneStateRepository.homeTipSeenKey: 'true',
       PhoneStateRepository.lastExportKey: '"2026-11-01T09:00:00.000Z"',
+      PhoneStateRepository.lastEditorKey: '"edits"',
       PhoneStateRepository.notificationsAskedKey: 'true',
       PhoneStateRepository.folderTipSeenKey: 'true',
       PhoneStateRepository.mediaAccessWasFullKey: 'true',

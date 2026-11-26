@@ -50,7 +50,11 @@ final WidgetbookComponent ttVideoSurfaceComponent = WidgetbookComponent(
           initialValue: true,
         );
         final long = context.knobs.boolean(label: 'long clip (large scrub)');
+        final allReels = context.knobs.boolean(
+          label: 'All reels (a reel outside the dock)',
+        );
         return _ComposedPlayer(
+          allReels: allReels,
           total: total,
           current: current.clamp(0, total - 1),
           multi: multi,
@@ -62,7 +66,9 @@ final WidgetbookComponent ttVideoSurfaceComponent = WidgetbookComponent(
   ],
 );
 
-/// Every piece of the tag player, laid out as in the prototype's route.
+/// Every piece of the tag player, laid out as in the full-screen route
+/// (D-181): the clip over the whole screen, the top on its scrim, the dock
+/// at the bottom, and the rail of Skip and Same 4 dp above it.
 class _ComposedPlayer extends StatelessWidget {
   const new({
     required this.total,
@@ -70,6 +76,7 @@ class _ComposedPlayer extends StatelessWidget {
     required this.multi,
     required this.hasPrevious,
     required this.long,
+    required this.allReels,
   });
 
   final int total;
@@ -77,135 +84,161 @@ class _ComposedPlayer extends StatelessWidget {
   final bool multi;
   final bool hasPrevious;
   final bool long;
+  final bool allReels;
 
   @override
   Widget build(BuildContext context) {
-    final names = ['Lisbon trip', 'Autumn recipes', 'Summer weekend', 'Garden'];
+    final names = ['Lisbon trip', 'Autumn recipes', 'Summer weekend'];
+    final tt = context.tt;
+    final dock = TtReelDock(
+      semanticLabel: 'Reels',
+      title: multi ? 'Pick reels' : 'Add to reel',
+      scrub: _SeekDemo(long: long),
+      actions: [
+        if (!multi)
+          TtButton(
+            label: 'Pick several',
+            icon: Symbols.library_add_check_rounded,
+            kind: TtButtonKind.text,
+            size: TtButtonSize.small,
+            onPressed: () {},
+          ),
+        if (allReels)
+          TtButton(
+            label: 'All reels',
+            icon: Symbols.apps_rounded,
+            kind: TtButtonKind.text,
+            size: TtButtonSize.small,
+            onPressed: () {},
+          ),
+        if (multi)
+          TtButton(
+            label: 'Cancel',
+            kind: TtButtonKind.text,
+            size: TtButtonSize.small,
+            onPressed: () {},
+          ),
+      ],
+      footer: multi
+          ? TtButton(
+              label: 'Add to 2 reels & next',
+              expand: true,
+              onPressed: () {},
+            )
+          : null,
+      chips: [
+        for (var i = 0; i < names.length; i++)
+          TtReelChip(
+            name: names[i],
+            countText: '${14 - i * 3} clips',
+            semanticLabel: 'Add to ${names[i]}',
+            cover: i == 2 ? null : wbThumb(1 + i),
+            multiSelect: multi,
+            style: TtReelChipStyle.onVideo,
+            state: multi && i < 2
+                ? TtReelChipState.picked
+                : TtReelChipState.idle,
+            onTap: () {},
+          ),
+        if (!multi)
+          TtNewReelChip(
+            title: 'New reel',
+            subtitle: 'Add this clip to it',
+            style: TtReelChipStyle.onVideo,
+            onTap: () {},
+          ),
+      ],
+    );
     return TtVideoSurface(
-      child: SafeArea(
-        child: Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.only(top: context.tt.spacing.xxs),
-              child: TtSegmentBar(
-                total: total,
-                current: current,
-                done: {for (var i = 0; i < current; i += 2) i},
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image(image: wbThumb(2), fit: BoxFit.cover),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: TtPlayerTopScrim(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  top: MediaQuery.paddingOf(context).top + tt.spacing.xxs,
+                  bottom: TtMetrics.playerTopScrimFade,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TtSegmentBar(
+                      total: total,
+                      current: current,
+                      done: {for (var i = 0; i < current; i += 2) i},
+                    ),
+                    TtPlayerHeader(
+                      leading: TtIconButton(
+                        icon: Symbols.close_rounded,
+                        semanticLabel: 'Close tagging',
+                        style: TtIconButtonStyle.onVideo,
+                        onPressed: () {},
+                      ),
+                      previous: TtHeaderChevron(
+                        semanticLabel: 'Previous clip',
+                        onPressed: current > 0 ? () {} : null,
+                      ),
+                      title: '${current + 1} of $total',
+                      subtitle: 'Scene 2 of 4 · 11:02–11:10 am',
+                      wrapSubtitle: true,
+                      next: TtHeaderChevron(
+                        semanticLabel: 'Next clip',
+                        onPressed: current < total - 1 ? () {} : null,
+                      ),
+                      trailing: TtIconButton(
+                        icon: Symbols.volume_off_rounded,
+                        semanticLabel: 'Unmute',
+                        style: TtIconButtonStyle.onVideo,
+                        onPressed: () {},
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
-            TtPlayerHeader(
-              leading: TtIconButton(
-                icon: Symbols.close_rounded,
-                semanticLabel: 'Close tagging',
-                style: TtIconButtonStyle.onVideo,
-                onPressed: () {},
-              ),
-              title: '${current + 1} of $total',
-              subtitle: 'Scene 2 of 4 · 11:02–11:10 am',
-              trailing: TtIconButton(
-                icon: Symbols.volume_off_rounded,
-                semanticLabel: 'Unmute',
-                style: TtIconButtonStyle.onVideo,
-                onPressed: () {},
-              ),
-            ),
-            Expanded(
-              child: Stack(
-                alignment: Alignment.center,
+          ),
+          Positioned(left: 0, right: 0, bottom: 0, child: dock),
+          if (!multi)
+            // The rail sits 4 dp above the dock: a fixed guess of the dock's
+            // height here (the app measures it).
+            PositionedDirectional(
+              end: TtMetrics.railInsetEnd,
+              bottom: _dockGuess + TtMetrics.railAboveDock,
+              child: Column(
+                spacing: TtMetrics.railGap,
                 children: [
-                  AspectRatio(
-                    aspectRatio: 9 / 16,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(context.tt.radii.xl),
-                      child: Image(image: wbThumb(2), fit: BoxFit.cover),
-                    ),
-                  ),
-                  Positioned.directional(
-                    textDirection: Directionality.of(context),
-                    start: 6,
-                    child: TtStageArrow(
-                      side: TtArrowSide.previous,
-                      semanticLabel: 'Previous clip',
-                      onPressed: current > 0 ? () {} : null,
-                    ),
-                  ),
-                  Positioned.directional(
-                    textDirection: Directionality.of(context),
-                    end: 6,
-                    child: TtStageArrow(
-                      side: TtArrowSide.next,
-                      semanticLabel: 'Next clip',
-                      onPressed: current < total - 1 ? () {} : null,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            _SeekDemo(long: long),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: context.tt.spacing.m,
-                vertical: context.tt.spacing.s,
-              ),
-              child: Row(
-                spacing: context.tt.spacing.xs,
-                children: [
-                  TtButton(
-                    label: 'Skip',
+                  TtRailButton(
                     icon: Symbols.redo_rounded,
-                    kind: TtButtonKind.ghost,
+                    label: 'Skip',
                     semanticLabel: 'Skip this clip',
                     onPressed: () {},
                   ),
-                  Expanded(
-                    child: TtSameAsPreviousButton(
-                      label: 'Same as previous',
-                      detail: hasPrevious ? names.take(3).join(', ') : null,
-                      semanticLabel: 'Same as previous',
-                      onPressed: hasPrevious ? () {} : null,
-                    ),
+                  TtRailButton(
+                    icon: Symbols.repeat_rounded,
+                    label: 'Same',
+                    detail: hasPrevious ? names.take(2).join(', ') : null,
+                    semanticLabel: hasPrevious
+                        ? 'Same as previous: ${names.take(2).join(', ')}'
+                        : 'Same as previous: nothing tagged yet',
+                    onPressed: hasPrevious ? () {} : null,
                   ),
                 ],
               ),
             ),
-            TtTagPanel(
-              semanticLabel: 'Reels',
-              title: multi ? 'Pick reels for this clip' : 'Add to reel',
-              headerAction: TtButton(
-                label: multi ? 'Cancel' : 'Pick several',
-                icon: multi ? null : Symbols.library_add_check_rounded,
-                kind: TtButtonKind.text,
-                size: TtButtonSize.small,
-                onPressed: () {},
-              ),
-              footer: multi
-                  ? TtButton(
-                      label: 'Add to 2 reels & next',
-                      expand: true,
-                      onPressed: () {},
-                    )
-                  : null,
-              chips: [
-                for (var i = 0; i < names.length; i++)
-                  TtReelChip(
-                    name: names[i],
-                    countText: '${14 - i * 3} clips',
-                    semanticLabel: 'Add to ${names[i]}',
-                    cover: i == 2 ? null : wbThumb(1 + i),
-                    multiSelect: multi,
-                    state: multi && i < 2
-                        ? TtReelChipState.picked
-                        : TtReelChipState.idle,
-                    onTap: () {},
-                  ),
-              ],
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 }
+
+/// About the dock's height at 1x with a scrub line, the header and two rows
+/// of chips, for the catalog's rail.
+const double _dockGuess = 246;
 
 /// A scrub bar that follows the finger.
 class _SeekDemo extends StatefulWidget {

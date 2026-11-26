@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray_ui/src/components/internal/saturation.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
@@ -86,6 +87,20 @@ void main() {
       expect(780 - glass.bottom, 10);
       expect(glass.size, const Size(320, 64));
       expect(tester.widget<TtGlass>(find.byType(TtGlass)).radius, 32);
+    });
+
+    testWidgets('the nav pill composes blur 18 with saturate 1.4', (
+      tester,
+    ) async {
+      await _pump(tester);
+      expect(TtMetrics.navPillSaturation, 1.4);
+      expect(
+        tester.widget<BackdropFilter>(find.byType(BackdropFilter)).filter,
+        ui.ImageFilter.compose(
+          outer: ui.ColorFilter.matrix(ttSaturationMatrix(1.4)),
+          inner: ui.ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+        ),
+      );
     });
 
     testWidgets('sits above the safe area', (tester) async {

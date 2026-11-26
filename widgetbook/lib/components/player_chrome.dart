@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/taketray_ui.dart';
+import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
 /// `TtSegmentBar`: the per-clip progress bar along the top of the tag player.
@@ -71,7 +72,13 @@ final WidgetbookComponent ttPlayerHeaderComponent = WidgetbookComponent(
         );
         final muted = context.knobs.boolean(label: 'muted');
         final wrap = context.knobs.boolean(
-          label: 'subtitle wraps at large text',
+          label: 'subtitle wraps (never cut)',
+          initialValue: true,
+        );
+        final chevrons = context.knobs.object.dropdown<_ChevronState>(
+          label: 'previous / next chevrons',
+          options: _ChevronState.values,
+          labelBuilder: (v) => v.label,
         );
         return TtVideoSurface(
           child: Align(
@@ -86,6 +93,18 @@ final WidgetbookComponent ttPlayerHeaderComponent = WidgetbookComponent(
               title: title,
               subtitle: withSubtitle ? subtitle : null,
               wrapSubtitle: wrap,
+              previous: chevrons.hasPrevious
+                  ? TtHeaderChevron(
+                      semanticLabel: 'Previous clip',
+                      onPressed: chevrons.previousOn ? () {} : null,
+                    )
+                  : null,
+              next: chevrons.hasNext
+                  ? TtHeaderChevron(
+                      semanticLabel: 'Next clip',
+                      onPressed: chevrons.nextOn ? () {} : null,
+                    )
+                  : null,
               trailing: withTrailing
                   ? TtIconButton(
                       icon: muted
@@ -209,3 +228,114 @@ class _SeekableState extends State<_Seekable> {
   Widget build(BuildContext context) =>
       widget.builder(_value, (v) => setState(() => _value = v));
 }
+
+/// How the header's two chevrons look in the playground.
+enum _ChevronState {
+  none('none (the clip viewer)'),
+  both(
+    'both on',
+    hasPrevious: true,
+    previousOn: true,
+    hasNext: true,
+    nextOn: true,
+  ),
+  firstClip(
+    'first clip: Previous off',
+    hasPrevious: true,
+    hasNext: true,
+    nextOn: true,
+  ),
+  lastClip(
+    'last clip: Next off',
+    hasPrevious: true,
+    previousOn: true,
+    hasNext: true,
+  );
+
+  new(
+    this.label, {
+    this.hasPrevious = false,
+    this.previousOn = false,
+    this.hasNext = false,
+    this.nextOn = false,
+  });
+
+  final String label;
+  final bool hasPrevious;
+  final bool previousOn;
+  final bool hasNext;
+  final bool nextOn;
+}
+
+/// `TtPlayerTopScrim`: the dark gradient behind the tag player's top bar
+/// (78 %, then 70 % until 24 dp above its bottom, then clear), over a bright
+/// sample clip.
+final WidgetbookComponent ttPlayerTopScrimComponent = WidgetbookComponent(
+  name: 'TtPlayerTopScrim',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final photo = context.knobs.int.slider(
+          label: 'clip',
+          initialValue: 2,
+          min: 1,
+          max: 12,
+        );
+        final white = context.knobs.boolean(
+          label: 'pure white frame (the worst case)',
+        );
+        final top = context.knobs.double.slider(
+          label: 'top padding (the status bar)',
+          initialValue: 34,
+          max: 60,
+        );
+        return TtVideoSurface(
+          child: DecoratedBox(
+            decoration: white
+                ? const BoxDecoration(color: Color(0xFFFFFFFF))
+                : BoxDecoration(
+                    image: DecorationImage(
+                      image: wbThumb(photo),
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+            child: Align(
+              alignment: Alignment.topCenter,
+              child: TtPlayerTopScrim(
+                child: Padding(
+                  padding: EdgeInsets.only(top: top, bottom: 24),
+                  child: TtPlayerHeader(
+                    leading: TtIconButton(
+                      icon: Symbols.close_rounded,
+                      semanticLabel: 'Close tagging',
+                      style: TtIconButtonStyle.onVideo,
+                      onPressed: () {},
+                    ),
+                    title: '5 of 12',
+                    subtitle: 'Scene 2 of 4 · 11:02–11:10 am',
+                    wrapSubtitle: true,
+                    previous: TtHeaderChevron(
+                      semanticLabel: 'Previous clip',
+                      onPressed: () {},
+                    ),
+                    next: TtHeaderChevron(
+                      semanticLabel: 'Next clip',
+                      onPressed: () {},
+                    ),
+                    trailing: TtIconButton(
+                      icon: Symbols.volume_up_rounded,
+                      semanticLabel: 'Mute',
+                      style: TtIconButtonStyle.onVideo,
+                      onPressed: () {},
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  ],
+);

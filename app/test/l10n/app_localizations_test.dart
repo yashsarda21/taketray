@@ -81,22 +81,36 @@ void main() {
     expect(l10n.accessLostAction, 'Allow');
     // The Shooting mode card.
     expect(l10n.shootingOffTitle, 'Shooting mode');
-    expect(
-      l10n.shootingOffSubtitle,
-      'Off. Turn on before you start filming, and new videos wait in To tag.',
-    );
-    expect(l10n.shootingOnTitle, 'Shooting mode on');
-    expect(l10n.shootingOnSubtitle('9:41 AM'), 'On since 9:41 AM');
+    expect(l10n.shootingOffWaiting(1), 'Off · 1 clip still to tag');
+    expect(l10n.shootingOffWaiting(23), 'Off · 23 clips still to tag');
+    expect(l10n.shootingOffIdle, 'Off · turn it on before you film');
+    expect(l10n.shootingOnTitle, 'Shooting');
+    expect(l10n.shootingOnSubtitle('9:41 AM'), 'Since 9:41 AM');
     expect(
       l10n.shootingOnSubtitleManual('9:41 AM'),
-      'On since 9:41 AM · Manual mode: add clips yourself',
+      'Since 9:41 AM · Manual mode',
     );
     expect(l10n.shootingSwitchLabel, 'Shooting mode');
     expect(l10n.shootingOpenCamera, 'Open camera');
-    expect(l10n.shootingStripTitle(1), '1 clip to tag');
-    expect(l10n.shootingStripTitle(2), '2 clips to tag');
-    expect(l10n.shootingStripTitle(120), '120 clips to tag');
-    expect(l10n.shootingStripAction, 'Tag now');
+    expect(l10n.shootingEarlierChip, 'Earlier videos');
+    expect(
+      l10n.shootingReferencesChipLabel(3),
+      'References, 3, from your Collecting and Ready to edit reels',
+    );
+    // Home (D-196).
+    expect(l10n.reelsNew, 'New');
+    expect(l10n.reelTabReady, 'Ready');
+    expect(l10n.reelTabsLabel, 'Show reels');
+    expect(l10n.reelTabEmpty('Published'), 'No reels marked Published yet.');
+    expect(l10n.reelCardInEditor('VN'), 'In VN');
+    expect(
+      l10n.reelCardSemanticsReferences('Goa. Collecting. 1 clip', 1),
+      'Goa. Collecting. 1 clip. 1 reference',
+    );
+    expect(
+      l10n.reelCardSemanticsReferences('Goa. Collecting. 1 clip', 2),
+      'Goa. Collecting. 1 clip. 2 references',
+    );
     // To tag.
     expect(l10n.toTagStripOn('9:41 AM'), 'Shooting since 9:41 AM');
     expect(l10n.toTagStripOff, 'Shooting mode off');
@@ -190,15 +204,9 @@ void main() {
       ),
     );
 
-    expect(l10n.earlierCardRowSubtitle, 'Shot before Shooting mode was on');
     expect(
       l10n.earlierCardRowLabel,
       'Add earlier videos, shot before Shooting mode was on',
-    );
-    expect(l10n.earlierCardRowSubtitleOff, 'From your camera folder');
-    expect(
-      l10n.earlierCardRowLabelOff,
-      'Add earlier videos, from your camera folder',
     );
     expect(l10n.earlierChooseSubtitle, 'Up to 10 years back');
     expect(
@@ -277,18 +285,11 @@ void main() {
       ),
     );
 
-    expect(l10n.editSelectTitle, 'Pick clips to edit');
     expect(l10n.editSelectClear, 'Clear');
     expect(
       l10n.editSelectInfo,
       'Clips go to your editor in the order you shot them.',
     );
-    expect(l10n.editBarNone, 'No clips picked');
-    expect(l10n.editBarNoneHint, 'Tap the clips you want to edit');
-    expect(l10n.editBarPicked(1, '0:04'), '1 clip · 0:04');
-    expect(l10n.editBarPicked(12, '1:18'), '12 clips · 1:18');
-    expect(l10n.editBarPickedDetail('900 MB'), '900 MB · in shooting order');
-    expect(l10n.editContinue, 'Continue');
     expect(l10n.sizeMegabytes('900'), '900\u00a0MB');
     expect(l10n.sizeGigabytes('1.2'), '1.2\u00a0GB');
     expect(l10n.editorSheetTitle(1), 'Edit 1 clip in…');

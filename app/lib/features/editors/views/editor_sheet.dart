@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
+import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
@@ -35,6 +36,10 @@ const Duration _readyOfferDelay = Duration(milliseconds: 1300);
 /// What a row of the sheet decided.
 sealed class _Chosen {
   const _Chosen();
+
+  /// The row to remember as used last (`lastEditor`), or null when this
+  /// choice is not a pick of an editor.
+  EditorPick? get pick;
 }
 
 /// The originals went to [editor]: [count] clips.
@@ -43,31 +48,90 @@ class _Sent extends _Chosen {
 
   final EditorApp editor;
   final int count;
+
+  @override
+  EditorPick get pick => editorPickOf(editor);
 }
 
 /// VN: on to the space check.
 class _OpenVn extends _Chosen {
   const _OpenVn();
+
+  @override
+  EditorPick get pick => EditorPick.vn;
 }
 
 /// Other app…: Android's share menu.
 class _OpenShare extends _Chosen {
   const _OpenShare();
+
+  @override
+  EditorPick get pick => EditorPick.other;
 }
 
-/// The editor sheet (`screens.js`: `sheets.editor`, D-126) for the clips
-/// [clipIds] of reel [reelId], in shooting order: "Edit {n} clips in…" over
-/// **CapCut**, **Instagram Edits**, **VN** and **Other app…**.
+/// Choose clips instead: close the sheet and let the caller start choosing.
+class _ChooseInstead extends _Chosen {
+  const _ChooseInstead();
+
+  @override
+  EditorPick? get pick => null;
+}
+
+/// How the editor sheet ended (D-189). The caller decides what comes next:
+/// the sheet itself no longer leaves any route.
+enum EditorSheetOutcome {
+  /// Dragged away, tapped away or Back: nothing happened.
+  dismissed,
+
+  /// CapCut or Instagram Edits got the originals; the snack and the Ready to
+  /// edit offer are already on their way.
+  sent,
+
+  /// VN: the space check was pushed.
+  openedVn,
+
+  /// Other app…: Android's share menu was opened (or the missing-clips snack
+  /// shown).
+  shared,
+
+  /// Choose clips instead: nothing was sent or stored; the caller starts
+  /// choosing clips.
+  chooseInstead,
+}
+
+/// Whether an editor was picked.
+extension EditorSheetOutcomePicked on EditorSheetOutcome {
+  /// True for [EditorSheetOutcome.sent], [EditorSheetOutcome.openedVn] and
+  /// [EditorSheetOutcome.shared]: a hand-off started and `lastEditor` was
+  /// stored.
+  bool get isPicked => switch (this) {
+    EditorSheetOutcome.sent ||
+    EditorSheetOutcome.openedVn ||
+    EditorSheetOutcome.shared => true,
+    EditorSheetOutcome.dismissed || EditorSheetOutcome.chooseInstead => false,
+  };
+}
+
+/// The editor sheet (`screens.js`: `sheets.editor`, D-126, D-189) for the
+/// clips [clipIds] of reel [reelId], in shooting order: "Edit {n} clips in…"
+/// over **CapCut**, **Instagram Edits**, **VN** and **Other app…**. The
+/// editor used last (`lastEditor`) is listed first with a "Last used" pill,
+/// when it is installed (or is Other app…).
+///
+/// With [allClips] (the reel's whole list, from Edit video) and more than one
+/// clip, the title says "Edit all {n} clips in…" and **Choose clips instead**
+/// sits under the subtitle; it closes the sheet and returns
+/// [EditorSheetOutcome.chooseInstead] with nothing sent or stored.
 ///
 /// - **CapCut and Instagram Edits** get the originals in one share
 ///   (`EditSessionService.sendOriginals`: the session and the sent clips are
-///   written first and taken back if the share fails). **Sent**: the sheet and
-///   the picking screen close, the reel's page shows "Sent {n} clips to
-///   {editor}", and 1.3 s later "Mark {name} as Ready to edit?" is offered,
-///   only when the reel is still Collecting. **Not installed**: the "isn't
-///   installed" dialog, the sheet stays and asks the phone again. **Failed**
-///   (or a share that throws): "Couldn't open {editor}. Try again." in the
-///   sheet, which stays.
+///   written first and taken back if the share fails). **Sent**: the sheet
+///   closes, the reel's page shows "Sent {n} clips to {editor}", and 1.3 s
+///   later "Mark {name} as Ready to edit?" is offered, only when the reel is
+///   still Collecting. No route is popped: the page that opened the sheet
+///   decides where to go. **Not installed**: the "isn't installed" dialog, the
+///   sheet stays and asks the phone again. **Failed** (or a share that
+///   throws): "Couldn't open {editor}. Try again." in the sheet, which stays.
 /// - **VN** closes the sheet and pushes the space check
 ///   (`Routes.copySpaceOf`); nothing is written yet.
 /// - **Other app…** closes the sheet and opens Android's share menu
@@ -76,30 +140,52 @@ class _OpenShare extends _Chosen {
 ///   says so. When asking the phone fails, all three look installed and the
 ///   share decides.
 ///
+/// When a hand-off starts (the outcome `isPicked`) the row is stored as
+/// `lastEditor`, through the container because the sheet is gone by then; a
+/// write that fails is logged by type and changes nothing else. Not
+/// installed, failed, a dismissed sheet and Choose clips instead store
+/// nothing.
+///
 /// Every row is inert while a send runs (one share, however many taps), and
 /// the sheet cannot be dragged away meanwhile.
-Future<void> showEditorSheet(
+Future<EditorSheetOutcome> showEditorSheet(
   BuildContext context, {
   required int reelId,
   required List<int> clipIds,
+  bool allClips = false,
 }) async {
-  // Everything the end needs is looked up now: the picking screen under the
-  // sheet is gone when a send ends well.
+  // Everything the end needs is looked up now: the page under the sheet may
+  // be gone when a send ends well.
   final l10n = AppLocalizations.of(context);
   final router = GoRouter.of(context);
   final container = ProviderScope.containerOf(context, listen: false);
   final snacks = ReelSnacks.of(context);
   final navigator = Navigator.of(context, rootNavigator: true);
 
+  // Read before the sheet shows, so its first frame already has the editor
+  // used last first and no row moves under a finger (a few milliseconds).
+  final last = await _readLastEditor(container);
+  if (!context.mounted) return EditorSheetOutcome.dismissed;
+
   final chosen = await showTtSheet<_Chosen>(
     context,
-    builder: (_) => _EditorSheet(reelId: reelId, clipIds: clipIds),
+    builder: (_) => _EditorSheet(
+      reelId: reelId,
+      clipIds: clipIds,
+      allClips: allClips,
+      lastEditor: last,
+    ),
   );
+  if (chosen == null) return EditorSheetOutcome.dismissed;
+  final pick = chosen.pick;
+  // Not awaited: the hand-off never waits for a write.
+  if (pick != null) unawaited(_rememberPick(container, pick));
   switch (chosen) {
-    case null:
-      return;
+    case _ChooseInstead():
+      return EditorSheetOutcome.chooseInstead;
     case _OpenVn():
       unawaited(router.push(Routes.copySpaceOf(reelId, EditorApp.vn, clipIds)));
+      return EditorSheetOutcome.openedVn;
     case _OpenShare():
       await shareClips(
         snacks,
@@ -107,18 +193,35 @@ Future<void> showEditorSheet(
         container.read(editSessionServiceProvider),
         clipIds,
       );
+      return EditorSheetOutcome.shared;
     case _Sent(:final editor, :final count):
-      // Back to the reel's page (the picking screen was pushed from it).
-      if (router.canPop()) {
-        router.pop();
-      } else {
-        router.go(Routes.reel(reelId));
-      }
       snacks.show(
         l10n.editorSentSnack(count, editorName(l10n, editor)),
         icon: Symbols.open_in_new_rounded,
       );
       unawaited(_offerReady(navigator, container, reelId));
+      return EditorSheetOutcome.sent;
+  }
+}
+
+/// The editor used last, or null when none was or it cannot be read (logged
+/// by the error's type: the sheet then shows its default order).
+Future<EditorPick?> _readLastEditor(ProviderContainer container) async {
+  try {
+    return await container.read(lastEditorProvider.future);
+  } on Object catch (error) {
+    _log.warning('Reading the last editor failed: ${error.runtimeType}');
+    return null;
+  }
+}
+
+/// Stores [pick] as `lastEditor`. The sheet is gone, so a failing write is
+/// logged (the error's type only) and nothing else changes.
+Future<void> _rememberPick(ProviderContainer container, EditorPick pick) async {
+  try {
+    await container.read(phoneStateRepositoryProvider).recordLastEditor(pick);
+  } on Object catch (error) {
+    _log.warning('Storing the last editor failed: ${error.runtimeType}');
   }
 }
 
@@ -150,10 +253,25 @@ Future<void> _offerReady(
 }
 
 class _EditorSheet extends ConsumerStatefulWidget {
-  const new({required this.reelId, required this.clipIds});
+  const new({
+    required this.reelId,
+    required this.clipIds,
+    required this.allClips,
+    required this.lastEditor,
+  });
 
   final int reelId;
   final List<int> clipIds;
+
+  /// The row used last, read before the sheet opened; null for none.
+  final EditorPick? lastEditor;
+
+  /// Whether the clips are the reel's whole list (see [showEditorSheet]).
+  final bool allClips;
+
+  /// More than one clip, and all of them: the title says so and **Choose
+  /// clips instead** is offered (`editflow.js:62-63`, `e.all && n > 1`).
+  bool get everyClip => allClips && clipIds.length > 1;
 
   @override
   ConsumerState<_EditorSheet> createState() => _EditorSheetState();
@@ -209,6 +327,14 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
       case EditorApp.capcut || EditorApp.edits:
         await _send(editor, navigator);
     }
+  }
+
+  /// **Choose clips instead**: close with nothing sent or stored, unless a
+  /// send is running.
+  void _chooseInstead() {
+    if (_busy) return;
+    setState(() => _busy = true);
+    Navigator.of(context).pop(const _ChooseInstead());
   }
 
   Future<void> _send(EditorApp editor, NavigatorState navigator) async {
@@ -270,6 +396,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
     final bytes = picked.fold(0, (s, c) => s + c.fingerprint.sizeBytes);
     final anyMissing = choices.any((c) => !c.installed);
     final failed = _failed;
+    final order = editorRows(widget.lastEditor, choices);
 
     Widget row(EditorApp? editor) {
       final choice = editor == null
@@ -277,6 +404,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
           : choices.firstWhere((c) => c.editor == editor);
       final installed = choice?.installed ?? true;
       final name = editor == null ? l10n.editorOther : editorName(l10n, editor);
+      final lastUsed = order.lastUsed == editorPickOf(editor);
       final subtitle = switch (editor) {
         _ when !installed => l10n.editorNotInstalled,
         null => l10n.editorOtherSub,
@@ -287,6 +415,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
         key: ValueKey<String>('editor-row-${editor?.name ?? 'other'}'),
         tall: true,
         title: name,
+        titleTag: lastUsed ? l10n.editorLastUsed : null,
         subtitle: subtitle,
         leading: editor == null
             ? const TtRowIcon(icon: Symbols.apps_rounded)
@@ -300,9 +429,11 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
               ),
         trailing: installed ? const Icon(Symbols.chevron_right_rounded) : null,
         off: !installed,
-        semanticLabel: installed
-            ? null
-            : l10n.editorNotInstalledSemantics(name),
+        semanticLabel: !installed
+            ? l10n.editorNotInstalledSemantics(name)
+            : lastUsed
+            ? l10n.editorLastUsedSemantics(name, subtitle)
+            : null,
         onTap: installed ? () => unawaited(_choose(editor)) : null,
       );
     }
@@ -311,7 +442,9 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
       // A send is running: the sheet stays until it has an answer.
       canPop: !_busy,
       child: TtSheet(
-        title: l10n.editorSheetTitle(widget.clipIds.length),
+        title: widget.everyClip
+            ? l10n.editorSheetTitleAll(widget.clipIds.length)
+            : l10n.editorSheetTitle(widget.clipIds.length),
         footer: failed == null
             ? null
             : SheetFailure(
@@ -332,8 +465,25 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
                 ),
               ),
             ),
-            for (final editor in EditorApp.values) row(editor),
-            row(null),
+            if (widget.everyClip)
+              // editflow.css:19: .sh-head .ed-choose { margin: 4px 0 0 -12px }
+              Align(
+                alignment: AlignmentDirectional.centerStart,
+                child: Padding(
+                  padding: EdgeInsetsDirectional.only(
+                    start: TtMetrics.sheetChooseInset,
+                    top: tt.spacing.xxs,
+                  ),
+                  child: TtButton(
+                    label: l10n.editorChooseInstead,
+                    kind: TtButtonKind.text,
+                    size: TtButtonSize.small,
+                    icon: Symbols.checklist_rounded,
+                    onPressed: _chooseInstead,
+                  ),
+                ),
+              ),
+            for (final pick in order.rows) row(pick.app),
             if (anyMissing)
               Padding(
                 padding: EdgeInsets.fromLTRB(

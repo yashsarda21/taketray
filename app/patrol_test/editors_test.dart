@@ -30,6 +30,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'support/editors_hooks.dart';
 import 'support/onboarded.dart';
 import 'support/own_texts.dart';
+import 'support/reel_finders.dart';
 import 'support/shade.dart';
 import 'support/system_dialogs.dart';
 import 'support/test_background.dart';
@@ -89,6 +90,15 @@ void main() {
   );
 
   patrolTest(
+    'Choose clips: hold one, tap another, Edit 2 clips sends exactly those '
+    'to CapCut in shooting order; the next Edit video lists CapCut first, '
+    'Last used',
+    config: _liveConfig,
+    timeout: _testTimeout,
+    ($) => _scenario($, (env) => _chooseClips($, env)),
+  );
+
+  patrolTest(
     'CapCut not installed: its row is greyed out and says Not installed',
     config: _liveConfig,
     timeout: _testTimeout,
@@ -145,8 +155,9 @@ void main() {
 
 // ============================================================ the flows
 
-/// CapCut send. 3 test clips in a new reel; **Edit video**, **Select all**,
-/// **Continue**, **CapCut**: one `ACTION_SEND_MULTIPLE` to CapCut with the 3
+/// CapCut send. 3 test clips in a new reel; **Edit video** (the sheet opens
+/// with every clip: "Edit all 3 clips in…"), **CapCut**: one
+/// `ACTION_SEND_MULTIPLE` to CapCut with the 3
 /// clips in shooting order, the read grant and a ClipData of 3; the snack, the
 /// Ready to edit question (Not now), the banner and "In your edit"; then Done
 /// editing (the banner's, then the dialog's) and the Published question (Not
@@ -154,14 +165,16 @@ void main() {
 Future<void> _capcutSend(PatrolIntegrationTester $, _Env env) async {
   final reel = await env.reelWithClips(3);
   await _openReel($, reel);
-  await _pickAllAndContinue($, 3);
-  await $(_editorRow(EditorApp.capcut)).tap();
+  await _editAll($, 3);
+  await tapWhenStill($, _editorRow(EditorApp.capcut));
 
   final snack = _l10n.editorSentSnack(3, _l10n.editorNameCapcut);
   await waitFor(
     $,
-    () => _count(find.text(snack)) == 1 && _count(_pickScreen) == 0,
-    what: 'the "Sent 3 clips to CapCut" snack, with the picking screen gone',
+    () =>
+        _count(find.text(snack)) == 1 &&
+        _count(find.text(_l10n.editorSheetTitleAll(3))) == 0,
+    what: 'the "Sent 3 clips to CapCut" snack, with the editor sheet gone',
   );
 
   final recorded = await env.editors.takeRecordedIntents();
@@ -201,7 +214,148 @@ Future<void> _capcutSend(PatrolIntegrationTester $, _Env env) async {
   expect(state.copies.length, 0, reason: 'CapCut gets the originals');
   expect(state.sentIds.length, 3);
 
-  // Done editing: the banner's button, then the dialog's (both say it).
+  await _doneEditing($, env, reel);
+}
+
+/// Choose clips. 3 test clips; a hold on the first clip starts choosing (the
+/// dock slides up), a tap on the third chooses it ("2 selected", the Edit
+/// button says "Edit 2 clips"); **Edit 2 clips** opens the sheet of those two
+/// ("Edit 2 clips in…", not the every-clip one) and **CapCut** sends exactly
+/// them, the first and the third, in shooting order. After Done editing the
+/// next **Edit video** opens the sheet of every clip with CapCut first and the
+/// "Last used" tag on it only.
+Future<void> _chooseClips(PatrolIntegrationTester $, _Env env) async {
+  final reel = await env.reelWithClips(3);
+  await _openReel($, reel);
+  final tile = find.descendant(
+    of: find.byType(ReelDetailScreen),
+    matching: find.byType(TtClipTile),
+  );
+
+  // Hold one: choosing starts with it chosen, and the dock comes up.
+  await $(tile.first).longPress();
+  await waitFor(
+    $,
+    () =>
+        _count(find.text(_l10n.selectionCount(1))) == 1 &&
+        _count(find.byType(TtSelectionDock)) == 1,
+    what: 'the bar saying 1 selected and the dock',
+  );
+  expect(
+    _count(
+      find.descendant(
+        of: dockEdit(),
+        matching: find.text(_l10n.selectionDockEdit(1)),
+      ),
+    ),
+    1,
+    reason: 'the dock says Edit 1 clip',
+  );
+
+  // Tap another (the third, so the middle one is left out).
+  await $(tile.at(2)).tap();
+  await waitFor(
+    $,
+    () =>
+        _count(find.text(_l10n.selectionCount(2))) == 1 &&
+        _count(
+              find.descendant(
+                of: dockEdit(),
+                matching: find.text(_l10n.selectionDockEdit(2)),
+              ),
+            ) ==
+            1,
+    what: 'the bar saying 2 selected and the dock saying Edit 2 clips',
+  );
+
+  // Edit 2 clips: the sheet of those two, then CapCut.
+  await tapWhenStill($, dockEdit(), enabled: true);
+  await waitFor(
+    $,
+    () => _count(find.text(_l10n.editorSheetTitle(2))) == 1,
+    what: 'the "Edit 2 clips in…" sheet',
+  );
+  expect(
+    _count(find.text(_l10n.editorChooseInstead)),
+    0,
+    reason: 'chosen clips are not offered Choose clips instead',
+  );
+  await tapWhenStill($, _editorRow(EditorApp.capcut));
+  final snack = _l10n.editorSentSnack(2, _l10n.editorNameCapcut);
+  await waitFor(
+    $,
+    () =>
+        _count(find.text(snack)) == 1 &&
+        _count(find.text(_l10n.editorSheetTitle(2))) == 0,
+    what: 'the "Sent 2 clips to CapCut" snack, with the editor sheet gone',
+  );
+
+  final recorded = await env.editors.takeRecordedIntents();
+  expect(recorded.length, 1, reason: 'one intent, to CapCut');
+  final intent = recorded.single;
+  expect(intent.action, RecordedIntent.actionSendMultiple);
+  expect(intent.package, EditorApp.capcut.packageName);
+  expect(intent.uris.length, 2, reason: 'only the two chosen clips');
+  expect(
+    listEquals(intent.uris, [reel.labels.first, reel.labels.last]),
+    isTrue,
+    reason: 'the first and the third clip, each once, in shooting order',
+  );
+  expect(intent.grantRead, isTrue, reason: 'read access is granted');
+  expect(intent.clipDataCount, 2);
+  final state = await env.editState(reel.id);
+  expect(state, isNotNull, reason: 'the session is stored');
+  expect(state!.session.editor, EditorApp.capcut);
+  expect(state.sentIds.length, 2, reason: 'two clips were sent, not three');
+
+  // The reel is Collecting, so it offers Ready to edit; Not now. Then the
+  // session ends (Edit is not offered during one, R1), as in the first flow.
+  await _answerMarkDialog(
+    $,
+    title: _l10n.markStatusTitle(reel.name, _l10n.statusReady),
+    what: 'the Ready to edit question',
+  );
+  await waitFor(
+    $,
+    () => _count(_inBanner(_l10n.reelEditingIn(_l10n.editorNameCapcut))) == 1,
+    what: 'the CapCut banner',
+  );
+  await _doneEditing($, env, reel);
+
+  // The next Edit video: every clip, CapCut first and the only "Last used".
+  await _editAll($, 3);
+  final capcut = _editorRow(EditorApp.capcut);
+  await waitFor(
+    $,
+    () =>
+        _count(
+          find.descendant(
+            of: capcut,
+            matching: find.text(_l10n.editorLastUsed),
+          ),
+        ) ==
+        1,
+    what: 'the "${_l10n.editorLastUsed}" tag on the CapCut row',
+  );
+  expect(_count(find.text(_l10n.editorLastUsed)), 1, reason: 'on one row only');
+  final capcutTop = $.tester.getTopLeft(capcut).dy;
+  for (final other in [EditorApp.edits, EditorApp.vn]) {
+    expect(
+      capcutTop,
+      lessThan($.tester.getTopLeft(_editorRow(other)).dy),
+      reason: 'CapCut is listed before the other editors',
+    );
+  }
+}
+
+/// Done editing from the reel page's banner (the banner's button, then the
+/// dialog's, both say it), a check that the session ended, then the Published
+/// question (Not now).
+Future<void> _doneEditing(
+  PatrolIntegrationTester $,
+  _Env env,
+  _TestReel reel,
+) async {
   await $(_inBanner(_l10n.reelDoneEditing)).tap();
   await _waitForDialog(
     $,
@@ -238,7 +392,7 @@ Future<void> _notInstalled(PatrolIntegrationTester $, _Env env) async {
   });
   final reel = await env.reelWithClips(3);
   await _openReel($, reel);
-  await _pickAllAndContinue($, 3);
+  await _editAll($, 3);
 
   // The sheet draws every row as installed until the phone answers: wait for
   // the answer before tapping anything.
@@ -278,18 +432,18 @@ Future<void> _notInstalled(PatrolIntegrationTester $, _Env env) async {
     reason: 'no session started',
   );
   expect(
-    _count(find.text(_l10n.editorSheetTitle(3))),
+    _count(find.text(_l10n.editorSheetTitleAll(3))),
     1,
     reason: 'the sheet is still open',
   );
 }
 
-/// VN copy for real. 3 test clips; **Edit video**, **Select all**,
-/// **Continue**, **VN**, the space screen, **Copy 3 clips**: the engine copies
-/// in the app, the ready screen shows the folder with the screen no longer
-/// kept on, and the folder holds exactly 3 finished TakeTray-owned copies.
-/// **Open VN** is recorded and not started. Done editing (the banner's) >
-/// **Delete copies**: the folder is empty and "Copies deleted" shows.
+/// VN copy for real. 3 test clips; **Edit video**, **VN**, the space screen,
+/// **Copy 3 clips**: the engine copies in the app, the ready screen shows the
+/// folder with the screen no longer kept on, and the folder holds exactly 3
+/// finished TakeTray-owned copies. **Open VN** is recorded and not started.
+/// Done editing (the banner's) > **Delete copies**: the folder is empty and
+/// "Copies deleted" shows.
 Future<void> _vnCopy(PatrolIntegrationTester $, _Env env) async {
   final reel = await env.reelWithClips(3);
   final folder = await _startVnSession($, env, reel);
@@ -388,8 +542,8 @@ Future<void> _cancelCopy(PatrolIntegrationTester $, _Env env) async {
   await env.copy.setThrottleMs(_slowCopyMs);
   final reel = await env.reelWithClips(3);
   await _openReel($, reel);
-  await _pickAllAndContinue($, 3);
-  await $(_editorRow(EditorApp.vn)).tap();
+  await _editAll($, 3);
+  await tapWhenStill($, _editorRow(EditorApp.vn));
   await _startCopyFromSpaceScreen($, 3);
 
   // Copying: the progress screen, and the window kept on.
@@ -506,7 +660,7 @@ Future<void> _addLater(PatrolIntegrationTester $, _Env env) async {
     4,
     reason: 'every live clip is listed',
   );
-  await $(find.byKey(const ValueKey<String>('edit-select-continue'))).tap();
+  await $(find.byKey(const ValueKey<String>('edit-select-copy'))).tap();
 
   // The space screen, then "1 clip added to the VN folder".
   await _startCopyFromSpaceScreen($, 1);
@@ -563,7 +717,9 @@ Future<void> _removeDuringSession(PatrolIntegrationTester $, _Env env) async {
     () => _count(find.text(_l10n.selectionCount(1))) == 1,
     what: 'the bar saying 1 selected',
   );
-  await $(_iconButtonLabelled(_l10n.selectionRemove)).tap();
+  // The dock's Remove (D-190): the dock slides up on the first hold, so the
+  // tap waits until it is still.
+  await tapWhenStill($, dockAction(_l10n.selectionDockRemove));
 
   final snack = _l10n.removedWithCopies(
     _l10n.clipsRemovedSnack(1, reel.name),
@@ -941,12 +1097,6 @@ final Finder _dialog = find.byWidgetPredicate(
   description: 'TtDialog',
 );
 
-/// A [TtIconButton] by the label a screen reader gives it (it has no text).
-Finder _iconButtonLabelled(String label) => find.byWidgetPredicate(
-  (w) => w is TtIconButton && w.semanticLabel == label,
-  description: 'TtIconButton labelled "$label"',
-);
-
 /// The editing banner of the reel's page (its key).
 final Finder _banner = find.byKey(const ValueKey<String>('reel-edit-banner'));
 
@@ -975,7 +1125,7 @@ Finder _editorRow(EditorApp editor) =>
 Finder _notInstalledIn(Finder row) =>
     find.descendant(of: row, matching: find.text(_l10n.editorNotInstalled));
 
-/// The clip picking screen, in either of its modes.
+/// The clip picking screen, which only add mode (Copy to VN folder) opens.
 final Finder _pickScreen = find.byType(EditSelectScreen);
 
 /// The "Copies deleted · {size} freed" snack, whatever the size.
@@ -1015,40 +1165,18 @@ Future<void> _openReel(PatrolIntegrationTester $, _TestReel reel) async {
   );
 }
 
-/// On a reel's page: **Edit video**, **Select all**, **Continue**; waits for
-/// the editor sheet of [count] clips.
-Future<void> _pickAllAndContinue(PatrolIntegrationTester $, int count) async {
-  await $(TtFab).tap();
+/// On a reel's page: **Edit video**; waits for the editor sheet of every clip
+/// ("Edit all {count} clips in…"; one clip has the plain "Edit 1 clip in…"
+/// title, as the app's sheet does).
+Future<void> _editAll(PatrolIntegrationTester $, int count) async {
+  await tapWhenStill($, find.byType(TtFab));
+  final title = count > 1
+      ? _l10n.editorSheetTitleAll(count)
+      : _l10n.editorSheetTitle(1);
   await waitFor(
     $,
-    () =>
-        _count(_pickScreen) == 1 &&
-        _count(
-              find.descendant(
-                of: _pickScreen,
-                matching: find.byType(TtClipTile),
-              ),
-            ) ==
-            count,
-    what: 'the picking screen with $count clips',
-  );
-  await $(
-    find.descendant(
-      of: _pickScreen,
-      matching: find.widgetWithText(TtButton, _l10n.selectionSelectAll),
-    ),
-  ).tap();
-  final next = find.byKey(const ValueKey<String>('edit-select-continue'));
-  await waitFor(
-    $,
-    () => $.tester.widget<TtButton>(next).onPressed != null,
-    what: 'Continue to be on once the clips are ticked',
-  );
-  await $(next).tap();
-  await waitFor(
-    $,
-    () => _count(find.text(_l10n.editorSheetTitle(count))) == 1,
-    what: 'the "Edit $count clips in…" sheet',
+    () => _count(find.text(title)) == 1,
+    what: 'the "$title" sheet',
   );
 }
 
@@ -1068,16 +1196,16 @@ Future<void> _startCopyFromSpaceScreen(
 }
 
 /// A whole VN copy through the screens: [reel]'s page (the app must be on the
-/// Reels tab), **Edit video** > **Select all** > **Continue** > **VN** >
-/// **Copy 3 clips**, and the wait for "Ready for VN". Returns the folder.
+/// Reels tab), **Edit video** > **VN** > **Copy 3 clips**, and the wait for
+/// "Ready for VN". Returns the folder.
 Future<String> _startVnSession(
   PatrolIntegrationTester $,
   _Env env,
   _TestReel reel,
 ) async {
   await _openReel($, reel);
-  await _pickAllAndContinue($, reel.videos.length);
-  await $(_editorRow(EditorApp.vn)).tap();
+  await _editAll($, reel.videos.length);
+  await tapWhenStill($, _editorRow(EditorApp.vn));
   await _startCopyFromSpaceScreen($, reel.videos.length);
   await waitFor(
     $,

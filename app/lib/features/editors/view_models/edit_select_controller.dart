@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/domain/models/clip_local_time.dart';
-import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
@@ -14,38 +13,7 @@ import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 
 part 'edit_select_controller.g.dart';
 
-/// Which reel the clip picking screen is for, which clips start ticked, and
-/// whether it adds clips to the reel's editing folder.
-///
-/// The arguments of [EditSelectController]; they compare by value, so one
-/// screen keeps one controller however often it is built.
-@immutable
-class EditSelectArgs {
-  EditSelectArgs(this.reelId, Iterable<int> preselected, {this.addMode = false})
-    : preselected = List.unmodifiable(preselected);
-
-  final int reelId;
-
-  /// Clip ids to tick at first (the reel page's ⋮ menu); ids that are not
-  /// live clips of the reel are dropped.
-  final List<int> preselected;
-
-  /// The add mode (`&add=1`, D-128): more clips for the folder of the reel's
-  /// editing session.
-  final bool addMode;
-
-  @override
-  bool operator ==(Object other) =>
-      other is EditSelectArgs &&
-      other.reelId == reelId &&
-      other.addMode == addMode &&
-      listEquals(other.preselected, preselected);
-
-  @override
-  int get hashCode => Object.hash(reelId, addMode, Object.hashAll(preselected));
-}
-
-/// What the clip picking screen shows (D-126).
+/// What the clip picking screen shows (D-126, add mode only since D-192).
 @immutable
 class EditSelectState {
   const new({
@@ -53,13 +21,9 @@ class EditSelectState {
     required this.days,
     required this.times,
     required this.selected,
-    required this.pickedInOrder,
-    required this.pickedDurationMs,
-    required this.pickedBytes,
     required this.liveCount,
-    this.addMode = false,
-    this.addEditor,
-    this.addFolder,
+    this.editor,
+    this.folder,
     this.inFolder = const {},
     this.toCopyInOrder = const [],
     this.toCopyBytes = 0,
@@ -78,30 +42,19 @@ class EditSelectState {
   /// The ids of the ticked clips; always live clips of the reel.
   final Set<int> selected;
 
-  /// The ticked clips' ids in shooting order (oldest date taken first).
-  final List<int> pickedInOrder;
-
-  /// The ticked clips' total length and size.
-  final int pickedDurationMs;
-  final int pickedBytes;
-
   /// How many live clips the reel has.
   final int liveCount;
 
-  /// Whether the screen adds clips to the editing folder (D-128).
-  final bool addMode;
+  /// The editor of the reel's session; null when the reel has no session
+  /// (Done editing ran meanwhile): the screen then leaves.
+  final EditorApp? editor;
 
-  /// In add mode, the editor of the reel's session; null when the reel has
-  /// no session (Done editing ran meanwhile): the screen then leaves. Null
-  /// outside add mode.
-  final EditorApp? addEditor;
+  /// The session's folder under `Movies/TakeTray` (a renamed reel keeps it);
+  /// null without a session.
+  final String? folder;
 
-  /// In add mode, the session's folder under `Movies/TakeTray` (a renamed
-  /// reel keeps it); null without a session and outside add mode.
-  final String? addFolder;
-
-  /// In add mode, the live clips whose copy is in the folder already: ticked
-  /// and locked, nothing to copy (`AddPick.inFolder`). Empty otherwise.
+  /// The live clips whose copy is in the folder already: ticked and locked,
+  /// nothing to copy (`AddPick.inFolder`).
   final Set<int> inFolder;
 
   /// The ticked clips that would be copied (or sent), in shooting order: the
@@ -110,24 +63,24 @@ class EditSelectState {
   final int toCopyBytes;
 
   /// Whether every clip that can be ticked is ticked: every live clip, but
-  /// the [inFolder] ones in add mode. False when none can be ticked.
+  /// the [inFolder] ones. False when none can be ticked.
   bool get allPicked =>
       liveCount > inFolder.length && selected.length == liveCount;
 }
 
-/// The clips ticked on the picking screen of one reel (D-126).
+/// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+/// D-129), which since D-192 is only for adding clips to the reel's editing
+/// folder.
 ///
-/// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-///   of another reel or an unknown id cannot be ticked, and the preselected
-///   ids are cut down the same way.
+/// - **Only live clips can be ticked.** A missing clip is not listed, and a
+///   clip of another reel or an unknown id cannot be ticked.
 /// - **It follows the reel's clips.** A ticked clip that goes missing or
 ///   leaves the reel is un-ticked; the rest stays ticked when the list
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-///   any editor's session): every
-///   live clip again, by `addPicks` against the reel's session. A fresh clip
+/// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+///   every live clip, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
 ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -146,21 +99,19 @@ class EditSelectController extends _$EditSelectController {
   List<ReelClip> _live = const [];
   Map<int, ClipLocalTime> _times = const {};
 
-  /// In add mode: the session's editor and the clips in its folder (locked).
+  /// The session's editor, its folder and the clips in it (locked).
   EditorApp? _editor;
   String? _folder;
   Set<int> _inFolder = const {};
 
   @override
-  Future<EditSelectState?> build(EditSelectArgs args) async {
-    final reelFuture = ref.watch(reelByIdProvider(args.reelId).future);
-    final clipsFuture = ref.watch(reelClipsProvider(args.reelId).future);
-    final editFuture = args.addMode
-        ? ref.watch(reelEditSessionProvider(args.reelId).future)
-        : Future<EditState?>.value();
+  Future<EditSelectState?> build(int reelId) async {
+    final reelFuture = ref.watch(reelByIdProvider(reelId).future);
+    final clipsFuture = ref.watch(reelClipsProvider(reelId).future);
+    final editFuture = ref.watch(reelEditSessionProvider(reelId).future);
     // Never awaited: the screen shows without the times.
     _times =
-        ref.watch(reelClipTimesProvider(args.reelId)).value ??
+        ref.watch(reelClipTimesProvider(reelId)).value ??
         const <int, ClipLocalTime>{};
     final reel = await reelFuture;
     if (reel == null) return null;
@@ -187,7 +138,6 @@ class EditSelectController extends _$EditSelectController {
     final seed = _seeded
         ? _selected
         : {
-            ...args.preselected,
             for (final MapEntry(:key, :value) in picks.entries)
               if (value == AddPick.fresh) key,
           };
@@ -211,13 +161,9 @@ class EditSelectController extends _$EditSelectController {
       days: groupByShootingDay<ReelClip>(_live, (c) => c.clip, _times),
       times: _times,
       selected: Set.unmodifiable(selected),
-      pickedInOrder: [for (final c in picked) c.id],
-      pickedDurationMs: picked.fold(0, (s, c) => s + c.fingerprint.durationMs),
-      pickedBytes: picked.fold(0, (s, c) => s + c.fingerprint.sizeBytes),
       liveCount: _live.length,
-      addMode: args.addMode,
-      addEditor: args.addMode ? _editor : null,
-      addFolder: args.addMode ? _folder : null,
+      editor: _editor,
+      folder: _folder,
       inFolder: Set.unmodifiable(_inFolder),
       toCopyInOrder: [for (final c in toCopy) c.id],
       toCopyBytes: toCopy.fold(0, (s, c) => s + c.fingerprint.sizeBytes),
@@ -231,8 +177,8 @@ class EditSelectController extends _$EditSelectController {
   }
 
   /// Ticks [clipId], or un-ticks it when it is ticked. Nothing happens for a
-  /// clip that is not a live clip of the reel, or (add mode) whose copy is in
-  /// the folder: [_set] keeps those out of the user's own ticks.
+  /// clip that is not a live clip of the reel, or whose copy is in the
+  /// folder: [_set] keeps those out of the user's own ticks.
   void toggle(int clipId) {
     if (!_seeded) return;
     final next = {..._selected};
@@ -246,6 +192,6 @@ class EditSelectController extends _$EditSelectController {
   /// Ticks every live clip.
   void selectAll() => _set({for (final c in _live) c.clip.id});
 
-  /// Un-ticks every clip (but the locked ones of add mode).
+  /// Un-ticks every clip (but the locked ones).
   void clear() => _set({});
 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:taketray_ui/src/components/internal/bar_scope.dart';
+import 'package:taketray_ui/src/components/internal/pill_tap_target.dart';
 import 'package:taketray_ui/src/components/internal/system_ui.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_sizes.dart';
@@ -178,5 +179,162 @@ class TtAppBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
     );
+  }
+}
+
+/// The tonal button at the end of a header: an [icon] and a short [label]
+/// ("+ New") on a `secondaryContainer` pill.
+///
+/// The pill is 40 dp high (more at large text) with a 48 dp tap target and
+/// `labelLarge` text, and carries its own 12 dp margin on the trailing side,
+/// so as the last action of a [TtLargeSliverAppBar] it sits 12 dp from the
+/// edge of the screen. A screen reader says [semanticLabel] ("New reel") as
+/// one button.
+class TtHeaderPill extends StatelessWidget {
+  /// A pill showing [icon] and [label] that calls [onPressed] when tapped.
+  const new({
+    required this.icon,
+    required this.label,
+    required this.semanticLabel,
+    required this.onPressed,
+    super.key,
+  });
+
+  /// The icon before the label, drawn at 20 dp.
+  final IconData icon;
+
+  /// The text; one line.
+  final String label;
+
+  /// What a screen reader says instead of [label].
+  final String semanticLabel;
+
+  /// Called when the pill is tapped.
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = context.tt;
+    final scheme = context.scheme;
+    // home2.css:4: .h2 .appbar .h2-new { gap: 4px; min-height: 40px;
+    //   padding: 0 16px 0 12px; margin-right: 12px; border-radius: 999px;
+    //   background: secondary-container; color: on-secondary-container;
+    //   font: label-large }
+    return Padding(
+      padding: const EdgeInsetsDirectional.only(
+        end: TtMetrics.headerPillMarginEnd,
+      ),
+      child: TtPillTapTarget(
+        label: semanticLabel,
+        onPressed: onPressed,
+        child: Material(
+          color: scheme.secondaryContainer,
+          shape: const StadiumBorder(),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onPressed,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: TtMetrics.quietPillHeight,
+              ),
+              child: Padding(
+                padding: const EdgeInsetsDirectional.only(
+                  start: TtMetrics.headerPillPaddingStart,
+                  end: TtMetrics.headerPillPaddingEnd,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: TtMetrics.headerPillGap,
+                  children: [
+                    // home2.css:5: .h2-new .ms { font-size: 20px }
+                    Icon(
+                      icon,
+                      size: TtMetrics.headerPillIconSize,
+                      color: scheme.onSecondaryContainer,
+                    ),
+                    Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: tt.text.material.labelLarge!.copyWith(
+                        color: scheme.onSecondaryContainer,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// A large page title that shrinks into a pinned bar as the page scrolls:
+/// Home's header.
+///
+/// A [SliverAppBar.large] for a `CustomScrollView`: 152 dp with the page title
+/// (`tt.text.pageTitle`, as `TtAppBar(large: true)`) while the page is at
+/// the top, then 64 dp with the screen title when scrolled. It stays pinned,
+/// so the [actions] (a [TtHeaderPill]) stay in reach. It is `surface` with no
+/// tint and no shadow, and sets the status bar icons for it like [TtAppBar].
+/// A long title ends in an ellipsis before the actions.
+class TtLargeSliverAppBar extends StatelessWidget {
+  /// A header showing [title] with [actions] at its end.
+  const new({required this.title, this.actions = const [], super.key});
+
+  /// The screen's name; one line, with an ellipsis if too long.
+  final String title;
+
+  /// Widgets at the end of the bar, first to last.
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = context.scheme;
+    // `SliverAppBar.large` is pinned by default; the pill must stay in reach.
+    return SliverAppBar.large(
+      // Home has nothing to go back to; Material would add a back or menu
+      // button if this bar were ever put on a route that can pop.
+      automaticallyImplyLeading: false,
+      backgroundColor: scheme.surface,
+      surfaceTintColor: scheme.surface.withValues(alpha: 0),
+      scrolledUnderElevation: 0,
+      systemOverlayStyle: ttSystemUiStyle(scheme.surface),
+      title: _LargeTitle(title),
+      actions: actions,
+    );
+  }
+}
+
+/// The title of a [TtLargeSliverAppBar]. Material builds it twice: in the
+/// bar's toolbar (the screen title, from the theme) and in the flexible space
+/// under it (the page title, while expanded). Only the first sits in a
+/// [NavigationToolbar]; that depends on how Material builds its sliver title,
+/// and the size tests of the header catch a Flutter upgrade that changes it.
+class _LargeTitle extends StatelessWidget {
+  const new(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final inToolbar =
+        context.findAncestorWidgetOfExactType<NavigationToolbar>() != null;
+    final tt = context.tt;
+    final color = context.scheme.onSurface;
+    final text = Text(
+      title,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: (inToolbar ? tt.text.screenTitle : tt.text.pageTitle).copyWith(
+        color: color,
+      ),
+    );
+    // The toolbar's title is already a heading (and hidden while expanded);
+    // the expanded one is not, so a screen reader at the top of the page
+    // finds one.
+    return inToolbar ? text : Semantics(header: true, child: text);
   }
 }

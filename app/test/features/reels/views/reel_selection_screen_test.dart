@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +14,9 @@ import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
+import 'package:taketray/features/reels/view_models/reel_selection.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
+import 'package:taketray/features/shell/view_models/choosing_reel.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -22,6 +25,7 @@ import '../../../support/pump_screen.dart';
 import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
+import '../edit_session_support.dart' show startEditing;
 
 /// A clips repository whose `addClipsToReels` and `moveClips` fail.
 class _FailingWrites extends ClipsRepository {
@@ -99,6 +103,7 @@ void main() {
     double textScale = 1,
     Brightness brightness = Brightness.light,
     List<Override> overrides = const [],
+    Size size = const Size(360, 800),
   }) async {
     await pumpScreen(
       tester,
@@ -106,7 +111,11 @@ void main() {
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
+      size: size,
       settle: false,
+      // In the app's shell, where the dock takes the nav pill's place while
+      // choosing (D-191).
+      inShell: true,
     );
     await settleApp(tester);
   }
@@ -127,10 +136,18 @@ void main() {
     description: 'the "$label" button',
   );
 
-  Future<void> openMenu(WidgetTester tester) async {
-    await tester.tap(barButton('More options'));
-    await tester.pumpAndSettle();
-  }
+  /// The action of the dock (D-191) whose word under the icon is [label]:
+  /// Share, Add to, Move or Remove.
+  Finder dockAction(String label) => find.descendant(
+    of: find.byType(TtSelectionDock),
+    matching: find.text(label),
+  );
+
+  /// The top bar's Select all or Clear, at text 1x a text button.
+  Finder topButton(String label) => find.descendant(
+    of: find.byType(TtAppBar),
+    matching: find.widgetWithText(TtButton, label),
+  );
 
   /// A reel with [count] clips, the first of them long pressed.
   Future<List<int>> reelWithClips(WidgetTester tester, Reel reel, int count) =>
@@ -141,11 +158,30 @@ void main() {
         ]),
       );
 
+  /// Long presses the first tile, then taps the next [count] - 1. A tile
+  /// the dock covers (at large text) is scrolled above it first.
   Future<void> select(WidgetTester tester, int count) async {
     await tester.longPress(find.byType(TtClipTile).first);
     await tester.pumpAndSettle();
     for (var i = 1; i < count; i++) {
-      await tester.tap(find.byType(TtClipTile).at(i));
+      final tile = find.byType(TtClipTile).at(i);
+      final panel = find.descendant(
+        of: find.byType(TtSelectionDock),
+        matching: find.byType(DecoratedBox),
+      );
+      if (panel.evaluate().isNotEmpty) {
+        final under =
+            tester.getBottomLeft(tile).dy - tester.getTopLeft(panel.first).dy;
+        if (under > 0) {
+          // A drag scrolls a little less than it moves (the touch slop).
+          await tester.drag(
+            find.byType(CustomScrollView),
+            Offset(0, -under - 48),
+          );
+          await tester.pumpAndSettle();
+        }
+      }
+      await tester.tap(tile);
       await tester.pumpAndSettle();
     }
   }
@@ -159,16 +195,6 @@ void main() {
 
   Finder confirm(String label) =>
       find.widgetWithText(TtButton, label, skipOffstage: false);
-
-  /// The labels of the open ⋮ menu's entries, top to bottom.
-  List<String> menuOrder(WidgetTester tester) {
-    final entries = [
-      for (final label in ['Edit video', 'Select all', 'Share'])
-        if (find.text(label).evaluate().isNotEmpty)
-          (label, tester.getTopLeft(find.text(label)).dy),
-    ]..sort((a, b) => a.$2.compareTo(b.$2));
-    return [for (final e in entries) e.$1];
-  }
 
   group('selection mode', () {
     testApp('long press starts selection', (tester) async {
@@ -202,23 +228,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(live('2 selected'), isTrue);
       semantics.dispose();
-    });
-
-    testApp('the bar has the three actions and Select all only', (
-      tester,
-    ) async {
-      final goa = await newReel(tester, 'Goa');
-      await reelWithClips(tester, goa, 2);
-      await open(tester, goa.id);
-      await select(tester, 1);
-
-      expect(barButton('Add to another reel'), findsOneWidget);
-      expect(barButton('Move to another reel'), findsOneWidget);
-      expect(barButton('Remove from this reel'), findsOneWidget);
-      expect(barButton('Close'), findsOneWidget);
-      await openMenu(tester);
-      // Phase 8: Edit video, Select all and Share, in that order.
-      expect(menuOrder(tester), ['Edit video', 'Select all', 'Share']);
     });
 
     testApp('a tap toggles a tile and does not open the viewer', (
@@ -301,8 +310,7 @@ void main() {
       expect(find.byType(TtMissingClipTile), findsOneWidget);
       await select(tester, 1);
 
-      await openMenu(tester);
-      await tester.tap(find.text('Select all'));
+      await tester.tap(topButton('Select all'));
       await tester.pumpAndSettle();
 
       expect(find.text('3 selected'), findsOneWidget);
@@ -340,7 +348,12 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(find.text('Remove'));
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtMissingClipTile),
+          matching: find.text('Remove'),
+        ),
+      );
       await settleApp(tester);
 
       expect(find.text('Missing clip removed'), findsOneWidget);
@@ -357,7 +370,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       expect(pickerNames(tester), unorderedEquals(['London', 'Paris']));
@@ -377,7 +390,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       expect(
@@ -397,7 +410,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       expect(
@@ -415,7 +428,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       expect(
         tester.widget<TtSheet>(find.byType(TtSheet)).title,
@@ -425,7 +438,7 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await settleApp(tester);
 
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       expect(
         tester.widget<TtSheet>(find.byType(TtSheet)).title,
@@ -438,7 +451,7 @@ void main() {
       await tester.tap(find.byType(TtClipTile).at(1));
       await tester.tap(find.byType(TtClipTile).at(2));
       await tester.pumpAndSettle();
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       expect(
         tester.widget<TtSheet>(find.byType(TtSheet)).title,
@@ -448,7 +461,7 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await settleApp(tester);
 
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       expect(
         tester.widget<TtSheet>(find.byType(TtSheet)).title,
@@ -463,7 +476,7 @@ void main() {
       await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       expect(tester.widget<TtButton>(confirm('Add')).onPressed, isNull);
@@ -487,7 +500,7 @@ void main() {
       await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       await tester.tap(find.text('London'));
@@ -510,7 +523,7 @@ void main() {
       await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
 
       await tester.tap(find.text('London'));
@@ -540,7 +553,7 @@ void main() {
       );
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
 
       final row = tester.widget<TtReelPickRow>(find.byType(TtReelPickRow));
@@ -554,7 +567,7 @@ void main() {
       await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -572,7 +585,7 @@ void main() {
     Future<void> openAdd(WidgetTester tester, Reel goa) async {
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
     }
 
@@ -611,7 +624,7 @@ void main() {
       await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -700,7 +713,7 @@ void main() {
         ],
       );
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('New reel'));
       await tester.pumpAndSettle();
@@ -722,7 +735,7 @@ void main() {
     ) async {
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       for (final name in names) {
         await tester.tap(find.text(name));
@@ -793,7 +806,7 @@ void main() {
       final ids = await reelWithClips(tester, goa, 2);
       await open(tester, goa.id);
       await select(tester, 2);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -818,7 +831,7 @@ void main() {
       final ids = await reelWithClips(tester, goa, 2);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -850,7 +863,7 @@ void main() {
         overrides: [reelsRepositoryProvider.overrideWithValue(recording)],
       );
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.tap(find.text('Paris'));
@@ -884,7 +897,7 @@ void main() {
         ],
       );
       await select(tester, 1);
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -921,7 +934,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -951,10 +964,14 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      for (final label in ['Add to another reel', 'Move to another reel']) {
+      for (final (index, label) in [(1, 'Add to'), (2, 'Move')]) {
         // Two presses before a frame is drawn (a tap cannot do that: the
         // sheet's barrier takes the second one once it is on screen).
-        final press = tester.widget<TtIconButton>(barButton(label)).onPressed!;
+        final action = tester
+            .widget<TtSelectionDock>(find.byType(TtSelectionDock))
+            .actions[index];
+        expect(action.label, label);
+        final press = action.onPressed!;
         press();
         press();
         await settleApp(tester);
@@ -964,7 +981,7 @@ void main() {
         expect(find.byType(TtSheet), findsNothing, reason: label);
       }
       // The guard is released when a picker closes: the next tap works.
-      await tester.tap(barButton('Add to another reel'));
+      await tester.tap(dockAction('Add to'));
       await settleApp(tester);
       expect(find.byType(TtSheet), findsOneWidget);
     });
@@ -976,7 +993,7 @@ void main() {
       final ids = await reelWithClips(tester, goa, 2);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -1008,7 +1025,7 @@ void main() {
         ],
       );
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -1034,7 +1051,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 2);
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(
@@ -1061,7 +1078,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(
@@ -1078,7 +1095,7 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 2);
 
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
 
       expect(find.byType(TtEmptyState), findsOneWidget);
@@ -1091,8 +1108,8 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await tester.tap(barButton('Remove from this reel'));
-      await tester.tap(barButton('Remove from this reel'), warnIfMissed: false);
+      await tester.tap(dockAction('Remove'));
+      await tester.tap(dockAction('Remove'), warnIfMissed: false);
       await settleApp(tester);
 
       expect(find.textContaining('removed from Goa'), findsOneWidget);
@@ -1103,7 +1120,7 @@ void main() {
       final ids = await reelWithClips(tester, goa, 2);
       await open(tester, goa.id);
       await select(tester, 2);
-      await tester.tap(barButton('Remove from this reel'));
+      await tester.tap(dockAction('Remove'));
       await settleApp(tester);
       expect(await real(tester, clips.allClipIds), isEmpty);
 
@@ -1124,7 +1141,7 @@ void main() {
       final ids = await reelWithClips(tester, goa, 1);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -1154,10 +1171,11 @@ void main() {
           await open(tester, goa.id, textScale: 2, brightness: brightness);
 
           await select(tester, 2);
+          expect(find.text('2 selected'), findsOneWidget);
           expect(tester.takeException(), isNull);
           await expectTtAccessible(tester);
 
-          await tester.tap(barButton('Add to another reel'));
+          await tester.tap(dockAction('Add to'));
           await settleApp(tester);
           expect(tester.takeException(), isNull);
           await expectTtAccessible(tester);
@@ -1181,7 +1199,7 @@ void main() {
       await reelWithClips(tester, goa, 2);
       await open(tester, goa.id);
       await select(tester, 1);
-      await tester.tap(barButton('Move to another reel'));
+      await tester.tap(dockAction('Move'));
       await settleApp(tester);
       await tester.tap(find.text('London'));
       await tester.pumpAndSettle();
@@ -1189,131 +1207,550 @@ void main() {
       await expectTtAccessible(tester);
     });
   });
-  group('Edit video and Share in the ⋮ menu (Phase 8)', () {
-    setUp(() => h.editors.allow({'shareWithChooser'}));
+  group('Edit video and the dock (D-191)', () {
+    setUp(
+      () => h.editors
+        ..allow({'apps', 'sendTo', 'shareWithChooser', 'copyFolderNames'})
+        ..installed = {
+          for (final editor in EditorApp.values) editor.packageName: true,
+        },
+    );
 
-    /// A reel with three clips shot in the reverse order of their ids: the
-    /// tile order is shooting order, the first tile is video 3.
+    /// A reel with three clips shot in the reverse order of their ids, 10,
+    /// 25 and 40 s long: the tile order is shooting order, the first tile
+    /// is video 3 (40 s).
     Future<(Reel, List<int>)> reelWithThree(WidgetTester tester) async {
       final goa = await newReel(tester, 'Goa');
       final ids = await real(
         tester,
         () => putInReel(h, goa.id, [
-          reelVideo(1, shot: DateTime.utc(2026, 10, 28, 12)),
-          reelVideo(2, shot: DateTime.utc(2026, 10, 28, 11)),
-          reelVideo(3, shot: DateTime.utc(2026, 10, 28, 10)),
+          reelVideo(1, shot: DateTime.utc(2026, 10, 28, 12), durationMs: 10000),
+          reelVideo(2, shot: DateTime.utc(2026, 10, 28, 11), durationMs: 25000),
+          reelVideo(3, shot: DateTime.utc(2026, 10, 28, 10), durationMs: 40000),
         ]),
       );
       return (goa, ids);
     }
 
-    testApp('the menu lists Edit video, Select all and Share', (tester) async {
+    TtSelectionDock dock(WidgetTester tester) =>
+        tester.widget<TtSelectionDock>(find.byType(TtSelectionDock));
+
+    Finder dockEdit() =>
+        find.byKey(const ValueKey<String>('tt-selection-dock-edit'));
+
+    /// The hint banner of choosing from the sheet.
+    Finder hint() => find.descendant(
+      of: find.byType(TtBanner),
+      matching: find.text('Tap the clips you want to edit'),
+    );
+
+    String? sheetTitle(WidgetTester tester) =>
+        tester.widget<TtSheet>(find.byType(TtSheet)).title;
+
+    bool choosing(WidgetTester tester) =>
+        tester.widget<TtAppBar>(find.byType(TtAppBar)).selection;
+
+    /// The MediaStore ids of the last share through Android's menu.
+    List<int?> sharedIds() => [
+      for (final c in h.editors.chooserShares.last.$1) c.mediaStoreId,
+    ];
+
+    /// The top of the dock's panel (not of the slide around it).
+    double dockTop(WidgetTester tester) => tester
+        .getTopLeft(
+          find
+              .descendant(
+                of: find.byType(TtSelectionDock),
+                matching: find.byType(DecoratedBox),
+              )
+              .first,
+        )
+        .dy;
+
+    Future<void> tapEditVideo(WidgetTester tester) async {
+      await tester.tap(find.byType(TtFab));
+      await settleApp(tester);
+    }
+
+    Future<void> chooseInstead(WidgetTester tester) async {
+      await tapEditVideo(tester);
+      await tester.tap(find.widgetWithText(TtButton, 'Choose clips instead'));
+      await settleApp(tester);
+    }
+
+    testApp('Edit video opens the sheet with every live clip in shooting '
+        'order, "Edit all 3 clips in…"', (tester) async {
       final (goa, _) = await reelWithThree(tester);
-      await open(tester, goa.id);
-      await select(tester, 1);
-
-      await openMenu(tester);
-
-      expect(menuOrder(tester), ['Edit video', 'Select all', 'Share']);
-    });
-
-    testApp('during an editing session Edit video is hidden, the others '
-        'stay', (tester) async {
-      final (goa, _) = await reelWithThree(tester);
+      // A missing clip is left out.
       await real(
         tester,
-        () => h.container
-            .read(editSessionsRepositoryProvider)
-            .startSession(goa.id, EditorApp.capcut, 'Goa'),
+        () => putInReel(h, goa.id, [reelVideo(9)], onPhone: false),
       );
+      await open(tester, goa.id);
+      expect(find.byType(TtMissingClipTile), findsOneWidget);
+
+      await tapEditVideo(tester);
+
+      expect(sheetTitle(tester), 'Edit all 3 clips in…');
+      expect(find.text('Choose clips instead'), findsOneWidget);
+      // No picking screen, and nothing chosen on the page.
+      expect(find.textContaining('the picking screen'), findsNothing);
+      expect(choosing(tester), isFalse);
+
+      // The sheet's clips are the live ones in shooting order: 3, 2, 1.
+      await tester.tap(find.text('Other app…'));
+      await settleApp(tester);
+      expect(sharedIds(), [3, 2, 1]);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+    });
+
+    testApp('a double tap on Edit video opens one sheet', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+
+      await tester.tap(find.byType(TtFab));
+      await tester.tap(find.byType(TtFab), warnIfMissed: false);
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsOneWidget);
+    });
+
+    testApp('every clip missing: no Edit video', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      // Gone from the phone, so the check on open keeps them missing.
+      final ids = await real(
+        tester,
+        () => putInReel(h, goa.id, [
+          for (var i = 1; i <= 3; i++) reelVideo(i),
+        ], onPhone: false),
+      );
+      await real(tester, () => flagForTest(h, ids.toSet(), missing: true));
+      await open(tester, goa.id);
+
+      expect(find.byType(TtMissingClipTile), findsNWidgets(3));
+      expect(find.byType(TtFab), findsNothing);
+    });
+
+    testApp('Choose clips instead: choosing, nothing chosen, the hint, the '
+        'dock off', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+
+      await chooseInstead(tester);
+
+      expect(find.byType(TtSheet), findsNothing);
+      expect(choosing(tester), isTrue);
+      expect(find.text('Choose clips'), findsOneWidget);
+      expect(tiles(tester).map((t) => t.selected), [false, false, false]);
+      expect(find.byType(TtFab), findsNothing);
+      // The hint is the first thing under the access banner, above the
+      // reel's header.
+      expect(hint(), findsOneWidget);
+      expect(
+        find.text('Next time, hold a clip to start choosing straight away.'),
+        findsOneWidget,
+      );
+      expect(
+        tester.getBottomLeft(hint()).dy,
+        lessThan(tester.getTopLeft(find.byType(TtReelHeader<ReelStatus>)).dy),
+      );
+      // The dock in the nav pill's place, everything in it off.
+      expect(find.byType(TtNavPill), findsNothing);
+      final d = dock(tester);
+      expect(d.semanticLabel, 'Chosen clips');
+      expect(
+        [for (final a in d.actions) a.label],
+        ['Share', 'Add to', 'Move', 'Remove'],
+      );
+      expect(
+        [for (final a in d.actions) a.semanticLabel],
+        [
+          'Share',
+          'Add to another reel',
+          'Move to another reel',
+          'Remove from this reel',
+        ],
+      );
+      expect(
+        [for (final a in d.actions) a.icon],
+        [
+          Symbols.share_rounded,
+          Symbols.library_add_rounded,
+          Symbols.drive_file_move_rounded,
+          Symbols.playlist_remove_rounded,
+        ],
+      );
+      expect(d.actions.map((a) => a.onPressed), everyElement(isNull));
+      expect(d.edit!.label, 'Tap the clips you want to edit');
+      expect(d.edit!.semanticLabel, 'Edit: choose clips first');
+      expect(d.edit!.detail, isNull);
+      expect(d.edit!.onPressed, isNull);
+      expect(d.note, isNull);
+    });
+
+    testApp('from the sheet, un-choosing to zero keeps choosing and the hint '
+        'comes back', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await chooseInstead(tester);
+
+      // A long press while choosing chooses (it does not start again), so
+      // choosing still comes from the sheet.
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(hint(), findsNothing);
+      expect(dock(tester).edit!.label, 'Edit 1 clip');
+
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+
+      expect(choosing(tester), isTrue);
+      expect(find.text('Choose clips'), findsOneWidget);
+      expect(hint(), findsOneWidget);
+      expect(find.byType(TtSelectionDock), findsOneWidget);
+      expect(dock(tester).edit!.onPressed, isNull);
+      expect(find.byType(TtNavPill), findsNothing);
+    });
+
+    testApp('a long press: that clip chosen, no hint; un-choosing it ends '
+        'choosing', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+
+      await tester.longPress(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(tiles(tester).map((t) => t.selected), [false, true, false]);
+      expect(hint(), findsNothing);
+      expect(find.byType(TtNavPill), findsNothing);
+      final d = dock(tester);
+      expect(d.actions.map((a) => a.onPressed), everyElement(isNotNull));
+      // Video 2 is 25 s long.
+      expect(d.edit!.label, 'Edit 1 clip');
+      expect(d.edit!.detail, '0:25');
+      expect(d.edit!.semanticLabel, 'Edit 1 clip, 0:25');
+      expect(d.edit!.onPressed, isNotNull);
+
+      await tester.tap(find.byType(TtClipTile).at(1));
+      await tester.pumpAndSettle();
+
+      expect(choosing(tester), isFalse);
+      expect(find.byType(TtSelectionDock), findsNothing);
+      expect(find.byType(TtNavPill), findsOneWidget);
+      expect(find.byType(TtFab), findsOneWidget);
+    });
+
+    testApp('Edit 2 clips opens the sheet with exactly those, in shooting '
+        'order', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      // Tiles are in shooting order: video 3, 2, 1. Choose the last tile
+      // first, then the first: videos 1 and 3, 50 s together.
+      await tester.longPress(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(dock(tester).edit!.label, 'Edit 2 clips');
+      expect(dock(tester).edit!.detail, '0:50');
+      expect(dock(tester).edit!.semanticLabel, 'Edit 2 clips, 0:50');
+
+      await tester.tap(dockEdit());
+      await settleApp(tester);
+
+      expect(sheetTitle(tester), 'Edit 2 clips in…');
+      // Not the whole reel's sheet.
+      expect(find.text('Choose clips instead'), findsNothing);
+      await tester.tap(find.text('Other app…'));
+      await settleApp(tester);
+      expect(sharedIds(), [3, 1]);
+      // Other app… is an editor too: choosing ends.
+      expect(choosing(tester), isFalse);
+      expect(find.byType(TtSelectionDock), findsNothing);
+    });
+
+    testApp('a double tap on Edit opens one sheet', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await openMenu(tester);
+      await tester.tap(dockEdit());
+      await tester.tap(dockEdit(), warnIfMissed: false);
+      await settleApp(tester);
 
-      expect(menuOrder(tester), ['Select all', 'Share']);
+      expect(find.byType(TtSheet), findsOneWidget);
     });
 
-    testApp('Edit video waits in the menu until it is known that there is '
-        'no session', (tester) async {
+    testApp('picking CapCut ends choosing and shows "Sent 2 clips to '
+        'CapCut"', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 2);
+      await tester.tap(dockEdit());
+      await settleApp(tester);
+
+      await tester.tap(find.text('CapCut'));
+      await settleApp(tester);
+
+      expect(find.text('Sent 2 clips to CapCut'), findsOneWidget);
+      expect(h.editors.sent.single.$1, EditorApp.capcut.packageName);
+      expect(
+        [for (final c in h.editors.sent.single.$2) c.mediaStoreId],
+        [3, 2],
+      );
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(choosing(tester), isFalse);
+      expect(find.byType(TtSelectionDock), findsNothing);
+      expect(find.byType(TtNavPill), findsOneWidget);
+
+      // The dock is gone, and the offer still comes: it belongs to the send,
+      // not to the dock's context (the sheet's navigator outlives the dock).
+      await tester.pump(const Duration(milliseconds: 1500));
+      await settleApp(tester);
+      expect(find.text('Mark Goa as Ready to edit?'), findsOneWidget);
+      expect(find.text('Not now'), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await settleApp(tester);
+      expect(find.text('Mark Goa as Ready to edit?'), findsNothing);
+    });
+
+    testApp('dismissing the sheet keeps the choice', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 2);
+      await tester.tap(dockEdit());
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsOneWidget);
+
+      // A tap on the scrim above the sheet.
+      await tester.tapAt(const Offset(180, 40));
+      await settleApp(tester);
+
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(dock(tester).edit!.label, 'Edit 2 clips');
+      expect(dock(tester).edit!.onPressed, isNotNull);
+      expect(h.editors.sent, isEmpty);
+    });
+
+    testApp('Select all becomes Clear; Clear empties and keeps choosing', (
+      tester,
+    ) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+      expect(topButton('Select all'), findsOneWidget);
+      expect(topButton('Clear'), findsNothing);
+
+      await tester.tap(topButton('Select all'));
+      await tester.pumpAndSettle();
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(topButton('Select all'), findsNothing);
+      expect(topButton('Clear'), findsOneWidget);
+
+      await tester.tap(topButton('Clear'));
+      await tester.pumpAndSettle();
+
+      expect(choosing(tester), isTrue);
+      expect(find.text('Choose clips'), findsOneWidget);
+      expect(tiles(tester).map((t) => t.selected), [false, false, false]);
+      expect(topButton('Select all'), findsOneWidget);
+      expect(
+        dock(tester).actions.map((a) => a.onPressed),
+        everyElement(isNull),
+      );
+      // Choosing came from a long press, not the sheet: no hint.
+      expect(hint(), findsNothing);
+    });
+
+    testApp('2x text: Select all is its icon with its name; the count does '
+        'not overflow', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id, textScale: 2);
+      await select(tester, 2);
+
+      Finder icon(String label) => find.descendant(
+        of: find.byType(TtAppBar),
+        matching: barButton(label),
+      );
+      expect(topButton('Select all'), findsNothing);
+      expect(icon('Select all'), findsOneWidget);
+      expect(
+        tester.widget<TtIconButton>(icon('Select all')).icon,
+        Symbols.select_all_rounded,
+      );
+      expect(find.text('2 selected'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      await tester.tap(icon('Select all'));
+      await tester.pumpAndSettle();
+      expect(find.text('3 selected'), findsOneWidget);
+      expect(icon('Clear'), findsOneWidget);
+      expect(
+        tester.widget<TtIconButton>(icon('Clear')).icon,
+        Symbols.deselect_rounded,
+      );
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+
+    for (final brightness in Brightness.values) {
+      testApp('the page while choosing is accessible at 1x, '
+          '${brightness.name}: from the sheet, then with a clip chosen', (
+        tester,
+      ) async {
+        // The tap targets, their names and the text contrast (D-62). Not
+        // Flutter's pixel sampler: it widens each text's box by 4 dp, and the
+        // reel's name sits flush under the coloured selection bar, so it
+        // takes the bar's colour for the text's (as with the bar before).
+        Future<void> accessible() async {
+          final semantics = tester.ensureSemantics();
+          await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+          await expectLater(tester, meetsGuideline(ttTextContrastGuideline));
+          semantics.dispose();
+        }
+
+        final (goa, _) = await reelWithThree(tester);
+        await open(tester, goa.id, brightness: brightness);
+
+        await chooseInstead(tester);
+        await accessible();
+
+        await tester.tap(find.byType(TtClipTile).first);
+        await tester.pumpAndSettle();
+        expect(find.text('1 selected'), findsOneWidget);
+        await accessible();
+      });
+    }
+
+    testApp('the top bar has no Add to, Move, Remove or ⋮', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      expect(
+        [
+          for (final b in tester.widgetList<TtIconButton>(
+            find.descendant(
+              of: find.byType(TtAppBar),
+              matching: find.byType(TtIconButton),
+            ),
+          ))
+            b.semanticLabel,
+        ],
+        ['Close'],
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TtAppBar),
+          matching: find.byType(TtButton),
+        ),
+        findsOneWidget,
+      );
+      expect(topButton('Select all'), findsOneWidget);
+    });
+
+    for (final (editor, name) in [
+      (EditorApp.vn, 'VN'),
+      (EditorApp.capcut, 'CapCut'),
+      (EditorApp.edits, 'Edits'),
+    ]) {
+      testApp('during a session the dock has the note and no Edit ($name)', (
+        tester,
+      ) async {
+        final (goa, _) = await reelWithThree(tester);
+        await real(
+          tester,
+          () => h.container
+              .read(editSessionsRepositoryProvider)
+              .startSession(goa.id, editor, 'Goa'),
+        );
+        await open(tester, goa.id);
+        await select(tester, 1);
+
+        final d = dock(tester);
+        expect(d.edit, isNull);
+        expect(dockEdit(), findsNothing);
+        expect(
+          d.note,
+          'This reel is being edited in $name. Tap Done editing at the top '
+          'before sending clips again.',
+        );
+        // The four actions stay.
+        expect(d.actions.map((a) => a.onPressed), everyElement(isNotNull));
+      });
+    }
+
+    testApp('while the session loads, Edit is off', (tester) async {
       final (goa, _) = await reelWithThree(tester);
       await open(
         tester,
         goa.id,
         overrides: [
+          // The database has not answered about the session yet.
           reelEditSessionProvider(goa.id)
               .overrideWith((ref) => const Stream<EditState?>.empty()),
         ],
       );
       await select(tester, 1);
 
-      await openMenu(tester);
-
-      expect(menuOrder(tester), ['Select all', 'Share']);
+      final d = dock(tester);
+      expect(d.note, isNull);
+      expect(d.edit!.label, 'Edit 1 clip');
+      expect(d.edit!.onPressed, isNull);
+      expect(d.actions.map((a) => a.onPressed), everyElement(isNotNull));
     });
 
-    testApp('Edit video opens the picking screen with the chosen clips '
-        'ticked, in shooting order, and ends choosing', (tester) async {
+    testApp('Done editing while choosing brings Edit back', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      final sessions = h.container.read(editSessionsRepositoryProvider);
+      await real(
+        tester,
+        () => sessions.startSession(goa.id, EditorApp.capcut, 'Goa'),
+      );
+      await open(tester, goa.id);
+      await select(tester, 1);
+      expect(dock(tester).note, isNotNull);
+
+      await real(tester, () => sessions.endSession(goa.id));
+      await settleApp(tester);
+
+      expect(dock(tester).note, isNull);
+      expect(dock(tester).edit!.label, 'Edit 1 clip');
+      expect(dock(tester).edit!.onPressed, isNotNull);
+      // The choice stays.
+      expect(find.text('1 selected'), findsOneWidget);
+    });
+
+    testApp('Share keeps the choice; Remove ends it with Undo', (tester) async {
       final (goa, ids) = await reelWithThree(tester);
       await open(tester, goa.id);
-      // Tiles are in shooting order: video 3, 2, 1. Choose the first and
-      // the last tile: videos 3 and 1.
-      await select(tester, 1);
-      await tester.tap(find.byType(TtClipTile).at(2));
-      await tester.pumpAndSettle();
-      await openMenu(tester);
+      await select(tester, 2);
 
-      await tester.tap(find.text('Edit video'));
-      await tester.pumpAndSettle();
+      await tester.tap(dockAction('Share'));
+      await settleApp(tester);
+      expect(h.editors.chooserShares, hasLength(1));
+      expect(sharedIds(), [3, 2]);
+      expect(h.editors.chooserShares.single.$2, 'Share 2 videos');
+      expect(h.editors.sent, isEmpty);
+      expect(find.text('2 selected'), findsOneWidget);
+
+      await tester.tap(dockAction('Remove'));
+      await settleApp(tester);
 
       expect(
         find.text(
-          editSelectRouteMarker('${goa.id}', '${ids[2]},${ids[0]}', null),
+          '2 clips removed from Goa. The videos are still in your gallery.',
         ),
         findsOneWidget,
       );
-      // Back on the reel's page nothing is chosen any more.
-      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
-      await tester.pumpAndSettle();
-      expect(find.textContaining('selected'), findsNothing);
-      expect(tiles(tester).map((t) => t.selected), [null, null, null]);
-    });
-
-    testApp('Edit video with nothing chosen opens it with nothing ticked', (
-      tester,
-    ) async {
-      final (goa, _) = await reelWithThree(tester);
-      await open(tester, goa.id);
-      await openMenu(tester);
-      await tester.tap(find.text('Select clips'));
-      await tester.pumpAndSettle();
-      await openMenu(tester);
-
-      await tester.tap(find.text('Edit video'));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(editSelectRouteMarker('${goa.id}', null, null)),
-        findsOneWidget,
-      );
-    });
-
-    testApp('Share opens the share menu with the chosen clips in shooting '
-        'order, and keeps the choice', (tester) async {
-      final (goa, _) = await reelWithThree(tester);
-      await open(tester, goa.id);
-      await select(tester, 2);
-      await openMenu(tester);
-
-      await tester.tap(find.text('Share'));
-      await settleApp(tester);
-
-      expect(h.editors.chooserShares, hasLength(1));
-      final (shared, chooserTitle) = h.editors.chooserShares.single;
-      expect([for (final c in shared) c.mediaStoreId], [3, 2]);
-      expect(chooserTitle, 'Share 2 videos');
-      expect(h.editors.sent, isEmpty);
-      expect(find.text('2 selected'), findsOneWidget);
+      expect(find.text('Undo'), findsOneWidget);
+      expect(choosing(tester), isFalse);
+      expect(find.byType(TtSelectionDock), findsNothing);
+      expect(await clipIdsOf(tester, goa.id), {ids[0]});
     });
 
     testApp('a second Share while the first is opening opens no second '
@@ -1323,12 +1760,10 @@ void main() {
       await open(tester, goa.id);
       await select(tester, 1);
 
-      await openMenu(tester);
-      await tester.tap(find.text('Share'));
+      await tester.tap(dockAction('Share'));
       await tester.runAsync(settle);
       await tester.pumpAndSettle();
-      await openMenu(tester);
-      await tester.tap(find.text('Share'));
+      await tester.tap(dockAction('Share'));
       await tester.runAsync(settle);
       await tester.pumpAndSettle();
       h.editors.release('shareWithChooser');
@@ -1341,27 +1776,11 @@ void main() {
       final (goa, _) = await reelWithThree(tester);
       await open(tester, goa.id);
       await select(tester, 1);
-      await openMenu(tester);
 
-      await tester.tap(find.text('Share'));
+      await tester.tap(dockAction('Share'));
       await settleApp(tester);
 
       expect(h.editors.chooserShares.single.$2, 'Share video');
-    });
-
-    testApp('Share with nothing chosen does nothing', (tester) async {
-      final (goa, _) = await reelWithThree(tester);
-      await open(tester, goa.id);
-      await openMenu(tester);
-      await tester.tap(find.text('Select clips'));
-      await tester.pumpAndSettle();
-      await openMenu(tester);
-
-      await tester.tap(find.text('Share'));
-      await settleApp(tester);
-
-      expect(h.editors.chooserShares, isEmpty);
-      expect(find.byType(TtSnack), findsNothing);
     });
 
     testApp('a chosen clip that goes missing is left out of the share', (
@@ -1370,16 +1789,354 @@ void main() {
       final (goa, ids) = await reelWithThree(tester);
       await open(tester, goa.id);
       await select(tester, 2);
-      await openMenu(tester);
       // Tiles are in shooting order: video 3 then video 2. Video 2 goes.
       await real(tester, () => flagForTest(h, {ids[1]}, missing: true));
-
-      await tester.tap(find.text('Share'));
       await settleApp(tester);
 
-      final (shared, chooserTitle) = h.editors.chooserShares.single;
-      expect([for (final c in shared) c.mediaStoreId], [3]);
-      expect(chooserTitle, 'Share video');
+      await tester.tap(dockAction('Share'));
+      await settleApp(tester);
+
+      expect(sharedIds(), [3]);
+      expect(h.editors.chooserShares.single.$2, 'Share video');
+    });
+
+    testApp('a snack shown while choosing sits above the dock', (tester) async {
+      final (goa, ids) = await reelWithThree(tester);
+      // Video 3 (the first tile) has a copy in a VN session, and deleting
+      // it fails: the remove throws CopiesNotDeleted (R8).
+      await real(
+        tester,
+        () => startEditing(h, goa.id, EditorApp.vn, copied: [ids[2]]),
+      );
+      h.editors
+        ..allow({'deleteCopies'})
+        ..failNext('deleteCopies');
+      // Tall enough for the editing banner and both parts.
+      await open(tester, goa.id, size: const Size(360, 1400));
+      await tester.longPress(
+        find.byWidgetPredicate(
+          (w) => w is TtClipTile && w.key == ValueKey(ids[2]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(dockAction('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text("Couldn't delete the copies. Try again."),
+        findsOneWidget,
+      );
+      expect(
+        tester.getBottomLeft(find.byType(TtSnack)).dy,
+        lessThanOrEqualTo(dockTop(tester)),
+      );
+      // The choice is kept to try again.
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(await clipIdsOf(tester, goa.id), ids.toSet());
+    });
+
+    testApp('clips gone after the sheet opened: the failure in the sheet, '
+        'the page stays', (tester) async {
+      final (goa, ids) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await tapEditVideo(tester);
+      await real(tester, () => flagForTest(h, ids.toSet(), missing: true));
+
+      await tester.tap(find.text('CapCut'));
+      await settleApp(tester);
+
+      expect(
+        find.descendant(
+          of: find.byType(TtSheet),
+          matching: find.text('These clips are missing from your phone.'),
+        ),
+        findsOneWidget,
+      );
+      expect(h.editors.sent, isEmpty);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(choosing(tester), isFalse);
+
+      await tester.tapAt(const Offset(180, 40));
+      await settleApp(tester);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(choosing(tester), isFalse);
+      expect(find.byType(TtSelectionDock), findsNothing);
+    });
+
+    for (final scale in [1.0, 2.0]) {
+      testApp('the last row scrolls clear of the dock, at ${scale}x', (
+        tester,
+      ) async {
+        final goa = await newReel(tester, 'Goa');
+        await reelWithClips(tester, goa, 15);
+        await open(tester, goa.id, textScale: scale);
+        await select(tester, 1);
+
+        for (var i = 0; i < 4; i++) {
+          await tester.drag(
+            find.byType(CustomScrollView),
+            const Offset(0, -2000),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        final last = find.byType(TtClipTile).last;
+        expect(
+          tester.getBottomLeft(last).dy,
+          lessThanOrEqualTo(dockTop(tester)),
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+
+    testApp('Back ends choosing, then leaves the page', (tester) async {
+      final (goa, _) = await reelWithThree(tester);
+      await open(tester, goa.id);
+      await select(tester, 1);
+
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+
+      expect(choosing(tester), isFalse);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.byType(TtSelectionDock), findsNothing);
+      expect(find.byType(TtNavPill), findsOneWidget);
+
+      await tester.tap(barButton('Back'));
+      await tester.pumpAndSettle();
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+    });
+
+    group('the dock and the page coming and going (F13)', () {
+      /// A host in the shell's first tab that keeps reel [reelId]'s
+      /// selection alive and shows its page only after "Open the page".
+      Widget host(int reelId) => Consumer(
+        builder: (context, ref, _) {
+          ref.watch(reelSelectionProvider(reelId));
+          return _PageHost(reelId: reelId);
+        },
+      );
+
+      Future<void> pumpHost(WidgetTester tester, int reelId) async {
+        await pumpScreen(
+          tester,
+          host(reelId),
+          overrides: h.appOverrides,
+          settle: false,
+          inShell: true,
+        );
+        await settleApp(tester);
+      }
+
+      testApp('a page that opens already choosing has the dock on its first '
+          'frame', (tester) async {
+        final (goa, _) = await reelWithThree(tester);
+        await pumpHost(tester, goa.id);
+        expect(find.byType(TtNavPill), findsOneWidget);
+
+        // Choosing starts before the page is built; the page's first frame
+        // already chooses, and nothing told the shell while building.
+        await tester.tap(find.text(_PageHost.openLabel));
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ReelDetailScreen), findsOneWidget);
+        await tester.pump();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+        expect(find.byType(TtNavPill), findsNothing);
+      });
+
+      /// The page kept as it is while its reel changes from [first] to
+      /// [second] (the same State, another `reelId`), with both reels'
+      /// selections alive.
+      Future<void> pumpSwitch(
+        WidgetTester tester,
+        int first,
+        int second,
+      ) async {
+        await pumpScreen(
+          tester,
+          Consumer(
+            builder: (context, ref, _) {
+              ref
+                ..watch(reelSelectionProvider(first))
+                ..watch(reelSelectionProvider(second));
+              return _SwitchHost(first: first, second: second);
+            },
+          ),
+          overrides: h.appOverrides,
+          settle: false,
+          inShell: true,
+        );
+        await settleApp(tester);
+      }
+
+      ReelSelection selectionOf(WidgetTester tester, int reelId) =>
+          ProviderScope.containerOf(tester.element(find.byType(_SwitchHost)))
+              .read(reelSelectionProvider(reelId).notifier);
+
+      int? shownFor(WidgetTester tester) =>
+          ProviderScope.containerOf(tester.element(find.byType(_SwitchHost)))
+              .read(choosingReelProvider);
+
+      Future<(int, int)> twoReels(WidgetTester tester) async {
+        final goa = await newReel(tester, 'Goa');
+        final london = await newReel(tester, 'London');
+        await reelWithClips(tester, goa, 2);
+        await reelWithClips(tester, london, 2);
+        return (goa.id, london.id);
+      }
+
+      testApp('a page whose reel changes follows the new reel: choosing on it '
+          'shows its dock, and the old reel no longer speaks for the page', (
+        tester,
+      ) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        // The old reel choosing is not this page's business any more.
+        selectionOf(tester, a).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), isNull, reason: 'the old reel is not shown');
+        expect(find.byType(TtSelectionDock), findsNothing);
+        selectionOf(tester, a).clear();
+        await tester.pumpAndSettle();
+
+        // The new reel is.
+        selectionOf(tester, b).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), b);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+
+        selectionOf(tester, b).clear();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+      });
+
+      testApp('a page that was choosing on the old reel stops showing its '
+          'dock when its reel changes to one that is not choosing', (
+        tester,
+      ) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        selectionOf(tester, a).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), a);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shownFor(tester), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+      });
+
+      testApp('a page whose reel changes to one that is already choosing '
+          'shows its dock after the frame, not while building', (tester) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        selectionOf(tester, b).begin();
+        await tester.pumpAndSettle();
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await tester.pumpAndSettle();
+
+        expect(shownFor(tester), b);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+      });
+
+      testApp('the page going away while choosing gives the nav pill back', (
+        tester,
+      ) async {
+        final (goa, _) = await reelWithThree(tester);
+        await pumpHost(tester, goa.id);
+        await tester.tap(find.text(_PageHost.openLabel));
+        await settleApp(tester);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+
+        _PageHost.close(tester);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(find.byType(ReelDetailScreen), findsNothing);
+        expect(find.byType(TtSelectionDock), findsNothing);
+        expect(find.byType(TtNavPill), findsOneWidget);
+      });
     });
   });
+}
+
+/// Shows "Open the page" until it is tapped; the tap starts choosing on reel
+/// [reelId] with nothing chosen and shows its page in the same frame.
+class _PageHost extends ConsumerStatefulWidget {
+  const _PageHost({required this.reelId});
+
+  final int reelId;
+
+  static const String openLabel = 'Open the page';
+
+  /// Takes the page away again.
+  static void close(WidgetTester tester) =>
+      tester.state<_PageHostState>(find.byType(_PageHost)).setOpen(open: false);
+
+  @override
+  ConsumerState<_PageHost> createState() => _PageHostState();
+}
+
+class _PageHostState extends ConsumerState<_PageHost> {
+  bool _open = false;
+
+  void setOpen({required bool open}) => setState(() => _open = open);
+
+  @override
+  Widget build(BuildContext context) => _open
+      ? ReelDetailScreen(reelId: widget.reelId)
+      : Scaffold(
+          body: Center(
+            child: TextButton(
+              onPressed: () {
+                ref.read(reelSelectionProvider(widget.reelId).notifier).begin();
+                setOpen(open: true);
+              },
+              child: const Text(_PageHost.openLabel),
+            ),
+          ),
+        );
+}
+
+/// Shows reel [first]'s page and, after [switchTo], reel [second]'s in the
+/// same place: the page's State is kept and only its `reelId` changes.
+class _SwitchHost extends StatefulWidget {
+  const _SwitchHost({required this.first, required this.second});
+
+  final int first;
+  final int second;
+
+  static void switchTo(WidgetTester tester, int reelId) =>
+      tester.state<_SwitchHostState>(find.byType(_SwitchHost)).setReel(reelId);
+
+  @override
+  State<_SwitchHost> createState() => _SwitchHostState();
+}
+
+class _SwitchHostState extends State<_SwitchHost> {
+  late int _reelId = widget.first;
+
+  void setReel(int reelId) => setState(() => _reelId = reelId);
+
+  @override
+  Widget build(BuildContext context) => ReelDetailScreen(reelId: _reelId);
 }

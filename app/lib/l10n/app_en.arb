@@ -65,15 +65,24 @@
   "@shootingOffTitle": {
     "description": "Title of the Shooting mode card when it is off."
   },
-  "shootingOffSubtitle": "Off. Turn on before you start filming, and new videos wait in To tag.",
-  "@shootingOffSubtitle": {
-    "description": "Text of the Shooting mode card when it is off."
+  "shootingOffWaiting": "{count, plural, one{Off · 1 clip still to tag} other{Off · {count} clips still to tag}}",
+  "@shootingOffWaiting": {
+    "description": "Line under the title of the Shooting mode card while it is off and clips wait in To tag: how many (D-196).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-  "shootingOnTitle": "Shooting mode on",
+  "shootingOffIdle": "Off · turn it on before you film",
+  "@shootingOffIdle": {
+    "description": "Line under the title of the Shooting mode card while it is off and no clip waits in To tag (D-196)."
+  },
+  "shootingOnTitle": "Shooting",
   "@shootingOnTitle": {
     "description": "Title of the Shooting mode card when it is on."
   },
-  "shootingOnSubtitle": "On since {time}",
+  "shootingOnSubtitle": "Since {time}",
   "@shootingOnSubtitle": {
     "description": "Text of the Shooting mode card when it is on. {time} is when it was turned on.",
     "placeholders": {
@@ -83,7 +92,7 @@
       }
     }
   },
-  "shootingOnSubtitleManual": "On since {time} · Manual mode: add clips yourself",
+  "shootingOnSubtitleManual": "Since {time} · Manual mode",
   "@shootingOnSubtitleManual": {
     "description": "Text of the Shooting mode card when it is on but TakeTray does not have full access to videos. {time} is when it was turned on.",
     "placeholders": {
@@ -111,18 +120,18 @@
   "@shootingOpenCamera": {
     "description": "Button that opens the phone camera in video mode."
   },
-  "shootingStripTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
-  "@shootingStripTitle": {
-    "description": "Row at the bottom of the Shooting mode card: how many clips wait in To tag.",
+  "shootingEarlierChip": "Earlier videos",
+  "@shootingEarlierChip": {
+    "description": "Chip on the Shooting mode card while it is on: opens Add earlier videos (D-196)."
+  },
+  "shootingReferencesChipLabel": "References, {count}, from your Collecting and Ready to edit reels",
+  "@shootingReferencesChipLabel": {
+    "description": "What a screen reader says for the References chip on the Shooting mode card: how many references the Collecting and Ready to edit reels have (D-160, D-196).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
-  },
-  "shootingStripAction": "Tag now",
-  "@shootingStripAction": {
-    "description": "Trailing word of the clips-to-tag row on the Shooting mode card."
   },
   "toTagStripOn": "Shooting since {time}",
   "@toTagStripOn": {
@@ -288,21 +297,9 @@
   "@earlierCountFailed": {
     "description": "Text in the Add earlier videos sheet when the counts could not be read."
   },
-  "earlierCardRowSubtitle": "Shot before Shooting mode was on",
-  "@earlierCardRowSubtitle": {
-    "description": "Line under the Add earlier videos row on the Shooting mode card."
-  },
   "earlierCardRowLabel": "Add earlier videos, shot before Shooting mode was on",
   "@earlierCardRowLabel": {
-    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
-  },
-  "earlierCardRowSubtitleOff": "From your camera folder",
-  "@earlierCardRowSubtitleOff": {
-    "description": "Line under the Add earlier videos row on the Shooting mode card while Shooting mode is off (D-90)."
-  },
-  "earlierCardRowLabelOff": "Add earlier videos, from your camera folder",
-  "@earlierCardRowLabelOff": {
-    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card while Shooting mode is off."
+    "description": "What a screen reader says for the Earlier videos chip on the Shooting mode card (it opens Add earlier videos)."
   },
   "earlierChooseSubtitle": "Up to 10 years back",
   "@earlierChooseSubtitle": {
@@ -525,25 +522,6 @@
   "clipMissing": "Missing from phone",
   "@clipMissing": {
     "description": "Label of a clip tile whose video is gone from the phone."
-  },
-  "clipsWaitingTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
-  "@clipsWaitingTitle": {
-    "description": "Title of the banner on the Reels tab: how many clips wait in To tag while Shooting mode is off.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "clipsWaitingBody": "{duration} of video waiting",
-  "@clipsWaitingBody": {
-    "description": "Text of the banner on the Reels tab. {duration} is the total length of the waiting clips, such as \"45 s\", \"3 min\" or \"1 h 5 min\".",
-    "placeholders": {
-      "duration": {
-        "type": "String",
-        "example": "3 min"
-      }
-    }
   },
   "durationSeconds": "{count} s",
   "@durationSeconds": {
@@ -769,27 +747,19 @@
   },
   "reelsNewReel": "New reel",
   "@reelsNewReel": {
-    "description": "Label of the button and of the floating button that open the New reel sheet."
+    "description": "Label of the button that opens the New reel sheet on the empty Reels tab, and what a screen reader says for the header's New pill."
+  },
+  "reelsNew": "New",
+  "@reelsNew": {
+    "description": "Text of the pill in the Reels tab header that opens the New reel sheet; a screen reader says \"New reel\" (D-196)."
   },
   "reelFilterAll": "All",
   "@reelFilterAll": {
-    "description": "Filter chip on the Reels tab that shows every reel."
-  },
-  "reelFilterChip": "{label} {count}",
-  "@reelFilterChip": {
-    "description": "Filter chip on the Reels tab: the filter name and how many reels it shows, such as \"Published 3\".",
-    "placeholders": {
-      "label": {
-        "type": "String"
-      },
-      "count": {
-        "type": "int"
-      }
-    }
+    "description": "The tab on the Reels tab that shows every reel."
   },
   "reelFilterChipSemantics": "{label}, {count, plural, =0{no reels} one{1 reel} other{{count} reels}}",
   "@reelFilterChipSemantics": {
-    "description": "What a screen reader says for a filter chip on the Reels tab.",
+    "description": "What a screen reader says for a status tab on the Reels tab.",
     "placeholders": {
       "label": {
         "type": "String"
@@ -799,30 +769,26 @@
       }
     }
   },
-  "reelFilterEmptyTitle": "No reels marked {status}",
-  "@reelFilterEmptyTitle": {
-    "description": "Title shown on the Reels tab when the chosen filter has no reels. The status is Collecting, Ready to edit or Published.",
+  "reelTabReady": "Ready",
+  "@reelTabReady": {
+    "description": "The Ready to edit tab on the Reels tab, shortened to fit (D-196)."
+  },
+  "reelTabsLabel": "Show reels",
+  "@reelTabsLabel": {
+    "description": "What a screen reader says for the group of status tabs on the Reels tab (D-196)."
+  },
+  "reelTabEmpty": "No reels marked {status} yet.",
+  "@reelTabEmpty": {
+    "description": "Shown on the Reels tab when the chosen tab has no reels. The status is Collecting, Ready to edit or Published (D-196).",
     "placeholders": {
       "status": {
         "type": "String"
       }
     }
   },
-  "reelFilterEmptyCollecting": "New reels start as Collecting.",
-  "@reelFilterEmptyCollecting": {
-    "description": "Text shown on the Reels tab when no reel is marked Collecting."
-  },
-  "reelFilterEmptyReady": "When a reel has all its clips, mark it as Ready to edit.",
-  "@reelFilterEmptyReady": {
-    "description": "Text shown on the Reels tab when no reel is marked Ready to edit."
-  },
-  "reelFilterEmptyPublished": "When you post a reel, mark it as Published from its page.",
-  "@reelFilterEmptyPublished": {
-    "description": "Text shown on the Reels tab when no reel is marked Published."
-  },
   "reelsShowAll": "Show all reels",
   "@reelsShowAll": {
-    "description": "Button shown when a filter has no reels; it goes back to showing every reel."
+    "description": "Button shown when a tab has no reels; it goes back to showing every reel."
   },
   "reelCardClips": "{count, plural, one{1 clip} other{{count} clips}}",
   "@reelCardClips": {
@@ -1007,19 +973,85 @@
   },
   "selectionAddTo": "Add to another reel",
   "@selectionAddTo": {
-    "description": "Button of the selection bar on a reel's page that opens the sheet to also put the chosen clips in other reels."
+    "description": "What a screen reader says for Add to in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to also put them in other reels."
   },
   "selectionMoveTo": "Move to another reel",
   "@selectionMoveTo": {
-    "description": "Button of the selection bar on a reel's page that opens the sheet to move the chosen clips to another reel."
+    "description": "What a screen reader says for Move in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to move them to another reel."
   },
   "selectionRemove": "Remove from this reel",
   "@selectionRemove": {
-    "description": "Button of the selection bar on a reel's page that takes the chosen clips out of the reel."
+    "description": "What a screen reader says for Remove in the bar at the bottom of a reel's page while clips are chosen: takes them out of the reel."
   },
   "selectionSelectAll": "Select all",
   "@selectionSelectAll": {
-    "description": "Item of the menu of the selection bar that chooses every clip that is on the phone."
+    "description": "Button of the top bar on a reel's page while choosing clips (and of the clip picking screen) that chooses every clip that is on the phone."
+  },
+  "selectionChooseClips": "Choose clips",
+  "@selectionChooseClips": {
+    "description": "Title of the top bar on a reel's page while choosing clips and none is chosen yet."
+  },
+  "selectionDockLabel": "Chosen clips",
+  "@selectionDockLabel": {
+    "description": "What a screen reader says for the bar at the bottom of a reel's page while clips are chosen."
+  },
+  "selectionDockShare": "Share",
+  "@selectionDockShare": {
+    "description": "Word under the share icon in the bar at the bottom of a reel's page while clips are chosen: opens Android's share menu for them."
+  },
+  "selectionDockAddTo": "Add to",
+  "@selectionDockAddTo": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to also put them in other reels. Keep it short: four of these share one row."
+  },
+  "selectionDockMove": "Move",
+  "@selectionDockMove": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: opens the sheet to move them to another reel. Keep it short."
+  },
+  "selectionDockRemove": "Remove",
+  "@selectionDockRemove": {
+    "description": "Word under an icon in the bar at the bottom of a reel's page while clips are chosen: takes them out of this reel. Keep it short."
+  },
+  "selectionDockEdit": "{count, plural, one{Edit 1 clip} other{Edit {count} clips}}",
+  "@selectionDockEdit": {
+    "description": "Big button in the bar at the bottom of a reel's page: opens the editor sheet with the chosen clips.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "selectionDockEditSemantics": "{count, plural, one{Edit 1 clip, {duration}} other{Edit {count} clips, {duration}}}",
+  "@selectionDockEditSemantics": {
+    "description": "What a screen reader says for the Edit button in the bar at the bottom of a reel's page: how many clips and how long they are together, such as 1:38.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "selectionDockEditNoneSemantics": "Edit: choose clips first",
+  "@selectionDockEditNoneSemantics": {
+    "description": "What a screen reader says for the Edit button in the bar at the bottom of a reel's page while no clip is chosen (the button is off)."
+  },
+  "selectionDockEditingNote": "This reel is being edited in {editor}. Tap Done editing at the top before sending clips again.",
+  "@selectionDockEditingNote": {
+    "description": "Note in place of the Edit button in the bar at the bottom of a reel's page while the reel is being edited in an editor (its short name, such as VN or Edits).",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "chooseClipsHintTitle": "Tap the clips you want to edit",
+  "@chooseClipsHintTitle": {
+    "description": "Title of the hint at the top of a reel's page after Choose clips instead on the editor sheet, while no clip is chosen; also the words on the bar's Edit button while it is off."
+  },
+  "chooseClipsHintBody": "Next time, hold a clip to start choosing straight away.",
+  "@chooseClipsHintBody": {
+    "description": "Second line of the hint at the top of a reel's page after Choose clips instead on the editor sheet."
   },
   "pickerTitleAdd": "{count, plural, one{Add clip to reels} other{Add {count} clips to reels}}",
   "@pickerTitleAdd": {
@@ -1372,10 +1404,6 @@
   "@tagPlayerSkipSemantics": {
     "description": "What a screen reader says for the tag player's Skip button."
   },
-  "tagPlayerSame": "Same as previous",
-  "@tagPlayerSame": {
-    "description": "The tag player's button that puts the clip in the reels of the last tag."
-  },
   "tagPlayerSameSemantics": "Same as previous: {names}",
   "@tagPlayerSameSemantics": {
     "description": "What a screen reader says for the Same as previous button when there are reels to repeat. {names} is the reel names, joined.",
@@ -1384,6 +1412,26 @@
         "type": "String"
       }
     }
+  },
+  "tagRailSame": "Same",
+  "@tagRailSame": {
+    "description": "The label of the tag player's rail button that puts the clip in the reels of the last tag (Same as previous), under its icon."
+  },
+  "tagRailSameNone": "Same as previous: nothing tagged yet",
+  "@tagRailSameNone": {
+    "description": "What a screen reader says for the tag player's Same button while nothing has been tagged yet (the button is off)."
+  },
+  "tagAllReels": "All reels",
+  "@tagAllReels": {
+    "description": "The button in the tag player's dock that opens a sheet with every reel."
+  },
+  "tagDockPickTitle": "Pick reels",
+  "@tagDockPickTitle": {
+    "description": "The heading of the tag player's dock while Pick several is on."
+  },
+  "tagAllReelsDone": "Done",
+  "@tagAllReelsDone": {
+    "description": "The button that closes the tag player's All reels sheet while Pick several is on (the picks are kept)."
   },
   "tagPanelLabel": "Reels",
   "@tagPanelLabel": {
@@ -1424,16 +1472,7 @@
   },
   "tagOtherReels": "Other reels",
   "@tagOtherReels": {
-    "description": "The tag panel's toggle label while the Ready and Published reels are shown."
-  },
-  "tagOtherReelsCount": "Other reels ({count})",
-  "@tagOtherReelsCount": {
-    "description": "The tag panel's toggle label while the Ready and Published reels are folded.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
+    "description": "The heading over the Ready and Published reels in the tag player's All reels sheet."
   },
   "tagNoReels": "You don't have any reels yet. Create one and this clip goes into it.",
   "@tagNoReels": {
@@ -2159,52 +2198,15 @@
   "@manualPickAllow": {
     "description": "Button of the Manual mode sheet that asks for full video access, so Add videos can show folders."
   },
-  "editSelectTitle": "Pick clips to edit",
-  "@editSelectTitle": {
-    "description": "Title of the screen where the clips to send to an editor are picked. The reel's name is under it."
-  },
   "editSelectClear": "Clear",
   "@editSelectClear": {
-    "description": "Top bar button on the clip picking screen that un-ticks every clip. It replaces Select all while every clip is ticked."
+    "description": "Top bar button on the clip picking screen, and on a reel's page while choosing clips, that un-ticks every clip and keeps choosing. It replaces Select all while every clip is ticked."
   },
   "editSelectInfo": "Clips go to your editor in the order you shot them.",
   "@editSelectInfo": {
     "description": "Note under the title of the clip picking screen."
   },
-  "editBarNone": "No clips picked",
-  "@editBarNone": {
-    "description": "Bottom bar of the clip picking screen when nothing is ticked."
-  },
-  "editBarNoneHint": "Tap the clips you want to edit",
-  "@editBarNoneHint": {
-    "description": "Line under No clips picked."
-  },
-  "editBarPicked": "{count, plural, one{1 clip} other{{count} clips}} · {duration}",
-  "@editBarPicked": {
-    "description": "Bottom bar of the clip picking screen: how many clips are ticked and their total length, such as 12 clips · 1:18.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      },
-      "duration": {
-        "type": "String"
-      }
-    }
-  },
-  "editBarPickedDetail": "{size} · in shooting order",
-  "@editBarPickedDetail": {
-    "description": "Line under the ticked count on the clip picking screen: their total size, such as 900 MB, and that they go in the order they were shot.",
-    "placeholders": {
-      "size": {
-        "type": "String"
-      }
-    }
-  },
-  "editContinue": "Continue",
-  "@editContinue": {
-    "description": "Button of the clip picking screen that opens the editor sheet. It is off while no clip is ticked."
-  },
-  "sizeMegabytes": "{number}\u00a0MB",
+  "sizeMegabytes": "{number} MB",
   "@sizeMegabytes": {
     "description": "A size in decimal megabytes, with a no-break space before the unit so the number and the unit never part. {number} is a whole number such as 900.",
     "placeholders": {
@@ -2213,7 +2215,7 @@
       }
     }
   },
-  "sizeGigabytes": "{number}\u00a0GB",
+  "sizeGigabytes": "{number} GB",
   "@sizeGigabytes": {
     "description": "A size in decimal gigabytes, with a no-break space before the unit so the number and the unit never part. {number} is a number with at most one decimal such as 1.2.",
     "placeholders": {
@@ -2228,6 +2230,35 @@
     "placeholders": {
       "count": {
         "type": "int"
+      }
+    }
+  },
+  "editorSheetTitleAll": "{count, plural, other{Edit all {count} clips in…}}",
+  "@editorSheetTitleAll": {
+    "description": "Title of the editor sheet when it holds every clip of the reel (and there is more than one): how many clips go to the editor chosen below.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "editorChooseInstead": "Choose clips instead",
+  "@editorChooseInstead": {
+    "description": "Text button under the editor sheet's subtitle (only when the sheet holds every clip): closes the sheet and starts choosing clips on the reel page."
+  },
+  "editorLastUsed": "Last used",
+  "@editorLastUsed": {
+    "description": "Small pill after the name of the editor used last, in the editor sheet; that editor is listed first."
+  },
+  "editorLastUsedSemantics": "{name}, last used. {subtitle}",
+  "@editorLastUsedSemantics": {
+    "description": "Screen-reader label of the editor row used last in the editor sheet: its name, that it was used last, then the line under the name (a screen reader would otherwise lose that line, such as the size of VN's copies).",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "subtitle": {
+        "type": "String"
       }
     }
   },
@@ -2372,11 +2403,11 @@
   },
   "reelEditVideo": "Edit video",
   "@reelEditVideo": {
-    "description": "Button on a reel's page, and its three-dot menu entry, that opens the clip picking screen for an editor."
+    "description": "Button on a reel's page that opens the editor sheet with every clip of the reel."
   },
   "reelMenuShare": "Share",
   "@reelMenuShare": {
-    "description": "Entry in the three-dot menu of a reel's page while clips are chosen: shares them through Android's share menu."
+    "description": "What a screen reader says for Share in the bar at the bottom of a reel's page while clips are chosen: shares them through Android's share menu."
   },
   "viewerShare": "Share",
   "@viewerShare": {
@@ -3001,6 +3032,27 @@
       },
       "editing": {
         "type": "String"
+      }
+    }
+  },
+  "reelCardInEditor": "In {editor}",
+  "@reelCardInEditor": {
+    "description": "The note under a Home reel card while the reel is being edited in {editor} (\"VN\", \"CapCut\", \"Edits\").",
+    "placeholders": {
+      "editor": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsReferences": "{card}. {count, plural, =1{1 reference} other{{count} references}}",
+  "@reelCardSemanticsReferences": {
+    "description": "What a screen reader says for a Home reel card whose reel has references: the card's words so far, then how many references it has.",
+    "placeholders": {
+      "card": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
       }
     }
   },
@@ -3946,8 +3998,7 @@
   "settingsVersionUnknown": "Version",
   "@settingsVersionUnknown": {
     "description": "Second line of the TakeTray row in Settings while the app version is not known."
-  }
-  ,
+  },
   "watchedInfo": "While Shooting mode is on, new videos saved in these folders go to To tag.",
   "@watchedInfo": {
     "description": "The note at the top of the Watched folders screen."
@@ -4331,15 +4382,6 @@
   "referenceOpenFailed": "No app on this phone can open this link.",
   "@referenceOpenFailed": {
     "description": "Snack shown when a reference was tapped and no app or browser on the phone could open its link."
-  },
-  "reelCardReferences": "{count, plural, =1{1 reference} other{{count} references}}, open them",
-  "@reelCardReferences": {
-    "description": "What a screen reader says for the references badge on a Home reel card; tapping it opens the reel at its References section.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
   },
   "reelEmptyShareHint": "You can also share a reel from Instagram to TakeTray to save it as a reference.",
   "@reelEmptyShareHint": {

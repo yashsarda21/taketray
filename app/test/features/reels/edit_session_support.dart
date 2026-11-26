@@ -59,7 +59,8 @@ Future<void> settleApp(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// Opens reel [id]'s page over `h`'s database on a phone-sized view.
+/// Opens reel [id]'s page over `h`'s database on a phone-sized view; with
+/// [inShell], in the app's shell (for the dock while choosing, D-191).
 Future<void> openReelPage(
   WidgetTester tester,
   VmHarness h,
@@ -69,6 +70,7 @@ Future<void> openReelPage(
   bool askDoneEditing = false,
   Size size = const Size(360, 800),
   List<Override> overrides = const [],
+  bool inShell = false,
 }) async {
   await pumpScreen(
     tester,
@@ -78,6 +80,7 @@ Future<void> openReelPage(
     brightness: brightness,
     size: size,
     settle: false,
+    inShell: inShell,
   );
   await settleApp(tester);
 }

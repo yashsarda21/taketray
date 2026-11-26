@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:material_symbols_icons/symbols.dart';
+import 'package:taketray_ui/src/components/internal/pill_tap_target.dart';
 import 'package:taketray_ui/src/theme/tt_metrics.dart';
 import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 
@@ -129,7 +130,7 @@ class _PillTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return _ChipTapTarget(
+    return TtPillTapTarget(
       label: semanticLabel ?? label,
       selected: selected,
       onPressed: onPressed,
@@ -184,7 +185,7 @@ class TtSuggestionChip extends StatelessWidget {
     final tt = context.tt;
     final scheme = context.scheme;
     // tt-style.css: .style-tt .sugg .fchip
-    return _ChipTapTarget(
+    return TtPillTapTarget(
       label: label,
       onPressed: onPressed,
       child: CustomPaint(
@@ -228,51 +229,6 @@ class TtSuggestionChip extends StatelessWidget {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Gives a chip button semantics and a 48 dp tall tap target around it. The
-/// target is as wide as the chip (at least 48 dp), so chips sit side by side
-/// in a `Wrap`.
-class _ChipTapTarget extends StatelessWidget {
-  const new({
-    required this.label,
-    required this.onPressed,
-    required this.child,
-    this.selected,
-  });
-
-  final String label;
-  final VoidCallback onPressed;
-  final Widget child;
-  final bool? selected;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      button: true,
-      enabled: true,
-      selected: selected,
-      label: label,
-      onTap: onPressed,
-      // The chip is shorter than the target; a tap in the margin above or
-      // below it still counts.
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onPressed,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minWidth: context.tt.sizes.touchTarget,
-            minHeight: context.tt.sizes.touchTarget,
-          ),
-          // widthFactor 1 too: in a Wrap the chip gets a loose width, and a
-          // Center without it would take all of it, one chip to a row.
-          child: Center(widthFactor: 1, heightFactor: 1, child: child),
         ),
       ),
     );

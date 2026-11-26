@@ -15,10 +15,11 @@ final Logger _log = Logger('home');
 
 /// The side, in logical pixels, a cover picture is asked for (D-86).
 ///
-/// A card is 4:5 and about 160 to 190 dp wide on a phone, so its height (the
-/// longer side, which the picture is cropped to cover) is at most about 240
-/// dp. One size for every phone and every card keeps the thumbnail cache from
-/// holding a file per screen width.
+/// A card's cover is 3:4 (D-194) and about 160 to 190 dp wide on a phone, so
+/// its height (the longer side, which the picture is cropped to cover) is
+/// about 215 to 255 dp. One size for every phone and every card keeps the
+/// thumbnail cache from holding a file per screen width; the widest card
+/// shows the picture a little enlarged.
 const double homeCoverSize = 240;
 
 /// What Home shows (D-86).

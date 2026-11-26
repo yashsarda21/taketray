@@ -19,7 +19,8 @@ import '../../../support/reel_videos.dart';
 import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
 
-/// The tag player's screenshots (Task 7, D-97), dark, at text 1x and 2x.
+/// The tag player's screenshots (D-97, the full-screen layout of D-181),
+/// dark, at text 1x and 2x, on a 360 x 800 phone with a 24 dp status bar.
 ///
 /// **macOS only, and not on CI** (D-61): the images are made with real text on
 /// the owner's Mac (`goldens/macos/`); CI has no set for the app's screens, so
@@ -157,18 +158,30 @@ void main() {
   );
 
   Future<void> tagInto(WidgetTester tester, String name) async {
+    // At 2x the dock's grid can scroll: bring the chip into it first.
+    await tester.ensureVisible(chip(name));
+    await tester.pump();
     await tester.tap(chip(name));
     await tester.pump();
     holds.fireAll();
     await settleApp(tester);
   }
 
-  Future<void> expectGolden(WidgetTester tester, String name) async {
+  /// The screen, or with [app] the whole app (a sheet is a route of its
+  /// own, above the player).
+  Future<void> expectGolden(
+    WidgetTester tester,
+    String name, {
+    bool app = false,
+  }) async {
     await expectLater(
-      find.byType(TagPlayerScreen),
+      app ? find.byType(MaterialApp) : find.byType(TagPlayerScreen),
       matchesGoldenFile('goldens/macos/$name.png'),
     );
   }
+
+  /// Taken by [both] with the whole app in the image.
+  final wholeApp = <String>{'tag_player_all_reels'};
 
   /// Registers [body] twice: at text 1x and at 2x.
   void both(
@@ -181,39 +194,64 @@ void main() {
       testApp('$description ($suffix)', (tester) async {
         tester.view
           ..physicalSize = const Size(360, 800)
-          ..devicePixelRatio = 1;
+          ..devicePixelRatio = 1
+          ..padding = const FakeViewPadding(top: 24)
+          ..viewPadding = const FakeViewPadding(top: 24);
         addTearDown(tester.view.reset);
         await body(tester, scale);
-        await expectGolden(tester, '${name}_$suffix');
+        await expectGolden(
+          tester,
+          '${name}_$suffix',
+          app: wholeApp.contains(name),
+        );
       }, skip: !_goldens);
     }
   }
 
-  both('the first clip', 'tag_player_first', (tester, scale) async {
+  /// The reels of most of the images: three Collecting, and a Ready one, so
+  /// All reels is offered.
+  Future<void> fourReels(WidgetTester tester) async {
     await reel(tester, 'London Food');
     await reel(tester, 'Goa Trip');
     await reel(tester, 'Sunsets');
     await reel(tester, 'Old shoot', status: ReelStatus.ready);
+  }
+
+  both('the first clip', 'tag_player_first', (tester, scale) async {
+    await fourReels(tester);
     await waiting(tester, 8);
     await open(tester, textScale: scale);
   });
 
-  both('mid-scene, after three tags', 'tag_player_mid', (tester, scale) async {
-    await reel(tester, 'London Food');
-    await reel(tester, 'Goa Trip');
-    await reel(tester, 'Sunsets');
+  both('just tagged, with the snack', 'tag_player_tagged', (
+    tester,
+    scale,
+  ) async {
+    await fourReels(tester);
     await waiting(tester, 8);
     await open(tester, textScale: scale);
-    await tagInto(tester, 'Goa Trip');
-    await tagInto(tester, 'Goa Trip');
-    await tagInto(tester, 'London Food');
+    // Sunsets is the newest reel: the first chip, on screen at 2x too.
+    await tagInto(tester, 'Sunsets');
+    await tagInto(tester, 'Sunsets');
     await showPictures(tester);
   });
 
+  both('the tap moment: the check, held', 'tag_player_tap', (
+    tester,
+    scale,
+  ) async {
+    await fourReels(tester);
+    await waiting(tester, 8);
+    await open(tester, textScale: scale);
+    await tester.tap(chip('Sunsets'));
+    await tester.pump();
+    // The hold has not ended: nothing tagged yet.
+    expect(holds.made.single.cancelled, isFalse);
+    await settleApp(tester);
+  });
+
   both('Pick several', 'tag_player_pick', (tester, scale) async {
-    await reel(tester, 'London Food');
-    await reel(tester, 'Goa Trip');
-    await reel(tester, 'Sunsets');
+    await fourReels(tester);
     await waiting(tester, 8);
     await open(tester, textScale: scale);
     await tester.tap(find.text('Pick several'));
@@ -229,16 +267,14 @@ void main() {
   });
 
   both('loading', 'tag_player_loading', (tester, scale) async {
-    await reel(tester, 'London Food');
-    await reel(tester, 'Goa Trip');
+    await fourReels(tester);
     await waiting(tester, 8);
     platform.hold = true;
     await open(tester, textScale: scale, animate: false);
   });
 
   both('a long clip', 'tag_player_long', (tester, scale) async {
-    await reel(tester, 'London Food');
-    await reel(tester, 'Goa Trip');
+    await fourReels(tester);
     await waiting(tester, 3, durationMs: 272000);
     platform.duration = const Duration(minutes: 4, seconds: 32);
     await open(tester, textScale: scale);
@@ -247,11 +283,31 @@ void main() {
   });
 
   both('a horizontal clip', 'tag_player_horizontal', (tester, scale) async {
-    await reel(tester, 'London Food');
-    await reel(tester, 'Goa Trip');
+    await fourReels(tester);
     await waiting(tester, 3, horizontal: true);
     platform.size = const Size(1920, 1080);
     await open(tester, textScale: scale);
+  });
+
+  both('the All reels sheet', 'tag_player_all_reels', (tester, scale) async {
+    await fourReels(tester);
+    await reel(tester, 'Posted', status: ReelStatus.published);
+    await waiting(tester, 8);
+    await open(tester, textScale: scale);
+    await tester.tap(find.text('All reels'));
+    await settleApp(tester);
+    await showPictures(tester);
+  });
+
+  both('paused', 'tag_player_paused', (tester, scale) async {
+    await fourReels(tester);
+    await waiting(tester, 8);
+    await open(tester, textScale: scale);
+    // On the clip between the top and the dock, away from the rail (at 2x
+    // the dock reaches the middle of the screen).
+    await tester.tapAt(const Offset(100, 280));
+    await settleApp(tester);
+    expect(platform.players.first.playing, isFalse);
   });
 
   both('All done!', 'tag_player_done', (tester, scale) async {

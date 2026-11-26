@@ -15,11 +15,14 @@ part of 'reel_selection.dart';
 ///   missing tile is not selectable, and [selectAll] skips them. Before the
 ///   reel's clips have been read nothing can be chosen.
 /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-///   chosen.
+///   `toggleSel` does, unless it started from the editor sheet (D-188):
+///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+///   [begin] is the one way to be choosing with nothing chosen.
 /// - **It follows the reel's clips.** A chosen clip that goes missing, or
 ///   leaves the reel, is un-chosen; when that empties a selection that had
-///   clips, choosing ends.
+///   clips, choosing ends, unless it started from the sheet.
+/// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+///   a picked editor) ends it.
 ///
 /// Auto-disposes with the page.
 
@@ -33,11 +36,14 @@ final reelSelectionProvider = ReelSelectionFamily._();
 ///   missing tile is not selectable, and [selectAll] skips them. Before the
 ///   reel's clips have been read nothing can be chosen.
 /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-///   chosen.
+///   `toggleSel` does, unless it started from the editor sheet (D-188):
+///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+///   [begin] is the one way to be choosing with nothing chosen.
 /// - **It follows the reel's clips.** A chosen clip that goes missing, or
 ///   leaves the reel, is un-chosen; when that empties a selection that had
-///   clips, choosing ends.
+///   clips, choosing ends, unless it started from the sheet.
+/// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+///   a picked editor) ends it.
 ///
 /// Auto-disposes with the page.
 final class ReelSelectionProvider
@@ -49,11 +55,14 @@ final class ReelSelectionProvider
   ///   missing tile is not selectable, and [selectAll] skips them. Before the
   ///   reel's clips have been read nothing can be chosen.
   /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-  ///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-  ///   chosen.
+  ///   `toggleSel` does, unless it started from the editor sheet (D-188):
+  ///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+  ///   [begin] is the one way to be choosing with nothing chosen.
   /// - **It follows the reel's clips.** A chosen clip that goes missing, or
   ///   leaves the reel, is un-chosen; when that empties a selection that had
-  ///   clips, choosing ends.
+  ///   clips, choosing ends, unless it started from the sheet.
+  /// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+  ///   a picked editor) ends it.
   ///
   /// Auto-disposes with the page.
   ReelSelectionProvider._({
@@ -100,7 +109,7 @@ final class ReelSelectionProvider
   }
 }
 
-String _$reelSelectionHash() => r'26b1e5c250f212fc284a834b9f74bda1e35a940e';
+String _$reelSelectionHash() => r'fbc9a5fce25d7650c8a96270dc8997da6532107c';
 
 /// Choosing clips on reel [reelId]'s page (D-88; `app.js`: `startSel`,
 /// `toggleSel`, `selAll`, `clearSel`).
@@ -109,11 +118,14 @@ String _$reelSelectionHash() => r'26b1e5c250f212fc284a834b9f74bda1e35a940e';
 ///   missing tile is not selectable, and [selectAll] skips them. Before the
 ///   reel's clips have been read nothing can be chosen.
 /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-///   chosen.
+///   `toggleSel` does, unless it started from the editor sheet (D-188):
+///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+///   [begin] is the one way to be choosing with nothing chosen.
 /// - **It follows the reel's clips.** A chosen clip that goes missing, or
 ///   leaves the reel, is un-chosen; when that empties a selection that had
-///   clips, choosing ends.
+///   clips, choosing ends, unless it started from the sheet.
+/// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+///   a picked editor) ends it.
 ///
 /// Auto-disposes with the page.
 
@@ -142,11 +154,14 @@ final class ReelSelectionFamily extends $Family
   ///   missing tile is not selectable, and [selectAll] skips them. Before the
   ///   reel's clips have been read nothing can be chosen.
   /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-  ///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-  ///   chosen.
+  ///   `toggleSel` does, unless it started from the editor sheet (D-188):
+  ///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+  ///   [begin] is the one way to be choosing with nothing chosen.
   /// - **It follows the reel's clips.** A chosen clip that goes missing, or
   ///   leaves the reel, is un-chosen; when that empties a selection that had
-  ///   clips, choosing ends.
+  ///   clips, choosing ends, unless it started from the sheet.
+  /// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+  ///   a picked editor) ends it.
   ///
   /// Auto-disposes with the page.
 
@@ -164,11 +179,14 @@ final class ReelSelectionFamily extends $Family
 ///   missing tile is not selectable, and [selectAll] skips them. Before the
 ///   reel's clips have been read nothing can be chosen.
 /// - **Choosing ends when the last clip is un-chosen** ([toggle]), as
-///   `toggleSel` does; [begin] is the one way to be choosing with nothing
-///   chosen.
+///   `toggleSel` does, unless it started from the editor sheet (D-188):
+///   `begin(fromSheet: true)` keeps choosing on with nothing chosen.
+///   [begin] is the one way to be choosing with nothing chosen.
 /// - **It follows the reel's clips.** A chosen clip that goes missing, or
 ///   leaves the reel, is un-chosen; when that empties a selection that had
-///   clips, choosing ends.
+///   clips, choosing ends, unless it started from the sheet.
+/// - **Clear keeps choosing on** ([clearChosen]); only [clear] (Close, Back,
+///   a picked editor) ends it.
 ///
 /// Auto-disposes with the page.
 

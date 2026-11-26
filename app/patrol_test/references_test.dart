@@ -18,6 +18,7 @@ import 'package:taketray/features/reels/views/reel_detail_screen.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
 import 'package:taketray/features/references/views/references_section.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
+import 'package:taketray/features/shooting_mode/views/shooting_mode_section.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/platform/links_bridge.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -75,13 +76,14 @@ import 'support/waiting.dart';
 ///    card, a tap that reaches the bridge with the stored link, one the
 ///    phone cannot open ("No app on this phone can open this link."), Edit
 ///    label, Remove, Undo (the same reference back), and Home with the
-///    badge.
+///    reference in the card's notes.
 /// 2. Paste: a clipboard with no link says so and fills nothing, then a
 ///    caption with a link is pasted (the link only), Save, the card, the
-///    Home badge shows 1, and its tap lands on the reel with the section.
+///    Home card is read with its 1 reference, and its tap opens the reel,
+///    where the flow scrolls to the section (D-196).
 /// 3. The reel form: a new reel with a Reference link; the section shows it.
 /// 4. Shooting mode: two Collecting reels with references; the card's
-///    References row opens the sheet, a card tap reaches the bridge, one
+///    References chip opens the sheet, a card tap reaches the bridge, one
 ///    group collapses, and its header opens that reel at its References.
 ///
 /// **What these flows cannot show** (hand checks in `docs/dev-setup.md`):
@@ -92,7 +94,7 @@ void main() {
     '1. A typed link and a label: open, Edit label, Remove, Undo',
     _typed,
   );
-  _flowTest('2. Paste, then the Home badge opens the reel', _paste);
+  _flowTest('2. Paste, then the Home card opens the reel', _paste);
   _flowTest('3. A new reel with a Reference link', _reelForm);
   _flowTest(
     '4. Shooting mode: the References sheet',
@@ -245,13 +247,13 @@ Future<void> _typed(_Env env) async {
   expect(back.single.url, _linkOne);
   expect(back.single.label, _labelTwo);
 
-  // Back to Home: the card has its badge with the one reference.
+  // Back to Home: the card has the one reference in its notes.
   await _tapBack($);
   final card = $(TtReelCard).containing(_reelOne);
   await waitFor(
     $,
     () => $(ReelsScreen).exists && card.$('1').exists,
-    what: 'Home with the reel card and its badge "1"',
+    what: 'Home with the reel card and "1" in its notes',
   );
   expect(detail.exists, isFalse, reason: 'the reel page is gone');
   expect(env.links.opened, [_linkOne, _linkOne], reason: 'nothing else opened');
@@ -330,28 +332,42 @@ Future<void> _paste(_Env env) async {
   expect(saved.single.url, _linkPaste);
   expect(saved.single.label, isNull);
 
-  // Home: the badge shows 1, and its tap lands on the reel with its section.
+  // Home: the card says it has 1 reference, in its notes and to a screen
+  // reader (the calm card has no badge, D-196). Home no longer opens the page
+  // at its References: the card opens the page at its top and the flow
+  // scrolls to the section.
   await _tapBack($);
   final card = $(TtReelCard).containing(_reelPaste);
   await waitFor(
     $,
     () => $(ReelsScreen).exists && card.$('1').exists,
-    what: 'Home with the reel card and its badge "1"',
+    what: 'Home with the reel card and "1" in its notes',
   );
-  // The badge's own button (its count lies under the ripple, D-161), and the
-  // page by the reel's id (opened at References, its name is off the screen).
-  await $(referencesBadgeOf(_reelPaste, _l10n.reelCardReferences(1))).tap();
+  final base = _l10n.reelCardSemantics(_reelPaste, _l10n.statusCollecting, 0);
+  final expected = _l10n.reelCardSemanticsReferences(base, 1);
+  expect(
+    $.tester.widget<TtReelCard>(reelCardOf(_reelPaste)).semanticLabel,
+    expected,
+    reason: 'the card is read with its one reference',
+  );
+  // The card, by its name once it is still; the page by the reel's id.
+  await tapWhenStill($, reelCardOf(_reelPaste));
   await waitFor(
     $,
-    () =>
-        $(reelPageOf(reel.id, _reelPaste)).exists &&
-        section.$(_l10n.referencesHeader(1)).visible,
-    what: 'the reel page with its References section on screen',
+    () => $(reelPageOf(reel.id, _reelPaste)).exists,
+    what: 'the reel page',
   );
-  expect(
-    section.$(_l10n.referencesHeader(1)).visible,
-    isTrue,
-    reason: 'the badge tap scrolled the References section into view',
+  final scroll = find
+      .descendant(
+        of: find.byType(ReelDetailScreen),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await section.$(_l10n.referencesHeader(1)).scrollTo(view: scroll);
+  await waitFor(
+    $,
+    () => section.$(_l10n.referencesHeader(1)).visible,
+    what: 'the References section on screen',
   );
   expect(section.$(_shortPaste).exists, isTrue, reason: 'the card is there');
   expect(env.links.opened, isEmpty, reason: 'nothing was opened');
@@ -360,13 +376,13 @@ Future<void> _paste(_Env env) async {
 /// Flow 3.
 Future<void> _reelForm(_Env env) async {
   final $ = env.$;
-  final home = $(ReelsScreen);
+  // The header's New pill: the way in with reels on Home (D-186).
   await waitFor(
     $,
-    () => home.$(_l10n.reelsNewReel).exists,
-    what: 'the New reel button on Home',
+    () => newReelButton().evaluate().isNotEmpty,
+    what: 'the New pill in the header of Home',
   );
-  await home.$(_l10n.reelsNewReel).tap();
+  await tapWhenStill($, newReelButton());
   await _waitForSheet(env, _l10n.reelFormTitleNew);
   // Informative, not a check: a widget test hinted that the name field may
   // not take the focus when the form opens (hand check 9).
@@ -393,8 +409,8 @@ Future<void> _reelForm(_Env env) async {
   expect(saved.single.label, isNull);
 
   // The reel's page shows it in the section: its short link, what it is.
-  await waitFor($, () => card.$('1').exists, what: 'the badge "1" on the card');
-  await card.tap();
+  await waitFor($, () => card.$('1').exists, what: '"1" in the card notes');
+  await tapWhenStill($, reelCardOf(_reelFormName));
   final section = $(ReferencesSection);
   await waitFor(
     $,
@@ -438,15 +454,15 @@ Future<void> _shootingSheet(_Env env) async {
   await env.container
       .read(phoneStateRepositoryProvider)
       .turnShootingOn(const {});
-  final home = $(ReelsScreen);
-  final row = home.$(_l10n.referencesHeader(3));
+  // The References chip of the Shooting mode card (D-196): the same words,
+  // and a tap on its button, once the card has grown and the chip is still.
+  final chip = _referencesChip(_l10n.referencesHeader(3));
   await waitFor(
     $,
-    () => row.exists,
-    what: 'the References row (3 references) on the Shooting mode card',
+    () => chip.evaluate().isNotEmpty,
+    what: 'the References chip (3 references) on the Shooting mode card',
   );
-
-  await row.tap();
+  await tapWhenStill($, chip);
   final sheet = $(TtSheet);
   await waitFor(
     $,
@@ -830,6 +846,20 @@ Future<void> _openReelFromHome(_Env env, String name) async {
     what: 'the page of "$name"',
   );
 }
+
+/// The button of the chip on the Shooting mode card whose words are [text]
+/// ("3 references"): the chip's own ink, not its text, so a tap lands on the
+/// whole chip.
+Finder _referencesChip(String text) => find.descendant(
+  of: find.byType(ShootingModeSection),
+  matching: find.ancestor(
+    of: find.descendant(
+      of: find.byType(ShootingModeSection),
+      matching: find.text(text),
+    ),
+    matching: find.byType(InkWell),
+  ),
+);
 
 /// A [TtIconButton] by the label a screen reader gives it (it has no text).
 Finder _iconButtonLabelled(String label) => find.byWidgetPredicate(

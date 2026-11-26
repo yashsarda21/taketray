@@ -62,6 +62,10 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   /// Never initialize (a slow open).
   bool hold = false;
 
+  /// When set, every video is drawn as this one colour instead of its
+  /// gradient: a pure white frame is the worst case for text over the clip.
+  Color? solid;
+
   final List<FakePlayer> players = [];
 
   /// The most players alive at once, counted at the moment each was made
@@ -83,6 +87,16 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
   void failPlayer(int id, [String message = 'decoder error']) =>
       player(id).events
           .addError(PlatformException(code: 'E', message: message));
+
+  /// Makes player [id], held by [hold], report that it is open now, with
+  /// [duration] and [size]: a slow open that ends.
+  void release(int id) => player(id).events.add(
+    VideoEvent(
+      eventType: VideoEventType.initialized,
+      duration: duration,
+      size: size,
+    ),
+  );
 
   /// Makes player [id] report that it reached the end.
   void complete(int id) =>
@@ -183,16 +197,19 @@ class FakeVideoPlayerPlatform extends VideoPlayerPlatform {
       [Color(0xFF4F8F6B), Color(0xFF13261C)],
     ];
     final pair = colors[playerId % colors.length];
+    final one = solid;
     return SizedBox.expand(
       key: ValueKey('fake-video-$playerId'),
       child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: pair,
-          ),
-        ),
+        decoration: one != null
+            ? BoxDecoration(color: one)
+            : BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: pair,
+                ),
+              ),
       ),
     );
   }

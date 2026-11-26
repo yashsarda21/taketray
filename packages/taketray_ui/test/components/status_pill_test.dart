@@ -14,7 +14,6 @@ SemanticsData _semantics(WidgetTester tester) =>
 Widget _pill(
   TtStatusKind kind, {
   String label = 'Ready to edit',
-  bool onMedia = false,
   bool large = false,
   VoidCallback? onPressed,
   String? semanticLabel,
@@ -22,16 +21,11 @@ Widget _pill(
   final pill = TtStatusPill(
     kind: kind,
     label: label,
-    onMedia: onMedia,
     large: large,
     onPressed: onPressed,
     semanticLabel: semanticLabel,
   );
-  return Center(
-    child: onMedia
-        ? ColoredBox(color: const Color(0xFF332244), child: pill)
-        : pill,
-  );
+  return Center(child: pill);
 }
 
 Color _iconColor(WidgetTester tester) =>
@@ -85,40 +79,12 @@ void main() {
       });
     }
 
-    testWidgets('uses the status colours on a surface', (tester) async {
+    testWidgets('uses the status colours', (tester) async {
       await tester.pumpWidget(ttTestApp(_pill(TtStatusKind.collecting)));
       final tt = tester.element(find.byType(TtStatusPill)).tt;
       expect(_iconColor(tester), tt.colors.record);
       await tester.pumpWidget(ttTestApp(_pill(TtStatusKind.published)));
       expect(_iconColor(tester), tt.colors.onSuccessContainer);
-    });
-
-    testWidgets('on media it is dark glass with the on-media icon colour', (
-      tester,
-    ) async {
-      final colours = <TtStatusKind, Color Function(TtThemeData)>{
-        TtStatusKind.collecting: (tt) => tt.colors.recordOnMedia,
-        TtStatusKind.ready: (tt) => tt.colors.readyOnMedia,
-        TtStatusKind.published: (tt) => tt.colors.publishedOnMedia,
-      };
-      for (final MapEntry(:key, :value) in colours.entries) {
-        await tester.pumpWidget(ttTestApp(_pill(key, onMedia: true)));
-        final tt = tester.element(find.byType(TtStatusPill)).tt;
-        expect(_iconColor(tester), value(tt));
-        expect(
-          find.descendant(
-            of: find.byType(TtStatusPill),
-            matching: find.byType(BackdropFilter),
-          ),
-          findsOneWidget,
-        );
-        expect(
-          tester.widget<Text>(find.byType(Text)).style!.color,
-          tt.colors.onMedia,
-        );
-      }
-      await tester.pumpWidget(ttTestApp(_pill(TtStatusKind.ready)));
-      expect(find.byType(BackdropFilter), findsNothing);
     });
 
     testWidgets('onPressed is called on tap', (tester) async {
@@ -192,28 +158,24 @@ void main() {
     });
 
     for (final brightness in Brightness.values) {
-      for (final onMedia in [false, true]) {
-        testWidgets('passes the accessibility guidelines '
-            '(${brightness.name}, ${onMedia ? 'on media' : 'on a surface'})', (
-          tester,
-        ) async {
-          for (final kind in TtStatusKind.values) {
-            await tester.pumpWidget(
-              ttTestApp(
-                _pill(
-                  kind,
-                  onMedia: onMedia,
-                  large: true,
-                  onPressed: () {},
-                  semanticLabel: 'Status. Change status',
-                ),
-                brightness: brightness,
+      testWidgets('passes the accessibility guidelines (${brightness.name})', (
+        tester,
+      ) async {
+        for (final kind in TtStatusKind.values) {
+          await tester.pumpWidget(
+            ttTestApp(
+              _pill(
+                kind,
+                large: true,
+                onPressed: () {},
+                semanticLabel: 'Status. Change status',
               ),
-            );
-            await expectTtAccessible(tester);
-          }
-        });
-      }
+              brightness: brightness,
+            ),
+          );
+          await expectTtAccessible(tester);
+        }
+      });
     }
   });
 }

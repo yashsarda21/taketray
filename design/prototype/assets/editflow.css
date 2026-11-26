@@ -1,0 +1,30 @@
+/* ------------------------------------------------------------------ */
+/* Sending clips to an editor, simplified (25 Nov 2026, D-172)         */
+/* ------------------------------------------------------------------ */
+/* The bar that slides up while clips are being chosen on a reel page */
+.sel-dock { position: absolute; left: 0; right: 0; bottom: 0; z-index: 5; display: flex; flex-direction: column; gap: 8px; padding: 10px 16px 22px; background: var(--md-surface-container); border-radius: 28px 28px 0 0; box-shadow: 0 -8px 24px rgba(0, 0, 0, .16); animation: sdIn var(--dur-medium2) var(--ease-emphasized-decelerate); }
+@keyframes sdIn { from { transform: translateY(100%); } }
+.sd-acts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.sd-act { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; padding: 4px 2px; border: 0; border-radius: 16px; background: transparent; color: var(--md-on-surface); font: var(--type-label-medium); letter-spacing: var(--ls-label-medium); cursor: pointer; }
+.sd-act .ms { font-size: 24px; color: var(--md-on-surface-variant); }
+.sd-act[aria-disabled="true"] { opacity: .38; cursor: default; }
+.sd-edit { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 56px; }
+.sd-edit .sd-len { font-weight: 500; opacity: .8; font-variant-numeric: tabular-nums; }
+.sd-edit[aria-disabled="true"] { background: var(--md-surface-container-highest); color: var(--md-on-surface-variant); cursor: default; }
+.sd-note { margin: 0; display: flex; gap: 8px; align-items: flex-start; padding: 2px 4px 4px; font: var(--type-body-small); letter-spacing: var(--ls-body-small); color: var(--md-on-surface-variant); }
+.sd-note .ms { font-size: 18px; flex: none; }
+.sd-hint { margin-top: 4px; }
+/* Editor sheet */
+.li .txt b .ed-last, .ed-last { display: inline-block; width: auto; color: var(--md-on-tertiary-container); margin-left: 8px; padding: 1px 8px; border-radius: 999px; background: var(--md-tertiary-container); color: var(--md-on-tertiary-container); font: var(--type-label-small); letter-spacing: var(--ls-label-small); vertical-align: 2px; }
+.sh-head .ed-choose { margin: 4px 0 0 -12px; }
+/* Large text: the four actions go two by two */
+.fs2 .sd-acts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fs2 .sd-edit { flex-wrap: wrap; }
+/* Select all: the icon alone at large text, so it never runs into "3 selected" */
+.appbar .sd-all .ms { display: none; }
+.fs2 .appbar .sd-all .ms { display: inline-block; margin: 0; }
+.fs2 .appbar .sd-all span:not(.ms) { display: none; }
+.fs2 .appbar .sd-all { min-width: 48px; padding: 0 12px; }
+.fs2 .appbar.sel .title { min-width: 0; }
+/* Snacks rise above the choosing bar, so they never cover Edit */
+.vp:has(.sel-dock) > .snack { bottom: 172px !important; }

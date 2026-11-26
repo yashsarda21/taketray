@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:taketray_ui/taketray_ui.dart';
-import 'package:taketray_widgetbook/fixtures.dart';
 import 'package:widgetbook/widgetbook.dart';
 
-/// `TtStatusPill`: a reel's status, on a surface or as dark glass on media.
+/// `TtStatusPill`: a reel's status.
 final WidgetbookComponent ttStatusPillComponent = WidgetbookComponent(
   name: 'TtStatusPill',
   useCases: [
@@ -15,7 +14,6 @@ final WidgetbookComponent ttStatusPillComponent = WidgetbookComponent(
           options: TtStatusKind.values,
           labelBuilder: (v) => v.name,
         );
-        final onMedia = context.knobs.boolean(label: 'on media');
         final large = context.knobs.boolean(label: 'large');
         final pressable = context.knobs.boolean(label: 'pressable (caret)');
         final label = context.knobs.string(
@@ -29,21 +27,13 @@ final WidgetbookComponent ttStatusPillComponent = WidgetbookComponent(
         final pill = TtStatusPill(
           kind: kind,
           label: label,
-          onMedia: onMedia,
           large: large,
           onPressed: pressable ? () {} : null,
           semanticLabel: pressable ? 'Status: $label. Change status' : null,
         );
-        final padded = Padding(
+        return Padding(
           padding: EdgeInsets.all(context.tt.spacing.xl),
           child: Align(alignment: Alignment.topLeft, child: pill),
-        );
-        if (!onMedia) return padded;
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            image: DecorationImage(image: wbThumb(3), fit: BoxFit.cover),
-          ),
-          child: padded,
         );
       },
     ),

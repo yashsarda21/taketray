@@ -107,6 +107,14 @@ void main() {
       expect(tt.motion.standard, TtMotion.standardSet.standard);
     });
 
+    testWidgets('the Shooting mode tint is the CSS colour in both themes '
+        '(home2.css:11, rgba(36, 49, 66))', (tester) async {
+      for (final brightness in Brightness.values) {
+        final tt = await resolve(tester, brightness: brightness);
+        expect(tt.colors.shootingTint, const Color(0xFF243142));
+      }
+    });
+
     testWidgets('maps "clips waiting" to tertiary in dark too', (tester) async {
       final tt = await resolve(tester, brightness: Brightness.dark);
       expect(tt.colors.waitingContainer, ttDarkScheme.tertiaryContainer);

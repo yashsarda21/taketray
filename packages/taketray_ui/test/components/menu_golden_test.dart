@@ -4,10 +4,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_golden.dart';
 
-/// The open menu as `TtMenuButton` shows it, drawn directly: an open
-/// `MenuAnchor`'s overlay cannot be painted by the CI (blocked-text)
-/// variant. The panel sits on the shadow-casting surface `MenuAnchor` gives
-/// it, at the top right of a 360 dp screen (`.menu { right: 8px }`).
+/// The open menu as `TtMenuButton` shows it, drawn directly: a menu route
+/// cannot be painted by the CI (blocked-text) variant. The panel casts its
+/// own shadow (D-176; `MenuAnchor`'s surface used to), at the top right of a
+/// 360 dp screen (`.menu { right: 8px }`).
 class _OpenMenu extends StatelessWidget {
   const new(this.items);
 
@@ -18,15 +18,7 @@ class _OpenMenu extends StatelessWidget {
     padding: const EdgeInsets.fromLTRB(8, 8, 8, 32),
     child: Align(
       alignment: Alignment.topRight,
-      child: Material(
-        type: MaterialType.transparency,
-        elevation: TtMetrics.menuElevation,
-        shadowColor: context.scheme.shadow,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(TtMetrics.menuRadius),
-        ),
-        child: TtMenuPanel<String>(items: items, onSelected: (_) {}),
-      ),
+      child: TtMenuPanel<String>(items: items, onSelected: (_) {}),
     ),
   );
 }

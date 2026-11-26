@@ -67,3 +67,67 @@ final WidgetbookComponent ttAppBarComponent = WidgetbookComponent(
     ),
   ],
 );
+
+/// `TtHeaderPill`: the tonal "+ New" button at the end of a header.
+final WidgetbookComponent ttHeaderPillComponent = WidgetbookComponent(
+  name: 'TtHeaderPill',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final label = context.knobs.string(label: 'label', initialValue: 'New');
+        return Align(
+          alignment: AlignmentDirectional.topEnd,
+          child: TtHeaderPill(
+            icon: Symbols.add_rounded,
+            label: label,
+            semanticLabel: 'New reel',
+            onPressed: () {},
+          ),
+        );
+      },
+    ),
+  ],
+);
+
+/// `TtLargeSliverAppBar`: a large title that shrinks into a pinned bar as
+/// the page scrolls.
+final WidgetbookComponent ttLargeSliverAppBarComponent = WidgetbookComponent(
+  name: 'TtLargeSliverAppBar',
+  useCases: [
+    WidgetbookUseCase(
+      name: 'Playground',
+      builder: (context) {
+        final title = context.knobs.string(
+          label: 'title',
+          initialValue: 'Reels',
+        );
+        final pill = context.knobs.boolean(
+          label: 'header pill',
+          initialValue: true,
+        );
+        return CustomScrollView(
+          slivers: [
+            TtLargeSliverAppBar(
+              title: title,
+              actions: [
+                if (pill)
+                  TtHeaderPill(
+                    icon: Symbols.add_rounded,
+                    label: 'New',
+                    semanticLabel: 'New reel',
+                    onPressed: () {},
+                  ),
+              ],
+            ),
+            SliverList.builder(
+              itemCount: 30,
+              itemBuilder: (context, i) =>
+                  ListTile(title: Text('Row ${i + 1}')),
+            ),
+          ],
+        );
+      },
+    ),
+  ],
+);

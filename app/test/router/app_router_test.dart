@@ -61,15 +61,23 @@ Future<(ProviderContainer, GoRouter)> _pumpApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(container: container, child: const TakeTrayApp()),
   );
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
   return (container, container.read(appRouterProvider));
+}
+
+/// Pumps for a second of frames instead of `pumpAndSettle`: a reel's cover
+/// that is still decoding shimmers for ever (D-194), so Home never settles.
+Future<void> _pumpFrames(WidgetTester tester) async {
+  for (var i = 0; i < 10; i++) {
+    await tester.pump(const Duration(milliseconds: 100));
+  }
 }
 
 /// Lets the database and the media jobs answer, then redraws.
 Future<void> _settle(WidgetTester tester) async {
   await tester.runAsync(settle);
   await tester.pump();
-  await tester.pumpAndSettle();
+  await _pumpFrames(tester);
   // What the redraw let go of (a player to dispose) finishes in real time.
   await tester.runAsync(settle);
   await tester.pump();
@@ -150,6 +158,32 @@ void main() {
       expect(bar.currentIndex, 0);
     });
   }
+
+  testApp('an open menu on the Reels tab closes when another tab is shown '
+      '(a notification, goBranch)', (tester) async {
+    final h = VmHarness();
+    final reel = await h.container.read(reelsRepositoryProvider).create('Goa');
+    final (container, router) = await _pumpApp(tester, harness: h);
+    final tracker = container.read(popupRouteTrackerProvider);
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+    await tester.tap(find.byIcon(Symbols.more_vert_rounded));
+    await tester.pumpAndSettle();
+    expect(find.text('Select clips'), findsOneWidget);
+    expect(tracker.isOpen, isTrue);
+
+    router.go(Routes.toTag);
+    await _settle(tester);
+
+    expect(find.byType(ToTagScreen), findsOneWidget);
+    expect(find.text('Select clips'), findsNothing);
+    expect(tracker.isOpen, isFalse);
+    // Back to Reels: the reel page is where it was, and the menu is not.
+    router.go(Routes.reel(reel.id));
+    await _settle(tester);
+    expect(find.byType(ReelDetailScreen), findsOneWidget);
+    expect(find.text('Select clips'), findsNothing);
+  });
 
   testApp('a reel location shows the reel page and back goes to Reels', (
     tester,
@@ -830,17 +864,11 @@ void main() {
   group('Picking clips for an editor (Phase 8, D-126)', () {
     test('the locations', () {
       expect(Routes.editSelect, '/edit');
-      expect(Routes.editSelectOf(7), '/edit?reel=7');
-      expect(
-        Routes.editSelectOf(7, clipIds: [3, 5, 9]),
-        '/edit?reel=7&clips=3%2C5%2C9',
-      );
-      expect(Routes.editSelectOf(7, add: true), '/edit?reel=7&add=1');
-      final both = Uri.parse(Routes.editSelectOf(7, clipIds: [4], add: true));
-      expect(both.path, '/edit');
-      expect(both.queryParameters, {
+      expect(Routes.editAddOf(7), '/edit?reel=7&add=1');
+      final add = Uri.parse(Routes.editAddOf(7));
+      expect(add.path, '/edit');
+      expect(add.queryParameters, {
         Routes.editReelParameter: '7',
-        Routes.editClipsParameter: '4',
         Routes.editAddParameter: '1',
       });
       expect(Routes.copySpace, '/edit/space');
@@ -872,6 +900,10 @@ void main() {
       });
     });
 
+    test('editAddOf(7) is /edit?reel=7&add=1', () {
+      expect(Routes.editAddOf(7), '/edit?reel=7&add=1');
+    });
+
     test('clipIdsIn keeps the positive whole numbers once, in order', () {
       expect(Routes.clipIdsIn('3,5,9'), [3, 5, 9]);
       expect(Routes.clipIdsIn('9,3,9,5,3'), [9, 3, 5]);
@@ -886,8 +918,8 @@ void main() {
       expect(Routes.clipIdsIn('99999999999999999999,4'), [4]);
     });
 
-    testApp('the picking screen is full screen, above the nav pill, with '
-        'the reel, the preselected clips and the add flag', (tester) async {
+    testApp('the picking screen is full screen, above the nav pill, for the '
+        'reel, in add mode only', (tester) async {
       final h = reelHarness();
       final goa = (await tester.runAsync(
         () => h.container.read(reelsRepositoryProvider).create('Goa'),
@@ -902,64 +934,69 @@ void main() {
       );
       final (_, router) = await _pumpApp(tester, harness: h);
 
-      unawaited(
-        router.push(Routes.editSelectOf(goa.id, clipIds: [4, 5], add: true)),
-      );
+      unawaited(router.push(Routes.editAddOf(goa.id)));
       await tester.pumpAndSettle();
 
       final screen = tester.widget<EditSelectScreen>(
         find.byType(EditSelectScreen),
       );
       expect(screen.reelId, goa.id);
-      expect(screen.clipIds, [4, 5]);
-      expect(screen.addMode, isTrue);
       expect(find.byType(TtNavPill).hitTestable(), findsNothing);
 
       router.pop();
-      await tester.pumpAndSettle();
+      await _pumpFrames(tester);
       expect(find.byType(EditSelectScreen), findsNothing);
     });
 
-    testApp('without clips or the flag: nothing preselected, no add mode', (
-      tester,
-    ) async {
+    // D-192: the normal mode is gone; an old location without add mode shows
+    // the reel's page instead.
+    for (final (suffix, name) in [
+      ('', '/edit?reel=7 without add=1 shows the reel page'),
+      ('&clips=1,2', '/edit?reel=7&clips=1,2 shows the reel page'),
+      ('&add=yes', '/edit?reel=7&add=yes (not 1) shows the reel page'),
+      ('&add=0', '/edit?reel=7&add=0 shows the reel page'),
+      ('&clips=1,2&add=0', '/edit?reel=7&clips=1,2&add=0 shows the reel page'),
+      ('&add=1&clips=1,2', '/edit?reel=7&add=1&clips=1,2 shows the reel page'),
+    ]) {
+      testApp('$name, and logs without the location', (tester) async {
+        final h = reelHarness();
+        final goa = (await tester.runAsync(
+          () => h.container.read(reelsRepositoryProvider).create('Goa'),
+        ))!;
+        final (_, router) = await _pumpApp(tester, harness: h);
+        final logged = <LogRecord>[];
+        final sub = Logger.root.onRecord.listen(logged.add);
+        addTearDown(sub.cancel);
+
+        router.go('/edit?reel=${goa.id}$suffix');
+        await _settle(tester);
+
+        expect(find.byType(EditSelectScreen), findsNothing);
+        expect(find.byType(ReelDetailScreen), findsOneWidget);
+        expect(
+          logged.map((r) => r.message),
+          contains('Picking screen without add mode; showing the reel'),
+        );
+        expect(logged.map((r) => r.message).join(), isNot(contains('/edit')));
+      });
+    }
+
+    testApp('a push of /edit?reel=7 without add=1 lands on the reel page '
+        'too, over what was open', (tester) async {
       final h = reelHarness();
       final goa = (await tester.runAsync(
         () => h.container.read(reelsRepositoryProvider).create('Goa'),
       ))!;
       final (_, router) = await _pumpApp(tester, harness: h);
 
-      unawaited(router.push(Routes.editSelectOf(goa.id)));
-      await tester.pumpAndSettle();
+      unawaited(router.push('/edit?reel=${goa.id}&clips=1,2'));
+      await _settle(tester);
 
-      final screen = tester.widget<EditSelectScreen>(
-        find.byType(EditSelectScreen),
-      );
-      expect(screen.clipIds, isEmpty);
-      expect(screen.addMode, isFalse);
+      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
     });
 
-    testApp('bad clip ids are left out, a flag other than 1 is no add mode', (
-      tester,
-    ) async {
-      final h = reelHarness();
-      final goa = (await tester.runAsync(
-        () => h.container.read(reelsRepositoryProvider).create('Goa'),
-      ))!;
-      final (_, router) = await _pumpApp(tester, harness: h);
-
-      unawaited(router.push('/edit?reel=${goa.id}&clips=3,x,0,5&add=yes'));
-      await tester.pumpAndSettle();
-
-      final screen = tester.widget<EditSelectScreen>(
-        find.byType(EditSelectScreen),
-      );
-      expect(screen.clipIds, [3, 5]);
-      expect(screen.addMode, isFalse);
-    });
-
-    testApp('from a reel: Edit video, pick, Continue, CapCut leaves the '
-        'picking screen for the reel page under it, with the snack', (
+    testApp('Edit video opens the editor sheet over the reel page', (
       tester,
     ) async {
       final h = reelHarness();
@@ -978,21 +1015,24 @@ void main() {
 
       await tester.tap(find.byType(TtFab));
       await _settle(tester);
-      expect(find.byType(EditSelectScreen), findsOneWidget);
-      expect(find.byType(TtNavPill).hitTestable(), findsNothing);
-      await tester.tap(find.text('Select all'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
-      await _settle(tester);
+      // The sheet, straight away: no picking screen (D-191). The reel's page
+      // and its nav pill stay under it.
+      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(
+        tester.widget<TtSheet>(find.byType(TtSheet)).title,
+        'Edit all 2 clips in…',
+      );
+      expect(find.byType(ReelDetailScreen), findsOneWidget);
+      expect(find.byType(TtNavPill), findsOneWidget);
+
       await tester.tap(find.text('CapCut'));
       await _settle(tester);
 
-      expect(find.byType(EditSelectScreen), findsNothing);
+      expect(find.byType(TtSheet), findsNothing);
       expect(find.byType(ReelDetailScreen), findsOneWidget);
       expect(find.text('Sent 2 clips to CapCut'), findsOneWidget);
       expect(h.editors.sent, hasLength(1));
-      // Back on the reel's page: Back goes to Reels, not to the picker.
-      expect(router.canPop(), isTrue);
+      expect(find.byType(TtNavPill).hitTestable(), findsOneWidget);
       // The offer of Ready to edit comes 1.3 s later.
       await tester.pump(const Duration(milliseconds: 1500));
       await _settle(tester);
@@ -1347,7 +1387,7 @@ void main() {
       Routes.settings,
       Routes.copiesStorage,
       Routes.addVideos,
-      Routes.editSelectOf(5),
+      Routes.editAddOf(5),
       '/nope',
       '/welcomex',
       '/onboarding',

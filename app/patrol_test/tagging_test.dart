@@ -23,12 +23,16 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:video_player/video_player.dart';
 
 import 'support/onboarded.dart';
+import 'support/player_finders.dart';
 import 'support/system_dialogs.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
 
 /// Tagging on the S24 (phase 5, Task 10): a whole day of clips tagged in the
-/// tag player, Undo going back, Skip all and Skipped, and Tag scene.
+/// tag player, Undo going back, Skip all and Skipped, and Tag scene. Since
+/// Phase 12 (D-183) the player is the full-screen one: its dock, rail and
+/// All reels sheet are found through `support/player_finders.dart`, and one
+/// flow swipes between clips and tags from All reels.
 ///
 /// **What it touches on the phone.** The app under test is TakeTray Dev
 /// (`app.taketray.dev`), started from cleared app data. The videos are the
@@ -55,6 +59,8 @@ import 'support/waiting.dart';
 /// `$().tap()`: the player never settles (a video plays and the scrub bar
 /// moves), and Patrol's tap would wait its whole settle time after each one,
 /// which would make the "tap to next clip" timing a measurement of the wait.
+/// The swipes are flings from `stageCentre` (`WidgetTester.flingFrom`), which
+/// pump their own frames.
 void main() {
   patrolTest(
     'tag a day: 40 clips, 30 one-tap tags into 2 reels, 5 Pick several into '
@@ -81,6 +87,17 @@ void main() {
   ) async {
     await _scenario($, clips: 4, body: (env) => _tagScene($, env));
   }, config: _liveConfig);
+
+  // D-183: the full-screen player's two ways of moving that the other flows
+  // do not use, and its All reels sheet.
+  patrolTest(
+    'swipe and All reels: up, down, sideways, and a Ready reel from the '
+    'sheet',
+    config: _liveConfig,
+    ($) async {
+      await _scenario($, clips: 4, body: (env) => _swipeAndAllReels($, env));
+    },
+  );
 
   // The minors batch could not add this as a widget test (the snack lives in
   // the app's messenger, and a widget test cannot switch tabs under it).
@@ -125,36 +142,47 @@ Future<void> _tagADay(PatrolIntegrationTester $, _Env env) async {
   // 1. Thirty clips, one tap each, alternating the two reels.
   for (var i = 0; i < 30; i++) {
     final reel = i.isEven ? env.a : env.b;
-    await tagInto('chip', {
-      reel.id,
-    }, () => $.tester.tap(_chip(reel.name).first));
+    await tagInto('chip', {reel.id}, () => $.tester.tap(dockChip(reel.name)));
   }
 
   // 2. Five with Pick several into both. It is sticky: the second clip is
   // still picking, with nothing picked.
-  await _tap($, _button(_l10n.tagPickSeveral));
+  await _tap($, dockAction(_l10n.tagPickSeveral));
   expect(player.state.multi, isTrue, reason: 'Pick several is on');
   for (var i = 0; i < 5; i++) {
     expect(player.state.multi, isTrue, reason: 'still on at pick clip $i');
     expect(player.state.picked, isEmpty, reason: 'no picks at clip $i');
-    await _tap($, _chip(env.a.name));
-    await _tap($, _chip(env.b.name));
+    await _tap($, dockChip(env.a.name));
+    await _tap($, dockChip(env.b.name));
     expect(player.state.picked, [env.a.id, env.b.id]);
     await tagInto('pick several', {
       env.a.id,
       env.b.id,
-    }, () => $.tester.tap(_button(_l10n.tagPickConfirm(2)).first));
+    }, () => $.tester.tap(dockAction(_l10n.tagPickConfirm(2))));
   }
   expect(player.state.multi, isTrue, reason: 'sticky after the confirm');
-  await _tap($, _button(_l10n.cancel));
+  await _tap($, dockAction(_l10n.cancel));
   expect(player.state.multi, isFalse, reason: 'Cancel turns it off');
+  // The rail is not there while picking: wait for it, and for the dock to
+  // shrink under it and the rail to stop moving (the same rects on two frames
+  // in a row), before a tap on Same, which is aimed at where it is.
+  await waitFor(
+    $,
+    () => railButton(_l10n.tagRailSame).evaluate().isNotEmpty,
+    what: 'the rail to come back after Cancel',
+  );
+  await waitForStill(
+    $,
+    () => playerLayout($.tester),
+    what: 'the dock and the rail to stop moving after Cancel',
+  );
 
   // 3. Three with Same as previous (the last tag was both reels).
   for (var i = 0; i < 3; i++) {
     await tagInto('same as previous', {
       env.a.id,
       env.b.id,
-    }, () => $.tester.tap(_sameAsPrevious.first));
+    }, () => $.tester.tap(railButton(_l10n.tagRailSame)));
   }
 
   // 4. Two skipped.
@@ -162,7 +190,7 @@ Future<void> _tagADay(PatrolIntegrationTester $, _Env env) async {
     skipped.add(player.currentId!);
     await player.act(
       'skip',
-      () => $.tester.tap(_button(_l10n.tagPlayerSkip).first),
+      () => $.tester.tap(railButton(_l10n.tagPlayerSkip)),
     );
   }
 
@@ -215,13 +243,109 @@ Future<void> _tagADay(PatrolIntegrationTester $, _Env env) async {
   );
 }
 
+/// The player's swipes (D-182) and All reels (D-181) on the phone, on 4 clips:
+/// a fling up goes to the next clip, a fling down comes back, a fling sideways
+/// does nothing, and a reel that is Ready (so not in the dock) is reached
+/// through **All reels** and tags the clip.
+Future<void> _swipeAndAllReels(PatrolIntegrationTester $, _Env env) async {
+  await $(_l10n.toTagStartTagging).tap();
+  final player = await _Player.open($, env);
+  final first = player.currentId!;
+  final start = player.state.index;
+  expect(player.state.session.length, 4, reason: 'four clips wait');
+
+  // A fling of 300 dp at 1500 dp/s from the middle of the clip: the pump of
+  // each frame is `flingFrom`'s own, so it does not wait for a settle.
+  Future<void> fling(Offset by) =>
+      $.tester.flingFrom(stageCentre($.tester), by, 1500);
+
+  // 1. Up: the next clip.
+  await fling(const Offset(0, -300));
+  await waitFor(
+    $,
+    () => player.state.index == start + 1,
+    what: 'a fling up to go to the next clip',
+  );
+  final second = player.currentId!;
+  expect(second, isNot(first));
+  await _waitForVideo($, player, second);
+
+  // 2. Down: back to the first clip.
+  await fling(const Offset(0, 300));
+  await waitFor(
+    $,
+    () => player.state.index == start && player.currentId == first,
+    what: 'a fling down to go back to the first clip',
+  );
+  await _waitForVideo($, player, first);
+
+  // 3. Sideways does nothing. The first clip is playing and its title is on
+  // the screen (both waited for above), so this is a gesture that was made
+  // and did not move the player.
+  expect($(_l10n.tagPlayerTitle(1, 4)).exists, isTrue);
+  await fling(const Offset(-300, 0));
+  await pumpFor($, const Duration(seconds: 1));
+  expect(player.currentId, first, reason: 'a sideways fling does not move');
+  expect(player.state.index, start);
+  expect($(_l10n.tagPlayerTitle(1, 4)).exists, isTrue, reason: '1 of 4 still');
+  expect(player.state.pending, contains(first), reason: 'nothing was tagged');
+
+  // 4. Patrol B is Ready: out of the dock, and All reels comes into it. The
+  // tear-down puts it back to Collecting, also when a check fails.
+  try {
+    await env.reels.setStatus(env.b.id, ReelStatus.ready);
+    await waitFor(
+      $,
+      () => dockAction(_l10n.tagAllReels).evaluate().isNotEmpty,
+      what: 'All reels in the dock once Patrol B is Ready',
+    );
+    expect(dockChip(_nameB), findsNothing, reason: 'Ready: not in the dock');
+    expect(dockChip(_nameA), findsOneWidget, reason: 'Collecting: in it');
+
+    // 5. All reels, then Patrol B's chip in the sheet: the sheet closes, and
+    // after the hold the clip is in Patrol B.
+    await _tap($, dockAction(_l10n.tagAllReels));
+    await waitFor(
+      $,
+      () => sheetChip(_nameB).evaluate().isNotEmpty,
+      what: 'Patrol B in the All reels sheet',
+    );
+    await _tap($, sheetChip(_nameB));
+    await waitFor(
+      $,
+      () => find.byType(TtSheet).evaluate().isEmpty,
+      what: 'the All reels sheet to close',
+    );
+    await waitFor(
+      $,
+      () async => (await env.reelClipIds(env.b)).contains(first),
+      what: 'the clip to be in Patrol B',
+      timeout: const Duration(seconds: 20),
+    );
+    expect(await env.reelClipIds(env.b), {first}, reason: 'only that clip');
+    expect(await env.reelClipIds(env.a), isEmpty, reason: 'not in Patrol A');
+    expect(player.state.pending, isNot(contains(first)));
+    await waitFor(
+      $,
+      () => player.currentId != first,
+      what: 'the player to go on from the tagged clip',
+    );
+  } finally {
+    try {
+      await env.reels.setStatus(env.b.id, ReelStatus.collecting);
+    } on Object catch (error) {
+      debugPrint('Putting Patrol B back failed: ${error.runtimeType}');
+    }
+  }
+}
+
 Future<void> _undoGoesBack(PatrolIntegrationTester $, _Env env) async {
   await $(_l10n.toTagStartTagging).tap();
   final player = await _Player.open($, env);
   final first = player.currentId!;
   expect($(_l10n.tagPlayerTitle(1, 3)).exists, isTrue);
 
-  await player.act('chip', () => $.tester.tap(_chip(env.a.name).first));
+  await player.act('chip', () => $.tester.tap(dockChip(env.a.name)));
   expect(player.currentId, isNot(first), reason: 'moved on to the next clip');
   expect(player.state.pending, isNot(contains(first)));
   expect(await env.reelClipIds(env.a), {first});
@@ -244,10 +368,7 @@ Future<void> _undoGoesBack(PatrolIntegrationTester $, _Env env) async {
   expect($(_l10n.tagPlayerTitle(1, 3)).exists, isTrue, reason: '1 of 3 again');
 
   // And the same for a skip.
-  await player.act(
-    'skip',
-    () => $.tester.tap(_button(_l10n.tagPlayerSkip).first),
-  );
+  await player.act('skip', () => $.tester.tap(railButton(_l10n.tagPlayerSkip)));
   await waitFor(
     $,
     () => find.text(_l10n.tagSkippedSnack).evaluate().isNotEmpty,
@@ -467,22 +588,29 @@ const PatrolTesterConfig _liveConfig = PatrolTesterConfig(
   printLogs: true,
 );
 
-/// A [TtButton] by its label.
+/// A [TtButton] by its label, anywhere (the tag player's own are
+/// `dockAction`, `railButton`, in `support/player_finders.dart`).
 Finder _button(String label) => find.byWidgetPredicate(
   (w) => w is TtButton && w.label == label,
   description: 'TtButton "$label"',
 );
 
-/// The reel chip of the tag player for the reel called [name].
-Finder _chip(String name) => find.byWidgetPredicate(
-  (w) => w is TtReelChip && w.name == name,
-  description: 'TtReelChip "$name"',
-);
-
-final Finder _sameAsPrevious = find.byType(TtSameAsPreviousButton);
-
-/// A raw tap, then one frame: for buttons whose timing does not matter.
+/// A raw tap, then one frame, on a target that is there, can be hit and has
+/// stopped moving. A sheet's chip exists from the first frame of the sheet
+/// sliding in, and on the phone the frames run between the finger's down and
+/// up, so a tap on a chip that is still moving is lost (the All reels sheet
+/// did not close). Waits on conditions, not on time.
 Future<void> _tap(PatrolIntegrationTester $, Finder finder) async {
+  await waitFor(
+    $,
+    () => canBeTapped(finder),
+    what: 'a tap target that can be hit: $finder',
+  );
+  await waitForStill(
+    $,
+    () => [tapTarget($.tester, finder)],
+    what: 'the tap target to stop moving: $finder',
+  );
   await $.tester.tap(finder.first);
   await $.tester.pump();
 }

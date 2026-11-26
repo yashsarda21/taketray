@@ -4,7 +4,8 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 part 'popup_route_tracker.g.dart';
 
 /// Which popup routes are open anywhere in the app: a bottom sheet
-/// (`showTtSheet`), a dialog (`showTtDialog`), or any other `PopupRoute`.
+/// (`showTtSheet`), a dialog (`showTtDialog`), a menu (`TtMenuButton`), or any
+/// other `PopupRoute`.
 ///
 /// A popup is pushed on a `Navigator` and does not cover the screen under
 /// it: that screen's route is still the current one of its own navigator, and
@@ -18,9 +19,10 @@ part 'popup_route_tracker.g.dart';
 /// change.
 ///
 /// Used by the "Still shooting?" dialog (D-107), which must never open over a
-/// sheet or a dialog. A menu (`TtMenuButton`, a `MenuAnchor`) is an overlay,
-/// not a route, and is not seen here; the menus that exist are on pages that
-/// cover Reels (To tag, a reel's page), which the route checks already catch.
+/// sheet, a dialog or a menu. A menu (`TtMenuButton`) is a popup route on the
+/// root navigator (`TtMenuRoute`, D-176), so it is seen here like a sheet is;
+/// before D-176 it was an overlay (`MenuAnchor`) that only the route checks of
+/// the pages it sits on could stand in for.
 class PopupRouteTracker extends ChangeNotifier {
   final Set<Route<dynamic>> _open = {};
 

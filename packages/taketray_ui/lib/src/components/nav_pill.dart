@@ -99,6 +99,7 @@ class TtNavPill extends StatelessWidget {
         ),
         child: TtGlass(
           radius: TtMetrics.navPillRadius,
+          saturation: TtMetrics.navPillSaturation,
           child: SizedBox(
             height: TtMetrics.navPillHeight,
             child: Padding(

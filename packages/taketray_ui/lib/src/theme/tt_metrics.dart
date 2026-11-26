@@ -168,24 +168,6 @@ abstract final class TtMetrics {
   // tt-style.css: .style-tt .navbar { box-shadow: 0 10px 30px -8px … }
   static const double glassShadowOpacity = 0.35;
 
-  // ---- Glass pill (status badge on media) ----
-
-  /// Height of a glass pill.
-  // proto.css: .pill { height: 24px }
-  static const double glassPillHeight = 24;
-
-  /// Background blur behind a glass pill.
-  // tt-style.css: .style-tt .rcard .cover .pill { backdrop-filter: blur(8px) }
-  static const double glassPillBlur = 8;
-
-  /// Padding before the icon of a glass pill.
-  // proto.css: .pill { padding: 0 8px 0 6px }
-  static const double glassPillPaddingStart = 6;
-
-  /// Icon size in a glass pill.
-  // proto.css: .pill .ms { font-size: 16px }
-  static const double glassPillIconSize = 16;
-
   // ---- Count badge ----
 
   /// Minimum width of a count badge.
@@ -265,6 +247,10 @@ abstract final class TtMetrics {
   /// Opacity of `inverseSurface` in the snackbar fill.
   // tt-style.css: .style-tt .snack { background: … inverse-surface 94% }
   static const double snackbarOpacity = 0.94;
+
+  /// Background blur behind the snackbar's 94 % fill (D-174, amending D-48).
+  // tt-style.css:130: .style-tt .snack { backdrop-filter: blur(12px) }
+  static const double snackbarBlur = 12;
 
   /// Gap between the snackbar and the screen's left and right edges.
   // tt-style.css: .style-tt .snack { left: 16px; right: 16px }
@@ -479,6 +465,15 @@ abstract final class TtMetrics {
   /// shadow, so this approximates the CSS shadow.
   // tt-style.css: .style-tt .menu { box-shadow: 0 12px 30px -6px … .4 }
   static const double menuElevation = 6;
+
+  /// How much room a menu panel leaves at each edge of the overlay: its
+  /// largest size is the overlay's less this much on each side (a limit on the
+  /// panel's size, measured from the whole overlay and not the safe area). It
+  /// does not place the panel: the placement is the anchor's, moved in only as
+  /// far as the safe area needs.
+  // Flutter material/menu_anchor.dart: const double _kMenuViewPadding = 8;
+  // (what `MenuAnchor` used to place the menu with; D-176 keeps its numbers)
+  static const double menuEdgeInset = 8;
 
   // ---- Switch ----
 
@@ -921,95 +916,60 @@ abstract final class TtMetrics {
 
   // ---- Reel card ----
 
-  /// Width over height of a reel card's cover.
-  // tt-style.css: .style-tt .rcard .cover { aspect-ratio: 4 / 5 }
-  static const double reelCardAspect = 0.8;
+  /// Width over height of a reel card's cover (3:4).
+  // home2.css:58: .h2-card .h2-cv { width: 100%; aspect-ratio: 3 / 4; … }
+  static const double reelCardAspect = 0.75;
 
-  /// Corner radius of a reel card.
-  // tt-style.css: .style-tt .rcard { border-radius: 22px }
-  static const double reelCardRadius = 22;
+  /// Corner radius of a reel card's cover.
+  // home2.css:58: .h2-card .h2-cv { …; border-radius: 20px }
+  static const double reelCardRadius = 20;
 
-  /// Where the bottom gradient starts, as a fraction of the cover's height.
-  // tt-style.css: .style-tt .rcard .cover::after { inset: 40% 0 0 }
-  static const double reelCardScrimStart = 0.4;
+  /// Gap between the cover and the caption under it.
+  // home2.css:56: .h2-card { display: flex; flex-direction: column; gap: 8px }
+  static const double reelCardGap = 8;
 
-  /// Distance of the status pill from the cover's top and start edges (the
-  /// "Editing in VN" pill sits under it, 8 dp down).
-  // proto.css: .rcard .cover .pill { left: 8px; top: 8px }
-  static const double reelCardPillInset = 8;
+  /// Size of the movie icon on a cover that has no picture.
+  // home2.css:59: .h2-card .h2-cv.empty .ms { font-size: 28px }
+  static const double reelCardEmptyIconSize = 28;
 
-  /// Largest text scale a reel card follows.
-  // Not in the prototype (it has no text scaling): the 4:5 tile has a fixed
-  // size. At 1.6 the 158 dp tile with a two-line name, an Editing in VN pill,
-  // a missing mark and a two-digit badge still has the name below both pills
-  // and the badge clear of the meta; at 1.7 the name starts 5 dp under the
-  // second pill. See D-46.
-  static const double reelCardMaxTextScale = 1.6;
+  /// How far a reel card shrinks while it is pressed (reduced motion: not at
+  /// all).
+  // home2.css:57: .h2-card:active { transform: scale(.98) }, and :56:
+  // transition: transform var(--dur-short3) var(--ease-standard)
+  static const double reelCardPressScale = 0.98;
 
-  /// Distance of the name and meta from the cover's bottom edge.
-  // tt-style.css: .style-tt .rcard .cap { bottom: 11px }
-  static const double reelCardCaptionBottom = 11;
+  /// Space at each side of the caption under the cover.
+  // home2.css:60: .h2-cap { …; padding: 0 4px; … }
+  static const double reelCardCaptionInset = 4;
 
-  /// Distance of the name and meta from the cover's end edge when the
-  /// references badge is shown (otherwise 12 dp).
-  // tt-style.css: .style-tt .rcard-wrap:has(.refbadge) .cap { right: 50px }
-  static const double reelCardCaptionInsetEndWithBadge = 50;
-
-  /// Gap between the name and the meta, between meta lines, and between the
-  /// missing-clips icon and its text.
-  // tt-style.css: .style-tt .rcard .cap { gap: 2px }, proto.css:
-  // .rcard .mt { gap: 2px 8px }, .rcard .mt .miss { gap: 2px }
+  /// Gap between the name, the status mark, the meta and the notes.
+  // home2.css:60: .h2-cap { display: flex; flex-direction: column; gap: 2px }
   static const double reelCardCaptionGap = 2;
 
-  /// Size of the error icon before the missing-clips text.
-  // proto.css: .rcard .mt .miss .ms { font-size: 14px }
-  static const double reelCardMissingIconSize = 14;
+  /// Size of the status mark's icon.
+  // home2.css:36: .h2-st .ms { font-size: 14px }
+  static const double reelCardStatusIconSize = 14;
 
-  /// Weight of the missing-clips text.
-  // proto.css: .rcard .mt .miss { font-weight: 600 }
-  static const FontWeight reelCardMissingWeight = FontWeight.w600;
+  /// Gap between the status mark's icon and its word.
+  // home2.css:35: .h2-st { display: inline-flex; align-items: center;
+  // gap: 4px }
+  static const double reelCardStatusGap = 4;
 
-  /// Gap between the empty art's icon and its label.
-  // proto.css: .rcard .ph-empty { gap: 6px }
-  static const double reelCardEmptyGap = 6;
+  /// Space between two notes on a line.
+  // home2.css:41: .h2-xs { display: flex; flex-wrap: wrap; gap: 4px 10px }
+  static const double reelCardNotesSpacing = 10;
 
-  /// Opacity of the empty art's icon.
-  // proto.css: .rcard .ph-empty .ms { opacity: .8 }
-  static const double reelCardEmptyIconOpacity = 0.8;
+  /// Space between two lines of notes.
+  // home2.css:41: .h2-xs { display: flex; flex-wrap: wrap; gap: 4px 10px }
+  static const double reelCardNotesRunSpacing = 4;
 
-  // ---- References badge (on a reel card) ----
+  /// Size of a note's icon.
+  // home2.css:43: .h2-x .ms { font-size: 14px }
+  static const double reelCardNoteIconSize = 14;
 
-  /// Height of the references badge.
-  // proto.css: .refbadge { height: 26px }
-  static const double refBadgeHeight = 26;
-
-  /// Distance of the badge from the cover's bottom and end edges.
-  // tt-style.css: .style-tt .refbadge { bottom: 10px; right: 10px }
-  static const double refBadgeInset = 10;
-
-  /// How far the badge's tap target reaches past it, sideways.
-  // proto.css: .refbadge::before { inset: -11px -8px }
-  static const double refBadgeHitInset = 8;
-
-  /// Padding before the badge's icon.
-  // proto.css: .refbadge { padding: 0 8px 0 6px }
-  static const double refBadgePaddingStart = 6;
-
-  /// Padding after the badge's count.
-  // proto.css: .refbadge { padding: 0 8px 0 6px }
-  static const double refBadgePaddingEnd = 8;
-
-  /// Gap between the badge's icon and its count.
-  // proto.css: .refbadge { gap: 3px }
-  static const double refBadgeGap = 3;
-
-  /// Size of the badge's icon.
-  // proto.css: .refbadge .ms { font-size: 16px }
-  static const double refBadgeIconSize = 16;
-
-  /// Weight of the badge's count.
-  // proto.css: .refbadge { font: 700 12px/1 var(--font) }
-  static const FontWeight refBadgeWeight = FontWeight.w700;
+  /// Gap between a note's icon and its text.
+  // home2.css:42: .h2-x { display: inline-flex; align-items: center; gap: 3px }
+  static const double reelCardNoteGap = 3;
 
   // ---- Reference card ----
 
@@ -1093,98 +1053,203 @@ abstract final class TtMetrics {
   // proto.css: .ref-add { border: 1.5px dashed … }
   static const double addReferenceDashGap = 3;
 
-  // ---- Shooting mode card ----
+  // ---- Shooting mode card (D-187, D-193) ----
+
+  /// Corner radius of the Shooting mode card (not `tt.radii.xxl`, which is 28).
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px;
+  // border-radius: 24px; overflow: hidden }
+  static const double shootingCardRadius = 24;
+
+  /// Space above the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginTop = 4;
+
+  /// Space at each side of the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginSide = 16;
+
+  /// Space under the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginBottom = 12;
+
+  // ---- Home, the calm grid (D-187, D-196) ----
+
+  /// Padding at each side of Home's grid of reels.
+  // home2.css:55: .h2-grid { display: grid; grid-template-columns:
+  // repeat(2, minmax(0, 1fr)); gap: 16px 12px; padding: 0 16px;
+  // align-items: start }
+  static const double homeGridPaddingHorizontal = 16;
+
+  /// Space between two rows of Home's grid.
+  // home2.css:55: .h2-grid { … gap: 16px 12px; … }
+  static const double homeGridRowGap = 16;
+
+  /// Space between the two columns of Home's grid.
+  // home2.css:55: .h2-grid { … gap: 16px 12px; … }
+  static const double homeGridColumnGap = 12;
+
+  /// Space above and below Home's words for a tab with no reels.
+  // home2.css:46: .h2-none { margin: 24px 16px; display: flex;
+  // flex-direction: column; align-items: center; gap: 8px;
+  // text-align: center; color: var(--md-on-surface-variant) }
+  static const double homeEmptyTabMarginVertical = 24;
+
+  /// Space at each side of Home's words for a tab with no reels.
+  // home2.css:46: .h2-none { margin: 24px 16px; … }
+  static const double homeEmptyTabMarginHorizontal = 16;
+
+  /// Space between those words and the Show all reels button.
+  // home2.css:46: .h2-none { … gap: 8px; … }
+  static const double homeEmptyTabGap = 8;
+
+  /// Padding at the start of the off card.
+  // home2.css:9: .h2-shoot.off { display: flex; align-items: center;
+  // gap: 12px; padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingStart = 12;
+
+  /// Padding at the top and the bottom of the off card.
+  // home2.css:9: .h2-shoot.off { … padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingVertical = 10;
+
+  /// Padding at the end of the off card (the switch has its own room).
+  // home2.css:9: .h2-shoot.off { … padding: 10px 6px 10px 12px; … }
+  static const double shootingOffPaddingEnd = 6;
+
+  /// Padding on every side of the on card.
+  // home2.css:10: .h2-shoot.on { display: flex; flex-direction: column;
+  // gap: 12px; padding: 12px; background: #000; color: #fff }
+  static const double shootingOnPadding = 12;
+
+  /// Gap between the rows of the on card (row 1, then Open camera and the
+  /// chips).
+  // home2.css:10: .h2-shoot.on { … gap: 12px; padding: 12px; … }
+  static const double shootingRowGap = 12;
+
+  /// Gap between the tile, the texts and the switch in row 1.
+  // home2.css:18: .h2-row { display: flex; align-items: center; gap: 12px }
+  // and :9 (the off card's own gap: 12px)
+  static const double shootingTopGap = 12;
 
   /// Side of the Shooting mode card's icon tile.
-  // proto.css: .shoot .ico { width: 48px; height: 48px }
-  static const double shootingIconSize = 48;
+  // home2.css:19: .h2-ico { position: relative; flex: none; width: 40px;
+  // height: 40px; border-radius: 14px; … }
+  static const double shootingIconSize = 40;
 
   /// Corner radius of the Shooting mode card's icon tile.
-  // proto.css: .shoot .ico { border-radius: 14px }
+  // home2.css:19: .h2-ico { … border-radius: 14px; … }
   static const double shootingIconRadius = 14;
 
-  /// Gap between the icon tile, the texts and the switch.
-  // proto.css: .shoot .top { gap: 14px }
-  static const double shootingTopGap = 14;
+  /// Size of the videocam glyph in the icon tile.
+  // home2.css:20: .h2-ico .ms { font-size: 22px }
+  static const double shootingIconGlyphSize = 22;
 
-  /// Gap between the title and the subtitle.
-  // proto.css: .shoot .txt span { margin-top: 2px }
-  static const double shootingSubtitleGap = 2;
-
-  /// Distance of the record dot from the icon tile's top and end edges.
-  // proto.css: .shoot .ico .recdot { right: 5px; top: 5px }
-  static const double shootingRecDotInset = 5;
+  /// How far the record dot sits outside the icon tile's top end corner.
+  // home2.css:21: .h2-ico .recdot { position: absolute; top: -2px;
+  // right: -2px; box-shadow: 0 0 0 2px #000 }
+  static const double shootingRecDotOutset = 2;
 
   /// Opacity of the backdrop picture on the "on" card.
-  // tt-style.css: .style-tt .shoot.on .shoot-media img { opacity: .62 }
-  static const double shootingBackdropOpacity = 0.62;
+  // home2.css:17: .h2-media img { width: 100%; height: 100%;
+  // object-fit: cover; opacity: .55 }
+  static const double shootingBackdropOpacity = 0.55;
 
   /// Opacity of white in the icon tile on the "on" card.
-  // tt-style.css: .shoot.on .ico { background: rgba(255,255,255,.16) } and
-  // proto.css: .shoot.on .ico { … fg 16 % }
+  // home2.css:13: .h2-shoot.on .h2-ico { background: rgba(255, 255, 255, .16);
+  // color: #fff }
   static const double shootingIconFillOpacity = 0.16;
 
-  /// Blur behind the icon tile on the "on" card.
+  /// Blur behind the icon tile on the "on" card (kept from Phase 12; the
+  /// prototype's `backdrop-filter: blur(8px)` is in tt-style.css).
   // tt-style.css: .style-tt .shoot.on .ico { backdrop-filter: blur(8px) }
   static const double shootingIconBlur = 8;
 
   /// Opacity of white in the subtitle on the "on" card.
-  // tt-style.css: .shoot.on .txt span { color: rgba(255,255,255,.85) }
+  // home2.css:15: .h2-shoot.on .h2-txt span { color: rgba(255, 255, 255, .85) }
   static const double shootingSubtitleOpacity = 0.85;
 
   /// Angle of the brand tint over the backdrop, in degrees.
-  // tt-style.css: .style-tt .shoot.on::before { linear-gradient(160deg, … }
+  // home2.css:11: .h2-shoot.on::before { … background:
+  // linear-gradient(160deg, rgba(36, 49, 66, .86),
+  // rgba(36, 49, 66, .4) 60%, rgba(0, 0, 0, .55)) }
   static const double shootingTintAngle = 160;
 
   /// Opacity of the brand colour at the start of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 78% 0% … }
-  static const double shootingTintStartOpacity = 0.78;
+  // home2.css:11: … linear-gradient(160deg, rgba(36, 49, 66, .86), …
+  static const double shootingTintStartOpacity = 0.86;
 
   /// Opacity of the brand colour in the middle of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
-  static const double shootingTintMiddleOpacity = 0.35;
+  // home2.css:11: … rgba(36, 49, 66, .4) 60%, …
+  static const double shootingTintMiddleOpacity = 0.40;
 
   /// Where the middle of the tint is.
-  // tt-style.css: .style-tt .shoot.on::before { … bg 35% 55% … }
-  static const double shootingTintMiddleStop = 0.55;
+  // home2.css:11: … rgba(36, 49, 66, .4) 60%, …
+  static const double shootingTintMiddleStop = 0.60;
 
   /// Opacity of black at the end of the tint.
-  // tt-style.css: .style-tt .shoot.on::before { … rgba(0,0,0,.55) 100% }
+  // home2.css:11: … rgba(0, 0, 0, .55)) }
   static const double shootingTintEndOpacity = 0.55;
 
-  // ---- Card rows (references row, to-tag strip) ----
+  /// Gap between Open camera and the chips, across and down.
+  // home2.css:25: .h2-row2 { display: flex; flex-wrap: wrap; gap: 8px }
+  static const double shootingRow2Gap = 8;
 
-  /// Least height of a references row.
-  // proto.css: .refrow { min-height: 56px }
-  static const double cardRowMinHeight = 56;
+  /// Visible height of the Open camera pill and of a chip.
+  // home2.css:26: .h2-cam { … min-height: 40px; … } and :28 .h2-chip
+  // { … min-height: 40px; … }
+  static const double shootingPillHeight = 40;
 
-  /// Least height of a to-tag strip.
-  // proto.css: .shoot .strip { min-height: 52px }
-  static const double cardStripMinHeight = 52;
+  /// Padding before the icon of the Open camera pill.
+  // home2.css:26: .h2-cam { … padding: 0 16px 0 12px; … }
+  static const double shootingCameraPaddingStart = 12;
 
-  /// Gap between the parts of a references row.
-  // proto.css: .refrow { gap: 12px }
-  static const double cardRowGap = 12;
+  /// Padding after the text of the Open camera pill.
+  // home2.css:26: .h2-cam { … padding: 0 16px 0 12px; … }
+  static const double shootingCameraPaddingEnd = 16;
 
-  /// Gap between the parts of a to-tag strip.
-  // proto.css: .shoot .strip { gap: 10px }
-  static const double cardStripGap = 10;
+  /// Gap between the icon and the text of the Open camera pill.
+  // home2.css:26: .h2-cam { display: inline-flex; align-items: center;
+  // gap: 6px; … }
+  static const double shootingCameraGap = 6;
 
-  /// Opacity of white in the top border of a references row.
-  // tt-style.css: .shoot.on .refrow { border-top-color: rgba(255,255,255,.18) }
-  static const double cardRowBorderOpacity = 0.18;
+  /// Size of the icon in the Open camera pill.
+  // home2.css:27: .h2-cam .ms { font-size: 20px }
+  static const double shootingCameraIconSize = 20;
 
-  /// Opacity of black behind a references row.
-  // tt-style.css: .style-tt .shoot.on .refrow { background: rgba(0,0,0,.25) }
-  static const double cardRowFillOpacity = 0.25;
+  /// Padding before the icon of a chip.
+  // home2.css:28: .h2-chip { … padding: 0 14px 0 10px; … }
+  static const double shootingChipPaddingStart = 10;
 
-  /// Blur behind a references row.
-  // tt-style.css: .style-tt .shoot.on .refrow { backdrop-filter: blur(6px) }
-  static const double cardRowBlur = 6;
+  /// Padding after the text of a chip.
+  // home2.css:28: .h2-chip { … padding: 0 14px 0 10px; … }
+  static const double shootingChipPaddingEnd = 14;
 
-  /// Opacity of the subtitle in a references row.
-  // proto.css: .refrow .grow > span { opacity: .85 }
-  static const double cardRowSubtitleOpacity = 0.85;
+  /// Gap between the icon and the text of a chip.
+  // home2.css:28: .h2-chip { display: inline-flex; align-items: center;
+  // gap: 6px; … }
+  static const double shootingChipGap = 6;
+
+  /// Size of the icon in a chip.
+  // home2.css:29: .h2-chip .ms { font-size: 18px }
+  static const double shootingChipIconSize = 18;
+
+  /// Opacity of white in a chip's glass.
+  // home2.css:28: .h2-chip { … background: rgba(255, 255, 255, .14); … }
+  static const double shootingChipFillOpacity = 0.14;
+
+  /// Opacity of black laid under the white of a chip's glass.
+  ///
+  /// Not in home2.css: `:28` has only `background: rgba(255, 255, 255, .14)`.
+  /// Added for AA (R12B-6, D-193): the handoff's Accessibility line wins. The
+  /// chips sit where the tint is lightest, and over a pure white frame their
+  /// white text was 4.27:1 ("References · 4"), 4.14:1 ("Earlier videos") and
+  /// 3.29:1 at 2x with the white .14 alone; with this black under it the
+  /// worst is 4.56:1. At .22 the worst is 4.50:1, with no margin.
+  // home2.css:28: .h2-chip { … background: rgba(255, 255, 255, .14); … }
+  static const double shootingChipShadeOpacity = 0.23;
+
+  /// Blur behind a chip.
+  // home2.css:28: .h2-chip { … backdrop-filter: blur(10px); … }
+  static const double shootingChipBlur = 10;
 
   // ---- Stat strip ----
 
@@ -1194,43 +1259,55 @@ abstract final class TtMetrics {
 
   // ---- Tag player stage ----
 
-  /// Blur of the thumbnail behind the tag player's video.
-  // proto.css: .stage .blur { filter: blur(22px) brightness(.45) }
-  static const double tagStageBlur = 22;
+  /// The most of a clip the tag player's stage may cut off to cover the
+  /// screen: a clip that covering would cut more of is shown whole on black
+  /// (`BoxFit.contain`, D-171, D-180).
+  // design/handoff/tag-player-full-screen.md, "The clip": "If covering would
+  // trim more than 20 % of the clip, show it whole (BoxFit.contain) on black."
+  static const double tagStageMaxCoverCrop = 0.20;
 
-  /// Opacity of black over that blurred thumbnail (`brightness(.45)` leaves
-  /// 45 % of the light, so 55 % black).
-  static const double tagStageDimOpacity = 0.55;
+  /// Size of the play disc over a paused clip.
+  // player2.css:11: .p2-vid .ctr .ms { width: 64px; height: 64px;
+  // border-radius: 50%; background: rgba(0,0,0,.45); font-size: 36px }
+  static const double tagStagePlayDiscSize = 64;
 
-  /// How much that thumbnail is scaled up, so the blur's soft edge is off
-  /// the stage.
-  // proto.css: .stage .blur { transform: scale(1.1) }
-  static const double tagStageBlurScale = 1.1;
+  /// Opacity of the play disc's black.
+  static const double tagStagePlayDiscOpacity = 0.45;
 
-  /// Corner radius of the tag player's video.
-  // tt-style.css: .style-tt .stage .vid { border-radius: 18px }
-  static const double tagStageVideoRadius = 18;
+  /// Size of the play icon in that disc.
+  static const double tagStagePlayIconSize = 36;
 
-  /// Blur radius of the shadow under the tag player's video.
-  // proto.css: .stage .vid { box-shadow: 0 10px 30px rgba(0,0,0,.5) }
-  static const double tagStageVideoShadowBlur = 30;
+  /// How far the finger must drag the tag player's clip up or down for the
+  /// swipe to go to the next or previous clip, in dp.
+  // design/handoff/tag-player-full-screen.md, "Gestures": "A drag over
+  // 64 dp, or a fling over 800 dp/s, goes. Less springs back with the
+  // standard easing."
+  static const double tagSwipeDistance = 64;
 
-  /// How far down that shadow falls.
-  static const double tagStageVideoShadowOffset = 10;
+  /// How fast a fling must be, in dp per second, for a shorter swipe to go.
+  // design/handoff/tag-player-full-screen.md, "Gestures": "A drag over
+  // 64 dp, or a fling over 800 dp/s, goes."
+  static const double tagSwipeVelocity = 800;
 
-  /// Opacity of that shadow's black.
-  static const double tagStageVideoShadowOpacity = 0.5;
+  /// Where a clip coming in without a drag starts, as a share of the stage's
+  /// height: below it going on, above it going back.
+  // player2.css:19: @keyframes p2Up { from { transform: translateY(16%);
+  // opacity: .3; } } (:20, p2Down, from translateY(-16%))
+  static const double tagStageSlideFrom = 0.16;
 
-  /// How far a new clip slides in, as a share of its width.
-  // proto.css: @keyframes clipIn { from { transform: translateX(70%)
-  // scale(.9); opacity: 0 } }
-  static const double tagStageSlideDistance = 0.7;
+  /// The opacity a clip coming in without a drag starts at.
+  // player2.css:19: @keyframes p2Up { from { … opacity: .3; } }
+  static const double tagStageSlideFromOpacity = 0.3;
 
-  /// The scale a new clip starts at while it slides in.
-  static const double tagStageSlideScale = 0.9;
+  /// How long a move between clips crossfades when the phone removes
+  /// animations, in milliseconds: a fixed length, because the reduced
+  /// `TtMotion` durations are all zero.
+  // design/handoff/tag-player-full-screen.md, "Motion": "Reduced motion | A
+  // 150 ms crossfade, no travel (as before)."
+  static const double reducedMotionCrossfadeMillis = 150;
 
-  /// Opacity of black behind the spinner over a loading video.
-  // proto.css: .stage .vid .ld { background: rgba(0,0,0,.35) }
+  /// Opacity of black over a loading clip's picture, behind the spinner.
+  // player2.css:12: .p2-vid .ld { background: rgba(0,0,0,.35) }
   static const double tagStageLoadingOpacity = 0.35;
 
   // ---- Video surface ----
@@ -1363,66 +1440,17 @@ abstract final class TtMetrics {
   // No CSS source: the prototype has no adjustable slider semantics.
   static const double scrubSemanticStep = 0.05;
 
-  // ---- Same as previous ----
+  // ---- Reel grid at large text ----
 
-  /// Corner radius of the "Same as previous" button.
-  // tt-style.css: .style-tt .qrow .btn.same { border-radius: 24px }
-  static const double sameButtonRadius = 24;
-
-  /// Opacity of white in the button's fill.
-  // proto.css: .qrow .btn.same { background: rgba(255,255,255,.14) }
-  static const double sameButtonFillOpacity = 0.14;
-
-  /// Opacity of the detail line.
-  // proto.css: .qrow .btn.same .two small { opacity: .8 }
-  static const double sameButtonDetailOpacity = 0.8;
-
-  /// Line height of the label, as a multiple of its size.
-  // proto.css: .qrow .btn.same .two { line-height: 1.2 }
-  static const double sameButtonLabelHeight = 1.2;
-
-  // ---- Tag panel ----
-
-  /// Width of the highlight along the panel's top edge.
-  // tt-style.css: .style-tt .tagpanel { box-shadow: inset 0 1px 0 var(--hair) }
-  static const double tagPanelHairline = 1;
-
-  /// Opacity of the panel's surface container fill.
-  // tt-style.css: .style-tt .tagpanel { background: color-mix(…92%…) }
-  static const double tagPanelOpacity = 0.92;
-
-  /// Background blur behind the panel.
-  // tt-style.css: .style-tt .tagpanel { backdrop-filter: blur(20px) }
-  static const double tagPanelBlur = 20;
-
-  /// Padding under the panel's content.
-  // proto.css: .tagpanel { padding: 12px 12px 26px }
-  static const double tagPanelPaddingBottom = 26;
-
-  /// Tallest the panel gets before its chips scroll, at normal text size.
-  // proto.css: .tagpanel { max-height: 340px }
-  static const double tagPanelMaxHeight = 340;
-
-  /// The text scale from which the panel lays its chips out one per row and
-  /// a chip's name may take two lines. Below it: two columns, one line.
+  /// The text scale from which the dock and the All reels sheet lay their
+  /// chips out one per row and a chip's name may take two lines. Below it:
+  /// two columns, one line.
   // Not in the prototype: large-text layout (D-47). At 2x a 164 dp cell shows
   // about 5 letters of a name, so reel names that share a first word cannot
   // be told apart; one full-width chip shows about 12.
-  /// The same threshold as [largeTextScale], under its earlier name.
-  static const double tagPanelSingleColumnTextScale = largeTextScale;
-
-  /// Tallest the panel gets at large text: the cap grows with the text scale
-  /// (340 dp at 1x, times the scale) up to this.
-  // Not in the prototype: large-text layout (D-47). At 2x, three one-column
-  // chips with two-line names are 3 x 126 dp, plus 12 padding, 48 header,
-  // 2 x 8 gaps, 4 and 26 under the grid = 484 dp, so 520 shows three whole
-  // chips under the header and leaves 260 dp of a 780 dp screen for the
-  // video and controls.
-  static const double tagPanelMaxHeightLarge = 520;
-
-  /// Minimum height of the panel's header row.
-  // proto.css: .tagpanel .ph-h { min-height: 40px }
-  static const double tagPanelHeaderHeight = 40;
+  /// The same threshold as [largeTextScale]: the dock (D-179) and the chips
+  /// read it by this name.
+  static const double reelDockSingleColumnTextScale = largeTextScale;
 
   // ---- Reel chip ----
 
@@ -1501,20 +1529,225 @@ abstract final class TtMetrics {
   // proto.css: .rchip .cv .ms { font-size: 20px }
   static const double newReelChipIconSize = 20;
 
-  // ---- Other reels toggle ----
+  // ---- Rail button (D-178) ----
 
-  /// Height of the drawn row of the "Other reels" toggle. Its tap target is
-  /// the touch target (48 dp), with this row centred in it.
-  // proto.css: the toggle's inline `min-height: 36px`
-  static const double otherReelsToggleHeight = 36;
+  /// Width and height of a rail button: its minimum, it grows with its text.
+  // player2.css:33: .p2-rb { width: 64px; min-height: 64px }
+  static const double railButtonSize = 64;
 
-  /// Corner radius of the toggle's highlight.
-  // proto.css: the toggle's inline `border-radius: 8px`
-  static const double otherReelsToggleRadius = 8;
+  /// Corner radius of a rail button.
+  // player2.css:33: .p2-rb { border-radius: 20px }
+  static const double railButtonRadius = 20;
 
-  /// Gap between the toggle's label and its arrow.
-  // proto.css: the toggle's inline `gap: 4px`
-  static const double otherReelsToggleGap = 4;
+  /// Standard deviation of the blur behind a rail button.
+  // player2.css:33: .p2-rb { backdrop-filter: blur(12px) }
+  static const double railButtonBlur = 12;
+
+  /// Padding above and below a rail button's content.
+  // player2.css:33: .p2-rb { padding: 8px 4px }
+  static const double railButtonPaddingVertical = 8;
+
+  /// Padding beside a rail button's content.
+  // player2.css:33: .p2-rb { padding: 8px 4px }
+  static const double railButtonPaddingHorizontal = 4;
+
+  /// Gap between a rail button's icon, label and detail.
+  // player2.css:33: .p2-rb { gap: 1px }
+  static const double railButtonLineGap = 1;
+
+  /// Size of a rail button's icon.
+  // player2.css:34: .p2-rb .ms { font-size: 24px }
+  static const double railButtonIconSize = 24;
+
+  /// Widest a rail button's second line is at a text scale of 1; at larger
+  /// text it grows with the scale, as the button does.
+  // player2.css:35: .p2-rb small { max-width: 56px }
+  static const double railButtonDetailMaxWidth = 56;
+
+  /// Opacity of a rail button's second line (white at this).
+  // player2.css:35: .p2-rb small { color: rgba(255,255,255,.85) }
+  static const double railButtonDetailOpacity = 0.85;
+
+  /// How much of its fill and content an off rail button keeps (Same with
+  /// nothing tagged yet). Faded in the colours, never with an `Opacity`
+  /// round the glass (F8: that can drop the blur).
+  // player2.css:36: .p2-rb.dis { opacity: .45 }
+  static const double railButtonDisabledOpacity = 0.45;
+
+  // ---- The full-screen tag player: rail, snack and All reels (D-181) ----
+
+  /// Distance from the screen's end edge to the rail of Skip and Same.
+  // player2.css:32: .p2-rail { right: 12px }
+  static const double railInsetEnd = 12;
+
+  /// Gap between the bottom of the rail and the top of the dock.
+  // player2.css:32: .p2-rail { bottom: calc(100% + 4px) }
+  static const double railAboveDock = 4;
+
+  /// Gap between the two rail buttons.
+  // player2.css:32: .p2-rail { gap: 10px }
+  static const double railGap = 10;
+
+  /// Distance from the screen's start edge to a snack in the tag player.
+  // design/handoff/tag-player-full-screen.md, "Snack": inset 12 on the left
+  // (player2.css:38 keeps the prototype's .snack left)
+  static const double playerSnackInsetStart = 12;
+
+  /// Distance from the screen's end edge to a snack in the tag player while
+  /// the rail is its 64 dp: 12, the rail, and 12. A rail that grows with its
+  /// text widens this by as much.
+  // player2.css:38: .p2-snack .snack { right: 88px }
+  static const double playerSnackInsetEnd = 88;
+
+  /// Gap between the bottom of a snack in the tag player and the dock's top.
+  // player2.css:38: .p2-snack .snack { bottom: 8px }
+  static const double playerSnackAboveDock = 8;
+
+  /// Padding above a section label ("Collecting", "Other reels") in the All
+  /// reels sheet.
+  // proto.css:726: .chipgrid .lbl { padding: 6px 8px 0 }
+  static const double allReelsLabelPaddingTop = 6;
+
+  // ---- Reel chip on video (D-178) ----
+
+  /// Minimum height of an on-video chip (with its 30 x 40 cover it is 54).
+  // player2.css:44: .rchip.dk { min-height: 52px }
+  static const double reelChipOnVideoMinHeight = 52;
+
+  /// Standard deviation of the blur behind an on-video chip.
+  // player2.css:44: .rchip.dk { backdrop-filter: blur(14px) }
+  static const double reelChipOnVideoBlur = 14;
+
+  /// Opacity of the count under the name of an idle on-video chip, and of
+  /// the subtitle of the on-video New reel chip (white at this).
+  // player2.css:45: .rchip.dk .t span { color: rgba(255,255,255,.78) }
+  static const double reelChipOnVideoCountOpacity = 0.78;
+
+  /// Width of the cover of an on-video chip.
+  // player2.css:46: .rchip.dk .cv { width: 30px }
+  static const double reelChipOnVideoCoverWidth = 30;
+
+  /// Height of the cover of an on-video chip.
+  // player2.css:46: .rchip.dk .cv { height: 40px }
+  static const double reelChipOnVideoCoverHeight = 40;
+
+  /// Opacity of the count on a picked or tagged on-video chip.
+  // player2.css:49: .rchip.dk.done .t span, .rchip.dk.pick .t span
+  // { opacity: .85 }
+  static const double reelChipOnVideoStateCountOpacity = 0.85;
+
+  // ---- Reel dock and the player's scrims (D-179) ----
+
+  /// Padding above the dock's first row.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingTop = 28;
+
+  /// Padding at each side of the dock.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingSide = 12;
+
+  /// Padding under the dock's last row, before the gesture inset.
+  // player2.css:31: .p2-dock { padding: 28px 12px 22px }
+  static const double reelDockPaddingBottom = 22;
+
+  /// Gap between the dock's rows (scrub, header, grid, footer).
+  // player2.css:31: .p2-dock { display: flex; flex-direction: column;
+  // gap: 8px }
+  static const double reelDockGap = 8;
+
+  /// Alpha of the dock scrim's first colour stop after the clear top.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimMidOpacity = 0.74;
+
+  /// Where the dock scrim reaches [reelDockScrimMidOpacity], from the top
+  /// (the stop is clamped to [reelDockScrimEndStop] on a short dock).
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimMidAt = 26;
+
+  /// Alpha of the dock scrim from [reelDockScrimEndStop] to the bottom.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimEndOpacity = 0.90;
+
+  /// Where the dock scrim reaches [reelDockScrimEndOpacity], as a share of
+  /// its height.
+  // player2.css:31: .p2-dock { background: linear-gradient(transparent 0,
+  // rgba(0,0,0,.74) 26px, rgba(0,0,0,.9) 50%) }
+  static const double reelDockScrimEndStop = 0.5;
+
+  /// Padding at each side of the dock's scrub line.
+  // player2.css:39: .p2-scrub { padding: 0 4px 2px }
+  static const double reelDockScrubPaddingSide = 4;
+
+  /// Padding under the dock's scrub line.
+  // player2.css:39: .p2-scrub { padding: 0 4px 2px }
+  static const double reelDockScrubPaddingBottom = 2;
+
+  /// Least height of the dock's header row.
+  // player2.css:40: .p2-dh { min-height: 40px }
+  static const double reelDockHeaderHeight = 40;
+
+  /// Padding before the dock header's title.
+  // player2.css:40: .p2-dh { padding-left: 4px }
+  static const double reelDockHeaderPaddingStart = 4;
+
+  /// Gap between the dock header's title and its actions.
+  // player2.css:40: .p2-dh { gap: 2px }
+  static const double reelDockHeaderGap = 2;
+
+  /// Gap between the chips of the dock's grid, both ways.
+  // player2.css:43: .p2-grid { gap: 8px }
+  static const double reelDockGridGap = 8;
+
+  /// Padding above the dock's footer (on top of the row gap).
+  // player2.css:51: .p2-foot { padding-top: 4px }
+  static const double reelDockFooterGap = 4;
+
+  /// Padding round the dock's empty text.
+  // player2.css:52: .p2-none { padding: 8px }
+  static const double reelDockEmptyPadding = 8;
+
+  /// Opacity of the dock's empty text (white at this).
+  // player2.css:52: .p2-none { color: rgba(255,255,255,.85) }
+  static const double reelDockEmptyTextOpacity = 0.85;
+
+  /// Tallest the dock's grid gets before it scrolls. The CSS caps it only at
+  /// large text; the dock caps it at every text scale, because in Pick
+  /// several the grid can hold many picked reels and the clip keeps its room
+  /// (D-179). At 1x the grid is two short rows, far under it.
+  // player2.css:56: .fs2 .p2-grid { max-height: 260px; overflow-y: auto }
+  static const double reelDockGridMaxHeight = 260;
+
+  /// Alpha of the top scrim at its top edge.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimStartOpacity = 0.78;
+
+  /// Alpha of the top scrim from its top to [playerTopScrimFade] above its
+  /// bottom.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimHoldOpacity = 0.70;
+
+  /// The length of the top scrim's fade to clear, at its bottom.
+  // player2.css:21: .p2-top { background: linear-gradient(rgba(0,0,0,.78) 0,
+  // rgba(0,0,0,.7) calc(100% - 24px), transparent 100%) }
+  static const double playerTopScrimFade = 24;
+
+  /// Opacity of a header chevron at either end of the session.
+  // player2.css:6: .p2 .ib.off { opacity: .35; pointer-events: none }
+  static const double playerChevronDisabledOpacity = 0.35;
+
+  /// Opacity of the scene line under the player header's title (white at
+  /// this): the tag player's, not the clip viewer's 78 % token.
+  // player2.css:30: .p2-where span { color: rgba(255,255,255,.82) }
+  static const double playerSceneLineOpacity = 0.82;
+
+  /// Padding at each side of the title between the header's chevrons.
+  // player2.css:25: .p2-where { padding: 0 2px }
+  static const double playerChevronTitlePadding = 2;
 
   // ---- Tag done ----
 
@@ -1618,6 +1851,24 @@ abstract final class TtMetrics {
   // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
   static const FontWeight listRowOffTitleWeight = FontWeight.w400;
 
+  /// Distance of the editor sheet's **Choose clips instead** button from the
+  /// sheet's edge: the head's 24 dp side padding less the button's -12 dp
+  /// margin.
+  // editflow.css:19: .sh-head .ed-choose { margin: 4px 0 0 -12px }
+  static const double sheetChooseInset = 12;
+
+  /// Space between a list row's title and its tag pill ("Last used").
+  // editflow.css:18: .ed-last { margin-left: 8px; ... }
+  static const double listRowTagGap = 8;
+
+  /// Side padding of a list row's tag pill.
+  // editflow.css:18: .ed-last { padding: 1px 8px; border-radius: 999px; ... }
+  static const double listRowTagPaddingH = 8;
+
+  /// Top and bottom padding of a list row's tag pill.
+  // editflow.css:18: .ed-last { padding: 1px 8px; border-radius: 999px; ... }
+  static const double listRowTagPaddingV = 1;
+
   /// Minimum height of the count pill at the end of a list row.
   // proto.css: .ev-row .ev-trail .n { min-height: 28px }
   static const double rowCountMinHeight = 28;
@@ -1638,7 +1889,7 @@ abstract final class TtMetrics {
   /// Text scale from which a list row's trailing value or button moves
   /// under the text, because beside it the title would break inside words.
   /// Not in the prototype (it has no text scaling); the same threshold as
-  /// [tagPanelSingleColumnTextScale].
+  /// [reelDockSingleColumnTextScale].
   static const double listRowStackTrailingTextScale = largeTextScale;
 
   /// Side of the box behind a boxed row icon.
@@ -1670,7 +1921,7 @@ abstract final class TtMetrics {
   /// Text scale from which a banner's action moves under its text, because
   /// beside it the action would squeeze the text to a few letters per line.
   /// Not in the prototype (it has no text scaling); the same threshold as
-  /// [tagPanelSingleColumnTextScale].
+  /// [reelDockSingleColumnTextScale].
   static const double bannerActionBelowTextScale = largeTextScale;
 
   /// Space before and after the content of a callout.
@@ -1764,11 +2015,68 @@ abstract final class TtMetrics {
   // 1.5 is the largest scale at which both stay inside 64 dp.
   static const double appBarMaxTextScale = 1.5;
 
+  /// Height of the quiet tabs' pills and of the header pill (their tap
+  /// targets stay 48 dp).
+  // home2.css:52: .h2-tab { min-height: 40px }
+  // home2.css:4: .h2 .appbar .h2-new { min-height: 40px }
+  static const double quietPillHeight = 40;
+
+  /// Side padding of the quiet tabs' row.
+  // home2.css:50: .h2-tabs { padding: 0 12px 10px }
+  static const double quietTabsPaddingHorizontal = 12;
+
+  /// Space under the quiet tabs' row.
+  // home2.css:50: .h2-tabs { padding: 0 12px 10px }
+  static const double quietTabsPaddingBottom = 10;
+
+  /// Gap between two quiet tabs.
+  // home2.css:50: .h2-tabs { gap: 4px }
+  static const double quietTabsGap = 4;
+
+  /// Side padding inside a quiet tab.
+  // home2.css:52: .h2-tab { padding: 0 14px }
+  static const double quietTabPaddingHorizontal = 14;
+
+  /// Gap between a quiet tab's label and its count.
+  // home2.css:52: .h2-tab { gap: 6px }
+  static const double quietTabCountGap = 6;
+
+  /// Opacity of a quiet tab's count.
+  // home2.css:53: .h2-tab span { font-variant-numeric: tabular-nums;
+  //   opacity: .8 }
+  static const double quietTabCountOpacity = 0.8;
+
+  /// Padding before the header pill's icon.
+  // home2.css:4: .h2 .appbar .h2-new { padding: 0 16px 0 12px }
+  static const double headerPillPaddingStart = 12;
+
+  /// Padding after the header pill's label.
+  // home2.css:4: .h2 .appbar .h2-new { padding: 0 16px 0 12px }
+  static const double headerPillPaddingEnd = 16;
+
+  /// Gap between the header pill's icon and its label.
+  // home2.css:4: .h2 .appbar .h2-new { gap: 4px }
+  static const double headerPillGap = 4;
+
+  /// Size of the header pill's icon.
+  // home2.css:5: .h2 .appbar .h2-new .ms { font-size: 20px }
+  static const double headerPillIconSize = 20;
+
+  /// Space between the header pill and the edge of the screen.
+  // home2.css:4: .h2 .appbar .h2-new { margin-right: 12px }
+  static const double headerPillMarginEnd = 12;
+
   // ---- Floating nav pill ----
 
   /// Height of the floating navigation pill.
   // tt-style.css: .style-tt .navbar { height: 64px }
   static const double navPillHeight = 64;
+
+  /// How much the nav pill saturates what it blurs: the filter composes
+  /// `saturate(1.4)` after the blur (D-175).
+  // tt-style.css:33-37: .style-tt .navbar {
+  //   backdrop-filter: blur(18px) saturate(1.4) }
+  static const double navPillSaturation = 1.4;
 
   /// Corner radius of the pill.
   // tt-style.css: .style-tt .navbar { border-radius: 32px }
@@ -2131,4 +2439,111 @@ abstract final class TtMetrics {
   /// Weight of the letters of the placeholder icon.
   // proto.css: .appic-g { font: 800 14px }
   static const FontWeight appIconLetterWeight = FontWeight.w800;
+
+  // ---- Selection dock (Phase 12B, D-190) ----
+
+  /// Corner radius of the dock's top corners.
+  // editflow.css:5: .sel-dock { border-radius: 28px 28px 0 0 }
+  static const double selectionDockRadius = 28;
+
+  /// Padding above the rows.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingTop = 10;
+
+  /// Padding at each side.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingHorizontal = 16;
+
+  /// Padding under the rows, before the gesture inset is added.
+  // editflow.css:5: .sel-dock { padding: 10px 16px 22px }
+  static const double selectionDockPaddingBottom = 22;
+
+  /// Gap between the actions row and the Edit button or the note.
+  // editflow.css:5: .sel-dock { flex-direction: column; gap: 8px }
+  static const double selectionDockRowGap = 8;
+
+  /// Vertical offset of the dock's shadow (negative: it falls upwards).
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowOffsetY = -8;
+
+  /// Blur radius of the dock's shadow.
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowBlur = 24;
+
+  /// Opacity of the black in the dock's shadow.
+  // editflow.css:5: .sel-dock { box-shadow: 0 -8px 24px rgba(0, 0, 0, .16) }
+  static const double selectionDockShadowOpacity = 0.16;
+
+  /// How far below its place the dock starts, as a fraction of its own
+  /// height.
+  // editflow.css:6: @keyframes sdIn { from { transform: translateY(100%) } }
+  static const double selectionDockSlideFrom = 1;
+
+  /// Gap between the actions (and between their rows at large text).
+  // editflow.css:7: .sd-acts { gap: 4px }
+  static const double selectionDockActionGap = 4;
+
+  /// Height of an action, at least.
+  // editflow.css:8: .sd-act { min-height: 56px }
+  static const double selectionDockActionHeight = 56;
+
+  /// Corner radius of an action's tap area.
+  // editflow.css:8: .sd-act { border-radius: 16px }
+  static const double selectionDockActionRadius = 16;
+
+  /// Padding above and below an action's icon and label.
+  // editflow.css:8: .sd-act { padding: 4px 2px }
+  static const double selectionDockActionPaddingVertical = 4;
+
+  /// Padding at the sides of an action's icon and label.
+  // editflow.css:8: .sd-act { padding: 4px 2px }
+  static const double selectionDockActionPaddingHorizontal = 2;
+
+  /// Gap between an action's icon and its label.
+  // editflow.css:8: .sd-act { gap: 2px }
+  static const double selectionDockActionLineGap = 2;
+
+  /// Size of an action's icon.
+  // editflow.css:9: .sd-act .ms { font-size: 24px }
+  static const double selectionDockActionIconSize = 24;
+
+  /// Opacity of an action that is off.
+  // editflow.css:10: .sd-act[aria-disabled="true"] { opacity: .38 }
+  static const double selectionDockActionOffOpacity = 0.38;
+
+  /// Height of the Edit button, at least.
+  // editflow.css:11: .sd-edit { min-height: 56px }
+  static const double selectionDockEditHeight = 56;
+
+  /// Gap between the Edit button's icon, label and length.
+  // editflow.css:11: .sd-edit { gap: 8px }
+  static const double selectionDockEditGap = 8;
+
+  /// Weight of the length on the Edit button.
+  // editflow.css:12: .sd-edit .sd-len { font-weight: 500 }
+  static const FontWeight selectionDockEditDetailWeight = FontWeight.w500;
+
+  /// Opacity of the length on the Edit button.
+  // editflow.css:12: .sd-edit .sd-len { opacity: .8 }
+  static const double selectionDockEditDetailOpacity = 0.8;
+
+  /// Padding above the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingTop = 2;
+
+  /// Padding at the sides of the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingHorizontal = 4;
+
+  /// Padding under the note.
+  // editflow.css:14: .sd-note { padding: 2px 4px 4px }
+  static const double selectionDockNotePaddingBottom = 4;
+
+  /// Gap between the note's icon and its text.
+  // editflow.css:14: .sd-note { gap: 8px }
+  static const double selectionDockNoteGap = 8;
+
+  /// Size of the note's icon.
+  // editflow.css:15: .sd-note .ms { font-size: 18px }
+  static const double selectionDockNoteIconSize = 18;
 }

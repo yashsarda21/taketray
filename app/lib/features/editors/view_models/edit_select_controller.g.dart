@@ -8,19 +8,19 @@ part of 'edit_select_controller.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// The clips ticked on the picking screen of one reel (D-126).
+/// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+/// D-129), which since D-192 is only for adding clips to the reel's editing
+/// folder.
 ///
-/// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-///   of another reel or an unknown id cannot be ticked, and the preselected
-///   ids are cut down the same way.
+/// - **Only live clips can be ticked.** A missing clip is not listed, and a
+///   clip of another reel or an unknown id cannot be ticked.
 /// - **It follows the reel's clips.** A ticked clip that goes missing or
 ///   leaves the reel is un-ticked; the rest stays ticked when the list
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-///   any editor's session): every
-///   live clip again, by `addPicks` against the reel's session. A fresh clip
+/// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+///   every live clip, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
 ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -33,19 +33,19 @@ part of 'edit_select_controller.dart';
 @ProviderFor(EditSelectController)
 final editSelectControllerProvider = EditSelectControllerFamily._();
 
-/// The clips ticked on the picking screen of one reel (D-126).
+/// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+/// D-129), which since D-192 is only for adding clips to the reel's editing
+/// folder.
 ///
-/// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-///   of another reel or an unknown id cannot be ticked, and the preselected
-///   ids are cut down the same way.
+/// - **Only live clips can be ticked.** A missing clip is not listed, and a
+///   clip of another reel or an unknown id cannot be ticked.
 /// - **It follows the reel's clips.** A ticked clip that goes missing or
 ///   leaves the reel is un-ticked; the rest stays ticked when the list
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-///   any editor's session): every
-///   live clip again, by `addPicks` against the reel's session. A fresh clip
+/// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+///   every live clip, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
 ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -56,19 +56,19 @@ final editSelectControllerProvider = EditSelectControllerFamily._();
 /// Auto-disposes with the screen.
 final class EditSelectControllerProvider
     extends $AsyncNotifierProvider<EditSelectController, EditSelectState?> {
-  /// The clips ticked on the picking screen of one reel (D-126).
+  /// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+  /// D-129), which since D-192 is only for adding clips to the reel's editing
+  /// folder.
   ///
-  /// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-  ///   of another reel or an unknown id cannot be ticked, and the preselected
-  ///   ids are cut down the same way.
+  /// - **Only live clips can be ticked.** A missing clip is not listed, and a
+  ///   clip of another reel or an unknown id cannot be ticked.
   /// - **It follows the reel's clips.** A ticked clip that goes missing or
   ///   leaves the reel is un-ticked; the rest stays ticked when the list
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
-  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-  ///   any editor's session): every
-  ///   live clip again, by `addPicks` against the reel's session. A fresh clip
+  /// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+  ///   every live clip, by `addPicks` against the reel's session. A fresh clip
   ///   (neither sent nor copied) starts ticked, a sent one without a copy
   ///   starts unticked and can be ticked, a clip whose copy is in the folder is
   ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -79,7 +79,7 @@ final class EditSelectControllerProvider
   /// Auto-disposes with the screen.
   EditSelectControllerProvider._({
     required EditSelectControllerFamily super.from,
-    required EditSelectArgs super.argument,
+    required int super.argument,
   }) : super(
          retry: noRetry,
          name: r'editSelectControllerProvider',
@@ -114,21 +114,21 @@ final class EditSelectControllerProvider
 }
 
 String _$editSelectControllerHash() =>
-    r'1fe3471f00b23d0d905409200d1310c5e076f5b6';
+    r'5bf7c0cc801757587b50f94610af1ce71a85e79f';
 
-/// The clips ticked on the picking screen of one reel (D-126).
+/// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+/// D-129), which since D-192 is only for adding clips to the reel's editing
+/// folder.
 ///
-/// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-///   of another reel or an unknown id cannot be ticked, and the preselected
-///   ids are cut down the same way.
+/// - **Only live clips can be ticked.** A missing clip is not listed, and a
+///   clip of another reel or an unknown id cannot be ticked.
 /// - **It follows the reel's clips.** A ticked clip that goes missing or
 ///   leaves the reel is un-ticked; the rest stays ticked when the list
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-///   any editor's session): every
-///   live clip again, by `addPicks` against the reel's session. A fresh clip
+/// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+///   every live clip, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
 ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -145,7 +145,7 @@ final class EditSelectControllerFamily extends $Family
           AsyncValue<EditSelectState?>,
           EditSelectState?,
           FutureOr<EditSelectState?>,
-          EditSelectArgs
+          int
         > {
   EditSelectControllerFamily._()
     : super(
@@ -156,19 +156,19 @@ final class EditSelectControllerFamily extends $Family
         isAutoDispose: true,
       );
 
-  /// The clips ticked on the picking screen of one reel (D-126).
+  /// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+  /// D-129), which since D-192 is only for adding clips to the reel's editing
+  /// folder.
   ///
-  /// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-  ///   of another reel or an unknown id cannot be ticked, and the preselected
-  ///   ids are cut down the same way.
+  /// - **Only live clips can be ticked.** A missing clip is not listed, and a
+  ///   clip of another reel or an unknown id cannot be ticked.
   /// - **It follows the reel's clips.** A ticked clip that goes missing or
   ///   leaves the reel is un-ticked; the rest stays ticked when the list
   ///   changes (a clip joins, the times arrive).
   /// - **`null` once the reel is gone** (deleted, or an id that names none);
   ///   the screen then goes to Reels.
-  /// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-  ///   any editor's session): every
-  ///   live clip again, by `addPicks` against the reel's session. A fresh clip
+  /// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+  ///   every live clip, by `addPicks` against the reel's session. A fresh clip
   ///   (neither sent nor copied) starts ticked, a sent one without a copy
   ///   starts unticked and can be ticked, a clip whose copy is in the folder is
   ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -178,26 +178,26 @@ final class EditSelectControllerFamily extends $Family
   ///
   /// Auto-disposes with the screen.
 
-  EditSelectControllerProvider call(EditSelectArgs args) =>
-      EditSelectControllerProvider._(argument: args, from: this);
+  EditSelectControllerProvider call(int reelId) =>
+      EditSelectControllerProvider._(argument: reelId, from: this);
 
   @override
   String toString() => r'editSelectControllerProvider';
 }
 
-/// The clips ticked on the picking screen of one reel (D-126).
+/// The clips ticked on the picking screen of one reel [reelId] (D-126, D-128,
+/// D-129), which since D-192 is only for adding clips to the reel's editing
+/// folder.
 ///
-/// - **Only live clips can be ticked.** A missing clip is not listed, a clip
-///   of another reel or an unknown id cannot be ticked, and the preselected
-///   ids are cut down the same way.
+/// - **Only live clips can be ticked.** A missing clip is not listed, and a
+///   clip of another reel or an unknown id cannot be ticked.
 /// - **It follows the reel's clips.** A ticked clip that goes missing or
 ///   leaves the reel is un-ticked; the rest stays ticked when the list
 ///   changes (a clip joins, the times arrive).
 /// - **`null` once the reel is gone** (deleted, or an id that names none);
 ///   the screen then goes to Reels.
-/// - **Add mode** (`EditSelectArgs.addMode`, owner decision 7, D-128, D-129;
-///   any editor's session): every
-///   live clip again, by `addPicks` against the reel's session. A fresh clip
+/// - **Add mode** (owner decision 7, D-128, D-129; any editor's session):
+///   every live clip, by `addPicks` against the reel's session. A fresh clip
 ///   (neither sent nor copied) starts ticked, a sent one without a copy
 ///   starts unticked and can be ticked, a clip whose copy is in the folder is
 ///   ticked and locked ([EditSelectState.inFolder]: toggle, Clear and the
@@ -208,10 +208,10 @@ final class EditSelectControllerFamily extends $Family
 /// Auto-disposes with the screen.
 
 abstract class _$EditSelectController extends $AsyncNotifier<EditSelectState?> {
-  late final _$args = ref.$arg as EditSelectArgs;
-  EditSelectArgs get args => _$args;
+  late final _$args = ref.$arg as int;
+  int get reelId => _$args;
 
-  FutureOr<EditSelectState?> build(EditSelectArgs args);
+  FutureOr<EditSelectState?> build(int reelId);
   @$mustCallSuper
   @override
   WhenComplete runBuild() {

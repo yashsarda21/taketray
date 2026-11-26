@@ -7,6 +7,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/tt_accessibility.dart';
 import '../support/tt_test_app.dart';
+import '../support/tt_text_lines.dart';
 
 Widget _onVideo(Widget child, {double width = 360}) => Align(
   alignment: Alignment.topLeft,
@@ -298,30 +299,50 @@ void main() {
       );
     });
 
-    testWidgets('at 2x a wrapping subtitle takes two lines instead of '
-        'clipping', (tester) async {
-      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM';
-      await tester.pumpWidget(
-        ttTestApp(_header(subtitle: sub, wrapSubtitle: true), textScale: 2),
-      );
-      expect(tester.takeException(), isNull);
-      final text = tester.widget<Text>(find.text(sub));
-      expect(text.maxLines, 2);
-      final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
-      expect(paragraph.didExceedMaxLines, isFalse);
-      // The title stays one line.
-      expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+    testWidgets('a wrapping subtitle wraps at 1x and 2x and is never cut '
+        '(D-179: no line limit, no ellipsis)', (tester) async {
+      const sub = 'Scene 3 of 12 · 11:50 AM–12:10 PM and a long tail end';
+      for (final scale in [1.0, 1.3, 2.0]) {
+        await tester.pumpWidget(
+          ttTestApp(
+            _header(subtitle: sub, wrapSubtitle: true),
+            textScale: scale,
+          ),
+        );
+        expect(tester.takeException(), isNull, reason: 'at ${scale}x');
+        final text = tester.widget<Text>(find.text(sub));
+        expect(text.maxLines, isNull, reason: 'at ${scale}x');
+        expect(text.overflow, isNot(TextOverflow.ellipsis));
+        final paragraph = tester.renderObject<RenderParagraph>(find.text(sub));
+        // It wraps (a line limit would cut it, an ellipsis would hide it).
+        expect(ttLineCount(paragraph), greaterThan(1), reason: 'at ${scale}x');
+        // The title stays one line.
+        expect(tester.widget<Text>(find.text('5 of 12')).maxLines, 1);
+      }
     });
 
-    testWidgets('below large text, or without wrapping, the subtitle is one '
-        'line', (tester) async {
+    testWidgets('a wrapping (tag player) scene line is white at 82 %, the '
+        "viewer's header keeps the 78 % token", (tester) async {
       const sub = 'Scene 2 of 4 · 0:12–0:48';
-      await tester.pumpWidget(
-        ttTestApp(_header(wrapSubtitle: true), textScale: 1.3),
-      );
-      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
-      await tester.pumpWidget(ttTestApp(_header(), textScale: 2));
-      expect(tester.widget<Text>(find.text(sub)).maxLines, 1);
+      await tester.pumpWidget(ttTestApp(_header(wrapSubtitle: true)));
+      final color = tester.widget<Text>(find.text(sub)).style!.color!;
+      expect(color.a, closeTo(0.82, 0.005));
+      expect([color.r, color.g, color.b], [1, 1, 1]);
+      expect(TtMetrics.playerSceneLineOpacity, 0.82);
+      await tester.pumpWidget(ttTestApp(_header()));
+      final plain = tester.widget<Text>(find.text(sub)).style!.color!;
+      expect(plain, tester.element(find.text(sub)).tt.colors.onVideoVariant);
+    });
+
+    testWidgets('without wrapSubtitle the subtitle is one line with an '
+        'ellipsis at every scale', (tester) async {
+      const sub = 'Scene 2 of 4 · 0:12–0:48';
+      for (final scale in [1.0, 2.0]) {
+        await tester.pumpWidget(ttTestApp(_header(), textScale: scale));
+        final text = tester.widget<Text>(find.text(sub));
+        expect(text.maxLines, 1, reason: 'at ${scale}x');
+        expect(text.overflow, TextOverflow.ellipsis);
+      }
     });
 
     testWidgets('passes the accessibility guidelines', (tester) async {
