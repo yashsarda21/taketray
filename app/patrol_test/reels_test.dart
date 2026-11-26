@@ -19,6 +19,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import 'package:video_player/video_player.dart';
 
 import 'support/onboarded.dart';
+import 'support/reel_finders.dart';
 import 'support/test_media.dart';
 import 'support/waiting.dart';
 
@@ -212,7 +213,9 @@ void main() {
         () => detail.$(_l10n.selectionCount(1)).exists,
         what: '"${_l10n.selectionCount(1)}" after the long press',
       );
-      await _tapIconButton($, _l10n.selectionRemove);
+      // The dock's Remove (D-190): it slides up on the hold, so the tap waits
+      // until it can be hit and has stopped.
+      await tapWhenStill($, dockAction(_l10n.selectionDockRemove));
       final undo = find.text(_l10n.undo);
       await waitFor(
         $,

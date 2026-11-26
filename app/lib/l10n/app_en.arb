@@ -4380,15 +4380,6 @@
   "@referenceOpenFailed": {
     "description": "Snack shown when a reference was tapped and no app or browser on the phone could open its link."
   },
-  "reelCardReferences": "{count, plural, =1{1 reference} other{{count} references}}, open them",
-  "@reelCardReferences": {
-    "description": "What a screen reader says for the references badge on a Home reel card; tapping it opens the reel at its References section.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
   "reelEmptyShareHint": "You can also share a reel from Instagram to TakeTray to save it as a reference.",
   "@reelEmptyShareHint": {
     "description": "Second paragraph of the empty reel page's text."
