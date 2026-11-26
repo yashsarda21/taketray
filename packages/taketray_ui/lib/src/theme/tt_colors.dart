@@ -27,9 +27,7 @@ class TtColors {
     required this.onMediaVariant,
     required this.mediaScrimEnd,
     required this.missingOnMedia,
-    required this.recordOnMedia,
     required this.readyOnMedia,
-    required this.publishedOnMedia,
     required this.videoBackground,
     required this.videoScrimTop,
     required this.videoScrimBottom,
@@ -39,6 +37,7 @@ class TtColors {
     required this.dockChipGlass,
     required this.dockNewChipGlass,
     required this.dockNewChipBorder,
+    required this.shootingTint,
   });
 
   /// The TakeTray colours for [scheme] (light or dark by its brightness).
@@ -86,11 +85,9 @@ class TtColors {
           .withValues(alpha: TtMetrics.mediaScrimEndOpacity),
       // tt-style.css: .style-tt .rcard .mt .miss { color: #FFB4AB }
       missingOnMedia: const Color(0xFFFFB4AB),
-      // tt-style.css: .rcard .cover .pill.rec / .ready / .pub .ms: the dark
-      // theme's record, primary and success, in both themes.
-      recordOnMedia: TtColorTokens.darkRecord,
+      // tt-style.css: .rcard .cover .pill.ready .ms: the dark theme's
+      // primary, in both themes (the player's Ready button).
       readyOnMedia: ttDarkScheme.primary,
-      publishedOnMedia: TtColorTokens.darkSuccess,
       videoBackground: TtColorTokens.videoBackground,
       videoScrimTop: TtColorTokens.videoScrimTop,
       videoScrimBottom: TtColorTokens.videoScrimBottom,
@@ -105,6 +102,9 @@ class TtColors {
       // player2.css:50: .rchip.new.dk { border: 1.5px dashed
       // rgba(255,255,255,.55) }
       dockNewChipBorder: const Color(0x8CFFFFFF),
+      // home2.css:11: .h2-shoot.on::before { … rgba(36, 49, 66, …) }: the
+      // same in light and dark (the brand's dark blue).
+      shootingTint: const Color(0xFF243142),
     );
   }
 
@@ -167,14 +167,8 @@ class TtColors {
   /// "Missing clips" text on media.
   final Color missingOnMedia;
 
-  /// "Recording" icon on media.
-  final Color recordOnMedia;
-
-  /// "Ready" icon on media.
+  /// "Ready" icon on video (the player's Ready button).
   final Color readyOnMedia;
-
-  /// "Published" icon on media.
-  final Color publishedOnMedia;
 
   /// Behind video in the tag player and clip viewer (true black).
   final Color videoBackground;
@@ -204,6 +198,11 @@ class TtColors {
   /// The dashed border of the on-video New reel chip: white at 55 %.
   final Color dockNewChipBorder;
 
+  /// The brand colour of the tint over the "on" Shooting mode card's picture
+  /// (rgba(36, 49, 66), the same in light and dark); the card gives it its
+  /// opacities.
+  final Color shootingTint;
+
   /// Linearly interpolates every colour between this and [other].
   TtColors lerp(TtColors other, double t) {
     final a = this;
@@ -229,9 +228,7 @@ class TtColors {
       onMediaVariant: mix(a.onMediaVariant, b.onMediaVariant),
       mediaScrimEnd: mix(a.mediaScrimEnd, b.mediaScrimEnd),
       missingOnMedia: mix(a.missingOnMedia, b.missingOnMedia),
-      recordOnMedia: mix(a.recordOnMedia, b.recordOnMedia),
       readyOnMedia: mix(a.readyOnMedia, b.readyOnMedia),
-      publishedOnMedia: mix(a.publishedOnMedia, b.publishedOnMedia),
       videoBackground: mix(a.videoBackground, b.videoBackground),
       videoScrimTop: mix(a.videoScrimTop, b.videoScrimTop),
       videoScrimBottom: mix(a.videoScrimBottom, b.videoScrimBottom),
@@ -241,6 +238,7 @@ class TtColors {
       dockChipGlass: mix(a.dockChipGlass, b.dockChipGlass),
       dockNewChipGlass: mix(a.dockNewChipGlass, b.dockNewChipGlass),
       dockNewChipBorder: mix(a.dockNewChipBorder, b.dockNewChipBorder),
+      shootingTint: mix(a.shootingTint, b.shootingTint),
     );
   }
 }

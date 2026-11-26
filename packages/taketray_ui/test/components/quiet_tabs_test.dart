@@ -138,7 +138,9 @@ void main() {
         find.bySemanticsLabel('Show all reels, 12').first,
       );
       expect(tester.getRect(find.text('All')).left - 14, 12);
-      expect(all, isNotNull);
+      // The first tab's pill starts 12 dp in, and its target is 48 dp tall.
+      expect(_fillRect(tester, 'All').left, 12);
+      expect(all.height, 48);
       final bar = tester.getRect(find.byType(TtQuietTabs<String>));
       // 48 dp targets, then 10 dp under them.
       expect(bar.height, 48 + 10);

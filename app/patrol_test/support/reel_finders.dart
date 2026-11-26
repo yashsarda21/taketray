@@ -59,16 +59,40 @@ Finder dockEdit() => find.descendant(
   matching: find.byType(FilledButton),
 );
 
+/// [finder] is a button that is on (its `onPressed` is set). A disabled
+/// button can still be hit by a tap, which then does nothing, so `canBeTapped`
+/// does not tell the two apart. False when nothing is found or the widget is
+/// no button.
+bool isEnabledButton(Finder finder) {
+  final found = finder.evaluate();
+  if (found.isEmpty) return false;
+  final widget = found.first.widget;
+  return widget is ButtonStyleButton && widget.enabled;
+}
+
+/// A tap on [finder]'s first match would land and do something: it can be hit,
+/// and, when [enabled] is true, it is a button that is on (the dock's Edit is
+/// off until the clips and the session are known, and a tap on it is lost).
+bool readyToTap(Finder finder, {bool enabled = false}) =>
+    canBeTapped(finder) && (!enabled || isEnabledButton(finder));
+
 /// A raw tap, then one frame, on [finder]'s first match once it is there, can
 /// be hit and has stopped moving: the dock slides up over its first frames, a
 /// sheet slides in, and on the phone the frames run between the finger's down
 /// and up, so a tap on a target that is still moving is lost (S24, 2026-11-25,
 /// the All reels sheet). Waits on conditions, not on time.
-Future<void> tapWhenStill(PatrolIntegrationTester $, Finder finder) async {
+///
+/// With [enabled] it also waits for a button to be on (`readyToTap`): a tap on
+/// a disabled one does nothing, and the wait that follows then runs out.
+Future<void> tapWhenStill(
+  PatrolIntegrationTester $,
+  Finder finder, {
+  bool enabled = false,
+}) async {
   await waitFor(
     $,
-    () => canBeTapped(finder),
-    what: 'a tap target that can be hit: $finder',
+    () => readyToTap(finder, enabled: enabled),
+    what: 'a tap target that can be hit${enabled ? ' and is on' : ''}: $finder',
   );
   await waitForStill(
     $,
@@ -81,9 +105,9 @@ Future<void> tapWhenStill(PatrolIntegrationTester $, Finder finder) async {
 
 /// The page of the reel [reelId], by its id.
 ///
-/// Not by the reel's name: opened at its References (the Home badge, the
-/// Shooting mode sheet's header), the page scrolls its header, with the name,
-/// off the screen, and a finder skips a sliver that is off the screen.
+/// Not by the reel's name: opened at its References (`?refs=1`, D-196), the
+/// page scrolls its header, with the name, off the screen, and a finder skips
+/// a sliver that is off the screen.
 /// [reelName] is only for the description.
 Finder reelPageOf(int reelId, String reelName) => find.byWidgetPredicate(
   (w) => w is ReelDetailScreen && w.reelId == reelId,

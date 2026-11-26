@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray/app.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/data/database/app_database.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -17,6 +18,7 @@ import 'package:taketray_ui/taketray_ui.dart';
 import '../../../support/accessibility.dart';
 import '../../../support/fake_media_bridge.dart';
 import '../../../support/pump_screen.dart';
+import '../../../support/test_app.dart';
 import '../../../support/vm_harness.dart';
 
 // 15:00 local on 2026-10-28; the dates are built in local time, so the tests
@@ -1818,6 +1820,107 @@ void main() {
 
       expect(card(tester).on, isTrue);
       expect(chipLabels(tester), ['Earlier videos']);
+    });
+
+    testWidgets('an add whose opener has gone still hides the chip: the flag '
+        'is set before the context is asked (the snack is then skipped)', (
+      tester,
+    ) async {
+      await tester.runAsync(h.media.turnOnNow);
+      final opener = ValueNotifier<bool>(true);
+      addTearDown(opener.dispose);
+      await pumpScreen(
+        tester,
+        Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                const ShootingModeSection(),
+                ValueListenableBuilder<bool>(
+                  valueListenable: opener,
+                  builder: (context, there, _) => there
+                      ? Builder(
+                          builder: (context) => TtButton(
+                            label: 'open the sheet',
+                            onPressed: () => showAddEarlierVideos(context),
+                          ),
+                        )
+                      : const SizedBox.shrink(),
+                ),
+              ],
+            ),
+          ),
+        ),
+        overrides: h.appOverrides,
+      );
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(chipLabels(tester), ['Earlier videos']);
+
+      await openSheet(tester);
+      expect(find.byType(TtSheet), findsOneWidget);
+      // The screen that opened the sheet goes while the sheet is open.
+      opener.value = false;
+      await tester.pump();
+      expect(find.text('open the sheet'), findsNothing);
+
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('1 clip added to To tag'), findsNothing);
+      expect(chipLabels(tester), isEmpty, reason: 'the add still hid it');
+    });
+
+    testApp("an add from To tag's menu while Shooting mode is on hides "
+        "Home's Earlier videos chip (the screen that opened the sheet is "
+        'not Home)', (tester) async {
+      // The record dot pulses on Home, so nothing settles: bounded frames.
+      Future<void> frames(WidgetTester tester) async {
+        for (var i = 0; i < 12; i++) {
+          await tester.pump(const Duration(milliseconds: 100));
+        }
+      }
+
+      await tester.runAsync(h.media.turnOnNow);
+      await tester.pumpWidget(
+        ProviderScope(overrides: h.appOverrides, child: const TakeTrayApp()),
+      );
+      await settleApp(tester);
+      await frames(tester);
+      expect(find.text('Earlier videos'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtNavPill),
+          matching: find.text('To tag'),
+        ),
+      );
+      await frames(tester);
+      await tester.tap(find.byIcon(Symbols.more_vert_rounded));
+      await frames(tester);
+      await tester.tap(find.text('Add earlier videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await frames(tester);
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await settleApp(tester);
+      await frames(tester);
+      expect(find.text('1 clip added to To tag'), findsOneWidget);
+
+      await tester.tap(
+        find.descendant(
+          of: find.byType(TtNavPill),
+          matching: find.text('Reels'),
+        ),
+      );
+      await frames(tester);
+      expect(card(tester).on, isTrue);
+      expect(chipLabels(tester), isEmpty, reason: 'the add hid the chip');
+      expect(find.text('Earlier videos'), findsNothing);
     });
 
     testWidgets('a Shooting state stored with earlierAdded: true (before '

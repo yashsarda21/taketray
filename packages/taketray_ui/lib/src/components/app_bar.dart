@@ -295,6 +295,9 @@ class TtLargeSliverAppBar extends StatelessWidget {
     final scheme = context.scheme;
     // `SliverAppBar.large` is pinned by default; the pill must stay in reach.
     return SliverAppBar.large(
+      // Home has nothing to go back to; Material would add a back or menu
+      // button if this bar were ever put on a route that can pop.
+      automaticallyImplyLeading: false,
       backgroundColor: scheme.surface,
       surfaceTintColor: scheme.surface.withValues(alpha: 0),
       scrolledUnderElevation: 0,
@@ -308,7 +311,8 @@ class TtLargeSliverAppBar extends StatelessWidget {
 /// The title of a [TtLargeSliverAppBar]. Material builds it twice: in the
 /// bar's toolbar (the screen title, from the theme) and in the flexible space
 /// under it (the page title, while expanded). Only the first sits in a
-/// [NavigationToolbar].
+/// [NavigationToolbar]; that depends on how Material builds its sliver title,
+/// and the size tests of the header catch a Flutter upgrade that changes it.
 class _LargeTitle extends StatelessWidget {
   const new(this.title);
 

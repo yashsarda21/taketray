@@ -29,7 +29,11 @@ class AppShell extends ConsumerWidget {
     final l10n = AppLocalizations.of(context);
     final index = navigationShell.currentIndex;
     final toTagCount = ref.watch(pendingClipsProvider).value?.length ?? 0;
-    // The reel page that is choosing, when it is in the tab on screen.
+    // The reel page that is choosing, when it is in the tab on screen. It is
+    // watched at index 0 only: the dock replaces the pill on the Reels tab
+    // alone. A tab change rebuilds the shell (the index is read above), so
+    // the watch is taken up or dropped with it; on another tab a choosing
+    // page changes nothing here and costs no rebuild.
     final choosing = index == 0 ? ref.watch(choosingReelProvider) : null;
     // The device's bottom inset. The Scaffold below adds the pill's height to
     // the body's padding (extendBody); the tabs reserve that room themselves

@@ -1851,6 +1851,12 @@ abstract final class TtMetrics {
   // proto.css: .ev-row[aria-disabled="true"] .txt b { font-weight: 400 }
   static const FontWeight listRowOffTitleWeight = FontWeight.w400;
 
+  /// Distance of the editor sheet's **Choose clips instead** button from the
+  /// sheet's edge: the head's 24 dp side padding less the button's -12 dp
+  /// margin.
+  // editflow.css:19: .sh-head .ed-choose { margin: 4px 0 0 -12px }
+  static const double sheetChooseInset = 12;
+
   /// Space between a list row's title and its tag pill ("Last used").
   // editflow.css:18: .ed-last { margin-left: 8px; ... }
   static const double listRowTagGap = 8;

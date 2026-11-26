@@ -180,6 +180,8 @@ void main() {
 
       expect(dockEdit(), findsOneWidget);
       expect(canBeTapped(dockEdit()), isTrue);
+      expect(isEnabledButton(dockEdit()), isTrue, reason: 'a clip is chosen');
+      expect(readyToTap(dockEdit(), enabled: true), isTrue);
       expect(
         find.descendant(of: dockEdit(), matching: find.text('Edit 1 clip')),
         findsOneWidget,
@@ -237,6 +239,73 @@ void main() {
       expect(dockAction('Remove'), findsNothing);
       expect(dockEdit(), findsNothing);
       expect(canBeTapped(dockEdit()), isFalse);
+    });
+  });
+
+  group('readyToTap: a target a tap can land on, and (for a button) one that '
+      'is on', () {
+    Future<void> pump(WidgetTester tester, Widget child) => tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: Center(child: child)),
+      ),
+    );
+
+    testWidgets('nothing found is not ready, enabled or not', (tester) async {
+      await pump(tester, const SizedBox());
+      expect(readyToTap(find.text('Edit')), isFalse);
+      expect(readyToTap(find.text('Edit'), enabled: true), isFalse);
+      expect(isEnabledButton(find.text('Edit')), isFalse);
+    });
+
+    testWidgets('a disabled button can be hit, so only enabled: true waits '
+        'for it to come on', (tester) async {
+      await pump(
+        tester,
+        const FilledButton(onPressed: null, child: Text('Edit')),
+      );
+      final button = find.byType(FilledButton);
+      expect(canBeTapped(button), isTrue, reason: 'a hit lands on it');
+      expect(isEnabledButton(button), isFalse);
+      expect(readyToTap(button), isTrue, reason: 'no enabled: true asked');
+      expect(readyToTap(button, enabled: true), isFalse);
+    });
+
+    testWidgets('the same button once it has a handler is ready', (
+      tester,
+    ) async {
+      await pump(
+        tester,
+        FilledButton(onPressed: () {}, child: const Text('Edit')),
+      );
+      final button = find.byType(FilledButton);
+      expect(isEnabledButton(button), isTrue);
+      expect(readyToTap(button, enabled: true), isTrue);
+    });
+
+    testWidgets('an enabled button under a scrim is not ready: a tap would '
+        'hit the scrim', (tester) async {
+      await pump(
+        tester,
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            FilledButton(onPressed: () {}, child: const Text('Edit')),
+            const ModalBarrier(dismissible: false),
+          ],
+        ),
+      );
+      final button = find.byType(FilledButton);
+      expect(isEnabledButton(button), isTrue);
+      expect(readyToTap(button, enabled: true), isFalse);
+    });
+
+    testWidgets('a widget that is no button is not an enabled button', (
+      tester,
+    ) async {
+      await pump(tester, const Text('Edit'));
+      expect(isEnabledButton(find.text('Edit')), isFalse);
+      expect(readyToTap(find.text('Edit')), isTrue);
+      expect(readyToTap(find.text('Edit'), enabled: true), isFalse);
     });
   });
 

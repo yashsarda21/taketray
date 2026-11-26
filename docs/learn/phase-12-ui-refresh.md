@@ -125,7 +125,7 @@ The status pill, the "Editing in VN" pill, the references badge and the Shooting
 ### Where it lives
 
 - `packages/taketray_ui/lib/src/components/internal/glass_fill.dart`
-- `packages/taketray_ui/lib/src/components/status_pill.dart`, `glass.dart` (`TtGlassPill`), `reel_card.dart`, `shooting_mode_card.dart`
+- `packages/taketray_ui/lib/src/components/status_pill.dart`, `glass.dart` (`TtGlassPill`, removed in Phase 12B, D-194), `reel_card.dart`, `shooting_mode_card.dart`
 - `packages/taketray_ui/test/components/glass_pixels_test.dart`
 
 ### Try it yourself

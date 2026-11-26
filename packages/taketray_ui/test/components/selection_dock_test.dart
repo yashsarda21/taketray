@@ -114,6 +114,16 @@ Rect _panel(WidgetTester tester) => _rect(
       .first,
 );
 
+/// The height of the dock's panel once it is in place (read with reduced
+/// motion, so there is no slide), and the page taken down again, so a test
+/// of the slide starts from a fresh dock.
+Future<double> _settledHeight(WidgetTester tester) async {
+  await tester.pumpWidget(ttTestApp(_onPage(_dock()), disableAnimations: true));
+  final height = _panel(tester).height;
+  await tester.pumpWidget(const SizedBox());
+  return height;
+}
+
 Rect _action(WidgetTester tester, int i) =>
     _rect(tester, find.byKey(_actionKey(i)));
 
@@ -518,11 +528,11 @@ void main() {
       tester,
     ) async {
       _viewport(tester);
+      final height = await _settledHeight(tester);
       await tester.pumpWidget(ttTestApp(_onPage(_dock())));
       final tt = _tt(tester);
-      const height = 152.0;
       // At the start the bar is one whole height down: off the page.
-      expect(_panel(tester).top, closeTo(800 - height + height, 0.5));
+      expect(_panel(tester).top, closeTo(800, 0.5));
       await tester.pump();
       expect(_panel(tester).top, closeTo(800, 0.5));
       // Half way through the time, the curve's share of the way.
@@ -545,6 +555,7 @@ void main() {
       tester,
     ) async {
       _viewport(tester);
+      final height = await _settledHeight(tester);
       await tester.pumpWidget(ttTestApp(_onPage(_dock())));
       await tester.pump();
       final tt = _tt(tester);
@@ -557,7 +568,10 @@ void main() {
       // 100 ms short of the end it is still on its way (a shorter duration
       // would have it up already).
       expect(share, lessThan(0.999));
-      expect(_panel(tester).top, closeTo(800 - 152 + 152 * (1 - share), 0.5));
+      expect(
+        _panel(tester).top,
+        closeTo(800 - height + height * (1 - share), 0.5),
+      );
       expect(_panel(tester).bottom, greaterThan(800.5));
       await tester.pump(early);
       expect(_panel(tester).bottom, closeTo(800, 0.01));

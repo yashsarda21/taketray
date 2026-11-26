@@ -433,8 +433,9 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('a tab narrows the cards; an empty one says "No reels marked '
-        'Published yet." and Show all reels', (tester) async {
+    testWidgets('a tab narrows the cards, and the counts do not change', (
+      tester,
+    ) async {
       await pumpHome(tester, reels: mixed());
       expect(find.byType(TtReelCard), findsNWidgets(4));
 
@@ -454,8 +455,8 @@ void main() {
       );
     });
 
-    testWidgets('a tab narrows the cards; an empty one says "No reels marked '
-        'Published yet." and Show all reels (the empty one)', (tester) async {
+    testWidgets('a tab with no reels says "No reels marked Published yet." '
+        'and offers Show all reels', (tester) async {
       await pumpHome(tester, reels: [testSummary(1), testSummary(2)]);
       await tapTab(tester, 'Published');
 

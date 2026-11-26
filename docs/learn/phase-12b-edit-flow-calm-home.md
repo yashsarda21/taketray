@@ -549,12 +549,11 @@ The old card had two trees, a grey one and a black one, swapped for each other. 
 
 ```
 ClipRRect
-  AnimatedSize
-    ColoredBox (the off surface)
-      Stack
-        Positioned.fill(Opacity(progress, _OnLayer))   // always there, invisible at 0
-        AnimatedPadding
-          Column [ row 1 (the tile, the title, the TtSwitch) , Wrap(pill, chips) ]
+  ColoredBox (the off surface)
+    Stack
+      Positioned.fill(Opacity(progress, _OnLayer))   // always there, invisible at 0
+      AnimatedPadding
+        Column [ row 1 (the tile, the title, the TtSwitch) , ClipRect(Align(heightFactor: progress, Wrap(pill, chips))) ]
 ```
 
 The black layer is always in the tree and simply fades from 0 to 1; the second row's children sit last in their `Column`, so the only things that appear and go are at the end, and the `TtSwitch` in row 1 is never rebuilt as a different element. A test holds on to the switch's element and checks that it is the same one after the toggle:
@@ -563,9 +562,9 @@ The black layer is always in the tree and simply fades from 0 to 1; the second r
 switching on: the same TtSwitch element; the height animates over medium2
 ```
 
-A mutant that put `key: ValueKey(on)` on the card's body (two keyed trees) is killed by it. The same shape is why the height animates (`AnimatedSize`) instead of jumping, and why the padding is animated by `AnimatedPadding` and not set by the state.
+A mutant that put `key: ValueKey(on)` on the card's body (two keyed trees) is killed by it. The same shape is why the height animates (the second row takes `progress` of its height, so it grows and shrinks with the fade, in both directions) instead of jumping, and why the padding is animated by `AnimatedPadding` and not set by the state.
 
-Two rules from Phase 12 apply to the glass in it. A chip's `BackdropFilter` has nothing that fades above it, and its blur is the same from the first frame. And under "Remove animations" the card changes size at once but still fades, because `AnimatedSize` with a zero duration asserts in debug builds, so it is left out, not given a zero.
+Two rules from Phase 12 apply to the glass in it. A chip's `BackdropFilter` has nothing that fades above it, and its blur is the same from the first frame. And under "Remove animations" the card changes size at once but still fades (the picture does; the second row simply goes).
 
 ## A grid whose rows fit their cards
 

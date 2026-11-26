@@ -40,7 +40,9 @@ class EarlierAddedThisSession extends _$EarlierAddedThisSession {
     return false;
   }
 
-  /// Notes that the sheet added clips. An add while Shooting mode is off
-  /// is forgotten as soon as it turns on (the flag clears on every change).
+  /// Notes that the sheet added clips. It sets the flag whatever Shooting
+  /// mode is: the clear on every turn on or off is what limits it to one
+  /// session, so an add made while Shooting mode is off is forgotten when it
+  /// turns on.
   void markAdded() => state = true;
 }

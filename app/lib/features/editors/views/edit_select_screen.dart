@@ -349,7 +349,7 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
           ? l10n.editAddBarDetail(size)
           : l10n.editAddFolderBarDetail(size, state?.addFolder ?? ''),
       action: TtButton(
-        key: const ValueKey<String>('edit-select-continue'),
+        key: const ValueKey<String>('edit-select-copy'),
         label: l10n.editAddCopy,
         onPressed: count == 0 ? null : () => _copyPicked(state!),
       ),

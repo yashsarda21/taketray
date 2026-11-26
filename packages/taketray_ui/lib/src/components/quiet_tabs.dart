@@ -130,6 +130,8 @@ class _QuietTab<T> extends StatelessWidget {
       label: tab.semanticLabel,
       toggled: chosen,
       onPressed: onPressed,
+      // The fill is Material's own colour change, 200 ms (a fade, so it stays
+      // with reduced motion).
       child: Material(
         color: scheme.secondaryContainer.withValues(alpha: chosen ? 1 : 0),
         shape: const StadiumBorder(),

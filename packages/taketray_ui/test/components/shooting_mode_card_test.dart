@@ -257,6 +257,41 @@ void main() {
       expect(tester.getSize(_theCard).height, 68);
     });
 
+    testWidgets('2x text at 360: a long subtitle wraps, no overflow', (
+      tester,
+    ) async {
+      tester.view
+        ..physicalSize = const Size(360, 800)
+        ..devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      for (final brightness in Brightness.values) {
+        await tester.pumpWidget(
+          ttTestApp(
+            SingleChildScrollView(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: _card(on: false, subtitle: _longSubtitle),
+              ),
+            ),
+            textScale: 2,
+            brightness: brightness,
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(tester.takeException(), isNull, reason: brightness.name);
+        expect(find.text(_longSubtitle), findsOneWidget);
+        final card = tester.getRect(_theCard);
+        expect(card.left, greaterThanOrEqualTo(16 - .01));
+        expect(card.right, lessThanOrEqualTo(360 - 16 + .01));
+        expect(card.height, greaterThan(68), reason: 'it grew to fit');
+        // The switch stays inside the card, on its right.
+        final toggle = tester.getRect(find.byType(TtSwitch));
+        expect(toggle.right, lessThanOrEqualTo(card.right + .01));
+        expect(toggle.bottom, lessThanOrEqualTo(card.bottom + .01));
+        expect(toggle.top, greaterThanOrEqualTo(card.top - .01));
+      }
+    });
+
     testWidgets('the switch calls onChanged(true)', (tester) async {
       final values = <bool>[];
       await tester.pumpWidget(
@@ -697,6 +732,161 @@ void main() {
       expect(tester.element(find.byType(TtSwitch)), same(element));
       await tester.pump(const Duration(milliseconds: 400));
       expect(tester.getSize(_theCard).height, off);
+    });
+
+    group('switching off fades the second row and the backdrop out while '
+        'the height animates (T6 Minor 1)', () {
+      /// The in-between frame of an on-to-off switch: [off] is the card the
+      /// caller gives once it is off (the app gives no pill and no chips).
+      Future<double> switchOff(
+        WidgetTester tester, {
+        required Widget off,
+        int ms = 100,
+      }) async {
+        await tester.pumpWidget(
+          ttTestApp(_card(chips: 2, backdrop: fixtureThumb(2))),
+        );
+        await _decode(tester, fixtureThumb(2));
+        await tester.pump(const Duration(milliseconds: 400));
+        final done = tester.getSize(_theCard).height;
+        await tester.pumpWidget(ttTestApp(off));
+        await tester.pump();
+        await tester.pump(Duration(milliseconds: ms));
+        return done;
+      }
+
+      for (final (name, off) in [
+        ('the caller keeps passing them', _card(on: false, chips: 2)),
+        (
+          'the caller stops passing them (as Home does)',
+          _card(on: false, camera: false),
+        ),
+      ]) {
+        testWidgets('Open camera and the chips are still there, fading, '
+            'mid-switch; gone at the end ($name)', (tester) async {
+          final done = await switchOff(tester, off: off);
+
+          expect(find.text('Open camera'), findsOneWidget);
+          expect(find.text('References · 4'), findsOneWidget);
+          expect(find.text('Earlier videos'), findsOneWidget);
+          final height = tester.getSize(_theCard).height;
+          expect(height, lessThan(done), reason: 'the height is animating');
+          expect(height, greaterThan(68), reason: 'and not at the end yet');
+          // The pill's own fade.
+          final pillFade = tester.widget<Opacity>(
+            find.ancestor(of: _pill, matching: find.byType(Opacity)).first,
+          );
+          expect(pillFade.opacity, inExclusiveRange(0, 1));
+          final alpha = _fillAlpha(tester, _chipGlass('References · 4'));
+          expect(alpha, inExclusiveRange(0, _chipFill(1).a));
+
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(find.text('Open camera'), findsNothing);
+          expect(find.text('References · 4'), findsNothing);
+          expect(find.byType(BackdropFilter), findsNothing);
+          expect(tester.getSize(_theCard).height, 68);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('the glass rules hold on the way out: sigma 10 and no '
+            'fade above a BackdropFilter ($name)', (tester) async {
+          await switchOff(tester, off: off, ms: 16);
+          final steady = ui.ImageFilter.blur(sigmaX: 10, sigmaY: 10);
+          var previous = double.infinity;
+          for (final ms in [16, 50, 50, 50]) {
+            for (final label in ['References · 4', 'Earlier videos']) {
+              final element = tester.element(_chipGlass(label));
+              expect(
+                (element.widget as BackdropFilter).filter,
+                steady,
+                reason: '$label after +$ms ms',
+              );
+              expect(
+                _above(element).where(_fades),
+                isEmpty,
+                reason: '$label after +$ms ms: a fade above the filter',
+              );
+            }
+            final alpha = _fillAlpha(tester, _chipGlass('References · 4'));
+            expect(alpha, lessThanOrEqualTo(previous), reason: 'only shrinks');
+            previous = alpha;
+            await tester.pump(Duration(milliseconds: ms));
+          }
+        });
+
+        testWidgets('the backdrop picture fades with the card, not at once '
+            '($name)', (tester) async {
+          await switchOff(tester, off: off);
+          final image = find.descendant(
+            of: _theCard,
+            matching: find.byType(Image),
+          );
+          expect(image, findsOneWidget);
+          final layer = tester.widget<Opacity>(
+            find.ancestor(of: image, matching: find.byType(Opacity)).last,
+          );
+          expect(layer.opacity, inExclusiveRange(0, 1));
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(image, findsNothing);
+        });
+      }
+
+      testWidgets('mid-switch the pill and the chips take no tap (the card '
+          'is off)', (tester) async {
+        var camera = 0;
+        final chipTaps = <VoidCallback>[];
+        await tester.pumpWidget(ttTestApp(_card(chips: 2)));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(
+              on: false,
+              chips: 2,
+              onOpenCamera: () => camera++,
+              chipTaps: chipTaps,
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+        await tester.tap(find.text('Open camera'), warnIfMissed: false);
+        await tester.tap(find.text('References · 4'), warnIfMissed: false);
+        expect(camera, 0);
+        expect(chipTaps, isEmpty);
+        await tester.pump(const Duration(milliseconds: 400));
+      });
+
+      testWidgets('reduced motion: the size is instant, so the second row '
+          'goes at once; the picture still fades; no exception', (
+        tester,
+      ) async {
+        await tester.pumpWidget(
+          ttTestApp(
+            _card(chips: 2, backdrop: fixtureThumb(2)),
+            disableAnimations: true,
+          ),
+        );
+        await _decode(tester, fixtureThumb(2));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.pumpWidget(
+          ttTestApp(_card(on: false, camera: false), disableAnimations: true),
+        );
+        await tester.pump();
+        expect(tester.getSize(_theCard).height, 68, reason: 'instant');
+        expect(find.text('References · 4'), findsNothing);
+        expect(find.text('Open camera'), findsNothing);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(
+          find.descendant(of: _theCard, matching: find.byType(Image)),
+          findsOneWidget,
+          reason: 'the picture fades over short4',
+        );
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(
+          find.descendant(of: _theCard, matching: find.byType(Image)),
+          findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      });
     });
 
     testWidgets("no Opacity or FadeTransition above a chip's BackdropFilter, "

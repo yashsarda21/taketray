@@ -215,6 +215,28 @@ void main() {
       expect(ticks(tester), [true, false, false]);
     });
 
+    testApp('Select all comes back after one un-tick, and Clear after '
+        'ticking it again', (tester) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id);
+
+      await tester.tap(selectAllButton());
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
+
+      // One un-tick of a clip that can be un-ticked (the third).
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, false]);
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Select all');
+
+      await tester.tap(find.byType(TtClipTile).at(2));
+      await tester.pumpAndSettle();
+      expect(ticks(tester), [true, true, true]);
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
+    });
+
     testApp('a reel with no session goes back to its page', (tester) async {
       final (goa, _) = await threeClips(tester);
 
@@ -555,133 +577,125 @@ void main() {
   });
 
   // What the normal mode's tests pinned and add mode still has to keep (D-192).
-  group(
-    'the picking screen, whichever editor (ported from the normal mode)',
-    () {
-      /// "Goa" with [threeClips] in a VN session where nothing is copied yet:
-      /// every clip is fresh, so every clip starts ticked.
-      Future<(Reel, List<int>)> editing(WidgetTester tester) async {
-        final (goa, ids) = await threeClips(tester);
-        await real(tester, () => startEditing(h, goa.id, EditorApp.vn));
-        return (goa, ids);
-      }
+  group('the picking screen, every editor', () {
+    /// "Goa" with [threeClips] in a VN session where nothing is copied yet:
+    /// every clip is fresh, so every clip starts ticked.
+    Future<(Reel, List<int>)> editing(WidgetTester tester) async {
+      final (goa, ids) = await threeClips(tester);
+      await real(tester, () => startEditing(h, goa.id, EditorApp.vn));
+      return (goa, ids);
+    }
 
-      testApp('lists live clips only: a missing clip is not shown', (
+    testApp('lists live clips only: a missing clip is not shown', (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester);
+      final [gone] = await real(
         tester,
-      ) async {
-        final (goa, _) = await editing(tester);
-        final [gone] = await real(
-          tester,
-          () => putInReel(h, goa.id, [reelVideo(9)], onPhone: false),
-        );
-        await real(tester, () => flagForTest(h, {gone}, missing: true));
+        () => putInReel(h, goa.id, [reelVideo(9)], onPhone: false),
+      );
+      await real(tester, () => flagForTest(h, {gone}, missing: true));
 
-        await open(tester, goa.id);
+      await open(tester, goa.id);
 
-        expect(tiles(tester), hasLength(3));
-        expect(find.byType(TtMissingClipTile), findsNothing);
-        expect(find.textContaining('missing'), findsNothing);
-      });
+      expect(tiles(tester), hasLength(3));
+      expect(find.byType(TtMissingClipTile), findsNothing);
+      expect(find.textContaining('missing'), findsNothing);
+    });
 
-      testApp('the clips are listed by day under their headers', (
-        tester,
-      ) async {
-        final (goa, _) = await editing(tester);
+    testApp('the clips are listed by day under their headers', (tester) async {
+      final (goa, _) = await editing(tester);
 
-        await open(tester, goa.id);
+      await open(tester, goa.id);
 
-        expect(
-          find.text('Clips go to your editor in the order you shot them.'),
-          findsOneWidget,
-        );
-        expect(
-          [
-            for (final d in tester.widgetList<TtDayHeader>(
-              find.byType(TtDayHeader),
-            ))
-              (d.title.replaceAll(RegExp('[\u202f\u00a0]'), ' '), d.trailing),
-          ],
-          [
-            ('Day 1 · Sun, Oct 25', '2 clips'),
-            ('Day 4 · Wed, Oct 28', '1 clip'),
-          ],
-        );
-      });
+      expect(
+        find.text('Clips go to your editor in the order you shot them.'),
+        findsOneWidget,
+      );
+      expect(
+        [
+          for (final d in tester.widgetList<TtDayHeader>(
+            find.byType(TtDayHeader),
+          ))
+            (d.title.replaceAll(RegExp('[\u202f\u00a0]'), ' '), d.trailing),
+        ],
+        [('Day 1 · Sun, Oct 25', '2 clips'), ('Day 4 · Wed, Oct 28', '1 clip')],
+      );
+    });
 
-      testApp('a clip that goes missing meanwhile leaves the screen, the '
-          'selection and the bar', (tester) async {
-        final (goa, ids) = await editing(tester);
-        await open(tester, goa.id);
-        expect(ticks(tester), [true, true, true]);
-        expect(bar(tester).title, '3 new clips to copy');
+    testApp('a clip that goes missing meanwhile leaves the screen, the '
+        'selection and the bar', (tester) async {
+      final (goa, ids) = await editing(tester);
+      await open(tester, goa.id);
+      expect(ticks(tester), [true, true, true]);
+      expect(bar(tester).title, '3 new clips to copy');
 
-        await real(tester, () => flagForTest(h, {ids[1]}, missing: true));
-        await settleApp(tester);
+      await real(tester, () => flagForTest(h, {ids[1]}, missing: true));
+      await settleApp(tester);
 
-        expect(tiles(tester), hasLength(2));
-        expect(ticks(tester), [true, true]);
-        expect(bar(tester).title, '2 new clips to copy');
-        // Select all is Clear again: every clip left is ticked.
-        expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
-      });
+      expect(tiles(tester), hasLength(2));
+      expect(ticks(tester), [true, true]);
+      expect(bar(tester).title, '2 new clips to copy');
+      // Select all is Clear again: every clip left is ticked.
+      expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
+    });
 
-      testApp('a reel with no live clip: nothing to pick, nothing breaks', (
-        tester,
-      ) async {
-        final goa = await newReel(tester, 'Goa');
-        await real(tester, () => startEditing(h, goa.id, EditorApp.vn));
+    testApp('a reel with no live clip: nothing to pick, nothing breaks', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => startEditing(h, goa.id, EditorApp.vn));
 
-        await open(tester, goa.id);
+      await open(tester, goa.id);
 
-        expect(tiles(tester), isEmpty);
-        expect(bar(tester).title, 'Pick clips to add');
-        expect(continueButton(tester).onPressed, isNull);
-        expect(tester.widget<TtButton>(selectAllButton()).onPressed, isNull);
-        expect(tester.takeException(), isNull);
-      });
+      expect(tiles(tester), isEmpty);
+      expect(bar(tester).title, 'Pick clips to add');
+      expect(continueButton(tester).onPressed, isNull);
+      expect(tester.widget<TtButton>(selectAllButton()).onPressed, isNull);
+      expect(tester.takeException(), isNull);
+    });
 
-      testApp('a reel deleted while the screen is open goes to Reels', (
-        tester,
-      ) async {
-        final (goa, _) = await editing(tester);
-        await open(tester, goa.id);
+    testApp('a reel deleted while the screen is open goes to Reels', (
+      tester,
+    ) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id);
 
-        await real(tester, () => reels.delete(goa.id));
-        await settleApp(tester);
+      await real(tester, () => reels.delete(goa.id));
+      await settleApp(tester);
 
-        expect(find.text(reelsRouteMarker), findsOneWidget);
-      });
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+    });
 
-      testApp('a reel that does not exist goes to Reels', (tester) async {
-        await open(tester, 4242);
+    testApp('a reel that does not exist goes to Reels', (tester) async {
+      await open(tester, 4242);
 
-        expect(find.text(reelsRouteMarker), findsOneWidget);
-      });
+      expect(find.text(reelsRouteMarker), findsOneWidget);
+    });
 
-      testApp('the close button goes back (to the reel when nothing is under '
-          'it)', (tester) async {
-        final (goa, _) = await editing(tester);
-        await open(tester, goa.id);
+    testApp('the close button goes back (to the reel when nothing is under '
+        'it)', (tester) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id);
 
-        await tester.tap(
-          find.byWidgetPredicate(
-            (w) => w is TtIconButton && w.semanticLabel == 'Close',
-          ),
-        );
-        await tester.pumpAndSettle();
+      await tester.tap(
+        find.byWidgetPredicate(
+          (w) => w is TtIconButton && w.semanticLabel == 'Close',
+        ),
+      );
+      await tester.pumpAndSettle();
 
-        expect(find.text(reelRouteMarker(goa.id)), findsOneWidget);
-      });
+      expect(find.text(reelRouteMarker(goa.id)), findsOneWidget);
+    });
 
-      testApp('every tile is read as a clip, ticked or not', (tester) async {
-        final (goa, _) = await editing(tester);
-        await open(tester, goa.id);
+    testApp('every tile is read as a clip, ticked or not', (tester) async {
+      final (goa, _) = await editing(tester);
+      await open(tester, goa.id);
 
-        final semantics = tester.ensureSemantics();
-        final first = tester.getSemantics(find.byType(TtClipTile).first);
-        expect(first.label, startsWith('Clip, '));
-        semantics.dispose();
-      });
-    },
-  );
+      final semantics = tester.ensureSemantics();
+      final first = tester.getSemantics(find.byType(TtClipTile).first);
+      expect(first.label, startsWith('Clip, '));
+      semantics.dispose();
+    });
+  });
 }

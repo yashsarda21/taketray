@@ -1308,8 +1308,8 @@ void main() {
   });
 
   group('VN', () {
-    testApp('goes to the space check with the clips in shooting order, and '
-        'copies nothing yet', (tester) async {
+    testApp('goes to the space check with the clips in the order the '
+        'caller gave, and copies nothing yet', (tester) async {
       final (goa, ids) = await twoClips(tester);
       await openSheet(tester, goa, [ids[1], ids[0]]);
 

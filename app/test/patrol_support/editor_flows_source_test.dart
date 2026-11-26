@@ -34,12 +34,13 @@ void main() {
     });
 
     test('the picking screen is driven only in add mode (Add later)', () {
-      final uses = RegExp('edit-select-continue').allMatches(editors).length;
+      final uses = RegExp('edit-select-copy').allMatches(editors).length;
       expect(uses, 1, reason: 'only Copy to the VN folder continues from it');
       expect(
         bodyOf(editors, 'Future<void> _addLater('),
-        contains('edit-select-continue'),
+        contains('edit-select-copy'),
       );
+      expect(editors, isNot(contains('edit-select-continue')));
       expect(editors, isNot(contains('selectionSelectAll')));
     });
 
@@ -62,6 +63,42 @@ void main() {
       final send = bodyOf(editors, 'Future<void> _capcutSend(');
       expect(send, contains('editorSheetTitleAll(3)'));
       expect(send, isNot(contains('_pickScreen')));
+    });
+
+    test('every editor row is tapped once the sheet has stopped sliding in '
+        '(a raw tap on the first frame is lost on the S24)', () {
+      // The old flows ran on the S24 with Continue in front of the sheet; the
+      // sheet now opens straight from Edit video, so its first frames move.
+      expect(
+        editors,
+        isNot(contains(r'$(_editorRow(')),
+        reason: 'no raw Patrol tap of an editor row',
+      );
+      for (final flow in [
+        'Future<void> _capcutSend(',
+        'Future<void> _cancelCopy(',
+        'Future<String> _startVnSession(',
+        'Future<void> _chooseClips(',
+      ]) {
+        expect(
+          bodyOf(editors, flow),
+          contains(r'tapWhenStill($, _editorRow('),
+          reason: flow,
+        );
+      }
+      // The greyed row is tapped through the tester on purpose (it has no
+      // handler to wait for), and the only other row use is a read.
+      expect(
+        bodyOf(editors, 'Future<void> _notInstalled('),
+        contains(r'$.tester.tap(capcut, warnIfMissed: false)'),
+      );
+    });
+
+    test('the Edit tap waits until the button is on (a tap on the disabled '
+        'one is lost and the sheet wait then times out)', () {
+      final flow = bodyOf(editors, 'Future<void> _chooseClips(');
+      expect(flow, contains(r'tapWhenStill($, dockEdit(), enabled: true)'));
+      expect(flow, isNot(contains(r'tapWhenStill($, dockEdit())')));
     });
 
     test('Remove during a session takes the dock action', () {
@@ -91,7 +128,7 @@ void main() {
       expect(flow, contains('_l10n.selectionCount(2)'));
       expect(flow, contains('_l10n.selectionDockEdit(2)'));
       // Edit 2 clips from the dock; the sheet is not the every-clip one.
-      expect(flow, contains(r'tapWhenStill($, dockEdit())'));
+      expect(flow, contains(r'tapWhenStill($, dockEdit(), enabled: true)'));
       expect(flow, contains('_l10n.editorSheetTitle(2)'));
       // Exactly those two, in shooting order, to CapCut.
       expect(flow, contains('EditorApp.capcut.packageName'));

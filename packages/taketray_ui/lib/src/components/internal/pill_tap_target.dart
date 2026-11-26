@@ -8,7 +8,8 @@ import 'package:taketray_ui/src/theme/tt_theme_data.dart';
 /// side in a row. A tap in the margin above or below the pill counts. The
 /// pill's own text is left out of the semantics: a screen reader says [label]
 /// instead. With [toggled] the node is a toggle button (`aria-pressed`) that
-/// is on or off; without it a plain button.
+/// is on or off; with [selected] it is a selected or unselected button (a
+/// tab); without either a plain button.
 class TtPillTapTarget extends StatelessWidget {
   /// A target around [child] named [label] that calls [onPressed].
   const new({
@@ -16,6 +17,7 @@ class TtPillTapTarget extends StatelessWidget {
     required this.onPressed,
     required this.child,
     this.toggled,
+    this.selected,
     super.key,
   });
 
@@ -31,6 +33,10 @@ class TtPillTapTarget extends StatelessWidget {
   /// Whether the button is on, or null for a button that is not a toggle.
   final bool? toggled;
 
+  /// Whether the button is the chosen one of a set, or null when it is not
+  /// one of a set.
+  final bool? selected;
+
   @override
   Widget build(BuildContext context) {
     final target = context.tt.sizes.touchTarget;
@@ -40,6 +46,7 @@ class TtPillTapTarget extends StatelessWidget {
       button: true,
       enabled: true,
       toggled: toggled,
+      selected: selected,
       label: label,
       onTap: onPressed,
       child: GestureDetector(

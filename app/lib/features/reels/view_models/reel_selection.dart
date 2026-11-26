@@ -118,8 +118,7 @@ class ReelSelection extends _$ReelSelection {
 
   /// Chooses [clipId], or un-chooses it when it is chosen. Un-choosing the
   /// last one ends choosing, unless it started from the sheet. Nothing
-  /// happens for a clip that cannot be
-  /// chosen.
+  /// happens for a clip that cannot be chosen.
   void toggle(int clipId) {
     final next = {...state.selected};
     if (!next.remove(clipId)) {

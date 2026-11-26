@@ -239,27 +239,48 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     });
   }
 
+  /// The listener on the selection of the reel the page shows now.
+  ProviderSubscription<ReelSelectionState>? _selectionListener;
+
   @override
   void initState() {
     super.initState();
     _choosing = ref.read(choosingReelProvider.notifier);
-    // The shell is told when choosing starts or ends, never while a widget
-    // builds; a page that is built already choosing tells it after its first
-    // frame.
-    ref.listenManual(
-      reelSelectionProvider(widget.reelId),
-      (_, next) => _tellShell(choosing: next.selecting),
+    _listenToSelection();
+  }
+
+  /// The shell is told when choosing starts or ends, never while a widget
+  /// builds; a page that is built already choosing tells it after its first
+  /// frame.
+  void _listenToSelection() {
+    final reelId = widget.reelId;
+    _selectionListener = ref.listenManual(
+      reelSelectionProvider(reelId),
+      (_, next) => _tellShell(reelId, choosing: next.selecting),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
+      if (!mounted || widget.reelId != reelId) return;
       _tellShell(
-        choosing: ref.read(reelSelectionProvider(widget.reelId)).selecting,
+        reelId,
+        choosing: ref.read(reelSelectionProvider(reelId)).selecting,
       );
     });
   }
 
-  void _tellShell({required bool choosing}) =>
-      choosing ? _choosing.show(widget.reelId) : _choosing.hide(widget.reelId);
+  @override
+  void didUpdateWidget(ReelDetailScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.reelId == widget.reelId) return;
+    // The same State shown for another reel: follow the new reel's choosing
+    // and let the old reel's dock go (after this frame, like dispose).
+    _selectionListener?.close();
+    final old = oldWidget.reelId;
+    WidgetsBinding.instance.addPostFrameCallback((_) => _choosing.hide(old));
+    _listenToSelection();
+  }
+
+  void _tellShell(int reelId, {required bool choosing}) =>
+      choosing ? _choosing.show(reelId) : _choosing.hide(reelId);
 
   @override
   void dispose() {
@@ -267,6 +288,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     // taken down.
     final choosing = _choosing;
     final reelId = widget.reelId;
+    _selectionListener?.close();
     WidgetsBinding.instance.addPostFrameCallback((_) => choosing.hide(reelId));
     _viewer.dispose();
     _edit.dispose();

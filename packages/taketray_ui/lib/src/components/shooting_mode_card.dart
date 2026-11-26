@@ -55,7 +55,7 @@ class TtShootingCardChip {
 /// size change is instant and the fades remain, over `short4`.
 ///
 /// A [backdrop] that fails to load leaves the plain black card.
-class TtShootingModeCard extends StatelessWidget {
+class TtShootingModeCard extends StatefulWidget {
   /// A card for shooting mode being [on] or off.
   const new({
     required this.on,
@@ -105,8 +105,41 @@ class TtShootingModeCard extends StatelessWidget {
   final List<TtShootingCardChip> chips;
 
   @override
+  State<TtShootingModeCard> createState() => _TtShootingModeCardState();
+}
+
+class _TtShootingModeCardState extends State<TtShootingModeCard> {
+  // What the card showed when it was last on. Switching off fades the second
+  // row and the picture out over the card's height animation, and the caller
+  // (Home) stops passing them the moment the card is off, so they are kept
+  // here until the fade is over.
+  String? _cameraLabel;
+  List<TtShootingCardChip> _chips = const [];
+  ImageProvider? _backdrop;
+
+  @override
+  void initState() {
+    super.initState();
+    _remember();
+  }
+
+  @override
+  void didUpdateWidget(TtShootingModeCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _remember();
+  }
+
+  void _remember() {
+    if (!widget.on) return;
+    _cameraLabel = widget.cameraLabel;
+    _chips = widget.chips;
+    _backdrop = widget.backdrop;
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tt = context.tt;
+    final on = widget.on;
     // With reduced motion every `tt.motion` duration is zero, but the fades
     // still run over `short4` (only movement goes, F6, D-193).
     final fade = tt.motion.isReduced
@@ -115,7 +148,7 @@ class TtShootingModeCard extends StatelessWidget {
     return Semantics(
       container: true,
       explicitChildNodes: true,
-      label: semanticLabel,
+      label: widget.semanticLabel,
       child: TweenAnimationBuilder<double>(
         // No begin: the first build is already at its end, so a card that
         // starts on is on, not fading in.
@@ -131,9 +164,24 @@ class TtShootingModeCard extends StatelessWidget {
   Widget _card(BuildContext context, double progress) {
     final tt = context.tt;
     final scheme = context.scheme;
-    final label = cameraLabel;
+    final on = widget.on;
     final corners = BorderRadius.circular(TtMetrics.shootingCardRadius);
-    final hasSecondRow = on && (label != null || chips.isNotEmpty);
+    // Off, what the caller still gives (or the last "on" look) fades out
+    // while the height shrinks: the second row and the picture follow
+    // [progress], not [on], mirroring switching on. With reduced motion the
+    // size is instant, so the row goes at once (the picture still fades).
+    final showing = on || progress > 0;
+    final showingRow = on || (progress > 0 && !tt.motion.isReduced);
+    final label = on
+        ? widget.cameraLabel
+        : widget.cameraLabel ?? (showing ? _cameraLabel : null);
+    final chips = on || widget.chips.isNotEmpty
+        ? widget.chips
+        : (showing ? _chips : const <TtShootingCardChip>[]);
+    final picture = on ? widget.backdrop : (showing ? _backdrop : null);
+    // A card that is off takes no tap while its pill and chips fade out.
+    final onOpenCamera = on ? widget.onOpenCamera : null;
+    final hasSecondRow = showingRow && (label != null || chips.isNotEmpty);
     // The pill and the chips are 40 dp high inside a 48 dp tap target, so the
     // target takes 4 dp of the gaps above and below it.
     final slack = (tt.sizes.touchTarget - TtMetrics.shootingPillHeight) / 2;
@@ -179,15 +227,15 @@ class TtShootingModeCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(title, style: titleStyle),
-              Text(subtitle, style: subtitleStyle),
+              Text(widget.title, style: titleStyle),
+              Text(widget.subtitle, style: subtitleStyle),
             ],
           ),
         ),
         TtSwitch(
           value: on,
-          onChanged: onChanged,
-          semanticLabel: switchSemanticLabel,
+          onChanged: widget.onChanged,
+          semanticLabel: widget.switchSemanticLabel,
           inverted: on,
         ),
       ],
@@ -202,7 +250,7 @@ class TtShootingModeCard extends StatelessWidget {
           Positioned.fill(
             child: Opacity(
               opacity: progress,
-              child: _OnLayer(backdrop: on ? backdrop : null),
+              child: _OnLayer(backdrop: picture),
             ),
           ),
           AnimatedPadding(
@@ -212,24 +260,41 @@ class TtShootingModeCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
-              spacing: TtMetrics.shootingRowGap - slack,
               children: [
                 rowOne,
                 if (hasSecondRow)
-                  Wrap(
-                    spacing: TtMetrics.shootingRow2Gap,
-                    runSpacing: TtMetrics.shootingRow2Gap - 2 * slack,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      if (label != null)
-                        _CameraPill(
-                          label: label,
-                          progress: progress,
-                          onPressed: onOpenCamera,
+                  // The row takes [progress] of its height (and of the gap
+                  // above it), so the card grows as it turns on and shrinks
+                  // as it turns off while the pill and the chips fade.
+                  ClipRect(
+                    child: Align(
+                      alignment: AlignmentDirectional.topStart,
+                      heightFactor: tt.motion.isReduced ? 1 : progress,
+                      child: Padding(
+                        padding: EdgeInsets.only(
+                          top: TtMetrics.shootingRowGap - slack,
                         ),
-                      for (final chip in chips)
-                        _Chip(chip: chip, progress: progress),
-                    ],
+                        child: Wrap(
+                          spacing: TtMetrics.shootingRow2Gap,
+                          runSpacing: TtMetrics.shootingRow2Gap - 2 * slack,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            if (label != null)
+                              _CameraPill(
+                                label: label,
+                                progress: progress,
+                                onPressed: onOpenCamera,
+                              ),
+                            for (final chip in chips)
+                              _Chip(
+                                chip: chip,
+                                progress: progress,
+                                enabled: on,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
               ],
             ),
@@ -237,20 +302,7 @@ class TtShootingModeCard extends StatelessWidget {
         ],
       ),
     );
-    return ClipRRect(
-      borderRadius: corners,
-      // An `AnimatedSize` of no duration asserts in debug builds (its
-      // controller finishes inside layout), so with reduced motion the size
-      // change is simply instant.
-      child: tt.motion.isReduced
-          ? body
-          : AnimatedSize(
-              duration: tt.motion.medium2,
-              curve: tt.motion.emphasizedDecelerate,
-              alignment: AlignmentDirectional.topStart,
-              child: body,
-            ),
-    );
+    return ClipRRect(borderRadius: corners, child: body);
   }
 }
 
@@ -266,9 +318,8 @@ class _OnLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final tt = context.tt;
     final scheme = context.scheme;
-    // home2.css:11: rgba(36, 49, 66, …), the same in light and dark: the dark
-    // scheme's `onPrimary` (0xFF243142).
-    final tint = ttDarkScheme.onPrimary;
+    // home2.css:11: rgba(36, 49, 66, …), the same in light and dark.
+    final tint = tt.colors.shootingTint;
     final picture = backdrop;
     return ColoredBox(
       color: tt.colors.videoBackground,
@@ -471,17 +522,25 @@ class _CameraPill extends StatelessWidget {
 /// Coming in, only the fill's alpha (0 to .14) and an `Opacity` on the content
 /// inside the fill change with [progress].
 class _Chip extends StatelessWidget {
-  const new({required this.chip, required this.progress});
+  const new({
+    required this.chip,
+    required this.progress,
+    required this.enabled,
+  });
 
   final TtShootingCardChip chip;
   final double progress;
 
+  /// False while the card fades out: the chip takes no tap then.
+  final bool enabled;
+
   @override
   Widget build(BuildContext context) {
     final tt = context.tt;
+    final onPressed = enabled ? chip.onPressed : null;
     return _Target(
       label: chip.semanticLabel,
-      onPressed: chip.onPressed,
+      onPressed: onPressed,
       child: TtGlassFill(
         corners: BorderRadius.circular(tt.radii.full),
         blur: TtMetrics.shootingChipBlur,
@@ -496,7 +555,7 @@ class _Chip extends StatelessWidget {
           ),
         ),
         child: InkWell(
-          onTap: chip.onPressed,
+          onTap: onPressed,
           child: ConstrainedBox(
             constraints: const BoxConstraints(
               minHeight: TtMetrics.shootingPillHeight,

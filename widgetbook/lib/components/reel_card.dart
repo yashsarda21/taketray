@@ -73,10 +73,7 @@ final WidgetbookComponent ttReelCardComponent = WidgetbookComponent(
                       '$missing missing',
                     ),
                   if (refs > 0)
-                    TtReelCardNote(
-                      TtReelCardNoteKind.references,
-                      '$refs references',
-                    ),
+                    TtReelCardNote(TtReelCardNoteKind.references, '$refs'),
                 ],
                 onTap: () {},
               ),

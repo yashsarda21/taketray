@@ -140,10 +140,10 @@ extension EditorSheetOutcomePicked on EditorSheetOutcome {
 ///   says so. When asking the phone fails, all three look installed and the
 ///   share decides.
 ///
-/// When a hand-off starts (the outcome `isPicked`) the row
-/// is stored as `lastEditor`, through the container because the sheet is gone
-/// by then; a write that fails is logged by type and changes nothing else.
-/// Not installed, failed, a dismissed sheet and Choose clips instead store
+/// When a hand-off starts (the outcome `isPicked`) the row is stored as
+/// `lastEditor`, through the container because the sheet is gone by then; a
+/// write that fails is logged by type and changes nothing else. Not
+/// installed, failed, a dismissed sheet and Choose clips instead store
 /// nothing.
 ///
 /// Every row is inert while a send runs (one share, however many taps), and
@@ -448,7 +448,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
                 alignment: AlignmentDirectional.centerStart,
                 child: Padding(
                   padding: EdgeInsetsDirectional.only(
-                    start: tt.spacing.xl - tt.spacing.s,
+                    start: TtMetrics.sheetChooseInset,
                     top: tt.spacing.xxs,
                   ),
                   child: TtButton(

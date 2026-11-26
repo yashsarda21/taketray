@@ -166,7 +166,7 @@ Future<void> _capcutSend(PatrolIntegrationTester $, _Env env) async {
   final reel = await env.reelWithClips(3);
   await _openReel($, reel);
   await _editAll($, 3);
-  await $(_editorRow(EditorApp.capcut)).tap();
+  await tapWhenStill($, _editorRow(EditorApp.capcut));
 
   final snack = _l10n.editorSentSnack(3, _l10n.editorNameCapcut);
   await waitFor(
@@ -269,7 +269,7 @@ Future<void> _chooseClips(PatrolIntegrationTester $, _Env env) async {
   );
 
   // Edit 2 clips: the sheet of those two, then CapCut.
-  await tapWhenStill($, dockEdit());
+  await tapWhenStill($, dockEdit(), enabled: true);
   await waitFor(
     $,
     () => _count(find.text(_l10n.editorSheetTitle(2))) == 1,
@@ -543,7 +543,7 @@ Future<void> _cancelCopy(PatrolIntegrationTester $, _Env env) async {
   final reel = await env.reelWithClips(3);
   await _openReel($, reel);
   await _editAll($, 3);
-  await $(_editorRow(EditorApp.vn)).tap();
+  await tapWhenStill($, _editorRow(EditorApp.vn));
   await _startCopyFromSpaceScreen($, 3);
 
   // Copying: the progress screen, and the window kept on.
@@ -660,7 +660,7 @@ Future<void> _addLater(PatrolIntegrationTester $, _Env env) async {
     4,
     reason: 'every live clip is listed',
   );
-  await $(find.byKey(const ValueKey<String>('edit-select-continue'))).tap();
+  await $(find.byKey(const ValueKey<String>('edit-select-copy'))).tap();
 
   // The space screen, then "1 clip added to the VN folder".
   await _startCopyFromSpaceScreen($, 1);
@@ -1205,7 +1205,7 @@ Future<String> _startVnSession(
 ) async {
   await _openReel($, reel);
   await _editAll($, reel.videos.length);
-  await $(_editorRow(EditorApp.vn)).tap();
+  await tapWhenStill($, _editorRow(EditorApp.vn));
   await _startCopyFromSpaceScreen($, reel.videos.length);
   await waitFor(
     $,

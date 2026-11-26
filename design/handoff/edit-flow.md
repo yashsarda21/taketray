@@ -119,7 +119,7 @@ It slides up (`medium2`, emphasizedDecelerate) on `surfaceContainer`, with 28 dp
   - `_selectionBar` loses the three action icons and the ⋮ (`_SelectionAction`). It gains Select all / Clear.
   - Add the `TtSelectionDock` while choosing.
   - **Edit video** calls `showEditorSheet(…, allClips: true)` instead of `Routes.editSelect`.
-- `app/lib/features/reels/view_models/reel_selection.dart`: `start(fromSheet: true)` keeps choosing when empty; `clear` / `selectAll` as today.
+- `app/lib/features/reels/view_models/reel_selection.dart`: `begin(fromSheet: true)` keeps choosing when empty; `clear` / `selectAll` as today.
 - `app/lib/features/editors/views/editor_sheet.dart`:
   - the `allClips` title and **Choose clips instead**;
   - `lastEditor` first, with the pill;

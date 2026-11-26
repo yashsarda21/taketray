@@ -46,7 +46,7 @@ void main() {
     return await c.read(editSelectControllerProvider(reelId).future);
   }
 
-  group('EditSelectController, whichever editor (D-192)', () {
+  group('EditSelectController, every editor', () {
     test('the clips to copy are in shooting order, not in id order', () async {
       final (goa, ids) = await reelWithClips();
       await startEditing(h, goa, EditorApp.vn);

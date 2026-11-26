@@ -16,6 +16,7 @@ import 'package:taketray/domain/models/undo_record.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_selection.dart';
 import 'package:taketray/features/reels/views/reel_detail_screen.dart';
+import 'package:taketray/features/shell/view_models/choosing_reel.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
@@ -1277,17 +1278,6 @@ void main() {
       await settleApp(tester);
     }
 
-    /// Lets the "Mark as Ready to edit?" offer of a CapCut send come, 1.3 s
-    /// later, and closes it.
-    Future<void> flushReadyOffer(WidgetTester tester) async {
-      await tester.pump(const Duration(milliseconds: 1500));
-      await settleApp(tester);
-      if (find.text('Not now').evaluate().isNotEmpty) {
-        await tester.tap(find.text('Not now'));
-        await settleApp(tester);
-      }
-    }
-
     testApp('Edit video opens the sheet with every live clip in shooting '
         'order, "Edit all 3 clips in…"', (tester) async {
       final (goa, _) = await reelWithThree(tester);
@@ -1514,7 +1504,16 @@ void main() {
       expect(choosing(tester), isFalse);
       expect(find.byType(TtSelectionDock), findsNothing);
       expect(find.byType(TtNavPill), findsOneWidget);
-      await flushReadyOffer(tester);
+
+      // The dock is gone, and the offer still comes: it belongs to the send,
+      // not to the dock's context (the sheet's navigator outlives the dock).
+      await tester.pump(const Duration(milliseconds: 1500));
+      await settleApp(tester);
+      expect(find.text('Mark Goa as Ready to edit?'), findsOneWidget);
+      expect(find.text('Not now'), findsOneWidget);
+      await tester.tap(find.text('Not now'));
+      await settleApp(tester);
+      expect(find.text('Mark Goa as Ready to edit?'), findsNothing);
     });
 
     testApp('dismissing the sheet keeps the choice', (tester) async {
@@ -1950,6 +1949,115 @@ void main() {
         expect(find.byType(TtNavPill), findsNothing);
       });
 
+      /// The page kept as it is while its reel changes from [first] to
+      /// [second] (the same State, another `reelId`), with both reels'
+      /// selections alive.
+      Future<void> pumpSwitch(
+        WidgetTester tester,
+        int first,
+        int second,
+      ) async {
+        await pumpScreen(
+          tester,
+          Consumer(
+            builder: (context, ref, _) {
+              ref
+                ..watch(reelSelectionProvider(first))
+                ..watch(reelSelectionProvider(second));
+              return _SwitchHost(first: first, second: second);
+            },
+          ),
+          overrides: h.appOverrides,
+          settle: false,
+          inShell: true,
+        );
+        await settleApp(tester);
+      }
+
+      ReelSelection selectionOf(WidgetTester tester, int reelId) =>
+          ProviderScope.containerOf(tester.element(find.byType(_SwitchHost)))
+              .read(reelSelectionProvider(reelId).notifier);
+
+      int? shownFor(WidgetTester tester) =>
+          ProviderScope.containerOf(tester.element(find.byType(_SwitchHost)))
+              .read(choosingReelProvider);
+
+      Future<(int, int)> twoReels(WidgetTester tester) async {
+        final goa = await newReel(tester, 'Goa');
+        final london = await newReel(tester, 'London');
+        await reelWithClips(tester, goa, 2);
+        await reelWithClips(tester, london, 2);
+        return (goa.id, london.id);
+      }
+
+      testApp('a page whose reel changes follows the new reel: choosing on it '
+          'shows its dock, and the old reel no longer speaks for the page', (
+        tester,
+      ) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        // The old reel choosing is not this page's business any more.
+        selectionOf(tester, a).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), isNull, reason: 'the old reel is not shown');
+        expect(find.byType(TtSelectionDock), findsNothing);
+        selectionOf(tester, a).clear();
+        await tester.pumpAndSettle();
+
+        // The new reel is.
+        selectionOf(tester, b).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), b);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+
+        selectionOf(tester, b).clear();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+      });
+
+      testApp('a page that was choosing on the old reel stops showing its '
+          'dock when its reel changes to one that is not choosing', (
+        tester,
+      ) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        selectionOf(tester, a).begin();
+        await tester.pumpAndSettle();
+        expect(shownFor(tester), a);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pumpAndSettle();
+
+        expect(tester.takeException(), isNull);
+        expect(shownFor(tester), isNull);
+        expect(find.byType(TtSelectionDock), findsNothing);
+      });
+
+      testApp('a page whose reel changes to one that is already choosing '
+          'shows its dock after the frame, not while building', (tester) async {
+        final (a, b) = await twoReels(tester);
+        await pumpSwitch(tester, a, b);
+        selectionOf(tester, b).begin();
+        await tester.pumpAndSettle();
+        expect(find.byType(TtSelectionDock), findsNothing);
+
+        _SwitchHost.switchTo(tester, b);
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+        await tester.pumpAndSettle();
+
+        expect(shownFor(tester), b);
+        expect(find.byType(TtSelectionDock), findsOneWidget);
+      });
+
       testApp('the page going away while choosing gives the nav pill back', (
         tester,
       ) async {
@@ -2007,4 +2115,28 @@ class _PageHostState extends ConsumerState<_PageHost> {
             ),
           ),
         );
+}
+
+/// Shows reel [first]'s page and, after [switchTo], reel [second]'s in the
+/// same place: the page's State is kept and only its `reelId` changes.
+class _SwitchHost extends StatefulWidget {
+  const _SwitchHost({required this.first, required this.second});
+
+  final int first;
+  final int second;
+
+  static void switchTo(WidgetTester tester, int reelId) =>
+      tester.state<_SwitchHostState>(find.byType(_SwitchHost)).setReel(reelId);
+
+  @override
+  State<_SwitchHost> createState() => _SwitchHostState();
+}
+
+class _SwitchHostState extends State<_SwitchHost> {
+  late int _reelId = widget.first;
+
+  void setReel(int reelId) => setState(() => _reelId = reelId);
+
+  @override
+  Widget build(BuildContext context) => ReelDetailScreen(reelId: _reelId);
 }

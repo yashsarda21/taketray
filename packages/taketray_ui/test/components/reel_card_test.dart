@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -439,7 +441,7 @@ void main() {
       }
     });
 
-    testWidgets('a tap calls onTap, and the card is no button without it', (
+    testWidgets('a tap calls onTap, on the cover and on the caption', (
       tester,
     ) async {
       var taps = 0;
@@ -450,6 +452,48 @@ void main() {
       // The caption is part of the button.
       await tester.tap(find.text('Lisbon trip'));
       expect(taps, 2);
+    });
+
+    testWidgets('without onTap the card is a disabled button: no tap action, '
+        'no scale on a press, nothing happens', (tester) async {
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          ttTestApp(
+            const Center(
+              child: SizedBox(
+                width: 158,
+                child: TtReelCard(
+                  name: 'Lisbon trip',
+                  semanticLabel: 'Lisbon trip. Collecting. 12 clips',
+                  status: TtStatusKind.collecting,
+                  statusLabel: 'Collecting',
+                  meta: '12 clips · 1:03',
+                ),
+              ),
+            ),
+          ),
+        );
+        final data = tester
+            .getSemantics(find.byType(TtReelCard))
+            .getSemanticsData();
+        expect(data.flagsCollection.isButton, isTrue);
+        expect(data.flagsCollection.isEnabled, ui.Tristate.isFalse);
+        expect(data.hasAction(SemanticsAction.tap), isFalse);
+
+        final finger = await tester.startGesture(
+          tester.getCenter(find.byType(TtReelCard)),
+        );
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(_scale(tester).scale, 1, reason: 'a press does not scale it');
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(_scaleValue(tester), 1);
+        await finger.up();
+        await tester.pump();
+        expect(tester.takeException(), isNull);
+      } finally {
+        handle.dispose();
+      }
     });
 
     testWidgets('semantics: one button read as semanticLabel; nothing inside '
