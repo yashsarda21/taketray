@@ -20,40 +20,13 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
     - the merged-manifest INTERNET check;
     - wording updates (README, Play listing, website, privacy policy).
 
-## Next: sending clips to an editor in fewer taps (owner, 2026-11-25)
-
-- **Build D-185.**
-  - **Spec:** `design/handoff/edit-flow.md`.
-  - **Reference:** hub screens 8 (choosing states), 19 (editor sheet) and 18 (add mode only).
-  - **Covers:**
-    - Edit video straight to the editor sheet with every clip, and Choose clips instead;
-    - `TtSelectionDock` with Edit {n} clips;
-    - Select all / Clear in the top bar, with the ⋮ removed;
-    - the last-used editor first;
-    - the picking screen kept for add mode only.
-  - Independent of Phase 12's player work (no shared files).
-
-## Next: the calm Home (owner, 2026-11-25)
-
-- **Build D-186 and D-187 together.**
-  - **Spec:** `design/handoff/home-calm-grid.md`.
-  - **Reference:** hub screen 6 (its last state is the previous Home).
-  - **Covers:**
-    - the compact Shooting mode card (no strip, no separate To tag banner);
-    - "+ New" in the header instead of the FAB;
-    - quiet tabs;
-    - the calm reel card (no overlays, no reference badge button);
-    - the scroll and press motion;
-    - goldens and widget tests.
-  - **Phase 12:** its glass work (`TtGlassFill`) on `phase-12-ui-refresh` touches `TtShootingModeCard` and `TtReelCard`, so build this on top of Phase 12.
-- **Parked for the owner: opening a reel with a container transform** (the handoff's "Opening a reel: container transform from the card, 400 ms"; ruling R12B-5, D-196). Flutter's `OpenContainer` lives in the `animations` package, a new dependency, which the 12B rules do not allow; a hand-built one would mean the reel page owns a shared-element route. Phase 12B keeps today's route transition. If the owner wants it, decide on the package first.
-
 ## Phase 4
 
 - The reel page (D-87) verifies its clips when it opens, not when the app returns to the front while it stays open (To tag does both, D-75). Add the resume check to `ReelDetailController` if the owner wants it.
 
 ## Phase 12 (UI refresh)
 
+- **The container transform from a reel card (parked for the owner, Phase 12B).** The calm Home's design opens a reel with a container transform from the card, over 400 ms (`design/handoff/home-calm-grid.md`, "Opening a reel"; ruling R12B-5, D-196). Flutter's `OpenContainer` lives in the `animations` package, a new dependency, which the 12B rules do not allow, and a hand-made one would mean the reel page owns a shared-element route. Phase 12B keeps today's route transition. It waits for the owner's go: if they want it, decide on the package first (or the hand-made route), then build it with a reduced-motion crossfade.
 - **Restyle the reminder time picker.** `app/lib/features/settings/views/settings_rows/reminder_groups.dart:94` opens Material's `showTimePicker`. It is the one Material dialog left in the app that is not a TakeTray dialog: its barrier is Material's own black at 54 % with no blur, and its look is Material's, not the design's. It is not in the design (spec, Non-goals), so it is parked until the design has one; then build it as a `showTtDialog` so it gets the steady 3 dp blur (D-172).
 - **Small deviations from the handoff, confirmed by the owner on the phone (2026-11-25)** (Phase 12 check, hand check 19 in `docs/dev-setup.md`). Each is built and works, and the owner is happy with the large-text and sideways layouts below, so they are accepted as built and nothing is to be reworked. The list is kept as the record of how they differ from the handoff:
   - **The snack sits above the rail at large text.** From a text scale of 1.5 the snack is full width and 8 dp above the rail (D-181 fix round, ruling R2), where the handoff puts it beside the rail with an 88 dp right margin. Beside a rail up to about 120 dp wide, a 2x snack wrapped a word to a line over the scene line.
@@ -105,8 +78,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
 - **What is left of the re-match cost** (D-108). The re-match reads a volume's whole video list (`allVideos`) only within 24 hours of a rebuild that left clips detached, and only when the volume's generation moved since the last match. MediaStore's generation moves with any change on the volume (a photo, an edit), so on a busy day after a rebuild each app open after such a change still pays one read, on the UI isolate, for up to a day. Check it on the S24 with a few thousand videos after a rebuild; if it shows, ask MediaStore for the videos added or changed since the last matched generation (with the fingerprint fields) instead of all of them. A clip re-indexed more than a day after its rebuild is not matched (it comes in as a new clip; the old one stays missing in its reel).
 - **The new-clips job over-counts behind a held baseline** (D-104). While a pending or zero-length row holds a volume's stored baseline (`holdsBaseline`, D-72), the job counts every video after that baseline, including the clips the app has already scanned past the held row, so the shade can say "5 new clips" when 2 are new, until the row clears and the baseline moves. The evening reminder adds the same count to the waiting clips shot today, so it can over-count too (D-105). Accepted in Phase 6 (D-101's definition of the count; held rows are rare). The idea for the fix: Dart also mirrors the highest generation each scan saw, and the job counts only after that (for counting only; the scan still uses the held baseline).
 - **The native copy mirrors the whole waiting list on every tag** (D-106, Phase 6 final review M-6). Each tag changes `pendingShotTimes`, and `BackgroundSync` then writes every waiting clip's shot time as JSON with `commit()` and re-arms both alarms and the channels. With a few thousand waiting clips that is tens of KB rewritten per tag, on the IO thread. The evening count and the evening reminder's removal need only the clips shot since the start of today, or of yesterday for a late delivery. Send only the shots after `now - 48 h` plus a margin for the zone, and say so in D-106 item 1.
-- **Shooting card rows clamp to one line at 2× text.** "Add earlier vid…", "References · 4" and "3 clips… Tag now" are cut short. This was true of the on card since Phase 1/3, and is now true of the off card too (D-90). Let a row wrap to two lines at large text, or stack its trailing part, and check it with TalkBack.
-- **Empty Reels at large text.** The off card is one row taller now (D-90), so on a short screen at a large font the empty Home's **New reel** button can sit below the fold. It can still be scrolled to. Check it on the S24 and one small screen.
+- **Empty Reels at large text.** Since Phase 12B (D-193, D-196) the off Shooting mode card is one row again, so the first-time Home's **New reel** button is much less likely to sit below the fold on a short screen at a large font; it can still be scrolled to. Check it on the S24 and one small screen with the Phase 12B check's large-text step (11).
 
 - **Accessibility and the phone pass** (Phase 4 final review M-6; check each on the S24 with TalkBack):
   - the reel page's app bar has an empty title until it scrolls (the name is in the body): what TalkBack reads there;

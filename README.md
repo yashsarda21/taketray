@@ -41,7 +41,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 | 8 | Sending clips to editors (CapCut, Edits, VN) | ✅ Done |
 | 10 | Onboarding and Settings: 10A first launch, 10B Settings (moved ahead of Phase 9, D-134) | ✅ Done |
 | 9 | Reference reels: 9A references in the app, 9B Sharing in | 9A merged (#9; S24 tests 4/4, hand checks passed; release install with 9B); 9B done on the S24 (hand checks passed; release share proven after the entry-point fix) |
-| 12 | UI refresh: glass everywhere and the full-screen tag player (ahead of Phase 11, as 10 came before 9) | Done on the S24 (Patrol 13/13 files; hand checks 24/24). **Next: Phase 13** |
+| 12 | UI refresh: glass everywhere and the full-screen tag player (ahead of Phase 11, as 10 came before 9); 12B: edit flow and calm Home | 12 done on the S24 (Patrol 13/13 files; hand checks 24/24); 12B built, phone check pending. **Next: Phase 13** |
 | 11 | Release prep for the Play Store | Planned |
 
 ### Phase 0: Foundation
@@ -75,10 +75,10 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 
 ### Phase 3: Finding your videos
 - **Shooting mode**: a switch on the Reels tab. Turn it on and film with your phone's normal camera; TakeTray looks for the videos you shoot from that moment on. The card shows since when it has been on and has an **Open camera** button.
-- **To tag**: the new videos land here, oldest first, as a grid with each video's picture, the time it was shot and its length. Open the tab and TakeTray checks for new videos first. When Shooting mode is off but videos are waiting, a banner on the Reels tab says how many and how much video that is. (Tagging itself comes in Phase 5.)
+- **To tag**: the new videos land here, oldest first, as a grid with each video's picture, the time it was shot and its length. Open the tab and TakeTray checks for new videos first. When Shooting mode is off but videos are waiting, the Reels tab said how many and how much video that is in a banner (since Phase 12B the off Shooting mode card says it in its own line, "Off · 23 clips still to tag"). (Tagging itself comes in Phase 5.)
 - **Thumbnails**: a small picture for every video, made once and kept on the phone (up to 64 MB, tidied up each time the app starts). If Android ever gives a number to a different video, the old picture is never shown for it.
 - **Manual mode and the access banner**: TakeTray asks Android for permission to see your videos, and only videos. If you share only some of them ("Select photos and videos") or say no, a banner says **Manual mode** and offers **Allow full access**. If Android takes the permission away later, the banner says **TakeTray can't see your videos**. Either way, nothing is removed just because TakeTray cannot see it.
-- **Add earlier videos**: from the Shooting mode card (on or off, whenever TakeTray has full video access; it stays after use) or the ⋮ menu of To tag. **Today** adds at once; **Choose dates…** opens a calendar for any from-to range, counts the videos first and asks "N videos found. Add them to To tag?" before adding anything. A snack with **Undo** follows.
+- **Add earlier videos**: from the Shooting mode card (since Phase 12B an **Earlier videos** chip, shown while Shooting mode is on and TakeTray has full video access, and gone after an add until Shooting mode is turned off and on again) or the ⋮ menu of To tag, on or off. **Today** adds at once; **Choose dates…** opens a calendar for any from-to range, counts the videos first and asks "N videos found. Add them to To tag?" before adding anything. A snack with **Undo** follows.
 - **Noticing deleted videos**: a video you delete in the Gallery leaves To tag when you come back to TakeTray. A clip that is already in a reel stays there, marked as missing. If Android rebuilds its media library, TakeTray finds your clips again by their size, length and date. When it is not sure, it calls the clip missing instead of showing the wrong video.
 - **Time zones**: a clip is dated in the zone you were in when you shot it, even if you changed zone while TakeTray was closed.
 - **No Google backup**: Android no longer copies TakeTray's data to Google or to a new phone, because its video numbers only mean something on the phone that made them. Export / Import (Phase 10) is the same-phone backup.
@@ -93,9 +93,9 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 ### Phase 4: Reels
 - **Home (the Reels tab)**:
   - the Shooting mode card at the top;
-  - filters (All, Collecting, Ready to edit, Published), each with its count;
-  - your reels as cards: the oldest clip as the cover, the status, how many clips, how much video, and how many are missing;
-  - a **New reel** button, which moves up out of the way when a message shows at the bottom;
+  - tabs (All, Collecting, Ready, Published), each with its count (filter chips until Phase 12B);
+  - your reels as cards: the oldest clip as the cover, the status, how many clips, how much video, and how many are missing (calm cards since Phase 12B: the cover alone, the words under it);
+  - a **+ New** pill in the header (a floating **New reel** button until Phase 12B; the first-time Home keeps its **New reel** button);
   - "On since" updates at midnight;
   - if the camera can't be opened, TakeTray says so.
 - **Creating and editing a reel**:
@@ -183,7 +183,7 @@ The app is built in phases. Each phase is planned, built in small tested steps, 
 - **Learning guide**: [docs/learn/phase-7-add-videos.md](docs/learn/phase-7-add-videos.md) explains the whole phase in plain English, with the real code.
 
 ### Phase 8: Editor handoff
-- **Edit video**: a button on a reel's page. Tick the clips you want (or **Select all**), tap **Continue** and choose an editor. Clips always go in shooting order, and your originals are never changed.
+- **Edit video**: a button on a reel's page. It opens a sheet of editors for the whole reel; **Choose clips instead** lets you pick some first (Phase 12B; before it you ticked clips on a picking screen and tapped **Continue**). Clips always go in shooting order, and your originals are never changed.
   - **CapCut and Instagram Edits** get the original clips in one share, so they open in one new project. A grey row says "Not installed" when the editor is missing.
   - **VN** cannot take several shared clips, so TakeTray makes temporary copies in `Movies/TakeTray/<reel name>/`. VN's picker shows that folder.
   - **Share** (in the clip viewer, and for clips ticked on a reel's page) sends clips to any other app through Android's own chooser.
@@ -224,8 +224,8 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **References on a reel**: a reel's page has a References section. With none it shows one dashed **Add reference** row ("Save a reel you want to recreate"); with some it shows "References · 3", a small **Add** button and a card per link, newest first. Tapping a card opens the link in the Instagram, YouTube or TikTok app, or the browser, whichever the phone picks; if nothing can, it says so. Each card's ⋮ menu has **Edit label**, **Copy link** and **Remove** (instant, with **Undo**). A reel with links and no shot ideas gets a note, "Write the shots you need", that opens its details on the shot ideas.
 - **Add reference sheet**: type or paste a link and give it an optional label of up to 60 characters. **Paste** is the only thing that ever reads the clipboard, so Android's own paste message shows only after you tap it; it takes the first link out of a whole caption. A link that is not a link, or is already saved on the reel, is told under the field. **Edit label** is the same sheet for a link already saved.
 - **The reel form's Reference link**: the New reel and Reel details sheets have an optional link box. A new reel is made with its link in one step (all or nothing), and an existing reel keeps the link in its references; the help line says how many it has.
-- **The Home badge**: a reel card with references shows a small badge with their number. Tapping it opens the reel at its References section, scrolled into view and flashed once (not with "Remove animations").
-- **Shooting mode's References**: while Shooting mode is on and a Collecting or Ready to edit reel has a reference, its card gets a **References · N** row. It opens a sheet that groups the references by reel with each reel's shot ideas, so they can be read while filming; a group can be folded away, a card opens its link and a header opens that reel at its References.
+- **The Home badge**: a reel card with references showed a small badge with their number; tapping it opened the reel at its References section, scrolled into view and flashed once (not with "Remove animations"). Since Phase 12B the card shows the number as a note under its cover and a tap opens the reel's page; the Shooting mode sheet's reel header still opens a reel at its References.
+- **Shooting mode's References**: while Shooting mode is on and a Collecting or Ready to edit reel has a reference, its card gets a **References · N** chip (a row until Phase 12B). It opens a sheet that groups the references by reel with each reel's shot ideas, so they can be read while filming; a group can be folded away, a card opens its link and a header opens that reel at its References.
 - **The phone's own icons**: a card shows the real icon of the Instagram, YouTube or TikTok app when it is installed, and a plain link symbol otherwise. TakeTray never draws a logo of its own.
 - **Under the hood**: a new Links bridge (one Pigeon file, no permission; the app declares the few `<queries>` it needs to read icons) opens links, and the link rules (finding the first link in a caption, cleaning one so the same page is not saved twice, short forms for display) are plain tested functions. The database is unchanged (still schema 2) and a backup already held references.
 - **Phone tests**: four on-device flows are written (a typed link, Paste with the Home badge, the reel form's link, and the Shooting mode sheet) with a fake that stands in for the links bridge, so no real link is ever opened; they run on the S24 last, together with the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9A check): real Instagram and YouTube, Android's paste message, TalkBack, 200 % text, dark mode, the Shooting mode sheet's colours, the keyboard on opening the New reel sheet, and an install over the release build with references kept.
@@ -239,7 +239,7 @@ Phase 10 was moved ahead of Phase 9 (decision D-134): nothing in it needs refere
 - **Phone tests**: four on-device flows are written (an existing reel, a new reel, not a link, and a share before onboarding) with a debug-only hook that starts the share screen with a text, and a driver that reads the share screen through Android's accessibility tree. **They are skipped**, because a Patrol build cannot start the share screen: Flutter looks its entry point up in the build's root library, which in a Patrol build is the generated test bundle (D-169 item 8). The owner decided not to change the app for this, so sharing is proven by the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 9B check), answered on the S24: a real Instagram, YouTube and TikTok share, where Done returns to, Recents, a share while TakeTray is open, a fresh install, dark mode, large text, TalkBack, the keyboard, and the release build over the real app.
 - **Learning guide**: [docs/learn/phase-9b-sharing.md](docs/learn/phase-9b-sharing.md) explains the whole phase in plain English, with the real code.
 
-### Phase 12: UI refresh (done)
+### Phase 12: UI refresh (done), and 12B: edit flow and calm Home (built, phone check pending)
 Phase 12 was put ahead of Phase 11 (as Phase 10 came before 9). The owner compared the app on the S24 with the design and found the frosted-glass look missing, and redesigned the tag player (D-171). It is UI only: tagging, Undo, Pick several and "All done!" work as before. What each task added:
 - **Task 1, the blur behind dialogs and sheets** (D-172): it was too faint to see (the page only went darker). A throwaway test build on the S24 showed why: a blur that grew as the dialog opened was lost on that phone, and the same blur held steady was soft. It is now a steady 3 dp from the first frame, and only the dim fades. CI now has a way to prove a blur by its pixels (sharp stripes behind the glass, the contrast left after the blur is measured).
 - **Task 2, the reel cover's status pill** (D-173): it was sharp on the S24 because its blur filter held a `Material` with its own colour. Every piece of glass is now built the same way (a plain fill first, the press ripple on a see-through layer on top), through one shared widget.
@@ -256,6 +256,20 @@ Phase 12 was put ahead of Phase 11 (as Phase 10 came before 9). The owner compar
 - **Task 12, phone tests** (D-183): the tagging flows are updated to the new player, with one new flow for the swipes and All reels.
 - **Phone tests**: done on the Samsung S24 on 2026-11-25. All 13 Patrol files are green after two rounds: round 1 found one test fault (the new "swipe and All reels" flow tapped a chip while the All reels sheet was still sliding in, fixed in 51ce3f0 so the flows wait until their target is still) and could not reach the last files because `patrol_cli` could not reach pub.dev (a proxy error, not the app); round 2 ran everything else, and the sharing flows stay skipped (D-169). All 24 hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 12 check) passed, including the owner's side-by-side check of each glass element with the design and the share blur with battery saver. The owner kept the designed 3 dp blur (D-172), kept a reverse fling going to the next clip (D-182) and is happy with the large-text and sideways layouts (`docs/later.md`).
 - **Learning guide**: [docs/learn/phase-12-ui-refresh.md](docs/learn/phase-12-ui-refresh.md) explains the whole phase in plain English, with the real code.
+
+**12B: edit flow and calm Home.** After Phase 12 the owner chose two more designs (D-185 to D-187): sending clips to an editor in fewer taps, and a calmer Home. What each task added:
+- **Task 1, choosing from the editor sheet** (D-188): choosing that starts from the sheet stays on when nothing is chosen, and **Clear** empties the choice without leaving it.
+- **Task 2, the editor sheet for every clip** (D-189): the sheet says "Edit all {n} clips in…" for a whole reel, has **Choose clips instead**, puts the editor you used last first with a **Last used** pill, and returns an answer instead of closing the page under it.
+- **Task 3, the selection dock** (D-190): a new bar for chosen clips, with four labelled actions and an **Edit {n} clips** button that shows how long they are, off when nothing is chosen.
+- **Task 4, the reel page** (D-191): **Edit video** opens the sheet at once; choosing shows the dock in the place of the nav pill; **Select all** and **Clear** are in the top bar and the ⋮ in choosing is gone; a hint explains choosing from the sheet; during an edit the dock shows a note instead of Edit.
+- **Task 5, the picking screen** (D-192): it is only for adding clips to a reel that is being edited ("Add clips to a VN edit"); an old link to the normal mode opens the reel instead.
+- **Task 6, the Shooting mode card** (D-193): one compact row, or, when on, the row plus **Open camera** and glass chips; it grows and shrinks smoothly when you flick the switch and the switch keeps its screen-reader focus.
+- **Task 7, the reel card** (D-194): the cover alone, with the name, status, clip count and notes under it; the glass pills and the references badge are gone; a press scales the card.
+- **Task 8, the tabs and the header** (D-195): quiet tabs with counts, a **+ New** pill, and a large "Reels" title that shrinks into the bar as you scroll.
+- **Task 9, Home** (D-196): the calm grid in one scroll, the off card says how many clips wait, the chips (**References · N**, **Earlier videos**) replace the old rows, a tab with no reels says so with **Show all reels**, and the floating **New reel** button, the filter chips and the strip under the card are gone.
+- **Task 10, phone tests written** (D-197): the Patrol flows for reels, editors and references use the new controls, with a new flow for choosing two clips and the **Last used** pill. Written without a phone.
+- **Phone tests**: pending (Task 12): the Patrol flows run on the S24, then the hand checks in [docs/dev-setup.md](docs/dev-setup.md) (Phase 12B check).
+- **Learning guide**: [docs/learn/phase-12b-edit-flow-calm-home.md](docs/learn/phase-12b-edit-flow-calm-home.md) explains the 12B tasks in plain English, with the real code.
 
 ## Running the checks
 
