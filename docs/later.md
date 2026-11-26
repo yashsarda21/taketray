@@ -46,6 +46,7 @@ Sources: the Phase 1 task reviews and its final whole-branch review (2026-10-26)
     - the scroll and press motion;
     - goldens and widget tests.
   - **Phase 12:** its glass work (`TtGlassFill`) on `phase-12-ui-refresh` touches `TtShootingModeCard` and `TtReelCard`, so build this on top of Phase 12.
+- **Parked for the owner: opening a reel with a container transform** (the handoff's "Opening a reel: container transform from the card, 400 ms"; ruling R12B-5, D-196). Flutter's `OpenContainer` lives in the `animations` package, a new dependency, which the 12B rules do not allow; a hand-built one would mean the reel page owns a shared-element route. Phase 12B keeps today's route transition. If the owner wants it, decide on the package first.
 
 ## Phase 4
 

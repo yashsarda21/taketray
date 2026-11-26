@@ -1693,57 +1693,76 @@ void main() {
       },
     );
 
-    // Task 9: the card link becomes the Earlier videos chip.
-    testWidgets(
-      skip: true,
-      'the card link opens the sheet; it stays after adding (D-90)',
-      (tester) async {
-        await tester.runAsync(h.media.turnOnNow);
-        await pumpScreen(
-          tester,
-          const Scaffold(
-            body: SingleChildScrollView(child: ShootingModeSection()),
-          ),
-          overrides: h.appOverrides,
-        );
-        await settleApp(tester);
-        await tester.pumpAndSettle();
-        expect(find.text('Add earlier videos'), findsOneWidget);
-
-        await tester.tap(find.text('Add earlier videos'));
-        await tester.pump();
-        await settleApp(tester);
-        await tester.pumpAndSettle();
-        expect(find.byType(TtSheet), findsOneWidget);
-
-        await tester.tap(find.text('Today'));
-        await tester.pump();
-        await settleApp(tester);
-        await tester.pumpAndSettle();
-
-        expect(find.text('1 clip added to To tag'), findsOneWidget);
-        // The link stays (it is no longer one use per session); the strip now
-        // counts the clip.
-        expect(find.text('Add earlier videos'), findsOneWidget);
-        expect(find.text('1 clip to tag'), findsOneWidget);
-      },
-    );
-
-    // Task 9: the card link becomes the Earlier videos chip.
-    testWidgets(skip: true, 'adding a chosen range also keeps the card link', (
-      tester,
-    ) async {
-      await tester.runAsync(h.media.turnOnNow);
+    /// Home's section, with a button under it that opens the sheet the way
+    /// To tag's menu does (whatever Shooting mode is).
+    Future<void> pumpSection(WidgetTester tester) async {
       await pumpScreen(
         tester,
-        const Scaffold(
-          body: SingleChildScrollView(child: ShootingModeSection()),
+        Scaffold(
+          body: SingleChildScrollView(
+            child: Column(
+              children: [
+                const ShootingModeSection(),
+                Builder(
+                  builder: (context) => TtButton(
+                    label: 'open the sheet',
+                    onPressed: () => showAddEarlierVideos(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         overrides: h.appOverrides,
       );
       await settleApp(tester);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add earlier videos'));
+    }
+
+    TtShootingModeCard card(WidgetTester tester) =>
+        tester.widget<TtShootingModeCard>(find.byType(TtShootingModeCard));
+
+    List<String> chipLabels(WidgetTester tester) => [
+      for (final c in card(tester).chips) c.label,
+    ];
+
+    testWidgets('the Earlier videos chip opens the sheet; after an add this '
+        'session it hides, and Undo does not bring it back (R12B-2)', (
+      tester,
+    ) async {
+      await tester.runAsync(h.media.turnOnNow);
+      await pumpSection(tester);
+      expect(chipLabels(tester), ['Earlier videos']);
+
+      await tester.tap(find.text('Earlier videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(TtSheet), findsOneWidget);
+      expect(find.text('Add earlier videos'), findsOneWidget);
+
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('1 clip added to To tag'), findsOneWidget);
+      expect(find.byType(TtSheet), findsNothing);
+      expect(chipLabels(tester), isEmpty);
+      expect(find.text('Earlier videos'), findsNothing);
+
+      await tester.tap(find.text('Undo'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(await pendingIds(tester), isEmpty);
+      expect(chipLabels(tester), isEmpty);
+    });
+
+    testWidgets('adding a chosen range also hides the chip', (tester) async {
+      await tester.runAsync(h.media.turnOnNow);
+      await pumpSection(tester);
+      await tester.tap(find.text('Earlier videos'));
       await tester.pump();
       await settleApp(tester);
       await tester.pumpAndSettle();
@@ -1752,79 +1771,83 @@ void main() {
       await tapAdd(tester);
 
       expect(find.text('2 clips added to To tag'), findsOneWidget);
-      expect(find.text('Add earlier videos'), findsOneWidget);
+      expect(chipLabels(tester), isEmpty);
     });
 
-    // Task 9: the card link becomes the Earlier videos chip.
-    testWidgets(
-      skip: true,
-      'with Shooting mode off the card link opens the sheet too, '
-      'and stays after adding',
-      (tester) async {
-        await pumpScreen(
-          tester,
-          const Scaffold(
-            body: SingleChildScrollView(child: ShootingModeSection()),
-          ),
-          overrides: h.appOverrides,
-        );
-        await settleApp(tester);
-        await tester.pumpAndSettle();
-        expect(find.text('From your camera folder'), findsOneWidget);
+    testWidgets('an add that finds nothing new leaves the chip', (
+      tester,
+    ) async {
+      await tester.runAsync(h.media.turnOnNow);
+      await pumpSection(tester);
+      await tester.tap(find.text('Earlier videos'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Add earlier videos'));
-        await tester.pump();
-        await settleApp(tester);
-        await tester.pumpAndSettle();
-        expect(find.byType(TtSheet), findsOneWidget);
+      // Picks days with no video, and answers OK.
+      await pickRange(tester, 20, 22);
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+      Navigator.of(tester.element(find.byType(TtSheet))).pop();
+      await tester.pumpAndSettle();
 
-        await tester.tap(find.text('Today'));
-        await tester.pump();
-        await settleApp(tester);
-        await tester.pumpAndSettle();
+      expect(chipLabels(tester), ['Earlier videos']);
+    });
 
-        expect(find.text('1 clip added to To tag'), findsOneWidget);
-        expect(find.text('Add earlier videos'), findsOneWidget);
-        expect(find.text('From your camera folder'), findsOneWidget);
-      },
-    );
+    testWidgets('with Shooting mode off the card has no Earlier videos; an add '
+        'from elsewhere while off does not hide the chip once it is on', (
+      tester,
+    ) async {
+      await pumpSection(tester);
+      expect(card(tester).on, isFalse);
+      expect(card(tester).chips, isEmpty);
+      expect(find.text('Earlier videos'), findsNothing);
+      expect(find.text('From your camera folder'), findsNothing);
 
-    // Task 9: the card link becomes the Earlier videos chip.
-    testWidgets(
-      skip: true,
-      'a Shooting state stored with earlierAdded: true (before '
-      'D-90) still loads and shows the link',
-      (tester) async {
-        // What an older version wrote after an add in this session.
-        await tester.runAsync(
-          () => h.media.db
-              .into(h.media.db.settings)
-              .insertOnConflictUpdate(
-                SettingsCompanion.insert(
-                  key: PhoneStateRepository.shootingModeKey,
-                  value: jsonEncode({
-                    'on': true,
-                    'baselines': <String, Object>{},
-                    'since': '2026-10-28T09:41:00.000Z',
-                    'earlierAdded': true,
-                  }),
-                ),
+      // To tag's menu (here the button) still adds while it is off.
+      await openSheet(tester);
+      await tester.tap(find.text('Today'));
+      await tester.pump();
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('1 clip added to To tag'), findsOneWidget);
+
+      await tester.runAsync(h.media.turnOnNow);
+      await settleApp(tester);
+      await tester.pumpAndSettle();
+
+      expect(card(tester).on, isTrue);
+      expect(chipLabels(tester), ['Earlier videos']);
+    });
+
+    testWidgets('a Shooting state stored with earlierAdded: true (before '
+        'D-90) still loads, and the flag does not hide the chip', (
+      tester,
+    ) async {
+      // What an older version wrote after an add in this session.
+      await tester.runAsync(
+        () => h.media.db
+            .into(h.media.db.settings)
+            .insertOnConflictUpdate(
+              SettingsCompanion.insert(
+                key: PhoneStateRepository.shootingModeKey,
+                value: jsonEncode({
+                  'on': true,
+                  'baselines': <String, Object>{},
+                  'since': '2026-10-28T09:41:00.000Z',
+                  'earlierAdded': true,
+                }),
               ),
-        );
-        await pumpScreen(
-          tester,
-          const Scaffold(
-            body: SingleChildScrollView(child: ShootingModeSection()),
-          ),
-          overrides: h.appOverrides,
-        );
-        await settleApp(tester);
-        await tester.pumpAndSettle();
+            ),
+      );
+      await pumpSection(tester);
 
-        expect(find.text('Shooting mode on'), findsOneWidget);
-        expect(find.text('Add earlier videos'), findsOneWidget);
-        expect(find.text('Shot before Shooting mode was on'), findsOneWidget);
-      },
-    );
+      expect(find.text('Shooting'), findsOneWidget);
+      expect(chipLabels(tester), ['Earlier videos']);
+      expect(
+        card(tester).chips.single.semanticLabel,
+        'Add earlier videos, shot before Shooting mode was on',
+      );
+    });
   });
 }

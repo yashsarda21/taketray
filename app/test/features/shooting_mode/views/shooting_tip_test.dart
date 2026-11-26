@@ -214,7 +214,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(p.shooting.switched, [true]);
-      expect(find.text('Shooting mode on'), findsOneWidget);
+      expect(find.text('Shooting'), findsOneWidget);
       expect(_tip, findsNothing);
       expect(_highlight, findsNothing);
       expect(p.onboarding.marked, 1);
@@ -266,7 +266,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(_tip, findsNothing);
-      expect(find.text('Shooting mode on'), findsOneWidget);
+      expect(find.text('Shooting'), findsOneWidget);
       expect(tester.element(find.byType(TtShootingModeCard)), same(card));
     });
 
@@ -332,16 +332,6 @@ void main() {
   });
 
   group('it never blocks a touch outside its box', () {
-    testWidgets('the banner under it still opens To tag', (tester) async {
-      await _pump(tester, pending: [testClip(1)]);
-      expect(_tip, findsOneWidget);
-
-      await tester.tap(find.text('1 clip to tag'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(toTagRouteMarker), findsOneWidget);
-    });
-
     testWidgets('the tip sits below the card, inside the screen, and does not '
         'cover the switch', (tester) async {
       await _pump(tester);
@@ -355,6 +345,31 @@ void main() {
       // `.tooltip.right`), so its arrow points at the switch.
       expect(tip.right, card.right);
       expect(tip.width, lessThanOrEqualTo(card.width));
+    });
+  });
+
+  group('the compact card (D-196)', () {
+    testWidgets('the tip sits under the compact card', (tester) async {
+      await _pump(tester, pending: [testClip(1)]);
+
+      final card = tester.getRect(find.byType(TtShootingModeCard));
+      expect(tester.getRect(_tip).top, greaterThanOrEqualTo(card.bottom));
+      // The off card is one row now: its line counts the waiting clip.
+      expect(find.text('Off · 1 clip still to tag'), findsOneWidget);
+      // The ring hugs the card: the same box, and the card's own 24 dp
+      // corners (home2.css:8), not the theme's 28.
+      final ring = find.descendant(
+        of: _highlight,
+        matching: find.byType(DecoratedBox),
+      );
+      final decoration =
+          tester.widget<DecoratedBox>(ring.first).decoration as BoxDecoration;
+      expect(
+        decoration.borderRadius,
+        BorderRadius.circular(TtMetrics.shootingCardRadius),
+      );
+      expect(TtMetrics.shootingCardRadius, 24);
+      expect(tester.getRect(ring.first), card);
     });
   });
 

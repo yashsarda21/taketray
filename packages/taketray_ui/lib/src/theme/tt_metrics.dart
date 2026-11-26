@@ -1060,6 +1060,48 @@ abstract final class TtMetrics {
   // border-radius: 24px; overflow: hidden }
   static const double shootingCardRadius = 24;
 
+  /// Space above the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginTop = 4;
+
+  /// Space at each side of the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginSide = 16;
+
+  /// Space under the Shooting mode card on Home.
+  // home2.css:8: .h2-shoot { position: relative; margin: 4px 16px 12px; … }
+  static const double shootingCardMarginBottom = 12;
+
+  // ---- Home, the calm grid (D-187, D-196) ----
+
+  /// Padding at each side of Home's grid of reels.
+  // home2.css:55: .h2-grid { display: grid; grid-template-columns:
+  // repeat(2, minmax(0, 1fr)); gap: 16px 12px; padding: 0 16px;
+  // align-items: start }
+  static const double homeGridPaddingHorizontal = 16;
+
+  /// Space between two rows of Home's grid.
+  // home2.css:55: .h2-grid { … gap: 16px 12px; … }
+  static const double homeGridRowGap = 16;
+
+  /// Space between the two columns of Home's grid.
+  // home2.css:55: .h2-grid { … gap: 16px 12px; … }
+  static const double homeGridColumnGap = 12;
+
+  /// Space above and below Home's words for a tab with no reels.
+  // home2.css:46: .h2-none { margin: 24px 16px; display: flex;
+  // flex-direction: column; align-items: center; gap: 8px;
+  // text-align: center; color: var(--md-on-surface-variant) }
+  static const double homeEmptyTabMarginVertical = 24;
+
+  /// Space at each side of Home's words for a tab with no reels.
+  // home2.css:46: .h2-none { margin: 24px 16px; … }
+  static const double homeEmptyTabMarginHorizontal = 16;
+
+  /// Space between those words and the Show all reels button.
+  // home2.css:46: .h2-none { … gap: 8px; … }
+  static const double homeEmptyTabGap = 8;
+
   /// Padding at the start of the off card.
   // home2.css:9: .h2-shoot.off { display: flex; align-items: center;
   // gap: 12px; padding: 10px 6px 10px 12px; … }

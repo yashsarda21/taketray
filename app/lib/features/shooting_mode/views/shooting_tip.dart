@@ -164,14 +164,13 @@ class ShootingCardHighlight extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tt = context.tt;
     final scheme = context.scheme;
     return DecoratedBox(
       decoration: BoxDecoration(
-        // The card's own radius: `TtShootingModeCard` uses `tt.radii.xxl`
-        // (shooting_mode_card.dart). The ring must follow it, or its corners
-        // part from the card's.
-        borderRadius: BorderRadius.circular(tt.radii.xxl),
+        // The card's own radius (home2.css:8, 24 dp; not `tt.radii.xxl`,
+        // which is 28): the ring must follow it, or its corners part from
+        // the card's.
+        borderRadius: BorderRadius.circular(TtMetrics.shootingCardRadius),
         boxShadow: active
             ? [
                 BoxShadow(

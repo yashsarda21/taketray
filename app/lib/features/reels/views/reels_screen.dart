@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/domain/models/editor_app.dart';
-import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
@@ -19,40 +18,44 @@ import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray/router/routes.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
-/// Columns of the reel grid (proto.css: `.reelgrid`).
-const int _columns = 2;
-
-/// Home, the Reels tab (D-86). From the top:
+/// Home, the Reels tab: the calm grid (D-86, D-187, D-196; `home2.js:56-68`).
+/// One scrolling page, from the top:
 ///
-/// 1. a large app bar "Reels";
-/// 2. the access banner and the Shooting mode card, with its clips-waiting
-///    banner (`ShootingModeSection`, D-76); once Shooting mode has been on for
-///    14 days, the "Still shooting?" dialog opens over the screen
+/// 1. the large header "Reels" (`TtLargeSliverAppBar`), which shrinks into a
+///    pinned bar as the page scrolls, with **+ New** at its end (read "New
+///    reel"; it opens the New reel sheet), with or without reels;
+/// 2. the access banner and the compact Shooting mode card
+///    (`ShootingModeSection`, D-196); once Shooting mode has been on for 14
+///    days, the "Still shooting?" dialog opens over the screen
 ///    (`StillShootingPromptHost`, D-107);
-/// 3. when at least one reel exists, the filter chips: All, Collecting, Ready
-///    to edit and Published, each with how many reels it shows;
-/// 4. the reels, two to a row, newest first, as a lazy grid of `TtReelCard`s;
-///    a card shows the cover (the oldest clip with a picture), the status,
-///    "{n} clips · {m:ss}" (the length of the clips that are not missing)
-///    and "{n} missing", and opens the reel's page. A reel with references
-///    has a badge with their number, its own button ("{n} references, open
-///    them"), which opens the reel's page at its References section
-///    (`Routes.reelReferences`, D-158). A reel being edited
-///    shows the pill "Editing in {editor}" ("VN", "CapCut", "Edits"; R8) and
-///    is read with ". Editing in {editor}" at the end (D-128); no pill until
-///    the sessions are known.
+/// 3. when at least one reel exists, the quiet tabs: All, Collecting, Ready
+///    and Published, each with how many reels it shows (a group read "Show
+///    reels"; each tab read "{status}, {n} reels");
+/// 4. the reels, newest first, two to a row (one from a text scale of
+///    `TtMetrics.largeTextScale`), built as they scroll into view: 16 dp at
+///    the sides, 12 between the columns and 16 between the rows, each card
+///    as tall as its own text (the rows are aligned to the top,
+///    `home2.css:55`).
+///    A card (`TtReelCard`) is the cover alone, then the name, the status,
+///    "{n} clips · {m:ss}" (or "No clips yet") and a line of notes only when
+///    they apply: "In {editor}" while the reel has an editing session (none
+///    until the sessions are known), "{n} missing", and the number of
+///    references. It is one button, read as the name, the status and the
+///    clips, then ". Editing in {editor}", then ". {n} references". It opens
+///    the reel's page (a double tap opens one);
+/// 5. room for the nav pill (`TtNavPill.reservedHeight`).
 ///
 /// **Empty:** with no reel at all, "Plan your first reel" and a **New reel**
-/// button, and no floating button. With reels but none passing the chosen
-/// filter, "No reels marked {status}", what to do about it, and **Show all
-/// reels**. **New reel** (the floating button, only while reels exist) opens
-/// the New reel sheet.
+/// button. A tab with no reels says "No reels marked {status} yet." over a
+/// tonal **Show all reels**.
+///
+/// **Switching tabs** fades the reels in over `short4` (nothing slides). With
+/// "remove animations" on, the fade stays (only movement goes, F6).
 ///
 /// While the first list is being read nothing below the Shooting mode card
-/// is shown (neither "no reels" nor the floating button), so a phone with
-/// reels never flashes the first-time screen. The scroll position is kept
-/// while another tab is open (the shell keeps the tab built). A double tap
-/// on a card opens one reel page.
+/// is shown, so a phone with reels never flashes the first-time screen. The
+/// scroll position is kept while another tab is open (the shell keeps the
+/// tab built).
 class ReelsScreen extends ConsumerStatefulWidget {
   const new({super.key});
 
@@ -60,17 +63,43 @@ class ReelsScreen extends ConsumerStatefulWidget {
   ConsumerState<ReelsScreen> createState() => _ReelsScreenState();
 }
 
-class _ReelsScreenState extends ConsumerState<ReelsScreen> {
+class _ReelsScreenState extends ConsumerState<ReelsScreen>
+    with SingleTickerProviderStateMixin {
   /// Opens a reel's page once however fast the taps: a second tap on a card,
   /// even in the same frame, does not open a second one (a short window, not
   /// the push's future, which the delete's `go` never completes).
   final OpenOnce _reel = OpenOnce();
 
+  /// The reels' fade after a change of tab. It is over (1) until the first
+  /// change. The handoff's crossfade is a fade, not a movement, so it keeps
+  /// the token's `short4` with "remove animations" on, where `tt.motion` is
+  /// zero (F6).
+  late final AnimationController _fade = AnimationController(
+    vsync: this,
+    duration: TtMotion.standardSet.short4,
+    value: 1,
+  );
+
+  late final CurvedAnimation _fadeCurve = CurvedAnimation(
+    parent: _fade,
+    curve: TtMotion.standardSet.standard,
+  );
+
   void _openReel(int reelId) =>
       _reel.open(() => context.push(Routes.reel(reelId)));
 
+  /// Shows [filter]'s reels, fading them in.
+  void _setFilter(ReelFilter filter) {
+    final controller = ref.read(homeControllerProvider.notifier);
+    if (ref.read(homeControllerProvider).value?.filter == filter) return;
+    _fade.forward(from: 0);
+    controller.setFilter(filter);
+  }
+
   @override
   void dispose() {
+    _fadeCurve.dispose();
+    _fade.dispose();
     _reel.dispose();
     super.dispose();
   }
@@ -78,34 +107,36 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final tt = context.tt;
     final home = ref.watch(homeControllerProvider).value;
     final editors =
         ref.watch(reelEditorsProvider).value ?? const <int, EditorApp>{};
-    final controller = ref.read(homeControllerProvider.notifier);
     final hasReels = home != null && home.hasReels;
 
-    // Room to scroll the last row clear of the nav pill, and of the floating
-    // button above it.
-    final bottomSpace = hasReels
-        ? TtNavPill.fabBottom(context) + TtMetrics.fabHeight + tt.spacing.m
-        : TtNavPill.reservedHeight(context);
-
     return Scaffold(
-      appBar: TtAppBar(large: true, title: l10n.navReels),
       body: Stack(
         children: [
           // Asks "Still shooting?" when it is due (D-107); draws nothing.
           const StillShootingPromptHost(),
           CustomScrollView(
             slivers: [
+              TtLargeSliverAppBar(
+                title: l10n.navReels,
+                actions: [
+                  TtHeaderPill(
+                    icon: Symbols.add_rounded,
+                    label: l10n.reelsNew,
+                    semanticLabel: l10n.reelsNewReel,
+                    onPressed: () => showReelForm(context),
+                  ),
+                ],
+              ),
               const SliverToBoxAdapter(child: ShootingModeSection()),
               if (home != null && hasReels)
                 SliverToBoxAdapter(
-                  child: _FilterChips(
+                  child: _Tabs(
                     filter: home.filter,
                     counts: home.counts,
-                    onChanged: controller.setFilter,
+                    onChanged: _setFilter,
                   ),
                 ),
               if (home != null && !hasReels)
@@ -123,109 +154,48 @@ class _ReelsScreenState extends ConsumerState<ReelsScreen> {
                     ],
                   ),
                 )
-              else if (home != null && home.reels.isEmpty)
-                SliverToBoxAdapter(
-                  child: TtEmptyState(
-                    illustration: TtIllustrationKind.emptyReel,
-                    title: l10n.reelFilterEmptyTitle(
-                      _filterName(l10n, home.filter),
-                    ),
-                    body: _filterEmptyBody(l10n, home.filter),
-                    actions: [
-                      TtButton(
-                        label: l10n.reelsShowAll,
-                        kind: TtButtonKind.tonal,
-                        onPressed: () => controller.setFilter(ReelFilter.all),
-                      ),
-                    ],
-                  ),
-                )
               else if (home != null)
-                SliverPadding(
-                  padding: EdgeInsets.fromLTRB(
-                    tt.spacing.gutter,
-                    tt.spacing.xxs,
-                    tt.spacing.gutter,
-                    tt.spacing.none,
-                  ),
-                  // Rows of two built on demand: 25 reels build a screenful of
-                  // cards, not 25. A card's height is its own now (the cover,
-                  // then the text), so this is a list of rows, not a grid.
-                  // Task 9 assembles the real grid.
-                  sliver: SliverList.builder(
-                    itemCount: (home.reels.length + _columns - 1) ~/ _columns,
-                    itemBuilder: (context, row) => Padding(
-                      padding: EdgeInsets.only(bottom: tt.spacing.m),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        spacing: tt.spacing.s,
-                        children: [
-                          for (var i = 0; i < _columns; i++)
-                            Expanded(
-                              child: row * _columns + i < home.reels.length
-                                  ? _ReelCard(
-                                      key: ValueKey(
-                                        home.reels[row * _columns + i].reel.id,
-                                      ),
-                                      summary: home.reels[row * _columns + i],
-                                      cover:
-                                          home.covers[home
-                                              .reels[row * _columns + i]
-                                              .reel
-                                              .id],
-                                      editor:
-                                          editors[home
-                                              .reels[row * _columns + i]
-                                              .reel
-                                              .id],
-                                      onOpen: _openReel,
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
+                SliverFadeTransition(
+                  opacity: _fadeCurve,
+                  sliver: home.reels.isEmpty
+                      ? SliverToBoxAdapter(
+                          child: _EmptyTab(
+                            filter: home.filter,
+                            onShowAll: () => _setFilter(ReelFilter.all),
+                          ),
+                        )
+                      : _Grid(
+                          reels: home.reels,
+                          covers: home.covers,
+                          editors: editors,
+                          onOpen: _openReel,
+                        ),
                 ),
-              SliverToBoxAdapter(child: SizedBox(height: bottomSpace)),
+              SliverToBoxAdapter(
+                child: SizedBox(height: TtNavPill.reservedHeight(context)),
+              ),
             ],
           ),
-          if (hasReels)
-            PositionedDirectional(
-              end: tt.spacing.gutter,
-              bottom: TtNavPill.fabBottom(context),
-              child: TtFab(
-                label: l10n.reelsNewReel,
-                icon: Symbols.add_rounded,
-                onPressed: () => showReelForm(context),
-              ),
-            ),
         ],
       ),
     );
   }
 }
 
-/// [filter] in words, as its chip says it: All, or the status.
+/// [filter] in words, as a screen reader says it: All, or the status in
+/// full.
 String _filterName(AppLocalizations l10n, ReelFilter filter) {
   final status = filter.status;
   return status == null ? l10n.reelFilterAll : statusName(l10n, status);
 }
 
-/// What to do about a filter that has no reels.
-String _filterEmptyBody(AppLocalizations l10n, ReelFilter filter) =>
-    switch (filter.status) {
-      ReelStatus.collecting => l10n.reelFilterEmptyCollecting,
-      ReelStatus.ready => l10n.reelFilterEmptyReady,
-      ReelStatus.published => l10n.reelFilterEmptyPublished,
-      // All has no empty state of its own: with no reels at all Home shows
-      // "Plan your first reel". The first-time text is the safe answer.
-      null => l10n.reelsEmptyBody,
-    };
+/// [filter] as its tab shows it: Ready to edit is shortened to "Ready".
+String _tabLabel(AppLocalizations l10n, ReelFilter filter) =>
+    filter == ReelFilter.ready ? l10n.reelTabReady : _filterName(l10n, filter);
 
-/// The filter chips (`.chips` in the prototype): single-select pill tabs
-/// saying how many reels each filter shows.
-class _FilterChips extends StatelessWidget {
+/// The quiet tabs (`.h2-tabs` in the prototype): the chosen one filled, each
+/// with how many reels it shows.
+class _Tabs extends StatelessWidget {
   const new({
     required this.filter,
     required this.counts,
@@ -239,20 +209,123 @@ class _FilterChips extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return TtPillTabs<ReelFilter>(
+    return TtQuietTabs<ReelFilter>(
       value: filter,
       onChanged: onChanged,
+      semanticLabel: l10n.reelTabsLabel,
       tabs: [
         for (final f in ReelFilter.values)
-          TtPillTab(
+          TtQuietTab(
             f,
-            l10n.reelFilterChip(_filterName(l10n, f), counts[f] ?? 0),
+            _tabLabel(l10n, f),
+            counts[f] ?? 0,
             semanticLabel: l10n.reelFilterChipSemantics(
               _filterName(l10n, f),
               counts[f] ?? 0,
             ),
           ),
       ],
+    );
+  }
+}
+
+/// A tab with no reels (`.h2-none`): "No reels marked {status} yet." over
+/// **Show all reels**.
+class _EmptyTab extends StatelessWidget {
+  const new({required this.filter, required this.onShowAll});
+
+  final ReelFilter filter;
+  final VoidCallback onShowAll;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final tt = context.tt;
+    // home2.css:46: .h2-none { margin: 24px 16px; gap: 8px;
+    //   text-align: center; color: on-surface-variant }
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: TtMetrics.homeEmptyTabMarginVertical,
+        horizontal: TtMetrics.homeEmptyTabMarginHorizontal,
+      ),
+      child: Column(
+        spacing: TtMetrics.homeEmptyTabGap,
+        children: [
+          Text(
+            l10n.reelTabEmpty(_filterName(l10n, filter)),
+            textAlign: TextAlign.center,
+            style: tt.text.material.bodyMedium!.copyWith(
+              color: context.scheme.onSurfaceVariant,
+            ),
+          ),
+          TtButton(
+            label: l10n.reelsShowAll,
+            kind: TtButtonKind.tonal,
+            onPressed: onShowAll,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The reels in rows (`.h2-grid`): two columns, one at large text.
+///
+/// Rows are built as they scroll into view, so 25 reels build a screenful of
+/// cards, not 25. Each row is aligned to the top and each card is as tall as
+/// its own text, so a two-line name does not stretch the card beside it (a
+/// grid with a fixed aspect ratio would).
+class _Grid extends StatelessWidget {
+  const new({
+    required this.reels,
+    required this.covers,
+    required this.editors,
+    required this.onOpen,
+  });
+
+  final List<ReelSummary> reels;
+  final Map<int, ImageProvider?> covers;
+  final Map<int, EditorApp> editors;
+  final ValueChanged<int> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    // home2.css:64: .fs2 .h2-grid { grid-template-columns: minmax(0, 1fr) }
+    final columns =
+        MediaQuery.textScalerOf(context).scale(1) >= TtMetrics.largeTextScale
+        ? 1
+        : 2;
+    final rows = (reels.length + columns - 1) ~/ columns;
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: TtMetrics.homeGridPaddingHorizontal,
+      ),
+      sliver: SliverList.builder(
+        itemCount: rows,
+        itemBuilder: (context, row) => Padding(
+          padding: EdgeInsets.only(
+            top: row == 0 ? 0 : TtMetrics.homeGridRowGap,
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: TtMetrics.homeGridColumnGap,
+            children: [
+              for (var i = row * columns; i < (row + 1) * columns; i++)
+                Expanded(
+                  child: i < reels.length
+                      ? _ReelCard(
+                          key: ValueKey(reels[i].reel.id),
+                          summary: reels[i],
+                          cover: covers[reels[i].reel.id],
+                          editor: editors[reels[i].reel.id],
+                          onOpen: onOpen,
+                        )
+                      : const SizedBox.shrink(),
+                ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }

@@ -65,15 +65,24 @@
   "@shootingOffTitle": {
     "description": "Title of the Shooting mode card when it is off."
   },
-  "shootingOffSubtitle": "Off. Turn on before you start filming, and new videos wait in To tag.",
-  "@shootingOffSubtitle": {
-    "description": "Text of the Shooting mode card when it is off."
+  "shootingOffWaiting": "{count, plural, one{Off · 1 clip still to tag} other{Off · {count} clips still to tag}}",
+  "@shootingOffWaiting": {
+    "description": "Line under the title of the Shooting mode card while it is off and clips wait in To tag: how many (D-196).",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   },
-  "shootingOnTitle": "Shooting mode on",
+  "shootingOffIdle": "Off · turn it on before you film",
+  "@shootingOffIdle": {
+    "description": "Line under the title of the Shooting mode card while it is off and no clip waits in To tag (D-196)."
+  },
+  "shootingOnTitle": "Shooting",
   "@shootingOnTitle": {
     "description": "Title of the Shooting mode card when it is on."
   },
-  "shootingOnSubtitle": "On since {time}",
+  "shootingOnSubtitle": "Since {time}",
   "@shootingOnSubtitle": {
     "description": "Text of the Shooting mode card when it is on. {time} is when it was turned on.",
     "placeholders": {
@@ -83,7 +92,7 @@
       }
     }
   },
-  "shootingOnSubtitleManual": "On since {time} · Manual mode: add clips yourself",
+  "shootingOnSubtitleManual": "Since {time} · Manual mode",
   "@shootingOnSubtitleManual": {
     "description": "Text of the Shooting mode card when it is on but TakeTray does not have full access to videos. {time} is when it was turned on.",
     "placeholders": {
@@ -111,18 +120,18 @@
   "@shootingOpenCamera": {
     "description": "Button that opens the phone camera in video mode."
   },
-  "shootingStripTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
-  "@shootingStripTitle": {
-    "description": "Row at the bottom of the Shooting mode card: how many clips wait in To tag.",
+  "shootingEarlierChip": "Earlier videos",
+  "@shootingEarlierChip": {
+    "description": "Chip on the Shooting mode card while it is on: opens Add earlier videos (D-196)."
+  },
+  "shootingReferencesChipLabel": "References, {count}, from your Collecting and Ready to edit reels",
+  "@shootingReferencesChipLabel": {
+    "description": "What a screen reader says for the References chip on the Shooting mode card: how many references the Collecting and Ready to edit reels have (D-160, D-196).",
     "placeholders": {
       "count": {
         "type": "int"
       }
     }
-  },
-  "shootingStripAction": "Tag now",
-  "@shootingStripAction": {
-    "description": "Trailing word of the clips-to-tag row on the Shooting mode card."
   },
   "toTagStripOn": "Shooting since {time}",
   "@toTagStripOn": {
@@ -288,21 +297,9 @@
   "@earlierCountFailed": {
     "description": "Text in the Add earlier videos sheet when the counts could not be read."
   },
-  "earlierCardRowSubtitle": "Shot before Shooting mode was on",
-  "@earlierCardRowSubtitle": {
-    "description": "Line under the Add earlier videos row on the Shooting mode card."
-  },
   "earlierCardRowLabel": "Add earlier videos, shot before Shooting mode was on",
   "@earlierCardRowLabel": {
-    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card."
-  },
-  "earlierCardRowSubtitleOff": "From your camera folder",
-  "@earlierCardRowSubtitleOff": {
-    "description": "Line under the Add earlier videos row on the Shooting mode card while Shooting mode is off (D-90)."
-  },
-  "earlierCardRowLabelOff": "Add earlier videos, from your camera folder",
-  "@earlierCardRowLabelOff": {
-    "description": "What a screen reader says for the Add earlier videos row on the Shooting mode card while Shooting mode is off."
+    "description": "What a screen reader says for the Earlier videos chip on the Shooting mode card (it opens Add earlier videos)."
   },
   "earlierChooseSubtitle": "Up to 10 years back",
   "@earlierChooseSubtitle": {
@@ -525,25 +522,6 @@
   "clipMissing": "Missing from phone",
   "@clipMissing": {
     "description": "Label of a clip tile whose video is gone from the phone."
-  },
-  "clipsWaitingTitle": "{count, plural, one{1 clip} other{{count} clips}} to tag",
-  "@clipsWaitingTitle": {
-    "description": "Title of the banner on the Reels tab: how many clips wait in To tag while Shooting mode is off.",
-    "placeholders": {
-      "count": {
-        "type": "int"
-      }
-    }
-  },
-  "clipsWaitingBody": "{duration} of video waiting",
-  "@clipsWaitingBody": {
-    "description": "Text of the banner on the Reels tab. {duration} is the total length of the waiting clips, such as \"45 s\", \"3 min\" or \"1 h 5 min\".",
-    "placeholders": {
-      "duration": {
-        "type": "String",
-        "example": "3 min"
-      }
-    }
   },
   "durationSeconds": "{count} s",
   "@durationSeconds": {
@@ -769,27 +747,19 @@
   },
   "reelsNewReel": "New reel",
   "@reelsNewReel": {
-    "description": "Label of the button and of the floating button that open the New reel sheet."
+    "description": "Label of the button that opens the New reel sheet on the empty Reels tab, and what a screen reader says for the header's New pill."
+  },
+  "reelsNew": "New",
+  "@reelsNew": {
+    "description": "Text of the pill in the Reels tab header that opens the New reel sheet; a screen reader says \"New reel\" (D-196)."
   },
   "reelFilterAll": "All",
   "@reelFilterAll": {
-    "description": "Filter chip on the Reels tab that shows every reel."
-  },
-  "reelFilterChip": "{label} {count}",
-  "@reelFilterChip": {
-    "description": "Filter chip on the Reels tab: the filter name and how many reels it shows, such as \"Published 3\".",
-    "placeholders": {
-      "label": {
-        "type": "String"
-      },
-      "count": {
-        "type": "int"
-      }
-    }
+    "description": "The tab on the Reels tab that shows every reel."
   },
   "reelFilterChipSemantics": "{label}, {count, plural, =0{no reels} one{1 reel} other{{count} reels}}",
   "@reelFilterChipSemantics": {
-    "description": "What a screen reader says for a filter chip on the Reels tab.",
+    "description": "What a screen reader says for a status tab on the Reels tab.",
     "placeholders": {
       "label": {
         "type": "String"
@@ -799,30 +769,26 @@
       }
     }
   },
-  "reelFilterEmptyTitle": "No reels marked {status}",
-  "@reelFilterEmptyTitle": {
-    "description": "Title shown on the Reels tab when the chosen filter has no reels. The status is Collecting, Ready to edit or Published.",
+  "reelTabReady": "Ready",
+  "@reelTabReady": {
+    "description": "The Ready to edit tab on the Reels tab, shortened to fit (D-196)."
+  },
+  "reelTabsLabel": "Show reels",
+  "@reelTabsLabel": {
+    "description": "What a screen reader says for the group of status tabs on the Reels tab (D-196)."
+  },
+  "reelTabEmpty": "No reels marked {status} yet.",
+  "@reelTabEmpty": {
+    "description": "Shown on the Reels tab when the chosen tab has no reels. The status is Collecting, Ready to edit or Published (D-196).",
     "placeholders": {
       "status": {
         "type": "String"
       }
     }
   },
-  "reelFilterEmptyCollecting": "New reels start as Collecting.",
-  "@reelFilterEmptyCollecting": {
-    "description": "Text shown on the Reels tab when no reel is marked Collecting."
-  },
-  "reelFilterEmptyReady": "When a reel has all its clips, mark it as Ready to edit.",
-  "@reelFilterEmptyReady": {
-    "description": "Text shown on the Reels tab when no reel is marked Ready to edit."
-  },
-  "reelFilterEmptyPublished": "When you post a reel, mark it as Published from its page.",
-  "@reelFilterEmptyPublished": {
-    "description": "Text shown on the Reels tab when no reel is marked Published."
-  },
   "reelsShowAll": "Show all reels",
   "@reelsShowAll": {
-    "description": "Button shown when a filter has no reels; it goes back to showing every reel."
+    "description": "Button shown when a tab has no reels; it goes back to showing every reel."
   },
   "reelCardClips": "{count, plural, one{1 clip} other{{count} clips}}",
   "@reelCardClips": {
@@ -2240,7 +2206,7 @@
   "@editSelectInfo": {
     "description": "Note under the title of the clip picking screen."
   },
-  "sizeMegabytes": "{number}\u00a0MB",
+  "sizeMegabytes": "{number} MB",
   "@sizeMegabytes": {
     "description": "A size in decimal megabytes, with a no-break space before the unit so the number and the unit never part. {number} is a whole number such as 900.",
     "placeholders": {
@@ -2249,7 +2215,7 @@
       }
     }
   },
-  "sizeGigabytes": "{number}\u00a0GB",
+  "sizeGigabytes": "{number} GB",
   "@sizeGigabytes": {
     "description": "A size in decimal gigabytes, with a no-break space before the unit so the number and the unit never part. {number} is a number with at most one decimal such as 1.2.",
     "placeholders": {
@@ -4029,8 +3995,7 @@
   "settingsVersionUnknown": "Version",
   "@settingsVersionUnknown": {
     "description": "Second line of the TakeTray row in Settings while the app version is not known."
-  }
-  ,
+  },
   "watchedInfo": "While Shooting mode is on, new videos saved in these folders go to To tag.",
   "@watchedInfo": {
     "description": "The note at the top of the Watched folders screen."

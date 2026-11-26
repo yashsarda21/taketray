@@ -3,6 +3,6 @@
 // same one (D-62).
 export '../../../packages/taketray_ui/test/support/tt_accessibility.dart';
 // The contrast guideline alone, for a screen test that checks text over the
-// clip (D-62).
+// clip (D-62), and the measure behind it, for Home's expanded header (D-195).
 export '../../../packages/taketray_ui/test/support/tt_text_contrast.dart'
-    show ttTextContrastGuideline;
+    show measureTtTextContrast, ttTextContrastGuideline;

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:logging/logging.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/rules/earlier_window.dart';
+import 'package:taketray/features/shooting_mode/view_models/earlier_added.dart';
 import 'package:taketray/features/tagging/view_models/earlier_videos_controller.dart';
 import 'package:taketray/l10n/gen/app_localizations.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -30,11 +31,13 @@ class _AddFailed extends _Outcome {
 }
 
 /// Opens the "Add earlier videos" sheet (D-73, D-76, D-78) from the Shooting
-/// mode card's link or To tag's menu, and reports what happened with a snack
-/// on [context]'s screen:
+/// mode card's Earlier videos chip or To tag's menu, and reports what
+/// happened with a snack on [context]'s screen:
 ///
 /// - added: "N clips added to To tag" with **Undo**, which takes those clips
-///   back out (only the ones nobody has touched since, D-75);
+///   back out (only the ones nobody has touched since, D-75). An add while
+///   Shooting mode is on hides the card's chip for the rest of the session
+///   (`EarlierAddedThisSession`, D-196); Undo does not bring it back;
 /// - the add failed: "Couldn't add videos. Try again.";
 /// - Undo failed: "Couldn't undo. Try again.".
 ///
@@ -57,6 +60,10 @@ Future<void> showAddEarlierVideos(BuildContext context) {
   }());
 
   void announce(_Outcome outcome) {
+    if (outcome is _Added) {
+      // Even when the screen that opened the sheet has gone.
+      container.read(earlierAddedThisSessionProvider.notifier).markAdded();
+    }
     if (!context.mounted) return;
     switch (outcome) {
       case _Added(:final ids):

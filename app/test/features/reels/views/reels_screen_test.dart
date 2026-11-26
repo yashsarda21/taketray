@@ -1,4 +1,6 @@
+import 'package:flutter/gestures.dart' show kPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,7 @@ import 'package:taketray/core/clock.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/media.dart';
+import 'package:taketray/domain/models/reel_reference.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
 import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
 import 'package:taketray/features/media_access/view_models/media_access_controller.dart';
@@ -14,6 +17,7 @@ import 'package:taketray/features/reels/view_models/home_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_edit_state.dart';
 import 'package:taketray/features/reels/view_models/reel_filters.dart';
 import 'package:taketray/features/reels/views/reels_screen.dart';
+import 'package:taketray/features/references/view_models/shooting_references.dart';
 import 'package:taketray/features/shooting_mode/view_models/shooting_mode_controller.dart';
 import 'package:taketray/features/tagging/view_models/pending_clips.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -39,17 +43,37 @@ ShootingState _on() => ShootingState(
 /// A 40-character name made of emoji (the longest the field allows).
 final String _emojiName = List.filled(40, '🎬').join();
 
+/// One Collecting reel's references, for the References chip.
+List<ReferenceGroup> _references(int count) => [
+  ReferenceGroup(
+    reel: testSummary(90, name: 'Goa'),
+    references: [
+      for (var i = 0; i < count; i++)
+        ReelReference(
+          id: i + 1,
+          reelId: 90,
+          url: 'https://example.com/$i',
+          source: ReferenceSource.link,
+          createdAt: DateTime.utc(2026),
+        ),
+    ],
+  ),
+];
+
 /// Home with fake view models. [reels] null: the list is still loading.
 Future<FakeShooting> pumpHome(
   WidgetTester tester, {
   List<ReelSummary>? reels = const [],
   ShootingState shooting = ShootingState.off,
+  MediaAccessLevel access = MediaAccessLevel.full,
   bool cameraOpens = true,
   Brightness brightness = Brightness.light,
   double textScale = 1,
   bool settle = true,
+  bool animations = false,
   Map<int, EditorApp> editors = const {},
   Map<int, int> referenceCounts = const {},
+  List<ReferenceGroup> references = const [],
 }) async {
   final fakeShooting = FakeShooting(shooting, cameraOpens: cameraOpens);
   await pumpScreen(
@@ -60,14 +84,15 @@ Future<FakeShooting> pumpHome(
         (ref) => reels == null ? const Stream.empty() : Stream.value(reels),
       ),
       shootingModeControllerProvider.overrideWith(() => fakeShooting),
-      mediaAccessControllerProvider.overrideWith(
-        () => FakeAccess(MediaAccessLevel.full),
-      ),
+      mediaAccessControllerProvider.overrideWith(() => FakeAccess(access)),
       pendingClipsProvider.overrideWith((ref) => Stream.value(const [])),
       firstShowableClipProvider.overrideWith((ref) => Stream.value(null)),
       reelEditorsProvider.overrideWith((ref) => Stream.value(editors)),
       referenceCountsProvider.overrideWith(
         (ref) => Stream.value(referenceCounts),
+      ),
+      shootingReferencesProvider.overrideWith(
+        (ref) => Stream.value(references),
       ),
       clockProvider.overrideWithValue(FixedClock(_now)),
       onboardingControllerProvider.overrideWith(FixedOnboarding.onboarded),
@@ -76,6 +101,7 @@ Future<FakeShooting> pumpHome(
     brightness: brightness,
     textScale: textScale,
     settle: settle,
+    animations: animations,
   );
   return fakeShooting;
 }
@@ -100,24 +126,208 @@ List<ReelSummary> mixed() => [
   testSummary(2, name: 'Empty one'),
 ];
 
-Finder chip(String label) => find.text(label);
+Finder get _tabs => find.byType(TtQuietTabs<ReelFilter>);
 
-/// Taps a filter chip, scrolling the chips sideways first if it is off the
-/// right edge (they scroll, as in the prototype).
-Future<void> tapChip(WidgetTester tester, String label) async {
+Finder get _pill => find.descendant(
+  of: find.byType(TtLargeSliverAppBar),
+  matching: find.byType(TtHeaderPill),
+);
+
+/// The tab labelled [label].
+Finder tab(String label) =>
+    find.descendant(of: _tabs, matching: find.text(label));
+
+/// Taps the tab labelled [label], scrolling the tabs sideways first if it is
+/// off the right edge (they scroll, as in the prototype).
+Future<void> tapTab(WidgetTester tester, String label) async {
   final width = tester.view.physicalSize.width / tester.view.devicePixelRatio;
-  if (tester.getCenter(chip(label)).dx > width - 24) {
-    await tester.drag(
-      find.byType(TtPillTabs<ReelFilter>),
-      const Offset(-300, 0),
-    );
+  if (tester.getCenter(tab(label)).dx > width - 24) {
+    await tester.drag(_tabs, const Offset(-300, 0));
     await tester.pumpAndSettle();
   }
-  await tester.tap(chip(label));
+  await tester.tap(tab(label));
   await tester.pumpAndSettle();
 }
 
+List<String> cardNames(WidgetTester tester) => [
+  for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))
+    c.name,
+];
+
+/// The page title while the header is expanded: the copy of "Reels" that is
+/// not in the bar's toolbar.
+Finder get _expandedTitle => find.byElementPredicate(
+  (e) =>
+      e.widget is Text &&
+      (e.widget as Text).data == 'Reels' &&
+      e.findAncestorWidgetOfExactType<NavigationToolbar>() == null,
+  description: 'the expanded "Reels" title',
+);
+
+/// The screen title in the collapsed bar.
+Finder get _toolbarTitle => find.descendant(
+  of: find.byType(NavigationToolbar),
+  matching: find.text('Reels'),
+);
+
+/// Where the header is drawn: the first sliver, so from the top of the
+/// screen down to the height it paints (152 dp expanded, 64 collapsed).
+Rect _barRect(WidgetTester tester) {
+  final sliver = tester.renderObject<RenderSliver>(find.byType(SliverAppBar));
+  return Rect.fromLTWH(0, 0, 360, sliver.geometry!.paintExtent);
+}
+
+/// `expectTtAccessible` for Home, whose header is expanded at the top
+/// (D-195): there Material also builds the bar's small title at opacity 0,
+/// text on its own colour (ratio 1), so every text that can be seen is
+/// measured and that one alone is left out. Then, when the page can scroll
+/// past the 88 dp where the small title shows, the whole helper runs there.
+Future<void> expectHomeAccessible(WidgetTester tester) async {
+  final semantics = tester.ensureSemantics();
+  try {
+    await expectLater(tester, meetsGuideline(androidTapTargetGuideline));
+    await expectLater(tester, meetsGuideline(labeledTapTargetGuideline));
+    final samples = await measureTtTextContrast(tester);
+    expect([
+      for (final s in samples)
+        if (s.ratio <= 1) s.text,
+    ], everyElement('Reels'));
+    final seen = [
+      for (final s in samples)
+        if (s.ratio > 1) s,
+    ];
+    expect(seen, isNotEmpty);
+    for (final sample in seen) {
+      expect(
+        sample.ratio,
+        greaterThanOrEqualTo(sample.required - 0.01),
+        reason: '$sample',
+      );
+    }
+  } finally {
+    semantics.dispose();
+  }
+  final position = tester
+      .state<ScrollableState>(find.byType(Scrollable).first)
+      .position;
+  if (position.maxScrollExtent >= 100) {
+    position.jumpTo(100);
+    await tester.pumpAndSettle();
+    await expectTtAccessible(tester);
+  }
+}
+
 void main() {
+  group('the header', () {
+    for (final (name, reels) in [
+      ('no reels', const <ReelSummary>[]),
+      ('reels', mixed()),
+    ]) {
+      testWidgets('+ New in the header opens the form, with or without reels; '
+          'read "New reel" ($name)', (tester) async {
+        final handle = tester.ensureSemantics();
+        await pumpHome(tester, reels: reels);
+
+        expect(_pill, findsOneWidget);
+        final pill = tester.widget<TtHeaderPill>(_pill);
+        expect(pill.label, 'New');
+        expect(pill.icon, Symbols.add_rounded);
+        expect(pill.semanticLabel, 'New reel');
+        expect(
+          find.descendant(
+            of: _pill,
+            matching: find.bySemanticsLabel('New reel'),
+          ),
+          findsOneWidget,
+        );
+        expect(_pill.hitTestable(), findsOneWidget);
+
+        await tester.tap(_pill);
+        await tester.pumpAndSettle();
+        expect(find.text('Create reel'), findsOneWidget);
+        expect(find.text('Reel name'), findsOneWidget);
+        handle.dispose();
+      });
+    }
+
+    for (final (name, reels) in [
+      ('no reels', const <ReelSummary>[]),
+      ('reels', mixed()),
+      ('loading', null),
+    ]) {
+      testWidgets('no FAB ($name)', (tester) async {
+        await pumpHome(tester, reels: reels);
+
+        expect(find.byType(TtFab), findsNothing);
+        expect(_pill, findsOneWidget);
+      });
+    }
+
+    testWidgets('the title collapses on scroll; + New stays in the bar, '
+        'hit-testable', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [for (var i = 25; i >= 1; i--) testSummary(i)],
+      );
+      expect(_barRect(tester).height, 152);
+      expect(_expandedTitle, findsOneWidget);
+
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+
+      final bar = _barRect(tester);
+      expect(bar.height, 64);
+      expect(bar.top, 0);
+      expect(_pill.hitTestable(), findsOneWidget);
+      final pill = tester.getRect(_pill);
+      expect(pill.top, greaterThanOrEqualTo(bar.top));
+      expect(pill.bottom, lessThanOrEqualTo(bar.bottom));
+
+      await tester.tap(_pill);
+      await tester.pumpAndSettle();
+      expect(find.text('Create reel'), findsOneWidget);
+    });
+
+    for (final brightness in Brightness.values) {
+      testWidgets('2x text, ${brightness.name}: the header title is not '
+          'clipped or cut, expanded and collapsed', (tester) async {
+        await pumpHome(
+          tester,
+          reels: [for (var i = 25; i >= 1; i--) testSummary(i)],
+          brightness: brightness,
+          textScale: 2,
+        );
+        expect(tester.takeException(), isNull);
+
+        // Expanded: the whole title is inside the bar, on one line.
+        final bar = _barRect(tester);
+        final title = tester.getRect(_expandedTitle);
+        expect(title.top, greaterThanOrEqualTo(bar.top));
+        expect(title.bottom, lessThanOrEqualTo(bar.bottom));
+        expect(title.left, greaterThanOrEqualTo(0));
+        expect(title.right, lessThanOrEqualTo(tester.getRect(_pill).left));
+        final expanded = tester.renderObject<RenderParagraph>(_expandedTitle);
+        expect(expanded.didExceedMaxLines, isFalse);
+
+        // Collapsed: the screen title fits the 64 dp bar, before + New.
+        await tester.drag(find.byType(CustomScrollView), const Offset(0, -800));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        final small = _barRect(tester);
+        expect(small.height, 64);
+        final collapsed = tester.getRect(_toolbarTitle);
+        expect(collapsed.top, greaterThanOrEqualTo(small.top));
+        expect(collapsed.bottom, lessThanOrEqualTo(small.bottom));
+        expect(collapsed.right, lessThanOrEqualTo(tester.getRect(_pill).left));
+        expect(
+          tester.renderObject<RenderParagraph>(_toolbarTitle).didExceedMaxLines,
+          isFalse,
+        );
+        expect(_pill.hitTestable(), findsOneWidget);
+      });
+    }
+  });
+
   group('no reels', () {
     testWidgets('first-time empty state and its New reel button', (
       tester,
@@ -145,18 +355,12 @@ void main() {
       expect(find.text('Reel name'), findsOneWidget);
     });
 
-    testWidgets('chips hidden with no reels', (tester) async {
+    testWidgets('tabs hidden with no reels', (tester) async {
       await pumpHome(tester);
 
-      expect(find.byType(TtPillTabs<ReelFilter>), findsNothing);
+      expect(_tabs, findsNothing);
       expect(find.text('Collecting'), findsNothing);
       expect(find.text('Published'), findsNothing);
-    });
-
-    testWidgets('FAB only with reels: none without', (tester) async {
-      await pumpHome(tester);
-
-      expect(find.byType(TtFab), findsNothing);
     });
 
     testWidgets('while the list loads nothing says "no reels" yet', (
@@ -167,87 +371,184 @@ void main() {
       expect(find.text('Plan your first reel'), findsNothing);
       expect(find.byType(TtFab), findsNothing);
       expect(find.byType(TtReelCard), findsNothing);
-      // The Shooting mode card is there all the same.
+      expect(_tabs, findsNothing);
+      // The Shooting mode card and the header are there all the same.
       expect(find.text('Shooting mode'), findsOneWidget);
+      expect(_pill, findsOneWidget);
     });
   });
 
   group('with reels', () {
-    testWidgets('FAB only with reels: New reel opens the form', (tester) async {
-      await pumpHome(tester, reels: mixed());
+    testWidgets('the screen is in order: header, banner, Shooting mode, tabs, '
+        'cards', (tester) async {
+      await pumpHome(tester, reels: mixed(), access: MediaAccessLevel.limited);
 
-      expect(find.byType(TtFab), findsOneWidget);
-      expect(find.text('Plan your first reel'), findsNothing);
-      final fab = tester.widget<TtFab>(find.byType(TtFab));
-      expect(fab.label, 'New reel');
-      expect(fab.icon, Symbols.add_rounded);
-
-      await tester.tap(find.byType(TtFab));
-      await tester.pumpAndSettle();
-
-      expect(find.text('Create reel'), findsOneWidget);
-    });
-
-    testWidgets('the FAB sits at TtNavPill.fabBottom from the bottom', (
-      tester,
-    ) async {
-      await pumpHome(tester, reels: mixed());
-
-      final context = tester.element(find.byType(TtFab));
-      final fabBottom = tester.getBottomRight(find.byType(TtFab)).dy;
-      expect(
-        tester.view.physicalSize.height - fabBottom,
-        TtNavPill.fabBottom(context),
-      );
-    });
-
-    testWidgets('the screen is in order: banner, Shooting mode, chips, cards', (
-      tester,
-    ) async {
-      await pumpHome(tester, reels: mixed());
-
+      final header = _barRect(tester).bottom;
+      final banner = tester.getTopLeft(find.byType(TtBanner)).dy;
       final shooting = tester.getTopLeft(find.byType(TtShootingModeCard)).dy;
-      final chips = tester.getTopLeft(find.text('All 4')).dy;
+      final tabs = tester.getTopLeft(_tabs).dy;
       final firstCard = tester.getTopLeft(find.byType(TtReelCard).first).dy;
-      expect(shooting, lessThan(chips));
-      expect(chips, lessThan(firstCard));
-      expect(tester.widget<TtAppBar>(find.byType(TtAppBar)).large, isTrue);
-      expect(find.text('Reels'), findsWidgets);
-    });
-
-    testWidgets('chips show the counts and All is selected', (tester) async {
-      await pumpHome(tester, reels: mixed());
-
-      expect(chip('All 4'), findsOneWidget);
-      expect(chip('Collecting 2'), findsOneWidget);
-      expect(chip('Ready to edit 1'), findsOneWidget);
-      expect(chip('Published 1'), findsOneWidget);
-      final tabs = tester.widget<TtPillTabs<ReelFilter>>(
-        find.byType(TtPillTabs<ReelFilter>),
+      expect(header, lessThanOrEqualTo(banner));
+      expect(banner, lessThan(shooting));
+      expect(shooting, lessThan(tabs));
+      expect(tabs, lessThan(firstCard));
+      expect(find.byType(TtLargeSliverAppBar), findsOneWidget);
+      expect(find.byType(TtAppBar), findsNothing);
+      expect(
+        tester
+            .widget<TtLargeSliverAppBar>(find.byType(TtLargeSliverAppBar))
+            .title,
+        'Reels',
       );
-      expect(tabs.tabs.map((t) => t.label), [
-        'All 4',
-        'Collecting 2',
-        'Ready to edit 1',
-        'Published 1',
-      ]);
     });
 
-    testWidgets('a chip narrows the cards and keeps their order', (
+    testWidgets('tabs: All 4, Collecting 2, Ready 1, Published 1; All chosen', (
       tester,
     ) async {
+      final handle = tester.ensureSemantics();
+      await pumpHome(tester, reels: mixed());
+
+      final tabs = tester.widget<TtQuietTabs<ReelFilter>>(_tabs);
+      expect(tabs.semanticLabel, 'Show reels');
+      expect(tabs.value, ReelFilter.all);
+      expect(
+        [for (final t in tabs.tabs) (t.value, t.label, t.count)],
+        [
+          (ReelFilter.all, 'All', 4),
+          (ReelFilter.collecting, 'Collecting', 2),
+          (ReelFilter.ready, 'Ready', 1),
+          (ReelFilter.published, 'Published', 1),
+        ],
+      );
+      expect(
+        [for (final t in tabs.tabs) t.semanticLabel],
+        [
+          'All, 4 reels',
+          'Collecting, 2 reels',
+          'Ready to edit, 1 reel',
+          'Published, 1 reel',
+        ],
+      );
+      expect(find.bySemanticsLabel('Show reels'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('a tab narrows the cards; an empty one says "No reels marked '
+        'Published yet." and Show all reels', (tester) async {
       await pumpHome(tester, reels: mixed());
       expect(find.byType(TtReelCard), findsNWidgets(4));
 
-      await tapChip(tester, 'Collecting 2');
-
-      final names = [
-        for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))
-          c.name,
-      ];
-      expect(names, ['London Food', 'Empty one']);
+      await tapTab(tester, 'Collecting');
+      expect(cardNames(tester), ['London Food', 'Empty one']);
+      expect(
+        tester.widget<TtQuietTabs<ReelFilter>>(_tabs).value,
+        ReelFilter.collecting,
+      );
       // The counts do not change with the filter.
-      expect(chip('Published 1'), findsOneWidget);
+      expect(
+        [
+          for (final t in tester.widget<TtQuietTabs<ReelFilter>>(_tabs).tabs)
+            t.count,
+        ],
+        [4, 2, 1, 1],
+      );
+    });
+
+    testWidgets('a tab narrows the cards; an empty one says "No reels marked '
+        'Published yet." and Show all reels (the empty one)', (tester) async {
+      await pumpHome(tester, reels: [testSummary(1), testSummary(2)]);
+      await tapTab(tester, 'Published');
+
+      expect(find.byType(TtReelCard), findsNothing);
+      final words = find.text('No reels marked Published yet.');
+      expect(words, findsOneWidget);
+      final text = tester.widget<Text>(words);
+      final context = tester.element(words);
+      expect(text.textAlign, TextAlign.center);
+      expect(
+        text.style?.fontSize,
+        Theme.of(context).textTheme.bodyMedium!.fontSize,
+      );
+      expect(text.style?.color, Theme.of(context).colorScheme.onSurfaceVariant);
+      expect(find.byType(TtEmptyState), findsNothing);
+      // The tabs stay, and no FAB comes back.
+      expect(_tabs, findsOneWidget);
+      expect(find.byType(TtFab), findsNothing);
+
+      final show = find.widgetWithText(TtButton, 'Show all reels');
+      expect(tester.widget<TtButton>(show).kind, TtButtonKind.tonal);
+      // home2.css:46: .h2-none { margin: 24px 16px; gap: 8px }: the words
+      // sit 24 dp under the tabs, and the button 8 dp under the words.
+      expect(tester.getTopLeft(words).dy - tester.getBottomLeft(_tabs).dy, 24);
+      expect(tester.getTopLeft(show).dy - tester.getBottomLeft(words).dy, 8);
+
+      await tester.tap(show);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(TtReelCard), findsNWidgets(2));
+      expect(find.text('No reels marked Published yet.'), findsNothing);
+      expect(
+        tester.widget<TtQuietTabs<ReelFilter>>(_tabs).value,
+        ReelFilter.all,
+      );
+    });
+
+    testWidgets('an empty tab names its status in full: Ready to edit', (
+      tester,
+    ) async {
+      await pumpHome(tester, reels: [testSummary(1)]);
+      await tapTab(tester, 'Ready');
+
+      expect(find.text('No reels marked Ready to edit yet.'), findsOneWidget);
+    });
+
+    testWidgets('two columns, 16 × 12, top aligned: a two-line name does not '
+        'stretch its neighbour', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(3, name: 'A reel with a name long enough for two lines'),
+          testSummary(2, name: 'Short'),
+          testSummary(1, name: 'Third'),
+        ],
+      );
+
+      final cards = find.byType(TtReelCard);
+      final long = tester.getRect(cards.at(0));
+      final short = tester.getRect(cards.at(1));
+      final third = tester.getRect(cards.at(2));
+      // Padding 0 16 and a 12 dp gap between the two columns.
+      expect(long.left, 16);
+      expect(short.right, 360 - 16);
+      expect(short.left - long.right, 12);
+      expect(long.width, (360 - 32 - 12) / 2);
+      expect(short.width, long.width);
+      // Top aligned, each card its own height.
+      expect(short.top, long.top);
+      expect(long.height, greaterThan(short.height));
+      // The next row is 16 dp under the taller card of the row above.
+      expect(third.top - long.bottom, 16);
+      expect(third.left, 16);
+    });
+
+    testWidgets('2x text: one column', (tester) async {
+      await pumpHome(tester, reels: mixed(), textScale: 2);
+
+      final first = tester.getRect(find.byType(TtReelCard).first);
+      expect(first.left, 16);
+      expect(first.width, 360 - 32);
+      await tester.scrollUntilVisible(
+        find.text('Day 1 Vlog'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final second = tester.getRect(find.byType(TtReelCard).at(1));
+      expect(second.left, 16);
+      expect(second.width, 360 - 32);
+      expect(
+        second.top - tester.getRect(find.byType(TtReelCard).at(0)).bottom,
+        16,
+      );
     });
 
     testWidgets('cards show cover, status, meta and missing', (tester) async {
@@ -301,6 +602,36 @@ void main() {
       expect(_missingOf(card), '2 missing');
     });
 
+    testWidgets('the card is read "London Food. Collecting. 14 clips, 2 '
+        'missing. Editing in VN. 2 references"', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(5, name: 'London Food', clipCount: 14, missingCount: 2),
+          testSummary(4, name: 'Goa', clipCount: 1),
+        ],
+        editors: {5: EditorApp.vn},
+        referenceCounts: {5: 2, 4: 1},
+      );
+
+      const london =
+          'London Food. Collecting. 14 clips, 2 missing. Editing in VN. '
+          '2 references';
+      expect(
+        tester.widget<TtReelCard>(find.byType(TtReelCard).first).semanticLabel,
+        london,
+      );
+      final node = tester.getSemantics(find.byType(TtReelCard).first);
+      expect(node.label, london);
+      expect(node.flagsCollection.isButton, isTrue);
+      expect(
+        tester.widget<TtReelCard>(find.byType(TtReelCard).at(1)).semanticLabel,
+        'Goa. Collecting. 1 clip. 1 reference',
+      );
+      handle.dispose();
+    });
+
     testWidgets('each card is read as name, status, clips and missing', (
       tester,
     ) async {
@@ -317,11 +648,31 @@ void main() {
         'Goa. Published. 12 clips',
         'Empty one. Collecting. 0 clips',
       ]);
-      // And that is what a screen reader gets, as one button.
-      final node = tester.getSemantics(find.byType(TtReelCard).first);
-      expect(node.label, 'London Food. Collecting. 3 clips, 2 missing');
-      expect(node.flagsCollection.isButton, isTrue);
       handle.dispose();
+    });
+
+    testWidgets('notes: In VN, 2 missing, 2; none for a plain reel', (
+      tester,
+    ) async {
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(5, name: 'London Food', clipCount: 14, missingCount: 2),
+          testSummary(4, name: 'Plain', clipCount: 3),
+        ],
+        editors: {5: EditorApp.vn},
+        referenceCounts: {5: 2},
+      );
+
+      final cards = tester
+          .widgetList<TtReelCard>(find.byType(TtReelCard))
+          .toList();
+      expect(cards[0].notes.map((n) => (n.kind, n.text)), [
+        (TtReelCardNoteKind.editing, 'In VN'),
+        (TtReelCardNoteKind.missing, '2 missing'),
+        (TtReelCardNoteKind.references, '2'),
+      ]);
+      expect(cards[1].notes, isEmpty);
     });
 
     testWidgets('a reel being edited shows its editor on the card, and is '
@@ -349,14 +700,10 @@ void main() {
           'Empty one. Collecting. 0 clips',
         ],
       );
-      expect(
-        tester.getSemantics(find.byType(TtReelCard).first).label,
-        'London Food. Collecting. 3 clips, 2 missing. Editing in VN',
-      );
       handle.dispose();
     });
 
-    testWidgets('while the sessions are not known, no card has a pill', (
+    testWidgets('while the sessions are not known, no card has a note', (
       tester,
     ) async {
       await pumpScreen(
@@ -396,6 +743,46 @@ void main() {
       expect(find.text(reelRouteMarker(3)), findsOneWidget);
     });
 
+    testWidgets('a card press scales to .98 and opens the reel once (double '
+        'tap too)', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(2, name: 'Goa'),
+          testSummary(1, name: 'Lisbon'),
+        ],
+        animations: true,
+      );
+      final card = find.byType(TtReelCard).first;
+      double scale() => tester
+          .widget<AnimatedScale>(
+            find.descendant(of: card, matching: find.byType(AnimatedScale)),
+          )
+          .scale;
+      expect(scale(), 1);
+
+      final press = await tester.startGesture(tester.getCenter(card));
+      // The press shows once the tap is sure not to be a scroll.
+      await tester.pump(kPressTimeout);
+      await tester.pump();
+      expect(scale(), 0.98);
+      await press.up();
+      await tester.pumpAndSettle();
+      expect(find.text(reelRouteMarker(2)), findsOneWidget);
+
+      // Back, then two taps in one frame: one page.
+      GoRouter.of(tester.element(find.text(reelRouteMarker(2)))).pop();
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(card);
+      await tester.tap(card);
+      await tester.pumpAndSettle();
+      expect(
+        find.text(reelRouteMarker(2), skipOffstage: false),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('a double tap on a card opens one reel page', (tester) async {
       await pumpHome(tester, reels: mixed());
 
@@ -415,6 +802,44 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text(reelRouteMarker(3)), findsOneWidget);
     });
+
+    for (final animations in [true, false]) {
+      testWidgets('switching tabs fades the grid in over short4 '
+          '(${animations ? 'motion' : 'reduced motion: a crossfade still'})', (
+        tester,
+      ) async {
+        await pumpHome(
+          tester,
+          reels: [
+            testSummary(3, name: 'Goa'),
+            testSummary(2, name: 'Lisbon', status: ReelStatus.published),
+            testSummary(1, name: 'Paris'),
+          ],
+          animations: animations,
+        );
+        double opacity() => tester
+            .widget<SliverFadeTransition>(find.byType(SliverFadeTransition))
+            .opacity
+            .value;
+        // No fade on the first build.
+        expect(opacity(), 1);
+
+        await tester.tap(tab('Collecting'));
+        await tester.pump();
+        expect(opacity(), 0);
+        final left = tester.getTopLeft(find.byType(TtReelCard).first).dx;
+
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(opacity(), inExclusiveRange(0, 1));
+        // Nothing slides: the first card is where it will stay.
+        expect(tester.getTopLeft(find.byType(TtReelCard).first).dx, left);
+
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(opacity(), 1);
+        expect(cardNames(tester), ['Goa', 'Paris']);
+        expect(tester.getTopLeft(find.byType(TtReelCard).first).dx, left);
+      });
+    }
 
     testWidgets('a long emoji name is on the card, clamped', (tester) async {
       await pumpHome(
@@ -447,13 +872,34 @@ void main() {
       );
       expect(find.text('Reel 1'), findsWidgets);
     });
+
+    testWidgets('the last row clears the nav pill', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [for (var i = 25; i >= 1; i--) testSummary(i)],
+      );
+
+      await tester.scrollUntilVisible(
+        find.text('Reel 1'),
+        400,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -2000));
+      await tester.pumpAndSettle();
+
+      final context = tester.element(find.byType(ReelsScreen));
+      final last = tester.getRect(find.byType(TtReelCard).last);
+      expect(
+        last.bottom,
+        lessThanOrEqualTo(800 - TtNavPill.reservedHeight(context)),
+      );
+    });
   });
 
-  group('the references badge (Phase 9A)', skip: 'Task 9', () {
-    Map<String, int> countsByName(WidgetTester tester) => {
+  group('references on the card (D-158, D-196)', () {
+    Map<String, String?> countsByName(WidgetTester tester) => {
       for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))
-        c.name:
-            int.tryParse(_noteOf(c, TtReelCardNoteKind.references) ?? '') ?? 0,
+        c.name: _noteOf(c, TtReelCardNoteKind.references),
     };
 
     String location(WidgetTester tester, int reelId) =>
@@ -461,154 +907,45 @@ void main() {
             .toString();
 
     testWidgets("each card counts its own reel's references; none is no "
-        'badge', (tester) async {
+        'note', (tester) async {
       await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2, 3: 1});
 
       expect(countsByName(tester), {
-        'London Food': 2,
-        'Day 1 Vlog': 0,
-        'Goa': 1,
-        'Empty one': 0,
+        'London Food': '2',
+        'Day 1 Vlog': null,
+        'Goa': '1',
+        'Empty one': null,
       });
-      expect(find.bySemanticsLabel('2 references, open them'), findsOneWidget);
-      expect(find.bySemanticsLabel('1 reference, open them'), findsOneWidget);
     });
 
-    testWidgets('a count for no shown reel gives no badge', (tester) async {
+    testWidgets('a count for no shown reel gives no note', (tester) async {
       await pumpHome(tester, reels: mixed(), referenceCounts: {99: 4});
 
-      expect(countsByName(tester).values, everyElement(0));
-      expect(find.textContaining('references, open them'), findsNothing);
+      expect(countsByName(tester).values, everyElement(isNull));
     });
 
-    testWidgets('the badge opens the reel at its References section', (
-      tester,
-    ) async {
+    testWidgets('no references button of its own: the card opens the reel '
+        'page, not its References section', (tester) async {
+      final handle = tester.ensureSemantics();
       await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
 
-      await tester.tap(find.bySemanticsLabel('2 references, open them'));
-      await tester.pumpAndSettle();
-
-      expect(find.text(reelRouteMarker(5)), findsOneWidget);
-      expect(location(tester, 5), '/reels/5?refs=1');
-    });
-
-    testWidgets("the card's own tap still opens the reel's page", (
-      tester,
-    ) async {
-      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
+      expect(find.textContaining('open them'), findsNothing);
+      expect(find.bySemanticsLabel(RegExp('open them')), findsNothing);
 
       await tester.tap(find.text('London Food'));
       await tester.pumpAndSettle();
 
       expect(find.text(reelRouteMarker(5)), findsOneWidget);
       expect(location(tester, 5), '/reels/5');
+      handle.dispose();
     });
 
-    testWidgets('a double tap on the badge opens one page', (tester) async {
-      await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2});
-
-      final badge = find.bySemanticsLabel('2 references, open them');
-      await tester.tap(badge);
-      await tester.tap(badge);
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(reelRouteMarker(5), skipOffstage: false),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('the badge passes the accessibility checks', (tester) async {
+    testWidgets('the cards with references pass the accessibility checks', (
+      tester,
+    ) async {
       await pumpHome(tester, reels: mixed(), referenceCounts: {5: 2, 4: 12});
 
-      await expectTtAccessible(tester);
-    });
-  });
-
-  group('a filter with no reels', () {
-    final collecting = [testSummary(1), testSummary(2)];
-    final published = [testSummary(3, status: ReelStatus.published)];
-
-    Future<void> empty(
-      WidgetTester tester,
-      List<ReelSummary> reels,
-      String chipLabel,
-      String title,
-      String body,
-    ) async {
-      await pumpHome(tester, reels: reels);
-
-      await tapChip(tester, chipLabel);
-
-      expect(find.text(title), findsOneWidget);
-      expect(find.text(body), findsOneWidget);
-      expect(find.byType(TtReelCard), findsNothing);
-      expect(
-        tester.widget<TtEmptyState>(find.byType(TtEmptyState)).illustration,
-        TtIllustrationKind.emptyReel,
-      );
-      // The chips and the FAB stay.
-      expect(find.byType(TtPillTabs<ReelFilter>), findsOneWidget);
-      expect(find.byType(TtFab), findsOneWidget);
-    }
-
-    testWidgets('Published: its copy and Show all reels', (tester) async {
-      await empty(
-        tester,
-        collecting,
-        'Published 0',
-        'No reels marked Published',
-        'When you post a reel, mark it as Published from its page.',
-      );
-
-      await tester.tap(find.widgetWithText(TtButton, 'Show all reels'));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(TtReelCard), findsNWidgets(2));
-      expect(find.text('No reels marked Published'), findsNothing);
-    });
-
-    testWidgets('Ready to edit: its copy', (tester) async {
-      await empty(
-        tester,
-        collecting,
-        'Ready to edit 0',
-        'No reels marked Ready to edit',
-        'When a reel has all its clips, mark it as Ready to edit.',
-      );
-    });
-
-    testWidgets('Collecting: its copy', (tester) async {
-      await empty(
-        tester,
-        published,
-        'Collecting 0',
-        'No reels marked Collecting',
-        'New reels start as Collecting.',
-      );
-    });
-
-    testWidgets('Show all reels is tonal and sets All', (tester) async {
-      await pumpHome(tester, reels: collecting);
-      await tapChip(tester, 'Published 0');
-
-      final show = tester.widget<TtButton>(
-        find.widgetWithText(TtButton, 'Show all reels'),
-      );
-      expect(show.kind, TtButtonKind.tonal);
-      final tabs = tester.widget<TtPillTabs<ReelFilter>>(
-        find.byType(TtPillTabs<ReelFilter>),
-      );
-      expect(tabs.value, ReelFilter.published);
-
-      show.onPressed!();
-      await tester.pumpAndSettle();
-
-      final after = tester.widget<TtPillTabs<ReelFilter>>(
-        find.byType(TtPillTabs<ReelFilter>),
-      );
-      expect(after.value, ReelFilter.all);
+      await expectHomeAccessible(tester);
     });
   });
 
@@ -637,41 +974,13 @@ void main() {
       expect(shooting.cameraOpened, 1);
       expect(find.text(_cameraSnack), findsNothing);
     });
-
-    testWidgets('the snack lifts the FAB, which drops back after it', (
-      tester,
-    ) async {
-      await pumpHome(
-        tester,
-        reels: mixed(),
-        shooting: _on(),
-        cameraOpens: false,
-      );
-      // The button as it is drawn: the lift moves the paint, not the layout.
-      final drawn = find
-          .descendant(of: find.byType(TtFab), matching: find.byType(Material))
-          .first;
-      final before = tester.getRect(drawn);
-
-      await tester.tap(find.text('Open camera'));
-      await tester.pumpAndSettle();
-      final snack = tester.getRect(find.byType(TtSnack));
-      final during = tester.getRect(drawn);
-      expect(during.bottom, lessThanOrEqualTo(snack.top - 12 + 0.01));
-      expect(during.bottom, lessThan(before.bottom));
-
-      await tester.pump(const Duration(seconds: 10));
-      await tester.pumpAndSettle();
-      expect(find.text(_cameraSnack), findsNothing);
-      expect(tester.getRect(drawn), before);
-    });
   });
 
   group('look', () {
     for (final brightness in Brightness.values) {
-      testWidgets('2x text at 360 dp, ${brightness.name}, no overflow', (
-        tester,
-      ) async {
+      testWidgets('2x text at 360 with Shooting mode on, both chips and a '
+          'long name: one column, no overflow, + New reachable, '
+          '${brightness.name}', (tester) async {
         await pumpHome(
           tester,
           reels: [
@@ -681,10 +990,21 @@ void main() {
           shooting: _on(),
           brightness: brightness,
           textScale: 2,
-          // The longest pill, and one on the long-named card.
           editors: {5: EditorApp.capcut, 1: EditorApp.edits},
+          referenceCounts: {5: 3, 1: 12},
+          references: _references(4),
         );
         expect(tester.takeException(), isNull);
+        final shootingCard = tester.widget<TtShootingModeCard>(
+          find.byType(TtShootingModeCard),
+        );
+        expect(
+          [for (final c in shootingCard.chips) c.label],
+          ['References · 4', 'Earlier videos'],
+        );
+        expect(_pill.hitTestable(), findsOneWidget);
+        final cardRect = tester.getRect(find.byType(TtShootingModeCard));
+        expect(cardRect.right, lessThanOrEqualTo(360));
 
         await tester.scrollUntilVisible(
           find.byType(TtReelCard).last,
@@ -692,6 +1012,12 @@ void main() {
           scrollable: find.byType(Scrollable).first,
         );
         expect(tester.takeException(), isNull);
+        for (final e in find.byType(TtReelCard).evaluate()) {
+          final rect = tester.getRect(find.byElementPredicate((x) => x == e));
+          expect(rect.width, 360 - 32);
+          expect(rect.left, 16);
+        }
+        expect(_pill.hitTestable(), findsOneWidget);
       });
 
       testWidgets('2x text, the empty state fits, ${brightness.name}', (
@@ -705,22 +1031,22 @@ void main() {
       testWidgets('${brightness.name}: with reels, accessible', (tester) async {
         await pumpHome(tester, reels: mixed(), brightness: brightness);
 
-        await expectTtAccessible(tester);
+        await expectHomeAccessible(tester);
       });
 
       testWidgets('${brightness.name}: empty, accessible', (tester) async {
         await pumpHome(tester, brightness: brightness);
 
-        await expectTtAccessible(tester);
+        await expectHomeAccessible(tester);
       });
 
-      testWidgets('${brightness.name}: a filter with none, accessible', (
+      testWidgets('${brightness.name}: a tab with none, accessible', (
         tester,
       ) async {
         await pumpHome(tester, reels: [testSummary(1)], brightness: brightness);
-        await tapChip(tester, 'Published 0');
+        await tapTab(tester, 'Published');
 
-        await expectTtAccessible(tester);
+        await expectHomeAccessible(tester);
       });
     }
   });
