@@ -991,6 +991,31 @@ class MediaHostApi {
     return pigeonVar_replyValue as Uint8List?;
   }
 
+  /// A content [uri]'s picture, decoded by Android (ImageDecoder, EXIF
+  /// orientation applied), scaled down so its longer side is at most
+  /// [maxSidePx] (never up), as JPEG bytes. Null when the address is not
+  /// content:, is gone, its grant is lost, or it cannot be decoded.
+  Future<Uint8List?> photoStill(String uri, int maxSidePx) async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.photoStill$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(
+      <Object?>[uri, maxSidePx],
+    );
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: true,
+    );
+    return pigeonVar_replyValue as Uint8List?;
+  }
+
   /// The subset of [uris] that can still be read. Only a read that is refused
   /// (SecurityException) or a cursor with no row means gone and leaves a uri
   /// out. Every other failure fails the whole call, so "failed" is never read

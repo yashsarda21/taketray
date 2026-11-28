@@ -235,6 +235,13 @@ abstract class MediaHostApi {
   @async
   Uint8List? thumbnailOfUri(String uri, int widthPx, int heightPx);
 
+  /// A content [uri]'s picture, decoded by Android (ImageDecoder, EXIF
+  /// orientation applied), scaled down so its longer side is at most
+  /// [maxSidePx] (never up), as JPEG bytes. Null when the address is not
+  /// content:, is gone, its grant is lost, or it cannot be decoded.
+  @async
+  Uint8List? photoStill(String uri, int maxSidePx);
+
   /// The subset of [uris] that can still be read. Only a read that is refused
   /// (SecurityException) or a cursor with no row means gone and leaves a uri
   /// out. Every other failure fails the whole call, so "failed" is never read

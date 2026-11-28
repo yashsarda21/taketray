@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,9 +7,11 @@ import 'package:go_router/go_router.dart';
 import 'package:taketray/core/clock.dart';
 import 'package:taketray/core/midnight_tick.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
+import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/zone_city.dart';
 import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail.dart';
 import 'package:taketray/features/editors/views/open_share.dart';
 import 'package:taketray/features/reels/view_models/clip_player.dart';
 import 'package:taketray/features/reels/view_models/clip_viewer_controller.dart';
@@ -54,6 +57,13 @@ const double _bottomMaxFraction = 0.6;
 /// - **Can't play** (a player error, or no usable address): the error
 ///   icon, "This video can't be played", and **Remove from reel**. It never
 ///   plays another video.
+/// - **A photo** (`Clip.isPhoto`, D-201) is a still, not a video: its page
+///   shows the picture Android decoded at the screen's size
+///   (`photoStillProvider`), fitted whole on black, and the clip's thumbnail
+///   until then; "This photo can't be shown" with **Remove from reel** when
+///   it cannot be read. It never has a player (none is opened, paused or
+///   played for it), a tap does nothing, and the header has no mute switch
+///   and the bottom no scrubber. Everything else is as for a video.
 ///
 /// A clip that is missing, not in the reel, or a reel that is gone is not
 /// opened: the screen goes back.
@@ -169,7 +179,8 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
 
     final pages = _pages ??= PageController(initialPage: state.index);
     final current = state.current;
-    final uri = clipVideoUri(current.clip);
+    final photo = current.clip.isPhoto;
+    final uri = _videoUriOf(current.clip);
     final today =
         ref.watch(localDayProvider).value ??
         ref.watch(clockProvider).now().toLocal();
@@ -195,7 +206,8 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
       mainAxisSize: MainAxisSize.min,
       spacing: tt.spacing.s,
       children: [
-        _Scrubber(uri: uri, clip: current.clip),
+        // A photo has nothing to scrub (D-201).
+        if (!photo) _Scrubber(uri: uri, clip: current.clip),
         if (names != null && names.isNotEmpty)
           TtReelTagRow(label: l10n.viewerIn, names: names),
         TtViewerActions(
@@ -261,11 +273,12 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
                     // settles, but not its sound: it pauses now, so two
                     // videos are never heard at once while the finger holds
                     // the swipe past the middle.
-                    _pause(clipVideoUri(current.clip));
+                    // A photo has no player: nothing to pause or play.
+                    _pause(_videoUriOf(current.clip));
                     // A swipe that turns back before it settles comes back to
                     // a page whose player is still open (and was just
                     // paused): it plays again, as a page reached plays.
-                    _resume(clipVideoUri(state.clips[index].clip));
+                    _resume(_videoUriOf(state.clips[index].clip));
                     setState(() => _outgoingClipId = current.clip.id);
                     ref.read(_provider.notifier).goTo(index);
                   },
@@ -276,18 +289,28 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
                     // are black until they are reached.
                     final live =
                         index == state.index || clip.id == _outgoingClipId;
+                    void remove() => unawaited(_remove(clip.id));
                     return KeyedSubtree(
                       key: ValueKey(clip.id),
-                      child: live
-                          ? _Stage(
+                      child: !live
+                          ? const SizedBox.expand()
+                          : clip.isPhoto
+                          ? _PhotoStage(
+                              clip: clip,
+                              label: l10n.viewerStagePhoto(
+                                index + 1,
+                                state.clips.length,
+                              ),
+                              onRemove: remove,
+                            )
+                          : _Stage(
                               uri: clipVideoUri(clip),
                               label: l10n.viewerStage(
                                 index + 1,
                                 state.clips.length,
                               ),
-                              onRemove: () => unawaited(_remove(clip.id)),
-                            )
-                          : const SizedBox.expand(),
+                              onRemove: remove,
+                            ),
                     );
                   },
                 ),
@@ -306,14 +329,21 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
                   state.reel.name,
                 ),
                 subtitle: _when(context, state, today),
-                trailing: TtIconButton(
-                  icon: muted
-                      ? Symbols.volume_off_rounded
-                      : Symbols.volume_up_rounded,
-                  semanticLabel: muted ? l10n.viewerUnmute : l10n.viewerMute,
-                  style: TtIconButtonStyle.onVideo,
-                  onPressed: ref.read(viewerMutedProvider.notifier).toggle,
-                ),
+                // A photo has no sound (D-201).
+                trailing: photo
+                    ? null
+                    : TtIconButton(
+                        icon: muted
+                            ? Symbols.volume_off_rounded
+                            : Symbols.volume_up_rounded,
+                        semanticLabel: muted
+                            ? l10n.viewerUnmute
+                            : l10n.viewerMute,
+                        style: TtIconButtonStyle.onVideo,
+                        onPressed: ref
+                            .read(viewerMutedProvider.notifier)
+                            .toggle,
+                      ),
               ),
             ),
           ),
@@ -523,17 +553,17 @@ class _Stage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final address = uri;
-    if (address == null) return _CantPlay(onRemove: onRemove);
+    if (address == null) return _CantShow(onRemove: onRemove);
     return ref
         .watch(clipPlayerProvider(address))
         .when(
           // Black until the player has opened the video.
           loading: () => const SizedBox.expand(),
-          error: (_, _) => _CantPlay(onRemove: onRemove),
+          error: (_, _) => _CantShow(onRemove: onRemove),
           data: (controller) => ValueListenableBuilder<VideoPlayerValue>(
             valueListenable: controller,
             builder: (context, value, _) => value.hasError
-                ? _CantPlay(onRemove: onRemove)
+                ? _CantShow(onRemove: onRemove)
                 : _Playing(controller: controller, value: value, label: label),
           ),
         );
@@ -608,12 +638,16 @@ class _Playing extends StatelessWidget {
   }
 }
 
-/// "This video can't be played", with **Remove from reel** (prototype
-/// `.viewer .err`). The file is still in the gallery.
-class _CantPlay extends StatelessWidget {
-  const new({required this.onRemove});
+/// "This video can't be played", or for a [photo] "This photo can't be
+/// shown" (R13-4, D-201), with **Remove from reel** (prototype
+/// `.viewer .err`). The file may still be in the gallery.
+class _CantShow extends StatelessWidget {
+  const new({required this.onRemove, this.photo = false});
 
   final VoidCallback onRemove;
+
+  /// The photo words instead of the video ones.
+  final bool photo;
 
   @override
   Widget build(BuildContext context) {
@@ -635,12 +669,12 @@ class _CantPlay extends StatelessWidget {
               ),
             ),
             Text(
-              l10n.viewerCantPlayTitle,
+              photo ? l10n.viewerCantShowTitle : l10n.viewerCantPlayTitle,
               textAlign: TextAlign.center,
               style: text.titleMedium!.copyWith(color: tt.colors.onVideo),
             ),
             Text(
-              l10n.viewerCantPlayBody,
+              photo ? l10n.viewerCantShowBody : l10n.viewerCantPlayBody,
               textAlign: TextAlign.center,
               style: text.bodyMedium!.copyWith(color: tt.colors.onVideoVariant),
             ),
@@ -656,7 +690,114 @@ class _CantPlay extends StatelessWidget {
   }
 }
 
-/// The scrubber of the page showing: the player of its clip, if it has one,
+/// The photo of the page showing (D-201): its still, fitted whole on black,
+/// with the clip's thumbnail until the still is drawn, or "This photo can't
+/// be shown" when it cannot be read. Nothing plays and a tap does nothing; a
+/// screen reader hears an image, "Photo {i} of {n}".
+///
+/// The still is asked at the screen's longest side in pixels, so it is as
+/// sharp as the screen and no bigger. When the page goes the provider lets go
+/// of the bytes, and the decoded picture leaves Flutter's image cache, so
+/// paging through photos does not keep them all in memory.
+class _PhotoStage extends ConsumerStatefulWidget {
+  const new({required this.clip, required this.label, required this.onRemove});
+
+  final Clip clip;
+
+  /// What a screen reader says for the photo.
+  final String label;
+
+  final VoidCallback onRemove;
+
+  @override
+  ConsumerState<_PhotoStage> createState() => _PhotoStageState();
+}
+
+class _PhotoStageState extends ConsumerState<_PhotoStage> {
+  /// The still on screen, if any, as a picture Flutter decodes and caches.
+  MemoryImage? _image;
+
+  @override
+  void dispose() {
+    _evict();
+    super.dispose();
+  }
+
+  /// Takes the still that was on screen out of Flutter's image cache.
+  void _evict() {
+    unawaited(_image?.evict());
+    _image = null;
+  }
+
+  /// The picture of [bytes]: the same one while the bytes are the same, so it
+  /// is decoded once.
+  MemoryImage _imageOf(Uint8List bytes) {
+    final image = _image;
+    if (image != null && identical(image.bytes, bytes)) return image;
+    _evict();
+    return _image = MemoryImage(bytes);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final clip = widget.clip;
+    final cantShow = _CantShow(photo: true, onRemove: widget.onRemove);
+    // A photo is always a picked clip: its address is the picker's (never a
+    // video address, R13-9).
+    final address = clip.pickerUri;
+    if (address == null || address.isEmpty) return cantShow;
+    final screen = MediaQuery.sizeOf(context);
+    final maxSidePx =
+        (screen.longestSide * MediaQuery.devicePixelRatioOf(context)).ceil();
+    final still = ref.watch(photoStillProvider(address, maxSidePx));
+    final cache = ref.watch(thumbnailCacheProvider).value;
+    final label = widget.label;
+    // No thumbnail either: black, read as the photo all the same.
+    final blank = Semantics(
+      container: true,
+      image: true,
+      label: label,
+      child: const SizedBox.expand(),
+    );
+    final thumbnail = SizedBox.expand(
+      child: Image(
+        image: clipThumbnail(
+          clip: clip,
+          logicalSize: screen.shortestSide,
+          cache: cache,
+        ),
+        fit: BoxFit.contain,
+        semanticLabel: label,
+        errorBuilder: (_, _, _) => blank,
+      ),
+    );
+    return still.when(
+      loading: () => thumbnail,
+      error: (_, _) => cantShow,
+      data: (bytes) => bytes == null
+          ? cantShow
+          : SizedBox.expand(
+              // Its own key: the still's Image must never take over the
+              // thumbnail's state (and a thumbnail that failed would show
+              // as a still that failed until the still is drawn).
+              key: const ValueKey('photo-still'),
+              child: Image(
+                image: _imageOf(bytes),
+                // Contain: the whole picture, a portrait and a landscape one.
+                fit: BoxFit.contain,
+                semanticLabel: label,
+                // The thumbnail stays until the still's first frame is drawn.
+                frameBuilder: (_, child, frame, synchronous) =>
+                    frame == null && !synchronous ? thumbnail : child,
+                // Bytes Flutter cannot draw: as a photo that cannot be read.
+                errorBuilder: (_, _, _) => cantShow,
+              ),
+            ),
+    );
+  }
+}
+
+/// The scrubber of a video page: the player of its clip, if it has one,
 /// in a [ClipScrubber].
 class _Scrubber extends ConsumerWidget {
   const new({required this.uri, required this.clip});
@@ -673,3 +814,7 @@ class _Scrubber extends ConsumerWidget {
     return ClipScrubber(controller: controller, clip: clip);
   }
 }
+
+/// Where the viewer plays [clip] from ([clipVideoUri]); none for a photo,
+/// which never has a player (D-201).
+Uri? _videoUriOf(Clip clip) => clip.isPhoto ? null : clipVideoUri(clip);

@@ -760,6 +760,13 @@ interface MediaHostApi {
    */
   suspend fun thumbnailOfUri(uri: String, widthPx: Long, heightPx: Long): ByteArray?
   /**
+   * A content [uri]'s picture, decoded by Android (ImageDecoder, EXIF
+   * orientation applied), scaled down so its longer side is at most
+   * [maxSidePx] (never up), as JPEG bytes. Null when the address is not
+   * content:, is gone, its grant is lost, or it cannot be decoded.
+   */
+  suspend fun photoStill(uri: String, maxSidePx: Long): ByteArray?
+  /**
    * The subset of [uris] that can still be read. Only a read that is refused
    * (SecurityException) or a cursor with no row means gone and leaves a uri
    * out. Every other failure fails the whole call, so "failed" is never read
@@ -1051,6 +1058,26 @@ interface MediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.thumbnailOfUri(uriArg, widthPxArg, heightPxArg))
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.photoStill$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { message, reply ->
+            val args = message as List<Any?>
+            val uriArg = args[0] as String
+            val maxSidePxArg = args[1] as Long
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.photoStill(uriArg, maxSidePxArg))
               } catch (exception: Throwable) {
                 MediaApiPigeonUtils.wrapError(exception)
               }

@@ -5,6 +5,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.content.Intent
 import android.database.MatrixCursor
+import android.graphics.Bitmap
 import android.graphics.Point
 import android.net.Uri
 import android.os.Build
@@ -12,6 +13,7 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
+import android.util.Size
 import java.io.FileNotFoundException
 import java.util.TimeZone
 import kotlinx.coroutines.CoroutineScope
@@ -742,6 +744,52 @@ class MediaHostApiImplTest {
                     assertEquals("native-error", e.code)
                 }
             }
+        }
+
+    // ---- The viewer's still of a photo (D-201) ----
+
+    @Test
+    fun `photoStill runs off the main thread and answers null for a file address`() =
+        timed {
+            val threads = mutableListOf<Boolean>()
+            val asked = mutableListOf<Pair<Uri, Size>>()
+            impl =
+                MediaHostApiImpl(activity, noVolumes, stillDecoderOf = { _ ->
+                    { uri, sizeFor ->
+                        threads += Looper.myLooper() == Looper.getMainLooper()
+                        val size = sizeFor(Size(4000, 3000))
+                        asked += uri to size
+                        Bitmap.createBitmap(size.width, size.height, Bitmap.Config.ARGB_8888)
+                    }
+                })
+            val photo = "content://media/picker/0/com.android.providers.media.photopicker/media/1000000077"
+            assertEquals(Looper.getMainLooper(), Looper.myLooper())
+
+            val bytes = impl.photoStill(photo, 2400)
+            assertTrue(bytes != null && bytes.isNotEmpty())
+            assertEquals(listOf(false), threads)
+            assertEquals(listOf(Uri.parse(photo) to Size(2400, 1800)), asked)
+
+            // A file address is never decoded.
+            assertNull(impl.photoStill("file:///storage/emulated/0/DCIM/Camera/a.jpg", 2400))
+            assertEquals(1, asked.size)
+
+            // A size of 0 is an error that names no address.
+            try {
+                impl.photoStill(photo, 0)
+                fail("expected an error")
+            } catch (e: FlutterError) {
+                assertEquals("native-error", e.code)
+                assertFalse(e.toString().contains("content://"))
+            }
+        }
+
+    @Test
+    fun `photoStill is null for a gone photo, through the real decoder`() =
+        timed {
+            // The provider cannot open the photo, as for one that was deleted.
+            FakeMediaProvider.install(FileNotFoundException("gone"))
+            assertNull(impl.photoStill(videoUri(4821), 2400))
         }
 
     // ---- The photo picker ----

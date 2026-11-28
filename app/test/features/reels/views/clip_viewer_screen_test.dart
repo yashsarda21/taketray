@@ -1,14 +1,23 @@
+import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart' show ProviderContainer;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/intl.dart';
+import 'package:logging/logging.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/undo_record.dart';
+import 'package:taketray/features/clips/widgets/clip_scrubber.dart';
+import 'package:taketray/features/clips/widgets/clip_thumbnail_image.dart';
+import 'package:taketray/features/reels/view_models/clip_viewer_controller.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
 import 'package:taketray/features/reels/views/clip_viewer_screen.dart';
 import 'package:taketray_ui/taketray_ui.dart';
@@ -23,6 +32,33 @@ import '../edit_session_support.dart' show startEditing;
 
 String _uri(int mediaStoreId) =>
     'content://media/external_primary/video/media/$mediaStoreId';
+
+/// A real 1x1 JPEG, as the bridge's still would be; Flutter's codec reads it.
+final Uint8List _onePixel = base64Decode(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDgqKKK8M/VD//Z',
+);
+
+/// A photo-shaped (3:4) picture in the fake player's first colours, so text
+/// over it is judged as over the test videos.
+Future<Uint8List> _darkPhoto() async {
+  final recorder = ui.PictureRecorder();
+  const size = Size(300, 400);
+  Canvas(recorder).drawRect(
+    Offset.zero & size,
+    Paint()
+      ..shader = ui.Gradient.linear(
+        Offset.zero,
+        size.bottomRight(Offset.zero),
+        [const Color(0xFF3A6EA5), const Color(0xFF1B2A41)],
+      ),
+  );
+  final image = await recorder.endRecording().toImage(300, 400);
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  return bytes!.buffer.asUint8List();
+}
+
+/// The address of `reelPhoto(n)`.
+String _photoUri(int n) => 'content://media/picker/0/x/media/photo-$n';
 
 /// [text] with no-break spaces made plain, for reading a date.
 String _plain(String? text) => (text ?? '').replaceAll(RegExp('[  ]'), ' ');
@@ -66,23 +102,28 @@ void main() {
     ], zoneId: zoneId),
   );
 
-  Future<void> open(
+  Future<ProviderContainer> open(
     WidgetTester tester,
     int reelId,
     int clipId, {
     double textScale = 1,
     Brightness brightness = Brightness.dark,
     List<Override> overrides = const [],
+    Size size = const Size(360, 800),
+    double devicePixelRatio = 1,
   }) async {
-    await pumpScreen(
+    final container = await pumpScreen(
       tester,
       ClipViewerScreen(reelId: reelId, clipId: clipId),
       overrides: [...h.appOverrides, ...overrides],
       textScale: textScale,
       brightness: brightness,
+      size: size,
+      devicePixelRatio: devicePixelRatio,
       settle: false,
     );
     await settleApp(tester);
+    return container;
   }
 
   String title(WidgetTester tester) =>
@@ -766,6 +807,409 @@ void main() {
       await settleApp(tester);
       expect(await clipIdsOf(tester, goa.id), ids.toSet());
     });
+  });
+
+  group('a photo page (D-201)', () {
+    /// A reel of a video, a photo and a video, in that shooting order;
+    /// returns the reel's id and the three clip ids.
+    Future<(int, List<int>)> mixedReel(WidgetTester tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final videos = await reelWith(tester, goa.id, [1, 3]);
+      final [photo] = await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(2)]),
+      );
+      return (goa.id, [videos[0], photo, videos[1]]);
+    }
+
+    Finder still() => find.byWidgetPredicate(
+      (w) => w is Image && w.image is MemoryImage,
+      description: 'the still',
+    );
+
+    Finder thumbnailOf(int clipId) => find.byWidgetPredicate(
+      (w) =>
+          w is Image &&
+          w.image is ClipThumbnailImage &&
+          (w.image as ClipThumbnailImage).clip.id == clipId,
+      description: 'the thumbnail of clip $clipId',
+    );
+
+    List<String> actionLabels(WidgetTester tester) => [
+      for (final a
+          in tester
+              .widget<TtViewerActions>(find.byType(TtViewerActions))
+              .actions)
+        a.label,
+    ];
+
+    Future<void> pick(WidgetTester tester, String reel, String confirm) async {
+      await tester.tap(find.text(reel));
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(TtButton, confirm));
+      await settleApp(tester);
+    }
+
+    testApp('a photo page: the still fitted whole, read "Photo 2 of 3", no '
+        'play, no mute, no scrubber', (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      h.bridge.stills[_photoUri(2)] = _onePixel;
+
+      await open(tester, reelId, ids[1]);
+
+      expect(title(tester), '2 of 3 · Goa');
+      final image = tester.widget<Image>(still());
+      expect((image.image as MemoryImage).bytes, same(_onePixel));
+      expect(image.fit, BoxFit.contain);
+      // The whole page is its frame: contain fits the picture whole in it.
+      expect(tester.getSize(still()), tester.getSize(find.byType(PageView)));
+      // Nothing plays: no player, no play mark, no mute, no scrubber.
+      expect(platform.players, isEmpty);
+      expect(find.byIcon(Symbols.play_arrow_rounded), findsNothing);
+      expect(iconButton('Mute'), findsNothing);
+      expect(iconButton('Unmute'), findsNothing);
+      expect(find.byType(ClipScrubber), findsNothing);
+      expect(find.byType(TtScrubBar), findsNothing);
+      // The rest is as for a video.
+      expect(iconButton('Back'), findsOneWidget);
+      expect(actionLabels(tester), ['Add to reel', 'Move', 'Remove', 'Share']);
+      expect(find.byType(TtStageArrow), findsNWidgets(2));
+
+      final semantics = tester.ensureSemantics();
+      final data = tester
+          .getSemantics(find.bySemanticsLabel('Photo 2 of 3'))
+          .getSemanticsData();
+      expect(data.label, 'Photo 2 of 3');
+      expect(data.flagsCollection.isImage, isTrue);
+      expect(data.flagsCollection.isButton, isFalse);
+      expect(data.hasAction(SemanticsAction.tap), isFalse);
+      expect(data.value, isEmpty);
+      expect(data.hint, isEmpty);
+      expect(find.bySemanticsLabel('Clip 2 of 3'), findsNothing);
+      semantics.dispose();
+
+      // A tap does nothing.
+      await tester.tap(still());
+      await settleApp(tester);
+      expect(platform.players, isEmpty);
+      expect(find.byIcon(Symbols.play_arrow_rounded), findsNothing);
+      expect(title(tester), '2 of 3 · Goa');
+      expect(tester.takeException(), isNull);
+    });
+
+    testApp('while the still decodes the thumbnail shows', (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      h.bridge.stills[_photoUri(2)] = _onePixel;
+      final gate = h.bridge.gate('photoStill');
+
+      await open(tester, reelId, ids[1]);
+
+      final thumbnail = tester.widget<Image>(thumbnailOf(ids[1]));
+      expect(thumbnail.fit, BoxFit.contain);
+      // Asked at the screen's shorter side, as the brief says.
+      expect((thumbnail.image as ClipThumbnailImage).logicalSize, 360);
+      expect(
+        tester.getSize(thumbnailOf(ids[1])),
+        tester.getSize(find.byType(PageView)),
+      );
+      expect(still(), findsNothing);
+      expect(find.text("This photo can't be shown"), findsNothing);
+      final semantics = tester.ensureSemantics();
+      expect(find.bySemanticsLabel('Photo 2 of 3'), findsOneWidget);
+      semantics.dispose();
+
+      // The bytes are here, but Flutter has not drawn them yet (its decoder
+      // runs outside the fake clock): the thumbnail stays, never black.
+      gate.complete();
+      await tester.pump();
+      await tester.pump();
+      expect(still(), findsOneWidget);
+      expect(thumbnailOf(ids[1]), findsOneWidget);
+      expect(
+        find.descendant(of: still(), matching: thumbnailOf(ids[1])),
+        findsOneWidget,
+      );
+      // The thumbnail's own failure (this photo has none) is not the
+      // still's: the page does not say it can't be shown.
+      expect(find.text("This photo can't be shown"), findsNothing);
+
+      await settleApp(tester);
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await settleApp(tester);
+
+      expect(still(), findsOneWidget);
+      expect(thumbnailOf(ids[1]), findsNothing);
+      expect(platform.players, isEmpty);
+    });
+
+    testApp("a still that cannot be read: \"This photo can't be shown\" and "
+        'Remove from reel', (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      // No still for the photo: the bridge answers null.
+
+      await open(tester, reelId, ids[1]);
+
+      expect(find.text("This photo can't be shown"), findsOneWidget);
+      expect(
+        find.text('It may have been moved, deleted or damaged.'),
+        findsOneWidget,
+      );
+      expect(find.byIcon(Symbols.error_rounded), findsOneWidget);
+      expect(find.text("This video can't be played"), findsNothing);
+      expect(
+        tester
+            .widget<TtButton>(find.widgetWithText(TtButton, 'Remove from reel'))
+            .kind,
+        TtButtonKind.tonal,
+      );
+      expect(still(), findsNothing);
+      expect(platform.players, isEmpty);
+
+      await tester.tap(find.text('Remove from reel'));
+      await settleApp(tester);
+
+      expect(
+        find.text('Removed from Goa. The photo is still in your gallery.'),
+        findsOneWidget,
+      );
+      expect(await clipIdsOf(tester, reelId), {ids[0], ids[2]});
+      // On to the clip that takes its place, a video, which plays.
+      expect(title(tester), '2 of 2 · Goa');
+      expect(platform.uris, [_uri(3)]);
+    });
+
+    testApp("a still that throws: the same can't-show state", (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      h.bridge.stills[_photoUri(2)] = _onePixel;
+      h.bridge.failNext('photoStill');
+      final records = <LogRecord>[];
+      final sub = Logger.root.onRecord.listen(records.add);
+      addTearDown(sub.cancel);
+
+      await open(tester, reelId, ids[1]);
+
+      expect(tester.takeException(), isNull);
+      expect(find.text("This photo can't be shown"), findsOneWidget);
+      expect(
+        find.text('It may have been moved, deleted or damaged.'),
+        findsOneWidget,
+      );
+      expect(find.widgetWithText(TtButton, 'Remove from reel'), findsOneWidget);
+      expect(still(), findsNothing);
+      // Asked once: a failure is not tried again by itself.
+      expect(h.bridge.stillRequests, hasLength(1));
+      // The log has the type, never the address (D-10).
+      final lines = [for (final r in records) '${r.message} ${r.error ?? ''}'];
+      expect(lines.any((l) => l.contains('PlatformException')), isTrue);
+      expect(lines.where((l) => l.contains('photo-2')), isEmpty);
+      expect(lines.where((l) => l.contains('content://')), isEmpty);
+    });
+
+    testApp('video → photo → video: pause, no player for the photo, play '
+        'again', (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      h.bridge.stills[_photoUri(2)] = _onePixel;
+      await open(tester, reelId, ids[0]);
+      expect(platform.player(1).playing, isTrue);
+
+      // Past the middle, the finger still down: the video is paused at once
+      // and keeps its frame; the photo's page is up.
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byType(PageView)),
+      );
+      await gesture.moveBy(const Offset(-40, 0));
+      await gesture.moveBy(const Offset(-200, 0));
+      await tester.runAsync(settle);
+      await tester.pump();
+      expect(title(tester), '2 of 3 · Goa');
+      expect(platform.player(1).playing, isFalse);
+      expect(find.byKey(const ValueKey('fake-video-1')), findsOneWidget);
+      await gesture.up();
+      await settleApp(tester);
+
+      // Settled on the photo: no player at all.
+      expect(platform.live, isEmpty);
+      expect(platform.calls, containsAllInOrder(['pause:1', 'dispose:1']));
+      expect(still(), findsOneWidget);
+      expect(iconButton('Mute'), findsNothing);
+
+      // On to the next video: it plays, with its mute and scrubber.
+      await tester.tap(arrow(TtArrowSide.next));
+      await settleApp(tester);
+      expect(title(tester), '3 of 3 · Goa');
+      expect(platform.live.map((p) => p.id), [2]);
+      expect(platform.player(2).playing, isTrue);
+      expect(iconButton('Mute'), findsOneWidget);
+      expect(find.byType(TtScrubBar), findsOneWidget);
+
+      // And back through the photo to the first video, which plays again.
+      await tester.fling(find.byType(PageView), const Offset(200, 0), 2000);
+      await settleApp(tester);
+      expect(title(tester), '2 of 3 · Goa');
+      expect(platform.live, isEmpty);
+      expect(platform.calls, containsAllInOrder(['pause:2', 'dispose:2']));
+      await tester.tap(arrow(TtArrowSide.previous));
+      await settleApp(tester);
+      expect(title(tester), '1 of 3 · Goa');
+      expect(platform.live.map((p) => p.id), [3]);
+      expect(platform.player(3).playing, isTrue);
+
+      // The player factory never saw the photo's address.
+      expect(platform.uris, [_uri(1), _uri(3), _uri(1)]);
+      expect(platform.peakLive, 1);
+    });
+
+    for (final (size, ratio, wanted) in [
+      (const Size(400, 800), 3.0, 2400),
+      (const Size(800, 400), 3.0, 2400),
+      (const Size(411, 914.5), 2.625, 2401),
+    ]) {
+      testApp("the still is asked at the screen's longest side in pixels "
+          '(${size.width}x${size.height} at $ratio)', (tester) async {
+        final (reelId, ids) = await mixedReel(tester);
+        h.bridge.stills[_photoUri(2)] = _onePixel;
+
+        await open(tester, reelId, ids[1], size: size, devicePixelRatio: ratio);
+
+        expect(h.bridge.stillRequests, [(_photoUri(2), wanted)]);
+      });
+    }
+
+    testApp('leaving a photo page lets go of its still and its picture', (
+      tester,
+    ) async {
+      final (reelId, ids) = await mixedReel(tester);
+      // Bytes of this test only, so the image cache knows them from nowhere
+      // else.
+      final bytes = Uint8List.fromList(_onePixel);
+      h.bridge.stills[_photoUri(2)] = bytes;
+      final cache = PaintingBinding.instance.imageCache..clear();
+      addTearDown(cache.clear);
+
+      final container = await open(tester, reelId, ids[1]);
+      expect(container.exists(photoStillProvider(_photoUri(2), 800)), isTrue);
+      expect(cache.containsKey(MemoryImage(bytes)), isTrue);
+
+      await tester.tap(arrow(TtArrowSide.next));
+      await settleApp(tester);
+
+      expect(title(tester), '3 of 3 · Goa');
+      expect(container.exists(photoStillProvider(_photoUri(2), 800)), isFalse);
+      expect(cache.containsKey(MemoryImage(bytes)), isFalse);
+    });
+
+    testApp('Remove, Move and Add to work on a photo page, and Move goes to '
+        'the next clip', (tester) async {
+      final (reelId, ids) = await mixedReel(tester);
+      final london = await real(tester, () => reels.create('London'));
+      final paris = await real(tester, () => reels.create('Paris'));
+      h.bridge.stills[_photoUri(2)] = _onePixel;
+      await open(tester, reelId, ids[1]);
+
+      // Add to reel: the photo is in London too, and the viewer stays.
+      await tester.tap(find.text('Add to reel'));
+      await settleApp(tester);
+      await pick(tester, 'London', 'Add to 1 reel');
+      expect(find.text('Added to London'), findsOneWidget);
+      expect(await clipIdsOf(tester, london.id), {ids[1]});
+      expect(title(tester), '2 of 3 · Goa');
+      expect(
+        [
+          for (final t in tester.widgetList<TtReelTag>(find.byType(TtReelTag)))
+            t.name,
+        ],
+        ['Goa', 'London'],
+      );
+
+      // Remove: the photo words, on to the next clip; Undo brings it back.
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+      expect(
+        find.text('Removed from Goa. The photo is still in your gallery.'),
+        findsOneWidget,
+      );
+      expect(await clipIdsOf(tester, reelId), {ids[0], ids[2]});
+      expect(title(tester), '2 of 2 · Goa');
+      await tester.tap(find.text('Undo'));
+      await settleApp(tester);
+      expect(await clipIdsOf(tester, reelId), ids.toSet());
+      await tester.tap(arrow(TtArrowSide.previous));
+      await settleApp(tester);
+      expect(title(tester), '2 of 3 · Goa');
+      expect(still(), findsOneWidget);
+
+      // Move: out of Goa into Paris, and on to the next clip, which plays.
+      await tester.tap(find.text('Move'));
+      await settleApp(tester);
+      await pick(tester, 'Paris', 'Move');
+      expect(find.text('Moved to Paris'), findsOneWidget);
+      expect(await clipIdsOf(tester, reelId), {ids[0], ids[2]});
+      expect(await clipIdsOf(tester, paris.id), {ids[1]});
+      expect(title(tester), '2 of 2 · Goa');
+      expect(platform.uris.last, _uri(3));
+      expect(platform.uris.where((u) => u!.contains('photo')), isEmpty);
+    });
+
+    for (final brightness in Brightness.values) {
+      testApp("2x text: a photo page's bottom controls scroll, nothing "
+          'overflows, ${brightness.name}', (tester) async {
+        final goa = await real(
+          tester,
+          () => reels.create('Summer road trip with the whole family'),
+        );
+        final [photo] = await real(
+          tester,
+          () => putPhotosInReel(h, goa.id, [reelPhoto(2)]),
+        );
+        for (final name in [
+          'London food adventures with a long name',
+          'Paris',
+          'Goa beaches',
+          'Everything else I shot this year',
+        ]) {
+          final other = await real(tester, () => reels.create(name));
+          await real(tester, () => clips.addClipsToReel(other.id, {photo}));
+        }
+        h.bridge.stills[_photoUri(2)] = await real(tester, _darkPhoto);
+
+        await open(tester, goa.id, photo, textScale: 2, brightness: brightness);
+
+        expect(tester.takeException(), isNull);
+        expect(still(), findsOneWidget);
+        for (final label in ['Add to reel', 'Move', 'Remove', 'Share']) {
+          expect(find.text(label), findsOneWidget);
+        }
+        // The bottom scrolls, and stays inside the screen.
+        final scroll = find.ancestor(
+          of: find.byType(TtViewerActions),
+          matching: find.byType(SingleChildScrollView),
+        );
+        expect(scroll, findsOneWidget);
+        expect(tester.getRect(scroll).bottom, lessThanOrEqualTo(800));
+        expect(
+          tester.getSize(scroll).height,
+          lessThanOrEqualTo(800 * 0.6 + 0.01),
+        );
+        await expectTtAccessible(tester);
+      });
+
+      testApp("2x text: a photo that can't be shown, ${brightness.name}", (
+        tester,
+      ) async {
+        final goa = await real(tester, () => reels.create('Goa'));
+        final [photo] = await real(
+          tester,
+          () => putPhotosInReel(h, goa.id, [reelPhoto(2)]),
+        );
+
+        await open(tester, goa.id, photo, textScale: 2, brightness: brightness);
+
+        expect(tester.takeException(), isNull);
+        expect(find.text("This photo can't be shown"), findsOneWidget);
+        expect(find.text('Remove from reel'), findsOneWidget);
+        await expectTtAccessible(tester);
+      });
+    }
   });
 
   group('remove', () {

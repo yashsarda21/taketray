@@ -116,6 +116,13 @@ abstract interface class MediaBridge {
   /// JPEG bytes of a picked video, or null when it is gone or unreadable.
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx);
 
+  /// The viewer's still of a photo (D-201): the picture at content address
+  /// [uri], decoded by Android with its EXIF orientation applied and scaled
+  /// down (never up) so its longer side is at most [maxSidePx], as JPEG
+  /// bytes. Null when [uri] is not a content address, the photo is gone, its
+  /// grant is lost or it cannot be decoded; any other failure throws.
+  Future<Uint8List?> photoStill(String uri, int maxSidePx);
+
   /// The subset of [uris] that can still be read, in the order given. Only a
   /// refused read or a missing row means gone. A failed call throws (any other
   /// error, and a provider that gives no cursor, code `no-cursor`): a caller
@@ -286,6 +293,10 @@ class PigeonMediaBridge implements MediaBridge {
   @override
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) =>
       _api.thumbnailOfUri(uri, widthPx, heightPx);
+
+  @override
+  Future<Uint8List?> photoStill(String uri, int maxSidePx) =>
+      _api.photoStill(uri, maxSidePx);
 
   @override
   Future<List<String>> readableUris(List<String> uris) =>

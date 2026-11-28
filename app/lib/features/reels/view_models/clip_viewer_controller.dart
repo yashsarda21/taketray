@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
+import 'package:logging/logging.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:taketray/core/guarded.dart';
 import 'package:taketray/data/repositories/clips_repository.dart';
@@ -9,8 +10,12 @@ import 'package:taketray/domain/models/clip_local_time.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/models/reel_clip.dart';
 import 'package:taketray/features/reels/view_models/reel_detail_controller.dart';
+import 'package:taketray/platform/media_bridge.dart';
 
 part 'clip_viewer_controller.g.dart';
+
+// Error types only, never an address, a name or a message (D-10).
+final Logger _log = Logger('clipViewer');
 
 /// What the clip viewer shows (D-89).
 @immutable
@@ -76,6 +81,28 @@ Stream<Set<int>> _reelIdsOf(Ref ref, int clipId) =>
 @riverpod
 Stream<List<Reel>> _allReels(Ref ref) =>
     ref.watch(reelsRepositoryProvider).watchAll();
+
+/// The still of the photo at content address [uri] for the viewer's photo
+/// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+/// orientation, at most [maxSidePx] on the longer side (the screen's longest
+/// side in pixels), so a large photo is never decoded at its full size.
+///
+/// Null when the photo cannot be read (gone, its grant lost, not a picture);
+/// any other failure is an error, logged by its type only. Either way the
+/// page says the photo can't be shown.
+///
+/// Auto-disposes when its page stops showing it, which lets go of the bytes,
+/// and never retries: a photo that failed once would be decoded again and
+/// again.
+@Riverpod(retry: noRetry)
+Future<Uint8List?> photoStill(Ref ref, String uri, int maxSidePx) async {
+  try {
+    return await ref.watch(mediaBridgeProvider).photoStill(uri, maxSidePx);
+  } on Object catch (error) {
+    _log.warning('The photo still failed: ${error.runtimeType}');
+    rethrow;
+  }
+}
 
 /// The clip viewer of reel [reelId], opened on clip [clipId] (D-89).
 ///

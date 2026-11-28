@@ -205,6 +205,144 @@ final class _AllReelsProvider
 
 String _$_allReelsHash() => r'1a4c3242fac725609744ecd4df8f81ee167f5b33';
 
+/// The still of the photo at content address [uri] for the viewer's photo
+/// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+/// orientation, at most [maxSidePx] on the longer side (the screen's longest
+/// side in pixels), so a large photo is never decoded at its full size.
+///
+/// Null when the photo cannot be read (gone, its grant lost, not a picture);
+/// any other failure is an error, logged by its type only. Either way the
+/// page says the photo can't be shown.
+///
+/// Auto-disposes when its page stops showing it, which lets go of the bytes,
+/// and never retries: a photo that failed once would be decoded again and
+/// again.
+
+@ProviderFor(photoStill)
+final photoStillProvider = PhotoStillFamily._();
+
+/// The still of the photo at content address [uri] for the viewer's photo
+/// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+/// orientation, at most [maxSidePx] on the longer side (the screen's longest
+/// side in pixels), so a large photo is never decoded at its full size.
+///
+/// Null when the photo cannot be read (gone, its grant lost, not a picture);
+/// any other failure is an error, logged by its type only. Either way the
+/// page says the photo can't be shown.
+///
+/// Auto-disposes when its page stops showing it, which lets go of the bytes,
+/// and never retries: a photo that failed once would be decoded again and
+/// again.
+
+final class PhotoStillProvider
+    extends
+        $FunctionalProvider<
+          AsyncValue<Uint8List?>,
+          Uint8List?,
+          FutureOr<Uint8List?>
+        >
+    with $FutureModifier<Uint8List?>, $FutureProvider<Uint8List?> {
+  /// The still of the photo at content address [uri] for the viewer's photo
+  /// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+  /// orientation, at most [maxSidePx] on the longer side (the screen's longest
+  /// side in pixels), so a large photo is never decoded at its full size.
+  ///
+  /// Null when the photo cannot be read (gone, its grant lost, not a picture);
+  /// any other failure is an error, logged by its type only. Either way the
+  /// page says the photo can't be shown.
+  ///
+  /// Auto-disposes when its page stops showing it, which lets go of the bytes,
+  /// and never retries: a photo that failed once would be decoded again and
+  /// again.
+  PhotoStillProvider._({
+    required PhotoStillFamily super.from,
+    required (String, int) super.argument,
+  }) : super(
+         retry: noRetry,
+         name: r'photoStillProvider',
+         isAutoDispose: true,
+         dependencies: null,
+         $allTransitiveDependencies: null,
+       );
+
+  @override
+  String debugGetCreateSourceHash() => _$photoStillHash();
+
+  @override
+  String toString() {
+    return r'photoStillProvider'
+        ''
+        '$argument';
+  }
+
+  @$internal
+  @override
+  $FutureProviderElement<Uint8List?> $createElement($ProviderPointer pointer) =>
+      $FutureProviderElement(pointer);
+
+  @override
+  FutureOr<Uint8List?> create(Ref ref) {
+    final argument = this.argument as (String, int);
+    return photoStill(ref, argument.$1, argument.$2);
+  }
+
+  @override
+  bool operator ==(Object other) {
+    return other is PhotoStillProvider && other.argument == argument;
+  }
+
+  @override
+  int get hashCode {
+    return argument.hashCode;
+  }
+}
+
+String _$photoStillHash() => r'358901050c7650df95f235323197d7a754451807';
+
+/// The still of the photo at content address [uri] for the viewer's photo
+/// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+/// orientation, at most [maxSidePx] on the longer side (the screen's longest
+/// side in pixels), so a large photo is never decoded at its full size.
+///
+/// Null when the photo cannot be read (gone, its grant lost, not a picture);
+/// any other failure is an error, logged by its type only. Either way the
+/// page says the photo can't be shown.
+///
+/// Auto-disposes when its page stops showing it, which lets go of the bytes,
+/// and never retries: a photo that failed once would be decoded again and
+/// again.
+
+final class PhotoStillFamily extends $Family
+    with $FunctionalFamilyOverride<FutureOr<Uint8List?>, (String, int)> {
+  PhotoStillFamily._()
+    : super(
+        retry: noRetry,
+        name: r'photoStillProvider',
+        dependencies: null,
+        $allTransitiveDependencies: null,
+        isAutoDispose: true,
+      );
+
+  /// The still of the photo at content address [uri] for the viewer's photo
+  /// page (D-201): JPEG bytes that Android decoded with the photo's EXIF
+  /// orientation, at most [maxSidePx] on the longer side (the screen's longest
+  /// side in pixels), so a large photo is never decoded at its full size.
+  ///
+  /// Null when the photo cannot be read (gone, its grant lost, not a picture);
+  /// any other failure is an error, logged by its type only. Either way the
+  /// page says the photo can't be shown.
+  ///
+  /// Auto-disposes when its page stops showing it, which lets go of the bytes,
+  /// and never retries: a photo that failed once would be decoded again and
+  /// again.
+
+  PhotoStillProvider call(String uri, int maxSidePx) =>
+      PhotoStillProvider._(argument: (uri, maxSidePx), from: this);
+
+  @override
+  String toString() => r'photoStillProvider';
+}
+
 /// The clip viewer of reel [reelId], opened on clip [clipId] (D-89).
 ///
 /// - **The pager is the reel's clips that are not missing**, in the reel's

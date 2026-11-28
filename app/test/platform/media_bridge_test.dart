@@ -177,6 +177,14 @@ class _StubApi extends MediaHostApi {
     return uriThumbnailBytes;
   }
 
+  Uint8List? stillBytes;
+
+  @override
+  Future<Uint8List?> photoStill(String uri, int maxSidePx) async {
+    _record('photoStill', [uri, maxSidePx]);
+    return stillBytes;
+  }
+
   @override
   Future<List<String>> readableUris(List<String> uris) async {
     _record('readableUris', [uris]);
@@ -554,6 +562,24 @@ void main() {
         expect(await bridge.thumbnailOfUri('content://x/1', 1, 1), isNull);
       },
     );
+
+    test('photoStill passes uri and size through', () async {
+      api.stillBytes = Uint8List.fromList([0xff, 0xd8, 0xff, 0xe0]);
+      expect(await bridge.photoStill('content://x/photo-1', 2400), [
+        0xff,
+        0xd8,
+        0xff,
+        0xe0,
+      ]);
+      expect(api.calls.last, 'photoStill');
+      expect(api.args, ['content://x/photo-1', 2400]);
+      api.stillBytes = null;
+      expect(await bridge.photoStill('content://x/photo-2', 1), isNull);
+      expect(api.args, ['content://x/photo-2', 1]);
+      final error = PlatformException(code: 'native-error', message: 'x');
+      api.error = error;
+      expect(bridge.photoStill('a', 1), throwsA(same(error)));
+    });
 
     test(
       'readableUris, persistedUris and releaseUris pass lists through',

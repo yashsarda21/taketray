@@ -7,6 +7,7 @@ import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +16,7 @@ import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import android.provider.Settings
 import android.util.Log
+import android.util.Size
 import app.taketray.bridge.PendingPermission
 import app.taketray.bridge.failureMessage
 import app.taketray.bridge.guardedOnIo
@@ -28,7 +30,7 @@ import java.util.TimeZone
  *
  * Threading: Pigeon runs every handler on the main thread; the `suspend`
  * (@async) ones that read MediaStore (volumes, the row queries, folders,
- * thumbnails) and the zone offsets batch switch to Dispatchers.IO, and
+ * thumbnails, a photo's still) and the zone offsets batch switch to Dispatchers.IO, and
  * Pigeon replies on the main thread when they return. [requestAccess] stays on the main thread, where Android
  * delivers the permission result; the quick synchronous ones (permission
  * state, zone list, intents) run on the main thread.
@@ -43,6 +45,7 @@ class MediaHostApiImpl(
     private val offsetsOf: (List<String>, List<Long>) -> List<Long?> = ZoneOffsets::offsetsMs,
     private val extensionLevelOf: () -> Int = ::readExtensionLevel,
     private val pickLimitOf: () -> Int = PickedVideos::systemLimit,
+    stillDecoderOf: (ContentResolver) -> (Uri, (Size) -> Size) -> Bitmap = PhotoStills::imageDecoder,
     private val askPermissions: (Activity, Array<String>, Int) -> Unit = { host, permissions, code ->
         host.requestPermissions(permissions, code)
     },
@@ -62,6 +65,9 @@ class MediaHostApiImpl(
     private val picks = PickedVideos()
 
     private val grants: UriGrants = ResolverGrants(resolver)
+
+    /** Decodes a photo's still (D-201); tests pass a recording one. */
+    private val stillDecoder = stillDecoderOf(resolver)
 
     private val sdkInt get() = Build.VERSION.SDK_INT
 
@@ -302,6 +308,19 @@ class MediaHostApiImpl(
         widthPx: Long,
         heightPx: Long,
     ): ByteArray? = io("thumbnailOfUri") { Thumbnails.loadFromUri(resolver, uri, widthPx.toPixels(), heightPx.toPixels()) }
+
+    /**
+     * The viewer's still of a photo (D-201), off the main thread. A size
+     * above Int's range is capped; 0 or less is native-error. Nothing is
+     * logged here but the failure's class (D-10).
+     */
+    override suspend fun photoStill(
+        uri: String,
+        maxSidePx: Long,
+    ): ByteArray? =
+        io("photoStill") {
+            PhotoStills.decode(resolver, uri, maxSidePx.coerceIn(0, Int.MAX_VALUE.toLong()).toInt(), stillDecoder)
+        }
 
     override suspend fun readableUris(uris: List<String>): List<String> = io("readableUris") { PickedVideos.readable(resolver, uris) }
 

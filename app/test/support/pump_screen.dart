@@ -120,7 +120,8 @@ GoRouter routerOf(WidgetTester tester) =>
 /// [toTagRouteMarker] and the Settings tab [settingsRouteMarker].
 ///
 /// [textScale] and [brightness] are applied to the whole app; [size] is the
-/// logical size (the pixel ratio is 1). The phone's "remove animations" is on
+/// logical size, at [devicePixelRatio] (1 unless a test is about pixels). The
+/// phone's "remove animations" is on
 /// unless [animations] is true: the record dot of the Shooting mode card and
 /// the skeleton tiles loop for ever, and `pumpAndSettle` would never settle.
 /// [use24Hour] is the phone's 24-hour setting. [locale] is the phone's
@@ -138,6 +139,7 @@ Future<ProviderContainer> pumpScreen(
   Brightness brightness = Brightness.light,
   double textScale = 1,
   Size size = const Size(360, 800),
+  double devicePixelRatio = 1,
   bool settle = true,
   bool animations = false,
   bool use24Hour = false,
@@ -147,8 +149,8 @@ Future<ProviderContainer> pumpScreen(
   bool copyScreens = false,
   bool inShell = false,
 }) async {
-  tester.view.physicalSize = size;
-  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size * devicePixelRatio;
+  tester.view.devicePixelRatio = devicePixelRatio;
   addTearDown(tester.view.reset);
   final container = ProviderContainer(
     overrides: [

@@ -48,7 +48,8 @@ MediaVideo fakeVideo({
 ///   its videos), [folders], [thumbnails] (keyed by `(volume, id)`),
 ///   [currentZone], [zoneRules], [zoneChanges], [cameraOpens], and for the
 ///   picker [picked], [pickedPhotos], [pickerBusy], [readable], [persisted],
-///   [uriThumbnails].
+///   [uriThumbnails], and for the viewer's photo page [stills] (its
+///   requests are in [stillRequests]).
 /// - `zoneOffsetsMs` answers from the fixed table [zoneRules] (null for a zone
 ///   not in it) and logs each request in [zoneOffsetRequests].
 /// - [onRequestAccess] gives the result of `requestAccess`, which also becomes
@@ -133,6 +134,14 @@ class FakeMediaBridge implements MediaBridge {
   final List<List<String>> released = [];
 
   final Map<String, Uint8List?> uriThumbnails = {};
+
+  /// What `photoStill` answers for an address: null (no still) when it is
+  /// not here.
+  final Map<String, Uint8List?> stills = {};
+
+  /// The `(uri, maxSidePx)` of every `photoStill` call, in order, a failed
+  /// one included.
+  final List<(String, int)> stillRequests = [];
 
   final List<String> calls = [];
 
@@ -357,6 +366,12 @@ class FakeMediaBridge implements MediaBridge {
   @override
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) =>
       _call('thumbnailOfUri', () => uriThumbnails[uri]);
+
+  @override
+  Future<Uint8List?> photoStill(String uri, int maxSidePx) {
+    stillRequests.add((uri, maxSidePx));
+    return _call('photoStill', () => stills[uri]);
+  }
 
   @override
   Future<List<String>> readableUris(List<String> uris) => _call(

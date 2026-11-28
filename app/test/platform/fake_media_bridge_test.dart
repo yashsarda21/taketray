@@ -507,5 +507,22 @@ void main() {
       expect(await fake.thumbnailOfUri('content://x/1', 10, 10), [1, 2]);
       expect(await fake.thumbnailOfUri('content://x/2', 10, 10), isNull);
     });
+
+    test('photoStill answers from the settable map and logs every request, '
+        'a failed one too', () async {
+      fake.stills['content://x/1'] = Uint8List.fromList([3, 4]);
+      expect(await fake.photoStill('content://x/1', 2400), [3, 4]);
+      expect(await fake.photoStill('content://x/2', 800), isNull);
+      fake.failNext('photoStill');
+      await expectLater(
+        fake.photoStill('content://x/1', 1),
+        throwsA(isA<PlatformException>()),
+      );
+      expect(fake.stillRequests, [
+        ('content://x/1', 2400),
+        ('content://x/2', 800),
+        ('content://x/1', 1),
+      ]);
+    });
   });
 }
