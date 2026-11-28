@@ -58,7 +58,7 @@ class MediaHostApiImpl(
     /** The one permission request in flight; touched on the main thread only. */
     private val permission = PendingPermission(PERMISSION_REQUEST_CODE)
 
-    /** The one photo-picker request in flight; touched on the main thread only. */
+    /** The one photo-picker request in flight, for videos or photos; touched on the main thread only. */
     private val picks = PickedVideos()
 
     private val grants: UriGrants = ResolverGrants(resolver)
@@ -250,25 +250,39 @@ class MediaHostApiImpl(
 
     // ---- The photo picker and saved addresses (D-112) ----
 
-    override suspend fun pickVideos(): List<PickedVideoMsg> {
-        val host = activity ?: throw FlutterError("no-activity", "pickVideos needs the activity")
+    override suspend fun pickVideos(): List<PickedVideoMsg> = pick("pickVideos", photos = false)
+
+    /** Add photos (D-199): [pickVideos] for photos, in the same slot, so either one while the other is open is "busy". */
+    override suspend fun pickPhotos(): List<PickedVideoMsg> = pick("pickPhotos", photos = true)
+
+    /**
+     * Opens the picker for videos or [photos] in the one slot ([picks]) and
+     * describes what was picked off the main thread. Logs counts only (D-10).
+     */
+    private suspend fun pick(
+        method: String,
+        photos: Boolean,
+    ): List<PickedVideoMsg> {
+        val kind = if (photos) "photos" else "videos"
+        val host = activity ?: throw FlutterError("no-activity", "$method needs the activity")
         if (picks.isWaiting) throw FlutterError("busy", "a picker is already open")
+        val type = if (photos) PickedVideos.PHOTO_TYPE else PickedVideos.VIDEO_TYPE
         val uris =
-            guarded("pickVideos") {
+            guarded(method) {
                 picks.await {
                     try {
                         host.startActivityForResult(
-                            PickedVideos.intent(sdkInt, extensionLevelOf(), pickLimitOf),
+                            PickedVideos.intent(sdkInt, extensionLevelOf(), pickLimitOf, type),
                             PickedVideos.REQUEST_CODE,
                         )
                     } catch (e: ActivityNotFoundException) {
-                        throw FlutterError("no-picker", "no app can pick videos")
+                        throw FlutterError("no-picker", "no app can pick $kind")
                     }
                 }
             }
         if (uris.isEmpty()) return emptyList()
-        val picked = io("pickVideos") { PickedVideos.describe(resolver, grants, uris) }
-        Log.i(LOG_TAG, "picked ${picked.size} videos, ${picked.count { it.persisted }} kept")
+        val picked = io(method) { PickedVideos.describe(resolver, grants, uris, photos) }
+        Log.i(LOG_TAG, "picked ${picked.size} $kind, ${picked.count { it.persisted }} kept")
         return picked
     }
 

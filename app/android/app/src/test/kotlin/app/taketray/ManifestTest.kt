@@ -181,6 +181,56 @@ class ManifestTest {
         assertEquals(listOf(Triple("cache-path", "shared", "shared/")), paths)
     }
 
+    // ------------------------------------------------------------ no photo permission (D-199)
+
+    /**
+     * Every `<uses-permission>` and `<uses-permission-sdk-23>` of the merged
+     * manifest: its name to its `maxSdkVersion` (null when it has none).
+     * Read from the XML because `PackageInfo` does not give `maxSdkVersion`.
+     */
+    private fun declaredPermissions(): Map<String, String?> {
+        val doc = mergedManifest()
+        return buildMap {
+            for (tag in listOf("uses-permission", "uses-permission-sdk-23")) {
+                val nodes = doc.getElementsByTagName(tag)
+                for (i in 0 until nodes.length) {
+                    val permission = nodes.item(i) as Element
+                    put(permission.android("name").orEmpty(), permission.android("maxSdkVersion"))
+                }
+            }
+        }
+    }
+
+    /** A permission that reads or manages shared media or storage. */
+    private fun isMediaPermission(name: String): Boolean =
+        name.startsWith("android.permission.") &&
+            ("READ_MEDIA_" in name || "EXTERNAL_STORAGE" in name || name.endsWith(".ACCESS_MEDIA_LOCATION"))
+
+    @Test
+    fun `no photo permission - the media permissions are exactly READ_EXTERNAL_STORAGE max 32, READ_MEDIA_VIDEO and READ_MEDIA_VISUAL_USER_SELECTED`() {
+        // Photos come in through Android's photo picker only, which needs no
+        // permission (Phase 13 anti-goal): the media list is the video flow's
+        // (D-68), and tool/check_release_permissions checks the same list on
+        // the release APK.
+        val media = declaredPermissions().filterKeys(::isMediaPermission)
+        assertEquals(
+            mapOf(
+                "android.permission.READ_EXTERNAL_STORAGE" to "32",
+                "android.permission.READ_MEDIA_VIDEO" to null,
+                "android.permission.READ_MEDIA_VISUAL_USER_SELECTED" to null,
+            ),
+            media,
+        )
+    }
+
+    @Test
+    fun `READ_MEDIA_IMAGES is never declared`() {
+        val images = "android.permission.READ_MEDIA_IMAGES"
+        assertFalse("$images is in the merged manifest", images in declaredPermissions())
+        val requested = pm.getPackageInfo(app.packageName, PackageManager.GET_PERMISSIONS).requestedPermissions.orEmpty()
+        assertFalse("$images is requested", images in requested)
+    }
+
     // ------------------------------------------------------------ the share screen (D-163)
 
     private fun Element.android(name: String): String? =

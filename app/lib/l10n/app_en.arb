@@ -2178,6 +2178,35 @@
       }
     }
   },
+  "addPhotosTitle": "Add photos",
+  "@addPhotosTitle": {
+    "description": "Name of the button in a reel page's top bar, next to Add videos, that opens Android's photo picker for photos (read by the screen reader; the button shows an icon only)."
+  },
+  "addPhotosAddedSnack": "{count, plural, one{1 photo added to {reel}} other{{count} photos added to {reel}}}",
+  "@addPhotosAddedSnack": {
+    "description": "Snack after photos were added to a reel with Add photos, with an Undo button. {reel} is the reel's name.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "addPhotosNotKept": "{count, plural, one{Couldn't add 1 photo.} other{Couldn't add {count} photos.}}",
+  "@addPhotosNotKept": {
+    "description": "Line of the snack after Add photos when some picked photos could not be added (Android would not keep TakeTray's permission to read them). It follows what was added, or Already added.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addPhotosFailed": "Couldn't add photos. Try again.",
+  "@addPhotosFailed": {
+    "description": "Snack when the photo picker or adding the picked photos failed."
+  },
   "manualPickTitle": "Pick videos yourself",
   "@manualPickTitle": {
     "description": "Title of the sheet that Add videos opens when TakeTray can see only some of the user's videos (Manual mode)."

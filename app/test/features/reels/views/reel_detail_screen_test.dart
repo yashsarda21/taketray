@@ -1128,6 +1128,140 @@ void main() {
     });
   });
 
+  group('Add photos (Phase 13, D-199)', () {
+    Finder iconButton(String label) => find.byWidgetPredicate(
+      (w) => w is TtIconButton && w.semanticLabel == label,
+    );
+
+    final addPhotos = iconButton('Add photos');
+
+    /// A photo the picker hands over, [n] being unique to it.
+    PickedVideo photo(int n) => PickedVideo(
+      uri: 'content://media/picker/0/x/media/photo-$n',
+      sizeBytes: 3000 + n,
+      displayName: 'IMG-$n.jpg',
+      persisted: true,
+      dateTakenMs: DateTime.utc(2026, 10, 28, 9, n).millisecondsSinceEpoch,
+      width: 4000,
+      height: 3000,
+      mimeType: 'image/jpeg',
+    );
+
+    testApp('Add photos sits after Add videos, read "Add photos", 48 dp', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      final goa = await newReel(tester, 'Goa');
+      await open(tester, goa.id);
+
+      expect(addPhotos, findsOneWidget);
+      final button = tester.widget<TtIconButton>(addPhotos);
+      expect(button.icon, Symbols.add_photo_alternate_rounded);
+      expect(button.style, TtIconButtonStyle.circle);
+      final videos = tester.getCenter(iconButton('Add videos'));
+      final photos = tester.getCenter(addPhotos);
+      final more = tester.getCenter(iconButton('More options'));
+      expect(videos.dy, photos.dy);
+      expect(videos.dx, lessThan(photos.dx));
+      expect(photos.dx, lessThan(more.dx));
+      final size = tester.getSize(addPhotos);
+      expect(size.width, greaterThanOrEqualTo(48));
+      expect(size.height, greaterThanOrEqualTo(48));
+      expect(find.bySemanticsLabel('Add photos'), findsOneWidget);
+      // R13-11: the top bar is the one way in, never the empty state, and
+      // the button has no words on screen.
+      expect(find.byType(TtEmptyState), findsOneWidget);
+      expect(find.text('Add photos'), findsNothing);
+      semantics.dispose();
+    });
+
+    testApp('Add photos opens one picker however fast the taps', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await open(tester, goa.id);
+      h.bridge.pickedPhotos = [photo(1)];
+      final gate = h.bridge.gate('pickPhotos');
+
+      await tester.tap(addPhotos);
+      await tester.tap(addPhotos);
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 2));
+      await tester.tap(addPhotos);
+      await tester.pump();
+      gate.complete();
+      await settleApp(tester);
+
+      expect(h.bridge.pickPhotosCalls, 1);
+      expect(h.bridge.calls, isNot(contains('pickVideos')));
+      expect(find.text('1 photo added to Goa'), findsOneWidget);
+      final inReel = await real(
+        tester,
+        () => clips.watchReelClips(goa.id).first,
+      );
+      expect([for (final c in inReel) c.clip.pickerUri], [photo(1).uri]);
+      expect(inReel.single.clip.isPhoto, isTrue);
+
+      // Once that pick is over, the next tap opens the picker again.
+      h.bridge.pickedPhotos = [];
+      await tester.tap(addPhotos);
+      await settleApp(tester);
+      expect(h.bridge.pickPhotosCalls, 2);
+    });
+
+    testApp('no Add photos while choosing, or before the reel is read', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+
+      await open(tester, goa.id, settle: false);
+      expect(find.byType(TtReelHeader<ReelStatus>), findsNothing);
+      expect(addPhotos, findsNothing);
+      expect(iconButton('Add videos'), findsNothing);
+
+      await settleApp(tester);
+      expect(addPhotos, findsOneWidget);
+
+      await tester.longPress(find.byType(TtClipTile).first);
+      await tester.pumpAndSettle();
+      expect(find.text('1 selected'), findsOneWidget);
+      expect(addPhotos, findsNothing);
+      expect(iconButton('Add videos'), findsNothing);
+    });
+
+    testApp('2x text at 360: the top bar has Back, Add videos, Add photos and '
+        '⋮, no overflow', (tester) async {
+      final goa = await newReel(tester, 'Summer road trip with family');
+      await open(tester, goa.id, textScale: 2);
+
+      expect(tester.takeException(), isNull);
+      final order = [
+        for (final label in [
+          'Back',
+          'Add videos',
+          'Add photos',
+          'More options',
+        ])
+          tester.getRect(iconButton(label)),
+      ];
+      for (final rect in order) {
+        expect(rect.left, greaterThanOrEqualTo(0));
+        expect(rect.right, lessThanOrEqualTo(360));
+        expect(rect.width, greaterThanOrEqualTo(48));
+        expect(rect.height, greaterThanOrEqualTo(48));
+      }
+      for (var i = 1; i < order.length; i++) {
+        expect(
+          order[i].left,
+          greaterThanOrEqualTo(order[i - 1].right),
+          reason: 'button $i overlaps the one before it',
+        );
+      }
+      await expectTtAccessible(tester);
+    });
+  });
+
   group('2x text at 360 dp', () {
     for (final brightness in Brightness.values) {
       testApp('2x text at 360 dp, ${brightness.name}', (tester) async {

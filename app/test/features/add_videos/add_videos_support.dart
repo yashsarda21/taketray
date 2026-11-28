@@ -125,6 +125,23 @@ PickedVideo pickedVideo(
   mimeType: 'video/mp4',
 );
 
+/// A photo the photo picker hands over to Add photos, [n] being unique to it.
+PickedVideo pickedPhoto(int n, {bool persisted = true}) => PickedVideo(
+  uri:
+      'content://media/picker/0/com.android.providers.media.photopicker/'
+      'media/photo-$n',
+  sizeBytes: 3000000 + n,
+  displayName: 'IMG-$n.jpg',
+  persisted: persisted,
+  dateTakenMs: addNow
+      .subtract(const Duration(hours: 2))
+      .add(Duration(minutes: n))
+      .millisecondsSinceEpoch,
+  width: 4000,
+  height: 3000,
+  mimeType: 'image/jpeg',
+);
+
 /// A friend's WhatsApp folder.
 const whatsAppFolder =
     'Android/media/com.whatsapp/WhatsApp/Media/WhatsApp Video/';
@@ -156,6 +173,16 @@ class CountingAddVideos extends AddVideosService {
 
   /// The next `addPicked` throws.
   bool failNextPicked = false;
+
+  /// The photos and the reel of every `addPhotos` call, in order.
+  final List<(List<PickedVideo>, int)> photoAdds = [];
+
+  /// The next `addPhotos` throws.
+  bool failNextPhotos = false;
+
+  /// Runs after the next `addPhotos` has finished, before it returns (a test
+  /// deletes the reel there, as a delete right after the add would).
+  Future<void> Function()? afterNextPhotos;
 
   /// Holds the next add until it completes.
   Completer<void>? gate;
@@ -204,6 +231,20 @@ class CountingAddVideos extends AddVideosService {
       throw StateError('the picked add failed on purpose');
     }
     return await super.addPicked(videos, target);
+  }
+
+  @override
+  Future<AddResult> addPhotos(List<PickedVideo> photos, int reelId) async {
+    photoAdds.add((List.of(photos), reelId));
+    if (failNextPhotos) {
+      failNextPhotos = false;
+      throw StateError('the photo add failed on purpose');
+    }
+    final result = await super.addPhotos(photos, reelId);
+    final after = afterNextPhotos;
+    afterNextPhotos = null;
+    if (after != null) await after();
+    return result;
   }
 }
 

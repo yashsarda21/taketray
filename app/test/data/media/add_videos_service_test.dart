@@ -80,6 +80,30 @@ PickedVideo pick(
   mimeType: mimeType,
 );
 
+/// A photo the photo picker returned for Add photos (Phase 13, D-199).
+PickedVideo photo(
+  String uri, {
+  bool persisted = true,
+  int sizeBytes = 3000000,
+  String displayName = 'IMG.jpg',
+  int? dateTakenMs,
+  int? dateModifiedMs,
+  bool noDate = false,
+  int? width = 4000,
+  int? height = 3000,
+  String? mimeType = 'image/jpeg',
+}) => PickedVideo(
+  uri: uri,
+  sizeBytes: sizeBytes,
+  displayName: displayName,
+  persisted: persisted,
+  dateTakenMs: noDate ? null : (dateTakenMs ?? shotTime.millisecondsSinceEpoch),
+  dateModifiedMs: dateModifiedMs,
+  width: width,
+  height: height,
+  mimeType: mimeType,
+);
+
 const AddTarget toTag = AddToToTag();
 
 late MediaHarness h;
@@ -1277,6 +1301,271 @@ void main() {
       expect(
         [for (final c in await h.allClips()) c.pickerUri],
         ['content://keep'],
+      );
+    });
+  });
+
+  group('addPhotos (Phase 13, D-199)', () {
+    /// The picker addresses of reel [reelId]'s clips, sorted.
+    Future<List<String?>> reelUris(int reelId) async => [
+      for (final c in await h.clips.watchReelClips(reelId).first)
+        c.clip.pickerUri,
+    ]..sort((a, b) => a!.compareTo(b!));
+
+    test('addPhotos: 3 picked → 3 photos in the reel, no inbox row, each '
+        'image/… with durationMs 0', () async {
+      h.bridge.currentZone = 'Europe/London';
+      await h.zones.recordAll([
+        ZoneEntry(at: DateTime.utc(2026, 5, 2), zoneId: 'Asia/Kolkata'),
+      ]);
+      final goa = await reel('Goa');
+
+      final r = await service.addPhotos([
+        // The default type is image/jpeg.
+        photo('content://p/1', displayName: 'a.jpg'),
+        photo('content://p/2', mimeType: 'image/heic', sizeBytes: 7),
+        photo('content://p/3', mimeType: 'image/png', width: null),
+      ], goa);
+
+      expectCounts(r, added: 3);
+      expect(await inbox(), isEmpty);
+      expect(await reelUris(goa), [
+        'content://p/1',
+        'content://p/2',
+        'content://p/3',
+      ]);
+      final clips = [
+        for (final u in ['content://p/1', 'content://p/2', 'content://p/3'])
+          await pickedClip(u),
+      ];
+      for (final c in clips) {
+        expect(c.isPhoto, isTrue);
+        expect(c.source, ClipSource.picker);
+        expect((c.volumeName, c.mediaStoreId), (null, null));
+        expect(c.fingerprint.durationMs, 0);
+        expect(c.fingerprint.dateTakenUtc, shotTime);
+        expect(c.timeZoneId, 'Asia/Kolkata');
+        expect(await reelIdsOf(c.id), {goa});
+      }
+      expect(
+        [for (final c in clips) c.mimeType],
+        ['image/jpeg', 'image/heic', 'image/png'],
+      );
+      expect(clips[0].fingerprint.displayName, 'a.jpg');
+      expect(clips[1].fingerprint.sizeBytes, 7);
+      expect((clips[0].width, clips[0].height), (4000, 3000));
+      expect((clips[2].width, clips[2].height), (0, 3000));
+    });
+
+    test(
+      'the same address again in that reel → alreadyThere 1, added 0',
+      () async {
+        final goa = await reel('Goa');
+        expectCounts(
+          await service.addPhotos([photo('content://p/1')], goa),
+          added: 1,
+        );
+
+        final again = await service.addPhotos([photo('content://p/1')], goa);
+
+        expectCounts(again, alreadyThere: 1);
+        expect(await h.allClips(), hasLength(1));
+        expect(await links(), hasLength(1));
+      },
+    );
+
+    test('a photo already in another reel is linked, not copied: one row, '
+        'two reels', () async {
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      await service.addPhotos([photo('content://p/1')], london);
+
+      final r = await service.addPhotos([photo('content://p/1')], goa);
+
+      expectCounts(r, added: 1);
+      expect(await h.allClips(), hasLength(1));
+      expect(await reelIdsOf((await pickedClip('content://p/1')).id), {
+        goa,
+        london,
+      });
+      expect(await inbox(), isEmpty);
+    });
+
+    test('a photo not persisted → notKept, nothing written for it', () async {
+      final goa = await reel('Goa');
+
+      final r = await service.addPhotos([
+        photo('content://p/1', persisted: false),
+        photo('content://p/2'),
+      ], goa);
+
+      expectCounts(r, added: 1, notKept: 1);
+      expect(
+        [for (final c in await h.allClips()) c.pickerUri],
+        ['content://p/2'],
+      );
+
+      // None kept: nothing at all is written, and nothing is said as added.
+      final before = await snapshot();
+      final none = await service.addPhotos([
+        photo('content://p/3', persisted: false),
+        photo('content://p/4', persisted: false),
+      ], goa);
+      expectCounts(none, notKept: 2);
+      expect(await snapshot(), before);
+    });
+
+    test('a photo pick whose provider gives no type adds a photo', () async {
+      final goa = await reel('Goa');
+
+      final r = await service.addPhotos([
+        photo('content://p/1', mimeType: null),
+        photo('content://p/2', mimeType: 'application/octet-stream'),
+        photo('content://p/3', mimeType: 'video/mp4'),
+      ], goa);
+
+      expectCounts(r, added: 3);
+      for (final u in ['content://p/1', 'content://p/2', 'content://p/3']) {
+        final c = await pickedClip(u);
+        expect(c.mimeType, 'image/*', reason: u);
+        expect(c.isPhoto, isTrue, reason: u);
+      }
+    });
+
+    test('no taken date: the modified date, and the zone where the phone was '
+        'then; neither: the time of the add', () async {
+      await h.zones.recordAll([
+        ZoneEntry(at: DateTime.utc(2026, 5, 2), zoneId: 'Asia/Kolkata'),
+      ]);
+      h.bridge.currentZone = 'Europe/London';
+      final goa = await reel('Goa');
+      final modified = DateTime.utc(2026, 5, 20, 7);
+
+      await service.addPhotos([
+        photo(
+          'content://p/1',
+          noDate: true,
+          dateModifiedMs: modified.millisecondsSinceEpoch,
+        ),
+        photo('content://p/2', noDate: true),
+      ], goa);
+
+      final a = await pickedClip('content://p/1');
+      expect(a.fingerprint.dateTakenUtc, modified);
+      expect(a.timeZoneId, 'Asia/Kolkata');
+      expect(
+        (await pickedClip('content://p/2')).fingerprint.dateTakenUtc,
+        h.clock.now(),
+      );
+    });
+
+    test('Undo removes exactly the photos this add brought in', () async {
+      final goa = await reel('Goa');
+      final london = await reel('London');
+      await service.addPhotos([photo('content://p/there')], goa);
+      await service.addPhotos([photo('content://p/london')], london);
+      await service.addPicked([pick('content://v/1')], AddToReel(goa));
+
+      final r = await service.addPhotos([
+        photo('content://p/there'),
+        photo('content://p/new1'),
+        photo('content://p/new2'),
+        photo('content://p/london'),
+      ], goa);
+      expectCounts(r, added: 3, alreadyThere: 1);
+
+      await service.undo(r);
+
+      expect(await reelUris(goa), ['content://p/there', 'content://v/1']);
+      expect(await reelUris(london), ['content://p/london']);
+      expect(
+        {for (final c in await h.allClips()) c.pickerUri},
+        {'content://p/there', 'content://p/london', 'content://v/1'},
+      );
+      // A second Undo changes nothing.
+      final after = await snapshot();
+      await service.undo(r);
+      expect(await snapshot(), after);
+    });
+
+    test('the reel is gone → StateError, nothing written', () async {
+      final goa = await reel('Goa');
+      await reels.delete(goa);
+      final before = await snapshot();
+
+      await expectLater(
+        service.addPhotos([photo('content://p/1')], goa),
+        throwsA(isA<StateError>()),
+      );
+      await expectLater(
+        service.addPhotos([photo('content://p/2')], 999),
+        throwsA(isA<StateError>()),
+      );
+      expect(await snapshot(), before);
+      expect(await h.allClips(), isEmpty);
+    });
+
+    test(
+      'one job on the media queue: it waits for the job ahead of it',
+      () async {
+        final goa = await reel('Goa');
+        final hold = Completer<void>();
+        unawaited(h.queue.run(() => hold.future));
+
+        var done = false;
+        final adding = service
+            .addPhotos([photo('content://p/1')], goa)
+            .whenComplete(() => done = true);
+        await settle();
+        expect(done, isFalse);
+        expect(await h.allClips(), isEmpty);
+
+        hold.complete();
+        expectCounts(await adding, added: 1);
+      },
+    );
+
+    test('the log has counts only: no address, name or type', () async {
+      final logs = captureLogs();
+      final goa = (await reels.create('SECRET-REEL')).id;
+
+      final r = await service.addPhotos([
+        photo(
+          'content://SECRET-URI/1',
+          displayName: 'SECRET-NAME.heic',
+          mimeType: 'image/heic',
+        ),
+        photo('content://SECRET-URI/2', persisted: false),
+      ], goa);
+      await service.addPhotos([
+        photo('content://SECRET-URI/3', persisted: false),
+      ], goa);
+      await service.undo(r);
+      await expectLater(
+        service.addPhotos([photo('content://SECRET-URI/4')], 999),
+        throwsStateError,
+      );
+
+      final text = logText(logs);
+      expect(text, isNot(contains('SECRET')));
+      expect(text, isNot(contains('content:')));
+      expect(text, isNot(contains('image/')));
+      expect(text, isNot(contains('heic')));
+      // The photo adds say so, with their counts.
+      final mine = [
+        for (final r in logs)
+          if (r.loggerName == 'addVideos') r.message,
+      ];
+      expect(
+        mine,
+        contains(
+          'Add (photos) to reel $goa: 1 added, 0 already there, '
+          '1 not kept',
+        ),
+      );
+      expect(
+        mine,
+        contains('Add (photos) to reel $goa: nothing to add, 1 not kept'),
       );
     });
   });

@@ -105,6 +105,14 @@ abstract interface class MediaBridge {
   /// `PlatformException` with code `busy` while a picker is already open.
   Future<List<PickedVideo>> pickVideos();
 
+  /// Add photos (D-199): Android's photo picker for photos only (any image
+  /// type, multiple), or its document picker where that is missing; empty
+  /// when cancelled. A photo's [PickedVideo.dateModifiedMs] is filled (it is
+  /// null for every video pick), and its width and height are as the photo is
+  /// seen. Videos and photos share one picker: `busy` while either is open,
+  /// and `host-gone` as for [pickVideos].
+  Future<List<PickedVideo>> pickPhotos();
+
   /// JPEG bytes of a picked video, or null when it is gone or unreadable.
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx);
 
@@ -267,18 +275,12 @@ class PigeonMediaBridge implements MediaBridge {
 
   @override
   Future<List<PickedVideo>> pickVideos() async => [
-    for (final p in await _api.pickVideos())
-      PickedVideo(
-        uri: p.uri,
-        sizeBytes: p.sizeBytes,
-        displayName: p.displayName,
-        persisted: p.persisted,
-        durationMs: p.durationMs,
-        dateTakenMs: p.dateTakenMs,
-        width: p.width,
-        height: p.height,
-        mimeType: p.mimeType,
-      ),
+    for (final p in await _api.pickVideos()) _picked(p, photo: false),
+  ];
+
+  @override
+  Future<List<PickedVideo>> pickPhotos() async => [
+    for (final p in await _api.pickPhotos()) _picked(p, photo: true),
   ];
 
   @override
@@ -295,6 +297,21 @@ class PigeonMediaBridge implements MediaBridge {
   @override
   Future<void> releaseUris(List<String> uris) => _api.releaseUris(uris);
 }
+
+/// A picked item as Dart keeps it. The modified date is read for a [photo]
+/// only (R13-3, D-199): a video pick never has one, whatever Kotlin sent.
+PickedVideo _picked(PickedVideoMsg p, {required bool photo}) => PickedVideo(
+  uri: p.uri,
+  sizeBytes: p.sizeBytes,
+  displayName: p.displayName,
+  persisted: p.persisted,
+  durationMs: p.durationMs,
+  dateTakenMs: p.dateTakenMs,
+  dateModifiedMs: photo ? p.dateModifiedMs : null,
+  width: p.width,
+  height: p.height,
+  mimeType: p.mimeType,
+);
 
 MediaAccess _access(AccessReportMsg msg) => MediaAccess(
   level: switch (msg.level) {

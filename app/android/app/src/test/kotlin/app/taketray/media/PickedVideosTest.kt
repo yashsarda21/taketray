@@ -8,6 +8,7 @@ import android.content.Intent
 import android.database.Cursor
 import android.database.MatrixCursor
 import android.net.Uri
+import android.provider.DocumentsContract.Document
 import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import androidx.test.core.app.ApplicationProvider
@@ -90,6 +91,53 @@ class PickedVideosTest {
     fun `the picker asks for the system's maximum number of videos`() {
         val intent = PickedVideos.intent(34, 0) { 37 }
         assertEquals(37, intent.getIntExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, -1))
+    }
+
+    @Test
+    fun `photo intent on 33 - ACTION_PICK_IMAGES, image star, the system max`() {
+        for (sdk in listOf(33, 34, 35, 36)) {
+            for (ext in listOf(0, 1, 2, 5)) {
+                val intent = PickedVideos.intent(sdk, ext, { 37 }, PickedVideos.PHOTO_TYPE)
+                assertEquals(MediaStore.ACTION_PICK_IMAGES, intent.action)
+                assertEquals("image/*", intent.type)
+                assertEquals(37, intent.getIntExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, -1))
+            }
+        }
+        // API 30 to 32 with the R extension 2 or more get the photo picker too, as for videos.
+        for (sdk in 30..32) {
+            val intent = PickedVideos.intent(sdk, 2, limit, PickedVideos.PHOTO_TYPE)
+            assertEquals(MediaStore.ACTION_PICK_IMAGES, intent.action)
+            assertEquals("image/*", intent.type)
+        }
+    }
+
+    @Test
+    fun `photo intent on 30 with extension 1 - OPEN_DOCUMENT, image star, multiple, persistable read`() {
+        val levels = (30..32).flatMap { sdk -> listOf(0, 1).map { sdk to it } } + listOf(29 to 9)
+        for ((sdk, ext) in levels) {
+            val intent = PickedVideos.intent(sdk, ext, noLimit, PickedVideos.PHOTO_TYPE)
+            assertEquals("$sdk/$ext", Intent.ACTION_OPEN_DOCUMENT, intent.action)
+            assertEquals("image/*", intent.type)
+            assertTrue(intent.getBooleanExtra(Intent.EXTRA_ALLOW_MULTIPLE, false))
+            assertTrue(intent.hasCategory(Intent.CATEGORY_OPENABLE))
+            assertTrue(intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)
+            assertTrue(intent.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION != 0)
+            assertFalse(intent.hasExtra(MediaStore.EXTRA_PICK_IMAGES_MAX))
+        }
+    }
+
+    @Test
+    fun `video intent is unchanged on every level`() {
+        // Characterization (Phase 13, D-199): the call without a type is the video picker it always was.
+        for (sdk in 29..36) {
+            for (ext in 0..3) {
+                if (sdk >= 33 || (sdk in 30..32 && ext >= 2)) {
+                    assertPicker(PickedVideos.intent(sdk, ext, limit))
+                } else {
+                    assertDocuments(PickedVideos.intent(sdk, ext, noLimit))
+                }
+            }
+        }
     }
 
     // ---- results ----
@@ -438,6 +486,121 @@ class PickedVideosTest {
             assertEquals(listOf("n", "n", "n"), msgs.map { it.displayName })
             assertEquals(3, grants.taken.size)
         }
+    }
+
+    // ---- photo facts (Phase 13, D-199) ----
+
+    /** A photo's row as the picker gives it, plus [extra] columns. */
+    private fun photoCursor(extra: Map<String, Any?> = emptyMap()): MatrixCursor =
+        factsCursor(
+            linkedMapOf<String, Any?>(
+                MediaColumns.DISPLAY_NAME to "IMG_1.jpg",
+                MediaColumns.SIZE to 4_000_000L,
+                MediaColumns.DATE_TAKEN to 1_780_000_000_456L,
+                MediaColumns.WIDTH to 4000L,
+                MediaColumns.HEIGHT to 3000L,
+                MediaColumns.MIME_TYPE to "image/jpeg",
+            ).apply { putAll(extra) },
+        )
+
+    private fun describePhoto(): PickedVideoMsg = PickedVideos.describe(resolver, FakeGrants(), listOf(uri(1)), photos = true).single()
+
+    @Test
+    fun `a photo pick reads the modified date - document ms, else MediaStore seconds times 1000`() {
+        val cases: List<Pair<Map<String, Any?>, Long?>> =
+            listOf(
+                mapOf(Document.COLUMN_LAST_MODIFIED to 1_780_000_000_123L) to 1_780_000_000_123L,
+                mapOf(MediaColumns.DATE_MODIFIED to 1_780_000_000L) to 1_780_000_000_000L,
+                // Both: the document's milliseconds win.
+                mapOf(Document.COLUMN_LAST_MODIFIED to 1_780_000_000_123L, MediaColumns.DATE_MODIFIED to 1_700_000_000L) to 1_780_000_000_123L,
+                // A null document column falls back to MediaStore's.
+                mapOf(Document.COLUMN_LAST_MODIFIED to null, MediaColumns.DATE_MODIFIED to 1_780_000_000L) to 1_780_000_000_000L,
+                mapOf(Document.COLUMN_LAST_MODIFIED to null, MediaColumns.DATE_MODIFIED to null) to null,
+                emptyMap<String, Any?>() to null,
+            )
+        for ((columns, expected) in cases) {
+            provider { photoCursor(columns) }
+            assertEquals("$columns", expected, describePhoto().dateModifiedMs)
+        }
+        // Every other fact is read as for a video.
+        provider { photoCursor(mapOf(MediaColumns.DATE_MODIFIED to 1_780_000_000L)) }
+        assertEquals(
+            PickedVideoMsg(
+                uri = uri(1).toString(),
+                sizeBytes = 4_000_000,
+                durationMs = null,
+                dateTakenMs = 1_780_000_000_456,
+                displayName = "IMG_1.jpg",
+                width = 4000,
+                height = 3000,
+                mimeType = "image/jpeg",
+                persisted = true,
+                dateModifiedMs = 1_780_000_000_000,
+            ),
+            describePhoto(),
+        )
+        // No cursor or no access: the empty row, with no date.
+        for (answer in listOf<(Uri) -> Cursor?>({ null }, { throw SecurityException("no grant") })) {
+            provider(answer)
+            assertEquals(PickedVideoMsg(uri(1).toString(), 0, null, null, "", null, null, null, true), describePhoto())
+        }
+    }
+
+    @Test
+    fun `a photo with orientation 90 or 270 has width and height swapped - 0 and 180 do not`() {
+        val cases: List<Pair<Map<String, Any?>, Pair<Long?, Long?>>> =
+            listOf(
+                mapOf(MediaColumns.ORIENTATION to 0L) to (4000L to 3000L),
+                mapOf(MediaColumns.ORIENTATION to 90L) to (3000L to 4000L),
+                mapOf(MediaColumns.ORIENTATION to 180L) to (4000L to 3000L),
+                mapOf(MediaColumns.ORIENTATION to 270L) to (3000L to 4000L),
+                mapOf(MediaColumns.ORIENTATION to null) to (4000L to 3000L),
+                emptyMap<String, Any?>() to (4000L to 3000L),
+                // One side unknown: the swap moves the unknown with it.
+                mapOf(MediaColumns.ORIENTATION to 90L, MediaColumns.HEIGHT to null) to (null to 4000L),
+            )
+        for ((columns, size) in cases) {
+            provider { photoCursor(columns) }
+            val msg = describePhoto()
+            assertEquals("$columns", size, msg.width to msg.height)
+        }
+    }
+
+    @Test
+    fun `a video pick never sets dateModifiedMs and never swaps`() {
+        provider {
+            factsCursor(
+                linkedMapOf(
+                    MediaColumns.DISPLAY_NAME to "VID_1.mp4",
+                    MediaColumns.SIZE to 9L,
+                    MediaColumns.DURATION to 15_000L,
+                    MediaColumns.WIDTH to 1920L,
+                    MediaColumns.HEIGHT to 1080L,
+                    MediaColumns.ORIENTATION to 90L,
+                    MediaColumns.DATE_MODIFIED to 1_780_000_000L,
+                    Document.COLUMN_LAST_MODIFIED to 1_780_000_000_123L,
+                ),
+            )
+        }
+        val asked = listOf(uri(1))
+        for (msg in PickedVideos.describe(resolver, FakeGrants(), asked) + PickedVideos.describe(resolver, FakeGrants(), asked, photos = false)) {
+            assertNull(msg.dateModifiedMs)
+            assertEquals(1920L to 1080L, msg.width to msg.height)
+            assertEquals(15_000L, msg.durationMs)
+        }
+    }
+
+    @Test
+    fun `a photo whose grant is refused is persisted false - the others are kept`() {
+        provider { photoCursor() }
+        val grants = FakeGrants()
+        grants.takeError = { if (it == uri(2)) SecurityException("no persistable grant") else null }
+        val msgs = PickedVideos.describe(resolver, grants, listOf(uri(1), uri(2), uri(3)), photos = true)
+        assertEquals(listOf(true, false, true), msgs.map { it.persisted })
+        assertEquals(listOf(uri(1), uri(2), uri(3)), grants.taken.map { it.first })
+        assertTrue(grants.taken.all { it.second == Intent.FLAG_GRANT_READ_URI_PERMISSION })
+        // The refused one is still reported, with its facts, so Dart counts it as not kept.
+        assertEquals(List(3) { "IMG_1.jpg" }, msgs.map { it.displayName })
     }
 
     @Test

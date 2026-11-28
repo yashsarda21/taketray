@@ -452,6 +452,36 @@ void main() {
       expect(await fake.pickVideos(), hasLength(1));
     });
 
+    test('pickPhotos answers pickedPhotos (a copy), counts its calls and '
+        'persists the kept ones; pickVideos still answers picked', () async {
+      expect(await fake.pickPhotos(), isEmpty);
+      fake
+        ..picked = [picked(1)]
+        ..pickedPhotos = [picked(7), picked(8, persisted: false)];
+      final answer = await fake.pickPhotos();
+      expect(answer, fake.pickedPhotos);
+      answer.clear();
+      expect(fake.pickedPhotos, hasLength(2));
+      expect(fake.pickPhotosCalls, 2);
+      expect(await fake.persistedUris(), ['content://picker/7']);
+      expect(await fake.pickVideos(), [picked(1)]);
+      expect(fake.pickPhotosCalls, 2);
+    });
+
+    test('a busy picker makes pickPhotos throw busy too, and the call is '
+        'logged', () async {
+      fake
+        ..pickedPhotos = [picked(1)]
+        ..pickerBusy = true;
+      await expectLater(
+        fake.pickPhotos(),
+        throwsA(isA<PlatformException>().having((e) => e.code, 'code', 'busy')),
+      );
+      expect(fake.calls, ['pickPhotos']);
+      expect(fake.pickPhotosCalls, 1);
+      expect(await fake.persistedUris(), isEmpty);
+    });
+
     test('readableUris is the subset of the settable set, in order', () async {
       fake.readable = {'a', 'c'};
       expect(await fake.readableUris(['c', 'b', 'a']), ['c', 'a']);

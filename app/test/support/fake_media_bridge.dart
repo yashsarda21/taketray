@@ -47,7 +47,8 @@ MediaVideo fakeVideo({
 /// - Settable state: [access], [volumeList], [videosByVolume] (volume name to
 ///   its videos), [folders], [thumbnails] (keyed by `(volume, id)`),
 ///   [currentZone], [zoneRules], [zoneChanges], [cameraOpens], and for the
-///   picker [picked], [pickerBusy], [readable], [persisted], [uriThumbnails].
+///   picker [picked], [pickedPhotos], [pickerBusy], [readable], [persisted],
+///   [uriThumbnails].
 /// - `zoneOffsetsMs` answers from the fixed table [zoneRules] (null for a zone
 ///   not in it) and logs each request in [zoneOffsetRequests].
 /// - [onRequestAccess] gives the result of `requestAccess`, which also becomes
@@ -110,9 +111,16 @@ class FakeMediaBridge implements MediaBridge {
   /// is `persisted` also joins [persisted], as the phone's saved grant would.
   List<PickedVideo> picked = [];
 
-  /// Makes `pickVideos` throw the `busy` `PlatformException`, as when a
-  /// picker is already open.
+  /// What `pickPhotos` answers; empty is the user cancelling. Each one that
+  /// is `persisted` also joins [persisted], as for [picked].
+  List<PickedVideo> pickedPhotos = [];
+
+  /// Makes `pickVideos` and `pickPhotos` throw the `busy`
+  /// `PlatformException`, as when a picker (of either kind) is already open.
   bool pickerBusy = false;
+
+  /// How many times `pickPhotos` was called, a failed call included.
+  int get pickPhotosCalls => calls.where((c) => c == 'pickPhotos').length;
 
   /// The addresses `readableUris` keeps (it answers the asked ones in this
   /// set, in the asked order).
@@ -323,20 +331,28 @@ class FakeMediaBridge implements MediaBridge {
   });
 
   @override
-  Future<List<PickedVideo>> pickVideos() => _call('pickVideos', () {
+  Future<List<PickedVideo>> pickVideos() =>
+      _call('pickVideos', () => _pick(picked));
+
+  @override
+  Future<List<PickedVideo>> pickPhotos() =>
+      _call('pickPhotos', () => _pick(pickedPhotos));
+
+  /// A copy of [answer], its kept grants saved; `busy` while [pickerBusy].
+  List<PickedVideo> _pick(List<PickedVideo> answer) {
     if (pickerBusy) {
       throw PlatformException(
         code: 'busy',
         message: 'a picker is already open',
       );
     }
-    final answer = List.of(picked);
+    final copy = List.of(answer);
     persisted.addAll([
-      for (final p in answer)
+      for (final p in copy)
         if (p.persisted) p.uri,
     ]);
-    return answer;
-  });
+    return copy;
+  }
 
   @override
   Future<Uint8List?> thumbnailOfUri(String uri, int widthPx, int heightPx) =>

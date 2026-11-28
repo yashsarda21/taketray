@@ -23,6 +23,7 @@ class _StubApi extends MediaHostApi {
   List<ZoneChangeMsg> zoneChanges = [];
   bool cameraResult = true;
   List<PickedVideoMsg> pickedList = [];
+  List<PickedVideoMsg> pickedPhotoList = [];
   Uint8List? uriThumbnailBytes;
   List<String> readableList = [];
   List<String> persistedList = [];
@@ -158,6 +159,12 @@ class _StubApi extends MediaHostApi {
   Future<List<PickedVideoMsg>> pickVideos() async {
     _record('pickVideos');
     return pickedList;
+  }
+
+  @override
+  Future<List<PickedVideoMsg>> pickPhotos() async {
+    _record('pickPhotos');
+    return pickedPhotoList;
   }
 
   @override
@@ -457,6 +464,69 @@ void main() {
       expect(picked[1].height, isNull);
       expect(picked[1].mimeType, isNull);
       expect(picked[1].persisted, isFalse);
+    });
+
+    test('pickPhotos maps every field, dateModifiedMs included', () async {
+      api.pickedPhotoList = [
+        PickedVideoMsg(
+          uri: 'content://media/picker/0/x/media/3',
+          sizeBytes: 4000000,
+          dateTakenMs: 1760000000123,
+          dateModifiedMs: 1760000000999,
+          displayName: 'IMG_3.heic',
+          width: 3000,
+          height: 4000,
+          mimeType: 'image/heic',
+          persisted: true,
+        ),
+        _nullPicked(),
+      ];
+      final picked = await bridge.pickPhotos();
+      expect(api.calls.last, 'pickPhotos');
+      expect(picked, [
+        const PickedVideo(
+          uri: 'content://media/picker/0/x/media/3',
+          sizeBytes: 4000000,
+          dateTakenMs: 1760000000123,
+          dateModifiedMs: 1760000000999,
+          displayName: 'IMG_3.heic',
+          width: 3000,
+          height: 4000,
+          mimeType: 'image/heic',
+          persisted: true,
+        ),
+        const PickedVideo(
+          uri:
+              'content://com.android.providers.media.documents/document/'
+              'video%3A2',
+          sizeBytes: 0,
+          displayName: '',
+          persisted: false,
+        ),
+      ]);
+    });
+
+    test('pickVideos never fills dateModifiedMs, even when Kotlin sent one '
+        '(photo picks only)', () async {
+      api.pickedList = [
+        PickedVideoMsg(
+          uri: 'content://v/1',
+          sizeBytes: 1,
+          displayName: 'v.mp4',
+          dateModifiedMs: 1760000000999,
+          persisted: true,
+        ),
+      ];
+      expect((await bridge.pickVideos()).single.dateModifiedMs, isNull);
+    });
+
+    test('pickPhotos cancelled is an empty list, and busy reaches the caller '
+        'as the same PlatformException', () async {
+      api.pickedPhotoList = [];
+      expect(await bridge.pickPhotos(), isEmpty);
+      final busy = PlatformException(code: 'busy', message: 'a picker is open');
+      api.error = busy;
+      expect(bridge.pickPhotos(), throwsA(same(busy)));
     });
 
     test('a cancelled picker is an empty list', () async {

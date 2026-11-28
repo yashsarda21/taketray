@@ -11,6 +11,7 @@ import 'package:taketray/data/media/thumbnail_cache.dart';
 import 'package:taketray/domain/models/enums.dart';
 import 'package:taketray/domain/models/reel.dart';
 import 'package:taketray/domain/rules/shooting_order.dart';
+import 'package:taketray/features/add_videos/views/add_photos.dart';
 import 'package:taketray/features/add_videos/views/open_add_videos.dart';
 import 'package:taketray/features/editors/view_models/copy_job_controller.dart';
 import 'package:taketray/features/editors/views/done_editing_dialog.dart';
@@ -42,7 +43,9 @@ enum _ReelAction { details, select, delete }
 /// stays. From the top:
 ///
 /// 1. an app bar with **Back**, **Add videos** (`openAddVideos` for this reel,
-///    Phase 7, D-114) and a ⋮ menu: **Reel details** (the form),
+///    Phase 7, D-114), **Add photos** (`addPhotosToReel`, the photo picker,
+///    Phase 13, D-199; the one way photos come in, so not in the empty
+///    state) and a ⋮ menu: **Reel details** (the form),
 ///    **Select clips** and **Delete reel**. The bar has no title: the reel's
 ///    name is in the body, where it wraps over as many lines as it needs (an
 ///    app bar title clamps at large text);
@@ -184,6 +187,13 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         openAddVideos(context, ref, AddToReel(widget.reelId), pushing: pushing),
   );
 
+  /// Opens Add photos (the photo picker) once however fast the taps: the
+  /// window stays shut until the pick and its add are over.
+  final OpenOnce _addPhotos = OpenOnce();
+
+  void _openAddPhotos() =>
+      _addPhotos.openSlow((_) => addPhotosToReel(context, ref, widget.reelId));
+
   /// **Edit video**: the editor sheet with every live clip in shooting order,
   /// once however fast the taps. **Choose clips instead** starts choosing
   /// from the sheet (D-188): it stays on with nothing chosen.
@@ -294,6 +304,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     _edit.dispose();
     _progress.dispose();
     _addVideos.dispose();
+    _addPhotos.dispose();
     super.dispose();
   }
 
@@ -399,6 +410,13 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
                       semanticLabel: l10n.addVideosTitle,
                       style: TtIconButtonStyle.circle,
                       onPressed: _openAddVideos,
+                    ),
+                  if (state != null)
+                    TtIconButton(
+                      icon: Symbols.add_photo_alternate_rounded,
+                      semanticLabel: l10n.addPhotosTitle,
+                      style: TtIconButtonStyle.circle,
+                      onPressed: _openAddPhotos,
                     ),
                   if (state != null)
                     TtMenuButton<_ReelAction>(

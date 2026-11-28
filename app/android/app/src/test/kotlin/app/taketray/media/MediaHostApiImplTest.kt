@@ -876,4 +876,133 @@ class MediaHostApiImplTest {
             assertEquals(listOf(videoUri(7)), pick.await().map { it.uri })
             assertTrue(threads.isNotEmpty() && threads.none { it })
         }
+
+    // ---- The photo picker for photos (Phase 13, D-199) ----
+
+    private suspend fun expectBusy(call: suspend () -> List<PickedVideoMsg>) {
+        try {
+            call()
+            fail("expected busy")
+        } catch (e: FlutterError) {
+            assertEquals("busy", e.code)
+        }
+    }
+
+    @Test
+    fun `pickPhotos starts the picker for images on the same request code and reads photo facts`() =
+        timed {
+            impl = pickerImpl(extension = 2)
+            FakeMediaProvider.install(answer = {
+                MatrixCursor(
+                    arrayOf(MediaColumns.DISPLAY_NAME, MediaColumns.SIZE, MediaColumns.WIDTH, MediaColumns.HEIGHT, MediaColumns.ORIENTATION, MediaColumns.DATE_MODIFIED),
+                ).apply { addRow(arrayOf<Any?>("a.jpg", 77L, 4000L, 3000L, 90L, 1_780_000_000L)) }
+            })
+            val photo = async(start = CoroutineStart.UNDISPATCHED) { impl.pickPhotos() }
+            val started = shadowOf(activity).nextStartedActivityForResult
+            assertEquals(PickedVideos.REQUEST_CODE, started.requestCode)
+            assertEquals(PickedVideos.intent(sdk, 2, { 100 }, PickedVideos.PHOTO_TYPE).action, started.intent.action)
+            assertEquals("image/*", started.intent.type)
+            assertTrue(impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_OK, Intent().setData(pickedUri(1))))
+            val picked = photo.await().single()
+            assertEquals(pickedUri(1).toString(), picked.uri)
+            assertEquals(3000L to 4000L, picked.width to picked.height)
+            assertEquals(1_780_000_000_000L, picked.dateModifiedMs)
+
+            // The same provider row picked as a video: no modified date, no swap.
+            val video = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            assertEquals("video/*", shadowOf(activity).nextStartedActivityForResult.intent.type)
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_OK, Intent().setData(pickedUri(1)))
+            val asVideo = video.await().single()
+            assertNull(asVideo.dateModifiedMs)
+            assertEquals(4000L to 3000L, asVideo.width to asVideo.height)
+        }
+
+    @Test
+    fun `pickPhotos while a video pick is open is busy, and the other way round`() =
+        timed {
+            impl = pickerImpl()
+            val video = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            expectBusy { impl.pickPhotos() }
+            expectBusy { impl.pickVideos() }
+            assertFalse(video.isCompleted)
+            // Only the video picker was started.
+            assertEquals("video/*", shadowOf(activity).nextStartedActivityForResult.intent.type)
+            assertNull(shadowOf(activity).nextStartedActivityForResult)
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), video.await())
+
+            val photo = async(start = CoroutineStart.UNDISPATCHED) { impl.pickPhotos() }
+            expectBusy { impl.pickVideos() }
+            expectBusy { impl.pickPhotos() }
+            assertFalse(photo.isCompleted)
+            assertEquals("image/*", shadowOf(activity).nextStartedActivityForResult.intent.type)
+            assertNull(shadowOf(activity).nextStartedActivityForResult)
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), photo.await())
+
+            // Once answered, either may start again.
+            val again = async(start = CoroutineStart.UNDISPATCHED) { impl.pickVideos() }
+            impl.onActivityResult(PickedVideos.REQUEST_CODE, Activity.RESULT_CANCELED, null)
+            assertEquals(emptyList<PickedVideoMsg>(), again.await())
+        }
+
+    @Test
+    fun `pickPhotos cancelled answers an empty list`() =
+        timed {
+            impl = pickerImpl()
+            val asked = mutableListOf<Uri>()
+            FakeMediaProvider.install(answer = {
+                asked += it.uri
+                null
+            })
+            for ((code, data) in listOf<Pair<Int, Intent?>>(
+                Activity.RESULT_CANCELED to null,
+                Activity.RESULT_CANCELED to Intent().setData(pickedUri(1)),
+                Activity.RESULT_OK to null,
+                Activity.RESULT_OK to Intent(),
+            )) {
+                val photo = async(start = CoroutineStart.UNDISPATCHED) { impl.pickPhotos() }
+                assertTrue(impl.onActivityResult(PickedVideos.REQUEST_CODE, code, data))
+                assertEquals(emptyList<PickedVideoMsg>(), photo.await())
+            }
+            // Nothing was read, and no grant was taken.
+            assertTrue(asked.isEmpty())
+            assertTrue(activity.contentResolver.persistedUriPermissions.isEmpty())
+        }
+
+    @Test
+    fun `the host going away fails a waiting photo pick, and then there is no activity`() =
+        timed {
+            impl = pickerImpl()
+            val photo = async(start = CoroutineStart.UNDISPATCHED) { impl.pickPhotos() }
+            impl.onHostGone()
+            try {
+                photo.await()
+                fail("expected host-gone")
+            } catch (e: FlutterError) {
+                assertEquals("host-gone", e.code)
+            }
+            try {
+                impl.pickPhotos()
+                fail("expected no-activity")
+            } catch (e: FlutterError) {
+                assertEquals("no-activity", e.code)
+            }
+        }
+
+    @Test
+    fun `a photo picker that cannot start fails with no-picker and frees the slot`() =
+        timed {
+            impl = pickerImpl()
+            shadowOf(activity.application).checkActivities(true)
+            repeat(2) {
+                try {
+                    impl.pickPhotos()
+                    fail("expected an error")
+                } catch (e: FlutterError) {
+                    assertEquals("no-picker", e.code)
+                    assertFalse(e.toString().contains("content://"))
+                }
+            }
+        }
 }

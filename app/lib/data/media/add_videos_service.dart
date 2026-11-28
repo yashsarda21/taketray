@@ -15,6 +15,7 @@ import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/models/zone_entry.dart';
 import 'package:taketray/domain/rules/fingerprint_match.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
+import 'package:taketray/domain/rules/photo_clip.dart';
 import 'package:taketray/domain/rules/zone_lookup.dart';
 import 'package:taketray/platform/media_bridge.dart';
 
@@ -245,6 +246,47 @@ class AddVideosService {
           // for MediaStore clips, because a picked clip's address is its
           // identity (D-57), so a known one is this video. The answer is
           // `true` to say that, should it ever be asked.
+          sameVideo: (_, _) => true,
+        );
+      });
+
+  /// Adds picked photos straight to reel [reelId] (never To tag). Not
+  /// persisted → notKept; a known address in that reel → alreadyThere; the
+  /// same address in another reel → linked (one clip, two reels).
+  /// StateError when the reel is gone, writing nothing. Logs "photos" counts.
+  ///
+  /// Add photos (Phase 13, D-199), one job on the queue like [addPicked]. It
+  /// takes a reel id, not an [AddTarget]: a photo is never put in To tag, so
+  /// the type cannot ask for it. Each photo becomes `newClipFromPickedPhoto`
+  /// (an image type, no length, the taken date, then the modified date, then
+  /// now, R13-3), with the zone where the phone was at that date. Undo is
+  /// [undo], as for videos.
+  Future<AddResult> addPhotos(List<PickedVideo> photos, int reelId) =>
+      _queue.run(() async {
+        final target = AddToReel(reelId);
+        final kept = [
+          for (final p in photos)
+            if (p.persisted) p,
+        ];
+        final notKept = photos.length - kept.length;
+        if (kept.isEmpty) return _nothing('photos', target, notKept);
+        final now = _clock.now();
+        final (timeline, zone) = await _zonesNow();
+        return await _add(
+          'photos',
+          [
+            for (final p in kept)
+              newClipFromPickedPhoto(
+                p,
+                now: now,
+                zoneId:
+                    zoneAt(timeline, pickedPhotoShotAt(p, now: now)) ?? zone,
+              ),
+          ],
+          target,
+          notKept,
+          // Never called: a picked clip's address is its identity (D-57), as
+          // in [addPicked].
           sameVideo: (_, _) => true,
         );
       });

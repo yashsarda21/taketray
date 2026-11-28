@@ -481,11 +481,18 @@ data class VideoFolderMsg (
 }
 
 /**
- * One video the user picked in Android's photo picker (or its document
- * picker fallback), identified by its content [uri]. Facts the provider does
- * not give stay null; Kotlin maps a null size to 0 and a null name to ''.
- * [persisted] is true when Android agreed to keep read access to [uri] across
- * restarts (takePersistableUriPermission did not throw).
+ * One video (or, from [MediaHostApi.pickPhotos], one photo) the user picked
+ * in Android's photo picker (or its document picker fallback), identified by
+ * its content [uri]. Facts the provider does not give stay null; Kotlin maps
+ * a null size to 0 and a null name to ''. [persisted] is true when Android
+ * agreed to keep read access to [uri] across restarts
+ * (takePersistableUriPermission did not throw).
+ *
+ * [dateModifiedMs] (milliseconds) is set for photo picks only (D-199): the
+ * document's last-modified time, else MediaStore's DATE_MODIFIED (seconds)
+ * times 1000. A photo pick also swaps [width] and [height] when the
+ * provider's `orientation` is 90 or 270. A video pick never sets
+ * [dateModifiedMs] and never swaps.
  *
  * Generated class from Pigeon that represents data sent in messages.
  */
@@ -498,7 +505,8 @@ data class PickedVideoMsg (
   val width: Long? = null,
   val height: Long? = null,
   val mimeType: String? = null,
-  val persisted: Boolean
+  val persisted: Boolean,
+  val dateModifiedMs: Long? = null
 )
  {
   companion object {
@@ -512,7 +520,8 @@ data class PickedVideoMsg (
       val height = pigeonVar_list[6] as Long?
       val mimeType = pigeonVar_list[7] as String?
       val persisted = pigeonVar_list[8] as Boolean
-      return PickedVideoMsg(uri, sizeBytes, durationMs, dateTakenMs, displayName, width, height, mimeType, persisted)
+      val dateModifiedMs = pigeonVar_list[9] as Long?
+      return PickedVideoMsg(uri, sizeBytes, durationMs, dateTakenMs, displayName, width, height, mimeType, persisted, dateModifiedMs)
     }
   }
   fun toList(): List<Any?> {
@@ -526,6 +535,7 @@ data class PickedVideoMsg (
       height,
       mimeType,
       persisted,
+      dateModifiedMs,
     )
   }
   override fun equals(other: Any?): Boolean {
@@ -536,7 +546,7 @@ data class PickedVideoMsg (
       return true
     }
     val other = other as PickedVideoMsg
-    return MediaApiPigeonUtils.deepEquals(this.uri, other.uri) && MediaApiPigeonUtils.deepEquals(this.sizeBytes, other.sizeBytes) && MediaApiPigeonUtils.deepEquals(this.durationMs, other.durationMs) && MediaApiPigeonUtils.deepEquals(this.dateTakenMs, other.dateTakenMs) && MediaApiPigeonUtils.deepEquals(this.displayName, other.displayName) && MediaApiPigeonUtils.deepEquals(this.width, other.width) && MediaApiPigeonUtils.deepEquals(this.height, other.height) && MediaApiPigeonUtils.deepEquals(this.mimeType, other.mimeType) && MediaApiPigeonUtils.deepEquals(this.persisted, other.persisted)
+    return MediaApiPigeonUtils.deepEquals(this.uri, other.uri) && MediaApiPigeonUtils.deepEquals(this.sizeBytes, other.sizeBytes) && MediaApiPigeonUtils.deepEquals(this.durationMs, other.durationMs) && MediaApiPigeonUtils.deepEquals(this.dateTakenMs, other.dateTakenMs) && MediaApiPigeonUtils.deepEquals(this.displayName, other.displayName) && MediaApiPigeonUtils.deepEquals(this.width, other.width) && MediaApiPigeonUtils.deepEquals(this.height, other.height) && MediaApiPigeonUtils.deepEquals(this.mimeType, other.mimeType) && MediaApiPigeonUtils.deepEquals(this.persisted, other.persisted) && MediaApiPigeonUtils.deepEquals(this.dateModifiedMs, other.dateModifiedMs)
   }
 
   override fun hashCode(): Int {
@@ -550,10 +560,11 @@ data class PickedVideoMsg (
     result = 31 * result + MediaApiPigeonUtils.deepHash(this.height)
     result = 31 * result + MediaApiPigeonUtils.deepHash(this.mimeType)
     result = 31 * result + MediaApiPigeonUtils.deepHash(this.persisted)
+    result = 31 * result + MediaApiPigeonUtils.deepHash(this.dateModifiedMs)
     return result
   }
   override fun toString(): String {
-    return "PickedVideoMsg(uri=$uri, sizeBytes=$sizeBytes, durationMs=$durationMs, dateTakenMs=$dateTakenMs, displayName=$displayName, width=$width, height=$height, mimeType=$mimeType, persisted=$persisted)"
+    return "PickedVideoMsg(uri=$uri, sizeBytes=$sizeBytes, durationMs=$durationMs, dateTakenMs=$dateTakenMs, displayName=$displayName, width=$width, height=$height, mimeType=$mimeType, persisted=$persisted, dateModifiedMs=$dateModifiedMs)"
   }
 }
 
@@ -735,6 +746,14 @@ interface MediaHostApi {
    * closes first.
    */
   suspend fun pickVideos(): List<PickedVideoMsg>
+  /**
+   * Android's photo picker for photos only (any image type, multiple), or
+   * the document picker where it is missing; [] when cancelled; `busy` while
+   * any pick (videos or photos) is open; `host-gone` as pickVideos. (The
+   * type is written out in `PickedVideos.PHOTO_TYPE`: this comment is copied
+   * into Kotlin, where a slash and a star would open a comment.)
+   */
+  suspend fun pickPhotos(): List<PickedVideoMsg>
   /**
    * Like [thumbnail], for a content [uri] (a picked video). Null when the
    * video is gone or unreadable, or [uri] is not a content address.
@@ -994,6 +1013,23 @@ interface MediaHostApi {
             CoroutineScope(Dispatchers.Main).launch {
               val wrapped: List<Any?> = try {
                 listOf(api.pickVideos())
+              } catch (exception: Throwable) {
+                MediaApiPigeonUtils.wrapError(exception)
+              }
+              reply.reply(wrapped)
+            }
+          }
+        } else {
+          channel.setMessageHandler(null)
+        }
+      }
+      run {
+        val channel = BasicMessageChannel<Any?>(binaryMessenger, "dev.flutter.pigeon.taketray.MediaHostApi.pickPhotos$separatedMessageChannelSuffix", codec)
+        if (api != null) {
+          channel.setMessageHandler { _, reply ->
+            CoroutineScope(Dispatchers.Main).launch {
+              val wrapped: List<Any?> = try {
+                listOf(api.pickPhotos())
               } catch (exception: Throwable) {
                 MediaApiPigeonUtils.wrapError(exception)
               }

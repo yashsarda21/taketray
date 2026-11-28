@@ -6,6 +6,7 @@ import android.content.ContentResolver
 import android.content.Intent
 import android.database.Cursor
 import android.net.Uri
+import android.provider.DocumentsContract.Document
 import android.provider.MediaStore
 import android.provider.MediaStore.MediaColumns
 import kotlinx.coroutines.CompletableDeferred
@@ -64,9 +65,13 @@ class ResolverGrants(
 }
 
 /**
- * The video picker (D-112): which intent each Android level gets, the one
- * pick in flight, the facts read for each picked video, and the calls on
- * saved addresses (readable, persisted, release).
+ * The video picker (D-112), and from Phase 13 the photo picker too (D-199):
+ * which intent each Android level gets, the one pick in flight, the facts
+ * read for each picked video or photo, and the calls on saved addresses
+ * (readable, persisted, release).
+ *
+ * Videos and photos share one slot and one request code: there is only ever
+ * one pick at a time, and a second one, of either kind, is "busy".
  *
  * Threading: [await], [onResult] and [fail] run on the main thread (the
  * activity's result arrives there). Everything in the companion that reads a
@@ -130,7 +135,11 @@ class PickedVideos(
         /** The request code of the picker (16 bits; the permission request uses 0x7A71). */
         const val REQUEST_CODE = 0x7A73
 
-        private const val VIDEO_TYPE = "video/*"
+        /** What Add videos' picker shows (D-112). */
+        const val VIDEO_TYPE = "video/*"
+
+        /** What Add photos' picker shows (D-199): photos only, never videos. */
+        const val PHOTO_TYPE = "image/*"
 
         /** What the photo picker lets a user choose at most, from the system. */
         @SuppressLint("NewApi")
@@ -141,20 +150,33 @@ class PickedVideos(
          * the R extension is 2 or more (it ships the picker through Google Play
          * system updates); otherwise the document picker, with the same videos
          * and a saved read grant. [maxLimit] is read only for the photo picker.
+         * This is Add videos' picker: [intent] with [VIDEO_TYPE].
          */
         fun intent(
             sdk: Int,
             extensionLevel: Int,
             maxLimit: () -> Int = { systemLimit() },
+        ): Intent = intent(sdk, extensionLevel, maxLimit, VIDEO_TYPE)
+
+        /**
+         * The picker of [type]: [VIDEO_TYPE] (Add videos) or [PHOTO_TYPE] (Add
+         * photos, D-199). Everything else (which picker for which level, the
+         * limit, multiple choice, the grant flags) is the same for both.
+         */
+        fun intent(
+            sdk: Int,
+            extensionLevel: Int,
+            maxLimit: () -> Int,
+            type: String,
         ): Intent =
             if (sdk >= 33 || (sdk in 30..32 && extensionLevel >= 2)) {
                 Intent(MediaStore.ACTION_PICK_IMAGES)
-                    .setType(VIDEO_TYPE)
+                    .setType(type)
                     .putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maxLimit())
             } else {
                 Intent(Intent.ACTION_OPEN_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
-                    .setType(VIDEO_TYPE)
+                    .setType(type)
                     .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
             }
@@ -177,18 +199,26 @@ class PickedVideos(
          * kept read access across restarts. A provider that refuses or has no
          * row still gives the row, with a 0 size and an empty name; any other
          * failure fails the whole call, and then no grant has been taken.
+         *
+         * With [photos] (Add photos, D-199) two more facts are read, and only
+         * then: `dateModifiedMs` is the document's COLUMN_LAST_MODIFIED (ms)
+         * when the cursor has it, else MediaStore's DATE_MODIFIED (seconds)
+         * times 1000, else null; and an `orientation` of 90 or 270 swaps the
+         * width and the height, so they are the photo as it is seen. A video
+         * pick never sets `dateModifiedMs` and never swaps (R13-3).
          */
         fun describe(
             resolver: ContentResolver,
             grants: UriGrants,
             uris: List<Uri>,
+            photos: Boolean = false,
         ): List<PickedVideoMsg> {
             // Every read that can fail the call runs before the first grant is
             // taken, so a failure part-way leaves no grant behind (they would
             // count toward the per-app limit and Dart never hears of them), and
             // there is nothing to release, which could drop a grant that a clip
             // already picked earlier is using.
-            val facts = uris.map { factsOf(resolver, it) }
+            val facts = uris.map { factsOf(resolver, it, photos) }
             return facts.zip(uris) { fact, uri ->
                 val persisted =
                     try {
@@ -204,6 +234,7 @@ class PickedVideos(
         private fun factsOf(
             resolver: ContentResolver,
             uri: Uri,
+            photo: Boolean,
         ): PickedVideoMsg {
             val empty = PickedVideoMsg(uri.toString(), 0, null, null, "", null, null, null, false)
             val cursor =
@@ -214,16 +245,34 @@ class PickedVideos(
                 } ?: return empty
             cursor.use { c ->
                 if (!c.moveToFirst()) return empty
-                return empty.copy(
-                    sizeBytes = longOf(c, MediaColumns.SIZE) ?: 0,
-                    durationMs = longOf(c, MediaColumns.DURATION),
-                    dateTakenMs = longOf(c, MediaColumns.DATE_TAKEN),
-                    displayName = stringOf(c, MediaColumns.DISPLAY_NAME) ?: "",
-                    width = longOf(c, MediaColumns.WIDTH),
-                    height = longOf(c, MediaColumns.HEIGHT),
-                    mimeType = stringOf(c, MediaColumns.MIME_TYPE),
-                )
+                val facts =
+                    empty.copy(
+                        sizeBytes = longOf(c, MediaColumns.SIZE) ?: 0,
+                        durationMs = longOf(c, MediaColumns.DURATION),
+                        dateTakenMs = longOf(c, MediaColumns.DATE_TAKEN),
+                        displayName = stringOf(c, MediaColumns.DISPLAY_NAME) ?: "",
+                        width = longOf(c, MediaColumns.WIDTH),
+                        height = longOf(c, MediaColumns.HEIGHT),
+                        mimeType = stringOf(c, MediaColumns.MIME_TYPE),
+                    )
+                return if (photo) photoFacts(c, facts) else facts
             }
+        }
+
+        /** The two facts only a photo pick reads (D-199): the modified date, and the size as seen. */
+        private fun photoFacts(
+            c: Cursor,
+            facts: PickedVideoMsg,
+        ): PickedVideoMsg {
+            val modifiedMs =
+                longOf(c, Document.COLUMN_LAST_MODIFIED)
+                    ?: longOf(c, MediaColumns.DATE_MODIFIED)?.let { it * 1000 }
+            val turned = longOf(c, MediaColumns.ORIENTATION).let { it == 90L || it == 270L }
+            return facts.copy(
+                dateModifiedMs = modifiedMs,
+                width = if (turned) facts.height else facts.width,
+                height = if (turned) facts.width else facts.height,
+            )
         }
 
         private fun longOf(

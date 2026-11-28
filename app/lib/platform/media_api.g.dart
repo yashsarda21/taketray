@@ -423,11 +423,18 @@ class VideoFolderMsg {
   }
 }
 
-/// One video the user picked in Android's photo picker (or its document
-/// picker fallback), identified by its content [uri]. Facts the provider does
-/// not give stay null; Kotlin maps a null size to 0 and a null name to ''.
-/// [persisted] is true when Android agreed to keep read access to [uri] across
-/// restarts (takePersistableUriPermission did not throw).
+/// One video (or, from [MediaHostApi.pickPhotos], one photo) the user picked
+/// in Android's photo picker (or its document picker fallback), identified by
+/// its content [uri]. Facts the provider does not give stay null; Kotlin maps
+/// a null size to 0 and a null name to ''. [persisted] is true when Android
+/// agreed to keep read access to [uri] across restarts
+/// (takePersistableUriPermission did not throw).
+///
+/// [dateModifiedMs] (milliseconds) is set for photo picks only (D-199): the
+/// document's last-modified time, else MediaStore's DATE_MODIFIED (seconds)
+/// times 1000. A photo pick also swaps [width] and [height] when the
+/// provider's `orientation` is 90 or 270. A video pick never sets
+/// [dateModifiedMs] and never swaps.
 class PickedVideoMsg {
   PickedVideoMsg({
     required this.uri,
@@ -439,6 +446,7 @@ class PickedVideoMsg {
     this.height,
     this.mimeType,
     required this.persisted,
+    this.dateModifiedMs,
   });
 
   String uri;
@@ -459,6 +467,8 @@ class PickedVideoMsg {
 
   bool persisted;
 
+  int? dateModifiedMs;
+
   List<Object?> _toList() {
     return <Object?>[
       uri,
@@ -470,6 +480,7 @@ class PickedVideoMsg {
       height,
       mimeType,
       persisted,
+      dateModifiedMs,
     ];
   }
 
@@ -489,6 +500,7 @@ class PickedVideoMsg {
       height: result[6] as int?,
       mimeType: result[7] as String?,
       persisted: result[8]! as bool,
+      dateModifiedMs: result[9] as int?,
     );
   }
 
@@ -509,7 +521,8 @@ class PickedVideoMsg {
         _deepEquals(width, other.width) &&
         _deepEquals(height, other.height) &&
         _deepEquals(mimeType, other.mimeType) &&
-        _deepEquals(persisted, other.persisted);
+        _deepEquals(persisted, other.persisted) &&
+        _deepEquals(dateModifiedMs, other.dateModifiedMs);
   }
 
   @override
@@ -518,7 +531,7 @@ class PickedVideoMsg {
 
   @override
   String toString() {
-    return 'PickedVideoMsg(uri: $uri, sizeBytes: $sizeBytes, durationMs: $durationMs, dateTakenMs: $dateTakenMs, displayName: $displayName, width: $width, height: $height, mimeType: $mimeType, persisted: $persisted)';
+    return 'PickedVideoMsg(uri: $uri, sizeBytes: $sizeBytes, durationMs: $durationMs, dateTakenMs: $dateTakenMs, displayName: $displayName, width: $width, height: $height, mimeType: $mimeType, persisted: $persisted, dateModifiedMs: $dateModifiedMs)';
   }
 }
 
@@ -911,6 +924,30 @@ class MediaHostApi {
   Future<List<PickedVideoMsg>> pickVideos() async {
     final pigeonVar_channelName =
         'dev.flutter.pigeon.taketray.MediaHostApi.pickVideos$pigeonVar_messageChannelSuffix';
+    final pigeonVar_channel = BasicMessageChannel<Object?>(
+      pigeonVar_channelName,
+      pigeonChannelCodec,
+      binaryMessenger: pigeonVar_binaryMessenger,
+    );
+    final Future<Object?> pigeonVar_sendFuture = pigeonVar_channel.send(null);
+    final pigeonVar_replyList = await pigeonVar_sendFuture as List<Object?>?;
+
+    final Object? pigeonVar_replyValue = _extractReplyValueOrThrow(
+      pigeonVar_replyList,
+      pigeonVar_channelName,
+      isNullValid: false,
+    );
+    return (pigeonVar_replyValue! as List<Object?>).cast<PickedVideoMsg>();
+  }
+
+  /// Android's photo picker for photos only (any image type, multiple), or
+  /// the document picker where it is missing; [] when cancelled; `busy` while
+  /// any pick (videos or photos) is open; `host-gone` as pickVideos. (The
+  /// type is written out in `PickedVideos.PHOTO_TYPE`: this comment is copied
+  /// into Kotlin, where a slash and a star would open a comment.)
+  Future<List<PickedVideoMsg>> pickPhotos() async {
+    final pigeonVar_channelName =
+        'dev.flutter.pigeon.taketray.MediaHostApi.pickPhotos$pigeonVar_messageChannelSuffix';
     final pigeonVar_channel = BasicMessageChannel<Object?>(
       pigeonVar_channelName,
       pigeonChannelCodec,

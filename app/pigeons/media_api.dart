@@ -99,11 +99,18 @@ class VideoFolderMsg {
   int videoCount;
 }
 
-/// One video the user picked in Android's photo picker (or its document
-/// picker fallback), identified by its content [uri]. Facts the provider does
-/// not give stay null; Kotlin maps a null size to 0 and a null name to ''.
-/// [persisted] is true when Android agreed to keep read access to [uri] across
-/// restarts (takePersistableUriPermission did not throw).
+/// One video (or, from [MediaHostApi.pickPhotos], one photo) the user picked
+/// in Android's photo picker (or its document picker fallback), identified by
+/// its content [uri]. Facts the provider does not give stay null; Kotlin maps
+/// a null size to 0 and a null name to ''. [persisted] is true when Android
+/// agreed to keep read access to [uri] across restarts
+/// (takePersistableUriPermission did not throw).
+///
+/// [dateModifiedMs] (milliseconds) is set for photo picks only (D-199): the
+/// document's last-modified time, else MediaStore's DATE_MODIFIED (seconds)
+/// times 1000. A photo pick also swaps [width] and [height] when the
+/// provider's `orientation` is 90 or 270. A video pick never sets
+/// [dateModifiedMs] and never swaps.
 class PickedVideoMsg {
   PickedVideoMsg({
     required this.uri,
@@ -115,6 +122,7 @@ class PickedVideoMsg {
     required this.height,
     required this.mimeType,
     required this.persisted,
+    required this.dateModifiedMs,
   });
 
   String uri;
@@ -126,6 +134,7 @@ class PickedVideoMsg {
   int? height;
   String? mimeType;
   bool persisted;
+  int? dateModifiedMs;
 }
 
 /// "From [atMs] (UTC milliseconds) the phone was in [zoneId]."
@@ -212,6 +221,14 @@ abstract class MediaHostApi {
   /// closes first.
   @async
   List<PickedVideoMsg> pickVideos();
+
+  /// Android's photo picker for photos only (any image type, multiple), or
+  /// the document picker where it is missing; [] when cancelled; `busy` while
+  /// any pick (videos or photos) is open; `host-gone` as pickVideos. (The
+  /// type is written out in `PickedVideos.PHOTO_TYPE`: this comment is copied
+  /// into Kotlin, where a slash and a star would open a comment.)
+  @async
+  List<PickedVideoMsg> pickPhotos();
 
   /// Like [thumbnail], for a content [uri] (a picked video). Null when the
   /// video is gone or unreadable, or [uri] is not a content address.
