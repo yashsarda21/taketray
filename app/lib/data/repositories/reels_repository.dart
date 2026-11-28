@@ -290,7 +290,10 @@ class ReelsRepository {
   /// One SQL statement per emission, whatever the number of reels: the
   /// counts and the live duration are aggregates over `clip_reels` joined to
   /// `clips`, and the cover is the first row of a window over each reel's
-  /// showable clips (`ReelSummary.cover`), joined in.
+  /// showable clips (`ReelSummary.cover`), joined in. The photos are the
+  /// clips whose type is `image/…` in any case (`LIKE` ignores ASCII case, as
+  /// `Clip.isPhoto` does; D-200); a photo has no length, so the live duration
+  /// is the videos'. A photo can be the cover, like a picked video.
   Stream<List<ReelSummary>> watchReelSummaries() {
     // The cover rule is the shared `hasPicture`, written as SQL for the
     // alias `c` with its own variables.
@@ -305,6 +308,8 @@ class ReelsRepository {
       WITH agg AS (
         SELECT cr.reel_id AS reel_id,
                COUNT(*) AS clip_count,
+               SUM(CASE WHEN c.mime_type LIKE 'image/%' THEN 1 ELSE 0 END)
+                 AS photo_count,
                SUM(CASE WHEN c.missing THEN 1 ELSE 0 END) AS missing_count,
                SUM(CASE WHEN c.missing THEN 0 ELSE c.duration_ms END) AS live_ms
           FROM clip_reels cr JOIN clips c ON c.id = cr.clip_id
@@ -322,6 +327,7 @@ class ReelsRepository {
       )
       SELECT r.*,
              COALESCE(agg.clip_count, 0) AS clip_count,
+             COALESCE(agg.photo_count, 0) AS photo_count,
              COALESCE(agg.missing_count, 0) AS missing_count,
              COALESCE(agg.live_ms, 0) AS live_ms,
              $clipColumns
@@ -340,6 +346,7 @@ class ReelsRepository {
           ReelSummary(
             reel: reelFromRow(_db.reels.map(row.data)),
             clipCount: row.read<int>('clip_count'),
+            photoCount: row.read<int>('photo_count'),
             missingCount: row.read<int>('missing_count'),
             liveDurationMs: row.read<int>('live_ms'),
             cover: row.data['cover.id'] == null

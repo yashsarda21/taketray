@@ -25,6 +25,8 @@ final WidgetbookComponent ttClipTileComponent = WidgetbookComponent(
           label: 'duration',
           initialValue: '0:32',
         );
+        // A photo shows the photo symbol where a video shows its length.
+        final photo = context.knobs.boolean(label: 'photo');
         final reelCount = context.knobs.int.slider(
           label: 'reel count',
           initialValue: 1,
@@ -63,9 +65,10 @@ final WidgetbookComponent ttClipTileComponent = WidgetbookComponent(
                 thumbnail: thumb == 0
                     ? MemoryImage(Uint8List(8))
                     : wbThumb(thumb),
-                semanticLabel: 'Clip, $time, $duration',
+                semanticLabel: 'Clip, $time, ${photo ? 'Photo' : duration}',
                 timeText: time,
-                durationText: duration,
+                durationText: photo ? null : duration,
+                photo: photo,
                 reelCount: reelCount,
                 horizontal: horizontal,
                 selected: selecting ? selected : null,

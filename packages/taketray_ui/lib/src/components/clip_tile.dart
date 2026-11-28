@@ -25,7 +25,8 @@ class TtClipMark {
 }
 
 /// A clip in a grid: a 3:4 thumbnail with the time it was shot (bottom left)
-/// and its length (bottom right).
+/// and its length (bottom right). A [photo] shows the photo symbol where a
+/// video shows its length (Phase 13, D-200).
 ///
 /// Badges: the number of reels the clip is in (top left, only from 2), a
 /// horizontal-video mark (top right, only for a clip in fewer than 2 reels),
@@ -36,7 +37,8 @@ class TtClipMark {
 /// at the top right, and a selected tile shrinks its picture inside a
 /// primary container frame. It is announced as a toggle then.
 ///
-/// A thumbnail that fails to load shows a neutral placeholder.
+/// A thumbnail that fails to load shows a neutral placeholder (a film for a
+/// video, a picture for a photo).
 /// [semanticLabel] is what a screen reader says for the whole tile (the
 /// badges are not read on their own), so it should mention the time, length,
 /// reel count, mark and VN folder.
@@ -47,6 +49,7 @@ class TtClipTile extends StatelessWidget {
     required this.semanticLabel,
     this.timeText,
     this.durationText,
+    this.photo = false,
     this.reelCount = 1,
     this.horizontal = false,
     this.selected,
@@ -56,7 +59,7 @@ class TtClipTile extends StatelessWidget {
     this.onTap,
     this.onLongPress,
     super.key,
-  });
+  }) : assert(!photo || durationText == null, 'a photo has no length');
 
   /// The picture.
   final ImageProvider thumbnail;
@@ -69,6 +72,11 @@ class TtClipTile extends StatelessWidget {
 
   /// How long the clip is, such as "0:32", or null for none.
   final String? durationText;
+
+  /// Whether the clip is a photo: the photo symbol stands where a video's
+  /// length is, over the same scrim and hidden in the same cases (selected,
+  /// marked). A photo has no [durationText].
+  final bool photo;
 
   /// How many reels the clip is in; the layers badge shows from 2.
   final int reelCount;
@@ -104,6 +112,7 @@ class TtClipTile extends StatelessWidget {
     final showHorizontal = horizontal && !multi;
     final time = isSelected || mark != null ? null : timeText;
     final duration = isSelected || mark != null ? null : durationText;
+    final photoSymbol = photo && !isSelected && mark == null;
     final vn = vnLabel;
     final tileMark = mark;
 
@@ -142,7 +151,7 @@ class TtClipTile extends StatelessWidget {
                       fit: BoxFit.cover,
                       excludeFromSemantics: true,
                       errorBuilder: (context, error, stackTrace) =>
-                          const _Placeholder(),
+                          _Placeholder(photo: photo),
                     ),
                   ),
                 ),
@@ -159,7 +168,10 @@ class TtClipTile extends StatelessWidget {
                     top: TtMetrics.clipTileBadgeInset,
                     child: _HorizontalBadge(),
                   ),
-                if (time != null || duration != null || vn != null)
+                if (time != null ||
+                    duration != null ||
+                    photoSymbol ||
+                    vn != null)
                   // The VN mark sits above the time and length, and keeps its
                   // height off the bottom when they are hidden.
                   PositionedDirectional(
@@ -183,12 +195,16 @@ class TtClipTile extends StatelessWidget {
                               child: _VnMark(label: vn),
                             ),
                           ),
-                        if (time != null || duration != null)
+                        if (time != null || duration != null || photoSymbol)
                           Padding(
                             padding: const EdgeInsetsDirectional.symmetric(
                               horizontal: TtMetrics.clipTileTextInset,
                             ),
-                            child: _TimeRow(time: time, duration: duration),
+                            child: _TimeRow(
+                              time: time,
+                              duration: duration,
+                              photo: photoSymbol,
+                            ),
                           )
                         else
                           const SizedBox(height: TtMetrics.clipTileTextHeight),
@@ -221,9 +237,12 @@ class TtClipTile extends StatelessWidget {
   }
 }
 
-/// The neutral picture for a thumbnail that failed to load.
+/// The neutral picture for a thumbnail that failed to load: a film for a
+/// video, a picture for a photo.
 class _Placeholder extends StatelessWidget {
-  const new();
+  const new({required this.photo});
+
+  final bool photo;
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +252,7 @@ class _Placeholder extends StatelessWidget {
       color: scheme.surfaceContainerHighest,
       child: Center(
         child: Icon(
-          Symbols.movie_rounded,
+          photo ? Symbols.image_rounded : Symbols.movie_rounded,
           size: tt.sizes.iconLarge,
           color: scheme.onSurfaceVariant,
         ),
@@ -266,12 +285,14 @@ class _TileScrim extends StatelessWidget {
   }
 }
 
-/// The time (start) and length (end) along the bottom of the tile.
+/// The time (start) and length (end) along the bottom of the tile, or, for
+/// a photo, the photo symbol at the end.
 class _TimeRow extends StatelessWidget {
-  const new({required this.time, required this.duration});
+  const new({required this.time, required this.duration, required this.photo});
 
   final String? time;
   final String? duration;
+  final bool photo;
 
   @override
   Widget build(BuildContext context) {
@@ -279,22 +300,19 @@ class _TimeRow extends StatelessWidget {
     final time = this.time;
     final duration = this.duration;
     // proto.css: .tile .tm, .tile .du
+    final shadows = [
+      Shadow(
+        color: context.scheme.shadow.withValues(
+          alpha: TtMetrics.clipTileTextShadowOpacity,
+        ),
+        blurRadius: TtMetrics.clipTileTextShadowBlur,
+        offset: const Offset(0, TtMetrics.clipTileTextShadowOffsetY),
+      ),
+    ];
     final style = tt.text
         .numeric(tt.text.material.bodySmall!)
         .merge(TtTextStyles.weight(TtMetrics.clipTileTextWeight))
-        .copyWith(
-          color: tt.colors.onMedia,
-          letterSpacing: 0,
-          shadows: [
-            Shadow(
-              color: context.scheme.shadow.withValues(
-                alpha: TtMetrics.clipTileTextShadowOpacity,
-              ),
-              blurRadius: TtMetrics.clipTileTextShadowBlur,
-              offset: const Offset(0, TtMetrics.clipTileTextShadowOffsetY),
-            ),
-          ],
-        );
+        .copyWith(color: tt.colors.onMedia, letterSpacing: 0, shadows: shadows);
     // The two share the row in proportion to their length. At large text
     // sizes each shrinks to its share rather than being cut off.
     Widget part(String text, AlignmentGeometry alignment) => Flexible(
@@ -314,6 +332,15 @@ class _TimeRow extends StatelessWidget {
         children: [
           if (time != null) part(time, AlignmentDirectional.centerStart),
           if (duration != null) part(duration, AlignmentDirectional.centerEnd),
+          // The photo symbol keeps its size; the time shrinks beside it.
+          if (photo)
+            Icon(
+              Symbols.image_rounded,
+              size: TtMetrics.clipTilePhotoIconSize,
+              color: tt.colors.onMedia,
+              fill: 1,
+              shadows: shadows,
+            ),
         ],
       ),
     );

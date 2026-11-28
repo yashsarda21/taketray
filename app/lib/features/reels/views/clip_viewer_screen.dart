@@ -464,8 +464,9 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
   }
 
   /// **Remove** (and **Remove from reel** under "can't be played"): takes the
-  /// clip out of this reel and says so, with **Undo**. The video stays in the
-  /// gallery. The viewer goes on to the clip that takes its place.
+  /// clip out of this reel and says so, with **Undo**. The video (or photo)
+  /// stays in the gallery, and the snack says which. The viewer goes on to
+  /// the clip that takes its place.
   ///
   /// During an editing session the clip's copy is deleted first (R8) and the
   /// snack says so; when it cannot be deleted nothing is removed.
@@ -481,7 +482,10 @@ class _ClipViewerScreenState extends ConsumerState<ClipViewerScreen> {
         clipIds: {clipId},
       );
       if (!done.isEmpty) {
-        final removed = l10n.viewerRemovedSnack(done.reelNames.single);
+        // A photo says "The photo is still in your gallery." (D-200).
+        final removed = done.photoCount > 0
+            ? l10n.viewerPhotoRemovedSnack(done.reelNames.single)
+            : l10n.viewerRemovedSnack(done.reelNames.single);
         snacks.showUndoAll(
           done.copiesDeleted > 0
               ? l10n.removedWithCopies(

@@ -1504,14 +1504,16 @@ class ClipsRepository {
   }
 
   /// The first stored clip that has a thumbnail to show (lowest id), again
-  /// after every change, or null: a MediaStore clip that is not missing and
-  /// holds a number above 0 ([hasPicture]). A detached clip is `missing`, and
-  /// a picked clip has no picture to ask for (D-74), so neither is offered.
-  /// It is where the Shooting mode card finds its backdrop when no clip waits
-  /// in To tag (D-76). A reel card's cover uses the same rule.
+  /// after every change, or null: a clip that is not missing and is either a
+  /// MediaStore clip holding a number above 0 or a picked clip with an
+  /// address ([hasPicture], Phase 7). A detached clip is `missing`, so it is
+  /// not offered. It is where the Shooting mode card finds its backdrop when
+  /// no clip waits in To tag (D-76). A reel card's cover uses the same rule,
+  /// but a photo is never offered here: photos never reach Shooting mode
+  /// (Phase 13, D-200). `LIKE` ignores ASCII case, as `Clip.isPhoto` does.
   Stream<Clip?> watchFirstShowableClip() {
     final query = _db.select(_db.clips)
-      ..where(hasPicture)
+      ..where((c) => hasPicture(c) & c.mimeType.like('image/%').not())
       ..orderBy([(c) => OrderingTerm.asc(c.id)])
       ..limit(1);
     return query.watchSingleOrNull().map(

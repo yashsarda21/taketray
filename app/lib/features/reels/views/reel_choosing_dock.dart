@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:taketray/data/editors/edit_session_service.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/rules/shooting_order.dart';
+import 'package:taketray/features/clips/widgets/media_counts.dart';
 import 'package:taketray/features/editors/views/editor_sheet.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/editors/views/open_share.dart';
@@ -34,8 +35,10 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///   again. Removing or moving clips of a reel being edited deletes their
 ///   copies first (R8).
 /// - **Edit {n} clips**, with the live length of the chosen clips, opens the
-///   editor sheet with them in shooting order. Choosing ends when an editor
-///   is picked (`Other app…` too); a dismissed sheet keeps it. With nothing
+///   editor sheet with them in shooting order. With photos chosen it reads
+///   "Edit 2 clips and 1 photo" with the videos' length, or "Edit 2 photos"
+///   with none (D-200). Choosing ends when an editor is picked (`Other
+///   app…` too); a dismissed sheet keeps it. With nothing
 ///   chosen it reads "Tap the clips you want to edit" and is off, and it is
 ///   off while the reel's editing session is not read yet.
 /// - **While the reel is being edited** (R1) a note stands in for Edit: "This
@@ -90,13 +93,21 @@ class _ReelChoosingDockState extends ConsumerState<ReelChoosingDock> {
     final chosen = selection.selected;
     final count = chosen.length;
     final any = count > 0;
+    final chosenClips = [
+      for (final c in clips)
+        if (chosen.contains(c.clip.id)) c.clip,
+    ];
     // A chosen clip is never missing (`ReelSelection`), so this is the live
-    // length of what is chosen.
+    // length of what is chosen (a photo has none).
     final length = formatClipDuration(
-      clips
-          .where((c) => chosen.contains(c.clip.id))
-          .fold(0, (sum, c) => sum + c.clip.fingerprint.durationMs),
+      chosenClips.fold(0, (sum, c) => sum + c.fingerprint.durationMs),
     );
+    // With photos chosen, the videos and photos apart (D-200, R13-1): "Edit
+    // 2 clips and 1 photo" with the videos' length, or "Edit 2 photos" with
+    // no length. With none, as before.
+    final photos = chosenClips.where((c) => c.isPhoto).length;
+    final videos = count - photos;
+    final counts = clipsAndPhotosText(l10n, videos: videos, photos: photos);
 
     return TtSelectionDock(
       semanticLabel: l10n.selectionDockLabel,
@@ -137,13 +148,19 @@ class _ReelChoosingDockState extends ConsumerState<ReelChoosingDock> {
       edit: edit != null
           ? null
           : TtSelectionDockEdit(
-              label: any
+              label: !any
+                  ? l10n.chooseClipsHintTitle
+                  : photos == 0
                   ? l10n.selectionDockEdit(count)
-                  : l10n.chooseClipsHintTitle,
-              detail: any ? length : null,
-              semanticLabel: any
+                  : l10n.selectionDockEditWith(counts),
+              detail: any && videos > 0 ? length : null,
+              semanticLabel: !any
+                  ? l10n.selectionDockEditNoneSemantics
+                  : photos == 0
                   ? l10n.selectionDockEditSemantics(count, length)
-                  : l10n.selectionDockEditNoneSemantics,
+                  : videos == 0
+                  ? l10n.selectionDockEditWith(counts)
+                  : l10n.selectionDockEditWithSemantics(counts, length),
               // Until the session is known, Edit waits.
               onPressed: any && editAsync.hasValue
                   ? () => unawaited(_edit())
@@ -156,15 +173,16 @@ class _ReelChoosingDockState extends ConsumerState<ReelChoosingDock> {
   /// order. Picking an editor ends choosing; a dismissed sheet keeps it.
   Future<void> _edit() async {
     if (_editing) return;
-    final ids = _chosenIdsInOrder();
-    if (ids.isEmpty) return;
+    final chosen = _chosenInOrder();
+    if (chosen.isEmpty) return;
     final notifier = ref.read(reelSelectionProvider(widget.reelId).notifier);
     _editing = true;
     try {
       final outcome = await showEditorSheet(
         context,
         reelId: widget.reelId,
-        clipIds: ids,
+        clipIds: [for (final c in chosen) c.id],
+        photoCount: chosen.where((c) => c.isPhoto).length,
       );
       if (outcome.isPicked && mounted) notifier.clear();
     } finally {
@@ -216,7 +234,7 @@ class _ReelChoosingDockState extends ConsumerState<ReelChoosingDock> {
   }
 
   /// **Remove**: takes the chosen clips out of the reel and says so, with
-  /// **Undo**. The videos stay in the gallery.
+  /// **Undo**. The videos and photos stay in the gallery.
   Future<void> _removeChosen() async {
     if (_removing) return;
     final reelId = widget.reelId;
@@ -233,10 +251,20 @@ class _ReelChoosingDockState extends ConsumerState<ReelChoosingDock> {
         clipIds: chosen,
       );
       if (!done.isEmpty) {
-        final removed = l10n.clipsRemovedSnack(
-          done.clipCount,
-          done.reelNames.single,
-        );
+        final reel = done.reelNames.single;
+        final photos = done.photoCount;
+        final videos = done.clipCount - photos;
+        // With photos (D-200, R13-5): "1 clip and 1 photo removed from Goa.
+        // They're still in your gallery."; one photo alone reads as the
+        // viewer's "Removed from Goa. The photo is still in your gallery.".
+        final removed = photos == 0
+            ? l10n.clipsRemovedSnack(done.clipCount, reel)
+            : photos == 1 && videos == 0
+            ? l10n.viewerPhotoRemovedSnack(reel)
+            : l10n.clipsRemovedSnackWithPhotos(
+                clipsAndPhotosText(l10n, videos: videos, photos: photos),
+                reel,
+              );
         snacks.showUndoAll(
           done.copiesDeleted > 0
               ? l10n.removedWithCopies(

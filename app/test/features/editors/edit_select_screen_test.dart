@@ -237,6 +237,44 @@ void main() {
       expect(tester.widget<TtButton>(selectAllButton()).label, 'Clear');
     });
 
+    testApp('add mode: a photo tile has the photo symbol and its label '
+        '(D-200)', (tester) async {
+      final (goa, ids) = await editing(tester);
+      final [photo] = await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [
+          reelPhoto(30, shot: DateTime.utc(2026, 10, 28, 9, 41)),
+        ]),
+      );
+
+      await open(tester, goa.id);
+
+      final byId = {
+        for (final t in tiles(tester)) (t.key! as ValueKey<int>).value: t,
+      };
+      final tile = byId[photo]!;
+      expect(tile.photo, isTrue);
+      expect(tile.durationText, isNull);
+      expect(
+        tile.semanticLabel.replaceAll(RegExp('[\u202f\u00a0]'), ' '),
+        'Clip, 9:41 AM, Photo',
+      );
+      // A new photo starts ticked, which hides the symbol like a length;
+      // un-ticked it shows.
+      final symbol = find.descendant(
+        of: find.byKey(ValueKey<int>(photo)),
+        matching: find.byIcon(Symbols.image_rounded),
+      );
+      expect(tile.selected, isTrue);
+      expect(symbol, findsNothing);
+      await tester.tap(find.byKey(ValueKey<int>(photo)));
+      await tester.pumpAndSettle();
+      expect(symbol, findsOneWidget);
+      // The videos keep their length.
+      expect(byId[ids[2]]!.photo, isFalse);
+      expect(byId[ids[2]]!.durationText, isNotNull);
+    });
+
     testApp('a reel with no session goes back to its page', (tester) async {
       final (goa, _) = await threeClips(tester);
 

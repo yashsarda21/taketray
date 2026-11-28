@@ -406,7 +406,7 @@ final class ReelDetailControllerProvider
 }
 
 String _$reelDetailControllerHash() =>
-    r'90dec349eb66154b2925d8c1ac1912a2e2696732';
+    r'5db81094a0db31fc8fe9d1e9f830f79f416f7550';
 
 /// The page of one reel (D-87): the reel, its clips by shooting day, and the
 /// counts of its header.

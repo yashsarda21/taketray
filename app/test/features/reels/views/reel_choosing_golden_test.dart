@@ -26,7 +26,10 @@ import '../edit_session_support.dart';
 /// - **none**: Choose clips instead from the sheet: "Choose clips", the hint
 ///   and the dock off;
 /// - **session**: a clip chosen on a reel being edited in VN: the note in
-///   place of Edit.
+///   place of Edit;
+/// - **photos** (Phase 13, D-200; light only): two photos among the clips,
+///   one chosen with a video ("Edit 1 clip and 1 photo") and one not, which
+///   shows the photo symbol where a video's length is.
 ///
 /// **macOS only, and not on CI** (D-61, D-97), like the other app screens:
 /// make or update them with `tool/flutter test --update-goldens
@@ -35,7 +38,7 @@ final bool _goldens =
     Platform.isMacOS && !Platform.environment.containsKey('CI');
 
 /// What is on the page when the picture is taken.
-enum _State { some, none, session }
+enum _State { some, none, session, photos }
 
 void main() {
   late VmHarness h;
@@ -137,6 +140,7 @@ void main() {
     (_State.none, Brightness.dark, 1.0, 'reel_choosing_none_dark'),
     (_State.session, Brightness.light, 1.0, 'reel_choosing_session_light'),
     (_State.session, Brightness.dark, 1.0, 'reel_choosing_session_dark'),
+    (_State.photos, Brightness.light, 1.0, 'reel_choosing_photos_light'),
   ]) {
     testApp("a reel's page while choosing ($name)", (tester) async {
       // The test binding draws shadows sharp (`debugDisableShadows`), which
@@ -145,6 +149,29 @@ void main() {
       debugDisableShadows = false;
       try {
         final (goa, ids) = await goaReel(tester);
+        var photoIds = const <int>[];
+        if (state == _State.photos) {
+          final photos = [
+            reelPhoto(1, shot: DateTime.utc(2026, 10, 25, 10, 30)),
+            reelPhoto(
+              2,
+              shot: DateTime.utc(2026, 10, 25, 11),
+              horizontal: true,
+            ),
+          ];
+          for (final (i, p) in photos.indexed) {
+            h.bridge.uriThumbnails[p.pickerUri!] = await tester.runAsync(
+              () => picture(
+                [const Color(0xFFE0B04A), const Color(0xFF5AA0C8)][i],
+                [const Color(0xFF5A3A10), const Color(0xFF143448)][i],
+              ),
+            );
+          }
+          photoIds = await real(
+            tester,
+            () => putPhotosInReel(h, goa.id, photos),
+          );
+        }
         if (state == _State.session) {
           await real(
             tester,
@@ -191,6 +218,13 @@ void main() {
             await tester.longPress(tile(ids[1]));
             await tester.pumpAndSettle();
             expect(find.text('1 selected'), findsOneWidget);
+          case _State.photos:
+            await tester.longPress(tile(ids[0]));
+            await tester.pumpAndSettle();
+            await tester.tap(tile(photoIds[0]));
+            await tester.pumpAndSettle();
+            expect(find.text('2 selected'), findsOneWidget);
+            expect(find.text('Edit 1 clip and 1 photo'), findsOneWidget);
         }
         expect(find.byType(TtSelectionDock), findsOneWidget);
 

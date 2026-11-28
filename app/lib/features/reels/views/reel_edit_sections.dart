@@ -351,7 +351,12 @@ class _DayGrid extends StatelessWidget {
             locale: tiles.locale,
             use24Hour: tiles.use24Hour,
           );
-    final length = formatClipDuration(clip.fingerprint.durationMs);
+    // A photo shows the photo symbol where a video's length is, and is read
+    // "Photo" in its place (D-200, R13-2).
+    final photo = clip.isPhoto;
+    final length = photo
+        ? l10n.clipKindPhoto
+        : formatClipDuration(clip.fingerprint.durationMs);
     final selection = tiles.selection;
     return TtClipTile(
       key: ValueKey(clip.id),
@@ -361,7 +366,8 @@ class _DayGrid extends StatelessWidget {
         cache: tiles.cache,
       ),
       timeText: time,
-      durationText: length,
+      durationText: photo ? null : length,
+      photo: photo,
       reelCount: item.reelCount,
       horizontal: clip.width > clip.height,
       semanticLabel: item.reelCount > 1

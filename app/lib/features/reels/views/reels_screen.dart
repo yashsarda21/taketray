@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/reel_summary.dart';
+import 'package:taketray/features/clips/widgets/media_counts.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
 import 'package:taketray/features/notifications/views/still_shooting_dialog.dart';
 import 'package:taketray/features/reels/view_models/home_controller.dart';
@@ -37,12 +38,14 @@ import 'package:taketray_ui/taketray_ui.dart';
 ///    as tall as its own text (the rows are aligned to the top,
 ///    `home2.css:55`).
 ///    A card (`TtReelCard`) is the cover alone, then the name, the status,
-///    "{n} clips · {m:ss}" (or "No clips yet") and a line of notes only when
-///    they apply: "In {editor}" while the reel has an editing session (none
-///    until the sessions are known), "{n} missing", and the number of
-///    references. It is one button, read as the name, the status and the
-///    clips, then ". Editing in {editor}", then ". {n} references". It opens
-///    the reel's page (a double tap opens one);
+///    "{n} clips · {m:ss}" (or "No clips yet"; with photos "{n} clips ·
+///    {p} photos · {m:ss}", or "{p} photos" alone, D-200) and a line of
+///    notes only when they apply: "In {editor}" while the reel has an
+///    editing session (none until the sessions are known), "{n} missing",
+///    and the number of references. It is one button, read as the name, the
+///    status and the clips (with photos "8 clips and 2 photos"), then
+///    ". Editing in {editor}", then ". {n} references". It opens the reel's
+///    page (a double tap opens one);
 /// 5. room for the nav pill (`TtNavPill.reservedHeight`).
 ///
 /// **Empty:** with no reel at all, "Plan your first reel" and a **New reel**
@@ -355,17 +358,36 @@ class _ReelCard extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final reel = summary.reel;
     final status = statusName(l10n, reel.status);
-    final clips = l10n.reelCardClips(summary.clipCount);
+    // With photos, "clips" counts the videos (D-200, R13-1): "8 clips · 2
+    // photos · 2:10", "2 photos" alone for photos only, read "8 clips and 2
+    // photos". A reel with no photos reads as it always did.
+    final photos = summary.photoCount;
+    final videos = summary.clipCount - photos;
+    final clips = l10n.reelCardClips(videos);
+    final length = formatClipDuration(summary.liveDurationMs);
     final missing = summary.missingCount;
     final references = summary.referenceCount;
-    final label = missing > 0
-        ? l10n.reelCardSemanticsMissing(
-            reel.name,
-            status,
-            summary.clipCount,
-            missing,
-          )
-        : l10n.reelCardSemantics(reel.name, status, summary.clipCount);
+    final String label;
+    if (photos == 0) {
+      label = missing > 0
+          ? l10n.reelCardSemanticsMissing(
+              reel.name,
+              status,
+              summary.clipCount,
+              missing,
+            )
+          : l10n.reelCardSemantics(reel.name, status, summary.clipCount);
+    } else {
+      final counts = clipsAndPhotosText(l10n, videos: videos, photos: photos);
+      label = missing > 0
+          ? l10n.reelCardSemanticsCountsMissing(
+              reel.name,
+              status,
+              counts,
+              missing,
+            )
+          : l10n.reelCardSemanticsCounts(reel.name, status, counts);
+    }
     final editor = this.editor;
     final editing = editor == null
         ? null
@@ -387,13 +409,14 @@ class _ReelCard extends StatelessWidget {
       name: reel.name,
       status: statusKindOf(reel.status),
       statusLabel: status,
-      // The length counts only the clips that are still on the phone.
+      // The length counts only the videos that are still on the phone.
       meta: summary.clipCount == 0
           ? l10n.reelCardEmptyArt
-          : l10n.reelCardMeta(
-              clips,
-              formatClipDuration(summary.liveDurationMs),
-            ),
+          : photos == 0
+          ? l10n.reelCardMeta(clips, length)
+          : videos == 0
+          ? l10n.photoCount(photos)
+          : l10n.reelMetaWithPhotos(clips, l10n.photoCount(photos), length),
       cover: cover,
       notes: [
         if (editing != null)

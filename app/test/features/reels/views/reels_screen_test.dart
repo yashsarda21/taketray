@@ -897,6 +897,97 @@ void main() {
     });
   });
 
+  group('photos on the card (Phase 13, D-200)', () {
+    TtReelCard card(WidgetTester tester) =>
+        tester.widget<TtReelCard>(find.byType(TtReelCard));
+
+    testWidgets('card: "8 clips · 2 photos · 2:10", read "Goa. Collecting. '
+        '8 clips and 2 photos"', (tester) async {
+      final handle = tester.ensureSemantics();
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(
+            1,
+            name: 'Goa',
+            clipCount: 10,
+            photoCount: 2,
+            liveDurationMs: 130000,
+          ),
+        ],
+      );
+
+      expect(card(tester).meta, '8 clips · 2 photos · 2:10');
+      expect(
+        card(tester).semanticLabel,
+        'Goa. Collecting. 8 clips and 2 photos',
+      );
+      expect(
+        tester.getSemantics(find.byType(TtReelCard)).label,
+        'Goa. Collecting. 8 clips and 2 photos',
+      );
+      handle.dispose();
+    });
+
+    testWidgets('with a missing photo: "…, 1 missing"; the editing and '
+        'references parts follow', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(
+            1,
+            name: 'Goa',
+            clipCount: 10,
+            photoCount: 2,
+            missingCount: 1,
+            liveDurationMs: 130000,
+          ),
+        ],
+        editors: {1: EditorApp.vn},
+        referenceCounts: {1: 2},
+      );
+
+      expect(card(tester).meta, '8 clips · 2 photos · 2:10');
+      expect(_missingOf(card(tester)), '1 missing');
+      expect(
+        card(tester).semanticLabel,
+        'Goa. Collecting. 8 clips and 2 photos, 1 missing. Editing in VN. '
+        '2 references',
+      );
+    });
+
+    testWidgets('photos only: the card "2 photos", read "Goa. Collecting. 2 '
+        'photos"', (tester) async {
+      await pumpHome(
+        tester,
+        reels: [testSummary(1, name: 'Goa', clipCount: 2, photoCount: 2)],
+      );
+
+      expect(card(tester).meta, '2 photos');
+      expect(card(tester).semanticLabel, 'Goa. Collecting. 2 photos');
+    });
+
+    testWidgets('one video and one photo: "1 clip · 1 photo · 0:04"', (
+      tester,
+    ) async {
+      await pumpHome(
+        tester,
+        reels: [
+          testSummary(
+            1,
+            name: 'Goa',
+            clipCount: 2,
+            photoCount: 1,
+            liveDurationMs: 4000,
+          ),
+        ],
+      );
+
+      expect(card(tester).meta, '1 clip · 1 photo · 0:04');
+      expect(card(tester).semanticLabel, 'Goa. Collecting. 1 clip and 1 photo');
+    });
+  });
+
   group('references on the card (D-158, D-196)', () {
     Map<String, String?> countsByName(WidgetTester tester) => {
       for (final c in tester.widgetList<TtReelCard>(find.byType(TtReelCard)))

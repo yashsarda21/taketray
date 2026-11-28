@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:taketray_ui/src/components/internal/scrim.dart';
 import 'package:taketray_ui/taketray_ui.dart';
 
 import '../support/fixtures.dart';
@@ -459,6 +460,233 @@ void main() {
             _tile(reelCount: 2, horizontal: true, onTap: () {}),
             brightness: brightness,
           ),
+        );
+        await tester.runAsync(
+          () => precacheImage(
+            fixtureThumb(1),
+            tester.element(find.byType(TtClipTile)),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await expectTtAccessible(tester);
+      });
+    }
+  });
+
+  group('TtClipTile, a photo (Phase 13, D-200)', () {
+    Widget photoTile({
+      ImageProvider? thumbnail,
+      bool horizontal = false,
+      bool? selected,
+      TtClipMark? mark,
+      String? vnLabel,
+      String timeText = '9:41 AM',
+      double width = 108,
+    }) => Center(
+      child: SizedBox(
+        width: width,
+        child: TtClipTile(
+          thumbnail: thumbnail ?? fixtureThumb(1),
+          semanticLabel: 'Clip, 9:41 AM, Photo',
+          timeText: timeText,
+          photo: true,
+          horizontal: horizontal,
+          selected: selected,
+          mark: mark,
+          vnLabel: vnLabel,
+          onTap: () {},
+        ),
+      ),
+    );
+
+    // The photo symbol in the corner (not the one in a failed thumbnail's
+    // placeholder, which is drawn larger).
+    Finder corner() => find.byWidgetPredicate(
+      (w) =>
+          w is Icon &&
+          w.icon == Symbols.image_rounded &&
+          w.size == TtMetrics.clipTilePhotoIconSize,
+    );
+
+    /// The index of the [Stack] child of the tile that holds [finder].
+    int layerOf(WidgetTester tester, Finder finder) {
+      final stack = tester.element(
+        find
+            .descendant(
+              of: find.byType(TtClipTile),
+              matching: find.byType(Stack),
+            )
+            .first,
+      );
+      final layers = <Element>[];
+      stack.visitChildren(layers.add);
+      final target = tester.element(finder);
+      for (final (index, layer) in layers.indexed) {
+        var found = identical(layer, target);
+        void visit(Element e) {
+          if (identical(e, target)) found = true;
+          if (!found) e.visitChildren(visit);
+        }
+
+        if (!found) layer.visitChildren(visit);
+        if (found) return index;
+      }
+      throw StateError('not in the tile');
+    }
+
+    testWidgets('photo: the image symbol where the length is, 16 dp, '
+        'onMedia, over the scrim', (tester) async {
+      await tester.pumpWidget(ttTestApp(photoTile()));
+      final tt = tester.element(find.byType(TtClipTile)).tt;
+
+      expect(corner(), findsOneWidget);
+      final icon = tester.widget<Icon>(corner());
+      expect(icon.size, 16);
+      expect(icon.fill, 1);
+      expect(icon.color, tt.colors.onMedia);
+      // The length's text shadow.
+      final shadow = icon.shadows!.single;
+      expect(shadow.blurRadius, 2);
+      expect(shadow.offset, const Offset(0, 1));
+      expect(shadow.color.a, closeTo(0.5, 0.01));
+      // Where the length is: 7 dp from the end, 5 dp from the bottom.
+      final tile = tester.getRect(find.byType(TtClipTile));
+      final at = tester.getRect(corner());
+      expect(tile.right - at.right, closeTo(7, 0.01));
+      expect(tile.bottom - at.bottom, closeTo(5, 0.01));
+      expect(at.size, const Size(16, 16));
+      // No length, and the time still shows.
+      expect(find.text('0:32'), findsNothing);
+      expect(find.text('9:41 AM'), findsOneWidget);
+      // Drawn over the same scrim as the length.
+      final scrim = find.descendant(
+        of: find.byType(TtClipTile),
+        matching: find.byType(Scrim),
+      );
+      expect(scrim, findsOneWidget);
+      expect(layerOf(tester, corner()), greaterThan(layerOf(tester, scrim)));
+      expect(
+        layerOf(tester, corner()),
+        layerOf(tester, find.text('9:41 AM')),
+        reason: "on the time's line",
+      );
+    });
+
+    testWidgets('a video tile shows no photo symbol', (tester) async {
+      await tester.pumpWidget(ttTestApp(_tile()));
+      expect(_icon(Symbols.image_rounded), findsNothing);
+      expect(find.text('0:32'), findsOneWidget);
+    });
+
+    testWidgets('photo with a length is a mistake (assert)', (tester) async {
+      expect(
+        () => TtClipTile(
+          thumbnail: fixtureThumb(1),
+          semanticLabel: 'Clip',
+          durationText: '0:32',
+          photo: true,
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    testWidgets('photo selected or marked: no symbol, like the length', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(photoTile(selected: false)));
+      expect(corner(), findsOneWidget, reason: 'choosing, not chosen');
+
+      await tester.pumpWidget(ttTestApp(photoTile(selected: true)));
+      expect(corner(), findsNothing);
+      expect(find.text('9:41 AM'), findsNothing);
+
+      await tester.pumpWidget(
+        ttTestApp(
+          photoTile(
+            mark: const TtClipMark(
+              icon: Symbols.check_circle_rounded,
+              label: 'In this reel',
+            ),
+          ),
+        ),
+      );
+      expect(corner(), findsNothing);
+      expect(find.text('9:41 AM'), findsNothing);
+    });
+
+    testWidgets('photo with a VN mark: the symbol stays on the time line', (
+      tester,
+    ) async {
+      await tester.pumpWidget(ttTestApp(photoTile(vnLabel: 'In VN folder')));
+      expect(corner(), findsOneWidget);
+      final time = tester.getRect(find.text('9:41 AM'));
+      final at = tester.getRect(corner());
+      expect(at.center.dy, closeTo(time.center.dy, 0.5));
+      expect(
+        tester.getRect(find.text('In VN folder')).bottom,
+        lessThan(at.top),
+      );
+    });
+
+    testWidgets('photo with a failed thumbnail: the image placeholder, not '
+        'the movie one', (tester) async {
+      await tester.pumpWidget(ttTestApp(photoTile(thumbnail: brokenImage)));
+      await tester.runAsync(
+        () => precacheImage(
+          brokenImage,
+          tester.element(find.byType(TtClipTile)),
+          onError: (_, _) {},
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      final tt = tester.element(find.byType(TtClipTile)).tt;
+      expect(_icon(Symbols.movie_rounded), findsNothing);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is Icon &&
+              w.icon == Symbols.image_rounded &&
+              w.size == tt.sizes.iconLarge,
+        ),
+        findsOneWidget,
+      );
+      // The corner symbol and the time still show over it.
+      expect(corner(), findsOneWidget);
+      expect(find.text('9:41 AM'), findsOneWidget);
+    });
+
+    testWidgets('photo at 2x text at 360: no overflow; the time still shows', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ttTestApp(
+          photoTile(
+            width: 107,
+            timeText: '12:41:59 AM tomorrow',
+            vnLabel: 'In the VN folder already',
+          ),
+          textScale: 2,
+        ),
+      );
+      expect(tester.takeException(), isNull);
+      expect(find.text('12:41:59 AM tomorrow'), findsOneWidget);
+      final tile = tester.getRect(find.byType(TtClipTile));
+      final time = tester.getRect(find.text('12:41:59 AM tomorrow'));
+      final at = tester.getRect(corner());
+      // Side by side, never on top of each other, and inside the tile.
+      expect(time.right, lessThanOrEqualTo(at.left));
+      expect(tile.contains(time.topLeft), isTrue);
+      expect(at.right, lessThanOrEqualTo(tile.right));
+    });
+
+    for (final b in Brightness.values) {
+      testWidgets('${b.name}: photo tile accessible', (tester) async {
+        await tester.pumpWidget(
+          ttTestApp(photoTile(horizontal: true), brightness: b),
         );
         await tester.runAsync(
           () => precacheImage(

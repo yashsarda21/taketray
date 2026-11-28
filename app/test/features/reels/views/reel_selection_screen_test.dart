@@ -561,6 +561,26 @@ void main() {
       expect(row.semanticLabel, 'London, 2 clips');
     });
 
+    testApp('a row counts every item, photos too (characterization, R13-1, '
+        'F10)', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      await reelWithClips(tester, goa, 1);
+      await real(tester, () => putInReel(h, london.id, [reelVideo(7)]));
+      await real(
+        tester,
+        () => putPhotosInReel(h, london.id, [reelPhoto(1), reelPhoto(2)]),
+      );
+      await open(tester, goa.id);
+      await select(tester, 1);
+      await tester.tap(dockAction('Add to'));
+      await settleApp(tester);
+
+      final row = tester.widget<TtReelPickRow>(find.byType(TtReelPickRow));
+      expect(row.countText, '3 clips');
+      expect(row.semanticLabel, 'London, 3 clips');
+    });
+
     testApp('Cancel changes nothing and keeps the selection', (tester) async {
       final goa = await newReel(tester, 'Goa');
       final london = await newReel(tester, 'London');
@@ -1072,6 +1092,62 @@ void main() {
       expect(await real(tester, clips.allClipIds), ids.toSet());
     });
 
+    testApp("the dock's Remove with a photo: \"1 clip and 1 photo removed "
+        "from Goa. They're still in your gallery.\" (D-200, R13-5)", (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      // Tiles in shooting order: video 1 (9:01), photo 2 (9:02), video 3.
+      await real(
+        tester,
+        () => putInReel(h, goa.id, [reelVideo(1), reelVideo(3)]),
+      );
+      await real(tester, () => putPhotosInReel(h, goa.id, [reelPhoto(2)]));
+      await open(tester, goa.id);
+      await select(tester, 2);
+
+      await tester.tap(dockAction('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text(
+          "1 clip and 1 photo removed from Goa. They're still in your gallery.",
+        ),
+        findsOneWidget,
+      );
+      expect(tiles(tester), hasLength(1));
+    });
+
+    testApp("the dock's Remove of photos only says photos", (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [
+          reelPhoto(1),
+          reelPhoto(2),
+          reelPhoto(3),
+        ]),
+      );
+      await open(tester, goa.id);
+      await select(tester, 2);
+
+      await tester.tap(dockAction('Remove'));
+      await settleApp(tester);
+      expect(
+        find.text("2 photos removed from Goa. They're still in your gallery."),
+        findsOneWidget,
+      );
+
+      // One photo alone reads like the viewer's: "The photo is still…".
+      await select(tester, 1);
+      await tester.tap(dockAction('Remove'));
+      await settleApp(tester);
+      expect(
+        find.text('Removed from Goa. The photo is still in your gallery.'),
+        findsOneWidget,
+      );
+    });
+
     testApp('one clip says 1 clip and the video', (tester) async {
       final goa = await newReel(tester, 'Goa');
       await reelWithClips(tester, goa, 2);
@@ -1440,6 +1516,55 @@ void main() {
       expect(find.byType(TtSelectionDock), findsNothing);
       expect(find.byType(TtNavPill), findsOneWidget);
       expect(find.byType(TtFab), findsOneWidget);
+    });
+
+    testApp('dock Edit with photos: "Edit 2 clips and 1 photo", the videos\' '
+        'length, read "Edit 2 clips and 1 photo, 0:40"; the sheet says the '
+        'same', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () => putInReel(h, goa.id, [
+          reelVideo(1, durationMs: 10000),
+          reelVideo(3, durationMs: 30000),
+        ]),
+      );
+      await real(tester, () => putPhotosInReel(h, goa.id, [reelPhoto(2)]));
+      await open(tester, goa.id);
+      await select(tester, 3);
+
+      final edit = dock(tester).edit!;
+      expect(edit.label, 'Edit 2 clips and 1 photo');
+      expect(edit.detail, '0:40');
+      expect(edit.semanticLabel, 'Edit 2 clips and 1 photo, 0:40');
+
+      await tester.tap(dockEdit());
+      await settleApp(tester);
+
+      expect(sheetTitle(tester), 'Edit 2 clips and 1 photo in…');
+    });
+
+    testApp('dock Edit, photos only: "Edit 2 photos", no length', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(1), reelPhoto(2)]),
+      );
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(10)]));
+      await open(tester, goa.id);
+      await select(tester, 2);
+
+      final edit = dock(tester).edit!;
+      expect(edit.label, 'Edit 2 photos');
+      expect(edit.detail, isNull);
+      expect(edit.semanticLabel, 'Edit 2 photos');
+
+      await tester.tap(dockEdit());
+      await settleApp(tester);
+
+      expect(sheetTitle(tester), 'Edit 2 photos in…');
     });
 
     testApp('Edit 2 clips opens the sheet with exactly those, in shooting '

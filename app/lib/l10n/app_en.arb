@@ -2207,6 +2207,148 @@
   "@addPhotosFailed": {
     "description": "Snack when the photo picker or adding the picked photos failed."
   },
+  "clipKindPhoto": "Photo",
+  "@clipKindPhoto": {
+    "description": "What a screen reader says in a photo tile's label where a video tile says its length: \"Clip, 9:41 AM, Photo\"."
+  },
+  "photoCount": "{count, plural, one{1 photo} other{{count} photos}}",
+  "@photoCount": {
+    "description": "How many photos: on a reel's header and Home card beside the videos (\"8 clips · 2 photos · 2:10\"), alone for a reel of photos only (\"2 photos\"), and inside the counts of the editor sheet's title, the dock's Edit and the Remove snack.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "clipsAndPhotos": "{clips} and {photos}",
+  "@clipsAndPhotos": {
+    "description": "Videos and photos together, such as \"8 clips and 2 photos\": {clips} counts the videos only, {photos} the photos.",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "photos": {
+        "type": "String"
+      }
+    }
+  },
+  "reelHeaderVideos": "{count, plural, one{1 video} other{{count} videos}}",
+  "@reelHeaderVideos": {
+    "description": "How many videos a reel holds, on its page's header next to the photos: \"8 videos · 2 photos · 2:10\".",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "reelMetaWithPhotos": "{clips} · {photos} · {duration}",
+  "@reelMetaWithPhotos": {
+    "description": "Line under a reel's name (Home card and reel page) when it holds videos and photos: the videos, the photos, then the videos' total length, such as \"8 clips · 2 photos · 2:10\".",
+    "placeholders": {
+      "clips": {
+        "type": "String"
+      },
+      "photos": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsCounts": "{name}. {status}. {counts}",
+  "@reelCardSemanticsCounts": {
+    "description": "What a screen reader says for a reel card that holds photos: its name, its status and its counts, such as \"Goa. Collecting. 8 clips and 2 photos\".",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "counts": {
+        "type": "String"
+      }
+    }
+  },
+  "reelCardSemanticsCountsMissing": "{name}. {status}. {counts}, {missing} missing",
+  "@reelCardSemanticsCountsMissing": {
+    "description": "What a screen reader says for a reel card that holds photos, with clips or photos missing from the phone.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "status": {
+        "type": "String"
+      },
+      "counts": {
+        "type": "String"
+      },
+      "missing": {
+        "type": "int"
+      }
+    }
+  },
+  "editorSheetTitleWith": "Edit {counts} in…",
+  "@editorSheetTitleWith": {
+    "description": "Title of the editor sheet when photos are among the clips, such as \"Edit 2 clips and 1 photo in…\" or \"Edit 2 photos in…\".",
+    "placeholders": {
+      "counts": {
+        "type": "String"
+      }
+    }
+  },
+  "editorSheetTitleAllWith": "Edit all {counts} in…",
+  "@editorSheetTitleAllWith": {
+    "description": "Title of the editor sheet from Edit video, for every clip of a reel that holds videos and photos, such as \"Edit all 8 clips and 2 photos in…\".",
+    "placeholders": {
+      "counts": {
+        "type": "String"
+      }
+    }
+  },
+  "selectionDockEditWith": "Edit {counts}",
+  "@selectionDockEditWith": {
+    "description": "The dock's Edit button when photos are chosen, such as \"Edit 2 clips and 1 photo\" or \"Edit 2 photos\".",
+    "placeholders": {
+      "counts": {
+        "type": "String"
+      }
+    }
+  },
+  "selectionDockEditWithSemantics": "Edit {counts}, {duration}",
+  "@selectionDockEditWithSemantics": {
+    "description": "What a screen reader says for the dock's Edit button when videos and photos are chosen: the counts and the videos' length, such as \"Edit 2 clips and 1 photo, 0:40\".",
+    "placeholders": {
+      "counts": {
+        "type": "String"
+      },
+      "duration": {
+        "type": "String"
+      }
+    }
+  },
+  "viewerPhotoRemovedSnack": "Removed from {reel}. The photo is still in your gallery.",
+  "@viewerPhotoRemovedSnack": {
+    "description": "Snack after Remove on a photo in the viewer, with an Undo button. {reel} is the reel's name.",
+    "placeholders": {
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
+  "clipsRemovedSnackWithPhotos": "{counts} removed from {reel}. They're still in your gallery.",
+  "@clipsRemovedSnackWithPhotos": {
+    "description": "Snack after the dock's Remove took out clips that include photos, with an Undo button, such as \"1 clip and 1 photo removed from Goa.\" {counts} is the videos and photos, {reel} the reel's name.",
+    "placeholders": {
+      "counts": {
+        "type": "String"
+      },
+      "reel": {
+        "type": "String"
+      }
+    }
+  },
   "manualPickTitle": "Pick videos yourself",
   "@manualPickTitle": {
     "description": "Title of the sheet that Add videos opens when TakeTray can see only some of the user's videos (Manual mode)."

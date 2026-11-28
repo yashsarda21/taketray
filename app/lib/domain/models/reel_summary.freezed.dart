@@ -15,12 +15,16 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$ReelSummary {
 
- Reel get reel;/// Every clip in the reel, missing ones too.
+ Reel get reel;/// Every clip in the reel, missing ones too, photos included.
  int get clipCount;/// The clips in the reel that are flagged missing.
- int get missingCount;/// The total length of the clips that are not missing, in milliseconds.
- int get liveDurationMs;/// The picture on the card: the oldest clip (by shooting time, ties by
-/// id) that has a picture to show: a MediaStore clip that is not missing
-/// and holds a MediaStore number above 0. Null when the reel has none.
+ int get missingCount;/// The total length of the clips that are not missing, in milliseconds
+/// (a photo's is 0, so this is the live videos').
+ int get liveDurationMs;/// The photos among [clipCount], missing ones too (Phase 13, D-200): a
+/// clip whose type is an image type, in any case.
+ int get photoCount;/// The picture on the card: the oldest clip (by shooting time, ties by
+/// id) that has a picture to show (`hasPicture`): a MediaStore clip that
+/// is not missing and holds a MediaStore number above 0, or a picked clip
+/// (a photo too, D-200) that is not missing. Null when the reel has none.
  Clip? get cover;/// How many references (saved links) the reel has. The repository's query
 /// does not read it: Home joins it in from
 /// `ReferencesRepository.watchCounts` (D-158), so it is 0 elsewhere.
@@ -36,20 +40,20 @@ $ReelSummaryCopyWith<ReelSummary> get copyWith => _$ReelSummaryCopyWithImpl<Reel
 @override
 bool operator ==(Object other) {
   final _this = this as ReelSummary;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is ReelSummary&&(identical(other.reel, _this.reel) || other.reel == _this.reel)&&(identical(other.clipCount, _this.clipCount) || other.clipCount == _this.clipCount)&&(identical(other.missingCount, _this.missingCount) || other.missingCount == _this.missingCount)&&(identical(other.liveDurationMs, _this.liveDurationMs) || other.liveDurationMs == _this.liveDurationMs)&&(identical(other.cover, _this.cover) || other.cover == _this.cover)&&(identical(other.referenceCount, _this.referenceCount) || other.referenceCount == _this.referenceCount));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is ReelSummary&&(identical(other.reel, _this.reel) || other.reel == _this.reel)&&(identical(other.clipCount, _this.clipCount) || other.clipCount == _this.clipCount)&&(identical(other.missingCount, _this.missingCount) || other.missingCount == _this.missingCount)&&(identical(other.liveDurationMs, _this.liveDurationMs) || other.liveDurationMs == _this.liveDurationMs)&&(identical(other.photoCount, _this.photoCount) || other.photoCount == _this.photoCount)&&(identical(other.cover, _this.cover) || other.cover == _this.cover)&&(identical(other.referenceCount, _this.referenceCount) || other.referenceCount == _this.referenceCount));
 }
 
 
 @override
 int get hashCode {
   final _this = this as ReelSummary;
-  return Object.hash(runtimeType,_this.reel,_this.clipCount,_this.missingCount,_this.liveDurationMs,_this.cover,_this.referenceCount);
+  return Object.hash(runtimeType,_this.reel,_this.clipCount,_this.missingCount,_this.liveDurationMs,_this.photoCount,_this.cover,_this.referenceCount);
 }
 
 @override
 String toString() {
   final _this = this as ReelSummary;
-  return 'ReelSummary(reel: ${_this.reel}, clipCount: ${_this.clipCount}, missingCount: ${_this.missingCount}, liveDurationMs: ${_this.liveDurationMs}, cover: ${_this.cover}, referenceCount: ${_this.referenceCount})';
+  return 'ReelSummary(reel: ${_this.reel}, clipCount: ${_this.clipCount}, missingCount: ${_this.missingCount}, liveDurationMs: ${_this.liveDurationMs}, photoCount: ${_this.photoCount}, cover: ${_this.cover}, referenceCount: ${_this.referenceCount})';
 }
 
 
@@ -60,7 +64,7 @@ abstract mixin class $ReelSummaryCopyWith<$Res>  {
   factory $ReelSummaryCopyWith(ReelSummary value, $Res Function(ReelSummary) _then) = _$ReelSummaryCopyWithImpl;
 @useResult
 $Res call({
- Reel reel, int clipCount, int missingCount, int liveDurationMs, Clip? cover, int referenceCount
+ Reel reel, int clipCount, int missingCount, int liveDurationMs, int photoCount, Clip? cover, int referenceCount
 });
 
 
@@ -77,12 +81,13 @@ class _$ReelSummaryCopyWithImpl<$Res>
 
 /// Create a copy of ReelSummary
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? reel = null,Object? clipCount = null,Object? missingCount = null,Object? liveDurationMs = null,Object? cover = freezed,Object? referenceCount = null,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? reel = null,Object? clipCount = null,Object? missingCount = null,Object? liveDurationMs = null,Object? photoCount = null,Object? cover = freezed,Object? referenceCount = null,}) {
   return _then(ReelSummary(
 reel: null == reel ? _self.reel : reel // ignore: cast_nullable_to_non_nullable
 as Reel,clipCount: null == clipCount ? _self.clipCount : clipCount // ignore: cast_nullable_to_non_nullable
 as int,missingCount: null == missingCount ? _self.missingCount : missingCount // ignore: cast_nullable_to_non_nullable
 as int,liveDurationMs: null == liveDurationMs ? _self.liveDurationMs : liveDurationMs // ignore: cast_nullable_to_non_nullable
+as int,photoCount: null == photoCount ? _self.photoCount : photoCount // ignore: cast_nullable_to_non_nullable
 as int,cover: freezed == cover ? _self.cover : cover // ignore: cast_nullable_to_non_nullable
 as Clip?,referenceCount: null == referenceCount ? _self.referenceCount : referenceCount // ignore: cast_nullable_to_non_nullable
 as int,
@@ -191,10 +196,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  Clip? cover,  int referenceCount)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  int photoCount,  Clip? cover,  int referenceCount)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _ReelSummary() when $default != null:
-return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.cover,_that.referenceCount);case _:
+return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.photoCount,_that.cover,_that.referenceCount);case _:
   return orElse();
 
 }
@@ -212,10 +217,10 @@ return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDuration
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  Clip? cover,  int referenceCount)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  int photoCount,  Clip? cover,  int referenceCount)  $default,) {final _that = this;
 switch (_that) {
 case _ReelSummary():
-return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.cover,_that.referenceCount);case _:
+return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.photoCount,_that.cover,_that.referenceCount);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -232,10 +237,10 @@ return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDuration
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  Clip? cover,  int referenceCount)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( Reel reel,  int clipCount,  int missingCount,  int liveDurationMs,  int photoCount,  Clip? cover,  int referenceCount)?  $default,) {final _that = this;
 switch (_that) {
 case _ReelSummary() when $default != null:
-return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.cover,_that.referenceCount);case _:
+return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDurationMs,_that.photoCount,_that.cover,_that.referenceCount);case _:
   return null;
 
 }
@@ -247,19 +252,24 @@ return $default(_that.reel,_that.clipCount,_that.missingCount,_that.liveDuration
 
 
 class _ReelSummary implements ReelSummary {
-  const _ReelSummary({required this.reel, required this.clipCount, required this.missingCount, required this.liveDurationMs, this.cover, this.referenceCount = 0});
+  const _ReelSummary({required this.reel, required this.clipCount, required this.missingCount, required this.liveDurationMs, this.photoCount = 0, this.cover, this.referenceCount = 0});
   
 
 @override final  Reel reel;
-/// Every clip in the reel, missing ones too.
+/// Every clip in the reel, missing ones too, photos included.
 @override final  int clipCount;
 /// The clips in the reel that are flagged missing.
 @override final  int missingCount;
-/// The total length of the clips that are not missing, in milliseconds.
+/// The total length of the clips that are not missing, in milliseconds
+/// (a photo's is 0, so this is the live videos').
 @override final  int liveDurationMs;
+/// The photos among [clipCount], missing ones too (Phase 13, D-200): a
+/// clip whose type is an image type, in any case.
+@override@JsonKey() final  int photoCount;
 /// The picture on the card: the oldest clip (by shooting time, ties by
-/// id) that has a picture to show: a MediaStore clip that is not missing
-/// and holds a MediaStore number above 0. Null when the reel has none.
+/// id) that has a picture to show (`hasPicture`): a MediaStore clip that
+/// is not missing and holds a MediaStore number above 0, or a picked clip
+/// (a photo too, D-200) that is not missing. Null when the reel has none.
 @override final  Clip? cover;
 /// How many references (saved links) the reel has. The repository's query
 /// does not read it: Home joins it in from
@@ -276,18 +286,18 @@ _$ReelSummaryCopyWith<_ReelSummary> get copyWith => __$ReelSummaryCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ReelSummary&&(identical(other.reel, reel) || other.reel == reel)&&(identical(other.clipCount, clipCount) || other.clipCount == clipCount)&&(identical(other.missingCount, missingCount) || other.missingCount == missingCount)&&(identical(other.liveDurationMs, liveDurationMs) || other.liveDurationMs == liveDurationMs)&&(identical(other.cover, cover) || other.cover == cover)&&(identical(other.referenceCount, referenceCount) || other.referenceCount == referenceCount));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _ReelSummary&&(identical(other.reel, reel) || other.reel == reel)&&(identical(other.clipCount, clipCount) || other.clipCount == clipCount)&&(identical(other.missingCount, missingCount) || other.missingCount == missingCount)&&(identical(other.liveDurationMs, liveDurationMs) || other.liveDurationMs == liveDurationMs)&&(identical(other.photoCount, photoCount) || other.photoCount == photoCount)&&(identical(other.cover, cover) || other.cover == cover)&&(identical(other.referenceCount, referenceCount) || other.referenceCount == referenceCount));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,reel,clipCount,missingCount,liveDurationMs,cover,referenceCount);
+    return Object.hash(runtimeType,reel,clipCount,missingCount,liveDurationMs,photoCount,cover,referenceCount);
 }
 
 @override
 String toString() {
-    return 'ReelSummary(reel: $reel, clipCount: $clipCount, missingCount: $missingCount, liveDurationMs: $liveDurationMs, cover: $cover, referenceCount: $referenceCount)';
+    return 'ReelSummary(reel: $reel, clipCount: $clipCount, missingCount: $missingCount, liveDurationMs: $liveDurationMs, photoCount: $photoCount, cover: $cover, referenceCount: $referenceCount)';
 }
 
 
@@ -298,7 +308,7 @@ abstract mixin class _$ReelSummaryCopyWith<$Res> implements $ReelSummaryCopyWith
   factory _$ReelSummaryCopyWith(_ReelSummary value, $Res Function(_ReelSummary) _then) = __$ReelSummaryCopyWithImpl;
 @override @useResult
 $Res call({
- Reel reel, int clipCount, int missingCount, int liveDurationMs, Clip? cover, int referenceCount
+ Reel reel, int clipCount, int missingCount, int liveDurationMs, int photoCount, Clip? cover, int referenceCount
 });
 
 
@@ -315,12 +325,13 @@ class __$ReelSummaryCopyWithImpl<$Res>
 
 /// Create a copy of ReelSummary
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? reel = null,Object? clipCount = null,Object? missingCount = null,Object? liveDurationMs = null,Object? cover = freezed,Object? referenceCount = null,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? reel = null,Object? clipCount = null,Object? missingCount = null,Object? liveDurationMs = null,Object? photoCount = null,Object? cover = freezed,Object? referenceCount = null,}) {
   return _then(_ReelSummary(
 reel: null == reel ? _self.reel : reel // ignore: cast_nullable_to_non_nullable
 as Reel,clipCount: null == clipCount ? _self.clipCount : clipCount // ignore: cast_nullable_to_non_nullable
 as int,missingCount: null == missingCount ? _self.missingCount : missingCount // ignore: cast_nullable_to_non_nullable
 as int,liveDurationMs: null == liveDurationMs ? _self.liveDurationMs : liveDurationMs // ignore: cast_nullable_to_non_nullable
+as int,photoCount: null == photoCount ? _self.photoCount : photoCount // ignore: cast_nullable_to_non_nullable
 as int,cover: freezed == cover ? _self.cover : cover // ignore: cast_nullable_to_non_nullable
 as Clip?,referenceCount: null == referenceCount ? _self.referenceCount : referenceCount // ignore: cast_nullable_to_non_nullable
 as int,

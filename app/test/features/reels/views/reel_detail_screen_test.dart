@@ -1607,6 +1607,179 @@ void main() {
       await expectTtAccessible(tester);
     });
   });
+
+  group('photos (Phase 13, D-200)', () {
+    TtReelHeader<ReelStatus> header(WidgetTester tester) =>
+        tester.widget<TtReelHeader<ReelStatus>>(
+          find.byType(TtReelHeader<ReelStatus>),
+        );
+
+    String sheetTitle(WidgetTester tester) =>
+        tester.widget<TtSheet>(find.byType(TtSheet)).title!;
+
+    /// [n] videos whose lengths add up to [totalMs].
+    List<MediaVideo> videos(int n, {int totalMs = 130000, int from = 1}) => [
+      for (var i = 0; i < n; i++) reelVideo(from + i, durationMs: totalMs ~/ n),
+    ];
+
+    testApp('a photo tile: the photo symbol, no length, read "Clip, 9:41 AM, '
+        'Photo"', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final london = await newReel(tester, 'London');
+      await real(tester, () => putInReel(h, goa.id, [reelVideo(1)]));
+      final [photo, wide] = await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [
+          reelPhoto(41),
+          reelPhoto(42, horizontal: true),
+        ]),
+      );
+      // The wide one is in two reels too.
+      await real(tester, () => clips.addClipsToReel(london.id, [wide]));
+
+      await open(tester, goa.id);
+
+      final byKey = {
+        for (final t in tiles(tester)) (t.key! as ValueKey<int>).value: t,
+      };
+      final tile = byKey[photo]!;
+      expect(tile.photo, isTrue);
+      expect(tile.durationText, isNull);
+      expect(tile.horizontal, isFalse);
+      expect(
+        tile.semanticLabel.replaceAll(_spaces, ' '),
+        'Clip, 9:41 AM, Photo',
+      );
+      expect(
+        byKey[wide]!.semanticLabel.replaceAll(_spaces, ' '),
+        'Clip, 9:42 AM, Photo, in 2 reels',
+      );
+      expect(byKey[wide]!.horizontal, isTrue);
+      // A video tile keeps its length and its label.
+      final video = tiles(tester).firstWhere((t) => !t.photo);
+      expect(video.durationText, '0:04');
+      expect(
+        video.semanticLabel.replaceAll(_spaces, ' '),
+        'Clip, 9:01 AM, 0:04',
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(ValueKey(photo)),
+          matching: find.byIcon(Symbols.image_rounded),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testApp('header: "8 videos · 2 photos · 2:10"; no photos: "8 clips · '
+        '2:10" as today', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      final paris = await newReel(tester, 'Paris');
+      await real(tester, () => putInReel(h, goa.id, videos(8)));
+      await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(1), reelPhoto(2)]),
+      );
+      await real(tester, () => putInReel(h, paris.id, videos(8, from: 21)));
+
+      await open(tester, goa.id);
+      expect(header(tester).metaText, '8 videos · 2 photos · 2:10');
+
+      await open(tester, paris.id);
+      expect(header(tester).metaText, '8 clips · 2:10');
+    });
+
+    testApp('a missing photo still counts in the header; the missing note '
+        'says so', (tester) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, videos(1, totalMs: 4000)));
+      await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(1)], onPhone: false),
+      );
+
+      await open(tester, goa.id);
+
+      expect(header(tester).metaText, '1 video · 1 photo · 0:04');
+      expect(header(tester).missingText, '1 missing');
+    });
+
+    testApp('photos only: header "2 photos", the sheet "Edit 2 photos in…"', (
+      tester,
+    ) async {
+      h.editors.allow({'apps'});
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(1), reelPhoto(2)]),
+      );
+      await open(tester, goa.id);
+
+      expect(header(tester).metaText, '2 photos');
+      // Edit video still shows for a reel of photos.
+      expect(find.byType(TtFab), findsOneWidget);
+
+      await tester.tap(find.byType(TtFab));
+      await settleApp(tester);
+
+      expect(sheetTitle(tester), 'Edit 2 photos in…');
+    });
+
+    testApp('an old photo makes its own earlier day at the top', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(
+        tester,
+        () => putInReel(h, goa.id, [
+          reelVideo(1, shot: DateTime.utc(2026, 10, 28, 9)),
+        ]),
+      );
+      final [old] = await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [
+          reelPhoto(1, shot: DateTime.utc(2026, 10, 20, 9)),
+        ]),
+      );
+
+      await open(tester, goa.id);
+
+      expect(dayHeaders(tester), [
+        ('Day 1 · Tue, Oct 20', '1 clip'),
+        ('Day 9 · Wed, Oct 28', '1 clip'),
+      ]);
+      expect((tiles(tester).first.key! as ValueKey<int>).value, old);
+      expect(tiles(tester).first.photo, isTrue);
+    });
+
+    testApp(
+      'Edit video passes photoCount: "Edit all 3 clips and 1 photo in…"',
+      (tester) async {
+        h.editors.allow({'apps'});
+        final goa = await newReel(tester, 'Goa');
+        await real(tester, () => putInReel(h, goa.id, videos(3)));
+        await real(tester, () => putPhotosInReel(h, goa.id, [reelPhoto(1)]));
+        await open(tester, goa.id);
+
+        await tester.tap(find.byType(TtFab));
+        await settleApp(tester);
+
+        expect(sheetTitle(tester), 'Edit all 3 clips and 1 photo in…');
+      },
+    );
+
+    testApp('a reel of photos and videos at 2x text is accessible, dark too', (
+      tester,
+    ) async {
+      final goa = await newReel(tester, 'Goa');
+      await real(tester, () => putInReel(h, goa.id, videos(2)));
+      await real(tester, () => putPhotosInReel(h, goa.id, [reelPhoto(1)]));
+      await open(tester, goa.id, textScale: 2, brightness: Brightness.dark);
+
+      expect(tester.takeException(), isNull);
+      await expectTtAccessible(tester);
+    });
+  });
 }
 
 /// A clips repository whose `removeClipsFromReel` fails.

@@ -65,6 +65,33 @@ List<ReelSummary> _reels() => [
   testSummary(3, name: 'Empty one'),
 ];
 
+/// Reels with photos (Phase 13, D-200): videos and photos, photos only (with
+/// one missing), and one with no photos beside them, as today.
+List<ReelSummary> _photoReels() => [
+  testSummary(
+    6,
+    name: 'Goa',
+    clipCount: 10,
+    photoCount: 2,
+    liveDurationMs: 130000,
+  ),
+  testSummary(
+    5,
+    name: 'Pantry shelf',
+    status: ReelStatus.ready,
+    clipCount: 3,
+    photoCount: 3,
+    missingCount: 1,
+  ),
+  testSummary(
+    4,
+    name: 'Day 1 Vlog',
+    status: ReelStatus.published,
+    clipCount: 8,
+    liveDurationMs: 130000,
+  ),
+];
+
 List<ReferenceGroup> _references() => [
   ReferenceGroup(
     reel: testSummary(6, name: 'London Food'),
@@ -81,7 +108,7 @@ List<ReferenceGroup> _references() => [
   ),
 ];
 
-enum _State { offWaiting, onChips, emptyTab, noReels }
+enum _State { offWaiting, onChips, emptyTab, noReels, photos }
 
 Future<void> _pump(
   WidgetTester tester,
@@ -92,6 +119,7 @@ Future<void> _pump(
   final reels = switch (state) {
     _State.noReels => const <ReelSummary>[],
     _State.emptyTab => [testSummary(2, name: 'Paris'), testSummary(1)],
+    _State.photos => _photoReels(),
     _ => _reels(),
   };
   final pending = state == _State.offWaiting
@@ -147,9 +175,11 @@ void main() {
       _State.onChips => 'on_chips',
       _State.emptyTab => 'empty_tab',
       _State.noReels => 'no_reels',
+      _State.photos => 'photos',
     };
     for (final brightness in Brightness.values) {
-      for (final textScale in [1.0, 2.0]) {
+      // The photo counts at 1x only (home_photos_{light,dark}_1x).
+      for (final textScale in [1.0, if (state != _State.photos) 2.0]) {
         final file =
             'home_${name}_${brightness.name}_${textScale.toInt()}x.png';
         testWidgets(

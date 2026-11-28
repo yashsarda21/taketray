@@ -815,6 +815,13 @@ abstract final class TtMetrics {
   // proto.css: .tile .tm { font: 700 12px/16px … }
   static const double clipTileTextHeight = 16;
 
+  /// Size of the photo symbol where a video's length is (Phase 13, D-200):
+  /// the length's 16 px line ([clipTileTextHeight]), and spec §2 "Tiles
+  /// show the photo symbol in the corner where a video shows its length".
+  // proto.css:457: .tile .tm, .tile .du { position: absolute; bottom: 5px; color: #fff; font: 700 12px/16px var(--font); text-shadow: 0 1px 2px rgba(0,0,0,.5); }
+  // proto.css:459: .tile .du { right: 7px; }
+  static const double clipTilePhotoIconSize = 16;
+
   /// Height of the VN folder mark.
   // screens/ui.js: the vnmark pill, style="height:20px"
   static const double clipTileVnHeight = 20;

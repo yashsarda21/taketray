@@ -369,6 +369,43 @@ void main() {
       expect(await clipIdsOf(goa.id), ids.toSet());
     });
 
+    test(
+      'a remove counts the photos among the links it took out (D-200)',
+      () async {
+        final goa = await reels.create('Goa');
+        final london = await reels.create('London');
+        final videos = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+        final photos = await putPhotosInReel(h, goa.id, [
+          reelPhoto(1),
+          reelPhoto(2, mimeType: 'IMAGE/HEIC'),
+        ]);
+        // A photo the reel does not have is not counted.
+        final elsewhere = await putPhotosInReel(h, london.id, [reelPhoto(3)]);
+
+        final outcome = await actions.removeFromReel(
+          reelId: goa.id,
+          clipIds: {videos[0], ...photos, ...elsewhere},
+        );
+
+        expect(outcome.clipCount, 3);
+        expect(outcome.photoCount, 2);
+        expect(await clipIdsOf(goa.id), {videos[1]});
+      },
+    );
+
+    test('a remove of videos only counts no photo', () async {
+      final goa = await reels.create('Goa');
+      final ids = await putInReel(h, goa.id, [reelVideo(1), reelVideo(2)]);
+      await putPhotosInReel(h, goa.id, [reelPhoto(1)]);
+
+      final outcome = await actions.removeFromReel(
+        reelId: goa.id,
+        clipIds: ids.toSet(),
+      );
+
+      expect((outcome.clipCount, outcome.photoCount), (2, 0));
+    });
+
     test('clips the reel does not have give an empty outcome', () async {
       final goa = await reels.create('Goa');
       final london = await reels.create('London');

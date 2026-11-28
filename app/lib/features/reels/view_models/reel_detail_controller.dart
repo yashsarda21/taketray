@@ -32,6 +32,7 @@ class ReelDetailState {
     required this.reel,
     required this.days,
     required this.clipCount,
+    required this.photoCount,
     required this.missingCount,
     required this.liveDurationMs,
     required this.times,
@@ -43,8 +44,11 @@ class ReelDetailState {
   /// its Day number (D-83). Empty for a reel with no clips.
   final List<ShootingDay<ReelClip>> days;
 
-  /// Every clip of the reel, missing ones included.
+  /// Every clip of the reel, missing ones included, photos too.
   final int clipCount;
+
+  /// The photos among [clipCount], missing ones included (D-200).
+  final int photoCount;
 
   /// How many of them are gone from the phone.
   final int missingCount;
@@ -144,6 +148,7 @@ class ReelDetailController extends _$ReelDetailController {
       reel: reel,
       days: groupByShootingDay<ReelClip>(clips, (c) => c.clip, times),
       clipCount: clips.length,
+      photoCount: clips.where((c) => c.clip.isPhoto).length,
       missingCount: clips.length - live.length,
       liveDurationMs: live.fold(
         0,

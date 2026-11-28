@@ -89,6 +89,7 @@ void main() {
     Reel reel,
     List<int> ids, {
     bool allClips = false,
+    int photoCount = 0,
     double textScale = 1,
     Brightness brightness = Brightness.light,
     List<Override> extraOverrides = const [],
@@ -108,6 +109,7 @@ void main() {
                     reelId: reel.id,
                     clipIds: ids,
                     allClips: allClips,
+                    photoCount: photoCount,
                   ),
                 ),
                 child: const Text('Open the sheet'),
@@ -402,6 +404,52 @@ void main() {
           tester.getTopLeft(chooseInstead()).dy,
           greaterThan(tester.getTopLeft(find.textContaining('in shooting')).dy),
         );
+      });
+
+      testApp('chosen with photos: "Edit 2 clips and 1 photo in…" (D-200)', (
+        tester,
+      ) async {
+        final (goa, ids) = await manyClips(tester, 5);
+
+        await openSheet(tester, goa, ids.take(3).toList(), photoCount: 1);
+
+        expect(find.text('Edit 2 clips and 1 photo in…'), findsOneWidget);
+        expect(chooseInstead(), findsNothing);
+      });
+
+      testApp('every clip but one video and one photo: "Edit all 1 clip and '
+          '1 photo in…"', (tester) async {
+        final (goa, ids) = await manyClips(tester, 2);
+
+        await openSheet(tester, goa, ids, allClips: true, photoCount: 1);
+
+        expect(find.text('Edit all 1 clip and 1 photo in…'), findsOneWidget);
+        expect(chooseInstead(), findsOneWidget);
+      });
+
+      testApp('one photo: "Edit 1 photo in…"; photos only never say "all"', (
+        tester,
+      ) async {
+        final (goa, ids) = await manyClips(tester, 2);
+
+        await openSheet(tester, goa, ids.take(1).toList(), photoCount: 1);
+        expect(find.text('Edit 1 photo in…'), findsOneWidget);
+
+        await openSheet(
+          tester,
+          goa,
+          ids.take(1).toList(),
+          allClips: true,
+          photoCount: 1,
+        );
+        expect(find.text('Edit 1 photo in…'), findsOneWidget);
+
+        // Every clip of a reel of photos: "Edit 2 photos in…" with Choose
+        // clips instead, but no "all".
+        await openSheet(tester, goa, ids, allClips: true, photoCount: 2);
+        expect(find.text('Edit 2 photos in…'), findsOneWidget);
+        expect(find.textContaining('Edit all'), findsNothing);
+        expect(chooseInstead(), findsOneWidget);
       });
 
       testApp('every clip but only one: "Edit 1 clip in…", no Choose clips '

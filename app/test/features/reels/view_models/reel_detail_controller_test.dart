@@ -326,6 +326,30 @@ void main() {
       expect(state.liveDurationMs, 65000);
     });
 
+    test('photoCount counts the photos, missing ones too; the length counts '
+        'live videos (D-200)', () async {
+      final goa = await reels.create('Goa');
+      await putInReel(h, goa.id, [
+        reelVideo(1, durationMs: 32000),
+        reelVideo(2, durationMs: 8000),
+      ]);
+      await putPhotosInReel(h, goa.id, [
+        reelPhoto(1),
+        reelPhoto(2, mimeType: 'Image/PNG'),
+      ]);
+      await putPhotosInReel(h, goa.id, [reelPhoto(3)], onPhone: false);
+      final container = open(goa.id);
+      await stateOf(container, goa.id);
+      await settle();
+
+      final state = container.read(reelDetailControllerProvider(goa.id)).value!;
+
+      expect(state.clipCount, 5);
+      expect(state.photoCount, 3);
+      expect(state.missingCount, 1);
+      expect(state.liveDurationMs, 40000);
+    });
+
     test('an empty reel has no days', () async {
       final goa = await reels.create('Goa');
       final container = open(goa.id);
@@ -334,6 +358,7 @@ void main() {
 
       expect(state.days, isEmpty);
       expect(state.clipCount, 0);
+      expect(state.photoCount, 0);
       expect(state.missingCount, 0);
       expect(state.liveDurationMs, 0);
     });

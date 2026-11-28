@@ -2441,6 +2441,32 @@ void main() {
       expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
     });
 
+    test('watchFirstShowableClip never offers a photo (Shooting mode, '
+        'D-200)', () async {
+      final reel = await reels.create('Goa');
+      final photos = await repo.addNewClipsToReel(reel.id, [
+        photoClip('content://p/1'),
+        NewClip.picker(
+          pickerUri: 'content://p/2',
+          fingerprint: ClipFingerprint(
+            sizeBytes: 3000,
+            durationMs: 0,
+            dateTakenUtc: _t0,
+            displayName: 'IMG_2.HEIC',
+          ),
+          width: 4000,
+          height: 3000,
+          mimeType: 'IMAGE/HEIC',
+        ),
+      ]);
+      expect(photos, hasLength(2));
+      expect(await repo.watchFirstShowableClip().first, isNull);
+
+      // A video after them (a higher id) is offered.
+      final ids = await repo.saveDetected([mediaStoreClip(10)]);
+      expect((await repo.watchFirstShowableClip().first)!.id, ids.single);
+    });
+
     test('watchFirstShowableClip skips a clip that is missing', () async {
       final ids = await repo.saveDetected([
         mediaStoreClip(10),

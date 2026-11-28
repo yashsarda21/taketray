@@ -1,3 +1,5 @@
+import 'package:taketray/domain/models/clip.dart';
+import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/media_clip.dart';
 
@@ -63,3 +65,39 @@ Future<void> flagForTest(VmHarness h, Set<int> ids, {required bool missing}) =>
 /// in To tag, Skipped or a reel.
 Future<void> flagInPlaceForTest(VmHarness h, Set<int> ids) => h.media.clips
     .applyVerification(found: {}, gone: {}, otherVideo: {}, flagOnly: ids);
+
+/// A photo picked into a reel (D-198): [n] makes its address, [shot] when it
+/// was taken (UTC; 2026-10-28 09:n by default), [horizontal] makes it wider
+/// than tall, [mimeType] its image type.
+NewClip reelPhoto(
+  int n, {
+  DateTime? shot,
+  bool horizontal = false,
+  String mimeType = 'image/jpeg',
+}) => NewClip.picker(
+  pickerUri: 'content://media/picker/0/x/media/photo-$n',
+  fingerprint: ClipFingerprint(
+    sizeBytes: 3000 + n,
+    durationMs: 0,
+    dateTakenUtc: shot ?? DateTime.utc(2026, 10, 28, 9, n),
+    displayName: 'IMG-$n.jpg',
+  ),
+  width: horizontal ? 4000 : 3000,
+  height: horizontal ? 3000 : 4000,
+  mimeType: mimeType,
+);
+
+/// Saves [photos] as clips of reel [reelId] and returns their ids in order.
+/// With [onPhone] their addresses can be read, so a verify finds them;
+/// without it they are gone.
+Future<List<int>> putPhotosInReel(
+  VmHarness h,
+  int reelId,
+  List<NewClip> photos, {
+  bool onPhone = true,
+}) {
+  if (onPhone) {
+    h.bridge.readable.addAll([for (final p in photos) p.pickerUri!]);
+  }
+  return h.media.clips.addNewClipsToReel(reelId, photos);
+}

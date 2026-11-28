@@ -273,7 +273,11 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                     locale: locale,
                     use24Hour: use24Hour,
                   );
-            final length = formatClipDuration(clip.fingerprint.durationMs);
+            // A photo: the photo symbol, read "Photo" (D-200, R13-2).
+            final photo = clip.isPhoto;
+            final length = photo
+                ? l10n.clipKindPhoto
+                : formatClipDuration(clip.fingerprint.durationMs);
             final label = l10n.clipTileSemantics(time, length);
             // Its copy is in the folder: ticked, locked, marked.
             final locked = state.inFolder.contains(clip.id);
@@ -290,7 +294,8 @@ class _EditSelectScreenState extends ConsumerState<EditSelectScreen> {
                 cache: cache,
               ),
               timeText: time,
-              durationText: length,
+              durationText: photo ? null : length,
+              photo: photo,
               horizontal: clip.width > clip.height,
               semanticLabel: !locked
                   ? label

@@ -83,6 +83,18 @@ void main() {
         ),
         width: _tileWidth,
       ),
+      // Phase 13 (D-200): a photo shows the photo symbol where the length is.
+      TtScenario('photo', _tile(photo: true), width: _tileWidth),
+      TtScenario(
+        'photo selected',
+        _tile(photo: true, selected: true),
+        width: _tileWidth,
+      ),
+      TtScenario(
+        'photo horizontal',
+        _tile(photo: true, horizontal: true, thumbnail: fixtureThumb(4)),
+        width: _tileWidth,
+      ),
       // The row fills the phone.
       const TtScenario('a grid row', _Row()),
     ],
@@ -149,6 +161,7 @@ Widget _tile({
   ImageProvider? thumbnail,
   String timeText = '9:41 AM',
   String durationText = '0:32',
+  bool photo = false,
   int reelCount = 1,
   bool horizontal = false,
   bool? selected,
@@ -157,9 +170,10 @@ Widget _tile({
   bool enabled = true,
 }) => TtClipTile(
   thumbnail: thumbnail ?? fixtureThumb(1),
-  semanticLabel: 'Clip, $timeText, $durationText',
+  semanticLabel: 'Clip, $timeText, ${photo ? 'Photo' : durationText}',
   timeText: timeText,
-  durationText: durationText,
+  durationText: photo ? null : durationText,
+  photo: photo,
   reelCount: reelCount,
   horizontal: horizontal,
   selected: selected,

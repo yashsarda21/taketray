@@ -1061,6 +1061,65 @@ void main() {
       expect(summary.cover?.pickerUri, 'content://picked/2');
     });
 
+    /// A photo picked into a reel (D-198): a picker clip with image type
+    /// [mimeType] and no length.
+    NewClip photo(String uri, DateTime at, {String mimeType = 'image/jpeg'}) =>
+        NewClip.picker(
+          pickerUri: uri,
+          fingerprint: ClipFingerprint(
+            sizeBytes: 3000,
+            durationMs: 0,
+            dateTakenUtc: at,
+            displayName: 'IMG_1.jpg',
+          ),
+          width: 4000,
+          height: 3000,
+          mimeType: mimeType,
+        );
+
+    test('photoCount counts image types in any case, missing ones too; '
+        'liveDurationMs counts videos', () async {
+      final goa = await repo.create('Goa');
+      final videos = await repo.create('Videos only');
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        shot(10, durationMs: 4000),
+        picked('content://picked/v', _t0),
+        photo('content://picked/1', _t0),
+        photo('content://picked/2', _t0, mimeType: 'IMAGE/HEIC'),
+        photo('content://picked/3', _t0, mimeType: 'Image/png'),
+      ]);
+      // A missing photo still counts.
+      await flagClips(db, {ids[4]}, missing: true, at: _t0);
+      await clips.addNewClipsToReel(videos.id, [shot(11)]);
+
+      final summaries = {
+        for (final s in await repo.watchReelSummaries().first) s.reel.id: s,
+      };
+      final mixed = summaries[goa.id]!;
+
+      expect(mixed.clipCount, 5);
+      expect(mixed.photoCount, 3);
+      expect(mixed.missingCount, 1);
+      // The two videos only: a photo has no length.
+      expect(mixed.liveDurationMs, 4000 + 8000);
+      expect(summaries[videos.id]!.photoCount, 0);
+    });
+
+    test('a photo can be a cover like a picked video (characterization, '
+        'D-200)', () async {
+      final goa = await repo.create('Goa');
+      const hour = Duration(hours: 1);
+      final ids = await clips.addNewClipsToReel(goa.id, [
+        shot(12, at: _t0),
+        photo('content://picked/1', _t0.subtract(hour * 3)),
+      ]);
+
+      final cover = (await repo.watchReelSummaries().first).single.cover;
+
+      expect(cover, (await clips.clipsByIds([ids[1]])).single);
+      expect(cover!.isPhoto, isTrue);
+    });
+
     test('a reel with no clips has a null cover and zeros', () async {
       final goa = await repo.create('Goa');
       final missingOnly = await repo.create('Gone');
@@ -1074,6 +1133,7 @@ void main() {
       final gone = summaries.singleWhere((s) => s.reel.id == missingOnly.id);
 
       expect(empty.clipCount, 0);
+      expect(empty.photoCount, 0);
       expect(empty.missingCount, 0);
       expect(empty.liveDurationMs, 0);
       expect(empty.cover, isNull);

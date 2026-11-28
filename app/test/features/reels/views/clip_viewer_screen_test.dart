@@ -831,6 +831,27 @@ void main() {
       expect(await clipIdsOf(tester, goa.id), {ids[1]});
     });
 
+    testApp('Remove on a photo: "Removed from Goa. The photo is still in '
+        'your gallery." (D-200, R13-5)', (tester) async {
+      final goa = await real(tester, () => reels.create('Goa'));
+      final videos = await reelWith(tester, goa.id, [1]);
+      final [photo] = await real(
+        tester,
+        () => putPhotosInReel(h, goa.id, [reelPhoto(2)]),
+      );
+      await open(tester, goa.id, photo);
+
+      await tester.tap(find.text('Remove'));
+      await settleApp(tester);
+
+      expect(
+        find.text('Removed from Goa. The photo is still in your gallery.'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('The video is still'), findsNothing);
+      expect(await clipIdsOf(tester, goa.id), videos.toSet());
+    });
+
     testApp('a failed remove says so and keeps the clip', (tester) async {
       final goa = await real(tester, () => reels.create('Goa'));
       final ids = await reelWith(tester, goa.id, [1]);

@@ -54,7 +54,9 @@ enum _ReelAction { details, select, delete }
 ///    closed when access was lost;
 /// 2. the reel's header (`TtReelHeader`): name, the status pill that opens the
 ///    status menu ("Marked as {status}"), "{n} clips · {m:ss}" or "No clips
-///    yet", "{m} missing", and Shot ideas with Show more / Show less;
+///    yet" (with photos "{n} videos · {p} photos · {m:ss}", or "{p} photos"
+///    alone, D-200), "{m} missing", and Shot ideas with Show more / Show
+///    less;
 /// 2a. the References section (`ReferencesSection`, Phase 9A, D-158): an
 ///    Add reference row, or the reference cards with an Add button, and a
 ///    nudge to write shot ideas. With [focusReferences] (`?refs=1`, the Home
@@ -66,7 +68,8 @@ enum _ReelAction { details, select, delete }
 /// A tile shows the time **where the clip was shot** and its length, a
 /// layers badge when it is in two reels or more, a mark when it is
 /// horizontal, and is read as "Clip, {time}, {duration}" plus ", in {k}
-/// reels". Tapping it opens the viewer on that clip
+/// reels". A photo shows the photo symbol in place of the length and is read
+/// "Clip, {time}, Photo" (D-200). Tapping it opens the viewer on that clip
 /// (`Routes.clip`); a long press starts choosing clips (see below).
 ///
 /// **Times.** The tiles and the days are drawn at once from the clips
@@ -200,13 +203,11 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
   Future<void> _openEditorSheet() async {
     if (_sheetOpen) return;
     final clips = ref.read(reelClipsProvider(widget.reelId)).value ?? const [];
-    final ids = [
-      for (final clip in inShootingOrder([
-        for (final c in clips)
-          if (!c.clip.missing) c.clip,
-      ]))
-        clip.id,
-    ];
+    final live = inShootingOrder([
+      for (final c in clips)
+        if (!c.clip.missing) c.clip,
+    ]);
+    final ids = [for (final clip in live) clip.id];
     if (ids.isEmpty) return;
     final selection = ref.read(reelSelectionProvider(widget.reelId).notifier);
     _sheetOpen = true;
@@ -216,6 +217,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
         reelId: widget.reelId,
         clipIds: ids,
         allClips: true,
+        photoCount: live.where((c) => c.isPhoto).length,
       );
       if (outcome == EditorSheetOutcome.chooseInstead && mounted) {
         selection.begin(fromSheet: true);
@@ -577,6 +579,25 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
     final l10n = AppLocalizations.of(context);
     final reel = state.reel;
     final status = statusName(l10n, reel.status);
+    // The facts line. The length counts only the videos that are still on
+    // the phone (a photo has none). With photos (D-200, R13-1): "8 videos ·
+    // 2 photos · 2:10", or "2 photos" alone for photos only; a reel with no
+    // photos reads as it always did ("8 clips · 2:10"). Missing ones count
+    // too, as in "{m} missing".
+    final photos = state.photoCount;
+    final videos = state.clipCount - photos;
+    final length = formatClipDuration(state.liveDurationMs);
+    final meta = state.clipCount == 0
+        ? l10n.reelNoClips
+        : photos == 0
+        ? l10n.reelCardMeta(l10n.reelCardClips(videos), length)
+        : videos == 0
+        ? l10n.photoCount(photos)
+        : l10n.reelMetaWithPhotos(
+            l10n.reelHeaderVideos(videos),
+            l10n.photoCount(photos),
+            length,
+          );
     return TtReelHeader<ReelStatus>(
       name: reel.name,
       statusKind: statusKindOf(reel.status),
@@ -585,13 +606,7 @@ class _ReelDetailScreenState extends ConsumerState<ReelDetailScreen> {
       statusItems: reelStatusItems(l10n, reel.status),
       onStatusSelected: (next) =>
           unawaited(changeReelStatus(context, reel, next)),
-      // The length counts only the clips that are still on the phone.
-      metaText: state.clipCount == 0
-          ? l10n.reelNoClips
-          : l10n.reelCardMeta(
-              l10n.reelCardClips(state.clipCount),
-              formatClipDuration(state.liveDurationMs),
-            ),
+      metaText: meta,
       missingText: state.missingCount > 0
           ? l10n.reelCardMissing(state.missingCount)
           : null,

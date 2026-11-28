@@ -16,6 +16,7 @@ class ClipActionOutcome {
     required List<UndoRecord> records,
     required List<String> reelNames,
     required this.clipCount,
+    this.photoCount = 0,
     this.copiesDeleted = 0,
   }) : records = List.unmodifiable(records),
        reelNames = List.unmodifiable(reelNames);
@@ -32,6 +33,11 @@ class ClipActionOutcome {
   /// still exists (also those a reel had already); a move or a remove, how
   /// many links it took out of the source reel.
   final int clipCount;
+
+  /// How many of [clipCount] are photos, for a remove's snack (D-200, R13-5):
+  /// the photos among the links a remove took out. 0 for an add or a move,
+  /// whose snacks name no count of their own kind.
+  final int photoCount;
 
   /// How many copies in the reel's editing folder were deleted first (R8),
   /// for the snack's suffix: 0 when the reel has no session or the clips had
@@ -133,7 +139,10 @@ class ReelClipActions {
     }
   }
 
-  /// Removes [clipIds] from reel [reelId]. The videos stay in the gallery.
+  /// Removes [clipIds] from reel [reelId]. The videos and photos stay in the
+  /// gallery. The outcome counts the photos among the links taken out
+  /// ([ClipActionOutcome.photoCount], D-200), read before the remove because
+  /// the orphan sweep may delete a clip's row.
   ///
   /// During an editing session the clips' copies are deleted first (R8);
   /// when one cannot be deleted that throws `CopiesNotDeleted` and nothing
@@ -144,12 +153,19 @@ class ReelClipActions {
   }) async {
     final name = await _nameOf(reelId);
     try {
+      final photos = {
+        for (final clip in await _clips.clipsByIds(clipIds))
+          if (clip.isPhoto) clip.id,
+      };
       final copies = await _editing.beforeClipsLeaveReel(reelId, clipIds);
       final record = await _clips.removeClipsFromReel(reelId, clipIds);
       return ClipActionOutcome(
         records: [record],
         reelNames: [name],
         clipCount: record.removedLinks.length,
+        photoCount: record.removedLinks
+            .where((link) => photos.contains(link.clipId))
+            .length,
         copiesDeleted: copies,
       );
     } on Object catch (error) {

@@ -8,9 +8,11 @@ import 'package:taketray/domain/models/enums.dart';
 ///
 /// A detached clip holds `-id` and is missing, and a missing picked clip's
 /// grant or video is gone, so neither is offered. The one rule for the
-/// Shooting mode card's backdrop (`ClipsRepository.watchFirstShowableClip`)
-/// and a reel card's cover (`ReelsRepository.watchReelSummaries`); a clip it
-/// passes has a `ClipThumbnailKey` (D-74). [c] may be an alias of `clips`.
+/// Shooting mode card's backdrop (`ClipsRepository.watchFirstShowableClip`,
+/// which also leaves photos out, D-200) and a reel card's cover
+/// (`ReelsRepository.watchReelSummaries`, where a photo may be the cover); a
+/// clip it passes has a `ClipThumbnailKey` (D-74). [c] may be an alias of
+/// `clips`.
 Expression<bool> hasPicture($ClipsTable c) =>
     c.missing.equals(false) &
     ((c.source.equalsValue(ClipSource.mediaStore) &

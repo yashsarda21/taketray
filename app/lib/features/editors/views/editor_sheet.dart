@@ -9,6 +9,7 @@ import 'package:taketray/data/repositories/phone_state_repository.dart';
 import 'package:taketray/data/repositories/reels_repository.dart';
 import 'package:taketray/domain/models/editor_app.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/features/clips/widgets/media_counts.dart';
 import 'package:taketray/features/editors/view_models/editor_choices.dart';
 import 'package:taketray/features/editors/views/editor_missing_dialog.dart';
 import 'package:taketray/features/editors/views/editor_text.dart';
@@ -123,6 +124,12 @@ extension EditorSheetOutcomePicked on EditorSheetOutcome {
 /// sits under the subtitle; it closes the sheet and returns
 /// [EditorSheetOutcome.chooseInstead] with nothing sent or stored.
 ///
+/// [photoCount] is how many of [clipIds] are photos (D-200, R13-1). With
+/// none the title is as above. With videos and photos it counts them apart,
+/// "clips" being the videos: "Edit 8 clips and 2 photos in…", or "Edit all
+/// 8 clips and 2 photos in…" for every clip. With photos only it is "Edit 2
+/// photos in…", never "all".
+///
 /// - **CapCut and Instagram Edits** get the originals in one share
 ///   (`EditSessionService.sendOriginals`: the session and the sent clips are
 ///   written first and taken back if the share fails). **Sent**: the sheet
@@ -153,7 +160,12 @@ Future<EditorSheetOutcome> showEditorSheet(
   required int reelId,
   required List<int> clipIds,
   bool allClips = false,
+  int photoCount = 0,
 }) async {
+  assert(
+    photoCount >= 0 && photoCount <= clipIds.length,
+    'photoCount counts photos among clipIds',
+  );
   // Everything the end needs is looked up now: the page under the sheet may
   // be gone when a send ends well.
   final l10n = AppLocalizations.of(context);
@@ -173,6 +185,7 @@ Future<EditorSheetOutcome> showEditorSheet(
       reelId: reelId,
       clipIds: clipIds,
       allClips: allClips,
+      photoCount: photoCount,
       lastEditor: last,
     ),
   );
@@ -257,11 +270,15 @@ class _EditorSheet extends ConsumerStatefulWidget {
     required this.reelId,
     required this.clipIds,
     required this.allClips,
+    required this.photoCount,
     required this.lastEditor,
   });
 
   final int reelId;
   final List<int> clipIds;
+
+  /// How many of [clipIds] are photos (see [showEditorSheet]).
+  final int photoCount;
 
   /// The row used last, read before the sheet opened; null for none.
   final EditorPick? lastEditor;
@@ -375,6 +392,24 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
     return clips.any((c) => asked.contains(c.clip.id) && !c.clip.missing);
   }
 
+  /// "Edit {n} clips in…" (or "Edit all {n} clips in…"); with photos the
+  /// videos and photos apart, and photos alone never "all" (D-200).
+  String _title(AppLocalizations l10n) {
+    final count = widget.clipIds.length;
+    final photos = widget.photoCount;
+    if (photos == 0) {
+      return widget.everyClip
+          ? l10n.editorSheetTitleAll(count)
+          : l10n.editorSheetTitle(count);
+    }
+    final videos = count - photos;
+    if (videos == 0) return l10n.editorSheetTitleWith(l10n.photoCount(photos));
+    final counts = clipsAndPhotosText(l10n, videos: videos, photos: photos);
+    return widget.everyClip
+        ? l10n.editorSheetTitleAllWith(counts)
+        : l10n.editorSheetTitleWith(counts);
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -442,9 +477,7 @@ class _EditorSheetState extends ConsumerState<_EditorSheet>
       // A send is running: the sheet stays until it has an answer.
       canPop: !_busy,
       child: TtSheet(
-        title: widget.everyClip
-            ? l10n.editorSheetTitleAll(widget.clipIds.length)
-            : l10n.editorSheetTitle(widget.clipIds.length),
+        title: _title(l10n),
         footer: failed == null
             ? null
             : SheetFailure(
