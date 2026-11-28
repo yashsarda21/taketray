@@ -279,6 +279,44 @@ void main() {
       return await h.clips.clipsByIds(ids);
     }
 
+    // Characterization (D-198): a photo is a picked row like a picked video,
+    // checked by its address alone. It needs no code.
+    test('a photo whose address no longer opens is flagged missing; a '
+        'readable one is not', () async {
+      final reel = await reels.create('Photos');
+      final ids = await h.clips.addNewClipsToReel(reel.id, [
+        for (final n in [1, 2])
+          NewClip.picker(
+            pickerUri: 'content://p/photo$n',
+            fingerprint: ClipFingerprint(
+              sizeBytes: 5,
+              durationMs: 0,
+              dateTakenUtc: h.clock.now(),
+              displayName: 'IMG_$n.jpg',
+            ),
+            width: 4000,
+            height: 3000,
+            mimeType: 'image/jpeg',
+          ),
+      ]);
+      final photos = await h.clips.clipsByIds(ids);
+      expect(photos.map((c) => c.mimeType), everyElement('image/jpeg'));
+      bridge.readable = {'content://p/photo1'};
+      h.clock.advance(const Duration(hours: 1));
+
+      final result = await h.verifier.verify(photos);
+
+      expect(result, outcome(found: {photos[0].id}, missing: {photos[1].id}));
+      final kept = await h.clip(photos[0].id);
+      final gone = await h.clip(photos[1].id);
+      expect((kept.missing, kept.lastVerifiedAt), (false, h.clock.now()));
+      expect((gone.missing, gone.lastVerifiedAt), (true, h.clock.now()));
+      expect(gone.pickerUri, 'content://p/photo2');
+      expect(gone.mimeType, 'image/jpeg');
+      // In a reel, so the missing photo keeps its row to look at.
+      expect(await h.toTag(), isEmpty);
+    });
+
     test('a picked clip absent from readableUris becomes missing', () async {
       final picked = await pickedInReel(['content://p/1', 'content://p/2']);
       bridge.readable = {'content://p/1'};

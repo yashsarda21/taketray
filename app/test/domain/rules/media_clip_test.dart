@@ -119,6 +119,110 @@ void main() {
     });
   });
 
+  group('newClipFromPickedPhoto', () {
+    const uri = 'content://media/picker/0/x/media/9';
+    final taken = DateTime.utc(2026, 5, 1, 9, 30).millisecondsSinceEpoch;
+
+    test('picker identity, durationMs 0, type, size, name, width, height, '
+        'zone', () {
+      final clip = newClipFromPickedPhoto(
+        PickedVideo(
+          uri: uri,
+          sizeBytes: 3456789,
+          displayName: 'IMG_0042.heic',
+          persisted: true,
+          dateTakenMs: taken,
+          width: 4032,
+          height: 3024,
+          mimeType: 'image/heic',
+        ),
+        now: now,
+        zoneId: 'Asia/Kolkata',
+      );
+      expect(
+        clip,
+        NewClip.picker(
+          pickerUri: uri,
+          fingerprint: ClipFingerprint(
+            sizeBytes: 3456789,
+            durationMs: 0,
+            dateTakenUtc: DateTime.utc(2026, 5, 1, 9, 30),
+            displayName: 'IMG_0042.heic',
+          ),
+          width: 4032,
+          height: 3024,
+          mimeType: 'image/heic',
+          timeZoneId: 'Asia/Kolkata',
+        ),
+      );
+      expect(clip.source, ClipSource.picker);
+      expect(clip.mediaStoreId, isNull);
+      expect(clip.volumeName, isNull);
+    });
+
+    test('a pick that gave no facts: size and name as given, width and height '
+        '0, type image/*, date from the modified date, zone null', () {
+      final modified = DateTime.utc(2026, 4, 2, 8).millisecondsSinceEpoch;
+      final clip = newClipFromPickedPhoto(
+        PickedVideo(
+          uri: uri,
+          sizeBytes: 0,
+          displayName: '',
+          persisted: false,
+          dateModifiedMs: modified,
+        ),
+        now: now,
+        zoneId: null,
+      );
+      expect(clip.fingerprint.sizeBytes, 0);
+      expect(clip.fingerprint.displayName, '');
+      expect(clip.fingerprint.durationMs, 0);
+      expect(clip.fingerprint.dateTakenUtc, DateTime.utc(2026, 4, 2, 8));
+      expect(clip.width, 0);
+      expect(clip.height, 0);
+      expect(clip.mimeType, 'image/*');
+      expect(clip.timeZoneId, isNull);
+    });
+
+    test('a non-image type, or a duration a provider reported, is not '
+        'kept', () {
+      final clip = newClipFromPickedPhoto(
+        const PickedVideo(
+          uri: uri,
+          sizeBytes: 5,
+          displayName: 'x',
+          persisted: true,
+          durationMs: 9000,
+          mimeType: 'video/mp4',
+        ),
+        now: now,
+        zoneId: null,
+      );
+      expect(clip.mimeType, 'image/*');
+      expect(clip.fingerprint.durationMs, 0);
+      expect(clip.fingerprint.dateTakenUtc, now);
+    });
+  });
+
+  group('newClipFromPicked (videos) and a modified date', () {
+    test('ignores dateModifiedMs: taken null, modified set gives now', () {
+      final clip = newClipFromPicked(
+        PickedVideo(
+          uri: 'content://media/picker/0/x/media/1',
+          sizeBytes: 10,
+          displayName: 'v.mp4',
+          persisted: true,
+          durationMs: 5000,
+          dateModifiedMs: DateTime.utc(2026, 4, 2, 8).millisecondsSinceEpoch,
+        ),
+        now: now,
+        zoneId: null,
+      );
+      expect(clip.fingerprint.dateTakenUtc, now);
+      expect(clip.mimeType, 'video/*');
+    });
+  });
+
   group('isUsable', () {
     test('a finished video with a length is usable', () {
       expect(isUsable(fakeVideo(id: 1, durationMs: 1)), isTrue);

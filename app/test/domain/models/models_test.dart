@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:taketray/domain/models/app_settings.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
+import 'package:taketray/domain/models/clip_ref.dart';
 import 'package:taketray/domain/models/edit_copy.dart';
 import 'package:taketray/domain/models/edit_session.dart';
 import 'package:taketray/domain/models/editor_app.dart';
@@ -205,6 +206,60 @@ void main() {
     test('a settings list cannot be changed in place', () {
       const settings = AppSettings();
       expect(() => settings.watchedFolders.add('x'), throwsUnsupportedError);
+    });
+  });
+
+  group('photos', () {
+    Clip clipOf(String mimeType, {ClipSource source = ClipSource.picker}) =>
+        Clip(
+          id: 1,
+          source: source,
+          pickerUri: source == ClipSource.picker ? 'content://x/1' : null,
+          mediaStoreId: source == ClipSource.mediaStore ? 5 : null,
+          volumeName: source == ClipSource.mediaStore
+              ? 'external_primary'
+              : null,
+          fingerprint: fingerprint,
+          width: 1,
+          height: 1,
+          mimeType: mimeType,
+          firstSeenAt: DateTime.utc(2026, 3, 10, 9),
+          missing: false,
+        );
+
+    test('Clip.isPhoto follows the type; ClipRef.isPhoto too', () {
+      for (final (type, photo) in [
+        ('image/jpeg', true),
+        ('image/heic', true),
+        ('IMAGE/PNG', true),
+        ('image/*', true),
+        ('video/mp4', false),
+        ('video/*', false),
+        ('', false),
+      ]) {
+        final clip = clipOf(type);
+        expect(clip.isPhoto, photo, reason: type);
+        expect(ClipRef.of(clip).isPhoto, photo, reason: 'ref of $type');
+      }
+      // A detected clip's ref follows its type too.
+      expect(
+        ClipRef.of(clipOf('image/jpeg', source: ClipSource.mediaStore)).isPhoto,
+        isTrue,
+      );
+      expect(
+        ClipRef.of(clipOf('video/mp4', source: ClipSource.mediaStore)).isPhoto,
+        isFalse,
+      );
+      expect(
+        const ClipRef(mimeType: 'image/png', pickerUri: 'content://x').isPhoto,
+        isTrue,
+      );
+    });
+
+    test('a photo clip round-trips through JSON', () {
+      final clip = clipOf('image/heic');
+      expect(Clip.fromJson(viaText(clip.toJson())), clip);
+      expect(Clip.fromJson(viaText(clip.toJson())).isPhoto, isTrue);
     });
   });
 

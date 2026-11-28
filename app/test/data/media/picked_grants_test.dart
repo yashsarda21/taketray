@@ -114,6 +114,37 @@ void main() {
       expect(h.bridge.persisted, {_a, _b, _c});
     });
 
+    // Characterization (D-198): a photo row holds its grant like a picked
+    // video. It needs no code.
+    test(
+      'a photo row holds its grant; a photo no row holds is released',
+      () async {
+        final reel = await reels.create('Photos');
+        await h.clips.addNewClipsToReel(reel.id, [
+          NewClip.picker(
+            pickerUri: _a,
+            fingerprint: ClipFingerprint(
+              sizeBytes: 3000,
+              durationMs: 0,
+              dateTakenUtc: DateTime.utc(2026, 5, 1, 9),
+              displayName: 'IMG_1.heic',
+            ),
+            width: 4000,
+            height: 3000,
+            mimeType: 'image/heic',
+          ),
+        ]);
+        // _b is a photo grant that no row holds (its row was removed).
+        h.bridge.persisted = {_a, _b};
+
+        expect(await grants.sweep(), 1);
+        expect(h.bridge.released, [
+          [_b],
+        ]);
+        expect(h.bridge.persisted, {_a});
+      },
+    );
+
     test('a grant held by a skipped clip is kept', () async {
       final ids = await h.clips.saveDetected([_picked(_a)]);
       await h.clips.skipClips(ids);

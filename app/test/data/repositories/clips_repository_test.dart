@@ -58,6 +58,20 @@ NewClip pickerClip(String uri) => NewClip.picker(
   mimeType: 'video/mp4',
 );
 
+/// A photo picked by hand: a picker clip with an image type and no duration.
+NewClip photoClip(String uri) => NewClip.picker(
+  pickerUri: uri,
+  fingerprint: ClipFingerprint(
+    sizeBytes: 3000,
+    durationMs: 0,
+    dateTakenUtc: _t0,
+    displayName: 'IMG_1.jpg',
+  ),
+  width: 4000,
+  height: 3000,
+  mimeType: 'image/jpeg',
+);
+
 /// A [FixedClock] that, the first time it is read after [arm], starts an
 /// orphan sweep outside the caller's transaction and does not wait for it.
 ///
@@ -394,6 +408,84 @@ void main() {
 
       expect(await clipIds(), [...ids]..sort(), reason: 'clip 99 was swept');
       expect({for (final r in await inboxRows()) r.clipId}, ids.toSet());
+    });
+  });
+
+  // Characterization (D-198): a photo is a clip row with an image type and no
+  // duration, and every path below treats it like a video. These need no code.
+  group('photos as rows (D-198)', () {
+    test('a photo added by hand to a reel has no inbox row', () async {
+      final reel = await reels.create('Goa');
+
+      final id = (await repo.addNewClipsToReel(reel.id, [
+        photoClip('content://p/photo1'),
+      ])).single;
+
+      final row = (await repo.clipsByIds([id])).single;
+      expect((row.mimeType, row.fingerprint.durationMs), ('image/jpeg', 0));
+      expect(await inboxRows(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      expect(await repo.watchInbox(InboxState.pending).first, isEmpty);
+      expect(await reelIdsOf(id), {reel.id});
+    });
+
+    test('removing a photo from its only reel deletes its row; it never goes '
+        'to To tag', () async {
+      final reel = await reels.create('Goa');
+      final [photo, video] = await repo.addNewClipsToReel(reel.id, [
+        photoClip('content://p/photo1'),
+        mediaStoreClip(10),
+      ]);
+
+      final record = await repo.removeClipsFromReel(reel.id, [photo]);
+
+      expect(await clipIds(), [video]);
+      expect(await inboxRows(), isEmpty);
+      expect(await repo.watchPendingCount().first, 0);
+      expect(record.sweptClips.single.id, photo);
+      expect(record.sweptClips.single.mimeType, 'image/jpeg');
+    });
+
+    test('move and Undo carry a photo like a video', () async {
+      final from = await reels.create('Goa');
+      final to = await reels.create('Paris');
+      final [photo, video] = await repo.addNewClipsToReel(from.id, [
+        photoClip('content://p/photo1'),
+        mediaStoreClip(10),
+      ]);
+      clock.advance(_minute);
+
+      final move = await repo.moveClips(from.id, to.id, [photo, video]);
+
+      expect(await reelIdsOf(photo), {to.id});
+      expect(await reelIdsOf(video), {to.id});
+      expect(await clipIds(), [photo, video]);
+      expect(await inboxRows(), isEmpty);
+
+      await repo.undo(move);
+
+      expect(await reelIdsOf(photo), {from.id});
+      expect(await reelIdsOf(video), {from.id});
+      expect(await clipIds(), [photo, video]);
+      expect(await inboxRows(), isEmpty);
+      expect((await repo.clipsByIds([photo])).single.mimeType, 'image/jpeg');
+    });
+
+    test('Undo of a remove brings a swept photo back with its type and '
+        'address', () async {
+      final reel = await reels.create('Goa');
+      final photo = (await repo.addNewClipsToReel(reel.id, [
+        photoClip('content://p/photo1'),
+      ])).single;
+      final before = (await repo.clipsByIds([photo])).single;
+
+      final record = await repo.removeClipsFromReel(reel.id, [photo]);
+      expect(await clipIds(), isEmpty);
+      await repo.undo(record);
+
+      expect((await repo.clipsByIds([photo])).single, before);
+      expect(await reelIdsOf(photo), {reel.id});
+      expect(await inboxRows(), isEmpty);
     });
   });
 

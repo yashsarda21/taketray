@@ -1,14 +1,16 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/rules/photo_clip.dart';
 
 part 'clip.freezed.dart';
 part 'clip.g.dart';
 
-/// A video TakeTray knows about: facts about it, never the video.
+/// A video or photo TakeTray knows about: facts about it, never the file.
 ///
-/// A detected clip is identified by [volumeName] + [mediaStoreId]; a picked
-/// one by [pickerUri]. Times are UTC.
+/// A photo is a clip with an image type (D-198): [isPhoto] says so, and its
+/// duration is 0. A detected clip is identified by [volumeName] +
+/// [mediaStoreId]; a picked one by [pickerUri]. Times are UTC.
 @freezed
 abstract class Clip with _$Clip {
   const factory Clip({
@@ -30,7 +32,12 @@ abstract class Clip with _$Clip {
     DateTime? lastVerifiedAt,
   }) = _Clip;
 
+  const Clip._();
+
   factory Clip.fromJson(Map<String, dynamic> json) => _$ClipFromJson(json);
+
+  /// True when this clip is a photo: its [mimeType] is an image type.
+  bool get isPhoto => isPhotoMimeType(mimeType);
 }
 
 /// A clip that is about to be saved: everything a [Clip] has except the

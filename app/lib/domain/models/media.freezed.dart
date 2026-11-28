@@ -1128,7 +1128,7 @@ as int,
 /// @nodoc
 mixin _$PickedVideo {
 
- String get uri; int get sizeBytes; String get displayName; bool get persisted; int? get durationMs; int? get dateTakenMs; int? get width; int? get height; String? get mimeType;
+ String get uri; int get sizeBytes; String get displayName; bool get persisted; int? get durationMs; int? get dateTakenMs; int? get dateModifiedMs; int? get width; int? get height; String? get mimeType;
 /// Create a copy of PickedVideo
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -1140,20 +1140,20 @@ $PickedVideoCopyWith<PickedVideo> get copyWith => _$PickedVideoCopyWithImpl<Pick
 @override
 bool operator ==(Object other) {
   final _this = this as PickedVideo;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is PickedVideo&&(identical(other.uri, _this.uri) || other.uri == _this.uri)&&(identical(other.sizeBytes, _this.sizeBytes) || other.sizeBytes == _this.sizeBytes)&&(identical(other.displayName, _this.displayName) || other.displayName == _this.displayName)&&(identical(other.persisted, _this.persisted) || other.persisted == _this.persisted)&&(identical(other.durationMs, _this.durationMs) || other.durationMs == _this.durationMs)&&(identical(other.dateTakenMs, _this.dateTakenMs) || other.dateTakenMs == _this.dateTakenMs)&&(identical(other.width, _this.width) || other.width == _this.width)&&(identical(other.height, _this.height) || other.height == _this.height)&&(identical(other.mimeType, _this.mimeType) || other.mimeType == _this.mimeType));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is PickedVideo&&(identical(other.uri, _this.uri) || other.uri == _this.uri)&&(identical(other.sizeBytes, _this.sizeBytes) || other.sizeBytes == _this.sizeBytes)&&(identical(other.displayName, _this.displayName) || other.displayName == _this.displayName)&&(identical(other.persisted, _this.persisted) || other.persisted == _this.persisted)&&(identical(other.durationMs, _this.durationMs) || other.durationMs == _this.durationMs)&&(identical(other.dateTakenMs, _this.dateTakenMs) || other.dateTakenMs == _this.dateTakenMs)&&(identical(other.dateModifiedMs, _this.dateModifiedMs) || other.dateModifiedMs == _this.dateModifiedMs)&&(identical(other.width, _this.width) || other.width == _this.width)&&(identical(other.height, _this.height) || other.height == _this.height)&&(identical(other.mimeType, _this.mimeType) || other.mimeType == _this.mimeType));
 }
 
 
 @override
 int get hashCode {
   final _this = this as PickedVideo;
-  return Object.hash(runtimeType,_this.uri,_this.sizeBytes,_this.displayName,_this.persisted,_this.durationMs,_this.dateTakenMs,_this.width,_this.height,_this.mimeType);
+  return Object.hash(runtimeType,_this.uri,_this.sizeBytes,_this.displayName,_this.persisted,_this.durationMs,_this.dateTakenMs,_this.dateModifiedMs,_this.width,_this.height,_this.mimeType);
 }
 
 @override
 String toString() {
   final _this = this as PickedVideo;
-  return 'PickedVideo(uri: ${_this.uri}, sizeBytes: ${_this.sizeBytes}, displayName: ${_this.displayName}, persisted: ${_this.persisted}, durationMs: ${_this.durationMs}, dateTakenMs: ${_this.dateTakenMs}, width: ${_this.width}, height: ${_this.height}, mimeType: ${_this.mimeType})';
+  return 'PickedVideo(uri: ${_this.uri}, sizeBytes: ${_this.sizeBytes}, displayName: ${_this.displayName}, persisted: ${_this.persisted}, durationMs: ${_this.durationMs}, dateTakenMs: ${_this.dateTakenMs}, dateModifiedMs: ${_this.dateModifiedMs}, width: ${_this.width}, height: ${_this.height}, mimeType: ${_this.mimeType})';
 }
 
 
@@ -1164,7 +1164,7 @@ abstract mixin class $PickedVideoCopyWith<$Res>  {
   factory $PickedVideoCopyWith(PickedVideo value, $Res Function(PickedVideo) _then) = _$PickedVideoCopyWithImpl;
 @useResult
 $Res call({
- String uri, int sizeBytes, String displayName, bool persisted, int? durationMs, int? dateTakenMs, int? width, int? height, String? mimeType
+ String uri, int sizeBytes, String displayName, bool persisted, int? durationMs, int? dateTakenMs, int? dateModifiedMs, int? width, int? height, String? mimeType
 });
 
 
@@ -1181,7 +1181,7 @@ class _$PickedVideoCopyWithImpl<$Res>
 
 /// Create a copy of PickedVideo
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? uri = null,Object? sizeBytes = null,Object? displayName = null,Object? persisted = null,Object? durationMs = freezed,Object? dateTakenMs = freezed,Object? width = freezed,Object? height = freezed,Object? mimeType = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? uri = null,Object? sizeBytes = null,Object? displayName = null,Object? persisted = null,Object? durationMs = freezed,Object? dateTakenMs = freezed,Object? dateModifiedMs = freezed,Object? width = freezed,Object? height = freezed,Object? mimeType = freezed,}) {
   return _then(PickedVideo(
 uri: null == uri ? _self.uri : uri // ignore: cast_nullable_to_non_nullable
 as String,sizeBytes: null == sizeBytes ? _self.sizeBytes : sizeBytes // ignore: cast_nullable_to_non_nullable
@@ -1189,6 +1189,7 @@ as int,displayName: null == displayName ? _self.displayName : displayName // ign
 as String,persisted: null == persisted ? _self.persisted : persisted // ignore: cast_nullable_to_non_nullable
 as bool,durationMs: freezed == durationMs ? _self.durationMs : durationMs // ignore: cast_nullable_to_non_nullable
 as int?,dateTakenMs: freezed == dateTakenMs ? _self.dateTakenMs : dateTakenMs // ignore: cast_nullable_to_non_nullable
+as int?,dateModifiedMs: freezed == dateModifiedMs ? _self.dateModifiedMs : dateModifiedMs // ignore: cast_nullable_to_non_nullable
 as int?,width: freezed == width ? _self.width : width // ignore: cast_nullable_to_non_nullable
 as int?,height: freezed == height ? _self.height : height // ignore: cast_nullable_to_non_nullable
 as int?,mimeType: freezed == mimeType ? _self.mimeType : mimeType // ignore: cast_nullable_to_non_nullable
@@ -1277,10 +1278,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? width,  int? height,  String? mimeType)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? dateModifiedMs,  int? width,  int? height,  String? mimeType)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _PickedVideo() when $default != null:
-return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.width,_that.height,_that.mimeType);case _:
+return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.dateModifiedMs,_that.width,_that.height,_that.mimeType);case _:
   return orElse();
 
 }
@@ -1298,10 +1299,10 @@ return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? width,  int? height,  String? mimeType)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? dateModifiedMs,  int? width,  int? height,  String? mimeType)  $default,) {final _that = this;
 switch (_that) {
 case _PickedVideo():
-return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.width,_that.height,_that.mimeType);case _:
+return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.dateModifiedMs,_that.width,_that.height,_that.mimeType);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -1318,10 +1319,10 @@ return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_tha
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? width,  int? height,  String? mimeType)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String uri,  int sizeBytes,  String displayName,  bool persisted,  int? durationMs,  int? dateTakenMs,  int? dateModifiedMs,  int? width,  int? height,  String? mimeType)?  $default,) {final _that = this;
 switch (_that) {
 case _PickedVideo() when $default != null:
-return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.width,_that.height,_that.mimeType);case _:
+return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_that.durationMs,_that.dateTakenMs,_that.dateModifiedMs,_that.width,_that.height,_that.mimeType);case _:
   return null;
 
 }
@@ -1333,7 +1334,7 @@ return $default(_that.uri,_that.sizeBytes,_that.displayName,_that.persisted,_tha
 
 
 class _PickedVideo implements PickedVideo {
-  const _PickedVideo({required this.uri, required this.sizeBytes, required this.displayName, required this.persisted, this.durationMs, this.dateTakenMs, this.width, this.height, this.mimeType});
+  const _PickedVideo({required this.uri, required this.sizeBytes, required this.displayName, required this.persisted, this.durationMs, this.dateTakenMs, this.dateModifiedMs, this.width, this.height, this.mimeType});
   
 
 @override final  String uri;
@@ -1342,6 +1343,7 @@ class _PickedVideo implements PickedVideo {
 @override final  bool persisted;
 @override final  int? durationMs;
 @override final  int? dateTakenMs;
+@override final  int? dateModifiedMs;
 @override final  int? width;
 @override final  int? height;
 @override final  String? mimeType;
@@ -1356,18 +1358,18 @@ _$PickedVideoCopyWith<_PickedVideo> get copyWith => __$PickedVideoCopyWithImpl<_
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PickedVideo&&(identical(other.uri, uri) || other.uri == uri)&&(identical(other.sizeBytes, sizeBytes) || other.sizeBytes == sizeBytes)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.persisted, persisted) || other.persisted == persisted)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.dateTakenMs, dateTakenMs) || other.dateTakenMs == dateTakenMs)&&(identical(other.width, width) || other.width == width)&&(identical(other.height, height) || other.height == height)&&(identical(other.mimeType, mimeType) || other.mimeType == mimeType));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _PickedVideo&&(identical(other.uri, uri) || other.uri == uri)&&(identical(other.sizeBytes, sizeBytes) || other.sizeBytes == sizeBytes)&&(identical(other.displayName, displayName) || other.displayName == displayName)&&(identical(other.persisted, persisted) || other.persisted == persisted)&&(identical(other.durationMs, durationMs) || other.durationMs == durationMs)&&(identical(other.dateTakenMs, dateTakenMs) || other.dateTakenMs == dateTakenMs)&&(identical(other.dateModifiedMs, dateModifiedMs) || other.dateModifiedMs == dateModifiedMs)&&(identical(other.width, width) || other.width == width)&&(identical(other.height, height) || other.height == height)&&(identical(other.mimeType, mimeType) || other.mimeType == mimeType));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,uri,sizeBytes,displayName,persisted,durationMs,dateTakenMs,width,height,mimeType);
+    return Object.hash(runtimeType,uri,sizeBytes,displayName,persisted,durationMs,dateTakenMs,dateModifiedMs,width,height,mimeType);
 }
 
 @override
 String toString() {
-    return 'PickedVideo(uri: $uri, sizeBytes: $sizeBytes, displayName: $displayName, persisted: $persisted, durationMs: $durationMs, dateTakenMs: $dateTakenMs, width: $width, height: $height, mimeType: $mimeType)';
+    return 'PickedVideo(uri: $uri, sizeBytes: $sizeBytes, displayName: $displayName, persisted: $persisted, durationMs: $durationMs, dateTakenMs: $dateTakenMs, dateModifiedMs: $dateModifiedMs, width: $width, height: $height, mimeType: $mimeType)';
 }
 
 
@@ -1378,7 +1380,7 @@ abstract mixin class _$PickedVideoCopyWith<$Res> implements $PickedVideoCopyWith
   factory _$PickedVideoCopyWith(_PickedVideo value, $Res Function(_PickedVideo) _then) = __$PickedVideoCopyWithImpl;
 @override @useResult
 $Res call({
- String uri, int sizeBytes, String displayName, bool persisted, int? durationMs, int? dateTakenMs, int? width, int? height, String? mimeType
+ String uri, int sizeBytes, String displayName, bool persisted, int? durationMs, int? dateTakenMs, int? dateModifiedMs, int? width, int? height, String? mimeType
 });
 
 
@@ -1395,7 +1397,7 @@ class __$PickedVideoCopyWithImpl<$Res>
 
 /// Create a copy of PickedVideo
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? uri = null,Object? sizeBytes = null,Object? displayName = null,Object? persisted = null,Object? durationMs = freezed,Object? dateTakenMs = freezed,Object? width = freezed,Object? height = freezed,Object? mimeType = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? uri = null,Object? sizeBytes = null,Object? displayName = null,Object? persisted = null,Object? durationMs = freezed,Object? dateTakenMs = freezed,Object? dateModifiedMs = freezed,Object? width = freezed,Object? height = freezed,Object? mimeType = freezed,}) {
   return _then(_PickedVideo(
 uri: null == uri ? _self.uri : uri // ignore: cast_nullable_to_non_nullable
 as String,sizeBytes: null == sizeBytes ? _self.sizeBytes : sizeBytes // ignore: cast_nullable_to_non_nullable
@@ -1403,6 +1405,7 @@ as int,displayName: null == displayName ? _self.displayName : displayName // ign
 as String,persisted: null == persisted ? _self.persisted : persisted // ignore: cast_nullable_to_non_nullable
 as bool,durationMs: freezed == durationMs ? _self.durationMs : durationMs // ignore: cast_nullable_to_non_nullable
 as int?,dateTakenMs: freezed == dateTakenMs ? _self.dateTakenMs : dateTakenMs // ignore: cast_nullable_to_non_nullable
+as int?,dateModifiedMs: freezed == dateModifiedMs ? _self.dateModifiedMs : dateModifiedMs // ignore: cast_nullable_to_non_nullable
 as int?,width: freezed == width ? _self.width : width // ignore: cast_nullable_to_non_nullable
 as int?,height: freezed == height ? _self.height : height // ignore: cast_nullable_to_non_nullable
 as int?,mimeType: freezed == mimeType ? _self.mimeType : mimeType // ignore: cast_nullable_to_non_nullable

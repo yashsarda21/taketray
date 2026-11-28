@@ -2,6 +2,7 @@ import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/clip_fingerprint.dart';
 import 'package:taketray/domain/models/media.dart';
 import 'package:taketray/domain/rules/clip_date.dart';
+import 'package:taketray/domain/rules/photo_clip.dart';
 
 /// The clip to save for a video detected in Android's media library.
 ///
@@ -52,6 +53,34 @@ NewClip newClipFromPicked(
   width: p.width ?? 0,
   height: p.height ?? 0,
   mimeType: p.mimeType ?? defaultVideoMimeType,
+  timeZoneId: zoneId,
+);
+
+/// The clip to save for a photo picked in Android's photo picker (D-198).
+///
+/// Like [newClipFromPicked], its identity is the picked address; unlike it,
+/// the duration is always `0`, the type is [photoMimeTypeOf] (so it is
+/// always an image type) and the shooting date is [pickedPhotoShotAt] (taken,
+/// then last modified, then [now]). The size and name are as given (`0` and
+/// `''` when the provider gave none), an unknown width or height is `0`, and
+/// [zoneId] is stored as given.
+///
+/// [newClipFromPicked] never reads [PickedVideo.dateModifiedMs].
+NewClip newClipFromPickedPhoto(
+  PickedVideo p, {
+  required DateTime now,
+  required String? zoneId,
+}) => NewClip.picker(
+  pickerUri: p.uri,
+  fingerprint: ClipFingerprint(
+    sizeBytes: p.sizeBytes,
+    durationMs: 0,
+    dateTakenUtc: pickedPhotoShotAt(p, now: now),
+    displayName: p.displayName,
+  ),
+  width: p.width ?? 0,
+  height: p.height ?? 0,
+  mimeType: photoMimeTypeOf(p.mimeType),
   timeZoneId: zoneId,
 );
 

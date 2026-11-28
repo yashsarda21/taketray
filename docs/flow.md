@@ -279,6 +279,8 @@ Nothing calls these yet; the reference screens (phase 4 onwards), the editor han
 
 The app reaches this only through `BackupActions`, which the Export and import screen calls (below, D-150): it chooses the file with Android's document picker, warns before an import and shows "X of Y clips found". See D-59, D-146. All in `data/backup/`.
 
+A photo is a clip row (D-198), so a backup holds it with its `mimeType` (`image/heic`), `durationMs` 0 and picker address, and an import restores it. The file's `schemaVersion` stays 1 because no field was added, and a file made before photos imports as it did.
+
 **Export** (`backup_service.dart › BackupService.exportJson()`):
 
 1. `_db.transaction` (one consistent snapshot) reads `reels`, `reel_references` and `clips` by id, `clip_reels` by clip then reel, `inbox` by clip, `zone_timeline` by time, and the settings through `SettingsRepository.load()` (only `exportedKeys`, the five user settings: `watchedFolders`, `eveningReminderEnabled`, `eveningReminderMinutes`, `stillReminderEnabled`, `copiesReminderEnabled`; a missing or corrupt one is its default). `lastExport`, `lastEditor` and every other phone-state key are never written (D-145, D-189). `vn_sessions`, `vn_copies`, `sent_clips` and every other `settings` key are not read.
@@ -448,6 +450,8 @@ Six more calls on the media bridge (Pigeon contract `pigeons/media_api.dart`; re
 ### Picked clips: pictures, checks and the grant clean-up (`thumbnail_cache.dart`, `media_verifier.dart`, `picked_grants.dart`, Phase 7 Task 4, D-74, D-84)
 
 A picked clip (`ClipSource.picker`, D-111) has a picker address and no MediaStore number. Paths are relative to `app/lib/`. No log line in any of these holds an address (D-10).
+
+**Photos (Phase 13, D-198).** A photo is a picked clip whose `mimeType` starts with `image/` (`Clip.isPhoto`, `ClipRef.isPhoto`; its `durationMs` is 0). The check and the clean-up below apply to it unchanged (how a photo is drawn is Phase 13 Task 3): it is checked by its address, it is flagged `missing` and never deleted when the address stops opening, and its row holds its grant, so the clean-up keeps a photo's grant while a row has it and releases it when none does. A photo is always added to a reel by hand, so it has no inbox row and never reaches To tag.
 
 **Its picture** (`data/media/thumbnail_cache.dart`, D-74 as amended):
 1. `ClipThumbnailKey.of(clip, sizePx)`: a picked clip with a non-empty `pickerUri` gets a key (address, `sizeBytes`, date taken in ms, the clamped pixel size); none for no address or `''`.

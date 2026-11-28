@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:taketray/domain/models/clip.dart';
 import 'package:taketray/domain/models/enums.dart';
+import 'package:taketray/domain/rules/photo_clip.dart';
 
 /// How the native side finds a clip's video: a detected clip by volume and
 /// MediaStore id, a picked one by its picker address (D-119).
@@ -32,6 +33,9 @@ class ClipRef {
   final int? mediaStoreId;
   final String? pickerUri;
   final String mimeType;
+
+  /// True when the clip is a photo: its [mimeType] is an image type (D-198).
+  bool get isPhoto => isPhotoMimeType(mimeType);
 
   @override
   bool operator ==(Object other) =>

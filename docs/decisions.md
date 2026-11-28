@@ -3148,3 +3148,29 @@ A log of the meaningful decisions behind TakeTray: what we chose, why, and what 
 - Consequences:
   - The flows are untested on a phone until Task 12. A tap that the host tests cannot judge is written with `tapWhenStill`; the one thing they do not cover is Patrol's `scrollTo` in flow 2 on a page that builds its sections as it scrolls.
   - CapCut is already the default first row, so "lists CapCut first" cannot fail on its own; the **Last used** tag on CapCut's row is what the new flow proves.
+
+### D-198 · Phase 13: a photo is a clip with an image type (extends D-57 and D-113)
+- Date: 2026-11-28 · Phase: 13 · Task: 1 · Extends D-57 (a clip's identity and fingerprint) and D-113 (a picked clip's facts) · Builds on D-111, D-116 and D-59 · Spec: `docs/superpowers/specs/2026-11-28-phase-13-photos-design.md`, "Approaches considered" 2 and "2. Telling photos from videos" · Ruling: R13-3 · Code: `app/lib/domain/rules/photo_clip.dart`, `app/lib/domain/models/{clip,clip_ref,media}.dart`, `app/lib/domain/rules/media_clip.dart` · Tests: `app/test/domain/rules/{photo_clip,media_clip}_test.dart`, `app/test/domain/models/models_test.dart`, `app/test/data/repositories/clips_repository_test.dart`, `app/test/data/media/{media_verifier,picked_grants}_test.dart`, `app/test/data/backup/backup_service_test.dart`
+- Decision:
+  1. **A photo is a row of `clips`, not a table of its own.** It is a picker clip (`source` = `picker`, the picker address, no volume or MediaStore number) whose `mimeType` starts with `image/`, whose `durationMs` is 0 and whose width, height, size and name are what the picker gave (0 and `''` when it gave none). Ordering, reel membership, the missing check, the selection dock, backup and copying already work on clips, so a separate table would have copied every one of those paths.
+  2. **`isPhoto`.** `Clip.isPhoto` and `ClipRef.isPhoto` both answer `isPhotoMimeType(mimeType)` (`photo_clip.dart`): the type starts with `image/`, whatever its case (`IMAGE/PNG` counts). `video/mp4`, `video/*`, an empty type and `imagex/y` do not. `Clip` got a private constructor (`const Clip._();`) to carry the getter. This is the one test of "is this a photo" for the rest of the phase.
+  3. **A picked photo's facts (R13-3).** `newClipFromPickedPhoto(pick, now:, zoneId:)` builds the clip. The type is `photoMimeTypeOf(reported)`: an image type is kept as reported (`image/heic`), and a type that is null, empty or not an image (`application/octet-stream`, `video/mp4`) is stored as `image/*`, because the picker was asked for images only, so a photo pick is always a photo. The duration is always 0, even if the provider reported one. The shooting date is `pickedPhotoShotAt`: the taken date (`PickedVideo.dateTakenMs`) when plausible, else the last-modified date (`PickedVideo.dateModifiedMs`, a new optional field that is null for every video pick), else `now` (the time TakeTray added the photo). Both are milliseconds, and "plausible" is the rule of `shotAtFrom` (D-69): not before 0 and not after now plus 24 hours (that exact instant is still plausible, one millisecond more is not).
+  4. **Videos are unchanged.** `newClipFromPicked` never reads `dateModifiedMs`: a video pick with no taken date and a modified date still gets `now`, pinned by a test.
+  5. **Paths that carry a photo as they are**, each with a test that was green before any code (they are characterization tests):
+     - Adding by hand to a reel gives no inbox row, so a photo never reaches To tag (`clips_repository_test.dart`, "a photo added by hand to a reel has no inbox row").
+     - Removing a photo from its only reel deletes its row and never lists it in To tag; Undo of the remove brings it back with its type and address (same file).
+     - Move and its Undo carry a photo like a video (same file).
+     - The check: a photo whose address no longer opens is flagged `missing` and keeps its row and address, a readable one is not (`media_verifier_test.dart`, D-116).
+     - The grants: a photo row holds its grant, and a photo grant that no row holds is released (`picked_grants_test.dart`).
+     - Backup: a photo exports with `mimeType` `image/heic`, `durationMs` 0 and its picker address, imports back the same and exports again to the same file; `fixtures/backup_v1.json` (no photos) imports as before (`backup_service_test.dart`).
+  6. **The backup format stays version 1.** No field is added: a photo is a clip row, and a file with photos reads with the same keys. A backup made before this phase has no photos and imports as it did.
+- Why: the owner chose to add photos by hand in a reel (spec approach 1B), so no photo permission is needed. Making a photo a clip means the work of this phase is how photos show and open, not a second copy of how clips are stored, kept, checked and exported.
+- Alternatives considered:
+  - **A `photos` table:** it would duplicate ordering, membership, the missing check, selection, export and the copy paths, and every screen would merge two lists.
+  - **A column or `ClipKind` enum for photo:** a schema change and a backup change for a fact the type already holds.
+  - **Keep a non-image type the provider reported:** the picker was asked for images only, and a stored `video/*` or `application/octet-stream` would make a photo show as a video.
+  - **Read the modified date as seconds, like a MediaStore scan's added and modified dates:** the picker's columns are milliseconds, as is its taken date; mixing the two units in one rule would invite a wrong date. The picker's exact columns are proven on the phone in Task 5.
+- Consequences:
+  - Every later task asks `isPhoto` and never the type's text.
+  - A photo with no taken date and no usable modified date sits at the time it was added, so it shows among the newest clips, as a video with no date does.
+  - The bridge that fills `PickedVideo.dateModifiedMs` for a photo pick is Task 2's, so this task changes no platform code.

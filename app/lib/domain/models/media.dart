@@ -91,6 +91,10 @@ abstract class VideoFolder with _$VideoFolder {
 /// other facts are null when unknown. [persisted] is true when Android agreed
 /// to keep read access to [uri] across restarts; when false the access lasts
 /// only until the app is closed. Never log [uri] or [displayName] (D-10).
+///
+/// [dateModifiedMs] (milliseconds) is read for photo picks only and is null
+/// for every video pick; it is the fallback when a photo has no usable taken
+/// date (D-198).
 @freezed
 abstract class PickedVideo with _$PickedVideo {
   const factory PickedVideo({
@@ -100,6 +104,7 @@ abstract class PickedVideo with _$PickedVideo {
     required bool persisted,
     int? durationMs,
     int? dateTakenMs,
+    int? dateModifiedMs,
     int? width,
     int? height,
     String? mimeType,

@@ -237,8 +237,8 @@ return $default(_that.id,_that.source,_that.fingerprint,_that.width,_that.height
 /// @nodoc
 @JsonSerializable()
 
-class _Clip implements Clip {
-  const _Clip({required this.id, required this.source, required this.fingerprint, required this.width, required this.height, required this.mimeType, required this.firstSeenAt, required this.missing, this.mediaStoreId, this.volumeName, this.pickerUri, this.timeZoneId, this.generationAdded, this.lastVerifiedAt});
+class _Clip extends Clip {
+  const _Clip({required this.id, required this.source, required this.fingerprint, required this.width, required this.height, required this.mimeType, required this.firstSeenAt, required this.missing, this.mediaStoreId, this.volumeName, this.pickerUri, this.timeZoneId, this.generationAdded, this.lastVerifiedAt}): super._();
   factory _Clip.fromJson(Map<String, dynamic> json) => _$ClipFromJson(json);
 
 @override final  int id;

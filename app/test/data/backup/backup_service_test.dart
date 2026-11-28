@@ -457,6 +457,93 @@ void main() {
     });
   });
 
+  // Characterization (D-198): a photo is a clip row, so the version 1 file
+  // holds it with no new field. These need no code.
+  group('photos in a backup (D-198)', () {
+    test('a photo round-trips: image/heic, durationMs 0, picker uri', () async {
+      final reel = await ReelsRepository(db, clock).create('Photos');
+      final [photo] = await ClipsRepository(db, clock).addNewClipsToReel(
+        reel.id,
+        [
+          NewClip.picker(
+            pickerUri: 'content://media/picker/0/x/media/77',
+            fingerprint: ClipFingerprint(
+              sizeBytes: 3456789,
+              durationMs: 0,
+              dateTakenUtc: _t0.subtract(const Duration(days: 5)),
+              displayName: 'IMG_0077.heic',
+            ),
+            width: 4032,
+            height: 3024,
+            mimeType: 'image/heic',
+            timeZoneId: 'Asia/Kolkata',
+          ),
+        ],
+      );
+      final first = await backup.exportJson();
+      final file = jsonDecode(first) as Map<String, dynamic>;
+      final row = _section(file, 'clips').single;
+      expect(row['mimeType'], 'image/heic');
+      expect(row['durationMs'], 0);
+      expect(row['pickerUri'], 'content://media/picker/0/x/media/77');
+      expect(file['schemaVersion'], 1);
+
+      final other = freshDatabase();
+      final summary = await BackupService(other, clock).importJson(first);
+
+      expect(
+        summary,
+        const ImportSummary(
+          reels: 1,
+          clips: 1,
+          references: 0,
+          inboxPending: 0,
+          inboxSkipped: 0,
+        ),
+      );
+      final back = (await ClipsRepository(other, clock).clipsByIds([photo]))
+          .single;
+      expect(back.mimeType, 'image/heic');
+      expect(back.fingerprint.durationMs, 0);
+      expect(back.pickerUri, 'content://media/picker/0/x/media/77');
+      expect(back.source, ClipSource.picker);
+      expect(back.fingerprint.displayName, 'IMG_0077.heic');
+      expect((back.width, back.height), (4032, 3024));
+      expect(
+        _withoutExportedAt(await BackupService(other, clock).exportJson()),
+        _withoutExportedAt(first),
+      );
+    });
+
+    test('fixtures/backup_v1.json (no photos) imports as before', () async {
+      final file = _fixtureMap();
+      expect(file['schemaVersion'], 1);
+      expect([
+        for (final c in _section(file, 'clips')) c['mimeType'] as String,
+      ], everyElement(startsWith('video/')));
+
+      final summary = await backup.importJson(_fixture());
+
+      expect(
+        summary,
+        const ImportSummary(
+          reels: 3,
+          clips: 4,
+          references: 4,
+          inboxPending: 1,
+          inboxSkipped: 1,
+        ),
+      );
+      final clips = await db.select(db.clips).get();
+      expect(clips, hasLength(4));
+      expect([for (final c in clips) c.mimeType], everyElement('video/mp4'));
+      expect(
+        _withoutExportedAt(await backup.exportJson()),
+        _withoutExportedAt(_fixture().trimRight()),
+      );
+    });
+  });
+
   group('golden fixture (format v1)', () {
     test('uses every value of every stored enum, so each name is pinned', () {
       final file = _fixtureMap();
